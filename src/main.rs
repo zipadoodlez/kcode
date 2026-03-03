@@ -38,6 +38,7 @@ mod mcp;
 mod memory;
 mod memory_agent;
 mod memory_graph;
+mod memory_log;
 mod message;
 mod notifications;
 mod perf;
@@ -613,6 +614,7 @@ async fn main() -> Result<()> {
     logging::init();
     startup_profile::mark("logging_init");
     logging::cleanup_old_logs();
+    memory_log::cleanup_old_logs();
     startup_profile::mark("log_cleanup");
     logging::info("jcode starting");
 

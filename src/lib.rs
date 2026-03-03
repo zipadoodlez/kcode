@@ -22,6 +22,7 @@ pub mod mcp;
 pub mod memory;
 pub mod memory_agent;
 pub mod memory_graph;
+pub mod memory_log;
 pub mod message;
 pub mod notifications;
 pub mod perf;
