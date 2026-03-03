@@ -1,6 +1,6 @@
 [package]
 name = "jcode"
-version = "0.5.9"
+version = "0.5.10"
 description = "Possibly the greatest coding agent ever built — blazing-fast TUI, multi-model, swarm coordination, 30+ tools"
 edition = "2021"
 
@@ -102,6 +102,7 @@ tar = "0.4"
 
 # Mermaid diagram rendering (stable v0.2.0 tag)
 mermaid-rs-renderer = { git = "https://github.com/1jehuang/mermaid-rs-renderer.git", tag = "v0.2.0" }
+qr2term = "0.3.3"
 
 [features]
 default = ["embeddings", "pdf"]

@@ -2362,35 +2362,33 @@ fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
     }
 
     let code = registry.generate_pairing_code();
+    let connect_host = resolve_connect_host(&gw_config.bind_addr);
+    let pair_uri = format!(
+        "jcode://pair?host={}&port={}&code={}",
+        connect_host, gw_config.port, code
+    );
 
     eprintln!();
-    eprintln!("  \x1b[1;36m┌─────────────────────────┐\x1b[0m");
-    eprintln!("  \x1b[1;36m│\x1b[0m                         \x1b[1;36m│\x1b[0m");
-    eprintln!("  \x1b[1;36m│\x1b[0m   Pairing code:         \x1b[1;36m│\x1b[0m");
-    eprintln!("  \x1b[1;36m│\x1b[0m                         \x1b[1;36m│\x1b[0m");
+    eprintln!("  \x1b[1mScan with the jcode iOS app:\x1b[0m\n");
+    if let Err(_) = qr2term::print_qr(&pair_uri) {
+        eprintln!("  \x1b[33m(QR code generation failed)\x1b[0m\n");
+    }
+    eprintln!();
     eprintln!(
-        "  \x1b[1;36m│\x1b[0m      \x1b[1;37m{} {}\x1b[0m          \x1b[1;36m│\x1b[0m",
+        "  Pairing code:  \x1b[1;37m{} {}\x1b[0m   \x1b[2m(expires in 5 minutes)\x1b[0m",
         &code[..3],
         &code[3..]
     );
-    eprintln!("  \x1b[1;36m│\x1b[0m                         \x1b[1;36m│\x1b[0m");
-    eprintln!("  \x1b[1;36m│\x1b[0m   \x1b[2mExpires in 5 minutes\x1b[0m   \x1b[1;36m│\x1b[0m");
-    eprintln!("  \x1b[1;36m│\x1b[0m                         \x1b[1;36m│\x1b[0m");
-    eprintln!("  \x1b[1;36m└─────────────────────────┘\x1b[0m");
-    let connect_host = resolve_connect_host(&gw_config.bind_addr);
     let resolved_hint = format!("{}:{}", connect_host, gw_config.port);
     let bind_hint = format!("{}:{}", gw_config.bind_addr, gw_config.port);
-
-    eprintln!();
-    eprintln!("  Enter this code in the jcode iOS app to pair.");
-    eprintln!("  Connect host: \x1b[36m{}\x1b[0m", resolved_hint);
+    eprintln!("  Connect host:  \x1b[36m{}\x1b[0m", resolved_hint);
     if connect_host != gw_config.bind_addr {
-        eprintln!("  (Gateway bind address: \x1b[2m{}\x1b[0m)", bind_hint);
+        eprintln!("  Bind address:  \x1b[2m{}\x1b[0m", bind_hint);
     }
 
     if connect_host == "<your-mac-hostname>" {
         eprintln!(
-            "  Tip: set JCODE_GATEWAY_HOST to your reachable Tailscale hostname (e.g. yashmacbook.tailnet.ts.net)."
+            "\n  \x1b[33mTip:\x1b[0m set JCODE_GATEWAY_HOST to your reachable Tailscale hostname."
         );
     }
 
