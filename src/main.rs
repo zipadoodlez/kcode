@@ -614,7 +614,6 @@ async fn main() -> Result<()> {
     logging::init();
     startup_profile::mark("logging_init");
     logging::cleanup_old_logs();
-    memory_log::cleanup_old_logs();
     startup_profile::mark("log_cleanup");
     logging::info("jcode starting");
 
