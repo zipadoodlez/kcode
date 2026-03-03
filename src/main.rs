@@ -1012,31 +1012,11 @@ async fn run_main(mut args: Args) -> Result<()> {
                         cmd.spawn()?
                     };
 
-                    // Wait for server to be ready (up to 10 seconds)
+                    // Brief check for early crash (up to 500ms).
+                    // If the server exits immediately, report the error.
+                    // Otherwise, let the TUI handle connection retries.
                     let start = std::time::Instant::now();
-                    loop {
-                        if start.elapsed() > std::time::Duration::from_secs(10) {
-                            let stderr_output = child
-                                .stderr
-                                .take()
-                                .and_then(|mut s| {
-                                    let mut buf = String::new();
-                                    use std::io::Read;
-                                    s.read_to_string(&mut buf).ok()?;
-                                    Some(buf)
-                                })
-                                .unwrap_or_default();
-                            let _ = child.kill();
-                            if stderr_output.is_empty() {
-                                anyhow::bail!("Server failed to start within 10 seconds. Check logs at ~/.jcode/logs/");
-                            } else {
-                                anyhow::bail!(
-                                    "Server failed to start within 10 seconds:\n{}",
-                                    stderr_output.trim()
-                                );
-                            }
-                        }
-                        // Check if server process already exited (crashed)
+                    while start.elapsed() < std::time::Duration::from_millis(500) {
                         if let Some(status) = child.try_wait()? {
                             let stderr_output = child
                                 .stderr
@@ -1070,15 +1050,15 @@ async fn run_main(mut args: Args) -> Result<()> {
                                 break;
                             }
                         }
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     }
                 }
 
                 startup_profile::mark("pre_tui_client");
-                if std::env::var("JCODE_RESUMING").is_err() {
+                if std::env::var("JCODE_RESUMING").is_err() && server_running {
                     eprintln!("Connecting to server...");
                 }
-                run_tui_client(args.resume, startup_message).await?;
+                run_tui_client(args.resume, startup_message, !server_running).await?;
             }
         }
     }
@@ -2983,6 +2963,7 @@ async fn run_client() -> Result<()> {
 async fn run_tui_client(
     resume_session: Option<String>,
     startup_message: Option<String>,
+    server_spawning: bool,
 ) -> Result<()> {
     startup_profile::mark("tui_client_enter");
     let terminal = init_tui_terminal()?;
@@ -3022,6 +3003,9 @@ async fn run_tui_client(
 
     // Use App in remote mode - same UI, connects to server
     let mut app = tui::App::new_for_remote(resume_session.clone());
+    if server_spawning {
+        app.set_server_spawning();
+    }
     startup_profile::mark("app_new_for_remote");
     if resume_session.is_none() {
         if let Some(msg) = startup_message {
@@ -3876,6 +3860,7 @@ async fn run_canary_wrapper(
     let server_alive = is_server_alive(&socket_path).await;
     startup_profile::mark("canary_server_alive_check");
 
+    let mut server_just_spawned = false;
     if !server_alive {
         // Server not running - spawn it as a detached daemon
         startup_msg!("Starting self-dev server...");
@@ -3922,19 +3907,9 @@ async fn run_canary_wrapper(
         }
         cmd.spawn()?;
 
-        // Wait for server to be ready
-        let start = std::time::Instant::now();
-        loop {
-            if start.elapsed() > std::time::Duration::from_secs(30) {
-                anyhow::bail!("Server failed to start within 30 seconds");
-            }
-            if is_server_alive(&socket_path).await {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-        startup_profile::mark("canary_server_ready");
-        startup_msg!("Self-dev server ready on {}", socket_path);
+        startup_profile::mark("canary_server_spawned");
+        server_just_spawned = true;
+        startup_msg!("Server spawned, starting TUI...");
     } else {
         // Server is already running - just connect to it.
         // Don't force a server restart on version mismatch: that would kill
@@ -3988,7 +3963,10 @@ async fn run_canary_wrapper(
         crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
     }
 
-    let app = tui::App::new_for_remote(Some(session_id.to_string()));
+    let mut app = tui::App::new_for_remote(Some(session_id.to_string()));
+    if server_just_spawned {
+        app.set_server_spawning();
+    }
     startup_profile::mark("canary_app_new");
 
     // Set terminal title
