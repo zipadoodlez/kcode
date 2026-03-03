@@ -3735,7 +3735,6 @@ async fn run_self_dev(should_build: bool, resume_session: Option<String>) -> Res
         let mut session =
             session::Session::create(None, Some("Self-development session".to_string()));
         session.set_canary("self-dev");
-        let _ = session.save();
         session.id.clone()
     };
 
