@@ -31,6 +31,7 @@ mod config;
 mod copilot_usage;
 mod embedding;
 mod gateway;
+mod gmail;
 mod id;
 mod logging;
 mod mcp;
@@ -306,6 +307,7 @@ enum ProviderChoice {
     Cursor,
     Copilot,
     Antigravity,
+    Google,
     Auto,
 }
 
@@ -319,6 +321,7 @@ impl ProviderChoice {
             Self::Cursor => "cursor",
             Self::Copilot => "copilot",
             Self::Antigravity => "antigravity",
+            Self::Google => "google",
             Self::Auto => "auto",
         }
     }
@@ -1127,6 +1130,11 @@ async fn init_provider(
             eprintln!("Using Antigravity CLI provider (experimental)");
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(provider::antigravity::AntigravityCliProvider::new())
+        }
+        ProviderChoice::Google => {
+            eprintln!("Note: Google/Gmail is not a model provider. Using auto-detect for model provider.");
+            eprintln!("Gmail tool is available if you've run `jcode login google`.");
+            Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Auto => {
             // Check if we have any credentials (in parallel)
@@ -2424,6 +2432,9 @@ async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Resu
         ProviderChoice::Antigravity => {
             login_antigravity_flow()?;
         }
+        ProviderChoice::Google => {
+            login_google_flow().await?;
+        }
         ProviderChoice::Auto => {
             eprintln!("Choose a provider to log in:");
             eprintln!("  1. Claude         - requires Claude Pro or Max subscription");
@@ -2432,9 +2443,10 @@ async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Resu
             eprintln!("  4. OpenRouter     - API key, pay-per-token, 200+ models");
             eprintln!("  5. Cursor");
             eprintln!("  6. Antigravity");
+            eprintln!("  7. Google/Gmail   - read, draft, and send emails");
             eprintln!();
             eprintln!("  Options 1-2 are recommended if you have a subscription.");
-            eprint!("\nEnter 1-6: ");
+            eprint!("\nEnter 1-7: ");
             io::stdout().flush()?;
 
             let mut input = String::new();
@@ -2446,8 +2458,9 @@ async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Resu
                 "4" => login_openrouter_flow()?,
                 "5" => login_cursor_flow()?,
                 "6" => login_antigravity_flow()?,
+                "7" => login_google_flow().await?,
                 _ => anyhow::bail!(
-                    "Invalid choice. Use --provider claude|openai|openrouter|cursor|copilot|antigravity"
+                    "Invalid choice. Use --provider claude|openai|openrouter|cursor|copilot|antigravity|google"
                 ),
             }
         }
@@ -2645,6 +2658,50 @@ fn login_antigravity_flow() -> Result<()> {
         )
     })?;
     eprintln!("Antigravity login command completed.");
+    Ok(())
+}
+
+async fn login_google_flow() -> Result<()> {
+    use auth::google::GmailAccessTier;
+
+    eprintln!("Setting up Gmail integration...\n");
+
+    // Check for credentials first
+    if let Err(e) = auth::google::load_credentials() {
+        eprintln!("{}", e);
+        return Err(e);
+    }
+
+    eprintln!("Gmail Access Level:");
+    eprintln!("  [1] Full Access (recommended)");
+    eprintln!("      Search, read, draft, send, and manage emails.");
+    eprintln!("      Send and delete always require your confirmation.\n");
+    eprintln!("  [2] Read & Draft Only");
+    eprintln!("      Search, read emails, create drafts. Cannot send or delete.");
+    eprintln!("      API-level restriction - impossible even if the AI tries.\n");
+    eprint!("Choose [1/2] (default: 1): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let tier = match input.trim() {
+        "" | "1" => GmailAccessTier::Full,
+        "2" => GmailAccessTier::ReadOnly,
+        _ => {
+            eprintln!("Invalid choice, defaulting to Full Access.");
+            GmailAccessTier::Full
+        }
+    };
+
+    eprintln!("\nAccess level: {}\n", tier.label());
+
+    let tokens = auth::google::login(tier).await?;
+    eprintln!("Successfully logged in to Gmail!");
+    if let Some(email) = &tokens.email {
+        eprintln!("Account: {}", email);
+    }
+    eprintln!("Access tier: {}", tokens.tier.label());
+    eprintln!("Tokens stored at ~/.jcode/google_oauth.json");
     Ok(())
 }
 
@@ -3975,6 +4032,7 @@ mod tests {
         assert_eq!(ProviderChoice::Cursor.as_arg_value(), "cursor");
         assert_eq!(ProviderChoice::Copilot.as_arg_value(), "copilot");
         assert_eq!(ProviderChoice::Antigravity.as_arg_value(), "antigravity");
+        assert_eq!(ProviderChoice::Google.as_arg_value(), "google");
         assert_eq!(ProviderChoice::Auto.as_arg_value(), "auto");
     }
 
