@@ -1302,23 +1302,24 @@ async fn run_tui(
 
     app.init_mcp().await;
     let result = app.run(terminal).await;
-    // Disable bracketed paste and mouse capture before restoring terminal
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-    if mouse_capture {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-    }
-    if keyboard_enhanced {
-        tui::disable_keyboard_enhancement();
-    }
 
     let run_result = result?;
 
-    // Skip ratatui::restore() when about to exec into a new binary to avoid
-    // a visible flash (LeaveAlternateScreen + EnterAlternateScreen).
+    // Skip terminal cleanup when about to exec into a new binary - the new
+    // process inherits the terminal state and re-enables these modes itself.
+    // Disabling them here would create a brief gap where paste/mouse/keyboard
+    // events could be lost or misinterpreted.
     let will_exec = run_result.reload_session.is_some()
         || run_result.rebuild_session.is_some()
         || run_result.update_session.is_some();
     if !will_exec {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+        if mouse_capture {
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        }
+        if keyboard_enhanced {
+            tui::disable_keyboard_enhancement();
+        }
         ratatui::restore();
     }
     crate::tui::mermaid::clear_image_state();
@@ -3035,22 +3036,21 @@ async fn run_tui_client(
 
     let result = app.run_remote(terminal).await;
 
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-    if mouse_capture {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-    }
-    if keyboard_enhanced {
-        tui::disable_keyboard_enhancement();
-    }
-
     let run_result = result?;
 
-    // Skip ratatui::restore() when about to exec into a new binary to avoid
-    // a visible flash (LeaveAlternateScreen + EnterAlternateScreen).
+    // Skip terminal cleanup when about to exec into a new binary - the new
+    // process inherits the terminal state and re-enables these modes itself.
     let will_exec = run_result.reload_session.is_some()
         || run_result.rebuild_session.is_some()
         || run_result.update_session.is_some();
     if !will_exec {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+        if mouse_capture {
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        }
+        if keyboard_enhanced {
+            tui::disable_keyboard_enhancement();
+        }
         ratatui::restore();
     }
     crate::tui::mermaid::clear_image_state();
@@ -4005,33 +4005,36 @@ async fn run_canary_wrapper(
 
     let result = app.run_remote(terminal).await;
 
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-    if mouse_capture {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-    }
-    if keyboard_enhanced {
-        tui::disable_keyboard_enhancement();
-    }
-
     let run_result = match result {
         Ok(r) => r,
         Err(e) => {
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+            if mouse_capture {
+                let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+            }
+            if keyboard_enhanced {
+                tui::disable_keyboard_enhancement();
+            }
             ratatui::restore();
             return Err(e);
         }
     };
 
-    // Determine if we're about to exec into a new binary.
-    // If so, skip ratatui::restore() to avoid a visible flash -
-    // the exec'd process inherits the terminal in alternate screen
-    // and raw mode. The new process detects JCODE_RESUMING and
-    // creates the Terminal without re-entering alternate screen.
+    // Skip terminal cleanup when about to exec into a new binary - the new
+    // process inherits the terminal state and re-enables these modes itself.
     let will_exec = run_result.reload_session.is_some()
         || run_result.rebuild_session.is_some()
         || run_result.update_session.is_some()
         || run_result.exit_code == Some(EXIT_RELOAD_REQUESTED);
 
     if !will_exec {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+        if mouse_capture {
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        }
+        if keyboard_enhanced {
+            tui::disable_keyboard_enhancement();
+        }
         ratatui::restore();
     }
     crate::tui::mermaid::clear_image_state();
