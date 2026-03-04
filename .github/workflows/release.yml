@@ -104,6 +104,7 @@ jobs:
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             artifact: jcode-windows-aarch64
+            cargo_args: "--no-default-features --features pdf"
 
     steps:
       - uses: actions/checkout@v4
@@ -130,7 +131,7 @@ jobs:
           if command -v sccache &>/dev/null && sccache --start-server 2>/dev/null; then
             export RUSTC_WRAPPER=sccache
           fi
-          cargo build --release --target ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }} ${{ matrix.cargo_args }}
         env:
           JCODE_RELEASE_BUILD: "1"
 
