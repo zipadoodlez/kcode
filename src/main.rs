@@ -29,7 +29,12 @@ mod channel;
 mod compaction;
 mod config;
 mod copilot_usage;
+#[cfg(feature = "embeddings")]
 mod embedding;
+#[cfg(not(feature = "embeddings"))]
+mod embedding_stub;
+#[cfg(not(feature = "embeddings"))]
+use embedding_stub as embedding;
 mod gateway;
 mod gmail;
 mod id;

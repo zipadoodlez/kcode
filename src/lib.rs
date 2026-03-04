@@ -12,7 +12,12 @@ pub mod channel;
 pub mod compaction;
 pub mod config;
 pub mod copilot_usage;
+#[cfg(feature = "embeddings")]
 pub mod embedding;
+#[cfg(not(feature = "embeddings"))]
+pub mod embedding_stub;
+#[cfg(not(feature = "embeddings"))]
+pub use embedding_stub as embedding;
 pub mod gateway;
 pub mod gmail;
 pub mod id;
