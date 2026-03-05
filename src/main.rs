@@ -2639,7 +2639,11 @@ async fn login_claude_flow(label: &str) -> Result<()> {
             }
         };
     eprintln!("Successfully logged in to Claude!");
-    eprintln!("Account '{}' stored at ~/.jcode/auth.json", label);
+    eprintln!(
+        "Account '{}' stored at {}",
+        label,
+        auth::claude::jcode_path()?.display()
+    );
     if let Some(email) = profile_email {
         eprintln!("Profile email: {}", email);
     }
@@ -2650,7 +2654,10 @@ async fn login_openai_flow() -> Result<()> {
     eprintln!("Logging in to OpenAI/Codex...");
     let tokens = auth::oauth::login_openai().await?;
     auth::oauth::save_openai_tokens(&tokens)?;
-    eprintln!("Successfully logged in to OpenAI!");
+    eprintln!(
+        "Successfully logged in to OpenAI! Tokens saved to {}",
+        crate::storage::user_home_path(".codex/auth.json")?.display()
+    );
     Ok(())
 }
 
@@ -2889,7 +2896,10 @@ async fn login_google_flow() -> Result<()> {
                         client_secret,
                     };
                     auth::google::save_credentials(&creds)?;
-                    eprintln!("\n✓ Credentials saved to ~/.jcode/google_credentials.json\n");
+                    eprintln!(
+                        "\n✓ Credentials saved to {}\n",
+                        auth::google::credentials_path()?.display()
+                    );
                     creds
                 }
                 "2" => {
@@ -2916,10 +2926,7 @@ async fn login_google_flow() -> Result<()> {
                         .with_context(|| format!("Could not read file: {}", path_str))?;
 
                     // Copy to credentials path
-                    let dest = dirs::home_dir()
-                        .unwrap_or_default()
-                        .join(".jcode")
-                        .join("google_credentials.json");
+                    let dest = auth::google::credentials_path()?;
                     if let Some(parent) = dest.parent() {
                         std::fs::create_dir_all(parent)?;
                         crate::platform::set_directory_permissions_owner_only(parent)?;
@@ -2930,7 +2937,7 @@ async fn login_google_flow() -> Result<()> {
                     let creds = auth::google::load_credentials()
                         .context("Could not parse the credentials file. Make sure it's the OAuth client JSON from Google Cloud Console.")?;
 
-                    eprintln!("\n✓ Credentials imported to ~/.jcode/google_credentials.json\n");
+                    eprintln!("\n✓ Credentials imported to {}\n", dest.display());
                     creds
                 }
                 "3" | _ => {
@@ -3046,8 +3053,14 @@ async fn login_google_flow() -> Result<()> {
         eprintln!("  Account:      {}", email);
     }
     eprintln!("  Access tier:  {}", tokens.tier.label());
-    eprintln!("  Credentials:  ~/.jcode/google_credentials.json");
-    eprintln!("  Tokens:       ~/.jcode/google_oauth.json\n");
+    eprintln!(
+        "  Credentials:  {}",
+        auth::google::credentials_path()?.display()
+    );
+    eprintln!(
+        "  Tokens:       {}\n",
+        auth::google::tokens_path()?.display()
+    );
     eprintln!("The 'gmail' tool is now available to the AI agent.");
     eprintln!("Try asking: \"check my recent emails\" or \"search emails from ...\"");
 
