@@ -52,6 +52,7 @@ mod platform;
 mod prompt;
 mod protocol;
 mod provider;
+mod provider_catalog;
 mod registry;
 mod replay;
 mod safety;
@@ -76,6 +77,10 @@ mod video_export;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use provider::Provider;
+use provider_catalog::{
+    apply_openai_compatible_profile_env, is_safe_env_file_name, is_safe_env_key_name,
+    resolve_openai_compatible_profile, OpenAiCompatibleProfile,
+};
 use std::io::{self, IsTerminal, Write};
 use std::net::ToSocketAddrs;
 use std::panic;
@@ -1004,24 +1009,36 @@ async fn run_main(mut args: Args) -> Result<()> {
                             "3" => login_copilot_flow()?,
                             "4" => login_openrouter_flow()?,
                             "5" => {
-                                login_openai_compatible_flow(&OPENCODE_PROFILE)?;
-                                apply_openai_compatible_profile(Some(OPENCODE_PROFILE));
+                                login_openai_compatible_flow(&provider_catalog::OPENCODE_PROFILE)?;
+                                apply_openai_compatible_profile_env(Some(
+                                    provider_catalog::OPENCODE_PROFILE,
+                                ));
                             }
                             "6" => {
-                                login_openai_compatible_flow(&OPENCODE_GO_PROFILE)?;
-                                apply_openai_compatible_profile(Some(OPENCODE_GO_PROFILE));
+                                login_openai_compatible_flow(
+                                    &provider_catalog::OPENCODE_GO_PROFILE,
+                                )?;
+                                apply_openai_compatible_profile_env(Some(
+                                    provider_catalog::OPENCODE_GO_PROFILE,
+                                ));
                             }
                             "7" => {
-                                login_openai_compatible_flow(&ZAI_PROFILE)?;
-                                apply_openai_compatible_profile(Some(ZAI_PROFILE));
+                                login_openai_compatible_flow(&provider_catalog::ZAI_PROFILE)?;
+                                apply_openai_compatible_profile_env(Some(
+                                    provider_catalog::ZAI_PROFILE,
+                                ));
                             }
                             "8" => {
-                                login_openai_compatible_flow(&CHUTES_PROFILE)?;
-                                apply_openai_compatible_profile(Some(CHUTES_PROFILE));
+                                login_openai_compatible_flow(&provider_catalog::CHUTES_PROFILE)?;
+                                apply_openai_compatible_profile_env(Some(
+                                    provider_catalog::CHUTES_PROFILE,
+                                ));
                             }
                             "9" => {
-                                login_openai_compatible_flow(&CEREBRAS_PROFILE)?;
-                                apply_openai_compatible_profile(Some(CEREBRAS_PROFILE));
+                                login_openai_compatible_flow(&provider_catalog::CEREBRAS_PROFILE)?;
+                                apply_openai_compatible_profile_env(Some(
+                                    provider_catalog::CEREBRAS_PROFILE,
+                                ));
                             }
                             _ => anyhow::bail!("Invalid choice. Run 'jcode login' to try again."),
                         }
@@ -1113,229 +1130,16 @@ async fn run_main(mut args: Args) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Copy)]
-struct OpenAiCompatibleProfile {
-    id: &'static str,
-    display_name: &'static str,
-    api_base: &'static str,
-    api_key_env: &'static str,
-    env_file: &'static str,
-    setup_url: &'static str,
-    default_model: Option<&'static str>,
-}
-
-#[derive(Clone, Debug)]
-struct ResolvedOpenAiCompatibleProfile {
-    id: String,
-    display_name: String,
-    api_base: String,
-    api_key_env: String,
-    env_file: String,
-    setup_url: String,
-    default_model: Option<String>,
-}
-
-const OPENCODE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "opencode",
-    display_name: "OpenCode Zen",
-    api_base: "https://opencode.ai/zen/v1",
-    api_key_env: "OPENCODE_API_KEY",
-    env_file: "opencode.env",
-    setup_url: "https://opencode.ai/docs/providers#opencode-zen",
-    default_model: Some("qwen/qwen3-coder-plus"),
-};
-
-const OPENCODE_GO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "opencode-go",
-    display_name: "OpenCode Go",
-    api_base: "https://opencode.ai/zen/go/v1",
-    api_key_env: "OPENCODE_GO_API_KEY",
-    env_file: "opencode-go.env",
-    setup_url: "https://opencode.ai/docs/providers#opencode-go",
-    default_model: Some("THUDM/GLM-4.5"),
-};
-
-const ZAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "zai",
-    display_name: "Z.AI Coding",
-    api_base: "https://api.z.ai/api/coding/paas/v4",
-    api_key_env: "ZAI_API_KEY",
-    env_file: "zai.env",
-    setup_url: "https://docs.z.ai/guides/develop/openai/introduction",
-    default_model: Some("glm-4.5"),
-};
-
-const CHUTES_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "chutes",
-    display_name: "Chutes",
-    api_base: "https://llm.chutes.ai/v1",
-    api_key_env: "CHUTES_API_KEY",
-    env_file: "chutes.env",
-    setup_url: "https://chutes.ai",
-    default_model: Some("Qwen/Qwen3-Coder-480B-A35B-Instruct"),
-};
-
-const CEREBRAS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "cerebras",
-    display_name: "Cerebras",
-    api_base: "https://api.cerebras.ai/v1",
-    api_key_env: "CEREBRAS_API_KEY",
-    env_file: "cerebras.env",
-    setup_url: "https://inference-docs.cerebras.ai/introduction",
-    default_model: Some("qwen-3-coder-480b"),
-};
-
-const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "openai-compatible",
-    display_name: "OpenAI-compatible",
-    api_base: "https://api.openai.com/v1",
-    api_key_env: "OPENAI_COMPAT_API_KEY",
-    env_file: "openai-compatible.env",
-    setup_url: "https://opencode.ai/docs/providers#custom-providers",
-    default_model: None,
-};
-
 fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatibleProfile> {
     match choice {
-        ProviderChoice::Opencode => Some(OPENCODE_PROFILE),
-        ProviderChoice::OpencodeGo => Some(OPENCODE_GO_PROFILE),
-        ProviderChoice::Zai => Some(ZAI_PROFILE),
-        ProviderChoice::Chutes => Some(CHUTES_PROFILE),
-        ProviderChoice::Cerebras => Some(CEREBRAS_PROFILE),
-        ProviderChoice::OpenaiCompatible => Some(OPENAI_COMPAT_PROFILE),
+        ProviderChoice::Opencode => Some(provider_catalog::OPENCODE_PROFILE),
+        ProviderChoice::OpencodeGo => Some(provider_catalog::OPENCODE_GO_PROFILE),
+        ProviderChoice::Zai => Some(provider_catalog::ZAI_PROFILE),
+        ProviderChoice::Chutes => Some(provider_catalog::CHUTES_PROFILE),
+        ProviderChoice::Cerebras => Some(provider_catalog::CEREBRAS_PROFILE),
+        ProviderChoice::OpenaiCompatible => Some(provider_catalog::OPENAI_COMPAT_PROFILE),
         _ => None,
     }
-}
-
-fn normalize_api_base(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let parsed = reqwest::Url::parse(trimmed).ok()?;
-    let scheme = parsed.scheme();
-    if scheme != "https" && scheme != "http" {
-        return None;
-    }
-
-    if scheme == "http" {
-        let host = parsed.host_str()?.to_ascii_lowercase();
-        if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-            return None;
-        }
-    }
-
-    Some(trimmed.trim_end_matches('/').to_string())
-}
-
-fn env_override(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-}
-
-fn resolve_openai_compatible_profile(
-    profile: OpenAiCompatibleProfile,
-) -> ResolvedOpenAiCompatibleProfile {
-    let mut resolved = ResolvedOpenAiCompatibleProfile {
-        id: profile.id.to_string(),
-        display_name: profile.display_name.to_string(),
-        api_base: profile.api_base.to_string(),
-        api_key_env: profile.api_key_env.to_string(),
-        env_file: profile.env_file.to_string(),
-        setup_url: profile.setup_url.to_string(),
-        default_model: profile.default_model.map(|v| v.to_string()),
-    };
-
-    if profile.id != OPENAI_COMPAT_PROFILE.id {
-        return resolved;
-    }
-
-    if let Some(base) = env_override("JCODE_OPENAI_COMPAT_API_BASE") {
-        if let Some(normalized) = normalize_api_base(&base) {
-            resolved.api_base = normalized;
-        } else {
-            eprintln!(
-                "Warning: ignoring invalid JCODE_OPENAI_COMPAT_API_BASE '{}'. Use https://... (or http://localhost).",
-                base
-            );
-        }
-    }
-
-    if let Some(key_name) = env_override("JCODE_OPENAI_COMPAT_API_KEY_NAME") {
-        if is_safe_env_key_name(&key_name) {
-            resolved.api_key_env = key_name;
-        } else {
-            eprintln!(
-                "Warning: ignoring invalid JCODE_OPENAI_COMPAT_API_KEY_NAME '{}'.",
-                key_name
-            );
-        }
-    }
-
-    if let Some(env_file) = env_override("JCODE_OPENAI_COMPAT_ENV_FILE") {
-        if is_safe_env_file_name(&env_file) {
-            resolved.env_file = env_file;
-        } else {
-            eprintln!(
-                "Warning: ignoring invalid JCODE_OPENAI_COMPAT_ENV_FILE '{}'.",
-                env_file
-            );
-        }
-    }
-
-    if let Some(setup_url) = env_override("JCODE_OPENAI_COMPAT_SETUP_URL") {
-        resolved.setup_url = setup_url;
-    }
-
-    if let Some(model) = env_override("JCODE_OPENAI_COMPAT_DEFAULT_MODEL") {
-        resolved.default_model = Some(model);
-    }
-
-    resolved
-}
-
-fn apply_openai_compatible_profile(profile: Option<OpenAiCompatibleProfile>) {
-    let vars = [
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_PROVIDER",
-        "JCODE_OPENROUTER_NO_FALLBACK",
-    ];
-
-    for var in vars {
-        std::env::remove_var(var);
-    }
-
-    if let Some(profile) = profile {
-        let resolved = resolve_openai_compatible_profile(profile);
-        std::env::set_var("JCODE_OPENROUTER_API_BASE", &resolved.api_base);
-        std::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", &resolved.api_key_env);
-        std::env::set_var("JCODE_OPENROUTER_ENV_FILE", &resolved.env_file);
-        std::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", &resolved.id);
-        std::env::set_var("JCODE_OPENROUTER_PROVIDER_FEATURES", "0");
-    }
-}
-
-fn is_safe_env_key_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-}
-
-fn is_safe_env_file_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name.contains('/')
-        && !name.contains('\\')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
 }
 
 fn save_named_api_key(env_file: &str, key_name: &str, key: &str) -> Result<()> {
@@ -1366,9 +1170,9 @@ async fn init_provider(
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
     if let Some(profile) = profile_for_choice(choice) {
-        apply_openai_compatible_profile(Some(profile));
+        apply_openai_compatible_profile_env(Some(profile));
     } else {
-        apply_openai_compatible_profile(None);
+        apply_openai_compatible_profile_env(None);
     }
 
     let lock_provider = |provider_key: &str| {
@@ -1510,56 +1314,62 @@ async fn init_provider(
                         Arc::new(provider::MultiProvider::new())
                     }
                     "4" => {
-                        login_openai_compatible_flow(&OPENCODE_PROFILE)?;
+                        login_openai_compatible_flow(&provider_catalog::OPENCODE_PROFILE)?;
                         eprintln!();
-                        apply_openai_compatible_profile(Some(OPENCODE_PROFILE));
+                        apply_openai_compatible_profile_env(Some(
+                            provider_catalog::OPENCODE_PROFILE,
+                        ));
                         lock_provider("openrouter");
                         let multi = provider::MultiProvider::new();
-                        if let Some(model) = OPENCODE_PROFILE.default_model {
+                        if let Some(model) = provider_catalog::OPENCODE_PROFILE.default_model {
                             let _ = multi.set_model(model);
                         }
                         Arc::new(multi)
                     }
                     "5" => {
-                        login_openai_compatible_flow(&OPENCODE_GO_PROFILE)?;
+                        login_openai_compatible_flow(&provider_catalog::OPENCODE_GO_PROFILE)?;
                         eprintln!();
-                        apply_openai_compatible_profile(Some(OPENCODE_GO_PROFILE));
+                        apply_openai_compatible_profile_env(Some(
+                            provider_catalog::OPENCODE_GO_PROFILE,
+                        ));
                         lock_provider("openrouter");
                         let multi = provider::MultiProvider::new();
-                        if let Some(model) = OPENCODE_GO_PROFILE.default_model {
+                        if let Some(model) = provider_catalog::OPENCODE_GO_PROFILE.default_model {
                             let _ = multi.set_model(model);
                         }
                         Arc::new(multi)
                     }
                     "6" => {
-                        login_openai_compatible_flow(&ZAI_PROFILE)?;
+                        login_openai_compatible_flow(&provider_catalog::ZAI_PROFILE)?;
                         eprintln!();
-                        apply_openai_compatible_profile(Some(ZAI_PROFILE));
+                        apply_openai_compatible_profile_env(Some(provider_catalog::ZAI_PROFILE));
                         lock_provider("openrouter");
                         let multi = provider::MultiProvider::new();
-                        if let Some(model) = ZAI_PROFILE.default_model {
+                        if let Some(model) = provider_catalog::ZAI_PROFILE.default_model {
                             let _ = multi.set_model(model);
                         }
                         Arc::new(multi)
                     }
                     "7" => {
-                        login_openai_compatible_flow(&CHUTES_PROFILE)?;
+                        login_openai_compatible_flow(&provider_catalog::CHUTES_PROFILE)?;
                         eprintln!();
-                        apply_openai_compatible_profile(Some(CHUTES_PROFILE));
+                        apply_openai_compatible_profile_env(Some(provider_catalog::CHUTES_PROFILE));
                         lock_provider("openrouter");
                         let multi = provider::MultiProvider::new();
-                        if let Some(model) = CHUTES_PROFILE.default_model {
+                        if let Some(model) = provider_catalog::CHUTES_PROFILE.default_model {
                             let _ = multi.set_model(model);
                         }
                         Arc::new(multi)
                     }
                     "8" => {
-                        login_openai_compatible_flow(&CEREBRAS_PROFILE)?;
+                        login_openai_compatible_flow(&provider_catalog::CEREBRAS_PROFILE)?;
                         eprintln!();
-                        apply_openai_compatible_profile(Some(CEREBRAS_PROFILE));
+                        apply_openai_compatible_profile_env(Some(
+                            provider_catalog::CEREBRAS_PROFILE,
+                        ));
                         lock_provider("openrouter");
                         let multi = provider::MultiProvider::new();
-                        if let Some(model) = CEREBRAS_PROFILE.default_model {
+                        if let Some(model) = provider_catalog::CEREBRAS_PROFILE.default_model {
                             let _ = multi.set_model(model);
                         }
                         Arc::new(multi)
@@ -2862,12 +2672,12 @@ async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Resu
                 "2" => login_openai_flow().await?,
                 "3" => login_copilot_flow()?,
                 "4" => login_openrouter_flow()?,
-                "5" => login_openai_compatible_flow(&OPENCODE_PROFILE)?,
-                "6" => login_openai_compatible_flow(&OPENCODE_GO_PROFILE)?,
-                "7" => login_openai_compatible_flow(&ZAI_PROFILE)?,
-                "8" => login_openai_compatible_flow(&CHUTES_PROFILE)?,
-                "9" => login_openai_compatible_flow(&CEREBRAS_PROFILE)?,
-                "10" => login_openai_compatible_flow(&OPENAI_COMPAT_PROFILE)?,
+                "5" => login_openai_compatible_flow(&provider_catalog::OPENCODE_PROFILE)?,
+                "6" => login_openai_compatible_flow(&provider_catalog::OPENCODE_GO_PROFILE)?,
+                "7" => login_openai_compatible_flow(&provider_catalog::ZAI_PROFILE)?,
+                "8" => login_openai_compatible_flow(&provider_catalog::CHUTES_PROFILE)?,
+                "9" => login_openai_compatible_flow(&provider_catalog::CEREBRAS_PROFILE)?,
+                "10" => login_openai_compatible_flow(&provider_catalog::OPENAI_COMPAT_PROFILE)?,
                 "11" => login_cursor_flow()?,
                 "12" => login_antigravity_flow()?,
                 "13" => login_google_flow().await?,
@@ -4679,7 +4489,7 @@ mod tests {
         std::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "groq.env");
         std::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "openai/gpt-oss-120b");
 
-        let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
+        let resolved = resolve_openai_compatible_profile(provider_catalog::OPENAI_COMPAT_PROFILE);
         assert_eq!(resolved.api_base, "https://api.groq.com/openai/v1");
         assert_eq!(resolved.api_key_env, "GROQ_API_KEY");
         assert_eq!(resolved.env_file, "groq.env");
@@ -4714,10 +4524,19 @@ mod tests {
         std::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "bad-key-name");
         std::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "../bad.env");
 
-        let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
-        assert_eq!(resolved.api_base, OPENAI_COMPAT_PROFILE.api_base);
-        assert_eq!(resolved.api_key_env, OPENAI_COMPAT_PROFILE.api_key_env);
-        assert_eq!(resolved.env_file, OPENAI_COMPAT_PROFILE.env_file);
+        let resolved = resolve_openai_compatible_profile(provider_catalog::OPENAI_COMPAT_PROFILE);
+        assert_eq!(
+            resolved.api_base,
+            provider_catalog::OPENAI_COMPAT_PROFILE.api_base
+        );
+        assert_eq!(
+            resolved.api_key_env,
+            provider_catalog::OPENAI_COMPAT_PROFILE.api_key_env
+        );
+        assert_eq!(
+            resolved.env_file,
+            provider_catalog::OPENAI_COMPAT_PROFILE.env_file
+        );
 
         for (key, value) in saved {
             if let Some(value) = value {
