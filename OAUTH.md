@@ -110,10 +110,17 @@ J-Code also supports experimental CLI-backed providers:
 These use each provider's local CLI session/auth and shell out in print mode.
 
 ### Cursor
-- Login: `jcode login --provider cursor` (runs `cursor-agent login`)
+- Login: `jcode login --provider cursor`
+  - fast path: runs `cursor-agent login`
+  - fallback: saves `CURSOR_API_KEY` to `~/.config/jcode/cursor.env`
+- Runtime:
+  - jcode shells out to `cursor-agent`
+  - if a Cursor API key is configured, jcode injects it via `CURSOR_API_KEY`
+  - `cursor-agent status` is used to probe whether a local CLI session is authenticated
 - Env vars:
   - `JCODE_CURSOR_CLI_PATH` (default: `cursor-agent`)
   - `JCODE_CURSOR_MODEL` (default: `gpt-5`)
+  - `CURSOR_API_KEY` (optional; overrides saved key)
 
 ### GitHub Copilot
 - Login: `jcode login --provider copilot` (runs `copilot -i /login`, or `gh copilot -- -i /login` if `copilot` is not on PATH)

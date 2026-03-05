@@ -2756,20 +2756,46 @@ fn read_secret_line() -> Result<String> {
 
 fn login_cursor_flow() -> Result<()> {
     eprintln!("Starting Cursor login...");
-    let binary =
-        std::env::var("JCODE_CURSOR_CLI_PATH").unwrap_or_else(|_| "cursor-agent".to_string());
-    run_external_login_command(&binary, &["login"]).with_context(|| {
-        format!(
-            "Cursor login failed.\n\nInstall Cursor Agent:\n\
-             - macOS/Linux/WSL: `curl https://cursor.com/install -fsS | bash`\n\
-             - Windows (PowerShell): `irm 'https://cursor.com/install?win32=true' | iex`\n\n\
-             Then log in with one of:\n\
-             - `{} login`\n\
-             - `agent login`",
-            binary
-        )
-    })?;
-    eprintln!("Cursor login command completed.");
+    let binary = crate::auth::cursor::cursor_agent_cli_path();
+
+    if crate::auth::cursor::has_cursor_agent_cli() {
+        match run_external_login_command(&binary, &["login"]) {
+            Ok(()) => {
+                eprintln!("Cursor login command completed.");
+                crate::auth::AuthStatus::invalidate_cache();
+                return Ok(());
+            }
+            Err(err) => {
+                eprintln!("Cursor browser login failed: {}", err);
+                eprintln!();
+                eprintln!("Falling back to Cursor API key setup.");
+            }
+        }
+    } else {
+        eprintln!("Cursor Agent CLI was not found on PATH.");
+        eprintln!("You can still save a Cursor API key now and install Cursor Agent later.");
+    }
+
+    eprintln!("Get your API key from: https://cursor.com/settings");
+    eprintln!("(Dashboard > Integrations > User API Keys)\n");
+    eprint!("Paste your Cursor API key: ");
+    io::stdout().flush()?;
+
+    let key = read_secret_line()?;
+    if key.is_empty() {
+        anyhow::bail!("No API key provided.");
+    }
+
+    save_named_api_key("cursor.env", "CURSOR_API_KEY", &key)?;
+    crate::auth::AuthStatus::invalidate_cache();
+    eprintln!("\nSuccessfully saved Cursor API key!");
+    eprintln!("Stored at ~/.config/jcode/cursor.env");
+    eprintln!("jcode will pass it to `cursor-agent` automatically.");
+    if !crate::auth::cursor::has_cursor_agent_cli() {
+        eprintln!("Install Cursor Agent to use the Cursor provider:");
+        eprintln!("  - macOS/Linux/WSL: curl https://cursor.com/install -fsS | bash");
+        eprintln!("  - Windows (PowerShell): irm 'https://cursor.com/install?win32=true' | iex");
+    }
     Ok(())
 }
 
