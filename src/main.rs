@@ -79,7 +79,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use provider::Provider;
 use provider_catalog::{
     apply_openai_compatible_profile_env, is_safe_env_file_name, is_safe_env_key_name,
-    resolve_openai_compatible_profile, OpenAiCompatibleProfile,
+    resolve_login_selection, resolve_openai_compatible_profile, LoginProviderDescriptor,
+    LoginProviderTarget, OpenAiCompatibleProfile,
 };
 use std::io::{self, IsTerminal, Write};
 use std::net::ToSocketAddrs;
@@ -984,64 +985,12 @@ async fn run_main(mut args: Args) -> Result<()> {
                         && !has_api_key
                         && args.provider == ProviderChoice::Auto
                     {
-                        eprintln!("No credentials found. Let's log in!\n");
-                        eprintln!("Choose a provider:");
-                        eprintln!("  1. Claude      - requires Claude Pro or Max subscription");
-                        eprintln!("  2. OpenAI      - requires ChatGPT Plus or Pro subscription");
-                        eprintln!("  3. GitHub Copilot (free)");
-                        eprintln!("  4. OpenRouter  - API key, pay-per-token, 200+ models");
-                        eprintln!("  5. OpenCode Zen (API key)");
-                        eprintln!("  6. OpenCode Go (API key)");
-                        eprintln!("  7. Z.AI Coding (API key)");
-                        eprintln!("  8. Chutes (API key)");
-                        eprintln!("  9. Cerebras (API key)");
-                        eprintln!();
-                        eprintln!("  Options 1-2 are recommended if you have a subscription.");
-                        eprint!("\nEnter 1-9: ");
-                        io::stdout().flush()?;
-
-                        let mut input = String::new();
-                        io::stdin().read_line(&mut input)?;
-
-                        match input.trim() {
-                            "1" => login_claude_flow("default").await?,
-                            "2" => login_openai_flow().await?,
-                            "3" => login_copilot_flow()?,
-                            "4" => login_openrouter_flow()?,
-                            "5" => {
-                                login_openai_compatible_flow(&provider_catalog::OPENCODE_PROFILE)?;
-                                apply_openai_compatible_profile_env(Some(
-                                    provider_catalog::OPENCODE_PROFILE,
-                                ));
-                            }
-                            "6" => {
-                                login_openai_compatible_flow(
-                                    &provider_catalog::OPENCODE_GO_PROFILE,
-                                )?;
-                                apply_openai_compatible_profile_env(Some(
-                                    provider_catalog::OPENCODE_GO_PROFILE,
-                                ));
-                            }
-                            "7" => {
-                                login_openai_compatible_flow(&provider_catalog::ZAI_PROFILE)?;
-                                apply_openai_compatible_profile_env(Some(
-                                    provider_catalog::ZAI_PROFILE,
-                                ));
-                            }
-                            "8" => {
-                                login_openai_compatible_flow(&provider_catalog::CHUTES_PROFILE)?;
-                                apply_openai_compatible_profile_env(Some(
-                                    provider_catalog::CHUTES_PROFILE,
-                                ));
-                            }
-                            "9" => {
-                                login_openai_compatible_flow(&provider_catalog::CEREBRAS_PROFILE)?;
-                                apply_openai_compatible_profile_env(Some(
-                                    provider_catalog::CEREBRAS_PROFILE,
-                                ));
-                            }
-                            _ => anyhow::bail!("Invalid choice. Run 'jcode login' to try again."),
-                        }
+                        let provider = prompt_login_provider_selection(
+                            &server_bootstrap_login_providers(),
+                            "No credentials found. Let's log in!\n\nChoose a provider:",
+                        )?;
+                        run_login_provider(provider, Some("default")).await?;
+                        apply_login_provider_profile_env(provider);
                         eprintln!();
                     }
 
@@ -1142,6 +1091,163 @@ fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatibleProfile
     }
 }
 
+fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProviderDescriptor> {
+    match choice {
+        ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
+            Some(provider_catalog::CLAUDE_LOGIN_PROVIDER)
+        }
+        ProviderChoice::Openai => Some(provider_catalog::OPENAI_LOGIN_PROVIDER),
+        ProviderChoice::Openrouter => Some(provider_catalog::OPENROUTER_LOGIN_PROVIDER),
+        ProviderChoice::Opencode => Some(provider_catalog::OPENCODE_LOGIN_PROVIDER),
+        ProviderChoice::OpencodeGo => Some(provider_catalog::OPENCODE_GO_LOGIN_PROVIDER),
+        ProviderChoice::Zai => Some(provider_catalog::ZAI_LOGIN_PROVIDER),
+        ProviderChoice::Chutes => Some(provider_catalog::CHUTES_LOGIN_PROVIDER),
+        ProviderChoice::Cerebras => Some(provider_catalog::CEREBRAS_LOGIN_PROVIDER),
+        ProviderChoice::OpenaiCompatible => Some(provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER),
+        ProviderChoice::Cursor => Some(provider_catalog::CURSOR_LOGIN_PROVIDER),
+        ProviderChoice::Copilot => Some(provider_catalog::COPILOT_LOGIN_PROVIDER),
+        ProviderChoice::Antigravity => Some(provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER),
+        ProviderChoice::Google => Some(provider_catalog::GOOGLE_LOGIN_PROVIDER),
+        ProviderChoice::Auto => None,
+    }
+}
+
+fn cli_login_providers() -> [LoginProviderDescriptor; 13] {
+    [
+        provider_catalog::CLAUDE_LOGIN_PROVIDER,
+        provider_catalog::OPENAI_LOGIN_PROVIDER,
+        provider_catalog::COPILOT_LOGIN_PROVIDER,
+        provider_catalog::OPENROUTER_LOGIN_PROVIDER,
+        provider_catalog::OPENCODE_LOGIN_PROVIDER,
+        provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
+        provider_catalog::ZAI_LOGIN_PROVIDER,
+        provider_catalog::CHUTES_LOGIN_PROVIDER,
+        provider_catalog::CEREBRAS_LOGIN_PROVIDER,
+        provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER,
+        provider_catalog::CURSOR_LOGIN_PROVIDER,
+        provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
+        provider_catalog::GOOGLE_LOGIN_PROVIDER,
+    ]
+}
+
+fn server_bootstrap_login_providers() -> [LoginProviderDescriptor; 9] {
+    [
+        provider_catalog::CLAUDE_LOGIN_PROVIDER,
+        provider_catalog::OPENAI_LOGIN_PROVIDER,
+        provider_catalog::COPILOT_LOGIN_PROVIDER,
+        provider_catalog::OPENROUTER_LOGIN_PROVIDER,
+        provider_catalog::OPENCODE_LOGIN_PROVIDER,
+        provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
+        provider_catalog::ZAI_LOGIN_PROVIDER,
+        provider_catalog::CHUTES_LOGIN_PROVIDER,
+        provider_catalog::CEREBRAS_LOGIN_PROVIDER,
+    ]
+}
+
+fn auto_init_login_providers() -> [LoginProviderDescriptor; 11] {
+    [
+        provider_catalog::CLAUDE_LOGIN_PROVIDER,
+        provider_catalog::OPENAI_LOGIN_PROVIDER,
+        provider_catalog::OPENROUTER_LOGIN_PROVIDER,
+        provider_catalog::OPENCODE_LOGIN_PROVIDER,
+        provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
+        provider_catalog::ZAI_LOGIN_PROVIDER,
+        provider_catalog::CHUTES_LOGIN_PROVIDER,
+        provider_catalog::CEREBRAS_LOGIN_PROVIDER,
+        provider_catalog::CURSOR_LOGIN_PROVIDER,
+        provider_catalog::COPILOT_LOGIN_PROVIDER,
+        provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
+    ]
+}
+
+fn prompt_login_provider_selection(
+    providers: &[LoginProviderDescriptor],
+    heading: &str,
+) -> Result<LoginProviderDescriptor> {
+    eprintln!("{heading}");
+    for (index, provider) in providers.iter().enumerate() {
+        eprintln!(
+            "  {}. {:<16} - {}",
+            index + 1,
+            provider.display_name,
+            provider.menu_detail
+        );
+    }
+    eprintln!();
+    let recommended = providers
+        .iter()
+        .filter(|provider| provider.recommended)
+        .map(|provider| provider.display_name)
+        .collect::<Vec<_>>();
+    if !recommended.is_empty() {
+        eprintln!(
+            "  Recommended if you have a subscription: {}.",
+            recommended.join(", ")
+        );
+    }
+    eprint!("\nEnter 1-{}: ", providers.len());
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    resolve_login_selection(input.trim(), providers)
+        .ok_or_else(|| anyhow::anyhow!("Invalid choice. Run 'jcode login' to try again."))
+}
+
+fn lock_model_provider(provider_key: &str) {
+    std::env::set_var("JCODE_ACTIVE_PROVIDER", provider_key);
+    std::env::set_var("JCODE_FORCE_PROVIDER", "1");
+}
+
+fn unlock_model_provider() {
+    std::env::remove_var("JCODE_FORCE_PROVIDER");
+}
+
+fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
+    if let LoginProviderTarget::OpenAiCompatible(profile) = provider.target {
+        apply_openai_compatible_profile_env(Some(profile));
+    }
+}
+
+async fn login_and_bootstrap_provider(
+    provider: LoginProviderDescriptor,
+    account_label: Option<&str>,
+) -> Result<Arc<dyn provider::Provider>> {
+    run_login_provider(provider, account_label).await?;
+    eprintln!();
+
+    let runtime: Arc<dyn provider::Provider> = match provider.target {
+        LoginProviderTarget::Claude => Arc::new(provider::MultiProvider::new()),
+        LoginProviderTarget::OpenAi => Arc::new(provider::MultiProvider::with_preference(true)),
+        LoginProviderTarget::OpenRouter => Arc::new(provider::MultiProvider::new()),
+        LoginProviderTarget::OpenAiCompatible(profile) => {
+            apply_openai_compatible_profile_env(Some(profile));
+            lock_model_provider("openrouter");
+            let multi = provider::MultiProvider::new();
+            if let Some(model) = profile.default_model {
+                let _ = multi.set_model(model);
+            }
+            Arc::new(multi)
+        }
+        LoginProviderTarget::Cursor => {
+            unlock_model_provider();
+            std::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
+            Arc::new(provider::cursor::CursorCliProvider::new())
+        }
+        LoginProviderTarget::Copilot => Arc::new(provider::MultiProvider::new()),
+        LoginProviderTarget::Antigravity => {
+            unlock_model_provider();
+            std::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
+            Arc::new(provider::antigravity::AntigravityCliProvider::new())
+        }
+        LoginProviderTarget::Google => {
+            anyhow::bail!("Google login cannot be used as a model provider bootstrap");
+        }
+    };
+
+    Ok(runtime)
+}
+
 fn save_named_api_key(env_file: &str, key_name: &str, key: &str) -> Result<()> {
     if !is_safe_env_key_name(key_name) {
         anyhow::bail!("Invalid API key variable name: {}", key_name);
@@ -1175,19 +1281,11 @@ async fn init_provider(
         apply_openai_compatible_profile_env(None);
     }
 
-    let lock_provider = |provider_key: &str| {
-        std::env::set_var("JCODE_ACTIVE_PROVIDER", provider_key);
-        std::env::set_var("JCODE_FORCE_PROVIDER", "1");
-    };
-    let unlock_provider = || {
-        std::env::remove_var("JCODE_FORCE_PROVIDER");
-    };
-
     let provider: Arc<dyn provider::Provider> = match choice {
         ProviderChoice::Claude => {
             // Explicit Claude: lock to Claude so auth/rate errors are surfaced clearly.
             eprintln!("Using Claude (provider locked)");
-            lock_provider("claude");
+            lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference(false))
         }
         ProviderChoice::ClaudeSubprocess => {
@@ -1196,29 +1294,29 @@ async fn init_provider(
             );
             std::env::set_var("JCODE_USE_CLAUDE_CLI", "1");
             eprintln!("Using deprecated Claude subprocess transport (provider locked)");
-            lock_provider("claude");
+            lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference(false))
         }
         ProviderChoice::Openai => {
             // Explicit OpenAI: lock to OpenAI so auth/rate errors are surfaced clearly.
             eprintln!("Using OpenAI (provider locked)");
-            lock_provider("openai");
+            lock_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference(true))
         }
         ProviderChoice::Cursor => {
             eprintln!("Using Cursor CLI provider (experimental)");
-            unlock_provider();
+            unlock_model_provider();
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(provider::cursor::CursorCliProvider::new())
         }
         ProviderChoice::Copilot => {
             eprintln!("Using GitHub Copilot API provider (provider locked)");
-            lock_provider("copilot");
+            lock_model_provider("copilot");
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Openrouter => {
             eprintln!("Using OpenRouter provider (provider locked)");
-            lock_provider("openrouter");
+            lock_model_provider("openrouter");
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Opencode
@@ -1234,12 +1332,12 @@ async fn init_provider(
                 "Using {} via OpenAI-compatible API (provider locked)",
                 resolved.display_name
             );
-            lock_provider("openrouter");
+            lock_model_provider("openrouter");
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Antigravity => {
             eprintln!("Using Antigravity CLI provider (experimental)");
-            unlock_provider();
+            unlock_model_provider();
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(provider::antigravity::AntigravityCliProvider::new())
         }
@@ -1248,11 +1346,11 @@ async fn init_provider(
                 "Note: Google/Gmail is not a model provider. Using auto-detect for model provider."
             );
             eprintln!("Gmail tool is available if you've run `jcode login google`.");
-            unlock_provider();
+            unlock_model_provider();
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Auto => {
-            unlock_provider();
+            unlock_model_provider();
             // Check if we have any credentials (in parallel)
             let (has_claude, has_openai) = tokio::join!(
                 tokio::task::spawn_blocking(|| auth::claude::load_credentials().is_ok()),
@@ -1277,122 +1375,11 @@ async fn init_provider(
                     );
                 }
 
-                // Interactive - prompt for login
-                eprintln!("No credentials found. Let's log in!\n");
-                eprintln!("Choose a provider:");
-                eprintln!("  1. Claude (Claude Max subscription)");
-                eprintln!("  2. OpenAI (ChatGPT Pro subscription)");
-                eprintln!("  3. OpenRouter (API key - 200+ models)");
-                eprintln!("  4. OpenCode Zen (API key)");
-                eprintln!("  5. OpenCode Go (API key)");
-                eprintln!("  6. Z.AI Coding (API key)");
-                eprintln!("  7. Chutes (API key)");
-                eprintln!("  8. Cerebras (API key)");
-                eprintln!("  9. Cursor");
-                eprintln!("  10. GitHub Copilot");
-                eprintln!("  11. Antigravity");
-                eprint!("\nEnter 1-11: ");
-                io::stdout().flush()?;
-
-                let mut input = String::new();
-                io::stdin().read_line(&mut input)?;
-
-                match input.trim() {
-                    "1" => {
-                        login_claude_flow("default").await?;
-                        eprintln!();
-                        Arc::new(provider::MultiProvider::new())
-                    }
-                    "2" => {
-                        login_openai_flow().await?;
-                        eprintln!();
-                        Arc::new(provider::MultiProvider::with_preference(true))
-                    }
-                    "3" => {
-                        login_openrouter_flow()?;
-                        eprintln!();
-                        Arc::new(provider::MultiProvider::new())
-                    }
-                    "4" => {
-                        login_openai_compatible_flow(&provider_catalog::OPENCODE_PROFILE)?;
-                        eprintln!();
-                        apply_openai_compatible_profile_env(Some(
-                            provider_catalog::OPENCODE_PROFILE,
-                        ));
-                        lock_provider("openrouter");
-                        let multi = provider::MultiProvider::new();
-                        if let Some(model) = provider_catalog::OPENCODE_PROFILE.default_model {
-                            let _ = multi.set_model(model);
-                        }
-                        Arc::new(multi)
-                    }
-                    "5" => {
-                        login_openai_compatible_flow(&provider_catalog::OPENCODE_GO_PROFILE)?;
-                        eprintln!();
-                        apply_openai_compatible_profile_env(Some(
-                            provider_catalog::OPENCODE_GO_PROFILE,
-                        ));
-                        lock_provider("openrouter");
-                        let multi = provider::MultiProvider::new();
-                        if let Some(model) = provider_catalog::OPENCODE_GO_PROFILE.default_model {
-                            let _ = multi.set_model(model);
-                        }
-                        Arc::new(multi)
-                    }
-                    "6" => {
-                        login_openai_compatible_flow(&provider_catalog::ZAI_PROFILE)?;
-                        eprintln!();
-                        apply_openai_compatible_profile_env(Some(provider_catalog::ZAI_PROFILE));
-                        lock_provider("openrouter");
-                        let multi = provider::MultiProvider::new();
-                        if let Some(model) = provider_catalog::ZAI_PROFILE.default_model {
-                            let _ = multi.set_model(model);
-                        }
-                        Arc::new(multi)
-                    }
-                    "7" => {
-                        login_openai_compatible_flow(&provider_catalog::CHUTES_PROFILE)?;
-                        eprintln!();
-                        apply_openai_compatible_profile_env(Some(provider_catalog::CHUTES_PROFILE));
-                        lock_provider("openrouter");
-                        let multi = provider::MultiProvider::new();
-                        if let Some(model) = provider_catalog::CHUTES_PROFILE.default_model {
-                            let _ = multi.set_model(model);
-                        }
-                        Arc::new(multi)
-                    }
-                    "8" => {
-                        login_openai_compatible_flow(&provider_catalog::CEREBRAS_PROFILE)?;
-                        eprintln!();
-                        apply_openai_compatible_profile_env(Some(
-                            provider_catalog::CEREBRAS_PROFILE,
-                        ));
-                        lock_provider("openrouter");
-                        let multi = provider::MultiProvider::new();
-                        if let Some(model) = provider_catalog::CEREBRAS_PROFILE.default_model {
-                            let _ = multi.set_model(model);
-                        }
-                        Arc::new(multi)
-                    }
-                    "9" => {
-                        login_cursor_flow()?;
-                        eprintln!();
-                        Arc::new(provider::cursor::CursorCliProvider::new())
-                    }
-                    "10" => {
-                        login_copilot_flow()?;
-                        eprintln!();
-                        Arc::new(provider::MultiProvider::new())
-                    }
-                    "11" => {
-                        login_antigravity_flow()?;
-                        eprintln!();
-                        Arc::new(provider::antigravity::AntigravityCliProvider::new())
-                    }
-                    _ => {
-                        anyhow::bail!("Invalid choice. Run 'jcode login' to try again.");
-                    }
-                }
+                let provider = prompt_login_provider_selection(
+                    &auto_init_login_providers(),
+                    "No credentials found. Let's log in!\n\nChoose a provider:",
+                )?;
+                login_and_bootstrap_provider(provider, Some("default")).await?
             }
         }
     };
@@ -2604,89 +2591,82 @@ fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
 }
 
 async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Result<()> {
+    if let Some(provider) = login_provider_for_choice(choice) {
+        if matches!(choice, ProviderChoice::ClaudeSubprocess) {
+            eprintln!(
+                "Warning: Claude subprocess transport is deprecated. Direct Claude API mode is preferred."
+            );
+        }
+        return run_login_provider(provider, account_label).await;
+    }
+
     match choice {
-        ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
-            if matches!(choice, ProviderChoice::ClaudeSubprocess) {
-                eprintln!("Warning: Claude subprocess transport is deprecated. Direct Claude API mode is preferred.");
-            }
-            let label = account_label.unwrap_or("default");
-            login_claude_flow(label).await?;
-        }
-        ProviderChoice::Openai => {
-            login_openai_flow().await?;
-        }
-        ProviderChoice::Openrouter => {
-            login_openrouter_flow()?;
-        }
-        ProviderChoice::Opencode
-        | ProviderChoice::OpencodeGo
-        | ProviderChoice::Zai
-        | ProviderChoice::Chutes
-        | ProviderChoice::Cerebras
-        | ProviderChoice::OpenaiCompatible => {
-            let profile = profile_for_choice(choice)
-                .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
-            login_openai_compatible_flow(&profile)?;
-        }
-        ProviderChoice::Cursor => {
-            login_cursor_flow()?;
-        }
-        ProviderChoice::Copilot => {
-            login_copilot_flow()?;
-        }
-        ProviderChoice::Antigravity => {
-            login_antigravity_flow()?;
-        }
-        ProviderChoice::Google => {
-            login_google_flow().await?;
-        }
         ProviderChoice::Auto => {
+            let providers = cli_login_providers();
             if !io::stdin().is_terminal() {
                 anyhow::bail!(
                     "`jcode login --provider auto` requires an interactive terminal. Use `jcode login --provider <provider>` in non-interactive mode."
                 );
             }
             eprintln!("Choose a provider to log in:");
-            eprintln!("  1. Claude         - requires Claude Pro or Max subscription");
-            eprintln!("  2. OpenAI         - requires ChatGPT Plus or Pro subscription");
-            eprintln!("  3. GitHub Copilot (free)");
-            eprintln!("  4. OpenRouter     - API key, pay-per-token, 200+ models");
-            eprintln!("  5. OpenCode Zen   - API key");
-            eprintln!("  6. OpenCode Go    - API key");
-            eprintln!("  7. Z.AI Coding    - API key");
-            eprintln!("  8. Chutes         - API key");
-            eprintln!("  9. Cerebras       - API key");
-            eprintln!("  10. OpenAI-compatible custom API key");
-            eprintln!("  11. Cursor");
-            eprintln!("  12. Antigravity");
-            eprintln!("  13. Google/Gmail   - read, draft, and send emails");
+            for (index, provider) in providers.iter().enumerate() {
+                eprintln!(
+                    "  {}. {:<16} - {}",
+                    index + 1,
+                    provider.display_name,
+                    provider.menu_detail
+                );
+            }
             eprintln!();
-            eprintln!("  Options 1-2 are recommended if you have a subscription.");
-            eprint!("\nEnter 1-13: ");
+            let recommended = providers
+                .iter()
+                .filter(|provider| provider.recommended)
+                .map(|provider| provider.display_name)
+                .collect::<Vec<_>>();
+            if !recommended.is_empty() {
+                eprintln!(
+                    "  Recommended if you have a subscription: {}.",
+                    recommended.join(", ")
+                );
+            }
+            eprint!("\nEnter 1-{}: ", providers.len());
             io::stdout().flush()?;
 
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
-            match input.trim() {
-                "1" => login_claude_flow(account_label.unwrap_or("default")).await?,
-                "2" => login_openai_flow().await?,
-                "3" => login_copilot_flow()?,
-                "4" => login_openrouter_flow()?,
-                "5" => login_openai_compatible_flow(&provider_catalog::OPENCODE_PROFILE)?,
-                "6" => login_openai_compatible_flow(&provider_catalog::OPENCODE_GO_PROFILE)?,
-                "7" => login_openai_compatible_flow(&provider_catalog::ZAI_PROFILE)?,
-                "8" => login_openai_compatible_flow(&provider_catalog::CHUTES_PROFILE)?,
-                "9" => login_openai_compatible_flow(&provider_catalog::CEREBRAS_PROFILE)?,
-                "10" => login_openai_compatible_flow(&provider_catalog::OPENAI_COMPAT_PROFILE)?,
-                "11" => login_cursor_flow()?,
-                "12" => login_antigravity_flow()?,
-                "13" => login_google_flow().await?,
-                _ => anyhow::bail!(
-                    "Invalid choice. Use --provider claude|openai|openrouter|opencode|opencode-go|zai|chutes|cerebras|openai-compatible|cursor|copilot|antigravity|google"
-                ),
+            if let Some(provider) = resolve_login_selection(input.trim(), &providers) {
+                run_login_provider(provider, account_label).await?;
+            } else {
+                let valid = providers
+                    .iter()
+                    .map(|provider| provider.id)
+                    .collect::<Vec<_>>()
+                    .join("|");
+                anyhow::bail!("Invalid choice. Use --provider {}", valid);
             }
         }
+        _ => unreachable!("handled above"),
     }
+    Ok(())
+}
+
+async fn run_login_provider(
+    provider: LoginProviderDescriptor,
+    account_label: Option<&str>,
+) -> Result<()> {
+    match provider.target {
+        LoginProviderTarget::Claude => {
+            login_claude_flow(account_label.unwrap_or("default")).await?
+        }
+        LoginProviderTarget::OpenAi => login_openai_flow().await?,
+        LoginProviderTarget::OpenRouter => login_openrouter_flow()?,
+        LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile)?,
+        LoginProviderTarget::Cursor => login_cursor_flow()?,
+        LoginProviderTarget::Copilot => login_copilot_flow()?,
+        LoginProviderTarget::Antigravity => login_antigravity_flow()?,
+        LoginProviderTarget::Google => login_google_flow().await?,
+    }
+    auth::AuthStatus::invalidate_cache();
     Ok(())
 }
 
@@ -4465,6 +4445,44 @@ mod tests {
 
         let args = Args::try_parse_from(["jcode", "--provider", "compat", "run", "smoke"]).unwrap();
         assert_eq!(args.provider, ProviderChoice::OpenaiCompatible);
+    }
+
+    #[test]
+    fn test_server_bootstrap_login_selection_preserves_order() {
+        let providers = server_bootstrap_login_providers();
+        assert_eq!(
+            resolve_login_selection("1", &providers).map(|provider| provider.id),
+            Some("claude")
+        );
+        assert_eq!(
+            resolve_login_selection("3", &providers).map(|provider| provider.id),
+            Some("copilot")
+        );
+        assert_eq!(
+            resolve_login_selection("9", &providers).map(|provider| provider.id),
+            Some("cerebras")
+        );
+    }
+
+    #[test]
+    fn test_auto_init_login_selection_preserves_order() {
+        let providers = auto_init_login_providers();
+        assert_eq!(
+            resolve_login_selection("1", &providers).map(|provider| provider.id),
+            Some("claude")
+        );
+        assert_eq!(
+            resolve_login_selection("9", &providers).map(|provider| provider.id),
+            Some("cursor")
+        );
+        assert_eq!(
+            resolve_login_selection("10", &providers).map(|provider| provider.id),
+            Some("copilot")
+        );
+        assert_eq!(
+            resolve_login_selection("11", &providers).map(|provider| provider.id),
+            Some("antigravity")
+        );
     }
 
     #[test]
