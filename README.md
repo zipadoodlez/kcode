@@ -744,6 +744,39 @@ scripts/agent_trace.sh              # Full agent smoke test
 
 <div align="center">
 
+## Safe Refactor Sessions
+
+</div>
+
+Use an isolated jcode home + socket while refactoring so your live sessions keep running untouched:
+
+```bash
+# Show resolved isolated paths
+scripts/refactor_shadow.sh env
+
+# Verify isolation and permissions
+scripts/refactor_shadow.sh check
+
+# Build debug binary for the refactor environment
+scripts/refactor_shadow.sh build
+
+# Start isolated server (new terminal)
+scripts/refactor_shadow.sh serve
+
+# Attach isolated client (another terminal)
+scripts/refactor_shadow.sh run
+```
+
+Security notes:
+- Refuses to run against production `~/.jcode`
+- Uses a separate socket (`JCODE_REF_SOCKET`) from your normal server
+- Creates isolated home with private permissions (`700`)
+- Refuses to remove stale paths unless they are actual sockets
+
+---
+
+<div align="center">
+
 **Built with Rust** · **MIT License**
 
 [GitHub](https://github.com/1jehuang/jcode) · [Report Bug](https://github.com/1jehuang/jcode/issues) · [Request Feature](https://github.com/1jehuang/jcode/issues)
