@@ -81,6 +81,12 @@ jobs:
         run: |
           scripts/check_warning_budget.sh
 
+      - name: Security preflight (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          scripts/security_preflight.sh
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
