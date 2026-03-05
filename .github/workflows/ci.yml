@@ -85,7 +85,8 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          scripts/security_preflight.sh
+          cargo install cargo-audit --locked
+          scripts/security_preflight.sh --strict
 
   fmt:
     name: Format
