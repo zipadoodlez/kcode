@@ -39,6 +39,7 @@ mod gateway;
 mod gmail;
 mod id;
 mod logging;
+mod login_qr;
 mod mcp;
 mod memory;
 mod memory_agent;
@@ -2782,6 +2783,14 @@ async fn login_copilot_device_flow() -> Result<()> {
     eprintln!("  Open this URL in your browser:");
     eprintln!("    {}", device_resp.verification_uri);
     eprintln!();
+    if let Some(qr) = crate::login_qr::indented_section(
+        &device_resp.verification_uri,
+        "  Or scan this QR on another device to open the verification page:",
+        "    ",
+    ) {
+        eprintln!("{qr}");
+        eprintln!();
+    }
     eprintln!("  Enter code: {}", device_resp.user_code);
     eprintln!();
     eprintln!("  Waiting for authorization...");
