@@ -404,7 +404,7 @@ struct Args {
     #[arg(long, global = true)]
     debug_socket: bool,
 
-    /// Model to use (e.g., claude-opus-4-5-20251101, gpt-5.3-codex-spark)
+    /// Model to use (e.g., claude-opus-4-6, gpt-5.4)
     #[arg(short, long, global = true)]
     model: Option<String>,
 
