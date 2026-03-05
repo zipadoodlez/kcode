@@ -75,6 +75,12 @@ jobs:
         run: |
           cargo test --target ${{ matrix.target }}
 
+      - name: Enforce warning budget (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          scripts/check_warning_budget.sh
+
   fmt:
     name: Format
     runs-on: ubuntu-latest

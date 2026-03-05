@@ -738,6 +738,8 @@ cargo test                          # All tests
 cargo test --test e2e               # End-to-end only
 cargo run --bin jcode-harness       # Tool harness (--include-network for web)
 scripts/agent_trace.sh              # Full agent smoke test
+scripts/check_warning_budget.sh     # Ensure warning count does not regress
+scripts/refactor_phase1_verify.sh   # Refactor safety suite (check + tests + e2e)
 ```
 
 ---
