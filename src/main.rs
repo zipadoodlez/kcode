@@ -986,7 +986,7 @@ async fn run_main(mut args: Args) -> Result<()> {
                         && args.provider == ProviderChoice::Auto
                     {
                         let provider = prompt_login_provider_selection(
-                            &server_bootstrap_login_providers(),
+                            &provider_catalog::server_bootstrap_login_providers(),
                             "No credentials found. Let's log in!\n\nChoose a provider:",
                         )?;
                         run_login_provider(provider, Some("default")).await?;
@@ -1110,54 +1110,6 @@ fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProviderDes
         ProviderChoice::Google => Some(provider_catalog::GOOGLE_LOGIN_PROVIDER),
         ProviderChoice::Auto => None,
     }
-}
-
-fn cli_login_providers() -> [LoginProviderDescriptor; 13] {
-    [
-        provider_catalog::CLAUDE_LOGIN_PROVIDER,
-        provider_catalog::OPENAI_LOGIN_PROVIDER,
-        provider_catalog::COPILOT_LOGIN_PROVIDER,
-        provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-        provider_catalog::OPENCODE_LOGIN_PROVIDER,
-        provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
-        provider_catalog::ZAI_LOGIN_PROVIDER,
-        provider_catalog::CHUTES_LOGIN_PROVIDER,
-        provider_catalog::CEREBRAS_LOGIN_PROVIDER,
-        provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER,
-        provider_catalog::CURSOR_LOGIN_PROVIDER,
-        provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
-        provider_catalog::GOOGLE_LOGIN_PROVIDER,
-    ]
-}
-
-fn server_bootstrap_login_providers() -> [LoginProviderDescriptor; 9] {
-    [
-        provider_catalog::CLAUDE_LOGIN_PROVIDER,
-        provider_catalog::OPENAI_LOGIN_PROVIDER,
-        provider_catalog::COPILOT_LOGIN_PROVIDER,
-        provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-        provider_catalog::OPENCODE_LOGIN_PROVIDER,
-        provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
-        provider_catalog::ZAI_LOGIN_PROVIDER,
-        provider_catalog::CHUTES_LOGIN_PROVIDER,
-        provider_catalog::CEREBRAS_LOGIN_PROVIDER,
-    ]
-}
-
-fn auto_init_login_providers() -> [LoginProviderDescriptor; 11] {
-    [
-        provider_catalog::CLAUDE_LOGIN_PROVIDER,
-        provider_catalog::OPENAI_LOGIN_PROVIDER,
-        provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-        provider_catalog::OPENCODE_LOGIN_PROVIDER,
-        provider_catalog::OPENCODE_GO_LOGIN_PROVIDER,
-        provider_catalog::ZAI_LOGIN_PROVIDER,
-        provider_catalog::CHUTES_LOGIN_PROVIDER,
-        provider_catalog::CEREBRAS_LOGIN_PROVIDER,
-        provider_catalog::CURSOR_LOGIN_PROVIDER,
-        provider_catalog::COPILOT_LOGIN_PROVIDER,
-        provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
-    ]
 }
 
 fn prompt_login_provider_selection(
@@ -1376,7 +1328,7 @@ async fn init_provider(
                 }
 
                 let provider = prompt_login_provider_selection(
-                    &auto_init_login_providers(),
+                    &provider_catalog::auto_init_login_providers(),
                     "No credentials found. Let's log in!\n\nChoose a provider:",
                 )?;
                 login_and_bootstrap_provider(provider, Some("default")).await?
@@ -2602,7 +2554,7 @@ async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Resu
 
     match choice {
         ProviderChoice::Auto => {
-            let providers = cli_login_providers();
+            let providers = provider_catalog::cli_login_providers();
             if !io::stdin().is_terminal() {
                 anyhow::bail!(
                     "`jcode login --provider auto` requires an interactive terminal. Use `jcode login --provider <provider>` in non-interactive mode."
@@ -4449,7 +4401,7 @@ mod tests {
 
     #[test]
     fn test_server_bootstrap_login_selection_preserves_order() {
-        let providers = server_bootstrap_login_providers();
+        let providers = provider_catalog::server_bootstrap_login_providers();
         assert_eq!(
             resolve_login_selection("1", &providers).map(|provider| provider.id),
             Some("claude")
@@ -4466,7 +4418,7 @@ mod tests {
 
     #[test]
     fn test_auto_init_login_selection_preserves_order() {
-        let providers = auto_init_login_providers();
+        let providers = provider_catalog::auto_init_login_providers();
         assert_eq!(
             resolve_login_selection("1", &providers).map(|provider| provider.id),
             Some("claude")
