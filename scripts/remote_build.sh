@@ -146,6 +146,19 @@ fi
 
 BINARY_PATH="target/${build_mode}/${artifact_name}"
 
+local_git_hash=""
+local_git_date=""
+local_git_tag=""
+local_git_dirty="0"
+if command -v git >/dev/null 2>&1 && git -C "$LOCAL_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    local_git_hash="$(git -C "$LOCAL_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+    local_git_date="$(git -C "$LOCAL_DIR" log -1 --format=%ci 2>/dev/null || true)"
+    local_git_tag="$(git -C "$LOCAL_DIR" describe --tags --always 2>/dev/null || true)"
+    if [[ -n "$(git -C "$LOCAL_DIR" status --porcelain 2>/dev/null || true)" ]]; then
+        local_git_dirty="1"
+    fi
+fi
+
 echo "=== Remote Cargo on $REMOTE ==="
 echo "Local:   $LOCAL_DIR"
 echo "Remote:  $REMOTE_DIR"
@@ -162,13 +175,24 @@ if [[ "$SYNC_SOURCE" -eq 1 ]]; then
         --exclude '*.log' \
         --exclude '.claude/' \
         "$LOCAL_DIR/" "$REMOTE:$REMOTE_DIR/"
+
+    metadata_file="$(mktemp)"
+    trap 'rm -f "$metadata_file"' EXIT
+    {
+        printf 'git_hash=%s\n' "$local_git_hash"
+        printf 'git_date=%s\n' "$local_git_date"
+        printf 'git_tag=%s\n' "$local_git_tag"
+        printf 'git_dirty=%s\n' "$local_git_dirty"
+    } > "$metadata_file"
+    "$RSYNC_BIN" -avz "$metadata_file" "$REMOTE:$REMOTE_DIR/.jcode-build-meta"
 else
     echo ""
     echo "[1/3] Skipping source sync (--no-sync)"
 fi
 
 printf -v REMOTE_CARGO_CMD '%q ' "${CARGO_CMD[@]}"
-printf -v REMOTE_RUN_CMD 'cd %q && %s' "$REMOTE_DIR" "$REMOTE_CARGO_CMD"
+printf -v REMOTE_INNER_CMD 'cd %q && env JCODE_BUILD_METADATA_FILE=.jcode-build-meta %s' "$REMOTE_DIR" "$REMOTE_CARGO_CMD"
+printf -v REMOTE_RUN_CMD 'sh -lc %q' "$REMOTE_INNER_CMD"
 echo ""
 echo "[2/3] Running on remote..."
 "$SSH_BIN" "$REMOTE" "$REMOTE_RUN_CMD 2>&1"
