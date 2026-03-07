@@ -77,6 +77,10 @@ mod video_export;
 
 mod cli;
 
+fn set_current_session(session_id: &str) {
+    cli::terminal::set_current_session(session_id);
+}
+
 use anyhow::Result;
 #[tokio::main]
 async fn main() -> Result<()> {
