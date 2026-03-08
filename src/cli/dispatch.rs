@@ -303,60 +303,31 @@ async fn spawn_server(provider_choice: &ProviderChoice, model: Option<&str>) -> 
     if let Some(model) = model {
         cmd.arg("--model").arg(model);
     }
-    let mut child = {
-        let mut cmd = cmd;
-        cmd.arg("serve")
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            unsafe {
-                cmd.pre_exec(|| {
-                    libc::setsid();
-                    Ok(())
-                });
-            }
-        }
-        cmd.spawn()?
-    };
+    cmd.arg("serve")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
-    let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_millis(500) {
-        if let Some(status) = child.try_wait()? {
-            let stderr_output = child
-                .stderr
-                .take()
-                .and_then(|mut s| {
-                    let mut buf = String::new();
-                    use std::io::Read;
-                    s.read_to_string(&mut buf).ok()?;
-                    Some(buf)
-                })
-                .unwrap_or_default();
-            if stderr_output.is_empty() {
-                anyhow::bail!(
-                    "Server process exited immediately ({}). Check logs at ~/.jcode/logs/",
-                    status
-                );
-            } else {
-                anyhow::bail!(
-                    "Server process exited immediately ({}):\n{}",
-                    status,
-                    stderr_output.trim()
-                );
+    #[cfg(unix)]
+    {
+        let _child = server::spawn_server_notify(&mut cmd).await?;
+        startup_profile::mark("server_ready");
+    }
+    #[cfg(not(unix))]
+    {
+        cmd.spawn()?;
+        let start = std::time::Instant::now();
+        while start.elapsed() < std::time::Duration::from_millis(500) {
+            if crate::transport::is_socket_path(&server::socket_path()) {
+                if crate::transport::Stream::connect(server::socket_path())
+                    .await
+                    .is_ok()
+                {
+                    startup_profile::mark("server_ready");
+                    break;
+                }
             }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-        if crate::transport::is_socket_path(&server::socket_path()) {
-            if crate::transport::Stream::connect(server::socket_path())
-                .await
-                .is_ok()
-            {
-                startup_profile::mark("server_ready");
-                break;
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
     Ok(())
