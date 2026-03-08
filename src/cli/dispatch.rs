@@ -305,7 +305,7 @@ async fn spawn_server(provider_choice: &ProviderChoice, model: Option<&str>) -> 
     }
     cmd.arg("serve")
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
 
     #[cfg(unix)]
     {
