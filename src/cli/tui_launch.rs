@@ -8,7 +8,9 @@ use crate::{
     video_export,
 };
 
-use super::terminal::{init_tui_terminal, set_current_session, spawn_session_signal_watchers};
+use super::terminal::{
+    cleanup_tui_runtime, init_tui_runtime, set_current_session, spawn_session_signal_watchers,
+};
 
 pub async fn run_tui(
     provider: Arc<dyn provider::Provider>,
@@ -17,14 +19,7 @@ pub async fn run_tui(
     debug_socket: bool,
     startup_message: Option<String>,
 ) -> Result<()> {
-    let terminal = init_tui_terminal()?;
-    crate::tui::mermaid::init_picker();
-    let mouse_capture = crate::config::config().display.mouse_capture;
-    let keyboard_enhanced = tui::enable_keyboard_enhancement();
-    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
-    if mouse_capture {
-        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-    }
+    let (terminal, tui_runtime) = init_tui_runtime()?;
     let mut app = tui::App::new(provider, registry);
 
     let _debug_handle = if debug_socket {
@@ -68,16 +63,10 @@ pub async fn run_tui(
         || run_result.rebuild_session.is_some()
         || run_result.update_session.is_some();
     if !will_exec {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-        if mouse_capture {
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-        }
-        if keyboard_enhanced {
-            tui::disable_keyboard_enhancement();
-        }
-        ratatui::restore();
+        cleanup_tui_runtime(&tui_runtime, true);
+    } else {
+        cleanup_tui_runtime(&tui_runtime, false);
     }
-    crate::tui::mermaid::clear_image_state();
 
     if let Some(code) = run_result.exit_code {
         std::process::exit(code);
@@ -388,18 +377,11 @@ pub async fn run_tui_client(
     server_spawning: bool,
 ) -> Result<()> {
     startup_profile::mark("tui_client_enter");
-    let terminal = init_tui_terminal()?;
+    let (terminal, tui_runtime) = init_tui_runtime()?;
     startup_profile::mark("tui_terminal_init");
-    crate::tui::mermaid::init_picker();
     startup_profile::mark("mermaid_picker");
-    let mouse_capture = crate::config::config().display.mouse_capture;
     startup_profile::mark("config_load");
-    let keyboard_enhanced = tui::enable_keyboard_enhancement();
     startup_profile::mark("keyboard_enhancement");
-    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
-    if mouse_capture {
-        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-    }
     startup_profile::mark("terminal_modes");
 
     if let Some(ref session_id) = resume_session {
@@ -443,16 +425,10 @@ pub async fn run_tui_client(
         || run_result.rebuild_session.is_some()
         || run_result.update_session.is_some();
     if !will_exec {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-        if mouse_capture {
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-        }
-        if keyboard_enhanced {
-            tui::disable_keyboard_enhancement();
-        }
-        ratatui::restore();
+        cleanup_tui_runtime(&tui_runtime, true);
+    } else {
+        cleanup_tui_runtime(&tui_runtime, false);
     }
-    crate::tui::mermaid::clear_image_state();
 
     if let Some(code) = run_result.exit_code {
         std::process::exit(code);
@@ -578,14 +554,7 @@ pub async fn run_replay_command(
     );
     eprintln!("  Controls: Space=pause  +/-=speed  q=quit\n");
 
-    let terminal = init_tui_terminal()?;
-    crate::tui::mermaid::init_picker();
-    let mouse_capture = crate::config::config().display.mouse_capture;
-    let keyboard_enhanced = tui::enable_keyboard_enhancement();
-    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
-    if mouse_capture {
-        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-    }
+    let (terminal, tui_runtime) = init_tui_runtime()?;
 
     let _ = crossterm::execute!(
         std::io::stdout(),
@@ -598,15 +567,7 @@ pub async fn run_replay_command(
     }
     let result = app.run_replay(terminal, timeline, speed).await;
 
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-    if mouse_capture {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-    }
-    if keyboard_enhanced {
-        tui::disable_keyboard_enhancement();
-    }
-    ratatui::restore();
-    crate::tui::mermaid::clear_image_state();
+    cleanup_tui_runtime(&tui_runtime, true);
 
     result?;
     Ok(())

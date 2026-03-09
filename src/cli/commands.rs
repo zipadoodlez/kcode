@@ -3,7 +3,7 @@ use std::net::ToSocketAddrs;
 
 use crate::{browser, gateway, memory, storage, tui};
 
-use super::terminal::init_tui_terminal;
+use super::terminal::{cleanup_tui_runtime, init_tui_runtime};
 
 pub enum AmbientSubcommand {
     Status,
@@ -53,14 +53,7 @@ async fn run_ambient_visible() -> Result<()> {
     let safety = std::sync::Arc::new(crate::safety::SafetySystem::new());
     crate::tool::ambient::init_safety_system(safety);
 
-    let terminal = init_tui_terminal()?;
-    crate::tui::mermaid::init_picker();
-    let mouse_capture = crate::config::config().display.mouse_capture;
-    let keyboard_enhanced = tui::enable_keyboard_enhancement();
-    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
-    if mouse_capture {
-        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-    }
+    let (terminal, tui_runtime) = init_tui_runtime()?;
 
     let mut app = tui::App::new(provider, registry);
     app.set_ambient_mode(context.system_prompt, context.initial_message);
@@ -72,15 +65,7 @@ async fn run_ambient_visible() -> Result<()> {
 
     let result = app.run(terminal).await;
 
-    let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
-    if mouse_capture {
-        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
-    }
-    if keyboard_enhanced {
-        tui::disable_keyboard_enhancement();
-    }
-    ratatui::restore();
-    crate::tui::mermaid::clear_image_state();
+    cleanup_tui_runtime(&tui_runtime, true);
 
     if let Some(cycle_result) = crate::tool::ambient::take_cycle_result() {
         let result_path = VisibleCycleContext::result_path()?;

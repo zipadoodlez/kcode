@@ -2,7 +2,12 @@ use anyhow::Result;
 use std::io::{self, IsTerminal};
 use std::panic;
 
-use crate::{id, session};
+use crate::{id, session, tui};
+
+pub struct TuiRuntimeState {
+    mouse_capture: bool,
+    keyboard_enhanced: bool,
+}
 
 pub fn set_current_session(session_id: &str) {
     jcode::set_current_session(session_id);
@@ -97,6 +102,42 @@ pub fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
             )
         })
     }
+}
+
+pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeState)> {
+    let terminal = init_tui_terminal()?;
+    crate::tui::mermaid::init_picker();
+
+    let mouse_capture = crate::config::config().display.mouse_capture;
+    let keyboard_enhanced = tui::enable_keyboard_enhancement();
+
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
+    if mouse_capture {
+        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
+    }
+
+    Ok((
+        terminal,
+        TuiRuntimeState {
+            mouse_capture,
+            keyboard_enhanced,
+        },
+    ))
+}
+
+pub fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
+    if restore_terminal {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+        if state.mouse_capture {
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+        }
+        if state.keyboard_enhanced {
+            tui::disable_keyboard_enhancement();
+        }
+        ratatui::restore();
+    }
+
+    crate::tui::mermaid::clear_image_state();
 }
 
 fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
