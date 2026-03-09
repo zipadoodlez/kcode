@@ -87,7 +87,7 @@ pub fn show_crash_resume_hint() {
     eprintln!();
 }
 
-pub fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
+fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         anyhow::bail!("jcode TUI requires an interactive terminal (stdin/stdout must be a TTY)");
     }
