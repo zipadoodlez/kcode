@@ -210,3 +210,137 @@ pub fn hot_update(session_id: &str) -> Result<()> {
     let err = crate::platform::replace_process(&mut cmd);
     Err(anyhow::anyhow!("Failed to exec {:?}: {}", exe, err))
 }
+
+pub fn get_repo_dir() -> Option<std::path::PathBuf> {
+    build::get_repo_dir()
+}
+
+pub fn check_for_updates() -> Option<bool> {
+    let repo_dir = get_repo_dir()?;
+
+    let fetch = ProcessCommand::new("git")
+        .args(["fetch", "-q"])
+        .current_dir(&repo_dir)
+        .output()
+        .ok()?;
+
+    if !fetch.status.success() {
+        return None;
+    }
+
+    let behind = ProcessCommand::new("git")
+        .args(["rev-list", "--count", "HEAD..@{u}"])
+        .current_dir(&repo_dir)
+        .output()
+        .ok()?;
+
+    if behind.status.success() {
+        let count: u32 = String::from_utf8_lossy(&behind.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0);
+        Some(count > 0)
+    } else {
+        None
+    }
+}
+
+pub fn run_auto_update() -> Result<()> {
+    let repo_dir =
+        get_repo_dir().ok_or_else(|| anyhow::anyhow!("Could not find jcode repository"))?;
+
+    update::run_git_pull_ff_only(&repo_dir, true)?;
+
+    update::print_centered("Building new version...");
+    let build_status = ProcessCommand::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&repo_dir)
+        .status()?;
+
+    if !build_status.success() {
+        anyhow::bail!("cargo build failed");
+    }
+
+    if let Err(e) = build::install_local_release(&repo_dir) {
+        update::print_centered(&format!("Warning: install failed: {}", e));
+    }
+
+    let hash = ProcessCommand::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&repo_dir)
+        .output()?;
+    let hash = String::from_utf8_lossy(&hash.stdout);
+    update::print_centered(&format!("Updated to {}. Restarting...", hash.trim()));
+
+    let exe = build::client_update_candidate(false)
+        .map(|(p, _)| p)
+        .or_else(|| std::env::current_exe().ok())
+        .ok_or_else(|| anyhow::anyhow!("No executable path found after update"))?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+
+    let err =
+        crate::platform::replace_process(ProcessCommand::new(&exe).args(&args).arg("--no-update"));
+
+    Err(anyhow::anyhow!(
+        "Failed to exec new binary {:?}: {}",
+        exe,
+        err
+    ))
+}
+
+pub fn run_update() -> Result<()> {
+    if update::is_release_build() {
+        update::print_centered("Checking GitHub for latest release...");
+        match update::check_for_update_blocking() {
+            Ok(Some(release)) => {
+                update::print_centered(&format!(
+                    "Downloading {} \u{2192} {}...",
+                    env!("JCODE_VERSION"),
+                    release.tag_name
+                ));
+                let _path = update::download_and_install_blocking(&release)?;
+                update::print_centered(&format!("✅ Updated to {}", release.tag_name));
+                update::print_centered("Restart jcode to use the new version.");
+            }
+            Ok(None) => {
+                update::print_centered(&format!("Already up to date ({})", env!("JCODE_VERSION")));
+            }
+            Err(e) => {
+                anyhow::bail!("Update check failed: {}", e);
+            }
+        }
+        return Ok(());
+    }
+
+    let repo_dir =
+        get_repo_dir().ok_or_else(|| anyhow::anyhow!("Could not find jcode repository"))?;
+
+    update::print_centered(&format!("Updating jcode from {}...", repo_dir.display()));
+
+    update::print_centered("Pulling latest changes (fast-forward only)...");
+    update::run_git_pull_ff_only(&repo_dir, true)?;
+
+    update::print_centered("Building...");
+    let build_status = ProcessCommand::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&repo_dir)
+        .status()?;
+
+    if !build_status.success() {
+        anyhow::bail!("cargo build failed");
+    }
+
+    if let Err(e) = build::install_local_release(&repo_dir) {
+        update::print_centered(&format!("Warning: install failed: {}", e));
+    }
+
+    let hash = ProcessCommand::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&repo_dir)
+        .output()?;
+
+    let hash = String::from_utf8_lossy(&hash.stdout);
+    update::print_centered(&format!("Successfully updated to {}", hash.trim()));
+
+    Ok(())
+}
