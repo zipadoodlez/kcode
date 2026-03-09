@@ -7,7 +7,7 @@ use crate::{
     tui,
 };
 
-use super::{commands, debug, login, provider_init, selfdev, terminal, tui_launch};
+use super::{commands, debug, hot_exec, login, provider_init, selfdev, terminal, tui_launch};
 use provider_init::ProviderChoice;
 
 pub async fn run_main(mut args: Args) -> Result<()> {
@@ -42,7 +42,7 @@ pub async fn run_main(mut args: Args) -> Result<()> {
             agent.repl().await?;
         }
         Some(Command::Update) => {
-            tui_launch::run_update()?;
+            hot_exec::run_update()?;
         }
         Some(Command::SelfDev { build }) => {
             selfdev::run_self_dev(build, args.resume).await?;

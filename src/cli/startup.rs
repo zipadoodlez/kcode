@@ -6,7 +6,7 @@ use crate::{build, logging, perf, server, startup_profile, storage, update};
 
 use super::{
     args::{Args, Command},
-    dispatch, terminal, tui_launch,
+    dispatch, hot_exec, terminal, tui_launch,
 };
 
 pub async fn run() -> Result<()> {
@@ -94,11 +94,11 @@ fn spawn_background_update_check(args: &Args) {
         });
     } else {
         std::thread::spawn(move || {
-            if let Some(update_available) = tui_launch::check_for_updates() {
+            if let Some(update_available) = hot_exec::check_for_updates() {
                 if update_available {
                     if auto_update {
                         logging::info("Update available - auto-updating...");
-                        if let Err(e) = tui_launch::run_auto_update() {
+                        if let Err(e) = hot_exec::run_auto_update() {
                             logging::error(&format!(
                                 "Auto-update failed: {}. Continuing with current version.",
                                 e
