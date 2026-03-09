@@ -7,8 +7,7 @@ use crate::{
     id, logging, provider, replay, server, session, startup_profile, tool, tui, video_export,
 };
 
-pub use super::hot_exec::{check_for_updates, get_repo_dir, run_auto_update, run_update};
-pub use super::hot_exec::{hot_rebuild, hot_reload, hot_update};
+use super::hot_exec::{hot_rebuild, hot_reload, hot_update};
 
 use super::terminal::{
     cleanup_tui_runtime, init_tui_runtime, set_current_session, spawn_session_signal_watchers,
