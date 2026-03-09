@@ -1,7 +1,29 @@
 use anyhow::Result;
 use std::process::Command as ProcessCommand;
 
-use crate::{build, update};
+use crate::{build, tui::RunResult, update};
+
+pub fn has_requested_action(run_result: &RunResult) -> bool {
+    run_result.reload_session.is_some()
+        || run_result.rebuild_session.is_some()
+        || run_result.update_session.is_some()
+}
+
+pub fn execute_requested_action(run_result: &RunResult) -> Result<()> {
+    if let Some(ref reload_session_id) = run_result.reload_session {
+        hot_reload(reload_session_id)?;
+    }
+
+    if let Some(ref rebuild_session_id) = run_result.rebuild_session {
+        hot_rebuild(rebuild_session_id)?;
+    }
+
+    if let Some(ref update_session_id) = run_result.update_session {
+        hot_update(update_session_id)?;
+    }
+
+    Ok(())
+}
 
 pub fn hot_reload(session_id: &str) -> Result<()> {
     let cwd = std::env::current_dir()?;

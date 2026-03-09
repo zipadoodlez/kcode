@@ -7,10 +7,11 @@ use crate::{
     id, logging, provider, replay, server, session, startup_profile, tool, tui, video_export,
 };
 
-use super::hot_exec::{hot_rebuild, hot_reload, hot_update};
+use super::hot_exec::{execute_requested_action, has_requested_action};
 
 use super::terminal::{
-    cleanup_tui_runtime, init_tui_runtime, set_current_session, spawn_session_signal_watchers,
+    cleanup_tui_runtime, cleanup_tui_runtime_for_run_result, init_tui_runtime,
+    print_session_resume_hint, set_current_session, spawn_session_signal_watchers,
 };
 
 pub async fn run_tui(
@@ -60,42 +61,16 @@ pub async fn run_tui(
 
     let run_result = result?;
 
-    let will_exec = run_result.reload_session.is_some()
-        || run_result.rebuild_session.is_some()
-        || run_result.update_session.is_some();
-    if !will_exec {
-        cleanup_tui_runtime(&tui_runtime, true);
-    } else {
-        cleanup_tui_runtime(&tui_runtime, false);
-    }
+    cleanup_tui_runtime_for_run_result(&tui_runtime, &run_result, false);
 
     if let Some(code) = run_result.exit_code {
         std::process::exit(code);
     }
 
-    if let Some(ref reload_session_id) = run_result.reload_session {
-        hot_reload(reload_session_id)?;
-    }
+    execute_requested_action(&run_result)?;
 
-    if let Some(ref rebuild_session_id) = run_result.rebuild_session {
-        hot_rebuild(rebuild_session_id)?;
-    }
-
-    if let Some(ref update_session_id) = run_result.update_session {
-        hot_update(update_session_id)?;
-    }
-
-    if run_result.reload_session.is_none()
-        && run_result.rebuild_session.is_none()
-        && run_result.update_session.is_none()
-    {
-        eprintln!();
-        eprintln!(
-            "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
-            session_name
-        );
-        eprintln!("  jcode --resume {}", session_id);
-        eprintln!();
+    if !has_requested_action(&run_result) {
+        print_session_resume_hint(&session_id);
     }
 
     Ok(())
@@ -214,46 +189,17 @@ pub async fn run_tui_client(
 
     let run_result = result?;
 
-    let will_exec = run_result.reload_session.is_some()
-        || run_result.rebuild_session.is_some()
-        || run_result.update_session.is_some();
-    if !will_exec {
-        cleanup_tui_runtime(&tui_runtime, true);
-    } else {
-        cleanup_tui_runtime(&tui_runtime, false);
-    }
+    cleanup_tui_runtime_for_run_result(&tui_runtime, &run_result, false);
 
     if let Some(code) = run_result.exit_code {
         std::process::exit(code);
     }
 
-    if let Some(ref reload_session_id) = run_result.reload_session {
-        hot_reload(reload_session_id)?;
-    }
+    execute_requested_action(&run_result)?;
 
-    if let Some(ref rebuild_session_id) = run_result.rebuild_session {
-        hot_rebuild(rebuild_session_id)?;
-    }
-
-    if let Some(ref update_session_id) = run_result.update_session {
-        hot_update(update_session_id)?;
-    }
-
-    if run_result.reload_session.is_none()
-        && run_result.rebuild_session.is_none()
-        && run_result.update_session.is_none()
-    {
+    if !has_requested_action(&run_result) {
         if let Some(ref session_id) = run_result.session_id {
-            let session_name = id::extract_session_name(session_id)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| session_id.clone());
-            eprintln!();
-            eprintln!(
-                "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
-                session_name
-            );
-            eprintln!("  jcode --resume {}", session_id);
-            eprintln!();
+            print_session_resume_hint(session_id);
         }
     }
 

@@ -293,13 +293,12 @@ async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()
         if start.elapsed() > std::time::Duration::from_secs(10) {
             anyhow::bail!("Server failed to start within 10 seconds");
         }
-        if crate::transport::is_socket_path(&socket_pathbuf) {
-            if crate::transport::Stream::connect(&socket_pathbuf)
+        if crate::transport::is_socket_path(&socket_pathbuf)
+            && crate::transport::Stream::connect(&socket_pathbuf)
                 .await
                 .is_ok()
-            {
-                break;
-            }
+        {
+            break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }

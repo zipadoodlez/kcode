@@ -6,7 +6,7 @@ use crate::{build, logging, perf, server, startup_profile, storage, update};
 
 use super::{
     args::{Args, Command},
-    dispatch, hot_exec, terminal, tui_launch,
+    dispatch, hot_exec, terminal,
 };
 
 pub async fn run() -> Result<()> {

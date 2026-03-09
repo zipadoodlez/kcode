@@ -23,14 +23,7 @@ pub fn install_panic_hook() {
         default_hook(info);
 
         if let Some(session_id) = get_current_session() {
-            let session_name = id::extract_session_name(&session_id).unwrap_or(session_id.as_str());
-            eprintln!();
-            eprintln!(
-                "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
-                session_name
-            );
-            eprintln!("  jcode --resume {}", session_id);
-            eprintln!();
+            print_session_resume_hint(&session_id);
 
             if let Ok(mut session) = session::Session::load(&session_id) {
                 session.mark_crashed(Some(format!("Panic: {}", info)));
@@ -140,6 +133,29 @@ pub fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
     crate::tui::mermaid::clear_image_state();
 }
 
+pub fn cleanup_tui_runtime_for_run_result(
+    state: &TuiRuntimeState,
+    run_result: &crate::tui::RunResult,
+    extra_exec: bool,
+) {
+    let will_exec = extra_exec
+        || run_result.reload_session.is_some()
+        || run_result.rebuild_session.is_some()
+        || run_result.update_session.is_some();
+    cleanup_tui_runtime(state, !will_exec);
+}
+
+pub fn print_session_resume_hint(session_id: &str) {
+    let session_name = id::extract_session_name(session_id).unwrap_or(session_id);
+    eprintln!();
+    eprintln!(
+        "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
+        session_name
+    );
+    eprintln!("  jcode --resume {}", session_id);
+    eprintln!();
+}
+
 fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
     use ratatui::{backend::CrosstermBackend, Terminal};
 
@@ -202,14 +218,7 @@ fn handle_termination_signal(sig: i32) -> ! {
     );
 
     if let Some(session_id) = get_current_session() {
-        let session_name = id::extract_session_name(&session_id).unwrap_or(session_id.as_str());
-        eprintln!();
-        eprintln!(
-            "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
-            session_name
-        );
-        eprintln!("  jcode --resume {}", session_id);
-        eprintln!();
+        print_session_resume_hint(&session_id);
     }
 
     std::process::exit(128 + sig);
