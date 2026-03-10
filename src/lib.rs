@@ -9,6 +9,7 @@ pub mod build;
 pub mod bus;
 pub mod cache_tracker;
 pub mod channel;
+pub mod cli;
 pub mod compaction;
 pub mod config;
 pub mod copilot_usage;
@@ -43,8 +44,10 @@ pub mod replay;
 pub mod safety;
 pub mod server;
 pub mod session;
+pub mod setup_hints;
 pub mod sidecar;
 pub mod skill;
+pub mod startup_profile;
 pub mod stdin_detect;
 pub mod storage;
 pub mod telegram;
@@ -57,6 +60,7 @@ pub mod usage;
 pub mod util;
 pub mod video_export;
 
+use anyhow::Result;
 use std::sync::Mutex;
 
 static CURRENT_SESSION_ID: Mutex<Option<String>> = Mutex::new(None);
@@ -69,4 +73,8 @@ pub fn set_current_session(session_id: &str) {
 
 pub fn get_current_session() -> Option<String> {
     CURRENT_SESSION_ID.lock().ok()?.clone()
+}
+
+pub async fn run() -> Result<()> {
+    cli::startup::run().await
 }

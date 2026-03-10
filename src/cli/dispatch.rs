@@ -10,7 +10,7 @@ use crate::{
 use super::{commands, debug, hot_exec, login, provider_init, selfdev, terminal, tui_launch};
 use provider_init::ProviderChoice;
 
-pub async fn run_main(mut args: Args) -> Result<()> {
+pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     resolve_resume_arg(&mut args)?;
 
     match args.command {

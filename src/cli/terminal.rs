@@ -10,11 +10,11 @@ pub struct TuiRuntimeState {
 }
 
 pub fn set_current_session(session_id: &str) {
-    jcode::set_current_session(session_id);
+    crate::set_current_session(session_id);
 }
 
 pub fn get_current_session() -> Option<String> {
-    jcode::get_current_session()
+    crate::get_current_session()
 }
 
 pub fn install_panic_hook() {
