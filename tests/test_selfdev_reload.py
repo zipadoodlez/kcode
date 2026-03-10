@@ -16,11 +16,8 @@ import time
 import os
 import sys
 
-# Check for selfdev socket first, then regular socket
-if os.path.exists("/tmp/jcode-selfdev-debug.sock"):
-    SOCKET_PATH = "/tmp/jcode-selfdev-debug.sock"
-else:
-    SOCKET_PATH = f"/run/user/1000/jcode-debug.sock"
+RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+SOCKET_PATH = os.path.join(RUNTIME_DIR, "jcode-debug.sock")
 JCODE_DIR = os.path.expanduser("~/.jcode")
 
 def send_cmd(sock, cmd, session_id=None, timeout=60):
@@ -60,7 +57,7 @@ def test_selfdev_status():
 
     try:
         # Create a test session
-        result = send_cmd(sock, "create_session:/home/jeremy/jcode")
+        result = send_cmd(sock, "create_session:selfdev:/home/jeremy/jcode")
         if not result or not result.get('ok'):
             print(f"Failed to create session: {result}")
             return False
@@ -123,7 +120,7 @@ def test_selfdev_socket_info():
         return False
 
     try:
-        result = send_cmd(sock, "create_session:/home/jeremy/jcode")
+        result = send_cmd(sock, "create_session:selfdev:/home/jeremy/jcode")
         if not result or not result.get('ok'):
             return False
         session_id = json.loads(result['output'])['session_id']

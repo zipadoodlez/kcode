@@ -6,17 +6,24 @@
 mod mock_provider;
 
 use anyhow::Result;
+use futures::{SinkExt, StreamExt};
 use jcode::agent::Agent;
 use jcode::message::StreamEvent;
-use jcode::protocol::ServerEvent;
+use jcode::protocol::{Request, ServerEvent};
 use jcode::server;
 use jcode::session::Session;
 use jcode::tool::Registry;
 use mock_provider::MockProvider;
 use std::ffi::OsString;
+use std::net::TcpListener as StdTcpListener;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::net::TcpStream;
+use tokio::time::timeout;
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 static JCODE_HOME_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
@@ -87,6 +94,13 @@ fn setup_test_env() -> Result<TestEnvGuard> {
     TestEnvGuard::new()
 }
 
+fn reserve_tcp_port() -> Result<u16> {
+    let listener = StdTcpListener::bind(("127.0.0.1", 0))?;
+    let port = listener.local_addr()?.port();
+    drop(listener);
+    Ok(port)
+}
+
 async fn wait_for_socket(path: &std::path::Path) -> Result<()> {
     let start = Instant::now();
     while !path.exists() {
@@ -98,9 +112,386 @@ async fn wait_for_socket(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-async fn debug_create_headless_session(debug_socket_path: std::path::PathBuf) -> Result<String> {
+async fn wait_for_tcp_port(port: u16) -> Result<()> {
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(10) {
+        if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    anyhow::bail!("Gateway TCP port {} did not open", port)
+}
+
+fn pair_test_device(token: &str) -> Result<()> {
+    let mut registry = jcode::gateway::DeviceRegistry::load();
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut hasher = sha2::Sha256::new();
+    use sha2::Digest;
+    hasher.update(token.as_bytes());
+    let token_hash = format!("sha256:{}", hex::encode(hasher.finalize()));
+    registry.devices.retain(|d| d.id != "test-device-ws");
+    registry.devices.push(jcode::gateway::PairedDevice {
+        id: "test-device-ws".to_string(),
+        name: "WS Test Device".to_string(),
+        token_hash,
+        apns_token: None,
+        paired_at: now.clone(),
+        last_seen: now,
+    });
+    registry.save()
+}
+
+struct WsTestClient {
+    stream: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+    next_id: u64,
+}
+
+impl WsTestClient {
+    async fn connect(port: u16, token: &str) -> Result<Self> {
+        let mut request = format!("ws://127.0.0.1:{port}/ws").into_client_request()?;
+        request
+            .headers_mut()
+            .insert("Authorization", format!("Bearer {token}").parse()?);
+        let (stream, _) = connect_async(request).await?;
+        Ok(Self { stream, next_id: 1 })
+    }
+
+    async fn send_request(&mut self, request: Request) -> Result<u64> {
+        let id = request.id();
+        let json = serde_json::to_string(&request)?;
+        self.stream.send(WsMessage::Text(json.into())).await?;
+        Ok(id)
+    }
+
+    async fn subscribe(&mut self) -> Result<u64> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send_request(Request::Subscribe {
+            id,
+            working_dir: None,
+            selfdev: None,
+        })
+        .await
+    }
+
+    async fn get_history(&mut self) -> Result<u64> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send_request(Request::GetHistory { id }).await
+    }
+
+    async fn send_message(&mut self, content: &str) -> Result<u64> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send_request(Request::Message {
+            id,
+            content: content.to_string(),
+            images: vec![],
+        })
+        .await
+    }
+
+    async fn resume_session(&mut self, session_id: &str) -> Result<u64> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send_request(Request::ResumeSession {
+            id,
+            session_id: session_id.to_string(),
+        })
+        .await
+    }
+
+    async fn read_event(&mut self) -> Result<ServerEvent> {
+        loop {
+            let msg = timeout(Duration::from_secs(5), self.stream.next())
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("websocket disconnected"))??;
+            match msg {
+                WsMessage::Text(text) => return Ok(serde_json::from_str(&text)?),
+                WsMessage::Ping(data) => {
+                    self.stream.send(WsMessage::Pong(data)).await?;
+                }
+                WsMessage::Pong(_) => continue,
+                WsMessage::Close(_) => anyhow::bail!("websocket closed"),
+                other => anyhow::bail!("unexpected websocket message: {other:?}"),
+            }
+        }
+    }
+}
+
+async fn collect_until_done_unix(
+    client: &mut server::Client,
+    target_id: u64,
+) -> Result<Vec<ServerEvent>> {
+    let mut events = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+        let is_done = matches!(event, ServerEvent::Done { id } if id == target_id);
+        events.push(event);
+        if is_done {
+            return Ok(events);
+        }
+    }
+    anyhow::bail!("timed out waiting for done event {target_id} over unix socket")
+}
+
+async fn collect_until_history_unix(
+    client: &mut server::Client,
+    target_id: u64,
+) -> Result<Vec<ServerEvent>> {
+    let mut events = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+        let is_target_history = matches!(event, ServerEvent::History { id, .. } if id == target_id);
+        events.push(event);
+        if is_target_history {
+            return Ok(events);
+        }
+    }
+    anyhow::bail!("timed out waiting for history event {target_id} over unix socket")
+}
+
+async fn collect_until_done_ws(
+    client: &mut WsTestClient,
+    target_id: u64,
+) -> Result<Vec<ServerEvent>> {
+    let mut events = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let event = client.read_event().await?;
+        let is_done = matches!(event, ServerEvent::Done { id } if id == target_id);
+        events.push(event);
+        if is_done {
+            return Ok(events);
+        }
+    }
+    anyhow::bail!("timed out waiting for done event {target_id} over websocket")
+}
+
+async fn collect_until_history_ws(
+    client: &mut WsTestClient,
+    target_id: u64,
+) -> Result<Vec<ServerEvent>> {
+    let mut events = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let event = client.read_event().await?;
+        let is_target_history = matches!(event, ServerEvent::History { id, .. } if id == target_id);
+        events.push(event);
+        if is_target_history {
+            return Ok(events);
+        }
+    }
+    anyhow::bail!("timed out waiting for history event {target_id} over websocket")
+}
+
+fn summarize_history_invariant(event: &ServerEvent) -> Option<String> {
+    match event {
+        ServerEvent::History {
+            id,
+            messages,
+            provider_name,
+            provider_model,
+            available_models,
+            available_model_routes,
+            mcp_servers,
+            skills,
+            client_count,
+            is_canary,
+            upstream_provider,
+            reasoning_effort,
+            ..
+        } => Some(format!(
+            "history:{id}:messages={}:provider={}:model={}:available_models={:?}:routes={:?}:mcp={:?}:skills={:?}:client_count={:?}:is_canary={:?}:upstream={:?}:reasoning={:?}",
+            messages.len(),
+            provider_name.as_deref().unwrap_or(""),
+            provider_model.as_deref().unwrap_or(""),
+            available_models,
+            available_model_routes,
+            mcp_servers,
+            skills,
+            client_count,
+            is_canary,
+            upstream_provider,
+            reasoning_effort,
+        )),
+        _ => None,
+    }
+}
+
+fn summarize_message_invariant(events: &[ServerEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ServerEvent::Ack { id } => Some(format!("ack:{id}")),
+            ServerEvent::ConnectionType { connection } => {
+                Some(format!("connection_type:{connection}"))
+            }
+            ServerEvent::TextDelta { text } => Some(format!("text:{text}")),
+            ServerEvent::SessionId { session_id } => Some(format!("session_id:{session_id}")),
+            ServerEvent::Done { id } => Some(format!("done:{id}")),
+            ServerEvent::Error { id, message, .. } => Some(format!("error:{id}:{message}")),
+            _ => None,
+        })
+        .collect()
+}
+
+struct TransportScenarioResult {
+    subscribe_events: Vec<ServerEvent>,
+    history_events: Vec<ServerEvent>,
+    message_events: Vec<ServerEvent>,
+    resume_events: Vec<ServerEvent>,
+}
+
+async fn run_unix_transport_scenario() -> Result<TransportScenarioResult> {
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-ws-e2e-unix-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let provider = MockProvider::new();
+    provider.queue_response(vec![
+        StreamEvent::ConnectionType {
+            connection: "mock-stream".to_string(),
+        },
+        StreamEvent::TextDelta("Hello from mock".to_string()),
+        StreamEvent::MessageEnd {
+            stop_reason: Some("end_turn".to_string()),
+        },
+        StreamEvent::SessionId("provider-session-1".to_string()),
+    ]);
+
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let server_instance =
+        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let result = async {
+        wait_for_socket(&socket_path).await?;
+        let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+
+        let subscribe_id = client.subscribe().await?;
+        let subscribe_events = collect_until_done_unix(&mut client, subscribe_id).await?;
+
+        let history_event = client.get_history_event().await?;
+        let server_session_id = match &history_event {
+            ServerEvent::History { session_id, .. } => session_id.clone(),
+            other => anyhow::bail!("expected unix history event, got {other:?}"),
+        };
+        let history_events = vec![history_event];
+
+        let message_id = client.send_message("hello over transport").await?;
+        let message_events = collect_until_done_unix(&mut client, message_id).await?;
+
+        let resume_id = client.resume_session(&server_session_id).await?;
+        let resume_events = collect_until_history_unix(&mut client, resume_id).await?;
+
+        Ok::<_, anyhow::Error>(TransportScenarioResult {
+            subscribe_events,
+            history_events,
+            message_events,
+            resume_events,
+        })
+    }
+    .await;
+
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+    result
+}
+
+async fn run_websocket_transport_scenario() -> Result<TransportScenarioResult> {
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-ws-e2e-websocket-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let gateway_port = reserve_tcp_port()?;
+    let ws_token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    pair_test_device(ws_token)?;
+
+    let provider = MockProvider::new();
+    provider.queue_response(vec![
+        StreamEvent::ConnectionType {
+            connection: "mock-stream".to_string(),
+        },
+        StreamEvent::TextDelta("Hello from mock".to_string()),
+        StreamEvent::MessageEnd {
+            stop_reason: Some("end_turn".to_string()),
+        },
+        StreamEvent::SessionId("provider-session-1".to_string()),
+    ]);
+
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let server_instance =
+        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone())
+            .with_gateway_config(jcode::gateway::GatewayConfig {
+                port: gateway_port,
+                bind_addr: "127.0.0.1".to_string(),
+                enabled: true,
+            });
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let result = async {
+        wait_for_socket(&socket_path).await?;
+        wait_for_tcp_port(gateway_port).await?;
+        let mut client = WsTestClient::connect(gateway_port, ws_token).await?;
+
+        let subscribe_id = client.subscribe().await?;
+        let subscribe_events = collect_until_done_ws(&mut client, subscribe_id).await?;
+
+        let history_request_id = client.get_history().await?;
+        let history_events = collect_until_history_ws(&mut client, history_request_id).await?;
+        let server_session_id = history_events
+            .iter()
+            .find_map(|event| match event {
+                ServerEvent::History { session_id, .. } => Some(session_id.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("missing websocket history session id"))?;
+
+        let message_id = client.send_message("hello over transport").await?;
+        let message_events = collect_until_done_ws(&mut client, message_id).await?;
+
+        let resume_id = client.resume_session(&server_session_id).await?;
+        let resume_events = collect_until_history_ws(&mut client, resume_id).await?;
+
+        Ok::<_, anyhow::Error>(TransportScenarioResult {
+            subscribe_events,
+            history_events,
+            message_events,
+            resume_events,
+        })
+    }
+    .await;
+
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+    result
+}
+
+async fn debug_create_headless_session_with_command(
+    debug_socket_path: std::path::PathBuf,
+    command: &str,
+) -> Result<String> {
     let mut debug_client = server::Client::connect_debug_with_path(debug_socket_path).await?;
-    let request_id = debug_client.debug_command("create_session", None).await?;
+    let request_id = debug_client.debug_command(command, None).await?;
 
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
@@ -124,6 +515,10 @@ async fn debug_create_headless_session(debug_socket_path: std::path::PathBuf) ->
     }
 
     anyhow::bail!("Timed out waiting for create_session debug response")
+}
+
+async fn debug_create_headless_session(debug_socket_path: std::path::PathBuf) -> Result<String> {
+    debug_create_headless_session_with_command(debug_socket_path, "create_session").await
 }
 
 /// Test that a simple text response works
@@ -205,6 +600,44 @@ async fn test_debug_create_session_marks_debug() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_debug_create_selfdev_session_marks_canary() -> Result<()> {
+    let _env = setup_test_env()?;
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-debug-selfdev-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let provider = MockProvider::new();
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let server_instance =
+        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    wait_for_socket(&socket_path).await?;
+
+    let session_id = debug_create_headless_session_with_command(
+        debug_socket_path.clone(),
+        "create_session:selfdev:/tmp",
+    )
+    .await?;
+    let session = Session::load(&session_id)?;
+    assert!(session.is_debug);
+    assert!(session.is_canary);
+
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = std::env::temp_dir().join(format!(
@@ -276,6 +709,69 @@ async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
     server_handle.abort();
     let _ = std::fs::remove_file(&socket_path);
     let _ = std::fs::remove_file(&debug_socket_path);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_message_and_resume(
+) -> Result<()> {
+    let _env = setup_test_env()?;
+    let unix = run_unix_transport_scenario().await?;
+    let websocket = run_websocket_transport_scenario().await?;
+
+    assert!(unix
+        .subscribe_events
+        .iter()
+        .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1)));
+    assert!(unix
+        .subscribe_events
+        .iter()
+        .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1)));
+    assert!(websocket
+        .subscribe_events
+        .iter()
+        .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1)));
+    assert!(websocket
+        .subscribe_events
+        .iter()
+        .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1)));
+
+    let unix_history = unix
+        .history_events
+        .iter()
+        .find_map(summarize_history_invariant)
+        .ok_or_else(|| anyhow::anyhow!("missing unix history event"))?;
+    let websocket_history = websocket
+        .history_events
+        .iter()
+        .find_map(summarize_history_invariant)
+        .ok_or_else(|| anyhow::anyhow!("missing websocket history event"))?;
+    assert_eq!(
+        unix_history, websocket_history,
+        "history payload should match across transports"
+    );
+
+    assert_eq!(
+        summarize_message_invariant(&unix.message_events),
+        summarize_message_invariant(&websocket.message_events),
+        "message streaming events should match across transports after removing broadcast noise"
+    );
+
+    let unix_resume = unix
+        .resume_events
+        .iter()
+        .find_map(summarize_history_invariant)
+        .ok_or_else(|| anyhow::anyhow!("missing unix resume history event"))?;
+    let websocket_resume = websocket
+        .resume_events
+        .iter()
+        .find_map(summarize_history_invariant)
+        .ok_or_else(|| anyhow::anyhow!("missing websocket resume history event"))?;
+    assert_eq!(
+        unix_resume, websocket_resume,
+        "resume history payload should match across transports"
+    );
 
     Ok(())
 }
@@ -594,6 +1090,74 @@ async fn test_subscribe_selfdev_hint_marks_canary() -> Result<()> {
     match history_event {
         ServerEvent::History { is_canary, .. } => {
             assert_eq!(is_canary, Some(true));
+        }
+        _ => anyhow::bail!("Expected history event after subscribe"),
+    }
+
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+
+    Ok(())
+}
+
+/// Test that working_dir alone no longer upgrades a session to self-dev.
+#[tokio::test]
+async fn test_subscribe_working_dir_without_selfdev_hint_stays_normal() -> Result<()> {
+    let _env = setup_test_env()?;
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let fake_repo = tempfile::tempdir()?;
+    std::fs::create_dir_all(fake_repo.path().join(".git"))?;
+    std::fs::write(
+        fake_repo.path().join("Cargo.toml"),
+        "[package]\nname = \"jcode\"\nversion = \"0.0.0\"\n",
+    )?;
+    let nested_dir = fake_repo.path().join("nested").join("worktree");
+    std::fs::create_dir_all(&nested_dir)?;
+
+    let provider = MockProvider::new();
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let server_instance =
+        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
+
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let start = Instant::now();
+    while !socket_path.exists() {
+        if start.elapsed() > Duration::from_secs(2) {
+            server_handle.abort();
+            anyhow::bail!("Server socket did not appear");
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+    let subscribe_id = client
+        .subscribe_with_info(Some(nested_dir.display().to_string()), None)
+        .await?;
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
+        if matches!(event, ServerEvent::Done { id } if id == subscribe_id) {
+            break;
+        }
+    }
+
+    let history_event = client.get_history_event().await?;
+    match history_event {
+        ServerEvent::History { is_canary, .. } => {
+            assert_eq!(is_canary, Some(false));
         }
         _ => anyhow::bail!("Expected history event after subscribe"),
     }

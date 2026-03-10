@@ -190,14 +190,14 @@ async fn run_default_command(args: Args) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let in_jcode_repo = build::is_jcode_repo(&cwd);
     startup_profile::mark("is_jcode_repo");
-    let already_in_selfdev = std::env::var("JCODE_SELFDEV_MODE").is_ok();
+    let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
 
     if in_jcode_repo && !already_in_selfdev && !args.standalone && !args.no_selfdev {
         eprintln!("📍 Detected jcode repository - enabling self-dev mode");
+        eprintln!("   Using shared server with self-dev session mode");
         eprintln!("   (use --no-selfdev to disable auto-detection)\n");
 
-        std::env::set_var("JCODE_SELFDEV_MODE", "1");
-        return selfdev::run_self_dev(false, args.resume).await;
+        std::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
     }
 
     if args.standalone {
@@ -249,7 +249,7 @@ async fn run_default_command(args: Args) -> Result<()> {
     Ok(())
 }
 
-async fn server_is_running() -> bool {
+pub(crate) async fn server_is_running() -> bool {
     if crate::transport::is_socket_path(&server::socket_path()) {
         crate::transport::Stream::connect(server::socket_path())
             .await
@@ -259,7 +259,9 @@ async fn server_is_running() -> bool {
     }
 }
 
-async fn maybe_prompt_server_bootstrap_login(provider_choice: &ProviderChoice) -> Result<()> {
+pub(crate) async fn maybe_prompt_server_bootstrap_login(
+    provider_choice: &ProviderChoice,
+) -> Result<()> {
     startup_profile::mark("cred_check_start");
     let (has_claude, has_openai) = tokio::join!(
         tokio::task::spawn_blocking(|| auth::claude::load_credentials().is_ok()),
@@ -291,7 +293,10 @@ async fn maybe_prompt_server_bootstrap_login(provider_choice: &ProviderChoice) -
     Ok(())
 }
 
-async fn spawn_server(provider_choice: &ProviderChoice, model: Option<&str>) -> Result<()> {
+pub(crate) async fn spawn_server(
+    provider_choice: &ProviderChoice,
+    model: Option<&str>,
+) -> Result<()> {
     let _ = std::fs::remove_file(server::socket_path());
     let _ = std::fs::remove_file(server::debug_socket_path());
 
@@ -299,6 +304,11 @@ async fn spawn_server(provider_choice: &ProviderChoice, model: Option<&str>) -> 
     eprintln!("Starting server...");
     let exe = std::env::current_exe()?;
     let mut cmd = ProcessCommand::new(&exe);
+    let client_requested_selfdev = selfdev::client_selfdev_requested();
+    cmd.env_remove(selfdev::CLIENT_SELFDEV_ENV);
+    if client_requested_selfdev {
+        cmd.env("JCODE_DEBUG_CONTROL", "1");
+    }
     cmd.arg("--provider").arg(provider_choice.as_arg_value());
     if let Some(model) = model {
         cmd.arg("--model").arg(model);

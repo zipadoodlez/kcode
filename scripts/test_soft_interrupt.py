@@ -15,7 +15,8 @@ import os
 import threading
 import queue as queue_mod
 
-SOCKET_PATH = "/tmp/jcode-selfdev-debug.sock"
+RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+SOCKET_PATH = os.path.join(RUNTIME_DIR, "jcode-debug.sock")
 
 def send_cmd_blocking(sock, cmd, session_id=None, timeout=180):
     """Send a debug command and wait for response (blocks)."""

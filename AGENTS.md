@@ -56,7 +56,7 @@ The build also includes git hash and `-dev` suffix for uncommitted changes (e.g.
 
 ## Debug Socket (External Testing)
 - Server exposes a debug socket for automation/introspection (default: main socket name with `-debug.sock` suffix).
-- Enable debug control with `JCODE_DEBUG_CONTROL=1` (or run in self-dev mode); then send `debug_command` requests.
+- Enable debug control with `JCODE_DEBUG_CONTROL=1`, set `display.debug_socket`, or start the shared server from a self-dev session; then send `debug_command` requests.
 - Protocol is newline-delimited JSON; see `Request::DebugCommand` in `src/protocol.rs`.
 
 ## Install Notes

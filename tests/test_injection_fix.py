@@ -17,11 +17,8 @@ import sys
 
 import os
 
-# Check for selfdev socket first, then regular socket
-if os.path.exists("/tmp/jcode-selfdev-debug.sock"):
-    SOCKET_PATH = "/tmp/jcode-selfdev-debug.sock"
-else:
-    SOCKET_PATH = f"/run/user/1000/jcode-debug.sock"
+RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+SOCKET_PATH = os.path.join(RUNTIME_DIR, "jcode-debug.sock")
 
 def send_cmd(sock, cmd, session_id=None, timeout=60):
     """Send a debug command and get the response."""
