@@ -106,11 +106,6 @@ reload, network issue, etc.):
 /run/user/$UID/
 ├── jcode.sock          # Main communication socket
 └── jcode-debug.sock    # Debug/testing socket
-
-Self-dev mode:
-/tmp/
-├── jcode-selfdev.sock          # Self-dev server socket
-└── jcode-selfdev-debug.sock    # Self-dev debug socket
 ```
 
 ## Self-Dev Mode
@@ -118,10 +113,10 @@ Self-dev mode:
 When running `jcode` inside the jcode repository:
 
 1. Auto-detects the repo and enables self-dev mode
-2. Uses `/tmp/jcode-selfdev.sock` (separate from production socket)
-3. Server spawned as a detached daemon (shared across all self-dev sessions)
-4. `/reload` rebuilds and hot-reloads the server
-5. Multiple self-dev clients can connect to the same server
+2. Connects to the normal shared jcode server
+3. Marks that session as canary/self-dev via subscribe metadata
+4. Enables selfdev prompt/tooling only for that session
+5. `/reload` still hot-reloads the shared server and clients reconnect
 
 ## Key Behaviors
 
