@@ -707,6 +707,8 @@ The system adapts scheduling based on rate limit headers, user activity, and bud
 | `JCODE_ANTHROPIC_MODEL` | Override default Claude model |
 | `JCODE_OPENROUTER_MODEL` | Override default OpenRouter model |
 | `JCODE_ANTHROPIC_DEBUG` | Log API request payloads |
+| `JCODE_NO_TELEMETRY` | Disable anonymous usage telemetry |
+| `DO_NOT_TRACK` | Disable telemetry (standard convention) |
 
 </div>
 
