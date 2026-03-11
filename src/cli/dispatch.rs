@@ -250,12 +250,84 @@ async fn run_default_command(args: Args) -> Result<()> {
 }
 
 pub(crate) async fn server_is_running() -> bool {
-    if crate::transport::is_socket_path(&server::socket_path()) {
-        crate::transport::Stream::connect(server::socket_path())
-            .await
-            .is_ok()
+    server_is_running_at(&server::socket_path()).await
+}
+
+async fn server_is_running_at(path: &std::path::Path) -> bool {
+    crate::transport::is_socket_path(path) && crate::transport::Stream::connect(path).await.is_ok()
+}
+
+#[cfg(unix)]
+fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("{}.spawning", socket_path.display()))
+}
+
+#[cfg(unix)]
+struct SpawnLockGuard {
+    _file: std::fs::File,
+    path: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl Drop for SpawnLockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[cfg(unix)]
+fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
+    use std::fs::OpenOptions;
+    use std::os::fd::AsRawFd;
+
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)?;
+    let fd = file.as_raw_fd();
+    let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
+    if ret == 0 {
+        Ok(Some(SpawnLockGuard {
+            _file: file,
+            path: path.to_path_buf(),
+        }))
     } else {
-        false
+        Ok(None)
+    }
+}
+
+#[cfg(unix)]
+async fn acquire_spawn_lock_or_wait(
+    socket_path: &std::path::Path,
+) -> Result<Option<SpawnLockGuard>> {
+    let lock_path = spawn_lock_path(socket_path);
+    let wait_start = std::time::Instant::now();
+    let wait_timeout = std::time::Duration::from_secs(10);
+    let mut announced_wait = false;
+
+    loop {
+        if let Some(lock) = try_acquire_spawn_lock(&lock_path)? {
+            return Ok(Some(lock));
+        }
+
+        if server_is_running_at(socket_path).await {
+            return Ok(None);
+        }
+
+        if !announced_wait {
+            eprintln!("Another client is starting the server, waiting...");
+            announced_wait = true;
+        }
+
+        if wait_start.elapsed() >= wait_timeout {
+            anyhow::bail!(
+                "Timed out waiting for another client to start server at {}",
+                socket_path.display()
+            );
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 }
 
@@ -297,8 +369,19 @@ pub(crate) async fn spawn_server(
     provider_choice: &ProviderChoice,
     model: Option<&str>,
 ) -> Result<()> {
-    let _ = std::fs::remove_file(server::socket_path());
-    let _ = std::fs::remove_file(server::debug_socket_path());
+    let socket_path = server::socket_path();
+    let debug_socket_path = server::debug_socket_path();
+
+    #[cfg(unix)]
+    let _spawn_lock = acquire_spawn_lock_or_wait(&socket_path).await?;
+
+    if server_is_running_at(&socket_path).await {
+        startup_profile::mark("server_ready");
+        return Ok(());
+    }
+
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
 
     startup_profile::mark("server_spawn_start");
     eprintln!("Starting server...");
@@ -341,4 +424,35 @@ pub(crate) async fn spawn_server(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_lock_serializes_shared_server_bootstrap() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let socket_path = temp.path().join("jcode.sock");
+        let lock_path = spawn_lock_path(&socket_path);
+
+        let first = try_acquire_spawn_lock(&lock_path)
+            .expect("acquire first lock")
+            .expect("first lock should succeed");
+        let second = try_acquire_spawn_lock(&lock_path).expect("acquire second lock");
+        assert!(second.is_none(), "second lock should be held by first guard");
+
+        drop(first);
+
+        let third = try_acquire_spawn_lock(&lock_path)
+            .expect("acquire third lock")
+            .expect("third lock should succeed after release");
+        drop(third);
+
+        assert!(
+            !lock_path.exists(),
+            "lock file should be cleaned up when the guard drops"
+        );
+    }
 }
