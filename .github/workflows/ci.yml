@@ -106,3 +106,19 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all -- --check
+
+  powershell-syntax:
+    name: PowerShell Syntax
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check PowerShell script syntax (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          & ./scripts/check_powershell_syntax.ps1
+
+      - name: Check PowerShell script syntax (PowerShell 7)
+        shell: pwsh
+        run: |
+          & ./scripts/check_powershell_syntax.ps1
