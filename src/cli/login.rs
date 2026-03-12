@@ -75,6 +75,7 @@ pub async fn run_login_provider(
     account_label: Option<&str>,
 ) -> Result<()> {
     match provider.target {
+        LoginProviderTarget::Jcode => login_jcode_flow()?,
         LoginProviderTarget::Claude => {
             login_claude_flow(account_label.unwrap_or("default")).await?
         }
@@ -83,10 +84,75 @@ pub async fn run_login_provider(
         LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile)?,
         LoginProviderTarget::Cursor => login_cursor_flow()?,
         LoginProviderTarget::Copilot => login_copilot_flow()?,
+        LoginProviderTarget::Gemini => login_gemini_flow()?,
         LoginProviderTarget::Antigravity => login_antigravity_flow()?,
         LoginProviderTarget::Google => login_google_flow().await?,
     }
     auth::AuthStatus::invalidate_cache();
+    Ok(())
+}
+
+fn login_jcode_flow() -> Result<()> {
+    eprintln!("Setting up Jcode subscription access...");
+    eprintln!(
+        "Paste the jcode subscription API key from your account portal. This key is used for your curated jcode router access.\n"
+    );
+    eprint!("Paste your Jcode API key: ");
+    io::stdout().flush()?;
+
+    let key = read_secret_line()?;
+    if key.is_empty() {
+        anyhow::bail!("No API key provided.");
+    }
+
+    eprint!("Optional router base URL (press Enter to use the default placeholder): ");
+    io::stdout().flush()?;
+    let api_base = read_secret_line()?;
+
+    let mut content = format!(
+        "{}={}\n",
+        crate::subscription_catalog::JCODE_API_KEY_ENV,
+        key
+    );
+    if !api_base.trim().is_empty() {
+        content.push_str(&format!(
+            "{}={}\n",
+            crate::subscription_catalog::JCODE_API_BASE_ENV,
+            api_base.trim()
+        ));
+    }
+
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("No config directory found"))?
+        .join("jcode");
+    std::fs::create_dir_all(&config_dir)?;
+    crate::platform::set_directory_permissions_owner_only(&config_dir)?;
+
+    let file_path = config_dir.join(crate::subscription_catalog::JCODE_ENV_FILE);
+    std::fs::write(&file_path, &content)?;
+    crate::platform::set_permissions_owner_only(&file_path)?;
+
+    std::env::set_var(crate::subscription_catalog::JCODE_API_KEY_ENV, key);
+    if !api_base.trim().is_empty() {
+        std::env::set_var(
+            crate::subscription_catalog::JCODE_API_BASE_ENV,
+            api_base.trim(),
+        );
+    }
+
+    eprintln!("\nSuccessfully saved Jcode subscription credentials!");
+    eprintln!(
+        "Stored at ~/.config/jcode/{}",
+        crate::subscription_catalog::JCODE_ENV_FILE
+    );
+    eprintln!(
+        "Curated models available now: {}",
+        crate::subscription_catalog::curated_models()
+            .iter()
+            .map(|model| model.display_name)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     Ok(())
 }
 
@@ -321,6 +387,45 @@ fn login_antigravity_flow() -> Result<()> {
         )
     })?;
     eprintln!("Antigravity login command completed.");
+    Ok(())
+}
+
+fn login_gemini_flow() -> Result<()> {
+    eprintln!("Starting Gemini CLI login...");
+    let command = crate::auth::gemini::gemini_cli_command();
+    let binary = command.display();
+    eprintln!("When Gemini CLI opens, choose: Login with Google");
+    eprintln!("If your student/education plan is attached to your Google account, use that account in the browser flow.");
+    eprintln!("If browser launch fails, try `NO_BROWSER=true {}` for manual auth and paste the returned authorization code.", binary);
+    eprintln!("Note: school / Workspace Google accounts may also require GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION per Gemini CLI docs.");
+    eprintln!();
+    run_external_login_command_owned(
+        &command.program,
+        &command
+            .args
+            .iter()
+            .cloned()
+            .chain([
+                "-p".to_string(),
+                "hello".to_string(),
+                "--output-format".to_string(),
+                "text".to_string(),
+            ])
+            .collect::<Vec<_>>(),
+    )
+    .or_else(|_| {
+        eprintln!(
+            "Non-interactive probe did not succeed; launching interactive Gemini CLI instead..."
+        );
+        run_external_login_command_owned(&command.program, &command.args)
+    })
+    .with_context(|| {
+        format!(
+            "Gemini CLI login failed. Install the official Gemini CLI and run `{}` manually.",
+            binary
+        )
+    })?;
+    eprintln!("Gemini CLI command completed.");
     Ok(())
 }
 

@@ -16,6 +16,7 @@ use super::login::run_login_provider;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 pub enum ProviderChoice {
+    Jcode,
     Claude,
     #[value(alias = "claude-subprocess")]
     ClaudeSubprocess,
@@ -34,6 +35,7 @@ pub enum ProviderChoice {
     OpenaiCompatible,
     Cursor,
     Copilot,
+    Gemini,
     Antigravity,
     Google,
     Auto,
@@ -42,6 +44,7 @@ pub enum ProviderChoice {
 impl ProviderChoice {
     pub fn as_arg_value(&self) -> &'static str {
         match self {
+            Self::Jcode => "jcode",
             Self::Claude => "claude",
             Self::ClaudeSubprocess => "claude-subprocess",
             Self::Openai => "openai",
@@ -54,6 +57,7 @@ impl ProviderChoice {
             Self::OpenaiCompatible => "openai-compatible",
             Self::Cursor => "cursor",
             Self::Copilot => "copilot",
+            Self::Gemini => "gemini",
             Self::Antigravity => "antigravity",
             Self::Google => "google",
             Self::Auto => "auto",
@@ -75,6 +79,7 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
 
 pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProviderDescriptor> {
     match choice {
+        ProviderChoice::Jcode => Some(crate::provider_catalog::JCODE_LOGIN_PROVIDER),
         ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
             Some(crate::provider_catalog::CLAUDE_LOGIN_PROVIDER)
         }
@@ -90,6 +95,7 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         }
         ProviderChoice::Cursor => Some(crate::provider_catalog::CURSOR_LOGIN_PROVIDER),
         ProviderChoice::Copilot => Some(crate::provider_catalog::COPILOT_LOGIN_PROVIDER),
+        ProviderChoice::Gemini => Some(crate::provider_catalog::GEMINI_LOGIN_PROVIDER),
         ProviderChoice::Antigravity => Some(crate::provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER),
         ProviderChoice::Google => Some(crate::provider_catalog::GOOGLE_LOGIN_PROVIDER),
         ProviderChoice::Auto => None,
@@ -153,6 +159,13 @@ pub async fn login_and_bootstrap_provider(
     eprintln!();
 
     let runtime: Arc<dyn provider::Provider> = match provider.target {
+        LoginProviderTarget::Jcode => {
+            crate::subscription_catalog::apply_runtime_env();
+            lock_model_provider("openrouter");
+            let multi = provider::MultiProvider::new();
+            let _ = multi.set_model(crate::subscription_catalog::default_model().id);
+            Arc::new(multi)
+        }
         LoginProviderTarget::Claude => Arc::new(provider::MultiProvider::new()),
         LoginProviderTarget::OpenAi => Arc::new(provider::MultiProvider::with_preference(true)),
         LoginProviderTarget::OpenRouter => Arc::new(provider::MultiProvider::new()),
@@ -171,6 +184,11 @@ pub async fn login_and_bootstrap_provider(
             Arc::new(provider::cursor::CursorCliProvider::new())
         }
         LoginProviderTarget::Copilot => Arc::new(provider::MultiProvider::new()),
+        LoginProviderTarget::Gemini => {
+            unlock_model_provider();
+            std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
+            Arc::new(provider::gemini::GeminiCliProvider::new())
+        }
         LoginProviderTarget::Antigravity => {
             unlock_model_provider();
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
@@ -218,6 +236,14 @@ pub async fn init_provider(
     }
 
     let provider: Arc<dyn provider::Provider> = match choice {
+        ProviderChoice::Jcode => {
+            eprintln!("Using Jcode subscription provider (provider locked)");
+            crate::subscription_catalog::apply_runtime_env();
+            lock_model_provider("openrouter");
+            let multi = provider::MultiProvider::new();
+            let _ = multi.set_model(crate::subscription_catalog::default_model().id);
+            Arc::new(multi)
+        }
         ProviderChoice::Claude => {
             eprintln!("Using Claude (provider locked)");
             lock_model_provider("claude");
@@ -247,6 +273,12 @@ pub async fn init_provider(
             eprintln!("Using GitHub Copilot API provider (provider locked)");
             lock_model_provider("copilot");
             Arc::new(provider::MultiProvider::new())
+        }
+        ProviderChoice::Gemini => {
+            eprintln!("Using Gemini CLI provider (experimental)");
+            unlock_model_provider();
+            std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
+            Arc::new(provider::gemini::GeminiCliProvider::new())
         }
         ProviderChoice::Openrouter => {
             eprintln!("Using OpenRouter provider (provider locked)");
@@ -369,6 +401,7 @@ mod tests {
 
     #[test]
     fn test_provider_choice_arg_values() {
+        assert_eq!(ProviderChoice::Jcode.as_arg_value(), "jcode");
         assert_eq!(ProviderChoice::Claude.as_arg_value(), "claude");
         assert_eq!(
             ProviderChoice::ClaudeSubprocess.as_arg_value(),
@@ -387,6 +420,7 @@ mod tests {
         );
         assert_eq!(ProviderChoice::Cursor.as_arg_value(), "cursor");
         assert_eq!(ProviderChoice::Copilot.as_arg_value(), "copilot");
+        assert_eq!(ProviderChoice::Gemini.as_arg_value(), "gemini");
         assert_eq!(ProviderChoice::Antigravity.as_arg_value(), "antigravity");
         assert_eq!(ProviderChoice::Google.as_arg_value(), "google");
         assert_eq!(ProviderChoice::Auto.as_arg_value(), "auto");
@@ -401,10 +435,18 @@ mod tests {
         );
         assert_eq!(
             resolve_login_selection("3", &providers).map(|provider| provider.id),
+            Some("jcode")
+        );
+        assert_eq!(
+            resolve_login_selection("4", &providers).map(|provider| provider.id),
             Some("copilot")
         );
         assert_eq!(
-            resolve_login_selection("9", &providers).map(|provider| provider.id),
+            resolve_login_selection("10", &providers).map(|provider| provider.id),
+            Some("chutes")
+        );
+        assert_eq!(
+            resolve_login_selection("11", &providers).map(|provider| provider.id),
             Some("cerebras")
         );
     }
@@ -417,15 +459,19 @@ mod tests {
             Some("claude")
         );
         assert_eq!(
-            resolve_login_selection("9", &providers).map(|provider| provider.id),
+            resolve_login_selection("10", &providers).map(|provider| provider.id),
             Some("cursor")
         );
         assert_eq!(
-            resolve_login_selection("10", &providers).map(|provider| provider.id),
+            resolve_login_selection("11", &providers).map(|provider| provider.id),
             Some("copilot")
         );
         assert_eq!(
-            resolve_login_selection("11", &providers).map(|provider| provider.id),
+            resolve_login_selection("12", &providers).map(|provider| provider.id),
+            Some("gemini")
+        );
+        assert_eq!(
+            resolve_login_selection("13", &providers).map(|provider| provider.id),
             Some("antigravity")
         );
     }

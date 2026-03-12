@@ -50,6 +50,7 @@ pub mod skill;
 pub mod startup_profile;
 pub mod stdin_detect;
 pub mod storage;
+pub mod subscription_catalog;
 pub mod telegram;
 pub mod telemetry;
 pub mod todo;
