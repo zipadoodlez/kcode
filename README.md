@@ -94,8 +94,8 @@ curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/insta
 ```
 
 ```powershell
-# Windows (PowerShell - run as Administrator)
-powershell -c "irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex"
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
 ```
 
 ### macOS via Homebrew
