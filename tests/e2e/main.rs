@@ -5,7 +5,7 @@
 
 mod mock_provider;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::{SinkExt, StreamExt};
 use jcode::agent::Agent;
 use jcode::message::StreamEvent;
@@ -16,6 +16,7 @@ use jcode::tool::Registry;
 use mock_provider::MockProvider;
 use std::ffi::OsString;
 use std::net::TcpListener as StdTcpListener;
+use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -112,6 +113,32 @@ async fn wait_for_socket(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
+async fn wait_for_debug_socket_ready(path: &std::path::Path) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut last_error: Option<anyhow::Error> = None;
+    loop {
+        if Instant::now() >= deadline {
+            if let Some(err) = last_error {
+                return Err(err).context("debug socket never became responsive");
+            }
+            anyhow::bail!("debug socket never became responsive");
+        }
+
+        if !path.exists() {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            continue;
+        }
+
+        match debug_run_command(path.to_path_buf(), "server:info", None).await {
+            Ok(_) => return Ok(()),
+            Err(err) => {
+                last_error = Some(err);
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+}
+
 async fn wait_for_tcp_port(port: u16) -> Result<()> {
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(10) {
@@ -188,6 +215,7 @@ impl WsTestClient {
             id,
             content: content.to_string(),
             images: vec![],
+            system_reminder: None,
         })
         .await
     }
@@ -519,6 +547,85 @@ async fn debug_create_headless_session_with_command(
 
 async fn debug_create_headless_session(debug_socket_path: std::path::PathBuf) -> Result<String> {
     debug_create_headless_session_with_command(debug_socket_path, "create_session").await
+}
+
+async fn debug_run_command(
+    debug_socket_path: std::path::PathBuf,
+    command: &str,
+    session_id: Option<&str>,
+) -> Result<String> {
+    let mut debug_client = server::Client::connect_debug_with_path(debug_socket_path).await?;
+    let request_id = debug_client.debug_command(command, session_id).await?;
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut seen_events = Vec::new();
+    while Instant::now() < deadline {
+        let event = match tokio::time::timeout(Duration::from_secs(1), debug_client.read_event()).await
+        {
+            Ok(Ok(event)) => event,
+            Ok(Err(err)) => return Err(err),
+            Err(_) => continue,
+        };
+        match event {
+            ServerEvent::Ack { .. } => continue,
+            ServerEvent::DebugResponse { id, ok, output } if id == request_id => {
+                if !ok {
+                    anyhow::bail!("debug command failed: {}", output);
+                }
+                return Ok(output);
+            }
+            ServerEvent::Error { id, message, .. } if id == request_id => {
+                anyhow::bail!("debug command error: {}", message);
+            }
+            other => {
+                seen_events.push(format!("{other:?}"));
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "Timed out waiting for debug command response: {command}. Seen events: {}",
+        if seen_events.is_empty() {
+            "<none>".to_string()
+        } else {
+            seen_events.join(" | ")
+        }
+    )
+}
+
+async fn wait_for_server_client(socket_path: &std::path::Path) -> Result<server::Client> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        match server::Client::connect_with_path(socket_path.to_path_buf()).await {
+            Ok(mut client) => {
+                let ping_deadline = Instant::now() + Duration::from_secs(5);
+                while Instant::now() < ping_deadline {
+                    match client.ping().await {
+                        Ok(true) => return Ok(client),
+                        Ok(false) => continue,
+                        Err(_) => break,
+                    }
+                }
+                if Instant::now() >= deadline {
+                    anyhow::bail!(
+                        "server socket connected at {} but never became responsive",
+                        socket_path.display()
+                    );
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Err(err) if Instant::now() < deadline => {
+                let _ = err;
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn kill_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Test that a simple text response works
@@ -1549,6 +1656,132 @@ async fn binary_version_command() -> Result<()> {
     );
 
     Ok(())
+}
+
+/// Test full server reload handoff against a real spawned server process.
+///
+/// Requires a built release binary at target/release/jcode because the reload
+/// flow execs into the repo's reload candidate.
+#[tokio::test]
+#[ignore]
+async fn binary_integration_reload_handoff() -> Result<()> {
+    let _env = setup_test_env()?;
+
+    let release_binary =
+        jcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+    if !release_binary.exists() {
+        anyhow::bail!(
+            "release binary missing at {} (run `cargo build --release` first)",
+            release_binary.display()
+        );
+    }
+
+    let temp_root = tempfile::Builder::new()
+        .prefix("jcode-reload-e2e-")
+        .tempdir()?;
+    let runtime_dir = temp_root.path().join("runtime");
+    let home_dir = temp_root.path().join("home");
+    let install_dir = temp_root.path().join("install");
+    let stderr_path = temp_root.path().join("server-stderr.log");
+    std::fs::create_dir_all(&runtime_dir)?;
+    std::fs::create_dir_all(&home_dir)?;
+    std::fs::create_dir_all(&install_dir)?;
+
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let stderr_file = std::fs::File::create(&stderr_path)?;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_jcode"))
+        .arg("--no-update")
+        .arg("--socket")
+        .arg(&socket_path)
+        .arg("serve")
+        // This test must exercise the real exec-based reload handoff, not the
+        // in-process test shortcut used by other e2e cases.
+        .env_remove("JCODE_TEST_SESSION")
+        .env("JCODE_HOME", &home_dir)
+        .env("JCODE_RUNTIME_DIR", &runtime_dir)
+        .env("JCODE_INSTALL_DIR", &install_dir)
+        .env("JCODE_DEBUG_CONTROL", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(stderr_file))
+        .spawn()?;
+
+    let test_result = async {
+        wait_for_socket(&socket_path).await?;
+        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        let server_info_before =
+            debug_run_command(debug_socket_path.clone(), "server:info", None).await?;
+        let server_info_before_json: serde_json::Value = serde_json::from_str(&server_info_before)?;
+        let server_id_before = server_info_before_json
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("missing server id before reload"))?
+            .to_string();
+
+        let mut client = wait_for_server_client(&socket_path).await?;
+        client.reload().await?;
+
+        let disconnect_deadline = Instant::now() + Duration::from_secs(10);
+        let mut saw_disconnect = false;
+        while Instant::now() < disconnect_deadline {
+            match tokio::time::timeout(Duration::from_secs(1), client.read_event()).await {
+                Ok(Ok(_)) => continue,
+                Ok(Err(_)) | Err(_) => {
+                    saw_disconnect = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            saw_disconnect,
+            "old client connection never disconnected during reload"
+        );
+
+        let marker_deadline = Instant::now() + Duration::from_secs(20);
+        while jcode::server::reload_marker_active(Duration::from_secs(30)) {
+            if Instant::now() >= marker_deadline {
+                anyhow::bail!("reload marker remained active too long after restart");
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+
+        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        let _client = wait_for_server_client(&socket_path).await?;
+
+        let server_info_after =
+            debug_run_command(debug_socket_path.clone(), "server:info", None).await?;
+        let server_info_after_json: serde_json::Value = serde_json::from_str(&server_info_after)?;
+        let server_id_after = server_info_after_json
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("missing server id after reload"))?;
+
+        assert_ne!(
+            server_id_after, server_id_before,
+            "server identity should change after exec-based reload"
+        );
+        assert!(
+            server_info_after_json
+                .get("uptime_secs")
+                .and_then(|v| v.as_u64())
+                .is_some(),
+            "replacement server should answer debug state queries after reload"
+        );
+
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+
+    kill_child(&mut child);
+    if let Err(ref error) = test_result {
+        if let Ok(stderr) = std::fs::read_to_string(&stderr_path) {
+            eprintln!("spawned server stderr:\n{}", stderr);
+        }
+        eprintln!("reload e2e test error: {error:#}");
+    }
+    test_result
 }
 
 // =============================================================================

@@ -47,13 +47,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::SelfDev { build }) => {
             selfdev::run_self_dev(build, args.resume).await?;
         }
-        Some(Command::CanaryWrapper {
-            session_id,
-            binary,
-            git_hash,
-        }) => {
-            selfdev::run_canary_wrapper(&session_id, &binary, &git_hash).await?;
-        }
         Some(Command::Debug {
             command,
             arg,
@@ -75,8 +68,8 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Permissions) => {
             tui::permissions::run_permissions()?;
         }
-        Some(Command::SetupHotkey) => {
-            setup_hints::run_setup_hotkey()?;
+        Some(Command::SetupHotkey { listen_macos_hotkey }) => {
+            setup_hints::run_setup_hotkey(listen_macos_hotkey)?;
         }
         Some(Command::Browser { action }) => {
             commands::run_browser(&action).await?;
@@ -179,7 +172,7 @@ fn map_ambient_subcommand(subcmd: AmbientCommand) -> commands::AmbientSubcommand
 async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("run_main_none_branch");
 
-    let startup_message = setup_hints::maybe_show_setup_hints();
+    let startup_hints = setup_hints::maybe_show_setup_hints();
     startup_profile::mark("setup_hints");
 
     if args.resume.is_none() {
@@ -211,15 +204,36 @@ async fn run_default_command(args: Args) -> Result<()> {
             registry,
             args.resume,
             args.debug_socket,
-            startup_message,
+            startup_hints,
         )
         .await?;
         return Ok(());
     }
 
     startup_profile::mark("client_mode_start");
-    let server_running = server_is_running().await;
+    let mut server_running = server_is_running().await;
     startup_profile::mark("server_check");
+
+    if !server_running && std::env::var("JCODE_RESUMING").is_ok() {
+        if let Some(state) = server::recent_reload_state(std::time::Duration::from_secs(30)) {
+            match state.phase {
+                server::ReloadPhase::Starting => {
+                    crate::logging::info("Reload state=starting while resuming client; waiting for existing server to return");
+                    server_running =
+                        wait_for_reloading_server(std::time::Duration::from_secs(20)).await;
+                }
+                server::ReloadPhase::Failed => {
+                    crate::logging::warn(&format!(
+                        "Reload state=failed while resuming client: {}",
+                        state
+                            .detail
+                            .unwrap_or_else(|| "unknown reload failure".to_string())
+                    ));
+                }
+                server::ReloadPhase::SocketReady => {}
+            }
+        }
+    }
 
     if server_running && (args.provider != ProviderChoice::Auto || args.model.is_some()) {
         eprintln!(
@@ -244,13 +258,27 @@ async fn run_default_command(args: Args) -> Result<()> {
     if std::env::var("JCODE_RESUMING").is_err() && server_running {
         eprintln!("Connecting to server...");
     }
-    tui_launch::run_tui_client(args.resume, startup_message, !server_running).await?;
+    tui_launch::run_tui_client(args.resume, startup_hints, !server_running).await?;
 
     Ok(())
 }
 
 pub(crate) async fn server_is_running() -> bool {
     server_is_running_at(&server::socket_path()).await
+}
+
+pub(crate) async fn wait_for_reloading_server(timeout: std::time::Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if server_is_running().await {
+            return true;
+        }
+        if !server::reload_marker_active(std::time::Duration::from_secs(30)) {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    server_is_running().await
 }
 
 async fn server_is_running_at(path: &std::path::Path) -> bool {
@@ -441,7 +469,10 @@ mod tests {
             .expect("acquire first lock")
             .expect("first lock should succeed");
         let second = try_acquire_spawn_lock(&lock_path).expect("acquire second lock");
-        assert!(second.is_none(), "second lock should be held by first guard");
+        assert!(
+            second.is_none(),
+            "second lock should be held by first guard"
+        );
 
         drop(first);
 

@@ -3,7 +3,7 @@ use clap::Parser;
 use jcode::id::new_id;
 use jcode::message::{Message, ToolDefinition};
 use jcode::provider::{EventStream, Provider};
-use jcode::tool::{Registry, ToolContext};
+use jcode::tool::{Registry, ToolContext, ToolExecutionMode};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
         tool_call_id: String::new(),
         working_dir: Some(workspace.clone()),
         stdin_request_tx: None,
+        execution_mode: ToolExecutionMode::Direct,
     };
 
     let mut cases = Vec::new();

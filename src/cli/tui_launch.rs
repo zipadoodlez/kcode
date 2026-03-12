@@ -4,7 +4,8 @@ use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 
 use crate::{
-    id, logging, provider, replay, server, session, startup_profile, tool, tui, video_export,
+    id, logging, provider, replay, server, session, setup_hints, startup_profile, tool, tui,
+    video_export,
 };
 
 use super::hot_exec::{execute_requested_action, has_requested_action};
@@ -19,7 +20,7 @@ pub async fn run_tui(
     registry: tool::Registry,
     resume_session: Option<String>,
     debug_socket: bool,
-    startup_message: Option<String>,
+    startup_hints: Option<setup_hints::StartupHints>,
 ) -> Result<()> {
     let (terminal, tui_runtime) = init_tui_runtime()?;
     let mut app = tui::App::new(provider, registry);
@@ -38,8 +39,8 @@ pub async fn run_tui(
 
     if let Some(ref session_id) = resume_session {
         app.restore_session(session_id);
-    } else if let Some(msg) = startup_message {
-        app.queue_startup_message(msg);
+    } else if let Some(hints) = startup_hints {
+        apply_startup_hints(&mut app, hints);
     }
 
     set_current_session(app.session_id());
@@ -141,7 +142,7 @@ pub async fn run_client() -> Result<()> {
 
 pub async fn run_tui_client(
     resume_session: Option<String>,
-    startup_message: Option<String>,
+    startup_hints: Option<setup_hints::StartupHints>,
     server_spawning: bool,
 ) -> Result<()> {
     startup_profile::mark("tui_client_enter");
@@ -177,8 +178,8 @@ pub async fn run_tui_client(
     }
     startup_profile::mark("app_new_for_remote");
     if resume_session.is_none() {
-        if let Some(msg) = startup_message {
-            app.queue_startup_message(msg);
+        if let Some(hints) = startup_hints {
+            apply_startup_hints(&mut app, hints);
         }
     }
 
@@ -204,6 +205,18 @@ pub async fn run_tui_client(
     }
 
     Ok(())
+}
+
+fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
+    if let Some(status_notice) = hints.status_notice {
+        app.set_status_notice(status_notice);
+    }
+    if let Some((title, message)) = hints.display_message {
+        app.push_display_message(tui::DisplayMessage::system(message).with_title(title));
+    }
+    if let Some(message) = hints.auto_send_message {
+        app.queue_startup_message(message);
+    }
 }
 
 pub async fn run_replay_command(

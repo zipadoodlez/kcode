@@ -86,23 +86,12 @@ pub(crate) enum Command {
     /// Update jcode to the latest version
     Update,
 
-    /// Self-development mode: run as canary with crash recovery wrapper
+    /// Self-development mode: run as a canary session on the shared server
     #[command(alias = "selfdev")]
     SelfDev {
         /// Build and test a new canary version before launching
         #[arg(long)]
         build: bool,
-    },
-
-    /// Internal: wrapper for canary process (handles crash recovery)
-    #[command(hide = true)]
-    CanaryWrapper {
-        /// Session ID to run
-        session_id: String,
-        /// Binary path to run
-        binary: String,
-        /// Git hash of the current build
-        git_hash: String,
     },
 
     /// Debug socket CLI - interact with running jcode server
@@ -150,8 +139,12 @@ pub(crate) enum Command {
     /// Review and respond to pending ambient permission requests
     Permissions,
 
-    /// Set up a global hotkey (Alt+;) to launch jcode (Windows)
-    SetupHotkey,
+    /// Set up a global hotkey (Alt+;) to launch jcode
+    SetupHotkey {
+        /// Internal: run as the macOS hotkey listener process.
+        #[arg(long, hide = true)]
+        listen_macos_hotkey: bool,
+    },
 
     /// Firefox Agent Bridge - browser automation setup and management
     Browser {
