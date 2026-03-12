@@ -189,7 +189,7 @@ jcode --resume fox
 | **Search** | `glob` `grep` `ls` `codesearch` | Find files, search contents, navigate code |
 | **Execution** | `bash` `task` `batch` `bg` | Shell commands, sub-agents, parallel & background execution |
 | **Web** | `webfetch` `websearch` | Fetch URLs, search the web via DuckDuckGo |
-| **Memory** | `memory` `remember` `session_search` `conversation_search` | Persistent cross-session memory and RAG retrieval |
+| **Memory** | `memory` `session_search` `conversation_search` | Persistent cross-session memory and RAG retrieval |
 | **Coordination** | `communicate` `todo_read` `todo_write` | Inter-agent messaging, task tracking |
 | **Meta** | `mcp` `skill` `selfdev` | MCP servers, skill loading, self-development |
 
@@ -289,7 +289,7 @@ graph TB
     Registry --> SearchTools["Search & Nav<br>glob · grep · ls<br>codesearch"]
     Registry --> ExecTools["Execution<br>bash · task · batch · bg"]
     Registry --> WebTools["Web<br>webfetch · websearch"]
-    Registry --> MemTools["Memory & RAG<br>remember · session_search<br>conversation_search"]
+    Registry --> MemTools["Memory & RAG<br>memory · session_search<br>conversation_search"]
     Registry --> MetaTools["Meta & Control<br>todo · skill · communicate<br>mcp · selfdev"]
     Registry --> MCPTools["MCP Tools<br><i>Dynamically registered<br>from external servers</i>"]
 
