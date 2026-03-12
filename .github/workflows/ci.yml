@@ -75,6 +75,12 @@ jobs:
         run: |
           cargo test --target ${{ matrix.target }}
 
+      - name: Check PowerShell script syntax (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/check_powershell_syntax.ps1
+
       - name: Enforce warning budget (Linux)
         if: runner.os == 'Linux'
         shell: bash
