@@ -391,41 +391,29 @@ fn login_antigravity_flow() -> Result<()> {
 }
 
 fn login_gemini_flow() -> Result<()> {
-    eprintln!("Starting Gemini CLI login...");
-    let command = crate::auth::gemini::gemini_cli_command();
-    let binary = command.display();
-    eprintln!("When Gemini CLI opens, choose: Login with Google");
-    eprintln!("If your student/education plan is attached to your Google account, use that account in the browser flow.");
-    eprintln!("If browser launch fails, try `NO_BROWSER=true {}` for manual auth and paste the returned authorization code.", binary);
-    eprintln!("Note: school / Workspace Google accounts may also require GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION per Gemini CLI docs.");
+    eprintln!("Starting native Gemini login...");
+    eprintln!(
+        "If your student/education plan is attached to your Google account, use that account in the browser flow."
+    );
+    eprintln!(
+        "If browser launch fails, set `NO_BROWSER=true` and jcode will prompt for the manual authorization code."
+    );
+    eprintln!(
+        "Note: school / Workspace Google accounts may also require GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION for Code Assist entitlement checks."
+    );
     eprintln!();
-    run_external_login_command_owned(
-        &command.program,
-        &command
-            .args
-            .iter()
-            .cloned()
-            .chain([
-                "-p".to_string(),
-                "hello".to_string(),
-                "--output-format".to_string(),
-                "text".to_string(),
-            ])
-            .collect::<Vec<_>>(),
-    )
-    .or_else(|_| {
-        eprintln!(
-            "Non-interactive probe did not succeed; launching interactive Gemini CLI instead..."
-        );
-        run_external_login_command_owned(&command.program, &command.args)
-    })
-    .with_context(|| {
-        format!(
-            "Gemini CLI login failed. Install the official Gemini CLI and run `{}` manually.",
-            binary
-        )
-    })?;
-    eprintln!("Gemini CLI command completed.");
+
+    let runtime = tokio::runtime::Runtime::new().context("Failed to create runtime for Gemini login")?;
+    let tokens = runtime.block_on(crate::auth::gemini::login())?;
+
+    eprintln!("Successfully logged in to Gemini!");
+    eprintln!(
+        "Tokens saved to {}",
+        crate::auth::gemini::tokens_path()?.display()
+    );
+    if let Some(email) = tokens.email.as_deref() {
+        eprintln!("Google account: {}", email);
+    }
     Ok(())
 }
 
