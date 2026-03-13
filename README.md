@@ -128,6 +128,7 @@ You need at least one of:
 | **Claude** (recommended) | Run `/login claude` inside jcode (opens browser for OAuth) |
 | **GitHub Copilot** | Run `/login copilot` inside jcode (GitHub device flow) |
 | **OpenAI** | Run `/login openai` inside jcode (opens browser for OAuth) |
+| **Google Gemini** | Run `/login gemini` inside jcode (native Google OAuth for Code Assist) |
 | **OpenRouter** | Set `OPENROUTER_API_KEY=sk-or-v1-...` |
 | **Direct API Key** | Set `ANTHROPIC_API_KEY=sk-ant-...` |
 

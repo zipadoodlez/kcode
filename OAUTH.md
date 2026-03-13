@@ -1,4 +1,4 @@
-# Auth Notes: Claude Code CLI + OpenAI/Codex
+# Auth Notes: Claude Code CLI + OpenAI/Codex + Gemini
 
 This document explains how authentication works in J-Code.
 
@@ -11,12 +11,16 @@ Credentials are stored locally:
 - Claude Code CLI: `~/.claude/.credentials.json`
 - OpenCode (optional): `~/.local/share/opencode/auth.json`
 - OpenAI/Codex: `~/.codex/auth.json`
+- Gemini native OAuth: `~/.jcode/gemini_oauth.json`
+- Gemini CLI import fallback: `~/.gemini/oauth_creds.json`
 
 Relevant code:
 - Claude provider: `src/provider/claude.rs`
 - OpenAI login + refresh: `src/auth/oauth.rs`
 - OpenAI credentials parsing: `src/auth/codex.rs`
 - OpenAI requests: `src/provider/openai.rs`
+- Gemini login + refresh: `src/auth/gemini.rs`
+- Gemini Code Assist provider: `src/provider/gemini.rs`
 
 ## Claude (Claude Max)
 
@@ -99,6 +103,28 @@ Otherwise it uses:
 - 401/403: re-run `jcode login --provider openai`.
 - Callback issues: make sure port 9876 is free and the browser can reach
   `http://localhost:9876/callback`.
+
+## Gemini OAuth
+
+### Login steps
+1. Run `jcode login --provider gemini` or `/login gemini` inside the TUI.
+2. jcode opens a browser to the Google OAuth flow used for Gemini Code Assist.
+3. If local callback binding is unavailable, jcode falls back to a manual paste flow using `https://codeassist.google.com/authcode`.
+4. Tokens are saved to `~/.jcode/gemini_oauth.json`.
+
+### Credential discovery order
+1. Native jcode Gemini tokens: `~/.jcode/gemini_oauth.json`
+2. Imported Gemini CLI OAuth tokens: `~/.gemini/oauth_creds.json`
+
+### Runtime notes
+- jcode uses native Google OAuth and talks to the Google Code Assist backend directly.
+- Expired tokens are refreshed automatically using the Google refresh token.
+- Some school / Workspace accounts may require `GOOGLE_CLOUD_PROJECT` or `GOOGLE_CLOUD_PROJECT_ID` for Code Assist entitlement checks.
+
+### Troubleshooting
+- If browser launch fails, set `NO_BROWSER=true` and use the pasted callback/code flow.
+- If entitlement or onboarding fails for a Workspace account, set `GOOGLE_CLOUD_PROJECT` and retry.
+- If login succeeds but requests fail later, re-run `jcode login --provider gemini` to refresh the stored session.
 
 ## Experimental CLI Providers
 

@@ -297,7 +297,7 @@ pub async fn init_provider(
         }
         ProviderChoice::Gemini => {
             disable_subscription_runtime_mode();
-            eprintln!("Using Gemini provider (native Code Assist integration in progress)");
+            eprintln!("Using Gemini provider (native Google Code Assist OAuth)");
             unlock_model_provider();
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(provider::gemini::GeminiProvider::new())
