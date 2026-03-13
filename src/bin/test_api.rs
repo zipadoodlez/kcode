@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use jcode::message::{ContentBlock, Message, ToolDefinition};
-use jcode::provider::claude::ClaudeProvider;
 use jcode::provider::Provider;
+use jcode::provider::claude::ClaudeProvider;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

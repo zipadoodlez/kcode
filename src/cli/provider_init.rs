@@ -6,9 +6,9 @@ use crate::auth;
 use crate::provider;
 use crate::provider::Provider;
 use crate::provider_catalog::{
+    LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile,
     apply_openai_compatible_profile_env, is_safe_env_file_name, is_safe_env_key_name,
-    resolve_login_selection, resolve_openai_compatible_profile, LoginProviderDescriptor,
-    LoginProviderTarget, OpenAiCompatibleProfile,
+    resolve_login_selection, resolve_openai_compatible_profile,
 };
 use crate::tool;
 
@@ -33,6 +33,13 @@ pub enum ProviderChoice {
     Chutes,
     #[value(alias = "cerebrascode", alias = "cerberascode")]
     Cerebras,
+    #[value(
+        alias = "bailian",
+        alias = "aliyun-bailian",
+        alias = "coding-plan",
+        alias = "alibaba-coding"
+    )]
+    AlibabaCodingPlan,
     #[value(alias = "compat", alias = "custom")]
     OpenaiCompatible,
     Cursor,
@@ -57,6 +64,7 @@ impl ProviderChoice {
             Self::Zai => "zai",
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
+            Self::AlibabaCodingPlan => "alibaba-coding-plan",
             Self::OpenaiCompatible => "openai-compatible",
             Self::Cursor => "cursor",
             Self::Copilot => "copilot",
@@ -75,6 +83,9 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
         ProviderChoice::Zai => Some(crate::provider_catalog::ZAI_PROFILE),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_PROFILE),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_PROFILE),
+        ProviderChoice::AlibabaCodingPlan => {
+            Some(crate::provider_catalog::ALIBABA_CODING_PLAN_PROFILE)
+        }
         ProviderChoice::OpenaiCompatible => Some(crate::provider_catalog::OPENAI_COMPAT_PROFILE),
         _ => None,
     }
@@ -94,6 +105,9 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         ProviderChoice::Zai => Some(crate::provider_catalog::ZAI_LOGIN_PROVIDER),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_LOGIN_PROVIDER),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_LOGIN_PROVIDER),
+        ProviderChoice::AlibabaCodingPlan => {
+            Some(crate::provider_catalog::ALIBABA_CODING_PLAN_LOGIN_PROVIDER)
+        }
         ProviderChoice::OpenaiCompatible => {
             Some(crate::provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER)
         }
@@ -141,12 +155,12 @@ pub fn prompt_login_provider_selection(
 }
 
 pub fn lock_model_provider(provider_key: &str) {
-    std::env::set_var("JCODE_ACTIVE_PROVIDER", provider_key);
-    std::env::set_var("JCODE_FORCE_PROVIDER", "1");
+    crate::env::set_var("JCODE_ACTIVE_PROVIDER", provider_key);
+    crate::env::set_var("JCODE_FORCE_PROVIDER", "1");
 }
 
 pub fn unlock_model_provider() {
-    std::env::remove_var("JCODE_FORCE_PROVIDER");
+    crate::env::remove_var("JCODE_FORCE_PROVIDER");
 }
 
 fn disable_subscription_runtime_mode() {
@@ -203,7 +217,7 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::Cursor => {
             disable_subscription_runtime_mode();
             unlock_model_provider();
-            std::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
+            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(provider::cursor::CursorCliProvider::new())
         }
         LoginProviderTarget::Copilot => {
@@ -213,13 +227,13 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::Gemini => {
             disable_subscription_runtime_mode();
             unlock_model_provider();
-            std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
+            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(provider::gemini::GeminiProvider::new())
         }
         LoginProviderTarget::Antigravity => {
             disable_subscription_runtime_mode();
             unlock_model_provider();
-            std::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
+            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(provider::antigravity::AntigravityCliProvider::new())
         }
         LoginProviderTarget::Google => {
@@ -249,7 +263,7 @@ pub fn save_named_api_key(env_file: &str, key_name: &str, key: &str) -> Result<(
     std::fs::write(&file_path, &content)?;
     crate::platform::set_permissions_owner_only(&file_path)?;
 
-    std::env::set_var(key_name, key);
+    crate::env::set_var(key_name, key);
     Ok(())
 }
 
@@ -279,7 +293,7 @@ pub async fn init_provider(
             crate::logging::warn(
                 "Using --provider claude-subprocess is deprecated. Prefer `--provider claude`.",
             );
-            std::env::set_var("JCODE_USE_CLAUDE_CLI", "1");
+            crate::env::set_var("JCODE_USE_CLAUDE_CLI", "1");
             eprintln!("Using deprecated Claude subprocess transport (provider locked)");
             lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference(false))
@@ -294,7 +308,7 @@ pub async fn init_provider(
             disable_subscription_runtime_mode();
             eprintln!("Using Cursor CLI provider (experimental)");
             unlock_model_provider();
-            std::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
+            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(provider::cursor::CursorCliProvider::new())
         }
         ProviderChoice::Copilot => {
@@ -307,7 +321,7 @@ pub async fn init_provider(
             disable_subscription_runtime_mode();
             eprintln!("Using Gemini provider (native Google Code Assist OAuth)");
             unlock_model_provider();
-            std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
+            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(provider::gemini::GeminiProvider::new())
         }
         ProviderChoice::Openrouter => {
@@ -332,6 +346,7 @@ pub async fn init_provider(
         | ProviderChoice::Zai
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
+        | ProviderChoice::AlibabaCodingPlan
         | ProviderChoice::OpenaiCompatible => {
             disable_subscription_runtime_mode();
             let profile = profile_for_choice(choice)
@@ -348,7 +363,7 @@ pub async fn init_provider(
             disable_subscription_runtime_mode();
             eprintln!("Using Antigravity CLI provider (experimental)");
             unlock_model_provider();
-            std::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
+            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(provider::antigravity::AntigravityCliProvider::new())
         }
         ProviderChoice::Google => {
@@ -377,7 +392,7 @@ pub async fn init_provider(
             if has_claude || has_openai || has_copilot || has_gemini || has_openrouter {
                 let multi = provider::MultiProvider::new();
                 eprintln!("Using {} (use /model to switch models)", multi.name());
-                std::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
+                crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
                 Arc::new(multi)
             } else {
                 let non_interactive = std::env::var("JCODE_NON_INTERACTIVE").is_ok();
@@ -465,6 +480,10 @@ mod tests {
         assert_eq!(ProviderChoice::Chutes.as_arg_value(), "chutes");
         assert_eq!(ProviderChoice::Cerebras.as_arg_value(), "cerebras");
         assert_eq!(
+            ProviderChoice::AlibabaCodingPlan.as_arg_value(),
+            "alibaba-coding-plan"
+        );
+        assert_eq!(
             ProviderChoice::OpenaiCompatible.as_arg_value(),
             "openai-compatible"
         );
@@ -499,6 +518,10 @@ mod tests {
             resolve_login_selection("11", &providers).map(|provider| provider.id),
             Some("cerebras")
         );
+        assert_eq!(
+            resolve_login_selection("12", &providers).map(|provider| provider.id),
+            Some("alibaba-coding-plan")
+        );
     }
 
     #[test]
@@ -510,18 +533,22 @@ mod tests {
         );
         assert_eq!(
             resolve_login_selection("10", &providers).map(|provider| provider.id),
-            Some("cursor")
+            Some("alibaba-coding-plan")
         );
         assert_eq!(
             resolve_login_selection("11", &providers).map(|provider| provider.id),
-            Some("copilot")
+            Some("cursor")
         );
         assert_eq!(
             resolve_login_selection("12", &providers).map(|provider| provider.id),
-            Some("gemini")
+            Some("copilot")
         );
         assert_eq!(
             resolve_login_selection("13", &providers).map(|provider| provider.id),
+            Some("gemini")
+        );
+        assert_eq!(
+            resolve_login_selection("14", &providers).map(|provider| provider.id),
             Some("antigravity")
         );
     }
@@ -531,9 +558,9 @@ mod tests {
         let _guard = lock_env();
         let _env_guard = crate::storage::lock_test_env();
         crate::subscription_catalog::clear_runtime_env();
-        std::env::remove_var("JCODE_OPENROUTER_MODEL");
-        std::env::remove_var("JCODE_ACTIVE_PROVIDER");
-        std::env::remove_var("JCODE_FORCE_PROVIDER");
+        crate::env::remove_var("JCODE_OPENROUTER_MODEL");
+        crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
+        crate::env::remove_var("JCODE_FORCE_PROVIDER");
 
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         let provider = runtime
@@ -556,9 +583,9 @@ mod tests {
         );
 
         crate::subscription_catalog::clear_runtime_env();
-        std::env::remove_var("JCODE_OPENROUTER_MODEL");
-        std::env::remove_var("JCODE_ACTIVE_PROVIDER");
-        std::env::remove_var("JCODE_FORCE_PROVIDER");
+        crate::env::remove_var("JCODE_OPENROUTER_MODEL");
+        crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
+        crate::env::remove_var("JCODE_FORCE_PROVIDER");
     }
 
     #[test]
@@ -575,13 +602,13 @@ mod tests {
             .map(|k| (k.to_string(), std::env::var(k).ok()))
             .collect();
 
-        std::env::set_var(
+        crate::env::set_var(
             "JCODE_OPENAI_COMPAT_API_BASE",
             "https://api.groq.com/openai/v1/",
         );
-        std::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "GROQ_API_KEY");
-        std::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "groq.env");
-        std::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "openai/gpt-oss-120b");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "GROQ_API_KEY");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "groq.env");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "openai/gpt-oss-120b");
 
         let resolved = resolve_openai_compatible_profile(provider_catalog::OPENAI_COMPAT_PROFILE);
         assert_eq!(resolved.api_base, "https://api.groq.com/openai/v1");
@@ -594,9 +621,9 @@ mod tests {
 
         for (key, value) in saved {
             if let Some(value) = value {
-                std::env::set_var(&key, value);
+                crate::env::set_var(&key, value);
             } else {
-                std::env::remove_var(&key);
+                crate::env::remove_var(&key);
             }
         }
     }
@@ -614,9 +641,9 @@ mod tests {
             .map(|k| (k.to_string(), std::env::var(k).ok()))
             .collect();
 
-        std::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://example.com/v1");
-        std::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "bad-key-name");
-        std::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "../bad.env");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://example.com/v1");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "bad-key-name");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "../bad.env");
 
         let resolved = resolve_openai_compatible_profile(provider_catalog::OPENAI_COMPAT_PROFILE);
         assert_eq!(
@@ -634,9 +661,9 @@ mod tests {
 
         for (key, value) in saved {
             if let Some(value) = value {
-                std::env::set_var(&key, value);
+                crate::env::set_var(&key, value);
             } else {
-                std::env::remove_var(&key);
+                crate::env::remove_var(&key);
             }
         }
     }

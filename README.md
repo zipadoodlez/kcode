@@ -130,6 +130,7 @@ You need at least one of:
 | **OpenAI** | Run `/login openai` inside jcode (opens browser for OAuth) |
 | **Google Gemini** | Run `/login gemini` inside jcode (native Google OAuth for Code Assist) |
 | **Azure OpenAI** | Run `jcode login --provider azure` (Microsoft Entra ID or API key) |
+| **Alibaba Cloud Coding Plan** | Run `jcode login --provider alibaba-coding-plan` (Alibaba Cloud Bailian API key) |
 | **OpenRouter** | Set `OPENROUTER_API_KEY=sk-or-v1-...` |
 | **Direct API Key** | Set `ANTHROPIC_API_KEY=sk-ant-...` |
 
@@ -170,6 +171,7 @@ jcode --provider copilot
 jcode --provider openai
 jcode --provider openrouter
 jcode --provider azure
+jcode --provider alibaba-coding-plan
 
 # Change working directory
 jcode -C /path/to/project

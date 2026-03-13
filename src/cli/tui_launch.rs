@@ -699,7 +699,9 @@ pub fn list_sessions() -> Result<()> {
                     }
                     Ok(false) => {
                         if !warned_no_terminal {
-                            eprintln!("No supported terminal emulator found. Run these commands manually:");
+                            eprintln!(
+                                "No supported terminal emulator found. Run these commands manually:"
+                            );
                             warned_no_terminal = true;
                         }
                         eprintln!("  jcode --resume {}", session_id);

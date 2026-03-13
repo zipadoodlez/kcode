@@ -164,7 +164,7 @@ pub fn print_session_resume_hint(session_id: &str) {
 }
 
 fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
-    use ratatui::{backend::CrosstermBackend, Terminal};
+    use ratatui::{Terminal, backend::CrosstermBackend};
 
     crossterm::terminal::enable_raw_mode()
         .map_err(|e| anyhow::anyhow!("failed to enable raw mode on resume: {}", e))?;
@@ -233,7 +233,7 @@ fn handle_termination_signal(sig: i32) -> ! {
 
 #[cfg(unix)]
 pub fn spawn_session_signal_watchers() {
-    use tokio::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{SignalKind, signal};
 
     fn spawn_one(sig: i32, kind: SignalKind) {
         tokio::spawn(async move {

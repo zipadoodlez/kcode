@@ -4,11 +4,11 @@ use std::process::Command as ProcessCommand;
 
 use crate::auth;
 use crate::provider_catalog::{
-    resolve_login_selection, resolve_openai_compatible_profile, LoginProviderDescriptor,
-    LoginProviderTarget, OpenAiCompatibleProfile,
+    LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile, resolve_login_selection,
+    resolve_openai_compatible_profile,
 };
 
-use super::provider_init::{login_provider_for_choice, save_named_api_key, ProviderChoice};
+use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
 
 pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Result<()> {
     if let Some(provider) = login_provider_for_choice(choice) {
@@ -133,9 +133,9 @@ fn login_jcode_flow() -> Result<()> {
     std::fs::write(&file_path, &content)?;
     crate::platform::set_permissions_owner_only(&file_path)?;
 
-    std::env::set_var(crate::subscription_catalog::JCODE_API_KEY_ENV, key);
+    crate::env::set_var(crate::subscription_catalog::JCODE_API_KEY_ENV, key);
     if !api_base.trim().is_empty() {
-        std::env::set_var(
+        crate::env::set_var(
             crate::subscription_catalog::JCODE_API_BASE_ENV,
             api_base.trim(),
         );
@@ -234,9 +234,8 @@ fn login_azure_flow() -> Result<()> {
         )
     })?;
 
-    let model = read_line_trimmed(
-        "Azure deployment/model name (required, for example `gpt-4.1-nano`): ",
-    )?;
+    let model =
+        read_line_trimmed("Azure deployment/model name (required, for example `gpt-4.1-nano`): ")?;
     if model.is_empty() {
         anyhow::bail!("No deployment/model name provided.");
     }
@@ -248,9 +247,7 @@ fn login_azure_flow() -> Result<()> {
     let use_entra = match auth_choice.trim() {
         "" | "1" => true,
         "2" => false,
-        other if other.eq_ignore_ascii_case("entra") || other.eq_ignore_ascii_case("oauth") => {
-            true
-        }
+        other if other.eq_ignore_ascii_case("entra") || other.eq_ignore_ascii_case("oauth") => true,
         other if other.eq_ignore_ascii_case("key") || other.eq_ignore_ascii_case("api-key") => {
             false
         }
@@ -269,7 +266,9 @@ fn login_azure_flow() -> Result<()> {
     if use_entra {
         eprintln!();
         eprintln!("Using Microsoft Entra ID via Azure's DefaultAzureCredential chain.");
-        eprintln!("That means jcode can authenticate via `az login`, managed identity, or Azure environment credentials.");
+        eprintln!(
+            "That means jcode can authenticate via `az login`, managed identity, or Azure environment credentials."
+        );
     } else {
         eprint!("Paste your Azure OpenAI API key: ");
         io::stdout().flush()?;
@@ -399,7 +398,7 @@ fn save_named_env_vars(env_file: &str, vars: &[(&str, String)]) -> Result<()> {
     crate::platform::set_permissions_owner_only(&file_path)?;
 
     for (key, value) in vars {
-        std::env::set_var(key, value);
+        crate::env::set_var(key, value);
     }
 
     Ok(())

@@ -51,7 +51,7 @@ fn parse_and_prepare_args() -> Result<Args> {
     }
 
     if args.trace {
-        std::env::set_var("JCODE_TRACE", "1");
+        crate::env::set_var("JCODE_TRACE", "1");
     }
 
     if let Some(ref socket) = args.socket {

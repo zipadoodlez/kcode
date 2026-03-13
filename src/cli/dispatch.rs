@@ -15,7 +15,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
 
     match args.command {
         Some(Command::Serve) => {
-            std::env::set_var("JCODE_NON_INTERACTIVE", "1");
+            crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
             let provider =
                 provider_init::init_provider(&args.provider, args.model.as_deref()).await?;
             let server = server::Server::new(provider);
@@ -194,12 +194,16 @@ async fn run_default_command(args: Args) -> Result<()> {
         eprintln!("   Using shared server with self-dev session mode");
         eprintln!("   (use --no-selfdev to disable auto-detection)\n");
 
-        std::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
+        crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
     }
 
     if args.standalone {
-        eprintln!("\x1b[33m⚠️  Warning: --standalone is deprecated and will be removed in a future version.\x1b[0m");
-        eprintln!("\x1b[33m   The default server/client mode now handles all use cases including self-dev.\x1b[0m\n");
+        eprintln!(
+            "\x1b[33m⚠️  Warning: --standalone is deprecated and will be removed in a future version.\x1b[0m"
+        );
+        eprintln!(
+            "\x1b[33m   The default server/client mode now handles all use cases including self-dev.\x1b[0m\n"
+        );
         let (provider, registry) =
             provider_init::init_provider_and_registry(&args.provider, args.model.as_deref())
                 .await?;
@@ -488,7 +492,7 @@ pub(crate) async fn spawn_server(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{encode_event, Request, ServerEvent};
+    use crate::protocol::{Request, ServerEvent, encode_event};
     use crate::transport::Listener;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -529,7 +533,7 @@ mod tests {
         let prev_socket = std::env::var_os("JCODE_SOCKET");
         let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
         crate::server::set_socket_path(socket_path.to_str().expect("utf8 socket path"));
-        std::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+        crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
         crate::server::write_reload_state(
             "reload-test",
             "hash",
@@ -556,10 +560,7 @@ mod tests {
                 other => panic!("expected ping request, got {other:?}"),
             };
             let pong = encode_event(&ServerEvent::Pong { id });
-            writer
-                .write_all(pong.as_bytes())
-                .await
-                .expect("write pong");
+            writer.write_all(pong.as_bytes()).await.expect("write pong");
         });
 
         assert!(wait_for_existing_reload_server("test").await);
@@ -568,14 +569,14 @@ mod tests {
         crate::server::clear_reload_marker();
         let _ = std::fs::remove_file(&socket_path);
         if let Some(prev_socket) = prev_socket {
-            std::env::set_var("JCODE_SOCKET", prev_socket);
+            crate::env::set_var("JCODE_SOCKET", prev_socket);
         } else {
-            std::env::remove_var("JCODE_SOCKET");
+            crate::env::remove_var("JCODE_SOCKET");
         }
         if let Some(prev_runtime) = prev_runtime {
-            std::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+            crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
         } else {
-            std::env::remove_var("JCODE_RUNTIME_DIR");
+            crate::env::remove_var("JCODE_RUNTIME_DIR");
         }
     }
 }

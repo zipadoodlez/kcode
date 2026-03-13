@@ -2,7 +2,7 @@
 name = "jcode"
 version = "0.6.1"
 description = "Possibly the greatest coding agent ever built — blazing-fast TUI, multi-model, swarm coordination, 30+ tools"
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "jcode"

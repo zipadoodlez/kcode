@@ -7,7 +7,7 @@ mod mock_provider;
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use futures::{stream, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, stream};
 use jcode::agent::Agent;
 use jcode::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use jcode::protocol::{Request, ServerEvent};
@@ -30,8 +30,8 @@ use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 static JCODE_HOME_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
@@ -62,9 +62,9 @@ impl TestEnvGuard {
         let prev_test_session = std::env::var_os("JCODE_TEST_SESSION");
         let prev_debug_control = std::env::var_os("JCODE_DEBUG_CONTROL");
 
-        std::env::set_var("JCODE_HOME", temp_home.path());
-        std::env::set_var("JCODE_TEST_SESSION", "1");
-        std::env::set_var("JCODE_DEBUG_CONTROL", "1");
+        jcode::env::set_var("JCODE_HOME", temp_home.path());
+        jcode::env::set_var("JCODE_TEST_SESSION", "1");
+        jcode::env::set_var("JCODE_DEBUG_CONTROL", "1");
 
         Ok(Self {
             _lock: lock,
@@ -79,21 +79,21 @@ impl TestEnvGuard {
 impl Drop for TestEnvGuard {
     fn drop(&mut self) {
         if let Some(prev_home) = &self.prev_home {
-            std::env::set_var("JCODE_HOME", prev_home);
+            jcode::env::set_var("JCODE_HOME", prev_home);
         } else {
-            std::env::remove_var("JCODE_HOME");
+            jcode::env::remove_var("JCODE_HOME");
         }
 
         if let Some(prev_test_session) = &self.prev_test_session {
-            std::env::set_var("JCODE_TEST_SESSION", prev_test_session);
+            jcode::env::set_var("JCODE_TEST_SESSION", prev_test_session);
         } else {
-            std::env::remove_var("JCODE_TEST_SESSION");
+            jcode::env::remove_var("JCODE_TEST_SESSION");
         }
 
         if let Some(prev_debug_control) = &self.prev_debug_control {
-            std::env::set_var("JCODE_DEBUG_CONTROL", prev_debug_control);
+            jcode::env::set_var("JCODE_DEBUG_CONTROL", prev_debug_control);
         } else {
-            std::env::remove_var("JCODE_DEBUG_CONTROL");
+            jcode::env::remove_var("JCODE_DEBUG_CONTROL");
         }
     }
 }
@@ -110,7 +110,7 @@ struct EnvVarGuard {
 impl EnvVarGuard {
     fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         let prev = std::env::var_os(name);
-        std::env::set_var(name, value);
+        jcode::env::set_var(name, value);
         Self { name, prev }
     }
 }
@@ -118,9 +118,9 @@ impl EnvVarGuard {
 impl Drop for EnvVarGuard {
     fn drop(&mut self) {
         if let Some(prev) = &self.prev {
-            std::env::set_var(self.name, prev);
+            jcode::env::set_var(self.name, prev);
         } else {
-            std::env::remove_var(self.name);
+            jcode::env::remove_var(self.name);
         }
     }
 }
@@ -1465,28 +1465,34 @@ async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_message_and_resume(
-) -> Result<()> {
+async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_message_and_resume()
+-> Result<()> {
     let _env = setup_test_env()?;
     let unix = run_unix_transport_scenario().await?;
     let websocket = run_websocket_transport_scenario().await?;
 
-    assert!(unix
-        .subscribe_events
-        .iter()
-        .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1)));
-    assert!(unix
-        .subscribe_events
-        .iter()
-        .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1)));
-    assert!(websocket
-        .subscribe_events
-        .iter()
-        .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1)));
-    assert!(websocket
-        .subscribe_events
-        .iter()
-        .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1)));
+    assert!(
+        unix.subscribe_events
+            .iter()
+            .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1))
+    );
+    assert!(
+        unix.subscribe_events
+            .iter()
+            .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1))
+    );
+    assert!(
+        websocket
+            .subscribe_events
+            .iter()
+            .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1))
+    );
+    assert!(
+        websocket
+            .subscribe_events
+            .iter()
+            .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1))
+    );
 
     let unix_history = unix
         .history_events
@@ -1616,10 +1622,12 @@ async fn test_stream_error() -> Result<()> {
 
     let result = agent.run_once_capture("Test").await;
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Something went wrong"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("Something went wrong")
+    );
 
     Ok(())
 }
@@ -2925,9 +2933,11 @@ fn test_safety_permission_flow() {
     // Verify our request was added
     let pending = safety.pending_requests();
     assert_eq!(pending.len(), baseline + 1);
-    assert!(pending
-        .iter()
-        .any(|p| p.action == "create_pull_request" && p.id == "test_perm_flow_001"));
+    assert!(
+        pending
+            .iter()
+            .any(|p| p.action == "create_pull_request" && p.id == "test_perm_flow_001")
+    );
 
     // Record an approval decision
     let _ = safety.record_decision(
@@ -3318,7 +3328,7 @@ async fn test_ambient_schedule_tool() -> Result<()> {
 #[test]
 fn test_ambient_system_prompt_builder() {
     use jcode::ambient::{
-        build_ambient_system_prompt, AmbientState, MemoryGraphHealth, ResourceBudget,
+        AmbientState, MemoryGraphHealth, ResourceBudget, build_ambient_system_prompt,
     };
 
     let state = AmbientState::default();
