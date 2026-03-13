@@ -166,9 +166,7 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::Jcode => {
             crate::subscription_catalog::apply_runtime_env();
             lock_model_provider("openrouter");
-            let multi = provider::MultiProvider::new();
-            let _ = multi.set_model(crate::subscription_catalog::default_model().id);
-            Arc::new(multi)
+            Arc::new(provider::jcode::JcodeProvider::new())
         }
         LoginProviderTarget::Claude => {
             disable_subscription_runtime_mode();
@@ -206,7 +204,7 @@ pub async fn login_and_bootstrap_provider(
             disable_subscription_runtime_mode();
             unlock_model_provider();
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
-            Arc::new(provider::gemini::GeminiCliProvider::new())
+            Arc::new(provider::gemini::GeminiProvider::new())
         }
         LoginProviderTarget::Antigravity => {
             disable_subscription_runtime_mode();
@@ -260,9 +258,7 @@ pub async fn init_provider(
             eprintln!("Using Jcode subscription provider (provider locked)");
             crate::subscription_catalog::apply_runtime_env();
             lock_model_provider("openrouter");
-            let multi = provider::MultiProvider::new();
-            let _ = multi.set_model(crate::subscription_catalog::default_model().id);
-            Arc::new(multi)
+            Arc::new(provider::jcode::JcodeProvider::new())
         }
         ProviderChoice::Claude => {
             disable_subscription_runtime_mode();
@@ -304,7 +300,7 @@ pub async fn init_provider(
             eprintln!("Using Gemini provider (native Code Assist integration in progress)");
             unlock_model_provider();
             std::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
-            Arc::new(provider::gemini::GeminiCliProvider::new())
+            Arc::new(provider::gemini::GeminiProvider::new())
         }
         ProviderChoice::Openrouter => {
             disable_subscription_runtime_mode();

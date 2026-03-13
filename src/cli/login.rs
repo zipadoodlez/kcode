@@ -84,7 +84,7 @@ pub async fn run_login_provider(
         LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile)?,
         LoginProviderTarget::Cursor => login_cursor_flow()?,
         LoginProviderTarget::Copilot => login_copilot_flow()?,
-        LoginProviderTarget::Gemini => login_gemini_flow()?,
+        LoginProviderTarget::Gemini => login_gemini_flow().await?,
         LoginProviderTarget::Antigravity => login_antigravity_flow()?,
         LoginProviderTarget::Google => login_google_flow().await?,
     }
@@ -390,7 +390,7 @@ fn login_antigravity_flow() -> Result<()> {
     Ok(())
 }
 
-fn login_gemini_flow() -> Result<()> {
+async fn login_gemini_flow() -> Result<()> {
     eprintln!("Starting native Gemini login...");
     eprintln!(
         "If your student/education plan is attached to your Google account, use that account in the browser flow."
@@ -403,8 +403,7 @@ fn login_gemini_flow() -> Result<()> {
     );
     eprintln!();
 
-    let runtime = tokio::runtime::Runtime::new().context("Failed to create runtime for Gemini login")?;
-    let tokens = runtime.block_on(crate::auth::gemini::login())?;
+    let tokens = crate::auth::gemini::login().await?;
 
     eprintln!("Successfully logged in to Gemini!");
     eprintln!(
