@@ -1,4 +1,6 @@
 use anyhow::{Context, Result};
+
+const MAX_INTERACTIVE_SWARM_REPLAY_PANES: usize = 16;
 use std::io::{self, Write};
 use std::process::Command as ProcessCommand;
 use std::sync::Arc;
@@ -299,7 +301,7 @@ pub async fn run_replay_command(
             return Ok(());
         }
 
-        let replayable_panes: Vec<_> = swarm_sessions
+        let mut replayable_panes: Vec<_> = swarm_sessions
             .into_iter()
             .filter(|pane| !pane.timeline.is_empty())
             .map(|pane| replay::PaneReplayInput {
@@ -311,6 +313,16 @@ pub async fn run_replay_command(
         if replayable_panes.is_empty() {
             eprintln!("Swarm has no messages to replay.");
             return Ok(());
+        }
+
+        let total_panes = replayable_panes.len();
+        if replayable_panes.len() > MAX_INTERACTIVE_SWARM_REPLAY_PANES {
+            replayable_panes.truncate(MAX_INTERACTIVE_SWARM_REPLAY_PANES);
+            eprintln!(
+                "  Limiting interactive swarm replay to {} panes ({} discovered). Use --export/--video for the full set.",
+                replayable_panes.len(),
+                total_panes,
+            );
         }
 
         let pane_count = replayable_panes.len();
