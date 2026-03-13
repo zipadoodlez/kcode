@@ -68,7 +68,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Permissions) => {
             tui::permissions::run_permissions()?;
         }
-        Some(Command::SetupHotkey { listen_macos_hotkey }) => {
+        Some(Command::SetupHotkey {
+            listen_macos_hotkey,
+        }) => {
             setup_hints::run_setup_hotkey(listen_macos_hotkey)?;
         }
         Some(Command::Browser { action }) => {
@@ -214,25 +216,8 @@ async fn run_default_command(args: Args) -> Result<()> {
     let mut server_running = server_is_running().await;
     startup_profile::mark("server_check");
 
-    if !server_running && std::env::var("JCODE_RESUMING").is_ok() {
-        if let Some(state) = server::recent_reload_state(std::time::Duration::from_secs(30)) {
-            match state.phase {
-                server::ReloadPhase::Starting => {
-                    crate::logging::info("Reload state=starting while resuming client; waiting for existing server to return");
-                    server_running =
-                        wait_for_reloading_server(std::time::Duration::from_secs(20)).await;
-                }
-                server::ReloadPhase::Failed => {
-                    crate::logging::warn(&format!(
-                        "Reload state=failed while resuming client: {}",
-                        state
-                            .detail
-                            .unwrap_or_else(|| "unknown reload failure".to_string())
-                    ));
-                }
-                server::ReloadPhase::SocketReady => {}
-            }
-        }
+    if !server_running {
+        server_running = wait_for_existing_reload_server("client startup").await;
     }
 
     if server_running && (args.provider != ProviderChoice::Auto || args.model.is_some()) {
@@ -265,6 +250,32 @@ async fn run_default_command(args: Args) -> Result<()> {
 
 pub(crate) async fn server_is_running() -> bool {
     server_is_running_at(&server::socket_path()).await
+}
+
+async fn wait_for_existing_reload_server(context: &str) -> bool {
+    if let Some(state) = server::recent_reload_state(std::time::Duration::from_secs(30)) {
+        match state.phase {
+            server::ReloadPhase::Starting => {
+                crate::logging::info(&format!(
+                    "Reload state=starting during {}; waiting for existing server to return",
+                    context
+                ));
+                return wait_for_reloading_server(std::time::Duration::from_secs(20)).await;
+            }
+            server::ReloadPhase::Failed => {
+                crate::logging::warn(&format!(
+                    "Reload state=failed during {}: {}",
+                    context,
+                    state
+                        .detail
+                        .unwrap_or_else(|| "unknown reload failure".to_string())
+                ));
+            }
+            server::ReloadPhase::SocketReady => {}
+        }
+    }
+
+    false
 }
 
 pub(crate) async fn wait_for_reloading_server(timeout: std::time::Duration) -> bool {
@@ -400,10 +411,25 @@ pub(crate) async fn spawn_server(
     let socket_path = server::socket_path();
     let debug_socket_path = server::debug_socket_path();
 
+    if server_is_running_at(&socket_path).await {
+        startup_profile::mark("server_ready");
+        return Ok(());
+    }
+
+    if wait_for_existing_reload_server("server spawn").await {
+        startup_profile::mark("server_ready");
+        return Ok(());
+    }
+
     #[cfg(unix)]
     let _spawn_lock = acquire_spawn_lock_or_wait(&socket_path).await?;
 
     if server_is_running_at(&socket_path).await {
+        startup_profile::mark("server_ready");
+        return Ok(());
+    }
+
+    if wait_for_existing_reload_server("server spawn after lock").await {
         startup_profile::mark("server_ready");
         return Ok(());
     }
@@ -457,6 +483,7 @@ pub(crate) async fn spawn_server(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::Listener;
 
     #[cfg(unix)]
     #[test]
@@ -485,5 +512,45 @@ mod tests {
             !lock_path.exists(),
             "lock file should be cleaned up when the guard drops"
         );
+    }
+
+    #[tokio::test]
+    async fn wait_for_existing_reload_server_uses_reloading_server_instead_of_spawning() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let socket_path = temp.path().join("jcode.sock");
+        let prev_socket = std::env::var_os("JCODE_SOCKET");
+        let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+        crate::server::set_socket_path(socket_path.to_str().expect("utf8 socket path"));
+        std::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+        crate::server::write_reload_state(
+            "reload-test",
+            "hash",
+            crate::server::ReloadPhase::Starting,
+            None,
+        );
+
+        let bind_path = socket_path.clone();
+        let bind_task = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let _listener = Listener::bind(&bind_path).expect("bind replacement listener");
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        });
+
+        assert!(wait_for_existing_reload_server("test").await);
+
+        bind_task.await.expect("bind task");
+        crate::server::clear_reload_marker();
+        let _ = std::fs::remove_file(&socket_path);
+        if let Some(prev_socket) = prev_socket {
+            std::env::set_var("JCODE_SOCKET", prev_socket);
+        } else {
+            std::env::remove_var("JCODE_SOCKET");
+        }
+        if let Some(prev_runtime) = prev_runtime {
+            std::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+        } else {
+            std::env::remove_var("JCODE_RUNTIME_DIR");
+        }
     }
 }
