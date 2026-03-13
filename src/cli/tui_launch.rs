@@ -77,6 +77,14 @@ pub async fn run_tui(
     Ok(())
 }
 
+fn resumed_window_title(session_id: &str) -> String {
+    let session_name = id::extract_session_name(session_id)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| session_id.to_string());
+    let icon = id::session_icon(&session_name);
+    format!("{} jcode {}", icon, session_name)
+}
+
 pub async fn run_client() -> Result<()> {
     let mut client = server::Client::connect().await?;
 
@@ -375,7 +383,8 @@ pub fn spawn_resume_in_new_terminal(
 
         match term.as_str() {
             "kitty" => {
-                cmd.args(["--title", "jcode resume", "-e"])
+                let title = resumed_window_title(session_id);
+                cmd.args(["--title", &title, "-e"])
                     .arg(exe)
                     .arg("--resume")
                     .arg(session_id);
@@ -529,17 +538,17 @@ pub fn spawn_resume_in_new_terminal(
     if let Some(ref wezterm_bin) = wezterm_gui {
         let mut cmd = Command::new(wezterm_bin);
         cmd.args([
-                "start",
-                "--always-new-process",
-                "--",
-                &exe.to_string_lossy(),
-                "--resume",
-                session_id,
-            ])
-            .current_dir(cwd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            "start",
+            "--always-new-process",
+            "--",
+            &exe.to_string_lossy(),
+            "--resume",
+            session_id,
+        ])
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
         let status = crate::platform::spawn_detached(&mut cmd);
         if status.is_ok() {
             return Ok(true);
@@ -558,16 +567,16 @@ pub fn spawn_resume_in_new_terminal(
     if wt_available {
         let mut cmd = Command::new("wt.exe");
         cmd.args([
-                "-p",
-                "Command Prompt",
-                &exe.to_string_lossy(),
-                "--resume",
-                session_id,
-            ])
-            .current_dir(cwd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            "-p",
+            "Command Prompt",
+            &exe.to_string_lossy(),
+            "--resume",
+            session_id,
+        ])
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
         let status = crate::platform::spawn_detached(&mut cmd);
         if status.is_ok() {
             return Ok(true);
