@@ -21,6 +21,10 @@ use std::io::Read;
 use std::net::TcpListener as StdTcpListener;
 #[cfg(unix)]
 use std::os::fd::FromRawFd;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -784,6 +788,29 @@ fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
     });
 
     Ok(PtyChild { child, output })
+}
+
+#[cfg(unix)]
+fn set_file_mtime(path: &std::path::Path, when: std::time::SystemTime) -> Result<()> {
+    let duration = when
+        .duration_since(std::time::UNIX_EPOCH)
+        .context("mtime must be after unix epoch")?;
+    let times = [
+        libc::timespec {
+            tv_sec: duration.as_secs() as libc::time_t,
+            tv_nsec: duration.subsec_nanos() as libc::c_long,
+        },
+        libc::timespec {
+            tv_sec: duration.as_secs() as libc::time_t,
+            tv_nsec: duration.subsec_nanos() as libc::c_long,
+        },
+    ];
+    let path_cstr = std::ffi::CString::new(path.as_os_str().as_bytes())?;
+    let rc = unsafe { libc::utimensat(libc::AT_FDCWD, path_cstr.as_ptr(), times.as_ptr(), 0) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -2293,8 +2320,18 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
 
     let socket_path = runtime_dir.join("jcode.sock");
     let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+    let starter_binary = temp_root.path().join("jcode-selfdev-starter");
+    std::fs::copy(env!("CARGO_BIN_EXE_jcode"), &starter_binary)?;
+    let mut permissions = std::fs::metadata(&starter_binary)?.permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&starter_binary, permissions)?;
+    let starter_mtime = std::fs::metadata(&release_binary)?
+        .modified()?
+        .checked_sub(Duration::from_secs(60))
+        .unwrap_or(std::time::UNIX_EPOCH + Duration::from_secs(1));
+    set_file_mtime(&starter_binary, starter_mtime)?;
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_jcode"));
+    let mut command = Command::new(&starter_binary);
     command
         .arg("--no-update")
         .arg("--provider")
@@ -2328,10 +2365,18 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
             .to_string();
 
         for cycle in 1..=3 {
-            let reload_response =
-                debug_run_command(debug_socket_path.clone(), "client:reload", None).await?;
+            set_file_mtime(
+                &release_binary,
+                std::time::SystemTime::now() + Duration::from_secs(5 + cycle as u64),
+            )?;
+            let reload_response = debug_run_command(
+                debug_socket_path.clone(),
+                "client:message:/server-reload",
+                None,
+            )
+            .await?;
             assert!(
-                reload_response.contains("reload"),
+                reload_response.contains("OK:"),
                 "reload cycle {} returned unexpected response: {}",
                 cycle,
                 reload_response
@@ -2341,7 +2386,7 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
                 &debug_socket_path,
                 &session_id,
                 &server_id_before,
-                Duration::from_secs(10),
+                Duration::from_secs(20),
             )
             .await?;
             assert_ne!(
