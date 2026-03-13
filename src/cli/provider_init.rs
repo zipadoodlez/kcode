@@ -350,9 +350,12 @@ pub async fn init_provider(
             );
             let has_claude = has_claude.unwrap_or(false);
             let has_openai = has_openai.unwrap_or(false);
+            let auth_status = auth::AuthStatus::check();
+            let has_copilot = auth_status.copilot_has_api_token;
+            let has_gemini = auth_status.gemini == auth::AuthState::Available;
             let has_openrouter = provider::openrouter::OpenRouterProvider::has_credentials();
 
-            if has_claude || has_openai || has_openrouter {
+            if has_claude || has_openai || has_copilot || has_gemini || has_openrouter {
                 let multi = provider::MultiProvider::new();
                 eprintln!("Using {} (use /model to switch models)", multi.name());
                 std::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
