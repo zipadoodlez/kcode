@@ -17,7 +17,10 @@ use jcode::session::{Session, StoredCompactionState};
 use jcode::tool::Registry;
 use mock_provider::MockProvider;
 use std::ffi::OsString;
+use std::io::Read;
 use std::net::TcpListener as StdTcpListener;
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -95,6 +98,29 @@ impl Drop for TestEnvGuard {
 
 fn setup_test_env() -> Result<TestEnvGuard> {
     TestEnvGuard::new()
+}
+
+struct EnvVarGuard {
+    name: &'static str,
+    prev: Option<OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let prev = std::env::var_os(name);
+        std::env::set_var(name, value);
+        Self { name, prev }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(prev) = &self.prev {
+            std::env::set_var(self.name, prev);
+        } else {
+            std::env::remove_var(self.name);
+        }
+    }
 }
 
 fn reserve_tcp_port() -> Result<u16> {
@@ -694,6 +720,264 @@ async fn wait_for_server_client(socket_path: &std::path::Path) -> Result<server:
 fn kill_child(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[cfg(unix)]
+struct PtyChild {
+    child: Child,
+    output: Arc<Mutex<Vec<u8>>>,
+}
+
+#[cfg(unix)]
+impl PtyChild {
+    fn output_text(&self) -> String {
+        String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned()
+    }
+}
+
+#[cfg(unix)]
+fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
+    let mut master_fd = -1;
+    let mut slave_fd = -1;
+    let mut winsize = libc::winsize {
+        ws_row: 40,
+        ws_col: 120,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+
+    let rc = unsafe {
+        libc::openpty(
+            &mut master_fd,
+            &mut slave_fd,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            &mut winsize,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+
+    let master = unsafe { std::fs::File::from_raw_fd(master_fd) };
+    let slave = unsafe { std::fs::File::from_raw_fd(slave_fd) };
+
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.stdin(Stdio::from(slave.try_clone()?));
+    cmd.stdout(Stdio::from(slave.try_clone()?));
+    cmd.stderr(Stdio::from(slave));
+
+    let child = cmd.spawn()?;
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let output_clone = Arc::clone(&output);
+    std::thread::spawn(move || {
+        let mut master = master;
+        let mut buf = [0u8; 4096];
+        loop {
+            match master.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => output_clone.lock().unwrap().extend_from_slice(&buf[..n]),
+                Err(_) => break,
+            }
+        }
+    });
+
+    Ok(PtyChild { child, output })
+}
+
+#[cfg(unix)]
+async fn wait_for_connected_client_session(
+    debug_socket_path: &std::path::Path,
+    timeout: Duration,
+) -> Result<String> {
+    let deadline = Instant::now() + timeout;
+    let mut last_observation = "clients:map never returned a connected client".to_string();
+
+    while Instant::now() < deadline {
+        match tokio::time::timeout(
+            Duration::from_millis(750),
+            debug_run_command(debug_socket_path.to_path_buf(), "clients:map", None),
+        )
+        .await
+        {
+            Ok(Ok(output)) => {
+                let value: serde_json::Value = serde_json::from_str(&output)?;
+                if let Some(session_id) = value
+                    .get("clients")
+                    .and_then(|v| v.as_array())
+                    .and_then(|clients| clients.first())
+                    .and_then(|client| client.get("session_id"))
+                    .and_then(|v| v.as_str())
+                {
+                    return Ok(session_id.to_string());
+                }
+                last_observation = output;
+            }
+            Ok(Err(err)) => {
+                last_observation = err.to_string();
+            }
+            Err(_) => {
+                last_observation = "clients:map timed out".to_string();
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    anyhow::bail!(
+        "Timed out waiting for self-dev client to connect: {}",
+        last_observation
+    )
+}
+
+#[cfg(unix)]
+async fn wait_for_selfdev_reload_cycle(
+    debug_socket_path: &std::path::Path,
+    expected_session_id: &str,
+    previous_server_id: &str,
+    timeout: Duration,
+) -> Result<String> {
+    let deadline = Instant::now() + timeout;
+    let mut last_observation = "no server/client observation yet".to_string();
+
+    while Instant::now() < deadline {
+        let marker_active = jcode::server::reload_marker_active(Duration::from_secs(30));
+        let server_info = match tokio::time::timeout(
+            Duration::from_millis(750),
+            debug_run_command(debug_socket_path.to_path_buf(), "server:info", None),
+        )
+        .await
+        {
+            Ok(Ok(output)) => output,
+            Ok(Err(err)) => {
+                last_observation =
+                    format!("server:info failed while marker_active={marker_active}: {err}");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            }
+            Err(_) => {
+                last_observation =
+                    format!("server:info timed out while marker_active={marker_active}");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            }
+        };
+
+        let server_info_json: serde_json::Value = serde_json::from_str(&server_info)?;
+        let Some(server_id) = server_info_json.get("id").and_then(|v| v.as_str()) else {
+            last_observation = format!("server:info missing id: {}", server_info);
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            continue;
+        };
+
+        if server_id == previous_server_id {
+            last_observation = format!(
+                "server id still {} while marker_active={marker_active}",
+                previous_server_id
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            continue;
+        }
+
+        let clients_map = match tokio::time::timeout(
+            Duration::from_millis(750),
+            debug_run_command(debug_socket_path.to_path_buf(), "clients:map", None),
+        )
+        .await
+        {
+            Ok(Ok(output)) => output,
+            Ok(Err(err)) => {
+                last_observation = format!(
+                    "clients:map failed on replacement server {}: {}",
+                    server_id, err
+                );
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            }
+            Err(_) => {
+                last_observation =
+                    format!("clients:map timed out on replacement server {}", server_id);
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                continue;
+            }
+        };
+
+        let clients_json: serde_json::Value = serde_json::from_str(&clients_map)?;
+        let session_connected = clients_json
+            .get("clients")
+            .and_then(|v| v.as_array())
+            .map(|clients| {
+                clients.iter().any(|client| {
+                    client.get("session_id").and_then(|v| v.as_str()) == Some(expected_session_id)
+                })
+            })
+            .unwrap_or(false);
+
+        if !session_connected {
+            last_observation = format!(
+                "replacement server {} did not report session {} in clients:map: {}",
+                server_id, expected_session_id, clients_map
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            continue;
+        }
+
+        match tokio::time::timeout(
+            Duration::from_secs(1),
+            debug_run_command(debug_socket_path.to_path_buf(), "client:state", None),
+        )
+        .await
+        {
+            Ok(Ok(state_json)) => {
+                let _: serde_json::Value = serde_json::from_str(&state_json)?;
+                return Ok(server_id.to_string());
+            }
+            Ok(Err(err)) => {
+                last_observation = format!(
+                    "client:state failed after reconnect to server {}: {}",
+                    server_id, err
+                );
+            }
+            Err(_) => {
+                last_observation = format!(
+                    "client:state timed out after reconnect to server {}",
+                    server_id
+                );
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    anyhow::bail!(
+        "Self-dev reload did not reconnect within {}s: {}",
+        timeout.as_secs_f32(),
+        last_observation
+    )
+}
+
+#[cfg(unix)]
+fn latest_log_excerpt(home_dir: &std::path::Path) -> Option<String> {
+    let logs_dir = home_dir.join("logs");
+    let mut entries = std::fs::read_dir(logs_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    entries.sort();
+    let latest = entries.pop()?;
+    let content = std::fs::read_to_string(latest).ok()?;
+    let tail = content
+        .lines()
+        .rev()
+        .take(120)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(tail)
 }
 
 #[tokio::test]
@@ -1971,6 +2255,122 @@ async fn binary_integration_reload_handoff() -> Result<()> {
         }
         eprintln!("reload e2e test error: {error:#}");
     }
+    test_result
+}
+
+/// Test repeated self-dev reload handoff against a real TUI client running in a PTY.
+///
+/// Requires a built release binary at target/release/jcode because both the
+/// server and self-dev reload paths exec into the repo's reload candidate.
+#[cfg(unix)]
+#[tokio::test]
+#[ignore]
+async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
+    let _env = setup_test_env()?;
+
+    let release_binary =
+        jcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+    if !release_binary.exists() {
+        anyhow::bail!(
+            "release binary missing at {} (run `cargo build --release` first)",
+            release_binary.display()
+        );
+    }
+
+    let temp_root = tempfile::Builder::new()
+        .prefix("jcode-selfdev-reload-e2e-")
+        .tempdir()?;
+    let runtime_dir = temp_root.path().join("runtime");
+    let home_dir = temp_root.path().join("home");
+    let install_dir = temp_root.path().join("install");
+    std::fs::create_dir_all(&runtime_dir)?;
+    std::fs::create_dir_all(&home_dir)?;
+    std::fs::create_dir_all(&install_dir)?;
+
+    let _home_guard = EnvVarGuard::set("JCODE_HOME", &home_dir);
+    let _runtime_guard = EnvVarGuard::set("JCODE_RUNTIME_DIR", &runtime_dir);
+    let _install_guard = EnvVarGuard::set("JCODE_INSTALL_DIR", &install_dir);
+
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_jcode"));
+    command
+        .arg("--no-update")
+        .arg("--provider")
+        .arg("antigravity")
+        .arg("self-dev")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env_remove("JCODE_TEST_SESSION")
+        .env("JCODE_HOME", &home_dir)
+        .env("JCODE_RUNTIME_DIR", &runtime_dir)
+        .env("JCODE_INSTALL_DIR", &install_dir);
+
+    let mut child = spawn_pty_child(command)?;
+
+    let test_result = async {
+        wait_for_socket(&socket_path).await?;
+        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        let session_id =
+            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+
+        let state_before =
+            debug_run_command(debug_socket_path.clone(), "client:state", None).await?;
+        let _: serde_json::Value = serde_json::from_str(&state_before)?;
+
+        let server_info_before =
+            debug_run_command(debug_socket_path.clone(), "server:info", None).await?;
+        let server_info_before_json: serde_json::Value = serde_json::from_str(&server_info_before)?;
+        let mut server_id_before = server_info_before_json
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("missing initial server id"))?
+            .to_string();
+
+        for cycle in 1..=3 {
+            let reload_response =
+                debug_run_command(debug_socket_path.clone(), "client:reload", None).await?;
+            assert!(
+                reload_response.contains("reload"),
+                "reload cycle {} returned unexpected response: {}",
+                cycle,
+                reload_response
+            );
+
+            let server_id_after = wait_for_selfdev_reload_cycle(
+                &debug_socket_path,
+                &session_id,
+                &server_id_before,
+                Duration::from_secs(10),
+            )
+            .await?;
+            assert_ne!(
+                server_id_after, server_id_before,
+                "self-dev reload cycle {} should replace the server process",
+                cycle
+            );
+            server_id_before = server_id_after;
+        }
+
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+
+    let _ = tokio::time::timeout(
+        Duration::from_secs(2),
+        debug_run_command(debug_socket_path.clone(), "client:quit", None),
+    )
+    .await;
+    kill_child(&mut child.child);
+
+    if let Err(ref error) = test_result {
+        eprintln!("self-dev reload e2e test error: {error:#}");
+        eprintln!("self-dev client PTY output:\n{}", child.output_text());
+        if let Some(log_excerpt) = latest_log_excerpt(&home_dir) {
+            eprintln!("self-dev reload logs (tail):\n{}", log_excerpt);
+        }
+    }
+
     test_result
 }
 
