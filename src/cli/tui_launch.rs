@@ -432,7 +432,7 @@ pub fn spawn_resume_in_new_terminal(
             _ => continue,
         }
 
-        if cmd.spawn().is_ok() {
+        if crate::platform::spawn_detached(&mut cmd).is_ok() {
             return Ok(true);
         }
     }
@@ -509,16 +509,16 @@ pub fn spawn_resume_in_new_terminal(
         .unwrap_or(false);
 
     if alacritty_available {
-        let status = Command::new("alacritty")
-            .args(["-e"])
+        let mut cmd = Command::new("alacritty");
+        cmd.args(["-e"])
             .arg(exe)
             .arg("--resume")
             .arg(session_id)
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+            .stderr(Stdio::null());
+        let status = crate::platform::spawn_detached(&mut cmd);
         if status.is_ok() {
             return Ok(true);
         }
@@ -527,8 +527,8 @@ pub fn spawn_resume_in_new_terminal(
     let wezterm_gui = find_wezterm_gui_binary();
 
     if let Some(ref wezterm_bin) = wezterm_gui {
-        let status = Command::new(wezterm_bin)
-            .args([
+        let mut cmd = Command::new(wezterm_bin);
+        cmd.args([
                 "start",
                 "--always-new-process",
                 "--",
@@ -539,8 +539,8 @@ pub fn spawn_resume_in_new_terminal(
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+            .stderr(Stdio::null());
+        let status = crate::platform::spawn_detached(&mut cmd);
         if status.is_ok() {
             return Ok(true);
         }
@@ -556,8 +556,8 @@ pub fn spawn_resume_in_new_terminal(
             .unwrap_or(false);
 
     if wt_available {
-        let status = Command::new("wt.exe")
-            .args([
+        let mut cmd = Command::new("wt.exe");
+        cmd.args([
                 "-p",
                 "Command Prompt",
                 &exe.to_string_lossy(),
@@ -567,8 +567,8 @@ pub fn spawn_resume_in_new_terminal(
             .current_dir(cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+            .stderr(Stdio::null());
+        let status = crate::platform::spawn_detached(&mut cmd);
         if status.is_ok() {
             return Ok(true);
         }
