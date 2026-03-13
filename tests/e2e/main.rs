@@ -761,7 +761,9 @@ async fn resume_session_restores_persisted_compaction_for_provider_context() -> 
         let resume_id = client.resume_session(&session.id).await?;
         let _ = collect_until_history_unix(&mut client, resume_id).await?;
 
-        let message_id = client.send_message("continue from the restored session").await?;
+        let message_id = client
+            .send_message("continue from the restored session")
+            .await?;
         let mut seen_events = Vec::new();
         let deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < deadline {
@@ -781,7 +783,11 @@ async fn resume_session_restores_persisted_compaction_for_provider_context() -> 
         }
 
         let captured = captured_messages.lock().unwrap();
-        assert_eq!(captured.len(), 1, "expected exactly one provider completion call");
+        assert_eq!(
+            captured.len(),
+            1,
+            "expected exactly one provider completion call"
+        );
         let provider_messages = &captured[0];
         assert!(
             provider_messages.len() >= 3,
