@@ -167,11 +167,7 @@ pub async fn login_and_bootstrap_provider(
     eprintln!();
 
     let runtime: Arc<dyn provider::Provider> = match provider.target {
-        LoginProviderTarget::Jcode => {
-            crate::subscription_catalog::apply_runtime_env();
-            lock_model_provider("openrouter");
-            Arc::new(provider::jcode::JcodeProvider::new())
-        }
+        LoginProviderTarget::Jcode => Arc::new(provider::jcode::JcodeProvider::new()),
         LoginProviderTarget::Claude => {
             disable_subscription_runtime_mode();
             Arc::new(provider::MultiProvider::new())
@@ -270,8 +266,6 @@ pub async fn init_provider(
     let provider: Arc<dyn provider::Provider> = match choice {
         ProviderChoice::Jcode => {
             eprintln!("Using Jcode subscription provider (provider locked)");
-            crate::subscription_catalog::apply_runtime_env();
-            lock_model_provider("openrouter");
             Arc::new(provider::jcode::JcodeProvider::new())
         }
         ProviderChoice::Claude => {
@@ -530,6 +524,41 @@ mod tests {
             resolve_login_selection("13", &providers).map(|provider| provider.id),
             Some("antigravity")
         );
+    }
+
+    #[test]
+    fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
+        let _guard = lock_env();
+        let _env_guard = crate::storage::lock_test_env();
+        crate::subscription_catalog::clear_runtime_env();
+        std::env::remove_var("JCODE_OPENROUTER_MODEL");
+        std::env::remove_var("JCODE_ACTIVE_PROVIDER");
+        std::env::remove_var("JCODE_FORCE_PROVIDER");
+
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let provider = runtime
+            .block_on(init_provider(&ProviderChoice::Jcode, None))
+            .expect("init jcode provider");
+
+        assert_eq!(provider.name(), "Jcode Subscription");
+        assert!(crate::subscription_catalog::is_runtime_mode_enabled());
+        assert_eq!(
+            std::env::var("JCODE_OPENROUTER_MODEL").ok().as_deref(),
+            Some(crate::subscription_catalog::default_model().id)
+        );
+        assert_eq!(
+            std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(),
+            Some("openrouter")
+        );
+        assert_eq!(
+            std::env::var("JCODE_FORCE_PROVIDER").ok().as_deref(),
+            Some("1")
+        );
+
+        crate::subscription_catalog::clear_runtime_env();
+        std::env::remove_var("JCODE_OPENROUTER_MODEL");
+        std::env::remove_var("JCODE_ACTIVE_PROVIDER");
+        std::env::remove_var("JCODE_FORCE_PROVIDER");
     }
 
     #[test]
