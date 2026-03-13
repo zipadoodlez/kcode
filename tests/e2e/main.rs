@@ -6,12 +6,14 @@
 mod mock_provider;
 
 use anyhow::{Context, Result};
-use futures::{SinkExt, StreamExt};
+use async_trait::async_trait;
+use futures::{stream, SinkExt, StreamExt};
 use jcode::agent::Agent;
-use jcode::message::StreamEvent;
+use jcode::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use jcode::protocol::{Request, ServerEvent};
+use jcode::provider::{EventStream, Provider};
 use jcode::server;
-use jcode::session::Session;
+use jcode::session::{Session, StoredCompactionState};
 use jcode::tool::Registry;
 use mock_provider::MockProvider;
 use std::ffi::OsString;
@@ -172,6 +174,72 @@ fn pair_test_device(token: &str) -> Result<()> {
 struct WsTestClient {
     stream: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
     next_id: u64,
+}
+
+#[derive(Clone, Default)]
+struct CapturingCompactionProvider {
+    captured_messages: Arc<Mutex<Vec<Vec<Message>>>>,
+}
+
+impl CapturingCompactionProvider {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn captured_messages(&self) -> Arc<Mutex<Vec<Vec<Message>>>> {
+        Arc::clone(&self.captured_messages)
+    }
+}
+
+#[async_trait]
+impl Provider for CapturingCompactionProvider {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        self.captured_messages
+            .lock()
+            .unwrap()
+            .push(messages.to_vec());
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(StreamEvent::TextDelta("compaction-ok".to_string())),
+            Ok(StreamEvent::MessageEnd {
+                stop_reason: Some("end_turn".to_string()),
+            }),
+        ])))
+    }
+
+    fn name(&self) -> &str {
+        "capturing-compaction"
+    }
+
+    fn supports_compaction(&self) -> bool {
+        true
+    }
+
+    fn context_window(&self) -> usize {
+        1_000
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(self.clone())
+    }
+}
+
+fn flatten_text_blocks(message: &Message) -> String {
+    message
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 impl WsTestClient {
@@ -560,12 +628,12 @@ async fn debug_run_command(
     let deadline = Instant::now() + Duration::from_secs(10);
     let mut seen_events = Vec::new();
     while Instant::now() < deadline {
-        let event = match tokio::time::timeout(Duration::from_secs(1), debug_client.read_event()).await
-        {
-            Ok(Ok(event)) => event,
-            Ok(Err(err)) => return Err(err),
-            Err(_) => continue,
-        };
+        let event =
+            match tokio::time::timeout(Duration::from_secs(1), debug_client.read_event()).await {
+                Ok(Ok(event)) => event,
+                Ok(Err(err)) => return Err(err),
+                Err(_) => continue,
+            };
         match event {
             ServerEvent::Ack { .. } => continue,
             ServerEvent::DebugResponse { id, ok, output } if id == request_id => {
@@ -626,6 +694,122 @@ async fn wait_for_server_client(socket_path: &std::path::Path) -> Result<server:
 fn kill_child(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[tokio::test]
+async fn resume_session_restores_persisted_compaction_for_provider_context() -> Result<()> {
+    let _env = setup_test_env()?;
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-compaction-resume-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let provider = CapturingCompactionProvider::new();
+    let captured_messages = provider.captured_messages();
+    let provider: Arc<dyn Provider> = Arc::new(provider);
+    let server_instance =
+        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let result = async {
+        let mut session = Session::create_with_id(
+            "session_resume_compaction_restore_test".to_string(),
+            None,
+            Some("resume compaction restore test".to_string()),
+        );
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: "older user turn".to_string(),
+                cache_control: None,
+            }],
+        );
+        session.add_message(
+            Role::Assistant,
+            vec![ContentBlock::Text {
+                text: "older assistant turn".to_string(),
+                cache_control: None,
+            }],
+        );
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: "recent preserved turn".to_string(),
+                cache_control: None,
+            }],
+        );
+        session.compaction = Some(StoredCompactionState {
+            summary_text: "Worked on Gemini OAuth reload fixes.".to_string(),
+            covers_up_to_turn: 2,
+            original_turn_count: 2,
+            compacted_count: 2,
+        });
+        session.save()?;
+
+        wait_for_socket(&socket_path).await?;
+        let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+
+        let subscribe_id = client.subscribe().await?;
+        let _ = collect_until_done_unix(&mut client, subscribe_id).await?;
+
+        let resume_id = client.resume_session(&session.id).await?;
+        let _ = collect_until_history_unix(&mut client, resume_id).await?;
+
+        let message_id = client.send_message("continue from the restored session").await?;
+        let mut seen_events = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+            let is_done = matches!(event, ServerEvent::Done { id } if id == message_id);
+            let is_error = matches!(event, ServerEvent::Error { id, .. } if id == message_id);
+            seen_events.push(format!("{event:?}"));
+            if is_done {
+                break;
+            }
+            if is_error {
+                anyhow::bail!(
+                    "message request failed while validating compaction restore: {}",
+                    seen_events.join(" | ")
+                );
+            }
+        }
+
+        let captured = captured_messages.lock().unwrap();
+        assert_eq!(captured.len(), 1, "expected exactly one provider completion call");
+        let provider_messages = &captured[0];
+        assert!(
+            provider_messages.len() >= 3,
+            "expected summary + preserved tail + new user message"
+        );
+
+        let summary_text = flatten_text_blocks(&provider_messages[0]);
+        assert!(summary_text.contains("Previous Conversation Summary"));
+        assert!(summary_text.contains("Gemini OAuth reload fixes"));
+
+        let joined = provider_messages
+            .iter()
+            .map(flatten_text_blocks)
+            .collect::<Vec<_>>()
+            .join("\n---\n");
+        assert!(joined.contains("recent preserved turn"));
+        assert!(joined.contains("continue from the restored session"));
+        assert!(!joined.contains("older user turn"));
+        assert!(!joined.contains("older assistant turn"));
+
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+    result
 }
 
 /// Test that a simple text response works
