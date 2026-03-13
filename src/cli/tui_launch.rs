@@ -229,6 +229,7 @@ fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
 
 pub async fn run_replay_command(
     session_id_or_path: &str,
+    swarm: bool,
     export: bool,
     auto_edit: bool,
     speed: f64,
@@ -239,6 +240,70 @@ pub async fn run_replay_command(
     fps: u32,
     centered_override: Option<bool>,
 ) -> Result<()> {
+    if swarm {
+        let swarm_sessions = replay::load_swarm_sessions(session_id_or_path, auto_edit)?;
+        if export {
+            let timelines: Vec<_> = swarm_sessions
+                .iter()
+                .map(|pane| {
+                    serde_json::json!({
+                        "session_id": pane.session.id,
+                        "session_name": pane.session.short_name,
+                        "timeline": pane.timeline,
+                    })
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&timelines)?);
+            return Ok(());
+        }
+
+        if let Some(output) = video_output {
+            let output_path = if output == "auto" {
+                let date = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                let safe_name = session_id_or_path
+                    .chars()
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == '-' || c == '_' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect::<String>();
+                std::path::PathBuf::from(format!("jcode_swarm_replay_{}_{}.mp4", safe_name, date))
+            } else {
+                std::path::PathBuf::from(output)
+            };
+            let panes: Vec<_> = swarm_sessions
+                .into_iter()
+                .map(|pane| replay::PaneReplayInput {
+                    session: pane.session,
+                    timeline: pane.timeline,
+                })
+                .collect();
+            eprintln!(
+                "🐝 Exporting swarm replay from seed {} ({} panes)",
+                session_id_or_path,
+                panes.len()
+            );
+            video_export::export_swarm_video(
+                &panes,
+                speed,
+                &output_path,
+                cols,
+                rows,
+                fps,
+                centered_override,
+            )
+            .await?;
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Interactive swarm replay is not implemented yet; use `--swarm --video` or `--swarm --export`."
+        );
+    }
+
     let session = replay::load_session(session_id_or_path)?;
 
     let mut timeline = if let Some(path) = timeline_path {

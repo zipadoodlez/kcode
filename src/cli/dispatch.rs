@@ -78,6 +78,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::Replay {
             session,
+            swarm,
             export,
             speed,
             timeline,
@@ -98,6 +99,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             };
             tui_launch::run_replay_command(
                 &session,
+                swarm,
                 export,
                 auto_edit,
                 speed,

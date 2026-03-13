@@ -158,6 +158,10 @@ pub(crate) enum Command {
         /// Session ID, name, or path to session JSON file
         session: String,
 
+        /// Replay related swarm sessions together in a synchronized multi-pane view
+        #[arg(long)]
+        swarm: bool,
+
         /// Export timeline as JSON instead of playing
         #[arg(long)]
         export: bool,
