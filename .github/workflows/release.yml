@@ -297,6 +297,7 @@ jobs:
   # The binaries are added to the existing release when they finish.
   release-windows:
     name: Add Windows binaries to release
+    if: ${{ always() && needs.release.result == 'success' }}
     needs: [build-windows, release]
     runs-on: ubuntu-latest
     steps:
@@ -308,6 +309,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for f in artifacts/jcode-windows-*/jcode-windows-*; do
+          shopt -s nullglob
+          files=(artifacts/jcode-windows-*/jcode-windows-*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No Windows artifacts available to upload"
+            exit 0
+          fi
+
+          for f in "${files[@]}"; do
             gh release upload "${GITHUB_REF_NAME}" "$f" --repo "${{ github.repository }}" --clobber
           done
