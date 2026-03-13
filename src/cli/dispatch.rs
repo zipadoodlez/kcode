@@ -295,7 +295,7 @@ pub(crate) async fn wait_for_reloading_server(timeout: std::time::Duration) -> b
 }
 
 async fn server_is_running_at(path: &std::path::Path) -> bool {
-    crate::transport::is_socket_path(path) && crate::transport::Stream::connect(path).await.is_ok()
+    server::is_server_ready(path).await
 }
 
 #[cfg(unix)]
@@ -488,7 +488,9 @@ pub(crate) async fn spawn_server(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{encode_event, Request, ServerEvent};
     use crate::transport::Listener;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     #[cfg(unix)]
     #[test]
@@ -538,8 +540,26 @@ mod tests {
         let bind_path = socket_path.clone();
         let bind_task = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let _listener = Listener::bind(&bind_path).expect("bind replacement listener");
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            let listener = Listener::bind(&bind_path).expect("bind replacement listener");
+            let (stream, _) = listener.accept().await.expect("accept ping probe");
+            let (reader, mut writer) = stream.into_split();
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
+            let n = reader
+                .read_line(&mut line)
+                .await
+                .expect("read ping request");
+            assert!(n > 0, "expected ping request");
+            let request: Request = serde_json::from_str(&line).expect("parse ping request");
+            let id = match request {
+                Request::Ping { id } => id,
+                other => panic!("expected ping request, got {other:?}"),
+            };
+            let pong = encode_event(&ServerEvent::Pong { id });
+            writer
+                .write_all(pong.as_bytes())
+                .await
+                .expect("write pong");
         });
 
         assert!(wait_for_existing_reload_server("test").await);
