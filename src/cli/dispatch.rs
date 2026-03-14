@@ -299,7 +299,7 @@ pub(crate) async fn wait_for_reloading_server(timeout: std::time::Duration) -> b
 }
 
 async fn server_is_running_at(path: &std::path::Path) -> bool {
-    server::is_server_ready(path).await
+    server::is_server_ready(path).await || server::has_live_listener(path).await
 }
 
 #[cfg(unix)]
@@ -578,5 +578,18 @@ mod tests {
         } else {
             crate::env::remove_var("JCODE_RUNTIME_DIR");
         }
+    }
+
+    #[tokio::test]
+    async fn server_is_running_at_treats_live_listener_as_running_without_pong() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let socket_path = temp.path().join("jcode.sock");
+
+        let _listener = Listener::bind(&socket_path).expect("bind listener");
+
+        assert!(
+            server_is_running_at(&socket_path).await,
+            "a live listener should prevent duplicate server spawns even if ping is slow or absent"
+        );
     }
 }
