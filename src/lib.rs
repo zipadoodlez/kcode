@@ -46,6 +46,7 @@ pub mod safety;
 pub mod server;
 pub mod session;
 pub mod setup_hints;
+pub mod side_panel;
 pub mod sidecar;
 pub mod skill;
 pub mod startup_profile;
