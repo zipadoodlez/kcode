@@ -266,7 +266,7 @@ async fn wait_for_existing_reload_server(context: &str) -> bool {
                     "Reload state=starting during {}; waiting for existing server to return",
                     context
                 ));
-                return wait_for_reloading_server(std::time::Duration::from_secs(20)).await;
+                return wait_for_reloading_server().await;
             }
             server::ReloadPhase::Failed => {
                 crate::logging::warn(&format!(
@@ -284,18 +284,21 @@ async fn wait_for_existing_reload_server(context: &str) -> bool {
     false
 }
 
-pub(crate) async fn wait_for_reloading_server(timeout: std::time::Duration) -> bool {
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if server_is_running().await {
-            return true;
+pub(crate) async fn wait_for_reloading_server() -> bool {
+    match server::await_reload_handoff(&server::socket_path(), std::time::Duration::from_secs(30))
+        .await
+    {
+        server::ReloadWaitStatus::Ready => true,
+        server::ReloadWaitStatus::Failed(detail) => {
+            crate::logging::warn(&format!(
+                "Reload handoff failed while waiting for server: {}",
+                detail.unwrap_or_else(|| "unknown reload failure".to_string())
+            ));
+            false
         }
-        if !server::reload_marker_active(std::time::Duration::from_secs(30)) {
-            return false;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        server::ReloadWaitStatus::Idle => false,
+        server::ReloadWaitStatus::Waiting { .. } => false,
     }
-    server_is_running().await
 }
 
 async fn server_is_running_at(path: &std::path::Path) -> bool {
@@ -496,6 +499,47 @@ mod tests {
     use crate::transport::Listener;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+    struct ReloadTestEnv {
+        prev_socket: Option<std::ffi::OsString>,
+        prev_runtime: Option<std::ffi::OsString>,
+        socket_path: std::path::PathBuf,
+    }
+
+    impl ReloadTestEnv {
+        fn new() -> Self {
+            let temp = tempfile::tempdir().expect("tempdir");
+            let socket_path = temp.path().join("jcode.sock");
+            let prev_socket = std::env::var_os("JCODE_SOCKET");
+            let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+            crate::server::set_socket_path(socket_path.to_str().expect("utf8 socket path"));
+            crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+            // Keep tempdir alive for the duration of the test helper.
+            let _ = temp.keep();
+            Self {
+                prev_socket,
+                prev_runtime,
+                socket_path,
+            }
+        }
+    }
+
+    impl Drop for ReloadTestEnv {
+        fn drop(&mut self) {
+            crate::server::clear_reload_marker();
+            let _ = std::fs::remove_file(&self.socket_path);
+            if let Some(prev_socket) = &self.prev_socket {
+                crate::env::set_var("JCODE_SOCKET", prev_socket);
+            } else {
+                crate::env::remove_var("JCODE_SOCKET");
+            }
+            if let Some(prev_runtime) = &self.prev_runtime {
+                crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+            } else {
+                crate::env::remove_var("JCODE_RUNTIME_DIR");
+            }
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn spawn_lock_serializes_shared_server_bootstrap() {
@@ -528,12 +572,7 @@ mod tests {
     #[tokio::test]
     async fn wait_for_existing_reload_server_uses_reloading_server_instead_of_spawning() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
-        let socket_path = temp.path().join("jcode.sock");
-        let prev_socket = std::env::var_os("JCODE_SOCKET");
-        let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
-        crate::server::set_socket_path(socket_path.to_str().expect("utf8 socket path"));
-        crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+        let env = ReloadTestEnv::new();
         crate::server::write_reload_state(
             "reload-test",
             "hash",
@@ -541,7 +580,7 @@ mod tests {
             None,
         );
 
-        let bind_path = socket_path.clone();
+        let bind_path = env.socket_path.clone();
         let bind_task = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             let listener = Listener::bind(&bind_path).expect("bind replacement listener");
@@ -566,18 +605,51 @@ mod tests {
         assert!(wait_for_existing_reload_server("test").await);
 
         bind_task.await.expect("bind task");
-        crate::server::clear_reload_marker();
-        let _ = std::fs::remove_file(&socket_path);
-        if let Some(prev_socket) = prev_socket {
-            crate::env::set_var("JCODE_SOCKET", prev_socket);
-        } else {
-            crate::env::remove_var("JCODE_SOCKET");
-        }
-        if let Some(prev_runtime) = prev_runtime {
-            crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
-        } else {
-            crate::env::remove_var("JCODE_RUNTIME_DIR");
-        }
+    }
+
+    #[tokio::test]
+    async fn wait_for_existing_reload_server_returns_false_for_failed_reload() {
+        let _guard = crate::storage::lock_test_env();
+        let _env = ReloadTestEnv::new();
+        crate::server::write_reload_state(
+            "reload-test",
+            "hash",
+            crate::server::ReloadPhase::Failed,
+            Some("boom".to_string()),
+        );
+
+        assert!(!wait_for_existing_reload_server("test").await);
+    }
+
+    #[tokio::test]
+    async fn wait_for_reloading_server_returns_false_when_idle() {
+        let _guard = crate::storage::lock_test_env();
+        let _env = ReloadTestEnv::new();
+
+        assert!(!wait_for_reloading_server().await);
+    }
+
+    #[tokio::test]
+    async fn wait_for_reloading_server_returns_false_when_reload_failed() {
+        let _guard = crate::storage::lock_test_env();
+        let _env = ReloadTestEnv::new();
+        crate::server::write_reload_state(
+            "reload-test",
+            "hash",
+            crate::server::ReloadPhase::Failed,
+            Some("boom".to_string()),
+        );
+
+        assert!(!wait_for_reloading_server().await);
+    }
+
+    #[tokio::test]
+    async fn wait_for_reloading_server_returns_true_for_live_listener() {
+        let _guard = crate::storage::lock_test_env();
+        let env = ReloadTestEnv::new();
+        let _listener = Listener::bind(&env.socket_path).expect("bind listener");
+
+        assert!(wait_for_reloading_server().await);
     }
 
     #[tokio::test]

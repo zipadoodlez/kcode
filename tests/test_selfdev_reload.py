@@ -15,6 +15,7 @@ import json
 import time
 import os
 import sys
+import glob
 
 RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
 SOCKET_PATH = os.path.join(RUNTIME_DIR, "jcode-debug.sock")
@@ -169,10 +170,16 @@ def test_reload_context():
     print("Test: Reload context file format")
     print("=" * 60)
 
-    context_path = os.path.join(JCODE_DIR, "reload-context.json")
+    context_candidates = sorted(
+        glob.glob(os.path.join(JCODE_DIR, "reload-context-*.json"))
+    )
+    legacy_context_path = os.path.join(JCODE_DIR, "reload-context.json")
+    if os.path.exists(legacy_context_path):
+        context_candidates.append(legacy_context_path)
 
     # Check if there's an existing context file
-    if os.path.exists(context_path):
+    if context_candidates:
+        context_path = context_candidates[0]
         print(f"1. Found existing reload context at {context_path}")
         try:
             with open(context_path) as f:
