@@ -195,6 +195,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         eprintln!("   (use --no-selfdev to disable auto-detection)\n");
 
         crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
+        crate::process_title::set_initial_title(&args);
     }
 
     if args.standalone {

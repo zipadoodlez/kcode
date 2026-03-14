@@ -279,12 +279,17 @@ pub async fn run_tui_client(
         let session_name = id::extract_session_name(session_id)
             .map(|s| s.to_string())
             .unwrap_or_else(|| session_id.clone());
+        crate::process_title::set_client_display_title(
+            &session_name,
+            super::selfdev::client_selfdev_requested(),
+        );
         let icon = id::session_icon(&session_name);
         let _ = crossterm::execute!(
             std::io::stdout(),
             crossterm::terminal::SetTitle(format!("{} jcode {}", icon, session_name))
         );
     } else {
+        crate::process_title::set_client_generic_title(super::selfdev::client_selfdev_requested());
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle("jcode"));
     }
     startup_profile::mark("terminal_title");

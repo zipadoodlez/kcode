@@ -58,6 +58,8 @@ fn parse_and_prepare_args() -> Result<Args> {
         server::set_socket_path(socket);
     }
 
+    crate::process_title::set_initial_title(&args);
+
     Ok(args)
 }
 

@@ -37,6 +37,7 @@ pub mod perf;
 pub mod plan;
 pub mod platform;
 pub mod prompt;
+pub mod process_title;
 pub mod protocol;
 pub mod provider;
 pub mod provider_catalog;
