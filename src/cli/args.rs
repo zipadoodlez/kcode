@@ -161,8 +161,12 @@ pub(crate) enum Command {
         session: Option<String>,
     },
 
-    /// Run configured dictation: inject into focused jcode window, else type normally
-    Dictate,
+    /// Run configured dictation: send to last-focused jcode client or type raw text
+    Dictate {
+        /// Type the transcript into the focused app instead of sending to jcode
+        #[arg(long)]
+        r#type: bool,
+    },
 
     /// Set up a global hotkey (Alt+;) to launch jcode
     SetupHotkey {

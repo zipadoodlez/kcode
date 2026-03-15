@@ -112,6 +112,7 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeState)>
     let keyboard_enhanced = tui::enable_keyboard_enhancement();
 
     crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange)?;
     if mouse_capture {
         crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
     }
@@ -128,6 +129,7 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeState)>
 pub fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
     if restore_terminal {
         let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableBracketedPaste);
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
         if state.mouse_capture {
             let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
         }

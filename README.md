@@ -179,10 +179,11 @@ jcode -C /path/to/project
 # Resume a previous session by memorable name
 jcode --resume fox
 
-# Run one global dictation action:
-# - inject into the focused jcode window if one is focused
-# - otherwise type into the focused app
+# Run dictation into the last-focused jcode client
 jcode dictate
+
+# Or always type raw text into the focused app
+jcode dictate --type
 ```
 
 ### Dictation / speech-to-text
@@ -210,22 +211,22 @@ Then bind your compositor/global hotkey to:
 jcode dictate
 ```
 
-On Linux/Niri this gives a nice native flow:
+This gives a reliable native flow:
 
-- if the focused window is a jcode client, jcode injects the transcript into that exact focused client/session
-- otherwise, jcode falls back to typing the transcript into the focused application via `wtype`
+- `jcode dictate` sends the transcript to the **last-focused live jcode client**
+- `jcode dictate --type` types raw text into the currently focused app via `wtype`
 
 Example Niri bind:
 
 ```kdl
 binds {
     Mod+Semicolon { spawn "jcode" "dictate"; }
+    Mod+Shift+Semicolon { spawn "jcode" "dictate" "--type"; }
 }
 ```
 
-Requirements for the Linux fallback path:
+Requirement for raw typing:
 
-- `niri` for focused-window detection
 - `wtype` for non-jcode text injection
 
 ---

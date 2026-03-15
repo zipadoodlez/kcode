@@ -65,13 +65,18 @@ pub async fn run_transcript_command(
     }
 }
 
-pub async fn run_dictate_command() -> Result<()> {
+pub async fn run_dictate_command(type_output: bool) -> Result<()> {
     let run = crate::dictation::run_configured().await?;
 
-    if let Some(session_id) = crate::dictation::focused_jcode_session()? {
-        run_transcript_command(Some(run.text), run.mode, Some(session_id)).await
-    } else {
+    if type_output {
         crate::dictation::type_text(&run.text)
+    } else {
+        let Some(session_id) = crate::dictation::last_focused_session()? else {
+            anyhow::bail!(
+                "No last-focused live jcode client found. Focus a jcode window first, or use `jcode dictate --type`."
+            );
+        };
+        run_transcript_command(Some(run.text), run.mode, Some(session_id)).await
     }
 }
 
