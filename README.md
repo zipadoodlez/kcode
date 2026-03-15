@@ -178,7 +178,55 @@ jcode -C /path/to/project
 
 # Resume a previous session by memorable name
 jcode --resume fox
+
+# Run one global dictation action:
+# - inject into the focused jcode window if one is focused
+# - otherwise type into the focused app
+jcode dictate
 ```
+
+### Dictation / speech-to-text
+
+jcode can reuse your existing speech-to-text script instead of bundling a specific STT engine.
+
+Add this to `~/.jcode/config.toml`:
+
+```toml
+[dictation]
+# Must print the final transcript to stdout
+command = "~/.local/bin/live-transcribe"
+
+# insert | append | replace | send
+mode = "send"
+
+# Optional in-app hotkey when the key reaches jcode directly
+key = "off"
+timeout_secs = 90
+```
+
+Then bind your compositor/global hotkey to:
+
+```bash
+jcode dictate
+```
+
+On Linux/Niri this gives a nice native flow:
+
+- if the focused window is a jcode client, jcode injects the transcript into that exact focused client/session
+- otherwise, jcode falls back to typing the transcript into the focused application via `wtype`
+
+Example Niri bind:
+
+```kdl
+binds {
+    Mod+Semicolon { spawn "jcode" "dictate"; }
+}
+```
+
+Requirements for the Linux fallback path:
+
+- `niri` for focused-window detection
+- `wtype` for non-jcode text injection
 
 ---
 
@@ -263,7 +311,7 @@ graph TB
     Claude --> ClaudeCreds["~/.claude/.credentials.json<br><i>OAuth (Claude Max)</i>"]
     Claude --> APIKey["ANTHROPIC_API_KEY<br><i>Direct API</i>"]
     Copilot --> GHCreds["~/.config/github-copilot/<br><i>OAuth (Copilot Pro/Free)</i>"]
-    OpenAI --> CodexCreds["~/.codex/auth.json<br><i>OAuth (ChatGPT Pro)</i>"]
+    OpenAI --> CodexCreds["~/.jcode/openai-auth.json<br><i>OAuth (ChatGPT Pro)</i>"]
     OR --> ORKey["OPENROUTER_API_KEY<br><i>200+ models</i>"]
     Azure --> AzureCreds["Azure CLI / Managed Identity / API key<br><i>Entra ID or direct key</i>"]
 
