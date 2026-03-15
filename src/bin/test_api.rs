@@ -15,7 +15,9 @@ async fn main() -> anyhow::Result<()> {
             cache_control: None,
         }],
         timestamp: None,
+        tool_duration_ms: None,
     }];
+
 
     let tools: Vec<ToolDefinition> = vec![];
     let system = "You are a helpful assistant.";
