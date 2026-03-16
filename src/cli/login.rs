@@ -190,7 +190,9 @@ async fn login_openai_flow() -> Result<()> {
     auth::oauth::save_openai_tokens(&tokens)?;
     eprintln!(
         "Successfully logged in to OpenAI! Tokens saved to {}",
-        crate::storage::user_home_path(".codex/auth.json")?.display()
+        crate::storage::jcode_dir()?
+            .join("openai-auth.json")
+            .display()
     );
     Ok(())
 }
