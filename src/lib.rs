@@ -23,6 +23,7 @@ pub use embedding_stub as embedding;
 pub mod env;
 pub mod gateway;
 pub mod gmail;
+pub mod goal;
 pub mod id;
 pub mod import;
 pub mod logging;
