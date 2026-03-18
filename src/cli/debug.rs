@@ -144,32 +144,14 @@ async fn debug_list_servers() -> Result<()> {
             socket_path.with_file_name(debug_filename)
         };
 
-        let mut stale_main_removed = false;
         let alive = match crate::transport::Stream::connect(&socket_path).await {
             Ok(_) => true,
-            Err(err)
-                if err.kind() == std::io::ErrorKind::ConnectionRefused
-                    && crate::transport::is_socket_path(&socket_path) =>
-            {
-                server::cleanup_socket_pair(&socket_path);
-                stale_main_removed = true;
-                false
-            }
             Err(_) => false,
         };
 
-        let mut stale_debug_removed = false;
         let debug_enabled = if crate::transport::is_socket_path(&debug_socket) {
             match crate::transport::Stream::connect(&debug_socket).await {
                 Ok(_) => true,
-                Err(err)
-                    if err.kind() == std::io::ErrorKind::ConnectionRefused
-                        && crate::transport::is_socket_path(&debug_socket) =>
-                {
-                    server::cleanup_socket_pair(&debug_socket);
-                    stale_debug_removed = true;
-                    false
-                }
                 Err(_) => false,
             }
         } else {
@@ -185,13 +167,9 @@ async fn debug_list_servers() -> Result<()> {
         let status = if alive {
             if debug_enabled {
                 format!("✓ running, debug: enabled{}", session_info)
-            } else if stale_debug_removed {
-                "✓ running, debug: disabled (removed stale debug socket)".to_string()
             } else {
                 "✓ running, debug: disabled".to_string()
             }
-        } else if stale_main_removed {
-            "✗ stale socket removed".to_string()
         } else {
             "✗ not responding (stale socket?)".to_string()
         };
@@ -261,7 +239,6 @@ async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()
             eprintln!("Use 'jcode debug list' to see all servers.");
             return Ok(());
         }
-        server::cleanup_socket_pair(&socket_pathbuf);
     }
 
     let debug_socket = {
