@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::io::Read;
 use std::net::ToSocketAddrs;
+use std::time::Duration;
 
 use crate::{browser, gateway, memory, storage, tui};
 
@@ -552,15 +553,58 @@ struct ModelListReport {
     models: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct RunCommandReport {
+    session_id: String,
+    provider: String,
+    model: String,
+    text: String,
+    usage: crate::agent::TokenUsage,
+}
+
+pub async fn run_single_message_command(
+    choice: &super::provider_init::ProviderChoice,
+    model: Option<&str>,
+    message: &str,
+    emit_json: bool,
+) -> Result<()> {
+    let provider = if emit_json {
+        super::provider_init::init_provider_quiet(choice, model).await?
+    } else {
+        super::provider_init::init_provider(choice, model).await?
+    };
+    let registry = crate::tool::Registry::new(provider.clone()).await;
+    let mut agent = crate::agent::Agent::new(provider.clone(), registry);
+
+    if emit_json {
+        let text = agent.run_once_capture(message).await?;
+        let report = RunCommandReport {
+            session_id: agent.session_id().to_string(),
+            provider: provider.name().to_string(),
+            model: provider.model(),
+            text,
+            usage: agent.last_usage().clone(),
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        agent.run_once(message).await?;
+    }
+
+    Ok(())
+}
+
 pub async fn run_model_command(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
     emit_json: bool,
+    verbose: bool,
 ) -> Result<()> {
-    let provider = super::provider_init::init_provider(choice, model).await?;
+    let provider = super::provider_init::init_provider_quiet(choice, model).await?;
 
     if let Err(err) = provider.prefetch_models().await {
-        eprintln!("Warning: failed to refresh dynamic model list: {}", err);
+        if !super::output::quiet_enabled() {
+            eprintln!("Warning: failed to refresh dynamic model list: {}", err);
+        }
     }
 
     let routes = provider.model_routes();
@@ -581,6 +625,12 @@ pub async fn run_model_command(
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
+        if verbose {
+            println!("Provider: {}", provider.name());
+            println!("Selected model: {}", provider.model());
+            println!("Available models: {}", models.len());
+            println!();
+        }
         for model in models {
             println!("{}", model);
         }
@@ -745,6 +795,7 @@ struct AuthTestProviderReport {
     credential_paths: Vec<String>,
     steps: Vec<AuthTestStepReport>,
     smoke_output: Option<String>,
+    tool_smoke_output: Option<String>,
     success: bool,
 }
 
@@ -755,6 +806,7 @@ impl AuthTestProviderReport {
             credential_paths: target.credential_paths().unwrap_or_default(),
             steps: Vec::new(),
             smoke_output: None,
+            tool_smoke_output: None,
             success: true,
         }
     }
@@ -777,6 +829,7 @@ pub async fn run_auth_test_command(
     login: bool,
     all_configured: bool,
     no_smoke: bool,
+    no_tool_smoke: bool,
     prompt: Option<&str>,
     emit_json: bool,
     output_path: Option<&str>,
@@ -787,7 +840,17 @@ pub async fn run_auth_test_command(
 
     let mut reports = Vec::new();
     for target in targets {
-        reports.push(run_auth_test_target(target, model, login, !no_smoke, smoke_prompt).await);
+        reports.push(
+            run_auth_test_target(
+                target,
+                model,
+                login,
+                !no_smoke,
+                !no_tool_smoke,
+                smoke_prompt,
+            )
+            .await,
+        );
     }
 
     let report_json = if emit_json || output_path.is_some() {
@@ -865,6 +928,7 @@ async fn run_auth_test_target(
     model: Option<&str>,
     login: bool,
     run_smoke: bool,
+    run_tool_smoke: bool,
     smoke_prompt: &str,
 ) -> AuthTestProviderReport {
     let mut report = AuthTestProviderReport::new(target);
@@ -900,7 +964,7 @@ async fn run_auth_test_target(
                     },
                 );
             }
-            Err(err) => report.push_step("provider_smoke", false, err.to_string()),
+            Err(err) => report.push_step("provider_smoke", false, format!("{err:#}")),
         }
     } else if !target.supports_smoke() {
         report.push_step(
@@ -910,6 +974,36 @@ async fn run_auth_test_target(
         );
     } else if !run_smoke {
         report.push_step("provider_smoke", true, "Skipped by --no-smoke.");
+    }
+
+    if run_tool_smoke && report.success && target.supports_smoke() {
+        match run_provider_tool_smoke(target, model, smoke_prompt).await {
+            Ok(output) => {
+                let ok = output.contains("AUTH_TEST_OK");
+                report.tool_smoke_output = Some(output.clone());
+                report.push_step(
+                    "tool_smoke",
+                    ok,
+                    if ok {
+                        "Tool-enabled provider request returned AUTH_TEST_OK.".to_string()
+                    } else {
+                        format!(
+                            "Tool-enabled provider response did not contain AUTH_TEST_OK: {}",
+                            output
+                        )
+                    },
+                );
+            }
+            Err(err) => report.push_step("tool_smoke", false, format!("{err:#}")),
+        }
+    } else if !target.supports_smoke() {
+        report.push_step(
+            "tool_smoke",
+            true,
+            "Skipped: provider is auth/tool-only and has no model runtime smoke step.",
+        );
+    } else if !run_tool_smoke {
+        report.push_step("tool_smoke", true, "Skipped by --no-tool-smoke.");
     }
 
     report
@@ -1100,14 +1194,122 @@ async fn run_provider_smoke(
     model: Option<&str>,
     prompt: &str,
 ) -> Result<String> {
-    let provider = super::provider_init::init_provider(&target.provider_choice(), model)
-        .await
-        .with_context(|| format!("Failed to initialize {} provider", target.label()))?;
-    let output = provider
-        .complete_simple(prompt, "")
-        .await
-        .with_context(|| format!("{} provider smoke prompt failed", target.label()))?;
-    Ok(output.trim().to_string())
+    run_auth_test_with_retry(async || {
+        let provider = super::provider_init::init_provider(&target.provider_choice(), model)
+            .await
+            .with_context(|| format!("Failed to initialize {} provider", target.label()))?;
+        let output = provider
+            .complete_simple(prompt, "")
+            .await
+            .with_context(|| format!("{} provider smoke prompt failed", target.label()))?;
+        Ok(output.trim().to_string())
+    })
+    .await
+}
+
+async fn run_provider_tool_smoke(
+    target: AuthTestTarget,
+    model: Option<&str>,
+    prompt: &str,
+) -> Result<String> {
+    use futures::StreamExt;
+
+    run_auth_test_with_retry(async || {
+        let (provider, registry) =
+            super::provider_init::init_provider_and_registry(&target.provider_choice(), model)
+                .await
+                .with_context(|| format!("Failed to initialize {} provider", target.label()))?;
+        registry
+            .register_mcp_tools(None, None, Some("auth-test".to_string()))
+            .await;
+        let tools = registry.definitions(None).await;
+
+        let messages = vec![crate::message::Message {
+            role: crate::message::Role::User,
+            content: vec![crate::message::ContentBlock::Text {
+                text: prompt.to_string(),
+                cache_control: None,
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        }];
+
+        let response = provider
+            .complete(&messages, &tools, "", None)
+            .await
+            .with_context(|| {
+                format!(
+                    "{} tool-enabled smoke prompt failed with {} attached tools",
+                    target.label(),
+                    tools.len()
+                )
+            })?;
+
+        tokio::pin!(response);
+        let mut output = String::new();
+        while let Some(event) = response.next().await {
+            match event {
+                Ok(crate::message::StreamEvent::TextDelta(text)) => output.push_str(&text),
+                Ok(_) => {}
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(output.trim().to_string())
+    })
+    .await
+}
+
+async fn run_auth_test_with_retry<F, Fut>(mut f: F) -> Result<String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<String>>,
+{
+    const RETRY_DELAYS: &[Duration] = &[Duration::from_secs(3), Duration::from_secs(8)];
+
+    let mut last_err = None;
+    for (attempt, delay) in RETRY_DELAYS.iter().enumerate() {
+        match f().await {
+            Ok(output) => return Ok(output),
+            Err(err) if auth_test_error_is_retryable(&err) => {
+                last_err = Some(err);
+                crate::logging::warn(&format!(
+                    "auth-test transient failure on attempt {} - retrying in {}s",
+                    attempt + 1,
+                    delay.as_secs()
+                ));
+                tokio::time::sleep(*delay).await;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    match f().await {
+        Ok(output) => Ok(output),
+        Err(err) if last_err.is_some() => Err(err),
+        Err(err) => Err(err),
+    }
+}
+
+fn auth_test_error_is_retryable(err: &anyhow::Error) -> bool {
+    let text = format!("{err:#}").to_ascii_lowercase();
+    [
+        "http 429",
+        "too many requests",
+        "resource_exhausted",
+        "rate_limit_exceeded",
+        "rate limit",
+        "temporarily unavailable",
+        "timeout",
+        "connection reset",
+        "service unavailable",
+        "http 500",
+        "http 502",
+        "http 503",
+        "http 504",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
 }
 
 fn print_auth_test_reports(reports: &[AuthTestProviderReport]) {
@@ -1125,6 +1327,9 @@ fn print_auth_test_reports(reports: &[AuthTestProviderReport]) {
         }
         if let Some(output) = report.smoke_output.as_deref() {
             println!("smoke output: {}", output);
+        }
+        if let Some(output) = report.tool_smoke_output.as_deref() {
+            println!("tool smoke output: {}", output);
         }
         println!("result: {}\n", if report.success { "PASS" } else { "FAIL" });
     }
@@ -1228,6 +1433,22 @@ mod tests {
         );
 
         assert_eq!(models, vec!["gpt-5.4", "claude-sonnet-4"]);
+    }
+
+    #[test]
+    fn auth_test_retryable_error_detection_handles_rate_limits() {
+        let err = anyhow::anyhow!(
+            "Gemini request generateContent failed (HTTP 429 Too Many Requests): RESOURCE_EXHAUSTED"
+        );
+        assert!(auth_test_error_is_retryable(&err));
+    }
+
+    #[test]
+    fn auth_test_retryable_error_detection_rejects_schema_errors() {
+        let err = anyhow::anyhow!(
+            "Gemini request generateContent failed (HTTP 400 Bad Request): invalid argument"
+        );
+        assert!(!auth_test_error_is_retryable(&err));
     }
 
     #[test]

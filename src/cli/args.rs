@@ -35,6 +35,10 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) trace: bool,
 
+    /// Suppress non-error CLI/status output for scripting and wrappers
+    #[arg(long, global = true)]
+    pub(crate) quiet: bool,
+
     /// Resume a session by ID, or list sessions if no ID provided
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "")]
     pub(crate) resume: Option<String>,
@@ -77,6 +81,10 @@ pub(crate) enum Command {
 
     /// Run a single message and exit
     Run {
+        /// Emit a machine-readable JSON result instead of streaming text
+        #[arg(long)]
+        json: bool,
+
         /// The message to send
         message: String,
     },
@@ -250,6 +258,10 @@ pub(crate) enum Command {
         #[arg(long)]
         no_smoke: bool,
 
+        /// Skip the tool-enabled runtime smoke prompt (the same request path used during normal chat)
+        #[arg(long)]
+        no_tool_smoke: bool,
+
         /// Custom smoke prompt (default asks for AUTH_TEST_OK)
         #[arg(long)]
         prompt: Option<String>,
@@ -271,6 +283,10 @@ pub(crate) enum ModelCommand {
         /// Emit JSON instead of plain text
         #[arg(long)]
         json: bool,
+
+        /// Show provider/selection summary before the list
+        #[arg(long)]
+        verbose: bool,
     },
 }
 
@@ -367,9 +383,30 @@ mod tests {
 
     #[test]
     fn model_list_subcommand_parses() {
-        let args = Args::try_parse_from(["jcode", "model", "list", "--json"]).unwrap();
+        let args = Args::try_parse_from(["jcode", "model", "list", "--json", "--verbose"]).unwrap();
         match args.command {
-            Some(Command::Model(ModelCommand::List { json })) => assert!(json),
+            Some(Command::Model(ModelCommand::List { json, verbose })) => {
+                assert!(json);
+                assert!(verbose);
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn quiet_global_flag_parses() {
+        let args = Args::try_parse_from(["jcode", "--quiet", "model", "list"]).unwrap();
+        assert!(args.quiet);
+    }
+
+    #[test]
+    fn run_json_subcommand_parses() {
+        let args = Args::try_parse_from(["jcode", "run", "--json", "hello"]).unwrap();
+        match args.command {
+            Some(Command::Run { json, message }) => {
+                assert!(json);
+                assert_eq!(message, "hello");
+            }
             other => panic!("unexpected command: {:?}", other),
         }
     }

@@ -13,6 +13,7 @@ use crate::provider_catalog::{
 use crate::tool;
 
 use super::login::run_login_provider;
+use super::output;
 
 #[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
 pub enum ProviderChoice {
@@ -271,20 +272,41 @@ pub async fn init_provider(
     choice: &ProviderChoice,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
+    init_provider_with_options(choice, model, true).await
+}
+
+pub async fn init_provider_quiet(
+    choice: &ProviderChoice,
+    model: Option<&str>,
+) -> Result<Arc<dyn provider::Provider>> {
+    init_provider_with_options(choice, model, false).await
+}
+
+async fn init_provider_with_options(
+    choice: &ProviderChoice,
+    model: Option<&str>,
+    show_init_messages: bool,
+) -> Result<Arc<dyn provider::Provider>> {
     if let Some(profile) = profile_for_choice(choice) {
         apply_openai_compatible_profile_env(Some(profile));
     } else {
         apply_openai_compatible_profile_env(None);
     }
 
+    let init_notice = |message: &str| {
+        if show_init_messages {
+            output::stderr_info(message);
+        }
+    };
+
     let provider: Arc<dyn provider::Provider> = match choice {
         ProviderChoice::Jcode => {
-            eprintln!("Using Jcode subscription provider (provider locked)");
+            init_notice("Using Jcode subscription provider (provider locked)");
             Arc::new(provider::jcode::JcodeProvider::new())
         }
         ProviderChoice::Claude => {
             disable_subscription_runtime_mode();
-            eprintln!("Using Claude (provider locked)");
+            init_notice("Using Claude (provider locked)");
             lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference(false))
         }
@@ -294,46 +316,46 @@ pub async fn init_provider(
                 "Using --provider claude-subprocess is deprecated. Prefer `--provider claude`.",
             );
             crate::env::set_var("JCODE_USE_CLAUDE_CLI", "1");
-            eprintln!("Using deprecated Claude subprocess transport (provider locked)");
+            init_notice("Using deprecated Claude subprocess transport (provider locked)");
             lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference(false))
         }
         ProviderChoice::Openai => {
             disable_subscription_runtime_mode();
-            eprintln!("Using OpenAI (provider locked)");
+            init_notice("Using OpenAI (provider locked)");
             lock_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference(true))
         }
         ProviderChoice::Cursor => {
             disable_subscription_runtime_mode();
-            eprintln!("Using Cursor CLI provider (experimental)");
+            init_notice("Using Cursor CLI provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(provider::cursor::CursorCliProvider::new())
         }
         ProviderChoice::Copilot => {
             disable_subscription_runtime_mode();
-            eprintln!("Using GitHub Copilot API provider (provider locked)");
+            init_notice("Using GitHub Copilot API provider (provider locked)");
             lock_model_provider("copilot");
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Gemini => {
             disable_subscription_runtime_mode();
-            eprintln!("Using Gemini provider (native Google Code Assist OAuth)");
+            init_notice("Using Gemini provider (native Google Code Assist OAuth)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(provider::gemini::GeminiProvider::new())
         }
         ProviderChoice::Openrouter => {
             disable_subscription_runtime_mode();
-            eprintln!("Using OpenRouter provider (provider locked)");
+            init_notice("Using OpenRouter provider (provider locked)");
             lock_model_provider("openrouter");
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Azure => {
             disable_subscription_runtime_mode();
             crate::auth::azure::apply_runtime_env()?;
-            eprintln!("Using Azure OpenAI provider (provider locked)");
+            init_notice("Using Azure OpenAI provider (provider locked)");
             lock_model_provider("openrouter");
             let multi = provider::MultiProvider::new();
             if let Some(model) = crate::auth::azure::load_model() {
@@ -352,26 +374,26 @@ pub async fn init_provider(
             let profile = profile_for_choice(choice)
                 .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
             let resolved = resolve_openai_compatible_profile(profile);
-            eprintln!(
+            init_notice(&format!(
                 "Using {} via OpenAI-compatible API (provider locked)",
                 resolved.display_name
-            );
+            ));
             lock_model_provider("openrouter");
             Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Antigravity => {
             disable_subscription_runtime_mode();
-            eprintln!("Using Antigravity CLI provider (experimental)");
+            init_notice("Using Antigravity CLI provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(provider::antigravity::AntigravityCliProvider::new())
         }
         ProviderChoice::Google => {
             disable_subscription_runtime_mode();
-            eprintln!(
-                "Note: Google/Gmail is not a model provider. Using auto-detect for model provider."
+            init_notice(
+                "Note: Google/Gmail is not a model provider. Using auto-detect for model provider.",
             );
-            eprintln!("Gmail tool is available if you've run `jcode login google`.");
+            init_notice("Gmail tool is available if you've run `jcode login google`.");
             unlock_model_provider();
             Arc::new(provider::MultiProvider::new())
         }
@@ -391,7 +413,10 @@ pub async fn init_provider(
 
             if has_claude || has_openai || has_copilot || has_gemini || has_openrouter {
                 let multi = provider::MultiProvider::new();
-                eprintln!("Using {} (use /model to switch models)", multi.name());
+                init_notice(&format!(
+                    "Using {} (use /model to switch models)",
+                    multi.name()
+                ));
                 crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
                 Arc::new(multi)
             } else {
@@ -416,10 +441,10 @@ pub async fn init_provider(
             let resolved = resolve_openai_compatible_profile(profile);
             if let Some(default_model) = resolved.default_model {
                 if provider.set_model(&default_model).is_ok() {
-                    eprintln!(
+                    init_notice(&format!(
                         "Using default model for {}: {}",
                         resolved.display_name, default_model
-                    );
+                    ));
                 }
             }
         }
@@ -427,9 +452,12 @@ pub async fn init_provider(
 
     if let Some(model_name) = model {
         if let Err(e) = provider.set_model(model_name) {
-            eprintln!("Warning: failed to set model '{}': {}", model_name, e);
+            init_notice(&format!(
+                "Warning: failed to set model '{}': {}",
+                model_name, e
+            ));
         } else {
-            eprintln!("Using model: {}", model_name);
+            init_notice(&format!("Using model: {}", model_name));
         }
     }
 

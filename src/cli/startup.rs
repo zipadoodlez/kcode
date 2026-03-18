@@ -6,7 +6,7 @@ use crate::{build, logging, perf, server, startup_profile, storage, telemetry, u
 
 use super::{
     args::{Args, Command},
-    dispatch, hot_exec, terminal,
+    dispatch, hot_exec, output, terminal,
 };
 
 pub async fn run() -> Result<()> {
@@ -45,6 +45,8 @@ fn parse_and_prepare_args() -> Result<Args> {
     let args = Args::parse();
     startup_profile::mark("args_parse");
 
+    output::set_quiet_enabled(args.quiet);
+
     if let Some(cwd) = &args.cwd {
         std::env::set_current_dir(cwd)?;
         logging::info(&format!("Changed working directory to: {}", cwd));
@@ -64,8 +66,10 @@ fn parse_and_prepare_args() -> Result<Args> {
 }
 
 fn spawn_background_update_check(args: &Args) {
-    let check_updates =
-        !args.no_update && !matches!(args.command, Some(Command::Update)) && args.resume.is_none();
+    let check_updates = !args.quiet
+        && !args.no_update
+        && !matches!(args.command, Some(Command::Update))
+        && args.resume.is_none();
     let auto_update = args.auto_update;
 
     if !check_updates {
@@ -125,9 +129,9 @@ fn report_main_error(error: &anyhow::Error) {
     logging::error(&error_str);
 
     if let Some(session_id) = terminal::get_current_session() {
-        eprintln!();
-        eprintln!("\x1b[33mTo restore this session, run:\x1b[0m");
-        eprintln!("  jcode --resume {}", session_id);
-        eprintln!();
+        output::stderr_blank_line();
+        output::stderr_info("\x1b[33mTo restore this session, run:\x1b[0m");
+        output::stderr_info(format!("  jcode --resume {}", session_id));
+        output::stderr_blank_line();
     }
 }

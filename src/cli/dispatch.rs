@@ -7,7 +7,9 @@ use crate::{
     tui,
 };
 
-use super::{commands, debug, hot_exec, login, provider_init, selfdev, terminal, tui_launch};
+use super::{
+    commands, debug, hot_exec, login, output, provider_init, selfdev, terminal, tui_launch,
+};
 use provider_init::ProviderChoice;
 
 pub(crate) async fn run_main(mut args: Args) -> Result<()> {
@@ -24,12 +26,14 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Connect) => {
             tui_launch::run_client().await?;
         }
-        Some(Command::Run { message }) => {
-            let (provider, registry) =
-                provider_init::init_provider_and_registry(&args.provider, args.model.as_deref())
-                    .await?;
-            let mut agent = agent::Agent::new(provider, registry);
-            agent.run_once(&message).await?;
+        Some(Command::Run { message, json }) => {
+            commands::run_single_message_command(
+                &args.provider,
+                args.model.as_deref(),
+                &message,
+                json,
+            )
+            .await?;
         }
         Some(Command::Login { account }) => {
             login::run_login(&args.provider, account.as_deref()).await?;
@@ -123,14 +127,16 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             .await?;
         }
         Some(Command::Model(subcmd)) => match subcmd {
-            ModelCommand::List { json } => {
-                commands::run_model_command(&args.provider, args.model.as_deref(), json).await?;
+            ModelCommand::List { json, verbose } => {
+                commands::run_model_command(&args.provider, args.model.as_deref(), json, verbose)
+                    .await?;
             }
         },
         Some(Command::AuthTest {
             login,
             all_configured,
             no_smoke,
+            no_tool_smoke,
             prompt,
             json,
             output,
@@ -141,6 +147,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 login,
                 all_configured,
                 no_smoke,
+                no_tool_smoke,
                 prompt.as_deref(),
                 json,
                 output.as_deref(),
@@ -165,7 +172,9 @@ fn resolve_resume_arg(args: &mut Args) -> Result<()> {
             }
             Err(e) => {
                 eprintln!("Error: {}", e);
-                eprintln!("\nUse `jcode --resume` to list available sessions.");
+                if !output::quiet_enabled() {
+                    eprintln!("\nUse `jcode --resume` to list available sessions.");
+                }
                 std::process::exit(1);
             }
         }
@@ -234,20 +243,21 @@ async fn run_default_command(args: Args) -> Result<()> {
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
 
     if in_jcode_repo && !already_in_selfdev && !args.standalone && !args.no_selfdev {
-        eprintln!("📍 Detected jcode repository - enabling self-dev mode");
-        eprintln!("   Using shared server with self-dev session mode");
-        eprintln!("   (use --no-selfdev to disable auto-detection)\n");
+        output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
+        output::stderr_info("   Using shared server with self-dev session mode");
+        output::stderr_info("   (use --no-selfdev to disable auto-detection)");
+        output::stderr_blank_line();
 
         crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
         crate::process_title::set_initial_title(&args);
     }
 
     if args.standalone {
-        eprintln!(
-            "\x1b[33m⚠️  Warning: --standalone is deprecated and will be removed in a future version.\x1b[0m"
+        output::stderr_info(
+            "\x1b[33m⚠️  Warning: --standalone is deprecated and will be removed in a future version.\x1b[0m",
         );
-        eprintln!(
-            "\x1b[33m   The default server/client mode now handles all use cases including self-dev.\x1b[0m\n"
+        output::stderr_info(
+            "\x1b[33m   The default server/client mode now handles all use cases including self-dev.\x1b[0m\n",
         );
         let (provider, registry) =
             provider_init::init_provider_and_registry(&args.provider, args.model.as_deref())
@@ -272,17 +282,17 @@ async fn run_default_command(args: Args) -> Result<()> {
     }
 
     if server_running && (args.provider != ProviderChoice::Auto || args.model.is_some()) {
-        eprintln!(
-            "Server already running; provider/model flags only apply when starting a new server."
+        output::stderr_info(
+            "Server already running; provider/model flags only apply when starting a new server.",
         );
-        eprintln!(
+        output::stderr_info(format!(
             "Current server settings control `/model`. Restart server to apply: --provider {}{}",
             args.provider.as_arg_value(),
             args.model
                 .as_ref()
                 .map(|m| format!(" --model {}", m))
                 .unwrap_or_default()
-        );
+        ));
     }
 
     if !server_running {
@@ -292,7 +302,7 @@ async fn run_default_command(args: Args) -> Result<()> {
 
     startup_profile::mark("pre_tui_client");
     if std::env::var("JCODE_RESUMING").is_err() && server_running {
-        eprintln!("Connecting to server...");
+        output::stderr_info("Connecting to server...");
     }
     tui_launch::run_tui_client(args.resume, startup_hints, !server_running).await?;
 
@@ -409,7 +419,7 @@ async fn acquire_spawn_lock_or_wait(
         }
 
         if !announced_wait {
-            eprintln!("Another client is starting the server, waiting...");
+            output::stderr_info("Another client is starting the server, waiting...");
             announced_wait = true;
         }
 
@@ -452,7 +462,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
         )?;
         login::run_login_provider(provider, Some("default")).await?;
         provider_init::apply_login_provider_profile_env(provider);
-        eprintln!();
+        output::stderr_blank_line();
     }
 
     Ok(())
@@ -487,7 +497,7 @@ pub(crate) async fn spawn_server(
     }
 
     startup_profile::mark("server_spawn_start");
-    eprintln!("Starting server...");
+    output::stderr_info("Starting server...");
     let client_requested_selfdev = selfdev::client_selfdev_requested();
     let exe = build::client_update_candidate(client_requested_selfdev)
         .map(|(path, _)| path)
