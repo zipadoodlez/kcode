@@ -24,6 +24,22 @@ jcode --quiet model list --json
 jcode --quiet --provider openai model list --json
 ```
 
+## Discover providers and current selection
+
+List provider IDs you can pass to `-p/--provider`:
+
+```bash
+jcode --quiet provider list
+jcode --quiet provider list --json
+```
+
+Inspect the currently requested and resolved provider/model selection:
+
+```bash
+jcode --quiet provider current
+jcode --quiet --provider openai --model gpt-5.4 provider current --json
+```
+
 Verbose human summary:
 
 ```bash
@@ -93,6 +109,22 @@ JSON output includes:
   - `method`
   - `auth_kind`
   - `recommended`
+
+## Inspect build/version details
+
+```bash
+jcode --quiet version
+jcode --quiet version --json
+```
+
+JSON output includes:
+
+- `version`
+- `git_hash`
+- `git_tag`
+- `build_time`
+- `git_date`
+- `release_build`
 
 ## Notes
 

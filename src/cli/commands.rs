@@ -588,6 +588,39 @@ struct AuthStatusReport {
     providers: Vec<AuthStatusProviderReport>,
 }
 
+#[derive(Debug, Serialize)]
+struct ProviderListEntry {
+    id: String,
+    display_name: String,
+    auth_kind: Option<String>,
+    recommended: bool,
+    aliases: Vec<String>,
+    detail: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProviderListReport {
+    providers: Vec<ProviderListEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct ProviderCurrentReport {
+    requested_provider: String,
+    requested_model: Option<String>,
+    resolved_provider: String,
+    selected_model: String,
+}
+
+#[derive(Debug, Serialize)]
+struct VersionReport {
+    version: String,
+    git_hash: String,
+    git_tag: String,
+    build_time: String,
+    git_date: String,
+    release_build: bool,
+}
+
 pub fn run_auth_status_command(emit_json: bool) -> Result<()> {
     let status = crate::auth::AuthStatus::check();
     let providers = crate::provider_catalog::auth_status_login_providers();
@@ -619,6 +652,130 @@ pub fn run_auth_status_command(emit_json: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn run_provider_list_command(emit_json: bool) -> Result<()> {
+    let providers = list_cli_providers();
+
+    if emit_json {
+        let report = ProviderListReport { providers };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        for provider in providers {
+            if let Some(detail) = provider.detail.as_deref() {
+                println!("{}\t{}\t{}", provider.id, provider.display_name, detail);
+            } else {
+                println!("{}\t{}", provider.id, provider.display_name);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn run_provider_current_command(
+    choice: &super::provider_init::ProviderChoice,
+    model: Option<&str>,
+    emit_json: bool,
+) -> Result<()> {
+    let provider = super::provider_init::init_provider_quiet(choice, model).await?;
+    let report = ProviderCurrentReport {
+        requested_provider: choice.as_arg_value().to_string(),
+        requested_model: model.map(str::to_string),
+        resolved_provider: provider.name().to_string(),
+        selected_model: provider.model(),
+    };
+
+    if emit_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("requested_provider\t{}", report.requested_provider);
+        if let Some(requested_model) = report.requested_model.as_deref() {
+            println!("requested_model\t{}", requested_model);
+        }
+        println!("resolved_provider\t{}", report.resolved_provider);
+        println!("selected_model\t{}", report.selected_model);
+    }
+
+    Ok(())
+}
+
+pub fn run_version_command(emit_json: bool) -> Result<()> {
+    let report = VersionReport {
+        version: env!("JCODE_VERSION").to_string(),
+        git_hash: env!("JCODE_GIT_HASH").to_string(),
+        git_tag: env!("JCODE_GIT_TAG").to_string(),
+        build_time: env!("JCODE_BUILD_TIME").to_string(),
+        git_date: env!("JCODE_GIT_DATE").to_string(),
+        release_build: option_env!("JCODE_RELEASE_BUILD").is_some(),
+    };
+
+    if emit_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("version\t{}", report.version);
+        println!("git_hash\t{}", report.git_hash);
+        println!("git_tag\t{}", report.git_tag);
+        println!("build_time\t{}", report.build_time);
+        println!("git_date\t{}", report.git_date);
+        println!("release_build\t{}", report.release_build);
+    }
+
+    Ok(())
+}
+
+fn list_cli_providers() -> Vec<ProviderListEntry> {
+    use super::provider_init::ProviderChoice;
+
+    let choices = [
+        ProviderChoice::Jcode,
+        ProviderChoice::Claude,
+        ProviderChoice::Openai,
+        ProviderChoice::Openrouter,
+        ProviderChoice::Azure,
+        ProviderChoice::Opencode,
+        ProviderChoice::OpencodeGo,
+        ProviderChoice::Zai,
+        ProviderChoice::Chutes,
+        ProviderChoice::Cerebras,
+        ProviderChoice::AlibabaCodingPlan,
+        ProviderChoice::OpenaiCompatible,
+        ProviderChoice::Cursor,
+        ProviderChoice::Copilot,
+        ProviderChoice::Gemini,
+        ProviderChoice::Antigravity,
+        ProviderChoice::Google,
+        ProviderChoice::Auto,
+    ];
+
+    choices
+        .into_iter()
+        .map(|choice| {
+            if let Some(provider) = super::provider_init::login_provider_for_choice(&choice) {
+                ProviderListEntry {
+                    id: choice.as_arg_value().to_string(),
+                    display_name: provider.display_name.to_string(),
+                    auth_kind: Some(provider.auth_kind.label().to_string()),
+                    recommended: provider.recommended,
+                    aliases: provider
+                        .aliases
+                        .iter()
+                        .map(|alias| (*alias).to_string())
+                        .collect(),
+                    detail: Some(provider.menu_detail.to_string()),
+                }
+            } else {
+                ProviderListEntry {
+                    id: choice.as_arg_value().to_string(),
+                    display_name: "Auto-detect".to_string(),
+                    auth_kind: None,
+                    recommended: false,
+                    aliases: Vec::new(),
+                    detail: Some("Use the best configured provider automatically".to_string()),
+                }
+            }
+        })
+        .collect()
 }
 
 fn auth_state_label(state: crate::auth::AuthState) -> &'static str {
@@ -1783,5 +1940,41 @@ mod tests {
         let models = collect_cli_model_names(&routes, vec!["gpt-5.4".to_string()]);
 
         assert_eq!(models, vec!["claude-opus-4-6", "gpt-5.4"]);
+    }
+
+    #[test]
+    fn list_cli_providers_includes_auto_and_openai() {
+        let providers = list_cli_providers();
+        assert!(providers.iter().any(|provider| provider.id == "auto"));
+        assert!(providers.iter().any(|provider| {
+            provider.id == "openai"
+                && provider.display_name == "OpenAI"
+                && provider.auth_kind.as_deref() == Some("OAuth")
+        }));
+    }
+
+    #[test]
+    fn version_command_plain_output_includes_core_fields() {
+        let report = VersionReport {
+            version: "v1.2.3 (abc1234)".to_string(),
+            git_hash: "abc1234".to_string(),
+            git_tag: "v1.2.3".to_string(),
+            build_time: "2026-03-18 18:00:00 +0000".to_string(),
+            git_date: "2026-03-18 17:59:00 +0000".to_string(),
+            release_build: false,
+        };
+        let text = format!(
+            "version\t{}\ngit_hash\t{}\ngit_tag\t{}\nbuild_time\t{}\ngit_date\t{}\nrelease_build\t{}\n",
+            report.version,
+            report.git_hash,
+            report.git_tag,
+            report.build_time,
+            report.git_date,
+            report.release_build
+        );
+
+        assert!(text.contains("version\tv1.2.3 (abc1234)"));
+        assert!(text.contains("git_hash\tabc1234"));
+        assert!(text.contains("release_build\tfalse"));
     }
 }

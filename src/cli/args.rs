@@ -106,6 +106,13 @@ pub(crate) enum Command {
     /// Update jcode to the latest version
     Update,
 
+    /// Show build/version information in human or JSON form
+    Version {
+        /// Emit JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Self-development mode: run as a canary session on the shared server
     #[command(alias = "selfdev")]
     SelfDev {
@@ -140,6 +147,10 @@ pub(crate) enum Command {
     /// Authentication status and validation helpers
     #[command(subcommand)]
     Auth(AuthCommand),
+
+    /// Provider discovery and selection helpers
+    #[command(subcommand)]
+    Provider(ProviderCommand),
 
     /// Memory management commands
     #[command(subcommand)]
@@ -299,6 +310,23 @@ pub(crate) enum ModelCommand {
 }
 
 #[derive(Subcommand, Debug)]
+pub(crate) enum ProviderCommand {
+    /// List provider IDs you can pass to -p/--provider
+    List {
+        /// Emit JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show the currently requested and resolved provider selection
+    Current {
+        /// Emit JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub(crate) enum AuthCommand {
     /// Show configured authentication status for model/tool providers
     Status {
@@ -452,10 +480,37 @@ mod tests {
     }
 
     #[test]
+    fn version_subcommand_parses() {
+        let args = Args::try_parse_from(["jcode", "version", "--json"]).unwrap();
+        match args.command {
+            Some(Command::Version { json }) => assert!(json),
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
     fn auth_status_subcommand_parses() {
         let args = Args::try_parse_from(["jcode", "auth", "status", "--json"]).unwrap();
         match args.command {
             Some(Command::Auth(AuthCommand::Status { json })) => assert!(json),
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn provider_list_subcommand_parses() {
+        let args = Args::try_parse_from(["jcode", "provider", "list", "--json"]).unwrap();
+        match args.command {
+            Some(Command::Provider(ProviderCommand::List { json })) => assert!(json),
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn provider_current_subcommand_parses() {
+        let args = Args::try_parse_from(["jcode", "provider", "current", "--json"]).unwrap();
+        match args.command {
+            Some(Command::Provider(ProviderCommand::Current { json })) => assert!(json),
             other => panic!("unexpected command: {:?}", other),
         }
     }

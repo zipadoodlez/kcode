@@ -2,7 +2,8 @@ use anyhow::Result;
 use std::process::{Command as ProcessCommand, Stdio};
 
 use super::args::{
-    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, TranscriptModeArg,
+    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
+    TranscriptModeArg,
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
@@ -55,6 +56,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Update) => {
             hot_exec::run_update()?;
         }
+        Some(Command::Version { json }) => {
+            commands::run_version_command(json)?;
+        }
         Some(Command::SelfDev { build }) => {
             selfdev::run_self_dev(build, args.resume).await?;
         }
@@ -69,6 +73,15 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::Auth(subcmd)) => match subcmd {
             AuthCommand::Status { json } => commands::run_auth_status_command(json)?,
+        },
+        Some(Command::Provider(subcmd)) => match subcmd {
+            ProviderCommand::List { json } => {
+                commands::run_provider_list_command(json)?;
+            }
+            ProviderCommand::Current { json } => {
+                commands::run_provider_current_command(&args.provider, args.model.as_deref(), json)
+                    .await?;
+            }
         },
         Some(Command::Memory(subcmd)) => {
             commands::run_memory_command(map_memory_subcommand(subcmd))?;
