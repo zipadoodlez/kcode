@@ -817,6 +817,9 @@ jcode auth-test --all-configured
 - credential file discovery
 - token refresh / auth probe
 - real provider smoke prompt for model providers
+- tool-enabled provider smoke using the normal chat request path
+
+Use `--no-tool-smoke` if you explicitly want to skip the tool-attached runtime check.
 
 ---
 

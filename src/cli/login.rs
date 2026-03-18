@@ -14,7 +14,7 @@ pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> 
     if let Some(provider) = login_provider_for_choice(choice) {
         if matches!(choice, ProviderChoice::ClaudeSubprocess) {
             eprintln!(
-                "Warning: Claude subprocess transport is deprecated. Direct Claude API mode is preferred."
+                "Warning: Claude subprocess transport is deprecated and will be removed. Direct Anthropic API is already the default for `--provider claude`."
             );
         }
         return run_login_provider(provider, account_label).await;

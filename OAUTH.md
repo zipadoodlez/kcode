@@ -37,23 +37,15 @@ Credential discovery order is:
 2. `~/.claude/.credentials.json`
 3. `~/.local/share/opencode/auth.json`
 
-### Configuration knobs
-These environment variables control the Claude Code CLI provider:
-- `JCODE_CLAUDE_CLI_PATH` (default: `claude`)
-- `JCODE_CLAUDE_CLI_MODEL` (default: `claude-opus-4-5-20251101`)
-- `JCODE_CLAUDE_CLI_PERMISSION_MODE` (default: `bypassPermissions`)
-- `JCODE_CLAUDE_CLI_PARTIAL` (set to `0` to disable partial streaming)
-
-### Direct Anthropic API (optional)
-Set `JCODE_USE_DIRECT_API=1` to bypass the CLI and use the Anthropic Messages API.
-This requires tokens that Anthropic permits for direct API access (API keys, or
-OAuth tokens explicitly allowed for API usage).
+### Direct Anthropic API (default)
+`--provider claude` uses the direct Anthropic Messages API by default.
+jcode owns the full runtime path itself: auth, refresh, request shaping, tool
+compatibility, and transport.
 
 #### Claude OAuth direct API compatibility
 Claude Code OAuth tokens can be used directly against the Messages API, but only
-if the request matches the Claude Code "OAuth contract". jcode handles this
-automatically when `JCODE_USE_DIRECT_API=1` and Claude OAuth credentials are
-present.
+if the request matches the Claude Code "OAuth contract". jcode applies this
+automatically for the default Claude runtime path.
 
 Required behaviors (applied by the Anthropic provider):
 - Use the Messages endpoint with `?beta=true`.
@@ -81,6 +73,20 @@ Notes:
 - If the OAuth token expires, refresh via the Claude OAuth refresh endpoint.
 - Without the identity line and allow-listed tool names, the API will reject
   OAuth requests even if the token is otherwise valid.
+
+### Deprecated Claude CLI transport
+The old Claude CLI shell-out path is deprecated and should only be used for
+legacy compatibility.
+
+You can still force it temporarily with:
+- `JCODE_USE_CLAUDE_CLI=1`
+- or `--provider claude-subprocess` (deprecated hidden compatibility value)
+
+These environment variables control the deprecated Claude Code CLI transport:
+- `JCODE_CLAUDE_CLI_PATH` (default: `claude`)
+- `JCODE_CLAUDE_CLI_MODEL` (default: `claude-opus-4-5-20251101`)
+- `JCODE_CLAUDE_CLI_PERMISSION_MODE` (default: `bypassPermissions`)
+- `JCODE_CLAUDE_CLI_PARTIAL` (set to `0` to disable partial streaming)
 
 ## OpenAI / Codex OAuth
 
@@ -200,6 +206,9 @@ For model providers, `auth-test` attempts:
 1. credential discovery
 2. refresh/auth probe
 3. a real provider smoke prompt expecting `AUTH_TEST_OK`
+4. a tool-enabled smoke prompt using the same tool-attached request path as normal chat
+
+Use `--no-tool-smoke` if you only want the auth/simple-runtime checks.
 
 For Gmail/Google it verifies credential discovery and token refresh, but skips model smoke because it is not a model provider.
 

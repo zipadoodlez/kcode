@@ -19,7 +19,7 @@ use super::output;
 pub enum ProviderChoice {
     Jcode,
     Claude,
-    #[value(alias = "claude-subprocess")]
+    #[value(alias = "claude-subprocess", hide = true)]
     ClaudeSubprocess,
     Openai,
     Openrouter,
@@ -313,10 +313,12 @@ async fn init_provider_with_options(
         ProviderChoice::ClaudeSubprocess => {
             disable_subscription_runtime_mode();
             crate::logging::warn(
-                "Using --provider claude-subprocess is deprecated. Prefer `--provider claude`.",
+                "Using --provider claude-subprocess is deprecated and will be removed. Prefer `--provider claude`.",
             );
             crate::env::set_var("JCODE_USE_CLAUDE_CLI", "1");
-            init_notice("Using deprecated Claude subprocess transport (provider locked)");
+            init_notice(
+                "Using deprecated Claude subprocess transport (legacy compatibility mode; provider locked)",
+            );
             lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference(false))
         }
