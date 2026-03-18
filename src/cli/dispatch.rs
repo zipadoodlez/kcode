@@ -28,12 +28,17 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Connect) => {
             tui_launch::run_client().await?;
         }
-        Some(Command::Run { message, json }) => {
+        Some(Command::Run {
+            message,
+            json,
+            ndjson,
+        }) => {
             commands::run_single_message_command(
                 &args.provider,
                 args.model.as_deref(),
                 &message,
                 json,
+                ndjson,
             )
             .await?;
         }

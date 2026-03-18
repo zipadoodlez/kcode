@@ -82,8 +82,12 @@ pub(crate) enum Command {
     /// Run a single message and exit
     Run {
         /// Emit a machine-readable JSON result instead of streaming text
-        #[arg(long)]
+        #[arg(long, conflicts_with = "ndjson")]
         json: bool,
+
+        /// Emit newline-delimited JSON events while the response streams
+        #[arg(long, conflicts_with = "json")]
+        ndjson: bool,
 
         /// The message to send
         message: String,
@@ -417,8 +421,30 @@ mod tests {
     fn run_json_subcommand_parses() {
         let args = Args::try_parse_from(["jcode", "run", "--json", "hello"]).unwrap();
         match args.command {
-            Some(Command::Run { json, message }) => {
+            Some(Command::Run {
+                json,
+                ndjson,
+                message,
+            }) => {
                 assert!(json);
+                assert!(!ndjson);
+                assert_eq!(message, "hello");
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn run_ndjson_subcommand_parses() {
+        let args = Args::try_parse_from(["jcode", "run", "--ndjson", "hello"]).unwrap();
+        match args.command {
+            Some(Command::Run {
+                json,
+                ndjson,
+                message,
+            }) => {
+                assert!(!json);
+                assert!(ndjson);
                 assert_eq!(message, "hello");
             }
             other => panic!("unexpected command: {:?}", other),

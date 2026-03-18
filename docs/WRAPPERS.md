@@ -36,6 +36,29 @@ jcode --quiet model list --verbose
 jcode --quiet run --json "Reply with exactly OK"
 ```
 
+## Stream one prompt as NDJSON
+
+```bash
+jcode --quiet run --ndjson "Reply with exactly OK"
+```
+
+Typical event types:
+
+- `start`
+- `connection_phase`
+- `connection_type`
+- `text_delta`
+- `text_replace`
+- `tool_start`
+- `tool_input`
+- `tool_exec`
+- `tool_done`
+- `tokens`
+- `done`
+- `error`
+
+The final `done` event includes the assembled text and usage summary.
+
 Example shape:
 
 ```json
