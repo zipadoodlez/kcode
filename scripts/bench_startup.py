@@ -71,6 +71,13 @@ def median(values: Iterable[float]) -> float:
     return statistics.median(vals)
 
 
+def median_or_none(values: Iterable[float]) -> float | None:
+    vals = list(values)
+    if not vals:
+        return None
+    return statistics.median(vals)
+
+
 def print_stats(name: str, times: list[float]) -> None:
     if not times:
         print(f"\n{name}: No successful runs")
@@ -226,10 +233,9 @@ def collect_budgets(
     cold_server_spawn = [p.deltas_ms.get("server_spawn_start", 0.0) for p in cold_profiles]
     cold_app_new = [p.deltas_ms.get("app_new_for_remote", 0.0) for p in cold_profiles]
 
-    return [
+    budgets = [
         Budget("--help median", median(help_times), args.max_help_ms),
         Budget("--version median", median(version_times), args.max_version_ms),
-        Budget("server ready median", median(server_times), args.max_server_ready_ms),
         Budget("cold startup total median", median(cold_total), args.max_cold_total_ms),
         Budget(
             "cold startup server_check median",
@@ -247,6 +253,10 @@ def collect_budgets(
             args.max_cold_app_new_ms,
         ),
     ]
+    server_ready_median = median_or_none(server_times)
+    if server_ready_median is not None:
+        budgets.insert(2, Budget("server ready median", server_ready_median, args.max_server_ready_ms))
+    return budgets
 
 
 def main() -> int:
@@ -279,9 +289,24 @@ def main() -> int:
 
     print("\n" + "=" * 60)
     print("Summary:")
-    print(f"  Binary load median:      ~{median(help_times):.1f} ms")
-    print(f"  Server ready median:     ~{median(server_times):.1f} ms")
-    print(f"  Cold client total median:~{median(p.total_ms for p in cold_profiles):.1f} ms")
+    help_median = median_or_none(help_times)
+    server_median = median_or_none(server_times)
+    cold_median = median_or_none(p.total_ms for p in cold_profiles)
+    print(
+        f"  Binary load median:      ~{help_median:.1f} ms"
+        if help_median is not None
+        else "  Binary load median:      n/a"
+    )
+    print(
+        f"  Server ready median:     ~{server_median:.1f} ms"
+        if server_median is not None
+        else "  Server ready median:     n/a"
+    )
+    print(
+        f"  Cold client total median:~{cold_median:.1f} ms"
+        if cold_median is not None
+        else "  Cold client total median:n/a"
+    )
 
     budgets = collect_budgets(help_times, version_times, server_times, cold_profiles, args)
     if args.check:
