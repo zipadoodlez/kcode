@@ -241,7 +241,7 @@ Requirement for raw typing:
 |---|---|---|
 | **File Ops** | `read` `write` `edit` `multiedit` `patch` `apply_patch` | Read, write, and surgically edit files |
 | **Search** | `glob` `grep` `ls` `codesearch` | Find files, search contents, navigate code |
-| **Execution** | `bash` `launch` `task` `batch` `bg` | Shell commands, user-facing launches, sub-agents, parallel & background execution |
+| **Execution** | `bash` `open` `task` `batch` `bg` | Shell commands, user-facing opens, sub-agents, parallel & background execution |
 | **Web** | `webfetch` `websearch` | Fetch URLs, search the web via DuckDuckGo |
 | **Memory** | `memory` `session_search` `conversation_search` | Persistent cross-session memory and RAG retrieval |
 | **Coordination** | `communicate` `todo_read` `todo_write` | Inter-agent messaging, task tracking |
