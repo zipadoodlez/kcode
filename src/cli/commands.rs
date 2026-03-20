@@ -1169,6 +1169,7 @@ enum AuthTestTarget {
     Claude,
     Openai,
     Gemini,
+    Antigravity,
     Google,
     Copilot,
     Cursor,
@@ -1180,6 +1181,7 @@ impl AuthTestTarget {
             Self::Claude => super::provider_init::ProviderChoice::Claude,
             Self::Openai => super::provider_init::ProviderChoice::Openai,
             Self::Gemini => super::provider_init::ProviderChoice::Gemini,
+            Self::Antigravity => super::provider_init::ProviderChoice::Antigravity,
             Self::Google => super::provider_init::ProviderChoice::Google,
             Self::Copilot => super::provider_init::ProviderChoice::Copilot,
             Self::Cursor => super::provider_init::ProviderChoice::Cursor,
@@ -1191,6 +1193,7 @@ impl AuthTestTarget {
             Self::Claude => "claude",
             Self::Openai => "openai",
             Self::Gemini => "gemini",
+            Self::Antigravity => "antigravity",
             Self::Google => "google",
             Self::Copilot => "copilot",
             Self::Cursor => "cursor",
@@ -1207,6 +1210,7 @@ impl AuthTestTarget {
             | super::provider_init::ProviderChoice::ClaudeSubprocess => Some(Self::Claude),
             super::provider_init::ProviderChoice::Openai => Some(Self::Openai),
             super::provider_init::ProviderChoice::Gemini => Some(Self::Gemini),
+            super::provider_init::ProviderChoice::Antigravity => Some(Self::Antigravity),
             super::provider_init::ProviderChoice::Google => Some(Self::Google),
             super::provider_init::ProviderChoice::Copilot => Some(Self::Copilot),
             super::provider_init::ProviderChoice::Cursor => Some(Self::Cursor),
@@ -1237,6 +1241,11 @@ impl AuthTestTarget {
             Self::Gemini => Ok(vec![
                 crate::auth::gemini::tokens_path()?.display().to_string(),
                 crate::auth::gemini::gemini_cli_oauth_path()?
+                    .display()
+                    .to_string(),
+            ]),
+            Self::Antigravity => Ok(vec![
+                crate::auth::antigravity::tokens_path()?
                     .display()
                     .to_string(),
             ]),
@@ -1381,7 +1390,7 @@ fn resolve_auth_test_targets(
 
     AuthTestTarget::from_provider_choice(choice).map(|target| vec![target]).ok_or_else(|| {
         anyhow::anyhow!(
-            "Provider '{}' is not yet supported by `jcode auth-test`. Supported: claude, openai, gemini, google, copilot, cursor.",
+            "Provider '{}' is not yet supported by `jcode auth-test`. Supported: claude, openai, gemini, antigravity, google, copilot, cursor.",
             choice.as_arg_value()
         )
     })
@@ -1397,6 +1406,9 @@ fn configured_auth_test_targets(status: &crate::auth::AuthStatus) -> Vec<AuthTes
     }
     if status.gemini != crate::auth::AuthState::NotConfigured {
         targets.push(AuthTestTarget::Gemini);
+    }
+    if status.antigravity != crate::auth::AuthState::NotConfigured {
+        targets.push(AuthTestTarget::Antigravity);
     }
     if status.google != crate::auth::AuthState::NotConfigured {
         targets.push(AuthTestTarget::Google);
@@ -1431,6 +1443,7 @@ async fn run_auth_test_target(
         AuthTestTarget::Claude => probe_claude_auth(&mut report).await,
         AuthTestTarget::Openai => probe_openai_auth(&mut report).await,
         AuthTestTarget::Gemini => probe_gemini_auth(&mut report).await,
+        AuthTestTarget::Antigravity => probe_antigravity_auth(&mut report).await,
         AuthTestTarget::Google => probe_google_auth(&mut report).await,
         AuthTestTarget::Copilot => probe_copilot_auth(&mut report).await,
         AuthTestTarget::Cursor => probe_cursor_auth(&mut report).await,
@@ -1585,6 +1598,38 @@ async fn probe_gemini_auth(report: &mut AuthTestProviderReport) {
                     true,
                     format!(
                         "Gemini token load/refresh succeeded (expires_at={}).",
+                        tokens.expires_at
+                    ),
+                ),
+                Err(err) => report.push_step("refresh_probe", false, err.to_string()),
+            }
+        }
+        Err(err) => report.push_step("credential_probe", false, err.to_string()),
+    }
+}
+
+async fn probe_antigravity_auth(report: &mut AuthTestProviderReport) {
+    match crate::auth::antigravity::load_tokens() {
+        Ok(tokens) => {
+            report.push_step(
+                "credential_probe",
+                true,
+                format!(
+                    "Loaded Antigravity OAuth tokens{} (expires_at={}).",
+                    tokens
+                        .email
+                        .as_deref()
+                        .map(|email| format!(" for {}", email))
+                        .unwrap_or_default(),
+                    tokens.expires_at
+                ),
+            );
+            match crate::auth::antigravity::load_or_refresh_tokens().await {
+                Ok(tokens) => report.push_step(
+                    "refresh_probe",
+                    true,
+                    format!(
+                        "Antigravity token load/refresh succeeded (expires_at={}).",
                         tokens.expires_at
                     ),
                 ),

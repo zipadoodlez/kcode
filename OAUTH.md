@@ -214,12 +214,12 @@ For Gmail/Google it verifies credential discovery and token refresh, but skips m
 
 ## Experimental CLI Providers
 
-J-Code also supports experimental CLI-backed providers:
+J-Code also supports experimental CLI-backed providers, plus Antigravity with native OAuth login:
 - `--provider cursor`
 - `--provider copilot`
 - `--provider antigravity`
 
-These use each provider's local CLI session/auth and shell out in print mode.
+Cursor and Copilot use each provider's local CLI session/auth and shell out in print mode. Antigravity still uses a CLI-backed runtime transport today, but login/auth storage is handled natively by jcode.
 
 ### Cursor
 - Login: `jcode login --provider cursor`
@@ -241,9 +241,16 @@ These use each provider's local CLI session/auth and shell out in print mode.
   - `JCODE_COPILOT_MODEL` (default: `claude-sonnet-4`)
 
 ### Antigravity
-- Login: `jcode login --provider antigravity` (runs `<cli> login`)
+- Login: `jcode login --provider antigravity` (native Google OAuth flow; does **not** require Antigravity to be installed)
+- Tokens: `~/.jcode/antigravity_oauth.json`
+- Runtime:
+  - jcode authenticates directly and stores/refreshes Antigravity OAuth tokens itself
+  - the provider transport still shells out to the Antigravity CLI for completions if you choose `--provider antigravity`
 - Env vars:
-  - `JCODE_ANTIGRAVITY_CLI_PATH` (default: `antigravity`)
+  - `JCODE_ANTIGRAVITY_CLIENT_ID` (optional override for OAuth client id)
+  - `JCODE_ANTIGRAVITY_CLIENT_SECRET` (optional override for OAuth client secret)
+  - `JCODE_ANTIGRAVITY_VERSION` (optional override for Antigravity request fingerprint/version)
+  - `JCODE_ANTIGRAVITY_CLI_PATH` (default: `antigravity`, runtime only)
   - `JCODE_ANTIGRAVITY_MODEL` (default: `default`)
   - `JCODE_ANTIGRAVITY_PROMPT_FLAG` (default: `-p`)
   - `JCODE_ANTIGRAVITY_MODEL_FLAG` (default: `--model`)

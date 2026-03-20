@@ -86,7 +86,7 @@ pub async fn run_login_provider(
         LoginProviderTarget::Cursor => login_cursor_flow()?,
         LoginProviderTarget::Copilot => login_copilot_flow()?,
         LoginProviderTarget::Gemini => login_gemini_flow().await?,
-        LoginProviderTarget::Antigravity => login_antigravity_flow()?,
+        LoginProviderTarget::Antigravity => login_antigravity_flow().await?,
         LoginProviderTarget::Google => login_google_flow().await?,
     }
     auth::AuthStatus::invalidate_cache();
@@ -499,17 +499,29 @@ async fn login_copilot_device_flow() -> Result<()> {
     Ok(())
 }
 
-fn login_antigravity_flow() -> Result<()> {
-    eprintln!("Starting Antigravity login...");
-    let binary =
-        std::env::var("JCODE_ANTIGRAVITY_CLI_PATH").unwrap_or_else(|_| "antigravity".to_string());
-    run_external_login_command(&binary, &["login"]).with_context(|| {
-        format!(
-            "Antigravity login failed. Check `{}` is installed and run `{} login`.",
-            binary, binary
-        )
-    })?;
-    eprintln!("Antigravity login command completed.");
+async fn login_antigravity_flow() -> Result<()> {
+    eprintln!("Starting native Antigravity login...");
+    eprintln!(
+        "jcode will authenticate directly with Google Antigravity; the Antigravity desktop app is not required."
+    );
+    eprintln!(
+        "If browser launch fails, set `NO_BROWSER=true` and jcode will prompt for the callback URL instead."
+    );
+    eprintln!();
+
+    let tokens = crate::auth::antigravity::login().await?;
+
+    eprintln!("Successfully logged in to Antigravity!");
+    eprintln!(
+        "Tokens saved to {}",
+        crate::auth::antigravity::tokens_path()?.display()
+    );
+    if let Some(email) = tokens.email.as_deref() {
+        eprintln!("Google account: {}", email);
+    }
+    if let Some(project_id) = tokens.project_id.as_deref() {
+        eprintln!("Resolved Antigravity project: {}", project_id);
+    }
     Ok(())
 }
 
