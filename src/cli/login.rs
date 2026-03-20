@@ -507,6 +507,9 @@ async fn login_antigravity_flow() -> Result<()> {
     eprintln!(
         "If browser launch fails, set `NO_BROWSER=true` and jcode will prompt for the callback URL instead."
     );
+    eprintln!(
+        "If the browser later shows a loopback/callback error page, copy the full URL from the address bar and re-run with `NO_BROWSER=true`."
+    );
     eprintln!();
 
     let tokens = crate::auth::antigravity::login().await?;
