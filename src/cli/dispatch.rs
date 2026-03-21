@@ -483,7 +483,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
             &provider_catalog::server_bootstrap_login_providers(),
             "No credentials found. Let's log in!\n\nChoose a provider:",
         )?;
-        login::run_login_provider(provider, Some("default")).await?;
+        login::run_login_provider(provider, None).await?;
         provider_init::apply_login_provider_profile_env(provider);
         output::stderr_blank_line();
     }

@@ -76,10 +76,8 @@ pub async fn run_login_provider(
 ) -> Result<()> {
     match provider.target {
         LoginProviderTarget::Jcode => login_jcode_flow()?,
-        LoginProviderTarget::Claude => {
-            login_claude_flow(account_label.unwrap_or("default")).await?
-        }
-        LoginProviderTarget::OpenAi => login_openai_flow().await?,
+        LoginProviderTarget::Claude => login_claude_flow(account_label).await?,
+        LoginProviderTarget::OpenAi => login_openai_flow(account_label).await?,
         LoginProviderTarget::OpenRouter => login_openrouter_flow()?,
         LoginProviderTarget::Azure => login_azure_flow()?,
         LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile)?,
@@ -157,12 +155,13 @@ fn login_jcode_flow() -> Result<()> {
     Ok(())
 }
 
-async fn login_claude_flow(label: &str) -> Result<()> {
+async fn login_claude_flow(requested_label: Option<&str>) -> Result<()> {
+    let label = auth::claude::login_target_label(requested_label)?;
     eprintln!("Logging in to Claude (account: {})...", label);
     let tokens = auth::oauth::login_claude().await?;
-    auth::oauth::save_claude_tokens_for_account(&tokens, label)?;
+    auth::oauth::save_claude_tokens_for_account(&tokens, &label)?;
     let profile_email =
-        match auth::oauth::update_claude_account_profile(label, &tokens.access_token).await {
+        match auth::oauth::update_claude_account_profile(&label, &tokens.access_token).await {
             Ok(email) => email,
             Err(e) => {
                 eprintln!(
@@ -184,12 +183,14 @@ async fn login_claude_flow(label: &str) -> Result<()> {
     Ok(())
 }
 
-async fn login_openai_flow() -> Result<()> {
-    eprintln!("Logging in to OpenAI/Codex...");
+async fn login_openai_flow(requested_label: Option<&str>) -> Result<()> {
+    let label = auth::codex::login_target_label(requested_label)?;
+    eprintln!("Logging in to OpenAI/Codex (account: {})...", label);
     let tokens = auth::oauth::login_openai().await?;
-    auth::oauth::save_openai_tokens(&tokens)?;
+    auth::oauth::save_openai_tokens_for_account(&tokens, &label)?;
     eprintln!(
-        "Successfully logged in to OpenAI! Tokens saved to {}",
+        "Successfully logged in to OpenAI! Account '{}' saved to {}",
+        label,
         crate::storage::jcode_dir()?
             .join("openai-auth.json")
             .display()

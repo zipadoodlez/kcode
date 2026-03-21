@@ -95,7 +95,7 @@ pub(crate) enum Command {
 
     /// Login to a provider via OAuth
     Login {
-        /// Account label for multi-account support (default: "default")
+        /// Account label for multi-account support (stored labels are auto-numbered)
         #[arg(long, short = 'a')]
         account: Option<String>,
     },
