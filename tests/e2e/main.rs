@@ -767,7 +767,7 @@ fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
             &mut master_fd,
             &mut slave_fd,
             std::ptr::null_mut(),
-            std::ptr::null(),
+            std::ptr::null_mut(),
             &mut winsize,
         )
     };

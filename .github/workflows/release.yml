@@ -111,6 +111,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure MSVC build environment (x64)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Configure MSVC build environment (ARM64)
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
