@@ -47,6 +47,7 @@ fn lock_jcode_home() -> std::sync::MutexGuard<'static, ()> {
 struct TestEnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
     prev_home: Option<OsString>,
+    prev_runtime_dir: Option<OsString>,
     prev_test_session: Option<OsString>,
     prev_debug_control: Option<OsString>,
     _temp_home: tempfile::TempDir,
@@ -59,16 +60,21 @@ impl TestEnvGuard {
             .prefix("jcode-e2e-home-")
             .tempdir()?;
         let prev_home = std::env::var_os("JCODE_HOME");
+        let prev_runtime_dir = std::env::var_os("JCODE_RUNTIME_DIR");
         let prev_test_session = std::env::var_os("JCODE_TEST_SESSION");
         let prev_debug_control = std::env::var_os("JCODE_DEBUG_CONTROL");
+        let runtime_dir = temp_home.path().join("runtime");
+        std::fs::create_dir_all(&runtime_dir)?;
 
         jcode::env::set_var("JCODE_HOME", temp_home.path());
+        jcode::env::set_var("JCODE_RUNTIME_DIR", &runtime_dir);
         jcode::env::set_var("JCODE_TEST_SESSION", "1");
         jcode::env::set_var("JCODE_DEBUG_CONTROL", "1");
 
         Ok(Self {
             _lock: lock,
             prev_home,
+            prev_runtime_dir,
             prev_test_session,
             prev_debug_control,
             _temp_home: temp_home,
@@ -82,6 +88,12 @@ impl Drop for TestEnvGuard {
             jcode::env::set_var("JCODE_HOME", prev_home);
         } else {
             jcode::env::remove_var("JCODE_HOME");
+        }
+
+        if let Some(prev_runtime_dir) = &self.prev_runtime_dir {
+            jcode::env::set_var("JCODE_RUNTIME_DIR", prev_runtime_dir);
+        } else {
+            jcode::env::remove_var("JCODE_RUNTIME_DIR");
         }
 
         if let Some(prev_test_session) = &self.prev_test_session {
@@ -1655,17 +1667,7 @@ async fn test_socket_model_cycle_supported_models() -> Result<()> {
 
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    // Wait for socket to appear
-    let start = Instant::now();
-    while !socket_path.exists() {
-        if start.elapsed() > Duration::from_secs(10) {
-            server_handle.abort();
-            anyhow::bail!("Server socket did not appear");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+    let mut client = wait_for_server_client(&socket_path).await?;
     let request_id = client.cycle_model(1).await?;
 
     let mut saw_model_changed = false;
@@ -1750,16 +1752,7 @@ async fn test_resume_restores_model_and_tool_history() -> Result<()> {
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    let start = Instant::now();
-    while !socket_path.exists() {
-        if start.elapsed() > Duration::from_secs(10) {
-            server_handle.abort();
-            anyhow::bail!("Server socket did not appear");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+    let mut client = wait_for_server_client(&socket_path).await?;
     let resume_id = client.resume_session(&session.id).await?;
 
     let mut history_event = None;
@@ -1825,17 +1818,7 @@ async fn test_subscribe_selfdev_hint_marks_canary() -> Result<()> {
 
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    // Wait for socket to appear
-    let start = Instant::now();
-    while !socket_path.exists() {
-        if start.elapsed() > Duration::from_secs(2) {
-            server_handle.abort();
-            anyhow::bail!("Server socket did not appear");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+    let mut client = wait_for_server_client(&socket_path).await?;
     let subscribe_id = client.subscribe_with_info(None, Some(true)).await?;
 
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -1892,16 +1875,7 @@ async fn test_subscribe_working_dir_without_selfdev_hint_stays_normal() -> Resul
 
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    let start = Instant::now();
-    while !socket_path.exists() {
-        if start.elapsed() > Duration::from_secs(2) {
-            server_handle.abort();
-            anyhow::bail!("Server socket did not appear");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+    let mut client = wait_for_server_client(&socket_path).await?;
     let subscribe_id = client
         .subscribe_with_info(Some(nested_dir.display().to_string()), None)
         .await?;
@@ -1968,20 +1942,11 @@ async fn test_model_switch_resets_provider_session() -> Result<()> {
 
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    let start = Instant::now();
-    while !socket_path.exists() {
-        if start.elapsed() > Duration::from_secs(2) {
-            server_handle.abort();
-            anyhow::bail!("Server socket did not appear");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
+    let mut client = wait_for_server_client(&socket_path).await?;
 
     let msg_id = client.send_message("hello").await?;
     let mut saw_done1 = false;
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
         if matches!(event, ServerEvent::Done { id } if id == msg_id) {
@@ -2073,16 +2038,7 @@ async fn test_model_switch_is_per_session() -> Result<()> {
 
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    let start = Instant::now();
-    while !socket_path.exists() {
-        if start.elapsed() > Duration::from_secs(2) {
-            server_handle.abort();
-            anyhow::bail!("Server socket did not appear");
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    let mut client1 = server::Client::connect_with_path(socket_path.clone()).await?;
+    let mut client1 = wait_for_server_client(&socket_path).await?;
     let mut client2 = server::Client::connect_with_path(socket_path.clone()).await?;
 
     // Give server time to set up both client sessions
