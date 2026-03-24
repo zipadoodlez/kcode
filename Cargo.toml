@@ -78,7 +78,6 @@ rand = "0.9"
 hex = "0.4"
 url = "2"
 open = "5"               # Open URLs in browser
-global-hotkey = "0.7"
 jcode-azure-auth = { path = "crates/jcode-azure-auth" }
 jcode-notify-email = { path = "crates/jcode-notify-email" }
 
@@ -117,6 +116,9 @@ pdf = ["dep:jcode-pdf"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+global-hotkey = "0.7"
 
 [profile.release]
 opt-level = 1
