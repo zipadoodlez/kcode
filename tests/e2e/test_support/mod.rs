@@ -118,7 +118,7 @@ pub(crate) struct EnvVarGuard {
 }
 
 impl EnvVarGuard {
-    fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+    pub(crate) fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         let prev = std::env::var_os(name);
         jcode::env::set_var(name, value);
         Self { name, prev }
@@ -368,7 +368,14 @@ pub(crate) async fn collect_until_done_unix(
             return Ok(events);
         }
     }
-    anyhow::bail!("timed out waiting for done event {target_id} over unix socket")
+    let seen = events
+        .iter()
+        .map(|event| format!("{event:?}"))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    anyhow::bail!(
+        "timed out waiting for done event {target_id} over unix socket; seen events: {seen}"
+    )
 }
 
 pub(crate) async fn collect_until_history_unix(
@@ -524,7 +531,23 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
         let history_events = vec![history_event];
 
         let message_id = client.send_message("hello over transport").await?;
-        let message_events = collect_until_done_unix(&mut client, message_id).await?;
+        let message_events = match collect_until_done_unix(&mut client, message_id).await {
+            Ok(events) => events,
+            Err(err) => {
+                let state = debug_run_command(debug_socket_path.clone(), "state", None)
+                    .await
+                    .unwrap_or_else(|e| format!("<state error: {e}>"));
+                let history = debug_run_command(debug_socket_path.clone(), "history", None)
+                    .await
+                    .unwrap_or_else(|e| format!("<history error: {e}>"));
+                let last_response = debug_run_command(debug_socket_path.clone(), "last_response", None)
+                    .await
+                    .unwrap_or_else(|e| format!("<last_response error: {e}>"));
+                anyhow::bail!(
+                    "unix message phase failed: {err}\nstate={state}\nhistory={history}\nlast_response={last_response}"
+                );
+            }
+        };
 
         let resume_id = client.resume_session(&server_session_id).await?;
         let resume_events = collect_until_history_unix(&mut client, resume_id).await?;

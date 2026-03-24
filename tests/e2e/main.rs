@@ -6,8 +6,6 @@
 mod mock_provider;
 mod test_support;
 
-use test_support::*;
-
 mod ambient;
 mod binary_integration;
 mod provider_behavior;
