@@ -4,6 +4,9 @@ version = "0.7.6"
 description = "Possibly the greatest coding agent ever built — blazing-fast TUI, multi-model, swarm coordination, 30+ tools"
 edition = "2024"
 
+[workspace]
+members = [".", "crates/jcode-embedding"]
+
 [lib]
 name = "jcode"
 path = "src/lib.rs"
@@ -60,9 +63,7 @@ uuid = { version = "1", features = ["v4", "v5"] }
 proctitle = "0.1"
 
 # Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
-tract-onnx = { version = "0.21", optional = true }
-tract-hir = { version = "0.21", optional = true }
-tokenizers = { version = "0.21", default-features = false, features = ["onig"], optional = true }
+jcode-embedding = { path = "crates/jcode-embedding", optional = true }
 
 # OAuth
 base64 = "0.22"
@@ -111,7 +112,7 @@ qr2term = "0.3.3"
 [features]
 default = ["embeddings", "pdf"]
 jemalloc = ["tikv-jemallocator"]
-embeddings = ["tract-onnx", "tract-hir", "tokenizers"]
+embeddings = ["dep:jcode-embedding"]
 pdf = ["pdf-extract"]
 
 [target.'cfg(windows)'.dependencies]
