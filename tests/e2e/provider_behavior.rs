@@ -1,4 +1,4 @@
-use super::*;
+use crate::test_support::*;
 
 /// Test that multi-turn conversation works with session resume
 #[tokio::test]

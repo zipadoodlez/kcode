@@ -1,4 +1,4 @@
-use super::*;
+use crate::test_support::*;
 
 #[tokio::test]
 async fn resume_session_restores_persisted_compaction_for_provider_context() -> Result<()> {
