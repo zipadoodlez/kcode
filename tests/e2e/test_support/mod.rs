@@ -576,7 +576,6 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
             history_events,
-            message_events,
             resume_events,
         })
     }
@@ -652,7 +651,6 @@ pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenar
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
             history_events,
-            message_events,
             resume_events,
         })
     }
