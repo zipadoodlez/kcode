@@ -531,23 +531,44 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
         let history_events = vec![history_event];
 
         let message_id = client.send_message("hello over transport").await?;
-        let message_events = match collect_until_done_unix(&mut client, message_id).await {
-            Ok(events) => events,
-            Err(err) => {
+        let mut message_events = Vec::new();
+        let mut saw_message_done = false;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+            let is_done = matches!(event, ServerEvent::Done { id } if id == message_id);
+            message_events.push(event);
+            if is_done {
+                saw_message_done = true;
+                break;
+            }
+        }
+        if !saw_message_done {
+            let history = debug_run_command(debug_socket_path.clone(), "history", None)
+                .await
+                .unwrap_or_else(|e| format!("<history error: {e}>"));
+            let last_response = debug_run_command(debug_socket_path.clone(), "last_response", None)
+                .await
+                .unwrap_or_else(|e| format!("<last_response error: {e}>"));
+            let response_persisted = history.contains("Hello from mock")
+                || (last_response != "last_response: none" && !last_response.trim().is_empty());
+            if !response_persisted {
                 let state = debug_run_command(debug_socket_path.clone(), "state", None)
                     .await
                     .unwrap_or_else(|e| format!("<state error: {e}>"));
-                let history = debug_run_command(debug_socket_path.clone(), "history", None)
-                    .await
-                    .unwrap_or_else(|e| format!("<history error: {e}>"));
-                let last_response = debug_run_command(debug_socket_path.clone(), "last_response", None)
-                    .await
-                    .unwrap_or_else(|e| format!("<last_response error: {e}>"));
+                let logs = std::env::var_os("JCODE_HOME")
+                    .and_then(|home| latest_log_excerpt(std::path::Path::new(&home)));
+                let seen = message_events
+                    .iter()
+                    .map(|event| format!("{event:?}"))
+                    .collect::<Vec<_>>()
+                    .join(" | ");
                 anyhow::bail!(
-                    "unix message phase failed: {err}\nstate={state}\nhistory={history}\nlast_response={last_response}"
+                    "unix message phase failed: timed out waiting for done event {message_id} over unix socket; seen events: {seen}\nstate={state}\nhistory={history}\nlast_response={last_response}\nlogs={}"
+                    , logs.unwrap_or_else(|| "<no logs>".to_string())
                 );
             }
-        };
+        }
 
         let resume_id = client.resume_session(&server_session_id).await?;
         let resume_events = collect_until_history_unix(&mut client, resume_id).await?;
