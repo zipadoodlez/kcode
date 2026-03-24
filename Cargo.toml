@@ -5,7 +5,7 @@ description = "Possibly the greatest coding agent ever built — blazing-fast TU
 edition = "2024"
 
 [workspace]
-members = [".", "crates/jcode-embedding"]
+members = [".", "crates/jcode-embedding", "crates/jcode-pdf"]
 
 [lib]
 name = "jcode"
@@ -98,8 +98,8 @@ imap = "2"
 native-tls = "0.2"
 mail-parser = "0.9"
 
-# PDF parsing (behind feature flag - 56 crates)
-pdf-extract = { version = "0.8", optional = true }
+# PDF parsing (behind feature flag)
+jcode-pdf = { path = "crates/jcode-pdf", optional = true }
 
 # Archive extraction (for auto-update)
 flate2 = "1"
@@ -113,7 +113,7 @@ qr2term = "0.3.3"
 default = ["embeddings", "pdf"]
 jemalloc = ["tikv-jemallocator"]
 embeddings = ["dep:jcode-embedding"]
-pdf = ["pdf-extract"]
+pdf = ["dep:jcode-pdf"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
