@@ -113,6 +113,16 @@ cd jcode
 cargo build --release
 ```
 
+For local self-dev / refactor work on Linux x86_64, prefer:
+
+```bash
+scripts/dev_cargo.sh build --release -p jcode --bin jcode
+```
+
+That wrapper automatically uses `sccache` when available and prefers a fast
+working local linker setup (`clang + lld`) instead of assuming every machine's
+`mold` configuration is valid.
+
 Then symlink to your PATH:
 
 ```bash
@@ -841,6 +851,9 @@ scripts/refactor_shadow.sh check
 # Build debug binary for the refactor environment
 scripts/refactor_shadow.sh build
 
+# Build release binary for self-dev / compile-speed testing
+scripts/refactor_shadow.sh build --release
+
 # Start isolated server (new terminal)
 scripts/refactor_shadow.sh serve
 
@@ -853,6 +866,11 @@ Security notes:
 - Uses a separate socket (`JCODE_REF_SOCKET`) from your normal server
 - Creates isolated home with private permissions (`700`)
 - Refuses to remove stale paths unless they are actual sockets
+
+For compile-speed work specifically, see:
+
+- `docs/COMPILE_PERFORMANCE_PLAN.md`
+- `scripts/bench_compile.sh`
 
 ---
 
