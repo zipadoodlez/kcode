@@ -107,8 +107,11 @@ async fn debug_list_servers() -> Result<()> {
     let mut servers = Vec::new();
 
     let runtime_dir = crate::storage::runtime_dir();
-
-    let scan_dirs = vec![runtime_dir, std::path::PathBuf::from("/tmp")];
+    let mut scan_dirs = vec![runtime_dir.clone()];
+    let temp_dir = std::env::temp_dir();
+    if temp_dir != runtime_dir {
+        scan_dirs.push(temp_dir);
+    }
 
     for dir in scan_dirs {
         if let Ok(entries) = std::fs::read_dir(&dir) {
