@@ -13,6 +13,7 @@ members = [
     "crates/jcode-notify-email",
     "crates/jcode-provider-metadata",
     "crates/jcode-provider-core",
+    "crates/jcode-provider-openrouter",
 ]
 
 [lib]
@@ -84,6 +85,7 @@ jcode-azure-auth = { path = "crates/jcode-azure-auth" }
 jcode-notify-email = { path = "crates/jcode-notify-email" }
 jcode-provider-metadata = { path = "crates/jcode-provider-metadata" }
 jcode-provider-core = { path = "crates/jcode-provider-core" }
+jcode-provider-openrouter = { path = "crates/jcode-provider-openrouter" }
 
 # Streaming
 tokio-stream = "0.1"
