@@ -7,7 +7,7 @@ cd "$repo_root"
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/bench_compile.sh <target> [--cold] [--touch <path>]
+  scripts/bench_compile.sh <target> [options] [-- <extra cargo args>]
 
 Targets:
   check            Run cargo check --quiet
@@ -15,16 +15,24 @@ Targets:
   release-jcode    Run scripts/dev_cargo.sh build --release -p jcode --bin jcode --quiet
 
 Options:
-  --cold           Run cargo clean before timing the target
-  --touch <path>   Touch a source file before timing to simulate an edit
+  --cold                 Run cargo clean before timing the first run
+  --touch <path>         Touch a source file before each timed run to simulate an edit
+  --runs <n>             Number of timed runs to execute (default: 1)
+  --json                 Print per-run + summary data as JSON
+  -h, --help             Show this help
 
 Examples:
   scripts/bench_compile.sh check
-  scripts/bench_compile.sh release-jcode
-  scripts/bench_compile.sh check --cold
-  scripts/bench_compile.sh check --touch src/server.rs
+  scripts/bench_compile.sh check --runs 3 --touch src/server.rs
+  scripts/bench_compile.sh build -- --package jcode --bin test_api
+  scripts/bench_compile.sh release-jcode --json
 USAGE
 }
+
+if [[ $# -gt 0 ]] && [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
 
 target="${1:-}"
 shift || true
@@ -36,6 +44,10 @@ fi
 
 cold=0
 touch_path=""
+runs=1
+json_output=0
+extra_args=()
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cold)
@@ -49,6 +61,22 @@ while [[ $# -gt 0 ]]; do
       touch_path="$2"
       shift
       ;;
+    --runs)
+      if [[ $# -lt 2 ]]; then
+        printf 'error: --runs requires a positive integer\n' >&2
+        exit 1
+      fi
+      runs="$2"
+      shift
+      ;;
+    --json)
+      json_output=1
+      ;;
+    --)
+      shift
+      extra_args=("$@")
+      break
+      ;;
     -h|--help)
       usage
       exit 0
@@ -60,6 +88,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if ! [[ "$runs" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'error: --runs must be a positive integer (got %s)\n' "$runs" >&2
+  exit 1
+fi
 
 case "$target" in
   check)
@@ -78,23 +111,106 @@ case "$target" in
     ;;
 esac
 
+if [[ ${#extra_args[@]} -gt 0 ]]; then
+  cmd+=("${extra_args[@]}")
+fi
+
+if [[ -n "$touch_path" ]] && [[ ! -e "$touch_path" ]]; then
+  printf 'error: touch path does not exist: %s\n' "$touch_path" >&2
+  exit 1
+fi
+
 if [[ $cold -eq 1 ]]; then
   echo 'bench_compile: running cargo clean' >&2
   cargo clean
 fi
 
-if [[ -n "$touch_path" ]]; then
-  if [[ ! -e "$touch_path" ]]; then
-    printf 'error: touch path does not exist: %s\n' "$touch_path" >&2
-    exit 1
-  fi
-  echo "bench_compile: touching $touch_path" >&2
-  touch "$touch_path"
-fi
-
-printf 'bench_compile: target=%s cold=%s\n' "$target" "$cold" >&2
+printf 'bench_compile: target=%s cold=%s runs=%s\n' "$target" "$cold" "$runs" >&2
 printf 'bench_compile: touch=%s\n' "${touch_path:-<none>}" >&2
 printf 'bench_compile: command=%s\n' "${cmd[*]}" >&2
 
-TIMEFORMAT=$'real %R\nuser %U\nsys %S'
-{ time "${cmd[@]}"; } 2>&1
+run_times=()
+
+run_once() {
+  local run_index="$1"
+  if [[ -n "$touch_path" ]]; then
+    echo "bench_compile: touching $touch_path (run $run_index/$runs)" >&2
+    touch "$touch_path"
+  fi
+
+  local start_ns end_ns elapsed_ns elapsed_secs
+  start_ns=$(python3 - <<'PY'
+import time
+print(time.perf_counter_ns())
+PY
+)
+
+  "${cmd[@]}"
+
+  end_ns=$(python3 - <<'PY'
+import time
+print(time.perf_counter_ns())
+PY
+)
+  elapsed_ns=$((end_ns - start_ns))
+  elapsed_secs=$(python3 - "$elapsed_ns" <<'PY'
+import sys
+print(f"{int(sys.argv[1]) / 1_000_000_000:.3f}")
+PY
+)
+
+  run_times+=("$elapsed_secs")
+
+  if [[ $json_output -eq 0 ]]; then
+    printf 'bench_compile: run %s/%s real %ss\n' "$run_index" "$runs" "$elapsed_secs" >&2
+  fi
+}
+
+for ((i = 1; i <= runs; i++)); do
+  run_once "$i"
+done
+
+summary_json=$(python3 - "$target" "$cold" "$touch_path" "$runs" "${cmd[*]}" "${run_times[@]}" <<'PY'
+import json
+import statistics
+import sys
+
+target = sys.argv[1]
+cold = sys.argv[2] == "1"
+touch = sys.argv[3]
+runs = int(sys.argv[4])
+command = sys.argv[5]
+times = [float(v) for v in sys.argv[6:]]
+summary = {
+    "target": target,
+    "cold": cold,
+    "touch": touch or None,
+    "runs": runs,
+    "command": command,
+    "times_seconds": times,
+    "min_seconds": min(times),
+    "max_seconds": max(times),
+    "avg_seconds": sum(times) / len(times),
+    "median_seconds": statistics.median(times),
+}
+print(json.dumps(summary))
+PY
+)
+
+if [[ $json_output -eq 1 ]]; then
+  printf '%s\n' "$summary_json"
+else
+  python3 - "$summary_json" <<'PY' >&2
+import json
+import sys
+
+summary = json.loads(sys.argv[1])
+print(
+    "bench_compile: summary "
+    f"min={summary['min_seconds']:.3f}s "
+    f"median={summary['median_seconds']:.3f}s "
+    f"avg={summary['avg_seconds']:.3f}s "
+    f"max={summary['max_seconds']:.3f}s"
+)
+PY
+fi
