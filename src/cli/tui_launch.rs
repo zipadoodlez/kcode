@@ -87,6 +87,33 @@ fn resumed_window_title(session_id: &str) -> String {
     format!("{} jcode {}", icon, session_name)
 }
 
+fn applescript_escape(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn focus_title_best_effort(title: &str) {
+    use std::process::{Command, Stdio};
+
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c")
+        .arg(
+            "sleep 0.4; \
+             if command -v wmctrl >/dev/null 2>&1; then wmctrl -a \"$JCODE_WINDOW_TITLE\" >/dev/null 2>&1 && exit 0; fi; \
+             if command -v xdotool >/dev/null 2>&1; then xdotool search --name \"$JCODE_WINDOW_TITLE\" windowactivate >/dev/null 2>&1 && exit 0; fi; \
+             exit 0",
+        )
+        .env("JCODE_WINDOW_TITLE", title)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let _ = crate::platform::spawn_detached(&mut cmd);
+}
+
+#[cfg(any(not(unix), target_os = "macos"))]
+fn focus_title_best_effort(_title: &str) {}
+
 fn push_unique_terminal(candidates: &mut Vec<String>, term: impl Into<String>) {
     let term = term.into();
     if term.trim().is_empty() {
@@ -643,6 +670,8 @@ pub fn spawn_selfdev_in_new_terminal(
 ) -> Result<bool> {
     use std::process::{Command, Stdio};
 
+    let selfdev_title = format!("{} [self-dev]", resumed_window_title(session_id));
+
     for term in resume_terminal_candidates_unix() {
         let mut cmd = Command::new(&term);
         cmd.current_dir(cwd)
@@ -650,10 +679,14 @@ pub fn spawn_selfdev_in_new_terminal(
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
+        let focus_title = match term.as_str() {
+            "kitty" | "alacritty" | "gnome-terminal" | "xterm" => Some(selfdev_title.as_str()),
+            _ => None,
+        };
+
         match term.as_str() {
             "kitty" => {
-                let title = format!("{} [self-dev]", resumed_window_title(session_id));
-                cmd.args(["--title", &title, "-e"])
+                cmd.args(["--title", selfdev_title.as_str(), "-e"])
                     .arg(exe)
                     .arg("--resume")
                     .arg(session_id)
@@ -671,13 +704,14 @@ pub fn spawn_selfdev_in_new_terminal(
                 ]);
             }
             "alacritty" => {
-                cmd.args(["-e"])
+                cmd.args(["--title", selfdev_title.as_str(), "-e"])
                     .arg(exe)
                     .arg("--resume")
                     .arg(session_id)
                     .arg("self-dev");
             }
             "gnome-terminal" => {
+                cmd.arg("--title").arg(selfdev_title.as_str());
                 cmd.args([
                     "--",
                     exe.to_string_lossy().as_ref(),
@@ -694,7 +728,7 @@ pub fn spawn_selfdev_in_new_terminal(
                     .arg("self-dev");
             }
             "xterm" => {
-                cmd.args(["-e"])
+                cmd.args(["-T", selfdev_title.as_str(), "-e"])
                     .arg(exe)
                     .arg("--resume")
                     .arg(session_id)
@@ -709,33 +743,47 @@ pub fn spawn_selfdev_in_new_terminal(
             }
             "iterm2" => {
                 cmd = Command::new("osascript");
+                let command = format!(
+                    "\"{}\" --resume {} self-dev",
+                    applescript_escape(exe.to_string_lossy().as_ref()),
+                    session_id
+                );
                 cmd.args([
                     "-e",
                     &format!(
                         r#"tell application "iTerm2"
-                            create window with default profile command "{} --resume {} self-dev"
+                            create window with default profile command "{}"
+                            activate
                         end tell"#,
-                        exe.to_string_lossy(),
-                        session_id
+                        command
                     ),
                 ]);
             }
             "terminal" => {
-                cmd = Command::new("open");
+                cmd = Command::new("osascript");
+                let command = format!(
+                    "\"{}\" --resume {} self-dev",
+                    applescript_escape(exe.to_string_lossy().as_ref()),
+                    session_id
+                );
                 cmd.args([
-                    "-a",
-                    "Terminal",
-                    exe.to_str().unwrap_or("jcode"),
-                    "--args",
-                    "--resume",
-                    session_id,
-                    "self-dev",
+                    "-e",
+                    &format!(
+                        r#"tell application "Terminal"
+                            activate
+                            do script "{}"
+                        end tell"#,
+                        command
+                    ),
                 ]);
             }
             _ => continue,
         }
 
         if crate::platform::spawn_detached(&mut cmd).is_ok() {
+            if let Some(title) = focus_title {
+                focus_title_best_effort(title);
+            }
             return Ok(true);
         }
     }
