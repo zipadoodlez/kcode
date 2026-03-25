@@ -147,6 +147,7 @@ You need at least one of:
 | **Swarm** | [Open section](#swarm) | Multiple agents coordinating in the same repo with communication and task sharing |
 | **OAuth and Providers** | [Open section](#oauth-and-providers) | Use Claude Max, ChatGPT Pro, GitHub Copilot, Gemini, and more without juggling raw API keys |
 | **Self-Dev** | [Open section](#self-dev) | Built-in self-development workflow with release builds, reload, and debug tooling |
+| **iOS Application for Native OpenClaw** | [Open section](#ios-application-for-native-openclaw) | Coming soon: a native iOS experience for OpenClaw ambient workflows |
 
 </div>
 
@@ -231,6 +232,14 @@ jcode works with subscription-backed OAuth flows and multiple providers, so you 
 jcode ships with a built-in self-development workflow for release builds, reloads, and debug-driven iteration.
 
 <!-- Add self-dev demo thumbnail/video and fuller writeup here. -->
+
+---
+
+## iOS Application for Native OpenClaw
+
+A native iOS implementation of OpenClaw is coming soon.
+
+<!-- Add iOS / native OpenClaw preview and fuller writeup here. -->
 
 ---
 
