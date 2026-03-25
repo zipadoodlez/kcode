@@ -74,12 +74,7 @@ pub async fn run_dictate_command(type_output: bool) -> Result<()> {
     if type_output {
         crate::dictation::type_text(&run.text)
     } else {
-        let Some(session_id) = crate::dictation::last_focused_session()? else {
-            anyhow::bail!(
-                "No last-focused live jcode client found. Focus a jcode window first, or use `jcode dictate --type`."
-            );
-        };
-        run_transcript_command(Some(run.text), run.mode, Some(session_id)).await
+        run_transcript_command(Some(run.text), run.mode, None).await
     }
 }
 
