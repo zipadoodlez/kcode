@@ -139,20 +139,14 @@ You need at least one of:
 
 <div align="center">
 
-| Feature | Description |
-|---|---|
-| **Blazing Fast TUI** | Sub-millisecond rendering at 1,400+ FPS. No flicker. No lag. Ever. |
-| **Multi-Provider** | Claude, OpenAI, GitHub Copilot, OpenRouter - 200+ models, switch on the fly |
-| **No API Keys Needed** | Works with your Claude Max, ChatGPT Pro, or GitHub Copilot subscription via OAuth |
-| **Persistent Memory** | Learns about you and your codebase across sessions |
-| **Swarm Mode** | Multiple agents coordinate in the same repo with conflict detection |
-| **30+ Built-in Tools** | File ops, search, web, shell, memory, sub-agents, parallel execution |
-| **MCP Support** | Extend with any Model Context Protocol server |
-| **Server / Client** | Daemon mode with multi-client attach, session persistence |
-| **Sub-Agents** | Delegate tasks to specialized child agents |
-| **Self-Updating** | Built-in self-dev mode with hot-reload and canary deploys |
-| **Featherweight** | ~28 MB idle client, single native binary - no runtime, no VM, no Electron |
-| **OpenClaw** | Always-on ambient agent — gardens memory, does proactive work, responds via Telegram |
+| Feature | Jump | Description |
+|---|---|---|
+| **Resource / Performance** | [Open section](#performance--resource-efficiency) | Startup time, FPS benchmarks, RAM footprint, and parallel usage demos |
+| **Memory** | [Open section](#memory) | Persistent cross-session memory for preferences, facts, entities, and corrections |
+| **Side Panel and Generated UI** | [Open section](#side-panel-and-generated-ui) | Rich in-terminal UI panels, markdown rendering, and generated visual output |
+| **Swarm** | [Open section](#swarm) | Multiple agents coordinating in the same repo with communication and task sharing |
+| **OAuth and Providers** | [Open section](#oauth-and-providers) | Use Claude Max, ChatGPT Pro, GitHub Copilot, Gemini, and more without juggling raw API keys |
+| **Self-Dev** | [Open section](#self-dev) | Built-in self-development workflow with release builds, reload, and debug tooling |
 
 </div>
 
@@ -197,6 +191,46 @@ keep multiple clients attached, and run agents in parallel.
 | **Binary** | **Single 66 MB executable** | Hundreds of MB + package managers |
 
 </div>
+
+---
+
+## Memory
+
+Persistent memory lets jcode remember facts, preferences, entities, and corrections across sessions.
+
+<!-- Add memory demo thumbnail/video and fuller writeup here. -->
+
+---
+
+## Side Panel and Generated UI
+
+The side panel can render linked markdown, diagrams, and generated visual output directly inside the terminal workflow.
+
+<!-- Add side panel / generated UI demo thumbnail/video and fuller writeup here. -->
+
+---
+
+## Swarm
+
+Swarm mode lets multiple agents coordinate inside the same repo with messaging, task sharing, and conflict-aware collaboration.
+
+<!-- Add swarm demo thumbnail/video and fuller writeup here. -->
+
+---
+
+## OAuth and Providers
+
+jcode works with subscription-backed OAuth flows and multiple providers, so you can use the models you already pay for.
+
+<!-- Add OAuth / provider demo thumbnail/video and fuller writeup here. -->
+
+---
+
+## Self-Dev
+
+jcode ships with a built-in self-development workflow for release builds, reloads, and debug-driven iteration.
+
+<!-- Add self-dev demo thumbnail/video and fuller writeup here. -->
 
 ---
 
