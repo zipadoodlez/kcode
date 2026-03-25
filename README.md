@@ -22,71 +22,6 @@ all running natively in your terminal.
 
 ---
 
-## Features
-
-<div align="center">
-
-| Feature | Description |
-|---|---|
-| **Blazing Fast TUI** | Sub-millisecond rendering at 1,400+ FPS. No flicker. No lag. Ever. |
-| **Multi-Provider** | Claude, OpenAI, GitHub Copilot, OpenRouter - 200+ models, switch on the fly |
-| **No API Keys Needed** | Works with your Claude Max, ChatGPT Pro, or GitHub Copilot subscription via OAuth |
-| **Persistent Memory** | Learns about you and your codebase across sessions |
-| **Swarm Mode** | Multiple agents coordinate in the same repo with conflict detection |
-| **30+ Built-in Tools** | File ops, search, web, shell, memory, sub-agents, parallel execution |
-| **MCP Support** | Extend with any Model Context Protocol server |
-| **Server / Client** | Daemon mode with multi-client attach, session persistence |
-| **Sub-Agents** | Delegate tasks to specialized child agents |
-| **Self-Updating** | Built-in self-dev mode with hot-reload and canary deploys |
-| **Featherweight** | ~28 MB idle client, single native binary - no runtime, no VM, no Electron |
-| **OpenClaw** | Always-on ambient agent — gardens memory, does proactive work, responds via Telegram |
-
-</div>
-
----
-
-<div align="center">
-
-## Performance & Resource Efficiency
-
-*A single native binary. No Node.js. No Electron. No Python. Just Rust.*
-
-</div>
-
-jcode is built to stay fast and light even when you launch many sessions in sequence,
-keep multiple clients attached, and run agents in parallel.
-
-<!-- Add performance demo thumbnail/video link here: spawning many jcode instances and using them in parallel. -->
-
-### Headline numbers
-
-- **Startup time:** **Instant**
-- **Rendering:** **0.67 ms** average frame time, or roughly **1,400–1,500 FPS**
-- **Idle client RAM:** **~28 MB**
-- **Base server RAM:** **~40 MB**
-- **Active session RAM:** **~50–65 MB**
-- **Idle CPU:** **~0.3%**
-
-### Benchmarks
-
-<div align="center">
-
-| Metric | jcode | Typical AI IDE / Agent |
-|---|---|---|
-| **Startup time** | **Instant** | 3–10 seconds |
-| **Frame render time** | **0.67 ms** | 16 ms (60 FPS, if lucky) |
-| **Rendering throughput** | **~1,400–1,500 FPS** | ~60 FPS |
-| **Idle client memory** | **~28 MB** | 300–800 MB |
-| **Server memory** | **~40 MB** (base) | N/A (monolithic) |
-| **Active session memory** | **~50–65 MB** | 500 MB+ |
-| **CPU at idle** | **~0.3%** | 2–5% |
-| **Runtime dependencies** | **None** | Node.js, Python, Electron, … |
-| **Binary** | **Single 66 MB executable** | Hundreds of MB + package managers |
-
-</div>
-
----
-
 <div align="center">
 
 ## Installation
@@ -195,6 +130,71 @@ You need at least one of:
 | **Linux** x86_64 / aarch64 | Fully supported |
 | **macOS** Apple Silicon & Intel | Supported |
 | **Windows** x86_64 | Supported (native + WSL2) |
+
+</div>
+
+---
+
+## Features
+
+<div align="center">
+
+| Feature | Description |
+|---|---|
+| **Blazing Fast TUI** | Sub-millisecond rendering at 1,400+ FPS. No flicker. No lag. Ever. |
+| **Multi-Provider** | Claude, OpenAI, GitHub Copilot, OpenRouter - 200+ models, switch on the fly |
+| **No API Keys Needed** | Works with your Claude Max, ChatGPT Pro, or GitHub Copilot subscription via OAuth |
+| **Persistent Memory** | Learns about you and your codebase across sessions |
+| **Swarm Mode** | Multiple agents coordinate in the same repo with conflict detection |
+| **30+ Built-in Tools** | File ops, search, web, shell, memory, sub-agents, parallel execution |
+| **MCP Support** | Extend with any Model Context Protocol server |
+| **Server / Client** | Daemon mode with multi-client attach, session persistence |
+| **Sub-Agents** | Delegate tasks to specialized child agents |
+| **Self-Updating** | Built-in self-dev mode with hot-reload and canary deploys |
+| **Featherweight** | ~28 MB idle client, single native binary - no runtime, no VM, no Electron |
+| **OpenClaw** | Always-on ambient agent — gardens memory, does proactive work, responds via Telegram |
+
+</div>
+
+---
+
+<div align="center">
+
+## Performance & Resource Efficiency
+
+*A single native binary. No Node.js. No Electron. No Python. Just Rust.*
+
+</div>
+
+jcode is built to stay fast and light even when you launch many sessions in sequence,
+keep multiple clients attached, and run agents in parallel.
+
+<!-- Add performance demo thumbnail/video link here: spawning many jcode instances and using them in parallel. -->
+
+### Headline numbers
+
+- **Startup time:** **Instant**
+- **Rendering:** **0.67 ms** average frame time, or roughly **1,400–1,500 FPS**
+- **Idle client RAM:** **~28 MB**
+- **Base server RAM:** **~40 MB**
+- **Active session RAM:** **~50–65 MB**
+- **Idle CPU:** **~0.3%**
+
+### Benchmarks
+
+<div align="center">
+
+| Metric | jcode | Typical AI IDE / Agent |
+|---|---|---|
+| **Startup time** | **Instant** | 3–10 seconds |
+| **Frame render time** | **0.67 ms** | 16 ms (60 FPS, if lucky) |
+| **Rendering throughput** | **~1,400–1,500 FPS** | ~60 FPS |
+| **Idle client memory** | **~28 MB** | 300–800 MB |
+| **Server memory** | **~40 MB** (base) | N/A (monolithic) |
+| **Active session memory** | **~50–65 MB** | 500 MB+ |
+| **CPU at idle** | **~0.3%** | 2–5% |
+| **Runtime dependencies** | **None** | Node.js, Python, Electron, … |
+| **Binary** | **Single 66 MB executable** | Hundreds of MB + package managers |
 
 </div>
 
