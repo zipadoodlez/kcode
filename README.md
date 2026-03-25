@@ -26,112 +26,15 @@ all running natively in your terminal.
 
 ## Installation
 
-### Setup
-
-If you want another agent to set up jcode for you, give it this prompt:
-
-```text
-Set up jcode on this machine for me.
-
-1. Detect the operating system and choose the best install method:
-   - macOS: prefer Homebrew if available, otherwise use the install script
-   - Linux: use the install script
-   - Windows: use the PowerShell install script
-2. Verify that `jcode` is on my `PATH`.
-3. Launch `jcode` once in a new terminal window/session to confirm it starts successfully.
-4. Before attempting any interactive login flow, assess which providers are already available non-interactively and prefer those first. Check existing local credentials, config files, CLI sessions, and environment variables such as:
-   - Claude: `~/.jcode/auth.json`, `~/.claude/.credentials.json`, `~/.local/share/opencode/auth.json`, `ANTHROPIC_API_KEY`
-   - OpenAI: `~/.jcode/openai-auth.json`, `~/.codex/auth.json`, `OPENAI_API_KEY`
-   - Gemini: `~/.jcode/gemini_oauth.json`, `~/.gemini/oauth_creds.json`
-   - GitHub Copilot: existing auth under `~/.config/github-copilot/`
-   - Azure OpenAI: `~/.config/jcode/azure-openai.env`, `AZURE_OPENAI_*`, or an existing `az login`
-   - OpenRouter: `OPENROUTER_API_KEY`
-   - Alibaba Cloud Coding Plan: existing jcode config/env if present
-5. Prefer whichever provider is already configured and verify it with `jcode auth-test --all-configured` or a provider-specific auth test when appropriate.
-6. Only if no usable provider is already configured, guide me through the minimal manual step needed:
-   - Claude: `jcode login --provider claude`
-   - GitHub Copilot: `jcode login --provider copilot`
-   - OpenAI: `jcode login --provider openai`
-   - Gemini: `jcode login --provider gemini`
-   - Azure OpenAI: `jcode login --provider azure`
-   - Alibaba Cloud Coding Plan: `jcode login --provider alibaba-coding-plan`
-   - OpenRouter: help me set `OPENROUTER_API_KEY`
-   - Anthropic direct API: help me set `ANTHROPIC_API_KEY`
-7. After setup, run a simple smoke test with `jcode run "say hello"` and confirm it works.
-8. Explain any manual step that still needs me, especially browser OAuth, device login, or API key entry.
-```
-
-This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.
-
-### Quick Install
+</div>
 
 ```bash
 # macOS & Linux
 curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
 ```
 
-```powershell
-# Windows (PowerShell)
-irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
-```
-
-### macOS via Homebrew
-
-```bash
-brew tap 1jehuang/jcode
-brew install jcode
-```
-
-### From Source (all platforms)
-
-```bash
-git clone https://github.com/1jehuang/jcode.git
-cd jcode
-cargo build --release
-```
-
-For local self-dev / refactor work on Linux x86_64, prefer:
-
-```bash
-scripts/dev_cargo.sh build --release -p jcode --bin jcode
-scripts/dev_cargo.sh --print-setup
-```
-
-That wrapper automatically uses `sccache` when available, prefers a fast
-working local linker setup (`clang + lld`) instead of assuming every machine's
-`mold` configuration is valid, and can print the active linker/cache setup via
-`--print-setup` so slow-path builds are easier to diagnose.
-
-Then symlink to your PATH:
-
-```bash
-scripts/install_release.sh
-```
-
-### Prerequisites
-
-You need at least one of:
-
-| Provider | Setup |
-|---|---|
-| **Claude** (recommended) | Run `/login claude` inside jcode (opens browser for OAuth) |
-| **GitHub Copilot** | Run `/login copilot` inside jcode (GitHub device flow) |
-| **OpenAI** | Run `/login openai` inside jcode (opens browser for OAuth) |
-| **Google Gemini** | Run `/login gemini` inside jcode (native Google OAuth for Code Assist) |
-| **Azure OpenAI** | Run `jcode login --provider azure` (Microsoft Entra ID or API key) |
-| **Alibaba Cloud Coding Plan** | Run `jcode login --provider alibaba-coding-plan` (Alibaba Cloud Bailian API key) |
-| **OpenRouter** | Set `OPENROUTER_API_KEY=sk-or-v1-...` |
-| **Direct API Key** | Set `ANTHROPIC_API_KEY=sk-ant-...` |
-
-### Platform Support
-
-| Platform | Status |
-|---|---|
-| **Linux** x86_64 / aarch64 | Fully supported |
-| **macOS** Apple Silicon & Intel | Supported |
-| **Windows** x86_64 | Supported (native + WSL2) |
-
-</div>
+Need Windows, Homebrew, source builds, provider setup, or the full setup prompt?
+[Jump to detailed installation](#detailed-installation).
 
 ---
 
@@ -283,3 +186,114 @@ and hotkey-friendly dictation without requiring a bundled speech-to-text stack.
 - [Windows Notes](docs/WINDOWS.md)
 - [Wrappers and Shell Integration](docs/WRAPPERS.md)
 - [Refactoring Notes](docs/REFACTORING.md)
+
+---
+
+## Detailed Installation
+
+### Setup
+
+If you want another agent to set up jcode for you, give it this prompt:
+
+```text
+Set up jcode on this machine for me.
+
+1. Detect the operating system and choose the best install method:
+   - macOS: prefer Homebrew if available, otherwise use the install script
+   - Linux: use the install script
+   - Windows: use the PowerShell install script
+2. Verify that `jcode` is on my `PATH`.
+3. Launch `jcode` once in a new terminal window/session to confirm it starts successfully.
+4. Before attempting any interactive login flow, assess which providers are already available non-interactively and prefer those first. Check existing local credentials, config files, CLI sessions, and environment variables such as:
+   - Claude: `~/.jcode/auth.json`, `~/.claude/.credentials.json`, `~/.local/share/opencode/auth.json`, `ANTHROPIC_API_KEY`
+   - OpenAI: `~/.jcode/openai-auth.json`, `~/.codex/auth.json`, `OPENAI_API_KEY`
+   - Gemini: `~/.jcode/gemini_oauth.json`, `~/.gemini/oauth_creds.json`
+   - GitHub Copilot: existing auth under `~/.config/github-copilot/`
+   - Azure OpenAI: `~/.config/jcode/azure-openai.env`, `AZURE_OPENAI_*`, or an existing `az login`
+   - OpenRouter: `OPENROUTER_API_KEY`
+   - Alibaba Cloud Coding Plan: existing jcode config/env if present
+5. Prefer whichever provider is already configured and verify it with `jcode auth-test --all-configured` or a provider-specific auth test when appropriate.
+6. Only if no usable provider is already configured, guide me through the minimal manual step needed:
+   - Claude: `jcode login --provider claude`
+   - GitHub Copilot: `jcode login --provider copilot`
+   - OpenAI: `jcode login --provider openai`
+   - Gemini: `jcode login --provider gemini`
+   - Azure OpenAI: `jcode login --provider azure`
+   - Alibaba Cloud Coding Plan: `jcode login --provider alibaba-coding-plan`
+   - OpenRouter: help me set `OPENROUTER_API_KEY`
+   - Anthropic direct API: help me set `ANTHROPIC_API_KEY`
+7. After setup, run a simple smoke test with `jcode run "say hello"` and confirm it works.
+8. Explain any manual step that still needs me, especially browser OAuth, device login, or API key entry.
+```
+
+This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.
+
+### Quick Install
+
+```bash
+# macOS & Linux
+curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
+```
+
+### macOS via Homebrew
+
+```bash
+brew tap 1jehuang/jcode
+brew install jcode
+```
+
+### From Source (all platforms)
+
+```bash
+git clone https://github.com/1jehuang/jcode.git
+cd jcode
+cargo build --release
+```
+
+For local self-dev / refactor work on Linux x86_64, prefer:
+
+```bash
+scripts/dev_cargo.sh build --release -p jcode --bin jcode
+scripts/dev_cargo.sh --print-setup
+```
+
+That wrapper automatically uses `sccache` when available, prefers a fast
+working local linker setup (`clang + lld`) instead of assuming every machine's
+`mold` configuration is valid, and can print the active linker/cache setup via
+`--print-setup` so slow-path builds are easier to diagnose.
+
+Then symlink to your PATH:
+
+```bash
+scripts/install_release.sh
+```
+
+### Prerequisites
+
+You need at least one of:
+
+| Provider | Setup |
+|---|---|
+| **Claude** (recommended) | Run `/login claude` inside jcode (opens browser for OAuth) |
+| **GitHub Copilot** | Run `/login copilot` inside jcode (GitHub device flow) |
+| **OpenAI** | Run `/login openai` inside jcode (opens browser for OAuth) |
+| **Google Gemini** | Run `/login gemini` inside jcode (native Google OAuth for Code Assist) |
+| **Azure OpenAI** | Run `jcode login --provider azure` (Microsoft Entra ID or API key) |
+| **Alibaba Cloud Coding Plan** | Run `jcode login --provider alibaba-coding-plan` (Alibaba Cloud Bailian API key) |
+| **OpenRouter** | Set `OPENROUTER_API_KEY=sk-or-v1-...` |
+| **Direct API Key** | Set `ANTHROPIC_API_KEY=sk-ant-...` |
+
+### Platform Support
+
+| Platform | Status |
+|---|---|
+| **Linux** x86_64 / aarch64 | Fully supported |
+| **macOS** Apple Silicon & Intel | Supported |
+| **Windows** x86_64 | Supported (native + WSL2) |
+
+</div>
