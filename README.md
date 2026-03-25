@@ -85,23 +85,6 @@ keep multiple clients attached, and run agents in parallel.
 
 </div>
 
-### What that means in practice
-
-- **Client / server split stays cheap.** You can keep the server running in the background
-  without paying a huge memory penalty, then attach clients as needed.
-- **The UI stays smooth under load.** The TUI benchmarks at roughly **1,475 FPS idle** and
-  **1,498 FPS while streaming** with full markdown and syntax highlighting.
-- **Parallel usage is realistic.** Multiple clients, servers, and sub-agents can run at the
-  same time without the machine feeling like it is hosting a browser-based IDE.
-
-> **Real-world proof:** On the dev machine, there are often **10+ jcode sessions**
-> running simultaneously — clients, servers, sub-agents — while still using less total
-> memory than a single Electron app window.
-
-The reason is simple: jcode is native Rust end-to-end. No garbage collector pausing the UI.
-No JS runtime overhead. No Electron shell. Just a compiled binary with a memory-efficient
-long-running architecture.
-
 ---
 
 <div align="center">
