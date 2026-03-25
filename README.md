@@ -86,6 +86,34 @@ to native code with `jemalloc` for memory-efficient long-running sessions.
 
 ## Installation
 
+### Setup
+
+If you want another agent to set up jcode for you, give it this prompt:
+
+```text
+Set up jcode on this machine for me.
+
+1. Detect the operating system and choose the best install method:
+   - macOS: prefer Homebrew if available, otherwise use the install script
+   - Linux: use the install script
+   - Windows: use the PowerShell install script
+2. Verify that `jcode` is on my `PATH`.
+3. Launch `jcode` once to confirm it starts successfully.
+4. Help me authenticate at least one provider:
+   - Claude: `/login claude`
+   - GitHub Copilot: `/login copilot`
+   - OpenAI: `/login openai`
+   - Gemini: `/login gemini`
+   - Azure OpenAI: `jcode login --provider azure`
+   - Alibaba Cloud Coding Plan: `jcode login --provider alibaba-coding-plan`
+   - OpenRouter: help me set `OPENROUTER_API_KEY`
+   - Anthropic direct API: help me set `ANTHROPIC_API_KEY`
+5. After setup, run a simple smoke test with `jcode run "say hello"` and confirm it works.
+6. Explain any manual step that still needs me, especially browser OAuth or API key entry.
+```
+
+This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.
+
 ### Quick Install
 
 ```bash
