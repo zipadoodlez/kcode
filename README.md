@@ -53,32 +53,54 @@ all running natively in your terminal.
 
 </div>
 
-jcode is engineered to be absurdly efficient. While other coding agents spin up
-Electron windows, Node.js runtimes, and multi-hundred-MB processes, jcode runs
-as a single compiled binary that sips resources.
+jcode is built to stay fast and light even when you launch many sessions in sequence,
+keep multiple clients attached, and run agents in parallel.
+
+<!-- Add performance demo thumbnail/video link here: spawning many jcode instances and using them in parallel. -->
+
+### Headline numbers
+
+- **Startup time:** **Instant**
+- **Rendering:** **0.67 ms** average frame time, or roughly **1,400–1,500 FPS**
+- **Idle client RAM:** **~28 MB**
+- **Base server RAM:** **~40 MB**
+- **Active session RAM:** **~50–65 MB**
+- **Idle CPU:** **~0.3%**
+
+### Benchmarks
 
 <div align="center">
 
 | Metric | jcode | Typical AI IDE / Agent |
 |---|---|---|
+| **Startup time** | **Instant** | 3–10 seconds |
+| **Frame render time** | **0.67 ms** | 16 ms (60 FPS, if lucky) |
+| **Rendering throughput** | **~1,400–1,500 FPS** | ~60 FPS |
 | **Idle client memory** | **~28 MB** | 300–800 MB |
 | **Server memory** | **~40 MB** (base) | N/A (monolithic) |
-| **Active session** | **~50–65 MB** | 500 MB+ |
-| **Frame render time** | **0.67 ms** (1,400+ FPS) | 16 ms (60 FPS, if lucky) |
-| **Startup time** | **Instant** | 3–10 seconds |
+| **Active session memory** | **~50–65 MB** | 500 MB+ |
 | **CPU at idle** | **~0.3%** | 2–5% |
 | **Runtime dependencies** | **None** | Node.js, Python, Electron, … |
 | **Binary** | **Single 66 MB executable** | Hundreds of MB + package managers |
 
 </div>
 
-> **Real-world proof:** Right now on the dev machine there are **10+ jcode sessions**
-> running simultaneously - clients, servers, sub-agents - all totaling less memory
-> than a single Electron app window.
+### What that means in practice
 
-The secret is Rust. No garbage collector pausing your UI. No JS event loop
-bottleneck. No interpreted overhead. Just zero-cost abstractions compiled
-to native code with `jemalloc` for memory-efficient long-running sessions.
+- **Client / server split stays cheap.** You can keep the server running in the background
+  without paying a huge memory penalty, then attach clients as needed.
+- **The UI stays smooth under load.** The TUI benchmarks at roughly **1,475 FPS idle** and
+  **1,498 FPS while streaming** with full markdown and syntax highlighting.
+- **Parallel usage is realistic.** Multiple clients, servers, and sub-agents can run at the
+  same time without the machine feeling like it is hosting a browser-based IDE.
+
+> **Real-world proof:** On the dev machine, there are often **10+ jcode sessions**
+> running simultaneously — clients, servers, sub-agents — while still using less total
+> memory than a single Electron app window.
+
+The reason is simple: jcode is native Rust end-to-end. No garbage collector pausing the UI.
+No JS runtime overhead. No Electron shell. Just a compiled binary with a memory-efficient
+long-running architecture.
 
 ---
 
