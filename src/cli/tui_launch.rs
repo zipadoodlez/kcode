@@ -635,6 +635,114 @@ pub fn spawn_resume_in_new_terminal(
     Ok(false)
 }
 
+#[cfg(unix)]
+pub fn spawn_selfdev_in_new_terminal(
+    exe: &std::path::Path,
+    session_id: &str,
+    cwd: &std::path::Path,
+) -> Result<bool> {
+    use std::process::{Command, Stdio};
+
+    for term in resume_terminal_candidates_unix() {
+        let mut cmd = Command::new(&term);
+        cmd.current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+
+        match term.as_str() {
+            "kitty" => {
+                let title = format!("{} [self-dev]", resumed_window_title(session_id));
+                cmd.args(["--title", &title, "-e"])
+                    .arg(exe)
+                    .arg("--resume")
+                    .arg(session_id)
+                    .arg("self-dev");
+            }
+            "wezterm" => {
+                cmd.args([
+                    "start",
+                    "--always-new-process",
+                    "--",
+                    exe.to_string_lossy().as_ref(),
+                    "--resume",
+                    session_id,
+                    "self-dev",
+                ]);
+            }
+            "alacritty" => {
+                cmd.args(["-e"])
+                    .arg(exe)
+                    .arg("--resume")
+                    .arg(session_id)
+                    .arg("self-dev");
+            }
+            "gnome-terminal" => {
+                cmd.args([
+                    "--",
+                    exe.to_string_lossy().as_ref(),
+                    "--resume",
+                    session_id,
+                    "self-dev",
+                ]);
+            }
+            "konsole" => {
+                cmd.args(["-e"])
+                    .arg(exe)
+                    .arg("--resume")
+                    .arg(session_id)
+                    .arg("self-dev");
+            }
+            "xterm" => {
+                cmd.args(["-e"])
+                    .arg(exe)
+                    .arg("--resume")
+                    .arg(session_id)
+                    .arg("self-dev");
+            }
+            "foot" => {
+                cmd.args(["-e"])
+                    .arg(exe)
+                    .arg("--resume")
+                    .arg(session_id)
+                    .arg("self-dev");
+            }
+            "iterm2" => {
+                cmd = Command::new("osascript");
+                cmd.args([
+                    "-e",
+                    &format!(
+                        r#"tell application "iTerm2"
+                            create window with default profile command "{} --resume {} self-dev"
+                        end tell"#,
+                        exe.to_string_lossy(),
+                        session_id
+                    ),
+                ]);
+            }
+            "terminal" => {
+                cmd = Command::new("open");
+                cmd.args([
+                    "-a",
+                    "Terminal",
+                    exe.to_str().unwrap_or("jcode"),
+                    "--args",
+                    "--resume",
+                    session_id,
+                    "self-dev",
+                ]);
+            }
+            _ => continue,
+        }
+
+        if crate::platform::spawn_detached(&mut cmd).is_ok() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 #[cfg(not(unix))]
 fn find_wezterm_gui_binary() -> Option<String> {
     use std::process::{Command, Stdio};
@@ -760,6 +868,99 @@ pub fn spawn_resume_in_new_terminal(
                     .arg(exe)
                     .arg("--resume")
                     .arg(session_id)
+                    .current_dir(cwd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                crate::platform::spawn_detached(&mut cmd)
+            }
+            _ => continue,
+        };
+
+        if status.is_ok() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+#[cfg(not(unix))]
+pub fn spawn_selfdev_in_new_terminal(
+    exe: &std::path::Path,
+    session_id: &str,
+    cwd: &std::path::Path,
+) -> Result<bool> {
+    use std::process::{Command, Stdio};
+
+    let wezterm_gui = find_wezterm_gui_binary();
+    let alacritty_available = Command::new("where")
+        .arg("alacritty")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    let wt_available = std::env::var("WT_SESSION").is_ok()
+        || Command::new("where")
+            .arg("wt")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+    for term in resume_terminal_candidates_windows() {
+        let status = match term.as_str() {
+            "wezterm" => {
+                let Some(ref wezterm_bin) = wezterm_gui else {
+                    continue;
+                };
+                let mut cmd = Command::new(wezterm_bin);
+                cmd.args([
+                    "start",
+                    "--always-new-process",
+                    "--",
+                    &exe.to_string_lossy(),
+                    "--resume",
+                    session_id,
+                    "self-dev",
+                ])
+                .current_dir(cwd)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+                crate::platform::spawn_detached(&mut cmd)
+            }
+            "wt" | "windows-terminal" => {
+                if !wt_available {
+                    continue;
+                }
+                let mut cmd = Command::new("wt.exe");
+                cmd.args([
+                    "-p",
+                    "Command Prompt",
+                    &exe.to_string_lossy(),
+                    "--resume",
+                    session_id,
+                    "self-dev",
+                ])
+                .current_dir(cwd)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+                crate::platform::spawn_detached(&mut cmd)
+            }
+            "alacritty" => {
+                if !alacritty_available {
+                    continue;
+                }
+                let mut cmd = Command::new("alacritty");
+                cmd.args(["-e"])
+                    .arg(exe)
+                    .arg("--resume")
+                    .arg(session_id)
+                    .arg("self-dev")
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
