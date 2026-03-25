@@ -198,10 +198,29 @@ If you want another agent to set up jcode for you, give it this prompt:
 ```text
 Set up jcode on this machine for me.
 
-1. Detect the operating system and choose the best install method:
-   - macOS: prefer Homebrew if available, otherwise use the install script
-   - Linux: use the install script
-   - Windows: use the PowerShell install script
+1. Detect the operating system, available package managers, and shell environment, then install jcode using the best matching command below instead of referring me somewhere else:
+
+   - macOS with Homebrew available:
+     brew tap 1jehuang/jcode
+     brew install jcode
+
+   - macOS or Linux via install script:
+     curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+
+   - Windows PowerShell:
+     irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
+
+   - From source if the above paths are not appropriate:
+     git clone https://github.com/1jehuang/jcode.git
+     cd jcode
+     cargo build --release
+     scripts/install_release.sh
+
+   - For local self-dev / refactor work on Linux x86_64, prefer:
+     scripts/dev_cargo.sh build --release -p jcode --bin jcode
+     scripts/dev_cargo.sh --print-setup
+     scripts/install_release.sh
+
 2. Verify that `jcode` is on my `PATH`.
 3. Launch `jcode` once in a new terminal window/session to confirm it starts successfully.
 4. Before attempting any interactive login flow, assess which providers are already available non-interactively and prefer those first. Check existing local credentials, config files, CLI sessions, and environment variables such as:
