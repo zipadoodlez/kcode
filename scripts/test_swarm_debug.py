@@ -9,9 +9,11 @@ import json
 import time
 import sys
 import os
+from pathlib import Path
 
 SOCKET_PATH = f"/run/user/{os.getuid()}/jcode-debug.sock"
 MAIN_SOCKET_PATH = f"/run/user/{os.getuid()}/jcode.sock"
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def send_cmd(cmd, session_id=None, timeout=10):
     """Send a debug command and return the response."""
@@ -304,7 +306,7 @@ def test_swarm_id_provenance():
     """Test swarm:id command for path provenance."""
     print("\n=== Testing Swarm ID Provenance ===")
 
-    ok, output = send_cmd("swarm:id:/home/jeremy/jcode")
+    ok, output = send_cmd(f"swarm:id:{REPO_ROOT}")
     if ok:
         try:
             data = json.loads(output)

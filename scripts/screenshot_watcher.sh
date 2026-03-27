@@ -73,8 +73,9 @@ if command -v inotifywait &>/dev/null; then
 else
     echo "Using polling (install inotify-tools for better performance)..."
     SEEN_FILES=""
+    shopt -s nullglob
     while true; do
-        for file in "$SIGNAL_DIR"/*.ready 2>/dev/null; do
+        for file in "$SIGNAL_DIR"/*.ready; do
             [ -e "$file" ] || continue
             basename_file=$(basename "$file")
             if [[ ! " $SEEN_FILES " =~ " $basename_file " ]]; then
