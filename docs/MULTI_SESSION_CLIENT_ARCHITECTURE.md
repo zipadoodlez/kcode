@@ -243,6 +243,106 @@ This avoids synchronization problems with:
 A future design may allow richer mirroring or passive previews, but v1 should
 prefer a single active controller per session.
 
+## Niri-Style Workspace UX
+
+The preferred first version is **not** a tiled multi-pane dashboard where many
+sessions are all visible at once.
+
+Instead, the built-in workspace should behave like a Niri-style spatial session
+manager:
+
+- the main viewport shows **one full-size session at a time**
+- each session occupies a full-screen logical cell in the workspace
+- moving left/right/up/down moves the **camera** through the workspace
+- each workspace row behaves like a Niri horizontal strip of sessions
+- moving up/down switches workspace rows and restores that row's remembered focus
+- new sessions are inserted to the **right of the focused session** in the
+  current workspace row
+
+Conceptually:
+
+```text
+workspace +1: [session C]
+workspace  0: [session A] [session B]
+workspace -1: [session D] [session E] [session F]
+```
+
+This is intentionally **not** a fixed matrix with fake empty cells.
+
+## Workspace Map / Info Widget
+
+The built-in info widget should act as a **workspace map**, not a text-heavy
+status list.
+
+### Role
+
+The widget should let the user understand at a glance:
+
+- which workspace row is current
+- which session is focused in the current row
+- what sessions exist to the left/right
+- what sessions exist in nearby rows above/below
+- which session was last focused in each non-current row
+- which sessions are running, completed, errored, waiting, or detached
+
+### Layout model
+
+The widget should render a **vertical stack of horizontal strips**.
+
+- each row represents one workspace
+- each rectangle in a row represents one session
+- only sessions that actually exist are shown
+- non-current workspaces still remember their last-focused session
+
+This preserves the Niri mental model much better than a synthetic grid.
+
+### Visual language
+
+The widget should be shape-first and text-light.
+
+Each session is represented as a rectangle.
+
+Suggested encoding:
+
+- **idle** → dim outlined rectangle
+- **focused** → bright or double-outlined rectangle
+- **running** → animated rectangle border / spinner-like perimeter motion
+- **completed** → green rectangle
+- **waiting** → yellow rectangle
+- **error** → red rectangle
+- **detached** → distinct outline style (for example dashed or external marker)
+
+The widget should avoid verbose labels inside the map itself. Session names and
+full details belong in the main header/status area, not in the map.
+
+### Example shape progression
+
+One session:
+
+```text
+╔══════╗
+╚══════╝
+```
+
+Add one to the right:
+
+```text
+┌──────┐  ╔══════╗
+└──────┘  ╚══════╝
+```
+
+Move up and add one there:
+
+```text
+        ╔══════╗
+        ╚══════╝
+
+┌──────┐  ┌──────┐
+└──────┘  └──────┘
+```
+
+The real TUI version should use color and animation rather than text markers.
+
 ## Client-Side Architecture
 
 The current single `App` object is too monolithic to scale cleanly to many
@@ -254,6 +354,7 @@ Global process/UI state:
 
 - terminal event loop
 - workspace layout
+- camera/viewport position for workspace movement
 - focus management
 - keyboard mode (normal/insert/command)
 - surface management
@@ -373,6 +474,21 @@ Cons:
 
 Recommendation: do not block v1 on protocol multiplexing.
 
+## Keybindings and Navigation
+
+A good default workspace binding set is:
+
+- `Alt+h/j/k/l` for workspace movement
+- configurable remapping for users who already use those bindings in an external
+  WM (for example remapping to `Super+h/j/k/l`)
+
+The client should support a modal split like:
+
+- **normal mode** → workspace navigation and layout actions
+- **insert mode** → focused session receives typed input
+
+This avoids conflicts between text entry and spatial movement.
+
 ## Pop-Out / Dock Workflows
 
 ### Pop out to standalone window
@@ -416,18 +532,20 @@ model for these operations.
 
 ## Recommended UI Direction
 
-For a first version, prefer a **columnar or tiled workspace** over a fully
-freeform floating system.
+For a first version, prefer a **full-screen, camera-style workspace** over a
+true many-pane dashboard.
 
 Reasons:
 
-- closer to the Niri mental model
-- easier keyboard navigation
-- simpler implementation
-- easier to render in a terminal UI
-- better first step toward a scrollable spatial workspace
+- much closer to the Niri mental model
+- keeps each session full-size and fully readable
+- makes smooth movement between sessions more feasible in a terminal UI
+- simplifies rendering because only the current session needs full live focus
+- still allows richer overview modes later
 
-A more freeform or richer 2D canvas can be layered on later if needed.
+This can later grow into optional resizeable session surfaces or richer
+multi-visible workspace views, but the first version should optimize for a
+smooth Niri-like experience.
 
 ## Migration Plan
 
@@ -441,23 +559,29 @@ A more freeform or richer 2D canvas can be layered on later if needed.
 - Split current monolithic client state into shell/controller/surface layers.
 - Keep single-surface behavior unchanged.
 
-### Phase 2: multi-surface client
+### Phase 2: workspace model + map widget
+
+- Introduce a Niri-style workspace row model.
+- Add the workspace-map info widget with rectangle-only state rendering.
+- Track remembered focus per workspace row.
+
+### Phase 3: full-screen camera navigation
 
 - Allow one client process to host multiple session surfaces.
-- Add basic tiled/columnar workspace UI.
-- Add focus movement and session add/remove operations.
+- Show one full-size session at a time.
+- Move the viewport between neighboring sessions/workspaces.
 
-### Phase 3: pop-out support
+### Phase 4: pop-out support
 
 - Add commands to open a hosted session in a standalone client.
 - Preserve current `jcode --resume <session>` workflow.
 
-### Phase 4: dock support
+### Phase 5: dock support
 
 - Allow a standalone session to be reattached into a workspace client.
 - Keep one interactive owner per session.
 
-### Phase 5: protocol cleanup
+### Phase 6: protocol cleanup
 
 - Evaluate session-multiplexed protocol support.
 - Replace dedicated per-surface connections if and when it is clearly beneficial.
@@ -472,6 +596,7 @@ A more freeform or richer 2D canvas can be layered on later if needed.
 - How should dock/undock be exposed: command palette, slash commands, CLI, debug
   socket, or all of the above?
 - How much workspace layout state should be persisted across launches?
+- How much offscreen session state should be pre-rendered for smooth animation?
 
 ## Recommendation
 
@@ -483,7 +608,9 @@ Adopt the following design direction:
 4. **Treat workspace panes and standalone windows as different surfaces for the
    same session model.**
 5. **Start with one active interactive surface per session.**
-6. **Prototype with one connection per active surface before attempting protocol
+6. **Use a Niri-style full-screen workspace with a rectangle-only workspace map
+   widget as the primary UX.**
+7. **Prototype with one connection per active surface before attempting protocol
    multiplexing.**
 
 This gives jcode a portable built-in multi-session workspace without sacrificing
