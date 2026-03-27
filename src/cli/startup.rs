@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use std::io::IsTerminal;
 use std::process::Command as ProcessCommand;
 
 use crate::{build, logging, perf, server, startup_profile, storage, telemetry, update};
@@ -70,7 +71,7 @@ fn spawn_background_update_check(args: &Args) {
         && !args.no_update
         && !matches!(args.command, Some(Command::Update))
         && args.resume.is_none();
-    let auto_update = args.auto_update;
+    let auto_update = should_auto_install_update(args, has_live_terminal_attached());
 
     if !check_updates {
         return;
@@ -124,6 +125,16 @@ fn spawn_background_update_check(args: &Args) {
     }
 }
 
+fn has_live_terminal_attached() -> bool {
+    std::io::stdin().is_terminal()
+        || std::io::stdout().is_terminal()
+        || std::io::stderr().is_terminal()
+}
+
+fn should_auto_install_update(args: &Args, live_terminal_attached: bool) -> bool {
+    args.auto_update && !live_terminal_attached
+}
+
 fn report_main_error(error: &anyhow::Error) {
     let error_str = format!("{:?}", error);
     logging::error(&error_str);
@@ -133,5 +144,43 @@ fn report_main_error(error: &anyhow::Error) {
         output::stderr_info("\x1b[33mTo restore this session, run:\x1b[0m");
         output::stderr_info(format!("  jcode --resume {}", session_id));
         output::stderr_blank_line();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::args::{Args, Command};
+    use clap::Parser;
+
+    fn parse_args(argv: &[&str]) -> Args {
+        Args::parse_from(argv)
+    }
+
+    #[test]
+    fn auto_install_allowed_without_live_terminal() {
+        let args = parse_args(&["jcode", "login"]);
+        assert!(should_auto_install_update(&args, false));
+    }
+
+    #[test]
+    fn auto_install_deferred_when_live_terminal_is_attached() {
+        let args = parse_args(&["jcode", "login"]);
+        assert!(!should_auto_install_update(&args, true));
+    }
+
+    #[test]
+    fn auto_install_respects_explicit_disable_even_without_terminal() {
+        let mut args = parse_args(&["jcode", "login"]);
+        args.auto_update = false;
+        assert!(!should_auto_install_update(&args, false));
+    }
+
+    #[test]
+    fn update_command_still_skips_background_check_before_auto_install_logic() {
+        let args = parse_args(&["jcode", "update"]);
+        assert!(matches!(args.command, Some(Command::Update)));
+        assert!(!should_auto_install_update(&args, true));
+        assert!(should_auto_install_update(&args, false));
     }
 }
