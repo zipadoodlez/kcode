@@ -2,7 +2,7 @@
 # Remote cargo runner (build/test/check/clippy) via SSH + rsync.
 #
 # Defaults:
-# - Host: desktop (override with JCODE_REMOTE_HOST or --host)
+# - Host: must be provided via JCODE_REMOTE_HOST or --host
 # - Remote dir: .cache/remote-builds/jcode/<repo-name> (override with JCODE_REMOTE_DIR or --remote-dir)
 #
 # Examples:
@@ -19,7 +19,7 @@ Usage: scripts/remote_build.sh [options] [cargo-subcommand] [cargo-args...]
 
 Options:
   -r, --release        Add --release to cargo invocation
-  --host HOST          Remote SSH host (default: $JCODE_REMOTE_HOST or desktop)
+  --host HOST          Remote SSH host (default: $JCODE_REMOTE_HOST; required if unset)
   --remote-dir DIR     Remote project directory (default: $JCODE_REMOTE_DIR or .cache/remote-builds/jcode/<repo-name>)
   --no-sync            Skip rsync upload step
   --sync-back          Force sync-back of built binary after command
@@ -36,7 +36,7 @@ EOF
 
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_NAME="$(basename "$LOCAL_DIR")"
-REMOTE="${JCODE_REMOTE_HOST:-desktop}"
+REMOTE="${JCODE_REMOTE_HOST:-}"
 REMOTE_DIR="${JCODE_REMOTE_DIR:-.cache/remote-builds/jcode/${REPO_NAME}}"
 SSH_BIN="${JCODE_REMOTE_SSH_BIN:-ssh}"
 RSYNC_BIN="${JCODE_REMOTE_RSYNC_BIN:-rsync}"
@@ -99,6 +99,11 @@ done
 
 if [[ "$REMOTE_DIR" == *" "* ]]; then
     echo "error: remote dir cannot contain spaces: $REMOTE_DIR" >&2
+    exit 2
+fi
+
+if [[ -z "$REMOTE" ]]; then
+    echo "error: remote host not configured; set JCODE_REMOTE_HOST or pass --host HOST" >&2
     exit 2
 fi
 
