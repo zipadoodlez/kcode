@@ -360,20 +360,20 @@ pub fn client_metadata(project_id: Option<String>) -> ClientMetadata {
 }
 
 pub fn validate_load_code_assist_response(res: &LoadCodeAssistResponse) -> Result<()> {
-    if res.current_tier.is_none() {
-        if let Some(validation) = res.ineligible_tiers.as_ref().and_then(|tiers| {
+    if res.current_tier.is_none()
+        && let Some(validation) = res.ineligible_tiers.as_ref().and_then(|tiers| {
             tiers.iter().find(|tier| {
                 tier.reason_code.as_deref() == Some("VALIDATION_REQUIRED")
                     && tier.validation_url.is_some()
             })
-        }) {
-            let description = validation
-                .reason_message
-                .clone()
-                .unwrap_or_else(|| "Account validation required".to_string());
-            let url = validation.validation_url.clone().unwrap_or_default();
-            anyhow::bail!("{description}. Complete account validation: {url}");
-        }
+        })
+    {
+        let description = validation
+            .reason_message
+            .clone()
+            .unwrap_or_else(|| "Account validation required".to_string());
+        let url = validation.validation_url.clone().unwrap_or_default();
+        anyhow::bail!("{description}. Complete account validation: {url}");
     }
     Ok(())
 }
