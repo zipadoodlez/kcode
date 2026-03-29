@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::path::Path;
 use std::process::Command as ProcessCommand;
 
 use crate::{build, tui::RunResult, update};
@@ -75,7 +76,7 @@ pub fn hot_reload(session_id: &str) -> Result<()> {
     }
 
     let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
-    let (exe, _label) = build::client_update_candidate(is_selfdev)
+    let (exe, _label) = build::preferred_reload_candidate(is_selfdev)
         .ok_or_else(|| anyhow::anyhow!("No reloadable binary found"))?;
 
     if let Ok(metadata) = std::fs::metadata(&exe) {
@@ -187,6 +188,145 @@ pub fn hot_rebuild(session_id: &str) -> Result<()> {
     let err = crate::platform::replace_process(&mut cmd);
 
     Err(anyhow::anyhow!("Failed to exec {:?}: {}", exe, err))
+}
+
+fn rebuild_version_label(repo_dir: &Path) -> String {
+    build::current_build_info(repo_dir)
+        .map(|info| {
+            if info.dirty {
+                format!("{}-dirty", info.hash)
+            } else {
+                info.hash
+            }
+        })
+        .unwrap_or_else(|_| "local source build".to_string())
+}
+
+pub fn spawn_background_session_rebuild(session_id: String) {
+    std::thread::spawn(move || {
+        use crate::bus::{Bus, BusEvent, ClientMaintenanceAction, SessionUpdateStatus};
+
+        let action = ClientMaintenanceAction::Rebuild;
+        let publish = |status| Bus::global().publish(BusEvent::SessionUpdateStatus(status));
+
+        let Some(repo_dir) = build::get_repo_dir() else {
+            publish(SessionUpdateStatus::Error {
+                session_id,
+                action,
+                message: "Rebuild failed: could not find the jcode repository.".to_string(),
+            });
+            return;
+        };
+
+        publish(SessionUpdateStatus::Status {
+            session_id: session_id.clone(),
+            action,
+            message: "Pulling latest changes in the background...".to_string(),
+        });
+        if let Err(error) = update::run_git_pull_ff_only(&repo_dir, true) {
+            publish(SessionUpdateStatus::Status {
+                session_id: session_id.clone(),
+                action,
+                message: format!(
+                    "Git pull skipped: {}. Continuing with the current checkout.",
+                    error
+                ),
+            });
+        }
+
+        publish(SessionUpdateStatus::Status {
+            session_id: session_id.clone(),
+            action,
+            message: "Building release binary in the background...".to_string(),
+        });
+        let build_status = match ProcessCommand::new("cargo")
+            .args(["build", "--release"])
+            .current_dir(&repo_dir)
+            .status()
+        {
+            Ok(status) => status,
+            Err(error) => {
+                publish(SessionUpdateStatus::Error {
+                    session_id,
+                    action,
+                    message: format!("Rebuild failed while starting cargo build: {}", error),
+                });
+                return;
+            }
+        };
+
+        if !build_status.success() {
+            publish(SessionUpdateStatus::Error {
+                session_id,
+                action,
+                message: "Build failed — staying on the current binary.".to_string(),
+            });
+            return;
+        }
+
+        publish(SessionUpdateStatus::Status {
+            session_id: session_id.clone(),
+            action,
+            message: "Running release tests in the background...".to_string(),
+        });
+        let test_status = match ProcessCommand::new("cargo")
+            .args(["test", "--release", "--", "--test-threads=1"])
+            .current_dir(&repo_dir)
+            .status()
+        {
+            Ok(status) => status,
+            Err(error) => {
+                publish(SessionUpdateStatus::Error {
+                    session_id,
+                    action,
+                    message: format!("Rebuild failed while starting tests: {}", error),
+                });
+                return;
+            }
+        };
+
+        if !test_status.success() {
+            publish(SessionUpdateStatus::Error {
+                session_id,
+                action,
+                message: "Tests failed — staying on the current binary. Fix the failing tests and try /rebuild again.".to_string(),
+            });
+            return;
+        }
+
+        if let Err(error) = build::install_local_release(&repo_dir) {
+            publish(SessionUpdateStatus::Status {
+                session_id: session_id.clone(),
+                action,
+                message: format!(
+                    "Install warning: {}. Will reload from the repo build if needed.",
+                    error
+                ),
+            });
+        }
+
+        let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
+        let exe = build::preferred_reload_candidate(is_selfdev)
+            .map(|(path, _)| path)
+            .unwrap_or_else(|| build::release_binary_path(&repo_dir));
+        if !exe.exists() {
+            publish(SessionUpdateStatus::Error {
+                session_id,
+                action,
+                message: format!(
+                    "Rebuild finished but no reloadable binary was found at {:?}.",
+                    exe
+                ),
+            });
+            return;
+        }
+
+        publish(SessionUpdateStatus::ReadyToReload {
+            session_id,
+            action,
+            version: rebuild_version_label(&repo_dir),
+        });
+    });
 }
 
 pub fn hot_update(session_id: &str) -> Result<()> {
