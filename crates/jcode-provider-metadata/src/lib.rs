@@ -152,12 +152,112 @@ pub const OPENCODE_GO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile
 
 pub const ZAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "zai",
-    display_name: "Z.AI Coding",
-    api_base: "https://api.z.ai/api/coding/paas/v4",
-    api_key_env: "ZAI_API_KEY",
+    display_name: "Z.AI",
+    api_base: "https://api.z.ai/api/paas/v4",
+    api_key_env: "ZHIPU_API_KEY",
     env_file: "zai.env",
     setup_url: "https://docs.z.ai/guides/develop/openai/introduction",
     default_model: Some("glm-4.5"),
+};
+
+pub const AI302_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "302ai",
+    display_name: "302.AI",
+    api_base: "https://api.302.ai/v1",
+    api_key_env: "302AI_API_KEY",
+    env_file: "302ai.env",
+    setup_url: "https://opencode.ai/docs/providers#302ai",
+    default_model: Some("qwen3-235b-a22b-instruct-2507"),
+};
+
+pub const BASETEN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "baseten",
+    display_name: "Baseten",
+    api_base: "https://inference.baseten.co/v1",
+    api_key_env: "BASETEN_API_KEY",
+    env_file: "baseten.env",
+    setup_url: "https://opencode.ai/docs/providers#baseten",
+    default_model: Some("zai-org/GLM-4.7"),
+};
+
+pub const CORTECS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "cortecs",
+    display_name: "Cortecs",
+    api_base: "https://api.cortecs.ai/v1",
+    api_key_env: "CORTECS_API_KEY",
+    env_file: "cortecs.env",
+    setup_url: "https://opencode.ai/docs/providers#cortecs",
+    default_model: Some("kimi-k2.5"),
+};
+
+pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "deepseek",
+    display_name: "DeepSeek",
+    api_base: "https://api.deepseek.com",
+    api_key_env: "DEEPSEEK_API_KEY",
+    env_file: "deepseek.env",
+    setup_url: "https://opencode.ai/docs/providers#deepseek",
+    default_model: Some("deepseek-chat"),
+};
+
+pub const FIRMWARE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "firmware",
+    display_name: "Firmware",
+    api_base: "https://app.frogbot.ai/api/v1",
+    api_key_env: "FIRMWARE_API_KEY",
+    env_file: "firmware.env",
+    setup_url: "https://opencode.ai/docs/providers#firmware",
+    default_model: Some("kimi-k2.5"),
+};
+
+pub const HUGGING_FACE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "huggingface",
+    display_name: "Hugging Face",
+    api_base: "https://router.huggingface.co/v1",
+    api_key_env: "HF_TOKEN",
+    env_file: "huggingface.env",
+    setup_url: "https://opencode.ai/docs/providers#hugging-face",
+    default_model: Some("zai-org/GLM-4.7"),
+};
+
+pub const MOONSHOT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "moonshotai",
+    display_name: "Moonshot AI",
+    api_base: "https://api.moonshot.ai/v1",
+    api_key_env: "MOONSHOT_API_KEY",
+    env_file: "moonshotai.env",
+    setup_url: "https://opencode.ai/docs/providers#moonshot-ai",
+    default_model: Some("kimi-k2.5"),
+};
+
+pub const NEBIUS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "nebius",
+    display_name: "Nebius Token Factory",
+    api_base: "https://api.tokenfactory.nebius.com/v1",
+    api_key_env: "NEBIUS_API_KEY",
+    env_file: "nebius.env",
+    setup_url: "https://opencode.ai/docs/providers#nebius-token-factory",
+    default_model: Some("openai/gpt-oss-120b"),
+};
+
+pub const SCALEWAY_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "scaleway",
+    display_name: "Scaleway",
+    api_base: "https://api.scaleway.ai/v1",
+    api_key_env: "SCALEWAY_API_KEY",
+    env_file: "scaleway.env",
+    setup_url: "https://opencode.ai/docs/providers#scaleway",
+    default_model: Some("qwen3-coder-30b-a3b-instruct"),
+};
+
+pub const STACKIT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "stackit",
+    display_name: "STACKIT",
+    api_base: "https://api.openai-compat.model-serving.eu01.onstackit.cloud/v1",
+    api_key_env: "STACKIT_API_KEY",
+    env_file: "stackit.env",
+    setup_url: "https://opencode.ai/docs/providers#stackit",
+    default_model: Some("openai/gpt-oss-120b"),
 };
 
 pub const CHUTES_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -200,13 +300,23 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     default_model: None,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 7] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 17] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
     CHUTES_PROFILE,
     CEREBRAS_PROFILE,
     ALIBABA_CODING_PLAN_PROFILE,
+    AI302_PROFILE,
+    BASETEN_PROFILE,
+    CORTECS_PROFILE,
+    DEEPSEEK_PROFILE,
+    FIRMWARE_PROFILE,
+    HUGGING_FACE_PROFILE,
+    MOONSHOT_PROFILE,
+    NEBIUS_PROFILE,
+    SCALEWAY_PROFILE,
+    STACKIT_PROFILE,
     OPENAI_COMPAT_PROFILE,
 ];
 
@@ -303,11 +413,11 @@ pub const OPENCODE_GO_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDes
 
 pub const ZAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "zai",
-    display_name: "Z.AI Coding",
+    display_name: "Z.AI",
     auth_kind: LoginProviderAuthKind::ApiKey,
     auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
     auth_status_method: "API key",
-    aliases: &["z.ai", "z-ai", "zai-coding"],
+    aliases: &["z.ai", "z-ai", "zai-coding", "zhipu"],
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(ZAI_PROFILE),
@@ -351,6 +461,136 @@ pub const ALIBABA_CODING_PLAN_LOGIN_PROVIDER: LoginProviderDescriptor = LoginPro
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(ALIBABA_CODING_PLAN_PROFILE),
     order: LoginProviderSurfaceOrder::new(Some(10), Some(9), Some(10), Some(9), Some(9)),
+};
+
+pub const AI302_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "302ai",
+    display_name: "302.AI",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["302.ai"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(AI302_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(18), Some(18), Some(18), Some(18), Some(18)),
+};
+
+pub const BASETEN_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "baseten",
+    display_name: "Baseten",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(BASETEN_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(19), Some(19), Some(19), Some(19), Some(19)),
+};
+
+pub const CORTECS_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "cortecs",
+    display_name: "Cortecs",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(CORTECS_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(20), Some(20), Some(20), Some(20), Some(20)),
+};
+
+pub const DEEPSEEK_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "deepseek",
+    display_name: "DeepSeek",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(DEEPSEEK_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(21), Some(21), Some(21), Some(21), Some(21)),
+};
+
+pub const FIRMWARE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "firmware",
+    display_name: "Firmware",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(FIRMWARE_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(22), Some(22), Some(22), Some(22), Some(22)),
+};
+
+pub const HUGGING_FACE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "huggingface",
+    display_name: "Hugging Face",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["hugging-face", "hf"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(HUGGING_FACE_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(23), Some(23), Some(23), Some(23), Some(23)),
+};
+
+pub const MOONSHOT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "moonshotai",
+    display_name: "Moonshot AI",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["moonshot"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(MOONSHOT_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(24), Some(24), Some(24), Some(24), Some(24)),
+};
+
+pub const NEBIUS_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "nebius",
+    display_name: "Nebius Token Factory",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(NEBIUS_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(25), Some(25), Some(25), Some(25), Some(25)),
+};
+
+pub const SCALEWAY_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "scaleway",
+    display_name: "Scaleway",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(SCALEWAY_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(26), Some(26), Some(26), Some(26), Some(26)),
+};
+
+pub const STACKIT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "stackit",
+    display_name: "STACKIT",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(STACKIT_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(27), Some(27), Some(27), Some(27), Some(27)),
 };
 
 pub const OPENAI_COMPAT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -431,7 +671,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 17] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 27] = [
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
@@ -443,6 +683,16 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 17] = [
     CHUTES_LOGIN_PROVIDER,
     CEREBRAS_LOGIN_PROVIDER,
     ALIBABA_CODING_PLAN_LOGIN_PROVIDER,
+    AI302_LOGIN_PROVIDER,
+    BASETEN_LOGIN_PROVIDER,
+    CORTECS_LOGIN_PROVIDER,
+    DEEPSEEK_LOGIN_PROVIDER,
+    FIRMWARE_LOGIN_PROVIDER,
+    HUGGING_FACE_LOGIN_PROVIDER,
+    MOONSHOT_LOGIN_PROVIDER,
+    NEBIUS_LOGIN_PROVIDER,
+    SCALEWAY_LOGIN_PROVIDER,
+    STACKIT_LOGIN_PROVIDER,
     OPENAI_COMPAT_LOGIN_PROVIDER,
     CURSOR_LOGIN_PROVIDER,
     COPILOT_LOGIN_PROVIDER,
@@ -603,6 +853,10 @@ mod tests {
             Some("zai")
         );
         assert_eq!(
+            resolve_login_provider("zhipu").map(|provider| provider.id),
+            Some("zai")
+        );
+        assert_eq!(
             resolve_login_provider("compat").map(|provider| provider.id),
             Some("openai-compatible")
         );
@@ -617,6 +871,18 @@ mod tests {
         assert_eq!(
             resolve_login_provider("bailian").map(|provider| provider.id),
             Some("alibaba-coding-plan")
+        );
+        assert_eq!(
+            resolve_login_provider("302.ai").map(|provider| provider.id),
+            Some("302ai")
+        );
+        assert_eq!(
+            resolve_login_provider("hf").map(|provider| provider.id),
+            Some("huggingface")
+        );
+        assert_eq!(
+            resolve_login_provider("moonshot").map(|provider| provider.id),
+            Some("moonshotai")
         );
         assert_eq!(
             resolve_login_provider("gmail").map(|provider| provider.id),

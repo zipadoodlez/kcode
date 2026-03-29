@@ -31,6 +31,19 @@ pub enum ProviderChoice {
     OpencodeGo,
     #[value(alias = "z.ai", alias = "z-ai", alias = "zai-coding")]
     Zai,
+    #[value(alias = "302.ai")]
+    Ai302,
+    Baseten,
+    Cortecs,
+    Deepseek,
+    Firmware,
+    #[value(alias = "hugging-face", alias = "hf")]
+    HuggingFace,
+    #[value(alias = "moonshot")]
+    MoonshotAi,
+    Nebius,
+    Scaleway,
+    Stackit,
     Chutes,
     #[value(alias = "cerebrascode", alias = "cerberascode")]
     Cerebras,
@@ -63,6 +76,16 @@ impl ProviderChoice {
             Self::Opencode => "opencode",
             Self::OpencodeGo => "opencode-go",
             Self::Zai => "zai",
+            Self::Ai302 => "302ai",
+            Self::Baseten => "baseten",
+            Self::Cortecs => "cortecs",
+            Self::Deepseek => "deepseek",
+            Self::Firmware => "firmware",
+            Self::HuggingFace => "huggingface",
+            Self::MoonshotAi => "moonshotai",
+            Self::Nebius => "nebius",
+            Self::Scaleway => "scaleway",
+            Self::Stackit => "stackit",
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
@@ -82,6 +105,16 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
         ProviderChoice::Opencode => Some(crate::provider_catalog::OPENCODE_PROFILE),
         ProviderChoice::OpencodeGo => Some(crate::provider_catalog::OPENCODE_GO_PROFILE),
         ProviderChoice::Zai => Some(crate::provider_catalog::ZAI_PROFILE),
+        ProviderChoice::Ai302 => Some(crate::provider_catalog::AI302_PROFILE),
+        ProviderChoice::Baseten => Some(crate::provider_catalog::BASETEN_PROFILE),
+        ProviderChoice::Cortecs => Some(crate::provider_catalog::CORTECS_PROFILE),
+        ProviderChoice::Deepseek => Some(crate::provider_catalog::DEEPSEEK_PROFILE),
+        ProviderChoice::Firmware => Some(crate::provider_catalog::FIRMWARE_PROFILE),
+        ProviderChoice::HuggingFace => Some(crate::provider_catalog::HUGGING_FACE_PROFILE),
+        ProviderChoice::MoonshotAi => Some(crate::provider_catalog::MOONSHOT_PROFILE),
+        ProviderChoice::Nebius => Some(crate::provider_catalog::NEBIUS_PROFILE),
+        ProviderChoice::Scaleway => Some(crate::provider_catalog::SCALEWAY_PROFILE),
+        ProviderChoice::Stackit => Some(crate::provider_catalog::STACKIT_PROFILE),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_PROFILE),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_PROFILE),
         ProviderChoice::AlibabaCodingPlan => {
@@ -104,6 +137,16 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         ProviderChoice::Opencode => Some(crate::provider_catalog::OPENCODE_LOGIN_PROVIDER),
         ProviderChoice::OpencodeGo => Some(crate::provider_catalog::OPENCODE_GO_LOGIN_PROVIDER),
         ProviderChoice::Zai => Some(crate::provider_catalog::ZAI_LOGIN_PROVIDER),
+        ProviderChoice::Ai302 => Some(crate::provider_catalog::AI302_LOGIN_PROVIDER),
+        ProviderChoice::Baseten => Some(crate::provider_catalog::BASETEN_LOGIN_PROVIDER),
+        ProviderChoice::Cortecs => Some(crate::provider_catalog::CORTECS_LOGIN_PROVIDER),
+        ProviderChoice::Deepseek => Some(crate::provider_catalog::DEEPSEEK_LOGIN_PROVIDER),
+        ProviderChoice::Firmware => Some(crate::provider_catalog::FIRMWARE_LOGIN_PROVIDER),
+        ProviderChoice::HuggingFace => Some(crate::provider_catalog::HUGGING_FACE_LOGIN_PROVIDER),
+        ProviderChoice::MoonshotAi => Some(crate::provider_catalog::MOONSHOT_LOGIN_PROVIDER),
+        ProviderChoice::Nebius => Some(crate::provider_catalog::NEBIUS_LOGIN_PROVIDER),
+        ProviderChoice::Scaleway => Some(crate::provider_catalog::SCALEWAY_LOGIN_PROVIDER),
+        ProviderChoice::Stackit => Some(crate::provider_catalog::STACKIT_LOGIN_PROVIDER),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_LOGIN_PROVIDER),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_LOGIN_PROVIDER),
         ProviderChoice::AlibabaCodingPlan => {
@@ -368,6 +411,16 @@ async fn init_provider_with_options(
         ProviderChoice::Opencode
         | ProviderChoice::OpencodeGo
         | ProviderChoice::Zai
+        | ProviderChoice::Ai302
+        | ProviderChoice::Baseten
+        | ProviderChoice::Cortecs
+        | ProviderChoice::Deepseek
+        | ProviderChoice::Firmware
+        | ProviderChoice::HuggingFace
+        | ProviderChoice::MoonshotAi
+        | ProviderChoice::Nebius
+        | ProviderChoice::Scaleway
+        | ProviderChoice::Stackit
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::AlibabaCodingPlan

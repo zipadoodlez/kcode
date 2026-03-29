@@ -15,7 +15,7 @@ pub(crate) enum TranscriptModeArg {
 #[command(version = env!("JCODE_VERSION"))]
 #[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
-    /// Provider to use (jcode, claude, openai, openrouter, azure, opencode, opencode-go, zai, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, or auto-detect)
+    /// Provider to use (jcode, claude, openai, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, cortecs, deepseek, firmware, huggingface, moonshotai, nebius, scaleway, stackit, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, google, or auto-detect)
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
