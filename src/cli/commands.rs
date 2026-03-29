@@ -726,6 +726,12 @@ fn list_cli_providers() -> Vec<ProviderListEntry> {
         ProviderChoice::Opencode,
         ProviderChoice::OpencodeGo,
         ProviderChoice::Zai,
+        ProviderChoice::Groq,
+        ProviderChoice::Mistral,
+        ProviderChoice::Perplexity,
+        ProviderChoice::TogetherAi,
+        ProviderChoice::Deepinfra,
+        ProviderChoice::Xai,
         ProviderChoice::Chutes,
         ProviderChoice::Cerebras,
         ProviderChoice::AlibabaCodingPlan,
@@ -2070,6 +2076,8 @@ mod tests {
                 && provider.display_name == "OpenAI"
                 && provider.auth_kind.as_deref() == Some("OAuth")
         }));
+        assert!(providers.iter().any(|provider| provider.id == "groq"));
+        assert!(providers.iter().any(|provider| provider.id == "xai"));
     }
 
     #[test]

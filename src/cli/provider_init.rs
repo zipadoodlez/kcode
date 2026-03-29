@@ -44,6 +44,17 @@ pub enum ProviderChoice {
     Nebius,
     Scaleway,
     Stackit,
+    Groq,
+    #[value(alias = "mistralai")]
+    Mistral,
+    #[value(alias = "pplx")]
+    Perplexity,
+    #[value(alias = "together", alias = "together-ai")]
+    TogetherAi,
+    #[value(alias = "deep-infra")]
+    Deepinfra,
+    #[value(alias = "x.ai", alias = "x-ai", alias = "grok")]
+    Xai,
     Chutes,
     #[value(alias = "cerebrascode", alias = "cerberascode")]
     Cerebras,
@@ -86,6 +97,12 @@ impl ProviderChoice {
             Self::Nebius => "nebius",
             Self::Scaleway => "scaleway",
             Self::Stackit => "stackit",
+            Self::Groq => "groq",
+            Self::Mistral => "mistral",
+            Self::Perplexity => "perplexity",
+            Self::TogetherAi => "togetherai",
+            Self::Deepinfra => "deepinfra",
+            Self::Xai => "xai",
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
@@ -115,6 +132,12 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
         ProviderChoice::Nebius => Some(crate::provider_catalog::NEBIUS_PROFILE),
         ProviderChoice::Scaleway => Some(crate::provider_catalog::SCALEWAY_PROFILE),
         ProviderChoice::Stackit => Some(crate::provider_catalog::STACKIT_PROFILE),
+        ProviderChoice::Groq => Some(crate::provider_catalog::GROQ_PROFILE),
+        ProviderChoice::Mistral => Some(crate::provider_catalog::MISTRAL_PROFILE),
+        ProviderChoice::Perplexity => Some(crate::provider_catalog::PERPLEXITY_PROFILE),
+        ProviderChoice::TogetherAi => Some(crate::provider_catalog::TOGETHER_AI_PROFILE),
+        ProviderChoice::Deepinfra => Some(crate::provider_catalog::DEEPINFRA_PROFILE),
+        ProviderChoice::Xai => Some(crate::provider_catalog::XAI_PROFILE),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_PROFILE),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_PROFILE),
         ProviderChoice::AlibabaCodingPlan => {
@@ -147,6 +170,12 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         ProviderChoice::Nebius => Some(crate::provider_catalog::NEBIUS_LOGIN_PROVIDER),
         ProviderChoice::Scaleway => Some(crate::provider_catalog::SCALEWAY_LOGIN_PROVIDER),
         ProviderChoice::Stackit => Some(crate::provider_catalog::STACKIT_LOGIN_PROVIDER),
+        ProviderChoice::Groq => Some(crate::provider_catalog::GROQ_LOGIN_PROVIDER),
+        ProviderChoice::Mistral => Some(crate::provider_catalog::MISTRAL_LOGIN_PROVIDER),
+        ProviderChoice::Perplexity => Some(crate::provider_catalog::PERPLEXITY_LOGIN_PROVIDER),
+        ProviderChoice::TogetherAi => Some(crate::provider_catalog::TOGETHER_AI_LOGIN_PROVIDER),
+        ProviderChoice::Deepinfra => Some(crate::provider_catalog::DEEPINFRA_LOGIN_PROVIDER),
+        ProviderChoice::Xai => Some(crate::provider_catalog::XAI_LOGIN_PROVIDER),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_LOGIN_PROVIDER),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_LOGIN_PROVIDER),
         ProviderChoice::AlibabaCodingPlan => {
@@ -421,6 +450,12 @@ async fn init_provider_with_options(
         | ProviderChoice::Nebius
         | ProviderChoice::Scaleway
         | ProviderChoice::Stackit
+        | ProviderChoice::Groq
+        | ProviderChoice::Mistral
+        | ProviderChoice::Perplexity
+        | ProviderChoice::TogetherAi
+        | ProviderChoice::Deepinfra
+        | ProviderChoice::Xai
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::AlibabaCodingPlan
@@ -560,6 +595,12 @@ mod tests {
         assert_eq!(ProviderChoice::Opencode.as_arg_value(), "opencode");
         assert_eq!(ProviderChoice::OpencodeGo.as_arg_value(), "opencode-go");
         assert_eq!(ProviderChoice::Zai.as_arg_value(), "zai");
+        assert_eq!(ProviderChoice::Groq.as_arg_value(), "groq");
+        assert_eq!(ProviderChoice::Mistral.as_arg_value(), "mistral");
+        assert_eq!(ProviderChoice::Perplexity.as_arg_value(), "perplexity");
+        assert_eq!(ProviderChoice::TogetherAi.as_arg_value(), "togetherai");
+        assert_eq!(ProviderChoice::Deepinfra.as_arg_value(), "deepinfra");
+        assert_eq!(ProviderChoice::Xai.as_arg_value(), "xai");
         assert_eq!(ProviderChoice::Chutes.as_arg_value(), "chutes");
         assert_eq!(ProviderChoice::Cerebras.as_arg_value(), "cerebras");
         assert_eq!(

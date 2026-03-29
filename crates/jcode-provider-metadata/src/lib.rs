@@ -260,6 +260,66 @@ pub const STACKIT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     default_model: Some("openai/gpt-oss-120b"),
 };
 
+pub const GROQ_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "groq",
+    display_name: "Groq",
+    api_base: "https://api.groq.com/openai/v1",
+    api_key_env: "GROQ_API_KEY",
+    env_file: "groq.env",
+    setup_url: "https://console.groq.com/docs/openai",
+    default_model: Some("llama-3.1-8b-instant"),
+};
+
+pub const MISTRAL_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "mistral",
+    display_name: "Mistral",
+    api_base: "https://api.mistral.ai/v1",
+    api_key_env: "MISTRAL_API_KEY",
+    env_file: "mistral.env",
+    setup_url: "https://docs.mistral.ai/getting-started/models/",
+    default_model: Some("devstral-medium-2507"),
+};
+
+pub const PERPLEXITY_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "perplexity",
+    display_name: "Perplexity",
+    api_base: "https://api.perplexity.ai",
+    api_key_env: "PERPLEXITY_API_KEY",
+    env_file: "perplexity.env",
+    setup_url: "https://docs.perplexity.ai/docs/agent-api/openai-compatibility",
+    default_model: Some("sonar"),
+};
+
+pub const TOGETHER_AI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "togetherai",
+    display_name: "Together AI",
+    api_base: "https://api.together.xyz/v1",
+    api_key_env: "TOGETHER_API_KEY",
+    env_file: "togetherai.env",
+    setup_url: "https://docs.together.ai/docs/openai-api-compatibility",
+    default_model: Some("moonshotai/Kimi-K2-Instruct"),
+};
+
+pub const DEEPINFRA_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "deepinfra",
+    display_name: "Deep Infra",
+    api_base: "https://api.deepinfra.com/v1/openai",
+    api_key_env: "DEEPINFRA_API_KEY",
+    env_file: "deepinfra.env",
+    setup_url: "https://deepinfra.com/docs/api-reference",
+    default_model: Some("moonshotai/Kimi-K2-Instruct"),
+};
+
+pub const XAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "xai",
+    display_name: "xAI",
+    api_base: "https://api.x.ai/v1",
+    api_key_env: "XAI_API_KEY",
+    env_file: "xai.env",
+    setup_url: "https://docs.x.ai/developers/quickstart",
+    default_model: Some("grok-code-fast-1"),
+};
+
 pub const CHUTES_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "chutes",
     display_name: "Chutes",
@@ -300,7 +360,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     default_model: None,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 17] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 23] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -317,6 +377,12 @@ const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 17] = [
     NEBIUS_PROFILE,
     SCALEWAY_PROFILE,
     STACKIT_PROFILE,
+    GROQ_PROFILE,
+    MISTRAL_PROFILE,
+    PERPLEXITY_PROFILE,
+    TOGETHER_AI_PROFILE,
+    DEEPINFRA_PROFILE,
+    XAI_PROFILE,
     OPENAI_COMPAT_PROFILE,
 ];
 
@@ -593,6 +659,84 @@ pub const STACKIT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     order: LoginProviderSurfaceOrder::new(Some(27), Some(27), Some(27), Some(27), Some(27)),
 };
 
+pub const GROQ_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "groq",
+    display_name: "Groq",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(GROQ_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(28), Some(28), Some(28), Some(28), Some(28)),
+};
+
+pub const MISTRAL_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "mistral",
+    display_name: "Mistral",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["mistralai"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(MISTRAL_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(29), Some(29), Some(29), Some(29), Some(29)),
+};
+
+pub const PERPLEXITY_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "perplexity",
+    display_name: "Perplexity",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["pplx"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(PERPLEXITY_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(30), Some(30), Some(30), Some(30), Some(30)),
+};
+
+pub const TOGETHER_AI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "togetherai",
+    display_name: "Together AI",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["together", "together-ai"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(TOGETHER_AI_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(31), Some(31), Some(31), Some(31), Some(31)),
+};
+
+pub const DEEPINFRA_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "deepinfra",
+    display_name: "Deep Infra",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["deep-infra"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(DEEPINFRA_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(32), Some(32), Some(32), Some(32), Some(32)),
+};
+
+pub const XAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "xai",
+    display_name: "xAI",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["x.ai", "x-ai", "grok"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(XAI_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(33), Some(33), Some(33), Some(33), Some(33)),
+};
+
 pub const OPENAI_COMPAT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "openai-compatible",
     display_name: "OpenAI-compatible",
@@ -671,7 +815,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 27] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 33] = [
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
@@ -693,6 +837,12 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 27] = [
     NEBIUS_LOGIN_PROVIDER,
     SCALEWAY_LOGIN_PROVIDER,
     STACKIT_LOGIN_PROVIDER,
+    GROQ_LOGIN_PROVIDER,
+    MISTRAL_LOGIN_PROVIDER,
+    PERPLEXITY_LOGIN_PROVIDER,
+    TOGETHER_AI_LOGIN_PROVIDER,
+    DEEPINFRA_LOGIN_PROVIDER,
+    XAI_LOGIN_PROVIDER,
     OPENAI_COMPAT_LOGIN_PROVIDER,
     CURSOR_LOGIN_PROVIDER,
     COPILOT_LOGIN_PROVIDER,
@@ -883,6 +1033,26 @@ mod tests {
         assert_eq!(
             resolve_login_provider("moonshot").map(|provider| provider.id),
             Some("moonshotai")
+        );
+        assert_eq!(
+            resolve_login_provider("mistralai").map(|provider| provider.id),
+            Some("mistral")
+        );
+        assert_eq!(
+            resolve_login_provider("pplx").map(|provider| provider.id),
+            Some("perplexity")
+        );
+        assert_eq!(
+            resolve_login_provider("together").map(|provider| provider.id),
+            Some("togetherai")
+        );
+        assert_eq!(
+            resolve_login_provider("deep-infra").map(|provider| provider.id),
+            Some("deepinfra")
+        );
+        assert_eq!(
+            resolve_login_provider("grok").map(|provider| provider.id),
+            Some("xai")
         );
         assert_eq!(
             resolve_login_provider("gmail").map(|provider| provider.id),
