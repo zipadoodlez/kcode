@@ -91,6 +91,19 @@ fn applescript_escape(text: &str) -> String {
     text.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+#[cfg(unix)]
+fn sh_escape(text: &str) -> String {
+    format!("'{}'", text.replace('"', "\"").replace('\'', "'\"'\"'"))
+}
+
+#[cfg(unix)]
+fn shell_command(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| sh_escape(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(all(unix, not(target_os = "macos")))]
 fn focus_title_best_effort(title: &str) {
     use std::process::{Command, Stdio};
@@ -126,6 +139,16 @@ fn push_unique_terminal(candidates: &mut Vec<String>, term: impl Into<String>) {
 
 #[cfg(unix)]
 fn detected_resume_terminal() -> Option<&'static str> {
+    if std::env::var("HANDTERM_SESSION").is_ok() || std::env::var("HANDTERM_PID").is_ok() {
+        return Some("handterm");
+    }
+    if std::env::var("TERM_PROGRAM")
+        .ok()
+        .map(|value| value.eq_ignore_ascii_case("handterm"))
+        .unwrap_or(false)
+    {
+        return Some("handterm");
+    }
     if std::env::var("KITTY_PID").is_ok() {
         return Some("kitty");
     }
@@ -177,6 +200,7 @@ fn resume_terminal_candidates_unix() -> Vec<String> {
     #[cfg(not(target_os = "macos"))]
     {
         for term in [
+            "handterm",
             "kitty",
             "wezterm",
             "alacritty",
@@ -595,6 +619,14 @@ pub fn spawn_resume_in_new_terminal(
             .stderr(Stdio::null());
 
         match term.as_str() {
+            "handterm" => {
+                let command = shell_command(&[
+                    exe.to_string_lossy().into_owned(),
+                    "--resume".to_string(),
+                    session_id.to_string(),
+                ]);
+                cmd.args(["--standalone", "--backend", "gpu", "--exec", &command]);
+            }
             "kitty" => {
                 let title = resumed_window_title(session_id);
                 cmd.args(["--title", &title, "-e"])
@@ -685,6 +717,15 @@ pub fn spawn_selfdev_in_new_terminal(
         };
 
         match term.as_str() {
+            "handterm" => {
+                let command = shell_command(&[
+                    exe.to_string_lossy().into_owned(),
+                    "--resume".to_string(),
+                    session_id.to_string(),
+                    "self-dev".to_string(),
+                ]);
+                cmd.args(["--standalone", "--backend", "gpu", "--exec", &command]);
+            }
             "kitty" => {
                 cmd.args(["--title", selfdev_title.as_str(), "-e"])
                     .arg(exe)
