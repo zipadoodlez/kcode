@@ -93,32 +93,30 @@ impl EndpointInfo {
 
     pub fn detail_string(&self) -> String {
         let mut parts = Vec::new();
-        if let Some(ref prompt) = self.pricing.prompt {
-            if let Ok(p) = prompt.parse::<f64>() {
-                parts.push(format!("${:.2}/M", p * 1e6));
-            }
+        if let Some(ref prompt) = self.pricing.prompt
+            && let Ok(p) = prompt.parse::<f64>()
+        {
+            parts.push(format!("${:.2}/M", p * 1e6));
         }
         if let Some(uptime) = self.uptime_last_30m {
             parts.push(format!("{:.0}%", uptime));
         }
-        if let Some(ref tps) = self.throughput_last_30m {
-            if let Some(t) = Self::extract_p50(tps) {
-                if t > 0.0 {
-                    parts.push(format!("{:.0}tps", t));
-                }
-            }
+        if let Some(ref tps) = self.throughput_last_30m
+            && let Some(t) = Self::extract_p50(tps)
+            && t > 0.0
+        {
+            parts.push(format!("{:.0}tps", t));
         }
-        if let Some(ref cache_read) = self.pricing.input_cache_read {
-            if let Ok(cr) = cache_read.parse::<f64>() {
-                if cr > 0.0 {
-                    parts.push("cache".to_string());
-                }
-            }
+        if let Some(ref cache_read) = self.pricing.input_cache_read
+            && let Ok(cr) = cache_read.parse::<f64>()
+            && cr > 0.0
+        {
+            parts.push("cache".to_string());
         }
-        if let Some(ref q) = self.quantization {
-            if q != "unknown" {
-                parts.push(q.clone());
-            }
+        if let Some(ref q) = self.quantization
+            && q != "unknown"
+        {
+            parts.push(q.clone());
         }
         parts.join(", ")
     }
