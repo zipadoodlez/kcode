@@ -42,11 +42,11 @@ pub fn mark_current_session_crashed(message: String) {
         if let Some((provider, model)) = telemetry::current_provider_model() {
             telemetry::record_crash(&provider, &model, telemetry::SessionEndReason::Signal);
         }
-        if let Ok(mut session) = session::Session::load(&session_id) {
-            if matches!(session.status, session::SessionStatus::Active) {
-                session.mark_crashed(Some(message));
-                let _ = session.save();
-            }
+        if let Ok(mut session) = session::Session::load(&session_id)
+            && matches!(session.status, session::SessionStatus::Active)
+        {
+            session.mark_crashed(Some(message));
+            let _ = session.save();
         }
     }
 }

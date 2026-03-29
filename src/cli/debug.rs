@@ -117,13 +117,12 @@ async fn debug_list_servers() -> Result<()> {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.starts_with("jcode")
-                        && name.ends_with(".sock")
-                        && !name.contains("-debug")
-                    {
-                        servers.push(path);
-                    }
+                if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                    && name.starts_with("jcode")
+                    && name.ends_with(".sock")
+                    && !name.contains("-debug")
+                {
+                    servers.push(path);
                 }
             }
         }
@@ -147,16 +146,14 @@ async fn debug_list_servers() -> Result<()> {
             socket_path.with_file_name(debug_filename)
         };
 
-        let alive = match crate::transport::Stream::connect(&socket_path).await {
-            Ok(_) => true,
-            Err(_) => false,
-        };
+        let alive = crate::transport::Stream::connect(&socket_path)
+            .await
+            .is_ok();
 
         let debug_enabled = if crate::transport::is_socket_path(&debug_socket) {
-            match crate::transport::Stream::connect(&debug_socket).await {
-                Ok(_) => true,
-                Err(_) => false,
-            }
+            crate::transport::Stream::connect(&debug_socket)
+                .await
+                .is_ok()
         } else {
             false
         };
@@ -213,10 +210,10 @@ async fn get_server_info(debug_socket: &std::path::Path) -> Result<String> {
     }
 
     let response: serde_json::Value = serde_json::from_str(&line)?;
-    if let Some(output) = response.get("output").and_then(|v| v.as_str()) {
-        if let Ok(sessions) = serde_json::from_str::<Vec<String>>(output) {
-            return Ok(format!(", sessions: {}", sessions.len()));
-        }
+    if let Some(output) = response.get("output").and_then(|v| v.as_str())
+        && let Ok(sessions) = serde_json::from_str::<Vec<String>>(output)
+    {
+        return Ok(format!(", sessions: {}", sessions.len()));
     }
 
     Ok(String::new())
@@ -233,15 +230,14 @@ async fn debug_start_server(arg: &str, socket_path: Option<String>) -> Result<()
 
     let socket_pathbuf = std::path::PathBuf::from(&socket);
 
-    if crate::transport::is_socket_path(&socket_pathbuf) {
-        if crate::transport::Stream::connect(&socket_pathbuf)
+    if crate::transport::is_socket_path(&socket_pathbuf)
+        && crate::transport::Stream::connect(&socket_pathbuf)
             .await
             .is_ok()
-        {
-            eprintln!("Server already running at {}", socket);
-            eprintln!("Use 'jcode debug list' to see all servers.");
-            return Ok(());
-        }
+    {
+        eprintln!("Server already running at {}", socket);
+        eprintln!("Use 'jcode debug list' to see all servers.");
+        return Ok(());
     }
 
     let debug_socket = {

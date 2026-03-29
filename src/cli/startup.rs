@@ -104,21 +104,19 @@ fn spawn_background_update_check(args: &Args) {
         });
     } else {
         std::thread::spawn(move || {
-            if let Some(update_available) = hot_exec::check_for_updates() {
-                if update_available {
-                    if auto_update {
-                        logging::info("Update available - auto-updating...");
-                        if let Err(e) = hot_exec::run_auto_update() {
-                            logging::error(&format!(
-                                "Auto-update failed: {}. Continuing with current version.",
-                                e
-                            ));
-                        }
-                    } else {
-                        logging::info(
-                            "Update available! Run `jcode update` or `/reload` to update.",
-                        );
+            if let Some(update_available) = hot_exec::check_for_updates()
+                && update_available
+            {
+                if auto_update {
+                    logging::info("Update available - auto-updating...");
+                    if let Err(e) = hot_exec::run_auto_update() {
+                        logging::error(&format!(
+                            "Auto-update failed: {}. Continuing with current version.",
+                            e
+                        ));
                     }
+                } else {
+                    logging::info("Update available! Run `jcode update` or `/reload` to update.");
                 }
             }
         });

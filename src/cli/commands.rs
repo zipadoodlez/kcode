@@ -18,11 +18,8 @@ pub enum AmbientSubcommand {
 }
 
 pub async fn run_ambient_command(cmd: AmbientSubcommand) -> Result<()> {
-    match cmd {
-        AmbientSubcommand::RunVisible => {
-            return run_ambient_visible().await;
-        }
-        _ => {}
+    if let AmbientSubcommand::RunVisible = cmd {
+        return run_ambient_visible().await;
     }
 
     let debug_cmd = match cmd {
@@ -154,15 +151,15 @@ pub fn run_memory_command(cmd: MemorySubcommand) -> Result<()> {
         MemorySubcommand::List { scope, tag } => {
             let mut all_memories: Vec<MemoryEntry> = Vec::new();
 
-            if scope == "all" || scope == "project" {
-                if let Ok(graph) = manager.load_project_graph() {
-                    all_memories.extend(graph.all_memories().cloned());
-                }
+            if (scope == "all" || scope == "project")
+                && let Ok(graph) = manager.load_project_graph()
+            {
+                all_memories.extend(graph.all_memories().cloned());
             }
-            if scope == "all" || scope == "global" {
-                if let Ok(graph) = manager.load_global_graph() {
-                    all_memories.extend(graph.all_memories().cloned());
-                }
+            if (scope == "all" || scope == "global")
+                && let Ok(graph) = manager.load_global_graph()
+            {
+                all_memories.extend(graph.all_memories().cloned());
             }
 
             if let Some(tag_filter) = tag {
@@ -265,15 +262,15 @@ pub fn run_memory_command(cmd: MemorySubcommand) -> Result<()> {
         MemorySubcommand::Export { output, scope } => {
             let mut all_memories: Vec<memory::MemoryEntry> = Vec::new();
 
-            if scope == "all" || scope == "project" {
-                if let Ok(graph) = manager.load_project_graph() {
-                    all_memories.extend(graph.all_memories().cloned());
-                }
+            if (scope == "all" || scope == "project")
+                && let Ok(graph) = manager.load_project_graph()
+            {
+                all_memories.extend(graph.all_memories().cloned());
             }
-            if scope == "all" || scope == "global" {
-                if let Ok(graph) = manager.load_global_graph() {
-                    all_memories.extend(graph.all_memories().cloned());
-                }
+            if (scope == "all" || scope == "global")
+                && let Ok(graph) = manager.load_global_graph()
+            {
+                all_memories.extend(graph.all_memories().cloned());
             }
 
             let json = serde_json::to_string_pretty(&all_memories)?;
@@ -294,23 +291,21 @@ pub fn run_memory_command(cmd: MemorySubcommand) -> Result<()> {
 
             for entry in memories {
                 let result = if scope == "global" {
-                    if !overwrite {
-                        if let Ok(graph) = manager.load_global_graph() {
-                            if graph.get_memory(&entry.id).is_some() {
-                                skipped += 1;
-                                continue;
-                            }
-                        }
+                    if !overwrite
+                        && let Ok(graph) = manager.load_global_graph()
+                        && graph.get_memory(&entry.id).is_some()
+                    {
+                        skipped += 1;
+                        continue;
                     }
                     manager.remember_global(entry)
                 } else {
-                    if !overwrite {
-                        if let Ok(graph) = manager.load_project_graph() {
-                            if graph.get_memory(&entry.id).is_some() {
-                                skipped += 1;
-                                continue;
-                            }
-                        }
+                    if !overwrite
+                        && let Ok(graph) = manager.load_project_graph()
+                        && graph.get_memory(&entry.id).is_some()
+                    {
+                        skipped += 1;
+                        continue;
                     }
                     manager.remember_project(entry)
                 };
@@ -430,7 +425,7 @@ pub fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
 
     eprintln!();
     eprintln!("  \x1b[1mScan with the jcode iOS app:\x1b[0m\n");
-    if let Err(_) = qr2term::print_qr(&pair_uri) {
+    if qr2term::print_qr(&pair_uri).is_err() {
         eprintln!("  \x1b[33m(QR code generation failed)\x1b[0m\n");
     }
     eprintln!();
@@ -855,7 +850,6 @@ async fn run_single_message_command_ndjson(
     }
 
     let result = run_result.unwrap_or(Ok(()));
-    drop(run_future);
     match result {
         Ok(()) => {
             write_json_line(
@@ -1083,10 +1077,10 @@ pub async fn run_model_command(
 ) -> Result<()> {
     let provider = super::provider_init::init_provider_quiet(choice, model).await?;
 
-    if let Err(err) = provider.prefetch_models().await {
-        if !super::output::quiet_enabled() {
-            eprintln!("Warning: failed to refresh dynamic model list: {}", err);
-        }
+    if let Err(err) = provider.prefetch_models().await
+        && !super::output::quiet_enabled()
+    {
+        eprintln!("Warning: failed to refresh dynamic model list: {}", err);
     }
 
     let routes = provider.model_routes();

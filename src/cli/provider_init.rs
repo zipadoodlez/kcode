@@ -438,17 +438,17 @@ async fn init_provider_with_options(
         }
     };
 
-    if model.is_none() {
-        if let Some(profile) = profile_for_choice(choice) {
-            let resolved = resolve_openai_compatible_profile(profile);
-            if let Some(default_model) = resolved.default_model {
-                if provider.set_model(&default_model).is_ok() {
-                    init_notice(&format!(
-                        "Using default model for {}: {}",
-                        resolved.display_name, default_model
-                    ));
-                }
-            }
+    if model.is_none()
+        && let Some(profile) = profile_for_choice(choice)
+    {
+        let resolved = resolve_openai_compatible_profile(profile);
+        if let Some(default_model) = resolved.default_model
+            && provider.set_model(&default_model).is_ok()
+        {
+            init_notice(&format!(
+                "Using default model for {}: {}",
+                resolved.display_name, default_model
+            ));
         }
     }
 

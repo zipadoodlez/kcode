@@ -628,9 +628,9 @@ async fn login_google_flow() -> Result<()> {
                     io::stdin().read_line(&mut path_input)?;
                     let path_str = path_input.trim();
 
-                    let path_str = if path_str.starts_with("~/") {
+                    let path_str = if let Some(stripped) = path_str.strip_prefix("~/") {
                         if let Some(home) = dirs::home_dir() {
-                            home.join(&path_str[2..]).to_string_lossy().to_string()
+                            home.join(stripped).to_string_lossy().to_string()
                         } else {
                             path_str.to_string()
                         }
@@ -655,7 +655,7 @@ async fn login_google_flow() -> Result<()> {
                     eprintln!("\n✓ Credentials imported to {}\n", dest.display());
                     creds
                 }
-                "3" | _ => {
+                "3" => {
                     eprintln!("\n── Step-by-step Google Cloud setup ──\n");
 
                     eprintln!("1. Open Google Cloud Console and create a project:");
@@ -726,6 +726,10 @@ async fn login_google_flow() -> Result<()> {
                     auth::google::save_credentials(&creds)?;
                     eprintln!("\n✓ Credentials saved!\n");
                     creds
+                }
+                _ => {
+                    eprintln!("\nInvalid choice. Please enter 1, 2, or 3.\n");
+                    std::process::exit(1);
                 }
             }
         }
