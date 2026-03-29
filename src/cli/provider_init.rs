@@ -55,6 +55,9 @@ pub enum ProviderChoice {
     Deepinfra,
     #[value(alias = "x.ai", alias = "x-ai", alias = "grok")]
     Xai,
+    #[value(alias = "lm-studio")]
+    Lmstudio,
+    Ollama,
     Chutes,
     #[value(alias = "cerebrascode", alias = "cerberascode")]
     Cerebras,
@@ -103,6 +106,8 @@ impl ProviderChoice {
             Self::TogetherAi => "togetherai",
             Self::Deepinfra => "deepinfra",
             Self::Xai => "xai",
+            Self::Lmstudio => "lmstudio",
+            Self::Ollama => "ollama",
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
@@ -138,6 +143,8 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
         ProviderChoice::TogetherAi => Some(crate::provider_catalog::TOGETHER_AI_PROFILE),
         ProviderChoice::Deepinfra => Some(crate::provider_catalog::DEEPINFRA_PROFILE),
         ProviderChoice::Xai => Some(crate::provider_catalog::XAI_PROFILE),
+        ProviderChoice::Lmstudio => Some(crate::provider_catalog::LMSTUDIO_PROFILE),
+        ProviderChoice::Ollama => Some(crate::provider_catalog::OLLAMA_PROFILE),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_PROFILE),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_PROFILE),
         ProviderChoice::AlibabaCodingPlan => {
@@ -176,6 +183,8 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         ProviderChoice::TogetherAi => Some(crate::provider_catalog::TOGETHER_AI_LOGIN_PROVIDER),
         ProviderChoice::Deepinfra => Some(crate::provider_catalog::DEEPINFRA_LOGIN_PROVIDER),
         ProviderChoice::Xai => Some(crate::provider_catalog::XAI_LOGIN_PROVIDER),
+        ProviderChoice::Lmstudio => Some(crate::provider_catalog::LMSTUDIO_LOGIN_PROVIDER),
+        ProviderChoice::Ollama => Some(crate::provider_catalog::OLLAMA_LOGIN_PROVIDER),
         ProviderChoice::Chutes => Some(crate::provider_catalog::CHUTES_LOGIN_PROVIDER),
         ProviderChoice::Cerebras => Some(crate::provider_catalog::CEREBRAS_LOGIN_PROVIDER),
         ProviderChoice::AlibabaCodingPlan => {
@@ -456,6 +465,8 @@ async fn init_provider_with_options(
         | ProviderChoice::TogetherAi
         | ProviderChoice::Deepinfra
         | ProviderChoice::Xai
+        | ProviderChoice::Lmstudio
+        | ProviderChoice::Ollama
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::AlibabaCodingPlan
@@ -601,6 +612,8 @@ mod tests {
         assert_eq!(ProviderChoice::TogetherAi.as_arg_value(), "togetherai");
         assert_eq!(ProviderChoice::Deepinfra.as_arg_value(), "deepinfra");
         assert_eq!(ProviderChoice::Xai.as_arg_value(), "xai");
+        assert_eq!(ProviderChoice::Lmstudio.as_arg_value(), "lmstudio");
+        assert_eq!(ProviderChoice::Ollama.as_arg_value(), "ollama");
         assert_eq!(ProviderChoice::Chutes.as_arg_value(), "chutes");
         assert_eq!(ProviderChoice::Cerebras.as_arg_value(), "cerebras");
         assert_eq!(

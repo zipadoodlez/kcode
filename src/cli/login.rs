@@ -4,8 +4,8 @@ use std::process::Command as ProcessCommand;
 
 use crate::auth;
 use crate::provider_catalog::{
-    LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile, resolve_login_selection,
-    resolve_openai_compatible_profile,
+    LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile,
+    OPENAI_COMPAT_LOCAL_ENABLED_ENV, resolve_login_selection, resolve_openai_compatible_profile,
 };
 
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
@@ -305,17 +305,50 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
     eprintln!("Setting up {}...", resolved.display_name);
     eprintln!("See setup details: {}\n", resolved.setup_url);
     eprintln!("Endpoint: {}", resolved.api_base);
-    eprintln!("API key env variable: {}\n", resolved.api_key_env);
-    eprint!("Paste your {} API key: ", resolved.display_name);
-    io::stdout().flush()?;
 
-    let key = read_secret_line()?;
-    if key.is_empty() {
-        anyhow::bail!("No API key provided.");
+    if resolved.requires_api_key {
+        eprintln!("API key env variable: {}\n", resolved.api_key_env);
+        eprint!("Paste your {} API key: ", resolved.display_name);
+        io::stdout().flush()?;
+
+        let key = read_secret_line()?;
+        if key.is_empty() {
+            anyhow::bail!("No API key provided.");
+        }
+
+        save_named_api_key(&resolved.env_file, &resolved.api_key_env, &key)?;
+        eprintln!("\nSuccessfully saved {} API key!", resolved.display_name);
+    } else {
+        eprintln!("This provider uses a local OpenAI-compatible endpoint.");
+        eprintln!(
+            "An API key is optional here. Press Enter to skip if your local server does not require one.\n"
+        );
+        eprint!("Optional {} API key: ", resolved.display_name);
+        io::stdout().flush()?;
+
+        let key = read_secret_line()?;
+        crate::provider_catalog::save_env_value_to_env_file(
+            OPENAI_COMPAT_LOCAL_ENABLED_ENV,
+            &resolved.env_file,
+            Some("1"),
+        )?;
+        if key.trim().is_empty() {
+            crate::provider_catalog::save_env_value_to_env_file(
+                &resolved.api_key_env,
+                &resolved.env_file,
+                None,
+            )?;
+            eprintln!("\nSaved {} local endpoint setup.", resolved.display_name);
+        } else {
+            crate::provider_catalog::save_env_value_to_env_file(
+                &resolved.api_key_env,
+                &resolved.env_file,
+                Some(key.trim()),
+            )?;
+            eprintln!("\nSaved {} local endpoint setup and optional API key.", resolved.display_name);
+        }
     }
 
-    save_named_api_key(&resolved.env_file, &resolved.api_key_env, &key)?;
-    eprintln!("\nSuccessfully saved {} API key!", resolved.display_name);
     eprintln!("Stored at ~/.config/jcode/{}", resolved.env_file);
     if let Some(default_model) = resolved.default_model {
         eprintln!("Default model hint: {}", default_model);

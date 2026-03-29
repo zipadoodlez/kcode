@@ -5,6 +5,7 @@ pub enum LoginProviderAuthKind {
     DeviceCode,
     Cli,
     Hybrid,
+    Local,
 }
 
 impl LoginProviderAuthKind {
@@ -15,6 +16,7 @@ impl LoginProviderAuthKind {
             Self::DeviceCode => "device code",
             Self::Cli => "CLI",
             Self::Hybrid => "API key / CLI",
+            Self::Local => "local endpoint",
         }
     }
 }
@@ -117,6 +119,7 @@ pub struct OpenAiCompatibleProfile {
     pub env_file: &'static str,
     pub setup_url: &'static str,
     pub default_model: Option<&'static str>,
+    pub requires_api_key: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,6 +131,7 @@ pub struct ResolvedOpenAiCompatibleProfile {
     pub env_file: String,
     pub setup_url: String,
     pub default_model: Option<String>,
+    pub requires_api_key: bool,
 }
 
 pub const OPENCODE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -138,6 +142,7 @@ pub const OPENCODE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "opencode.env",
     setup_url: "https://opencode.ai/docs/providers#opencode-zen",
     default_model: Some("qwen/qwen3-coder-plus"),
+    requires_api_key: true,
 };
 
 pub const OPENCODE_GO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -148,6 +153,7 @@ pub const OPENCODE_GO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile
     env_file: "opencode-go.env",
     setup_url: "https://opencode.ai/docs/providers#opencode-go",
     default_model: Some("THUDM/GLM-4.5"),
+    requires_api_key: true,
 };
 
 pub const ZAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -158,6 +164,7 @@ pub const ZAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "zai.env",
     setup_url: "https://docs.z.ai/guides/develop/openai/introduction",
     default_model: Some("glm-4.5"),
+    requires_api_key: true,
 };
 
 pub const AI302_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -168,6 +175,7 @@ pub const AI302_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "302ai.env",
     setup_url: "https://opencode.ai/docs/providers#302ai",
     default_model: Some("qwen3-235b-a22b-instruct-2507"),
+    requires_api_key: true,
 };
 
 pub const BASETEN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -178,6 +186,7 @@ pub const BASETEN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "baseten.env",
     setup_url: "https://opencode.ai/docs/providers#baseten",
     default_model: Some("zai-org/GLM-4.7"),
+    requires_api_key: true,
 };
 
 pub const CORTECS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -188,6 +197,7 @@ pub const CORTECS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "cortecs.env",
     setup_url: "https://opencode.ai/docs/providers#cortecs",
     default_model: Some("kimi-k2.5"),
+    requires_api_key: true,
 };
 
 pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -198,6 +208,7 @@ pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "deepseek.env",
     setup_url: "https://opencode.ai/docs/providers#deepseek",
     default_model: Some("deepseek-chat"),
+    requires_api_key: true,
 };
 
 pub const FIRMWARE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -208,6 +219,7 @@ pub const FIRMWARE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "firmware.env",
     setup_url: "https://opencode.ai/docs/providers#firmware",
     default_model: Some("kimi-k2.5"),
+    requires_api_key: true,
 };
 
 pub const HUGGING_FACE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -218,6 +230,7 @@ pub const HUGGING_FACE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfil
     env_file: "huggingface.env",
     setup_url: "https://opencode.ai/docs/providers#hugging-face",
     default_model: Some("zai-org/GLM-4.7"),
+    requires_api_key: true,
 };
 
 pub const MOONSHOT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -228,6 +241,7 @@ pub const MOONSHOT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "moonshotai.env",
     setup_url: "https://opencode.ai/docs/providers#moonshot-ai",
     default_model: Some("kimi-k2.5"),
+    requires_api_key: true,
 };
 
 pub const NEBIUS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -238,6 +252,7 @@ pub const NEBIUS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "nebius.env",
     setup_url: "https://opencode.ai/docs/providers#nebius-token-factory",
     default_model: Some("openai/gpt-oss-120b"),
+    requires_api_key: true,
 };
 
 pub const SCALEWAY_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -248,6 +263,7 @@ pub const SCALEWAY_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "scaleway.env",
     setup_url: "https://opencode.ai/docs/providers#scaleway",
     default_model: Some("qwen3-coder-30b-a3b-instruct"),
+    requires_api_key: true,
 };
 
 pub const STACKIT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -258,6 +274,7 @@ pub const STACKIT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "stackit.env",
     setup_url: "https://opencode.ai/docs/providers#stackit",
     default_model: Some("openai/gpt-oss-120b"),
+    requires_api_key: true,
 };
 
 pub const GROQ_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -268,6 +285,7 @@ pub const GROQ_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "groq.env",
     setup_url: "https://console.groq.com/docs/openai",
     default_model: Some("llama-3.1-8b-instant"),
+    requires_api_key: true,
 };
 
 pub const MISTRAL_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -278,6 +296,7 @@ pub const MISTRAL_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "mistral.env",
     setup_url: "https://docs.mistral.ai/getting-started/models/",
     default_model: Some("devstral-medium-2507"),
+    requires_api_key: true,
 };
 
 pub const PERPLEXITY_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -288,6 +307,7 @@ pub const PERPLEXITY_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile 
     env_file: "perplexity.env",
     setup_url: "https://docs.perplexity.ai/docs/agent-api/openai-compatibility",
     default_model: Some("sonar"),
+    requires_api_key: true,
 };
 
 pub const TOGETHER_AI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -298,6 +318,7 @@ pub const TOGETHER_AI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile
     env_file: "togetherai.env",
     setup_url: "https://docs.together.ai/docs/openai-api-compatibility",
     default_model: Some("moonshotai/Kimi-K2-Instruct"),
+    requires_api_key: true,
 };
 
 pub const DEEPINFRA_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -308,6 +329,7 @@ pub const DEEPINFRA_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "deepinfra.env",
     setup_url: "https://deepinfra.com/docs/api-reference",
     default_model: Some("moonshotai/Kimi-K2-Instruct"),
+    requires_api_key: true,
 };
 
 pub const XAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -318,6 +340,29 @@ pub const XAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "xai.env",
     setup_url: "https://docs.x.ai/developers/quickstart",
     default_model: Some("grok-code-fast-1"),
+    requires_api_key: true,
+};
+
+pub const LMSTUDIO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "lmstudio",
+    display_name: "LM Studio",
+    api_base: "http://localhost:1234/v1",
+    api_key_env: "LMSTUDIO_API_KEY",
+    env_file: "lmstudio.env",
+    setup_url: "https://lmstudio.ai/docs/app/api/endpoints/openai",
+    default_model: None,
+    requires_api_key: false,
+};
+
+pub const OLLAMA_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "ollama",
+    display_name: "Ollama",
+    api_base: "http://localhost:11434/v1",
+    api_key_env: "OLLAMA_API_KEY",
+    env_file: "ollama.env",
+    setup_url: "https://ollama.com/blog/openai-compatibility",
+    default_model: None,
+    requires_api_key: false,
 };
 
 pub const CHUTES_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -328,6 +373,7 @@ pub const CHUTES_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "chutes.env",
     setup_url: "https://chutes.ai",
     default_model: Some("Qwen/Qwen3-Coder-480B-A35B-Instruct"),
+    requires_api_key: true,
 };
 
 pub const CEREBRAS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -338,6 +384,7 @@ pub const CEREBRAS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     env_file: "cerebras.env",
     setup_url: "https://inference-docs.cerebras.ai/introduction",
     default_model: Some("qwen-3-coder-480b"),
+    requires_api_key: true,
 };
 
 pub const ALIBABA_CODING_PLAN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -348,6 +395,7 @@ pub const ALIBABA_CODING_PLAN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibl
     env_file: "alibaba-coding-plan.env",
     setup_url: "https://www.alibabacloud.com/help/en/model-studio/coding-plan-quickstart",
     default_model: Some("qwen3-coder-plus"),
+    requires_api_key: true,
 };
 
 pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
@@ -358,9 +406,10 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     env_file: "openai-compatible.env",
     setup_url: "https://opencode.ai/docs/providers#custom-providers",
     default_model: None,
+    requires_api_key: true,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 23] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 25] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -383,6 +432,8 @@ const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 23] = [
     TOGETHER_AI_PROFILE,
     DEEPINFRA_PROFILE,
     XAI_PROFILE,
+    LMSTUDIO_PROFILE,
+    OLLAMA_PROFILE,
     OPENAI_COMPAT_PROFILE,
 ];
 
@@ -737,6 +788,32 @@ pub const XAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor 
     order: LoginProviderSurfaceOrder::new(Some(33), Some(33), Some(33), Some(33), Some(33)),
 };
 
+pub const LMSTUDIO_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "lmstudio",
+    display_name: "LM Studio",
+    auth_kind: LoginProviderAuthKind::Local,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "local endpoint",
+    aliases: &["lm-studio"],
+    menu_detail: "local OpenAI-compatible endpoint",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(LMSTUDIO_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(34), Some(34), Some(34), Some(34), Some(34)),
+};
+
+pub const OLLAMA_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "ollama",
+    display_name: "Ollama",
+    auth_kind: LoginProviderAuthKind::Local,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "local endpoint",
+    aliases: &[],
+    menu_detail: "local OpenAI-compatible endpoint",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(OLLAMA_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(35), Some(35), Some(35), Some(35), Some(35)),
+};
+
 pub const OPENAI_COMPAT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "openai-compatible",
     display_name: "OpenAI-compatible",
@@ -815,7 +892,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 33] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 35] = [
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
@@ -843,6 +920,8 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 33] = [
     TOGETHER_AI_LOGIN_PROVIDER,
     DEEPINFRA_LOGIN_PROVIDER,
     XAI_LOGIN_PROVIDER,
+    LMSTUDIO_LOGIN_PROVIDER,
+    OLLAMA_LOGIN_PROVIDER,
     OPENAI_COMPAT_LOGIN_PROVIDER,
     CURSOR_LOGIN_PROVIDER,
     COPILOT_LOGIN_PROVIDER,
@@ -1053,6 +1132,10 @@ mod tests {
         assert_eq!(
             resolve_login_provider("grok").map(|provider| provider.id),
             Some("xai")
+        );
+        assert_eq!(
+            resolve_login_provider("lm-studio").map(|provider| provider.id),
+            Some("lmstudio")
         );
         assert_eq!(
             resolve_login_provider("gmail").map(|provider| provider.id),
