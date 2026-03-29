@@ -1308,6 +1308,130 @@ impl AuthTestProviderReport {
     }
 }
 
+#[derive(Clone, Copy)]
+enum AuthTestSmokeKind {
+    Provider,
+    Tool,
+}
+
+impl AuthTestSmokeKind {
+    fn step_name(self) -> &'static str {
+        match self {
+            Self::Provider => "provider_smoke",
+            Self::Tool => "tool_smoke",
+        }
+    }
+
+    fn skipped_by_flag_detail(self) -> &'static str {
+        match self {
+            Self::Provider => "Skipped by --no-smoke.",
+            Self::Tool => "Skipped by --no-tool-smoke.",
+        }
+    }
+
+    fn unsupported_detail(self) -> &'static str {
+        "Skipped: provider is auth/tool-only and has no model runtime smoke step."
+    }
+
+    fn success_detail(self) -> &'static str {
+        match self {
+            Self::Provider => "Provider returned AUTH_TEST_OK.",
+            Self::Tool => "Tool-enabled provider request returned AUTH_TEST_OK.",
+        }
+    }
+
+    fn failure_detail(self, output: &str) -> String {
+        match self {
+            Self::Provider => {
+                format!("Provider response did not contain AUTH_TEST_OK: {}", output)
+            }
+            Self::Tool => format!(
+                "Tool-enabled provider response did not contain AUTH_TEST_OK: {}",
+                output
+            ),
+        }
+    }
+
+    async fn run(
+        self,
+        target: AuthTestTarget,
+        model: Option<&str>,
+        prompt: &str,
+    ) -> Result<String> {
+        match self {
+            Self::Provider => run_provider_smoke(target, model, prompt).await,
+            Self::Tool => run_provider_tool_smoke(target, model, prompt).await,
+        }
+    }
+
+    fn set_output(self, report: &mut AuthTestProviderReport, output: String) {
+        match self {
+            Self::Provider => report.smoke_output = Some(output),
+            Self::Tool => report.tool_smoke_output = Some(output),
+        }
+    }
+}
+
+fn push_result_step<T, E, F>(
+    report: &mut AuthTestProviderReport,
+    name: &'static str,
+    result: std::result::Result<T, E>,
+    detail: F,
+) -> Option<T>
+where
+    E: std::fmt::Display,
+    F: FnOnce(&T) -> String,
+{
+    match result {
+        Ok(value) => {
+            report.push_step(name, true, detail(&value));
+            Some(value)
+        }
+        Err(err) => {
+            report.push_step(name, false, err.to_string());
+            None
+        }
+    }
+}
+
+fn auth_email_suffix(email: Option<&str>) -> String {
+    email
+        .map(|email| format!(" for {}", email))
+        .unwrap_or_default()
+}
+
+async fn maybe_run_auth_test_smoke(
+    report: &mut AuthTestProviderReport,
+    kind: AuthTestSmokeKind,
+    target: AuthTestTarget,
+    model: Option<&str>,
+    enabled: bool,
+    prompt: &str,
+) {
+    if enabled && report.success && target.supports_smoke() {
+        match kind.run(target, model, prompt).await {
+            Ok(output) => {
+                let ok = output.contains("AUTH_TEST_OK");
+                kind.set_output(report, output.clone());
+                report.push_step(
+                    kind.step_name(),
+                    ok,
+                    if ok {
+                        kind.success_detail().to_string()
+                    } else {
+                        kind.failure_detail(&output)
+                    },
+                );
+            }
+            Err(err) => report.push_step(kind.step_name(), false, format!("{err:#}")),
+        }
+    } else if !target.supports_smoke() {
+        report.push_step(kind.step_name(), true, kind.unsupported_detail());
+    } else if !enabled {
+        report.push_step(kind.step_name(), true, kind.skipped_by_flag_detail());
+    }
+}
+
 pub async fn run_auth_test_command(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
@@ -1438,194 +1562,148 @@ async fn run_auth_test_target(
         AuthTestTarget::Cursor => probe_cursor_auth(&mut report).await,
     }
 
-    if run_smoke && report.success && target.supports_smoke() {
-        match run_provider_smoke(target, model, smoke_prompt).await {
-            Ok(output) => {
-                let ok = output.contains("AUTH_TEST_OK");
-                report.smoke_output = Some(output.clone());
-                report.push_step(
-                    "provider_smoke",
-                    ok,
-                    if ok {
-                        "Provider returned AUTH_TEST_OK.".to_string()
-                    } else {
-                        format!("Provider response did not contain AUTH_TEST_OK: {}", output)
-                    },
-                );
-            }
-            Err(err) => report.push_step("provider_smoke", false, format!("{err:#}")),
-        }
-    } else if !target.supports_smoke() {
-        report.push_step(
-            "provider_smoke",
-            true,
-            "Skipped: provider is auth/tool-only and has no model runtime smoke step.",
-        );
-    } else if !run_smoke {
-        report.push_step("provider_smoke", true, "Skipped by --no-smoke.");
-    }
+    maybe_run_auth_test_smoke(
+        &mut report,
+        AuthTestSmokeKind::Provider,
+        target,
+        model,
+        run_smoke,
+        smoke_prompt,
+    )
+    .await;
 
-    if run_tool_smoke && report.success && target.supports_smoke() {
-        match run_provider_tool_smoke(target, model, smoke_prompt).await {
-            Ok(output) => {
-                let ok = output.contains("AUTH_TEST_OK");
-                report.tool_smoke_output = Some(output.clone());
-                report.push_step(
-                    "tool_smoke",
-                    ok,
-                    if ok {
-                        "Tool-enabled provider request returned AUTH_TEST_OK.".to_string()
-                    } else {
-                        format!(
-                            "Tool-enabled provider response did not contain AUTH_TEST_OK: {}",
-                            output
-                        )
-                    },
-                );
-            }
-            Err(err) => report.push_step("tool_smoke", false, format!("{err:#}")),
-        }
-    } else if !target.supports_smoke() {
-        report.push_step(
-            "tool_smoke",
-            true,
-            "Skipped: provider is auth/tool-only and has no model runtime smoke step.",
-        );
-    } else if !run_tool_smoke {
-        report.push_step("tool_smoke", true, "Skipped by --no-tool-smoke.");
-    }
+    maybe_run_auth_test_smoke(
+        &mut report,
+        AuthTestSmokeKind::Tool,
+        target,
+        model,
+        run_tool_smoke,
+        smoke_prompt,
+    )
+    .await;
 
     report
 }
 
 async fn probe_claude_auth(report: &mut AuthTestProviderReport) {
-    match crate::auth::claude::load_credentials() {
-        Ok(creds) => {
-            report.push_step(
-                "credential_probe",
-                true,
+    if let Some(creds) = push_result_step(
+        report,
+        "credential_probe",
+        crate::auth::claude::load_credentials(),
+        |creds| {
+            format!(
+                "Loaded Claude credentials (expires_at={}).",
+                creds.expires_at
+            )
+        },
+    ) {
+        push_result_step(
+            report,
+            "refresh_probe",
+            crate::auth::oauth::refresh_claude_tokens(&creds.refresh_token).await,
+            |tokens| {
                 format!(
-                    "Loaded Claude credentials (expires_at={}).",
-                    creds.expires_at
-                ),
-            );
-            match crate::auth::oauth::refresh_claude_tokens(&creds.refresh_token).await {
-                Ok(tokens) => report.push_step(
-                    "refresh_probe",
-                    true,
-                    format!(
-                        "Claude token refresh succeeded (new_expires_at={}).",
-                        tokens.expires_at
-                    ),
-                ),
-                Err(err) => report.push_step("refresh_probe", false, err.to_string()),
-            }
-        }
-        Err(err) => report.push_step("credential_probe", false, err.to_string()),
+                    "Claude token refresh succeeded (new_expires_at={}).",
+                    tokens.expires_at
+                )
+            },
+        );
     }
 }
 
 async fn probe_openai_auth(report: &mut AuthTestProviderReport) {
-    match crate::auth::codex::load_credentials() {
-        Ok(creds) => {
-            let is_oauth = !creds.refresh_token.trim().is_empty();
+    if let Some(creds) = push_result_step(
+        report,
+        "credential_probe",
+        crate::auth::codex::load_credentials(),
+        |creds| {
+            if creds.refresh_token.trim().is_empty() {
+                "Loaded OpenAI API key credentials (no refresh token present).".to_string()
+            } else {
+                format!(
+                    "Loaded OpenAI OAuth credentials (expires_at={:?}).",
+                    creds.expires_at
+                )
+            }
+        },
+    ) {
+        if creds.refresh_token.trim().is_empty() {
             report.push_step(
-                "credential_probe",
+                "refresh_probe",
                 true,
-                if is_oauth {
+                "Skipped: OpenAI is using API key auth, not OAuth.",
+            );
+        } else {
+            push_result_step(
+                report,
+                "refresh_probe",
+                crate::auth::oauth::refresh_openai_tokens(&creds.refresh_token).await,
+                |tokens| {
                     format!(
-                        "Loaded OpenAI OAuth credentials (expires_at={:?}).",
-                        creds.expires_at
+                        "OpenAI token refresh succeeded (new_expires_at={}).",
+                        tokens.expires_at
                     )
-                } else {
-                    "Loaded OpenAI API key credentials (no refresh token present).".to_string()
                 },
             );
-            if is_oauth {
-                match crate::auth::oauth::refresh_openai_tokens(&creds.refresh_token).await {
-                    Ok(tokens) => report.push_step(
-                        "refresh_probe",
-                        true,
-                        format!(
-                            "OpenAI token refresh succeeded (new_expires_at={}).",
-                            tokens.expires_at
-                        ),
-                    ),
-                    Err(err) => report.push_step("refresh_probe", false, err.to_string()),
-                }
-            } else {
-                report.push_step(
-                    "refresh_probe",
-                    true,
-                    "Skipped: OpenAI is using API key auth, not OAuth.".to_string(),
-                );
-            }
         }
-        Err(err) => report.push_step("credential_probe", false, err.to_string()),
     }
 }
 
 async fn probe_gemini_auth(report: &mut AuthTestProviderReport) {
-    match crate::auth::gemini::load_tokens() {
-        Ok(tokens) => {
-            report.push_step(
-                "credential_probe",
-                true,
+    if push_result_step(
+        report,
+        "credential_probe",
+        crate::auth::gemini::load_tokens(),
+        |tokens| {
+            format!(
+                "Loaded Gemini tokens{} (expires_at={}).",
+                auth_email_suffix(tokens.email.as_deref()),
+                tokens.expires_at
+            )
+        },
+    )
+    .is_some()
+    {
+        push_result_step(
+            report,
+            "refresh_probe",
+            crate::auth::gemini::load_or_refresh_tokens().await,
+            |tokens| {
                 format!(
-                    "Loaded Gemini tokens{} (expires_at={}).",
-                    tokens
-                        .email
-                        .as_deref()
-                        .map(|email| format!(" for {}", email))
-                        .unwrap_or_default(),
+                    "Gemini token load/refresh succeeded (expires_at={}).",
                     tokens.expires_at
-                ),
-            );
-            match crate::auth::gemini::load_or_refresh_tokens().await {
-                Ok(tokens) => report.push_step(
-                    "refresh_probe",
-                    true,
-                    format!(
-                        "Gemini token load/refresh succeeded (expires_at={}).",
-                        tokens.expires_at
-                    ),
-                ),
-                Err(err) => report.push_step("refresh_probe", false, err.to_string()),
-            }
-        }
-        Err(err) => report.push_step("credential_probe", false, err.to_string()),
+                )
+            },
+        );
     }
 }
 
 async fn probe_antigravity_auth(report: &mut AuthTestProviderReport) {
-    match crate::auth::antigravity::load_tokens() {
-        Ok(tokens) => {
-            report.push_step(
-                "credential_probe",
-                true,
+    if push_result_step(
+        report,
+        "credential_probe",
+        crate::auth::antigravity::load_tokens(),
+        |tokens| {
+            format!(
+                "Loaded Antigravity OAuth tokens{} (expires_at={}).",
+                auth_email_suffix(tokens.email.as_deref()),
+                tokens.expires_at
+            )
+        },
+    )
+    .is_some()
+    {
+        push_result_step(
+            report,
+            "refresh_probe",
+            crate::auth::antigravity::load_or_refresh_tokens().await,
+            |tokens| {
                 format!(
-                    "Loaded Antigravity OAuth tokens{} (expires_at={}).",
-                    tokens
-                        .email
-                        .as_deref()
-                        .map(|email| format!(" for {}", email))
-                        .unwrap_or_default(),
+                    "Antigravity token load/refresh succeeded (expires_at={}).",
                     tokens.expires_at
-                ),
-            );
-            match crate::auth::antigravity::load_or_refresh_tokens().await {
-                Ok(tokens) => report.push_step(
-                    "refresh_probe",
-                    true,
-                    format!(
-                        "Antigravity token load/refresh succeeded (expires_at={}).",
-                        tokens.expires_at
-                    ),
-                ),
-                Err(err) => report.push_step("refresh_probe", false, err.to_string()),
-            }
-        }
-        Err(err) => report.push_step("credential_probe", false, err.to_string()),
+                )
+            },
+        );
     }
 }
 
@@ -1640,11 +1718,7 @@ async fn probe_google_auth(report: &mut AuthTestProviderReport) {
                 format!(
                     "Loaded Google credentials (client_id={}...) and Gmail tokens{}.",
                     &creds.client_id[..20.min(creds.client_id.len())],
-                    tokens
-                        .email
-                        .as_deref()
-                        .map(|email| format!(" for {}", email))
-                        .unwrap_or_default()
+                    auth_email_suffix(tokens.email.as_deref())
                 ),
             );
             match crate::auth::google::get_valid_token().await {
@@ -1662,30 +1736,29 @@ async fn probe_google_auth(report: &mut AuthTestProviderReport) {
 }
 
 async fn probe_copilot_auth(report: &mut AuthTestProviderReport) {
-    match crate::auth::copilot::load_github_token() {
-        Ok(token) => {
-            report.push_step(
-                "credential_probe",
-                true,
+    if let Some(token) = push_result_step(
+        report,
+        "credential_probe",
+        crate::auth::copilot::load_github_token(),
+        |token| {
+            format!(
+                "Loaded GitHub OAuth token for Copilot ({} chars).",
+                token.len()
+            )
+        },
+    ) {
+        let client = reqwest::Client::new();
+        push_result_step(
+            report,
+            "refresh_probe",
+            crate::auth::copilot::exchange_github_token(&client, &token).await,
+            |api_token| {
                 format!(
-                    "Loaded GitHub OAuth token for Copilot ({} chars).",
-                    token.len()
-                ),
-            );
-            let client = reqwest::Client::new();
-            match crate::auth::copilot::exchange_github_token(&client, &token).await {
-                Ok(api_token) => report.push_step(
-                    "refresh_probe",
-                    true,
-                    format!(
-                        "Exchanged GitHub token for Copilot API token (expires_at={}).",
-                        api_token.expires_at
-                    ),
-                ),
-                Err(err) => report.push_step("refresh_probe", false, err.to_string()),
-            }
-        }
-        Err(err) => report.push_step("credential_probe", false, err.to_string()),
+                    "Exchanged GitHub token for Copilot API token (expires_at={}).",
+                    api_token.expires_at
+                )
+            },
+        );
     }
 }
 
