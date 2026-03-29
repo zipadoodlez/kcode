@@ -1144,3 +1144,139 @@ pub fn list_sessions() -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    use super::{spawn_resume_in_new_terminal, spawn_selfdev_in_new_terminal};
+    #[cfg(unix)]
+    use crate::platform::set_permissions_executable;
+    #[cfg(unix)]
+    use std::ffi::OsString;
+    #[cfg(unix)]
+    use std::fs;
+    #[cfg(unix)]
+    use std::path::Path;
+    #[cfg(unix)]
+    use std::thread;
+    #[cfg(unix)]
+    use std::time::{Duration, Instant};
+
+    #[cfg(unix)]
+    struct EnvVarGuard {
+        key: &'static str,
+        prev: Option<OsString>,
+    }
+
+    #[cfg(unix)]
+    impl EnvVarGuard {
+        fn set_path(key: &'static str, value: &Path) -> Self {
+            let prev = std::env::var_os(key);
+            crate::env::set_var(key, value);
+            Self { key, prev }
+        }
+
+        fn set_value(key: &'static str, value: &str) -> Self {
+            let prev = std::env::var_os(key);
+            crate::env::set_var(key, value);
+            Self { key, prev }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(prev) = self.prev.take() {
+                crate::env::set_var(self.key, prev);
+            } else {
+                crate::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn write_fake_handterm(temp: &tempfile::TempDir, output_path: &Path) {
+        let script_path = temp.path().join("handterm");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$PWD\" > {}\nprintf '%s\\n' \"$@\" >> {}\n",
+            output_path.display(),
+            output_path.display()
+        );
+        fs::write(&script_path, script).expect("write fake handterm script");
+        set_permissions_executable(&script_path).expect("make fake handterm executable");
+    }
+
+    #[cfg(unix)]
+    fn wait_for_lines(path: &Path, min_lines: usize) -> Vec<String> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            if let Ok(content) = fs::read_to_string(path) {
+                let lines: Vec<String> = content.lines().map(|line| line.to_string()).collect();
+                if lines.len() >= min_lines {
+                    return lines;
+                }
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!("timed out waiting for launcher output at {}", path.display());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_resume_in_new_terminal_uses_handterm_exec_mode() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let output_path = temp.path().join("resume-launch.txt");
+        write_fake_handterm(&temp, &output_path);
+        let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap_or_default());
+        let _path_guard = EnvVarGuard::set_value("PATH", &path);
+        let _term_guard = EnvVarGuard::set_value("JCODE_TERMINAL", "handterm");
+
+        let exe = temp.path().join("jcode-bin");
+        let cwd = temp.path().join("cwd");
+        fs::create_dir_all(&cwd).expect("create cwd");
+
+        let launched =
+            spawn_resume_in_new_terminal(&exe, "ses_test_123", &cwd).expect("spawn should work");
+        assert!(launched);
+
+        let lines = wait_for_lines(&output_path, 5);
+        assert_eq!(lines[0], cwd.to_string_lossy());
+        assert_eq!(lines[1], "--standalone");
+        assert_eq!(lines[2], "--backend");
+        assert_eq!(lines[3], "gpu");
+        assert_eq!(lines[4], "--exec");
+        assert!(lines[5].contains("--resume"));
+        assert!(lines[5].contains("ses_test_123"));
+        assert!(lines[5].contains(exe.to_string_lossy().as_ref()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_selfdev_in_new_terminal_uses_handterm_exec_mode() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let output_path = temp.path().join("selfdev-launch.txt");
+        write_fake_handterm(&temp, &output_path);
+        let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap_or_default());
+        let _path_guard = EnvVarGuard::set_value("PATH", &path);
+        let _term_guard = EnvVarGuard::set_value("JCODE_TERMINAL", "handterm");
+
+        let exe = temp.path().join("jcode-bin");
+        let cwd = temp.path().join("cwd");
+        fs::create_dir_all(&cwd).expect("create cwd");
+
+        let launched = spawn_selfdev_in_new_terminal(&exe, "ses_selfdev_123", &cwd)
+            .expect("spawn should work");
+        assert!(launched);
+
+        let lines = wait_for_lines(&output_path, 5);
+        assert_eq!(lines[0], cwd.to_string_lossy());
+        assert_eq!(lines[1], "--standalone");
+        assert_eq!(lines[2], "--backend");
+        assert_eq!(lines[3], "gpu");
+        assert_eq!(lines[4], "--exec");
+        assert!(lines[5].contains("--resume"));
+        assert!(lines[5].contains("ses_selfdev_123"));
+        assert!(lines[5].contains("self-dev"));
+        assert!(lines[5].contains(exe.to_string_lossy().as_ref()));
+    }
+}
