@@ -13,19 +13,19 @@
 
 ## Versioning
 
-jcode uses **auto-incrementing** semantic versioning (`v0.1.X`).
+jcode uses semantic versions from `Cargo.toml` plus build metadata in the displayed version string.
 
-**Automatic (patch):**
-- Build number auto-increments on every `cargo build`
-- Stored in `~/.jcode/build_number`
-- Example: `v0.1.1` → `v0.1.2` → `v0.1.3` ...
+**Local/source builds:**
+- Use the package version from `Cargo.toml`
+- Display as `vX.Y.Z-dev (<git-hash>)`
+- Dirty trees display as `vX.Y.Z-dev (<git-hash>, dirty)`
 
 **Manual (major/minor):**
 - For big changes, manually update major/minor version in `Cargo.toml`
 - **Minor** (0.1.x → 0.2.0): New features, significant enhancements
 - **Major** (0.x.x → 1.0.0): Breaking changes to CLI, config, or APIs
 
-The build also includes git hash and `-dev` suffix for uncommitted changes (e.g., `v0.1.47-dev (abc1234)`).
+Release binaries display the release version plus git hash (for example `v0.1.47 (abc1234)`).
 
 ## Testing Changes
 

@@ -695,7 +695,8 @@ pub fn run_version_command(emit_json: bool) -> Result<()> {
         version: env!("JCODE_VERSION").to_string(),
         git_hash: env!("JCODE_GIT_HASH").to_string(),
         git_tag: env!("JCODE_GIT_TAG").to_string(),
-        build_time: env!("JCODE_BUILD_TIME").to_string(),
+        build_time: crate::build::current_binary_build_time_string()
+            .unwrap_or_else(|| "unknown".to_string()),
         git_date: env!("JCODE_GIT_DATE").to_string(),
         release_build: option_env!("JCODE_RELEASE_BUILD").is_some(),
     };
