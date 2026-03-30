@@ -266,6 +266,25 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         if: env.AUR_SSH_KEY != ''
         run: |
+          set -euo pipefail
+
+          retry() {
+            local attempts="$1"
+            local delay="$2"
+            shift 2
+            local try=1
+
+            until "$@"; do
+              local exit_code=$?
+              if [ "$try" -ge "$attempts" ]; then
+                return "$exit_code"
+              fi
+              echo "Attempt ${try}/${attempts} failed; retrying in ${delay}s..."
+              sleep "$delay"
+              try=$((try + 1))
+            done
+          }
+
           VERSION="${GITHUB_REF_NAME}"
           VERSION_NUM="${VERSION#v}"
 
@@ -273,13 +292,20 @@ jobs:
           LINUX_URL="https://github.com/1jehuang/jcode/releases/download/${VERSION}/jcode-linux-x86_64.tar.gz"
 
           mkdir -p ~/.ssh
-          echo "$AUR_SSH_KEY" > ~/.ssh/aur_key
+          chmod 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" > ~/.ssh/aur_key
           chmod 600 ~/.ssh/aur_key
-          echo -e "Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur_key\n  User aur\n  StrictHostKeyChecking no" >> ~/.ssh/config
+          touch ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          retry 3 5 bash -lc 'ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts'
 
-          git clone ssh://aur@aur.archlinux.org/jcode-bin.git /tmp/jcode-aur
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur_key -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o ConnectTimeout=10 -o ConnectionAttempts=3"
 
-          cat > /tmp/jcode-aur/PKGBUILD << 'PKGBUILD_END'
+          retry 3 5 bash -lc 'rm -rf /tmp/jcode-aur && git clone --depth 1 https://aur.archlinux.org/jcode-bin.git /tmp/jcode-aur'
+          cd /tmp/jcode-aur
+          git remote set-url origin ssh://aur@aur.archlinux.org/jcode-bin.git
+
+          cat > PKGBUILD << 'PKGBUILD_END'
           # Maintainer: Jeremy Huang <jeremyhuang55555@gmail.com>
           pkgname=jcode-bin
           pkgver=VERSION_PLACEHOLDER
@@ -298,28 +324,27 @@ jobs:
           }
           PKGBUILD_END
 
-          sed -i "s|VERSION_PLACEHOLDER|${VERSION_NUM}|" /tmp/jcode-aur/PKGBUILD
-          sed -i "s|URL_PLACEHOLDER|${LINUX_URL}|" /tmp/jcode-aur/PKGBUILD
-          sed -i "s|SHA_PLACEHOLDER|${LINUX_SHA}|" /tmp/jcode-aur/PKGBUILD
-          sed -i 's/^          //' /tmp/jcode-aur/PKGBUILD
+          sed -i "s|VERSION_PLACEHOLDER|${VERSION_NUM}|" PKGBUILD
+          sed -i "s|URL_PLACEHOLDER|${LINUX_URL}|" PKGBUILD
+          sed -i "s|SHA_PLACEHOLDER|${LINUX_SHA}|" PKGBUILD
+          sed -i 's/^          //' PKGBUILD
 
           # Generate .SRCINFO without makepkg (AUR uses tab indentation)
-          printf 'pkgbase = jcode-bin\n' > /tmp/jcode-aur/.SRCINFO
-          printf '\tpkgdesc = AI coding agent powered by Claude and ChatGPT\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\tpkgver = %s\n' "${VERSION_NUM}" >> /tmp/jcode-aur/.SRCINFO
-          printf '\tpkgrel = 1\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\turl = https://github.com/1jehuang/jcode\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\tarch = x86_64\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\tlicense = MIT\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\tprovides = jcode\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\tconflicts = jcode\n' >> /tmp/jcode-aur/.SRCINFO
-          printf '\tsource = %s\n' "${LINUX_URL}" >> /tmp/jcode-aur/.SRCINFO
-          printf '\tsha256sums = %s\n' "${LINUX_SHA}" >> /tmp/jcode-aur/.SRCINFO
-          printf '\npkgname = jcode-bin\n' >> /tmp/jcode-aur/.SRCINFO
+          printf 'pkgbase = jcode-bin\n' > .SRCINFO
+          printf '\tpkgdesc = AI coding agent powered by Claude and ChatGPT\n' >> .SRCINFO
+          printf '\tpkgver = %s\n' "${VERSION_NUM}" >> .SRCINFO
+          printf '\tpkgrel = 1\n' >> .SRCINFO
+          printf '\turl = https://github.com/1jehuang/jcode\n' >> .SRCINFO
+          printf '\tarch = x86_64\n' >> .SRCINFO
+          printf '\tlicense = MIT\n' >> .SRCINFO
+          printf '\tprovides = jcode\n' >> .SRCINFO
+          printf '\tconflicts = jcode\n' >> .SRCINFO
+          printf '\tsource = %s\n' "${LINUX_URL}" >> .SRCINFO
+          printf '\tsha256sums = %s\n' "${LINUX_SHA}" >> .SRCINFO
+          printf '\npkgname = jcode-bin\n' >> .SRCINFO
 
-          cd /tmp/jcode-aur
           git config user.name "Jeremy Huang"
           git config user.email "jeremyhuang55555@gmail.com"
           git add PKGBUILD .SRCINFO
           git commit -m "Update to ${VERSION}" || echo "No changes"
-          git push
+          retry 3 5 git push origin master
