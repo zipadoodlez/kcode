@@ -21,6 +21,7 @@ fn lock_env() -> MutexGuard<'static, ()> {
 
 fn tracked_env_vars() -> Vec<String> {
     let mut keys: HashSet<String> = [
+        "JCODE_HOME",
         "XDG_CONFIG_HOME",
         "JCODE_OPENROUTER_API_BASE",
         "JCODE_OPENROUTER_API_KEY_NAME",
@@ -75,9 +76,9 @@ impl TestEnv {
             jcode::env::remove_var(key);
         }
 
-        let config_root = temp.path().join("config");
-        std::fs::create_dir_all(config_root.join("jcode"))?;
-        jcode::env::set_var("XDG_CONFIG_HOME", &config_root);
+        let config_root = temp.path().join("config").join("jcode");
+        std::fs::create_dir_all(&config_root)?;
+        jcode::env::set_var("JCODE_HOME", temp.path());
         apply_openai_compatible_profile_env(None);
         AuthStatus::invalidate_cache();
 
