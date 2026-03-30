@@ -4,7 +4,11 @@ This document explains how authentication works in J-Code.
 
 ## Overview
 
-J-Code can read existing local credentials and can also run built-in OAuth login flows.
+J-Code can detect existing local credentials and can also run built-in OAuth login flows.
+
+For auth files managed by other tools/CLIs, jcode asks before reading them. If you
+approve a source, jcode remembers that approval for future sessions and still leaves
+the original file untouched.
 
 Credentials are stored locally:
 - J-Code Claude OAuth (if logged in via `jcode login --provider claude`): `~/.jcode/auth.json`
@@ -29,7 +33,7 @@ Relevant code:
 
 ### Login steps
 1. Run `jcode login --provider claude` (recommended), or `jcode login` and choose Claude.
-2. Alternative: run `claude` (or `claude setup-token`) and J-Code will auto-import `~/.claude/.credentials.json`.
+2. Alternative: run `claude` (or `claude setup-token`). jcode can detect `~/.claude/.credentials.json`, ask before reading it, and remember that approval for future sessions.
 3. Verify with `jcode --provider claude run "Say hello from jcode"`.
 
 Credential discovery order is:
@@ -102,8 +106,8 @@ Credential discovery order is:
 3. `OPENAI_API_KEY`
 
 If jcode finds existing credentials in `~/.codex/auth.json`, it asks before
-using them. When approved, it reads them in place for the current session and
-does not move, delete, or rewrite the Codex file.
+reading them. When approved, it remembers that trust decision for future jcode
+sessions and still does not move, delete, or rewrite the Codex file.
 
 ### Request details
 J-Code uses the Responses API. If you have a ChatGPT subscription (refresh
@@ -176,7 +180,7 @@ The Azure env file may contain:
 
 ### Credential discovery order
 1. Native jcode Gemini tokens: `~/.jcode/gemini_oauth.json`
-2. Imported Gemini CLI OAuth tokens: `~/.gemini/oauth_creds.json`
+2. Gemini CLI OAuth source (read only after approval): `~/.gemini/oauth_creds.json`
 
 ### Runtime notes
 - jcode uses native Google OAuth and talks to the Google Code Assist backend directly.

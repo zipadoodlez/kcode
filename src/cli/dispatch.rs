@@ -515,6 +515,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
         && !has_openrouter
         && !has_copilot
         && !has_api_key
+        && !auth::AuthStatus::has_any_untrusted_external_auth()
         && *provider_choice == ProviderChoice::Auto
     {
         let provider = provider_init::prompt_login_provider_selection(

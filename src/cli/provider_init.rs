@@ -236,38 +236,50 @@ pub fn prompt_login_provider_selection(
         .ok_or_else(|| anyhow::anyhow!("Invalid choice. Run 'jcode login' to try again."))
 }
 
-fn can_prompt_for_legacy_codex_auth() -> bool {
+fn can_prompt_for_external_auth() -> bool {
     std::io::stdin().is_terminal()
         && std::io::stderr().is_terminal()
         && std::env::var("JCODE_NON_INTERACTIVE").is_err()
 }
 
-fn legacy_codex_auth_blocked_message() -> Result<String> {
-    Ok(format!(
-        "Found existing OpenAI/Codex credentials at {} but jcode will not use them without confirmation. Re-run in an interactive terminal to approve them for this session, set JCODE_ALLOW_CODEX_LEGACY_AUTH=1, or run `jcode login --provider openai`.",
-        auth::codex::legacy_auth_file_path()?.display()
-    ))
+fn external_auth_blocked_message(
+    provider_name: &str,
+    source_name: &str,
+    path: &std::path::Path,
+    login_hint: &str,
+) -> String {
+    format!(
+        "Found existing {} credentials from {} at {} but jcode will not read them without confirmation. Re-run in an interactive terminal to approve this auth source for future jcode sessions, or run `{}`.",
+        provider_name,
+        source_name,
+        path.display(),
+        login_hint
+    )
 }
 
-fn prompt_for_legacy_codex_auth_use() -> Result<bool> {
-    let path = auth::codex::legacy_auth_file_path()?;
+fn prompt_to_trust_external_auth(
+    provider_name: &str,
+    source_name: &str,
+    path: &std::path::Path,
+) -> Result<bool> {
     eprintln!();
     eprintln!(
-        "Found existing OpenAI/Codex credentials at {}.",
+        "Found existing {} credentials from {} at {}.",
+        provider_name,
+        source_name,
         path.display()
     );
-    eprintln!("jcode will only read that file in place for this session.");
-    eprintln!("It will not move, delete, or rewrite the credentials there.");
-    eprint!("Use those credentials for this jcode session? [y/N]: ");
+    eprintln!("jcode will only read that source in place after you approve it.");
+    eprintln!("It will not move, delete, or rewrite the original auth there.");
+    eprint!("Trust this auth source for future jcode sessions? [y/N]: ");
     io::stdout().flush()?;
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    let approved = matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes");
-    if approved {
-        auth::codex::allow_legacy_auth_for_process();
-    }
-    Ok(approved)
+    Ok(matches!(
+        input.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 fn ensure_openai_auth_allowed_for_explicit_choice() -> Result<()> {
@@ -276,16 +288,24 @@ fn ensure_openai_auth_allowed_for_explicit_choice() -> Result<()> {
         return Ok(());
     }
 
-    if !can_prompt_for_legacy_codex_auth() {
-        anyhow::bail!(legacy_codex_auth_blocked_message()?);
+    let path = auth::codex::legacy_auth_file_path()?;
+
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "OpenAI/Codex",
+            "Codex",
+            &path,
+            "jcode login --provider openai"
+        ));
     }
 
-    if prompt_for_legacy_codex_auth_use()? {
+    if prompt_to_trust_external_auth("OpenAI/Codex", "Codex", &path)? {
+        auth::codex::trust_legacy_auth_for_future_use()?;
         return Ok(());
     }
 
     anyhow::bail!(
-        "Skipped using existing ~/.codex/auth.json credentials. Run `jcode login --provider openai` to authenticate jcode directly."
+        "Skipped trusting existing ~/.codex/auth.json credentials. Run `jcode login --provider openai` to authenticate jcode directly."
     )
 }
 
@@ -302,14 +322,223 @@ fn maybe_enable_legacy_codex_auth_for_auto(has_other_provider: bool) -> Result<b
         return Ok(false);
     }
 
-    if !can_prompt_for_legacy_codex_auth() {
-        anyhow::bail!(legacy_codex_auth_blocked_message()?);
+    let path = auth::codex::legacy_auth_file_path()?;
+
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "OpenAI/Codex",
+            "Codex",
+            &path,
+            "jcode login --provider openai"
+        ));
     }
 
-    if prompt_for_legacy_codex_auth_use()? {
+    if prompt_to_trust_external_auth("OpenAI/Codex", "Codex", &path)? {
+        auth::codex::trust_legacy_auth_for_future_use()?;
         return Ok(auth::codex::load_credentials().is_ok());
     }
 
+    Ok(false)
+}
+
+fn ensure_claude_auth_allowed_for_explicit_choice() -> Result<()> {
+    if auth::claude::load_credentials().is_ok() {
+        return Ok(());
+    }
+    let Some(source) = auth::claude::has_unconsented_external_auth() else {
+        return Ok(());
+    };
+    let path = source.path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "Claude",
+            source.display_name(),
+            &path,
+            "jcode login --provider claude"
+        ));
+    }
+    if prompt_to_trust_external_auth("Claude", source.display_name(), &path)? {
+        auth::claude::trust_external_auth_source(source)?;
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Skipped trusting external Claude credentials. Run `jcode login --provider claude` to authenticate jcode directly."
+    )
+}
+
+fn maybe_enable_claude_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    if auth::claude::load_credentials().is_ok() {
+        return Ok(true);
+    }
+    let Some(source) = auth::claude::has_unconsented_external_auth() else {
+        return Ok(false);
+    };
+    if has_other_provider {
+        return Ok(false);
+    }
+    let path = source.path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "Claude",
+            source.display_name(),
+            &path,
+            "jcode login --provider claude"
+        ));
+    }
+    if prompt_to_trust_external_auth("Claude", source.display_name(), &path)? {
+        auth::claude::trust_external_auth_source(source)?;
+        return Ok(auth::claude::load_credentials().is_ok());
+    }
+    Ok(false)
+}
+
+fn ensure_gemini_auth_allowed_for_explicit_choice() -> Result<()> {
+    if auth::gemini::load_tokens().is_ok() || !auth::gemini::has_unconsented_cli_auth() {
+        return Ok(());
+    }
+    let path = auth::gemini::gemini_cli_oauth_path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "Gemini",
+            "Gemini CLI",
+            &path,
+            "jcode login --provider gemini"
+        ));
+    }
+    if prompt_to_trust_external_auth("Gemini", "Gemini CLI", &path)? {
+        auth::gemini::trust_cli_auth_for_future_use()?;
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Skipped trusting Gemini CLI credentials. Run `jcode login --provider gemini` to authenticate jcode directly."
+    )
+}
+
+fn maybe_enable_gemini_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    if auth::gemini::load_tokens().is_ok() {
+        return Ok(true);
+    }
+    if !auth::gemini::has_unconsented_cli_auth() {
+        return Ok(false);
+    }
+    if has_other_provider {
+        return Ok(false);
+    }
+    let path = auth::gemini::gemini_cli_oauth_path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "Gemini",
+            "Gemini CLI",
+            &path,
+            "jcode login --provider gemini"
+        ));
+    }
+    if prompt_to_trust_external_auth("Gemini", "Gemini CLI", &path)? {
+        auth::gemini::trust_cli_auth_for_future_use()?;
+        return Ok(auth::gemini::load_tokens().is_ok());
+    }
+    Ok(false)
+}
+
+fn ensure_copilot_auth_allowed_for_explicit_choice() -> Result<()> {
+    if auth::copilot::load_github_token().is_ok() {
+        return Ok(());
+    }
+    let Some(source) = auth::copilot::has_unconsented_external_auth() else {
+        return Ok(());
+    };
+    let path = source.path();
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "GitHub Copilot",
+            source.display_name(),
+            &path,
+            "jcode login --provider copilot"
+        ));
+    }
+    if prompt_to_trust_external_auth("GitHub Copilot", source.display_name(), &path)? {
+        auth::copilot::trust_external_auth_source(source)?;
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Skipped trusting external Copilot credentials. Run `jcode login --provider copilot` to authenticate jcode directly."
+    )
+}
+
+fn maybe_enable_copilot_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    if auth::copilot::load_github_token().is_ok() {
+        return Ok(true);
+    }
+    let Some(source) = auth::copilot::has_unconsented_external_auth() else {
+        return Ok(false);
+    };
+    if has_other_provider {
+        return Ok(false);
+    }
+    let path = source.path();
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "GitHub Copilot",
+            source.display_name(),
+            &path,
+            "jcode login --provider copilot"
+        ));
+    }
+    if prompt_to_trust_external_auth("GitHub Copilot", source.display_name(), &path)? {
+        auth::copilot::trust_external_auth_source(source)?;
+        return Ok(auth::copilot::load_github_token().is_ok());
+    }
+    Ok(false)
+}
+
+fn ensure_cursor_auth_allowed_for_explicit_choice() -> Result<()> {
+    if auth::cursor::has_cursor_native_auth() || auth::cursor::has_cursor_api_key() {
+        return Ok(());
+    }
+    let Some(source) = auth::cursor::has_unconsented_external_auth() else {
+        return Ok(());
+    };
+    let path = source.path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "Cursor",
+            source.display_name(),
+            &path,
+            "jcode login --provider cursor"
+        ));
+    }
+    if prompt_to_trust_external_auth("Cursor", source.display_name(), &path)? {
+        auth::cursor::trust_external_auth_source(source)?;
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Skipped trusting external Cursor credentials. Run `jcode login --provider cursor` to authenticate jcode directly."
+    )
+}
+
+fn maybe_enable_cursor_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    if auth::cursor::has_cursor_native_auth() || auth::cursor::has_cursor_api_key() {
+        return Ok(true);
+    }
+    let Some(source) = auth::cursor::has_unconsented_external_auth() else {
+        return Ok(false);
+    };
+    if has_other_provider {
+        return Ok(false);
+    }
+    let path = source.path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            "Cursor",
+            source.display_name(),
+            &path,
+            "jcode login --provider cursor"
+        ));
+    }
+    if prompt_to_trust_external_auth("Cursor", source.display_name(), &path)? {
+        auth::cursor::trust_external_auth_source(source)?;
+        return Ok(auth::cursor::has_cursor_native_auth());
+    }
     Ok(false)
 }
 
@@ -464,12 +693,14 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Claude => {
             disable_subscription_runtime_mode();
+            ensure_claude_auth_allowed_for_explicit_choice()?;
             init_notice("Using Claude (provider locked)");
             lock_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference_fast(false))
         }
         ProviderChoice::ClaudeSubprocess => {
             disable_subscription_runtime_mode();
+            ensure_claude_auth_allowed_for_explicit_choice()?;
             crate::logging::warn(
                 "Using --provider claude-subprocess is deprecated and will be removed. Prefer `--provider claude`.",
             );
@@ -489,6 +720,7 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Cursor => {
             disable_subscription_runtime_mode();
+            ensure_cursor_auth_allowed_for_explicit_choice()?;
             init_notice("Using Cursor CLI provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
@@ -496,12 +728,14 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Copilot => {
             disable_subscription_runtime_mode();
+            ensure_copilot_auth_allowed_for_explicit_choice()?;
             init_notice("Using GitHub Copilot API provider (provider locked)");
             lock_model_provider("copilot");
             Arc::new(provider::MultiProvider::new_fast())
         }
         ProviderChoice::Gemini => {
             disable_subscription_runtime_mode();
+            ensure_gemini_auth_allowed_for_explicit_choice()?;
             init_notice("Using Gemini provider (native Google Code Assist OAuth)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
@@ -586,16 +820,61 @@ async fn init_provider_with_options(
             let has_claude = has_claude.unwrap_or(false);
             let mut has_openai = has_openai.unwrap_or(false);
             let auth_status = auth::AuthStatus::check_fast();
-            let has_copilot = auth_status.copilot_has_api_token;
-            let has_gemini = auth_status.gemini == auth::AuthState::Available;
+            let mut has_claude = has_claude;
+            let mut has_copilot = auth_status.copilot_has_api_token;
+            let mut has_gemini = auth_status.gemini == auth::AuthState::Available;
+            let mut has_cursor = auth_status.cursor == auth::AuthState::Available;
             let has_openrouter = provider::openrouter::OpenRouterProvider::has_credentials();
-            let has_other_provider = has_claude || has_copilot || has_gemini || has_openrouter;
+            let mut has_other_provider =
+                has_claude || has_copilot || has_gemini || has_cursor || has_openrouter;
 
             if !has_openai {
                 has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
             }
+            has_other_provider = has_openai
+                || has_claude
+                || has_copilot
+                || has_gemini
+                || has_cursor
+                || has_openrouter;
 
-            if has_claude || has_openai || has_copilot || has_gemini || has_openrouter {
+            if !has_claude {
+                has_claude = maybe_enable_claude_auth_for_auto(has_other_provider && !has_claude)?;
+            }
+            has_other_provider = has_openai
+                || has_claude
+                || has_copilot
+                || has_gemini
+                || has_cursor
+                || has_openrouter;
+
+            if !has_copilot {
+                has_copilot =
+                    maybe_enable_copilot_auth_for_auto(has_other_provider && !has_copilot)?;
+            }
+            has_other_provider = has_openai
+                || has_claude
+                || has_copilot
+                || has_gemini
+                || has_cursor
+                || has_openrouter;
+
+            if !has_gemini {
+                has_gemini = maybe_enable_gemini_auth_for_auto(has_other_provider && !has_gemini)?;
+            }
+            has_other_provider = has_openai
+                || has_claude
+                || has_copilot
+                || has_gemini
+                || has_cursor
+                || has_openrouter;
+
+            if !has_cursor {
+                has_cursor = maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
+            }
+
+            if has_claude || has_openai || has_copilot || has_gemini || has_cursor || has_openrouter
+            {
                 let multi = provider::MultiProvider::new_fast();
                 init_notice(&format!(
                     "Using {} (use /model to switch models)",

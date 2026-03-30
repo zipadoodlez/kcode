@@ -82,10 +82,10 @@ Direct Claude API transport is the default in jcode. The legacy `claude` subproc
 2. Login: `claude login`
 3. Credentials are stored in `~/.claude/.credentials.json`
 
-jcode automatically detects and uses these credentials. Token refresh is handled automatically.
+jcode can detect this source, asks before reading it, and remembers that approval for future sessions. Token refresh is handled automatically after approval.
 
 **How it works:**
-- jcode reads the OAuth token from `~/.claude/.credentials.json`
+- jcode can read the OAuth token from `~/.claude/.credentials.json` after approval
 - Sends requests to `api.anthropic.com/v1/messages?beta=true`
 - Includes required headers: `anthropic-beta: oauth-2025-04-20,claude-code-20250219`
 - System prompt must include Claude Code identity (handled automatically)
