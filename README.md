@@ -134,6 +134,13 @@ jcode works with subscription-backed OAuth flows and multiple providers, so you 
 
 jcode ships with a built-in self-development workflow for release builds, reloads, and debug-driven iteration.
 
+For prompt-level customization that should not require recompiling Rust, add markdown overlays at:
+
+- `~/.jcode/prompt-overlay.md` for global instructions
+- `./.jcode/prompt-overlay.md` for project-local instructions
+
+Those files are injected into the system prompt on the next turn.
+
 <!-- Add self-dev demo thumbnail/video and fuller writeup here. -->
 
 ---
