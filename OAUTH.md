@@ -4,14 +4,14 @@ This document explains how authentication works in J-Code.
 
 ## Overview
 
-J-Code auto-imports existing local credentials and can also run built-in OAuth login flows.
+J-Code can read existing local credentials and can also run built-in OAuth login flows.
 
 Credentials are stored locally:
 - J-Code Claude OAuth (if logged in via `jcode login --provider claude`): `~/.jcode/auth.json`
 - Claude Code CLI: `~/.claude/.credentials.json`
 - OpenCode (optional): `~/.local/share/opencode/auth.json`
 - J-Code OpenAI/Codex OAuth: `~/.jcode/openai-auth.json`
-- Codex CLI import/migration source: `~/.codex/auth.json`
+- Codex CLI auth source (read in place only after confirmation): `~/.codex/auth.json`
 - Gemini native OAuth: `~/.jcode/gemini_oauth.json`
 - Gemini CLI import fallback: `~/.gemini/oauth_creds.json`
 
@@ -101,9 +101,9 @@ Credential discovery order is:
 2. `~/.codex/auth.json`
 3. `OPENAI_API_KEY`
 
-If jcode imports OAuth tokens from `~/.codex/auth.json`, it moves those tokens
-into `~/.jcode/openai-auth.json` and clears the legacy OAuth token from the
-Codex file. A legacy `OPENAI_API_KEY` entry, if present, is preserved.
+If jcode finds existing credentials in `~/.codex/auth.json`, it asks before
+using them. When approved, it reads them in place for the current session and
+does not move, delete, or rewrite the Codex file.
 
 ### Request details
 J-Code uses the Responses API. If you have a ChatGPT subscription (refresh

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::sync::Arc;
 
 use crate::auth;
@@ -236,6 +236,83 @@ pub fn prompt_login_provider_selection(
         .ok_or_else(|| anyhow::anyhow!("Invalid choice. Run 'jcode login' to try again."))
 }
 
+fn can_prompt_for_legacy_codex_auth() -> bool {
+    std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal()
+        && std::env::var("JCODE_NON_INTERACTIVE").is_err()
+}
+
+fn legacy_codex_auth_blocked_message() -> Result<String> {
+    Ok(format!(
+        "Found existing OpenAI/Codex credentials at {} but jcode will not use them without confirmation. Re-run in an interactive terminal to approve them for this session, set JCODE_ALLOW_CODEX_LEGACY_AUTH=1, or run `jcode login --provider openai`.",
+        auth::codex::legacy_auth_file_path()?.display()
+    ))
+}
+
+fn prompt_for_legacy_codex_auth_use() -> Result<bool> {
+    let path = auth::codex::legacy_auth_file_path()?;
+    eprintln!();
+    eprintln!(
+        "Found existing OpenAI/Codex credentials at {}.",
+        path.display()
+    );
+    eprintln!("jcode will only read that file in place for this session.");
+    eprintln!("It will not move, delete, or rewrite the credentials there.");
+    eprint!("Use those credentials for this jcode session? [y/N]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let approved = matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes");
+    if approved {
+        auth::codex::allow_legacy_auth_for_process();
+    }
+    Ok(approved)
+}
+
+fn ensure_openai_auth_allowed_for_explicit_choice() -> Result<()> {
+    if auth::codex::load_credentials().is_ok() || !auth::codex::has_unconsented_legacy_credentials()
+    {
+        return Ok(());
+    }
+
+    if !can_prompt_for_legacy_codex_auth() {
+        anyhow::bail!(legacy_codex_auth_blocked_message()?);
+    }
+
+    if prompt_for_legacy_codex_auth_use()? {
+        return Ok(());
+    }
+
+    anyhow::bail!(
+        "Skipped using existing ~/.codex/auth.json credentials. Run `jcode login --provider openai` to authenticate jcode directly."
+    )
+}
+
+fn maybe_enable_legacy_codex_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    if auth::codex::load_credentials().is_ok() {
+        return Ok(true);
+    }
+
+    if !auth::codex::has_unconsented_legacy_credentials() {
+        return Ok(false);
+    }
+
+    if has_other_provider {
+        return Ok(false);
+    }
+
+    if !can_prompt_for_legacy_codex_auth() {
+        anyhow::bail!(legacy_codex_auth_blocked_message()?);
+    }
+
+    if prompt_for_legacy_codex_auth_use()? {
+        return Ok(auth::codex::load_credentials().is_ok());
+    }
+
+    Ok(false)
+}
+
 pub fn lock_model_provider(provider_key: &str) {
     crate::env::set_var("JCODE_ACTIVE_PROVIDER", provider_key);
     crate::env::set_var("JCODE_FORCE_PROVIDER", "1");
@@ -405,6 +482,7 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Openai => {
             disable_subscription_runtime_mode();
+            ensure_openai_auth_allowed_for_explicit_choice()?;
             init_notice("Using OpenAI (provider locked)");
             lock_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference_fast(true))
@@ -506,11 +584,16 @@ async fn init_provider_with_options(
                 tokio::task::spawn_blocking(|| auth::codex::load_credentials().is_ok()),
             );
             let has_claude = has_claude.unwrap_or(false);
-            let has_openai = has_openai.unwrap_or(false);
+            let mut has_openai = has_openai.unwrap_or(false);
             let auth_status = auth::AuthStatus::check_fast();
             let has_copilot = auth_status.copilot_has_api_token;
             let has_gemini = auth_status.gemini == auth::AuthState::Available;
             let has_openrouter = provider::openrouter::OpenRouterProvider::has_credentials();
+            let has_other_provider = has_claude || has_copilot || has_gemini || has_openrouter;
+
+            if !has_openai {
+                has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
+            }
 
             if has_claude || has_openai || has_copilot || has_gemini || has_openrouter {
                 let multi = provider::MultiProvider::new_fast();
