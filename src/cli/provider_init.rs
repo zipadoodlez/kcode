@@ -651,9 +651,7 @@ pub fn save_named_api_key(env_file: &str, key_name: &str, key: &str) -> Result<(
         anyhow::bail!("Invalid env file name: {}", env_file);
     }
 
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("No config directory found"))?
-        .join("jcode");
+    let config_dir = crate::storage::app_config_dir()?;
     std::fs::create_dir_all(&config_dir)?;
     crate::platform::set_directory_permissions_owner_only(&config_dir)?;
 
