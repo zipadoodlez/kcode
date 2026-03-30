@@ -31,6 +31,14 @@ pub enum ProviderChoice {
     OpencodeGo,
     #[value(alias = "z.ai", alias = "z-ai", alias = "zai-coding")]
     Zai,
+    #[value(
+        alias = "kimi-code",
+        alias = "kimi-coding",
+        alias = "kimi-coding-plan",
+        alias = "kimi-for-coding",
+        alias = "moonshot-coding"
+    )]
+    Kimi,
     #[value(alias = "302.ai")]
     Ai302,
     Baseten,
@@ -90,6 +98,7 @@ impl ProviderChoice {
             Self::Opencode => "opencode",
             Self::OpencodeGo => "opencode-go",
             Self::Zai => "zai",
+            Self::Kimi => "kimi",
             Self::Ai302 => "302ai",
             Self::Baseten => "baseten",
             Self::Cortecs => "cortecs",
@@ -127,6 +136,7 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
         ProviderChoice::Opencode => Some(crate::provider_catalog::OPENCODE_PROFILE),
         ProviderChoice::OpencodeGo => Some(crate::provider_catalog::OPENCODE_GO_PROFILE),
         ProviderChoice::Zai => Some(crate::provider_catalog::ZAI_PROFILE),
+        ProviderChoice::Kimi => Some(crate::provider_catalog::KIMI_PROFILE),
         ProviderChoice::Ai302 => Some(crate::provider_catalog::AI302_PROFILE),
         ProviderChoice::Baseten => Some(crate::provider_catalog::BASETEN_PROFILE),
         ProviderChoice::Cortecs => Some(crate::provider_catalog::CORTECS_PROFILE),
@@ -167,6 +177,7 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         ProviderChoice::Opencode => Some(crate::provider_catalog::OPENCODE_LOGIN_PROVIDER),
         ProviderChoice::OpencodeGo => Some(crate::provider_catalog::OPENCODE_GO_LOGIN_PROVIDER),
         ProviderChoice::Zai => Some(crate::provider_catalog::ZAI_LOGIN_PROVIDER),
+        ProviderChoice::Kimi => Some(crate::provider_catalog::KIMI_LOGIN_PROVIDER),
         ProviderChoice::Ai302 => Some(crate::provider_catalog::AI302_LOGIN_PROVIDER),
         ProviderChoice::Baseten => Some(crate::provider_catalog::BASETEN_LOGIN_PROVIDER),
         ProviderChoice::Cortecs => Some(crate::provider_catalog::CORTECS_LOGIN_PROVIDER),
@@ -768,6 +779,7 @@ async fn init_provider_with_options(
         | ProviderChoice::Firmware
         | ProviderChoice::HuggingFace
         | ProviderChoice::MoonshotAi
+        | ProviderChoice::Kimi
         | ProviderChoice::Nebius
         | ProviderChoice::Scaleway
         | ProviderChoice::Stackit

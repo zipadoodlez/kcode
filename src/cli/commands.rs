@@ -727,6 +727,7 @@ fn list_cli_providers() -> Vec<ProviderListEntry> {
         ProviderChoice::Opencode,
         ProviderChoice::OpencodeGo,
         ProviderChoice::Zai,
+        ProviderChoice::Kimi,
         ProviderChoice::Groq,
         ProviderChoice::Mistral,
         ProviderChoice::Perplexity,

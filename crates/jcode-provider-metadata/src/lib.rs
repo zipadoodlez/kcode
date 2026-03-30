@@ -167,6 +167,17 @@ pub const ZAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     requires_api_key: true,
 };
 
+pub const KIMI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "kimi",
+    display_name: "Kimi Code",
+    api_base: "https://api.kimi.com/coding/v1",
+    api_key_env: "KIMI_API_KEY",
+    env_file: "kimi.env",
+    setup_url: "https://www.kimi.com/coding/docs/en/more/third-party-agents.html",
+    default_model: Some("kimi-for-coding"),
+    requires_api_key: true,
+};
+
 pub const AI302_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "302ai",
     display_name: "302.AI",
@@ -409,10 +420,11 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 25] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 26] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
+    KIMI_PROFILE,
     CHUTES_PROFILE,
     CEREBRAS_PROFILE,
     ALIBABA_CODING_PLAN_PROFILE,
@@ -539,6 +551,25 @@ pub const ZAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor 
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(ZAI_PROFILE),
     order: LoginProviderSurfaceOrder::new(Some(7), Some(6), Some(7), Some(6), Some(6)),
+};
+
+pub const KIMI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "kimi",
+    display_name: "Kimi Code",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &[
+        "kimi-code",
+        "kimi-coding",
+        "kimi-coding-plan",
+        "kimi-for-coding",
+        "moonshot-coding",
+    ],
+    menu_detail: "API key, dedicated Kimi coding endpoint",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(KIMI_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(36), Some(36), Some(36), Some(36), Some(36)),
 };
 
 pub const CHUTES_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -892,7 +923,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 35] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 36] = [
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
@@ -901,6 +932,7 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 35] = [
     OPENCODE_LOGIN_PROVIDER,
     OPENCODE_GO_LOGIN_PROVIDER,
     ZAI_LOGIN_PROVIDER,
+    KIMI_LOGIN_PROVIDER,
     CHUTES_LOGIN_PROVIDER,
     CEREBRAS_LOGIN_PROVIDER,
     ALIBABA_CODING_PLAN_LOGIN_PROVIDER,
@@ -1084,6 +1116,14 @@ mod tests {
         assert_eq!(
             resolve_login_provider("zhipu").map(|provider| provider.id),
             Some("zai")
+        );
+        assert_eq!(
+            resolve_login_provider("kimi").map(|provider| provider.id),
+            Some("kimi")
+        );
+        assert_eq!(
+            resolve_login_provider("kimi-for-coding").map(|provider| provider.id),
+            Some("kimi")
         );
         assert_eq!(
             resolve_login_provider("compat").map(|provider| provider.id),
