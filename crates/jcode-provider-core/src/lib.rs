@@ -1,3 +1,5 @@
+pub mod openai_schema;
+
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
