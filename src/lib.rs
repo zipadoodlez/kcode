@@ -8,6 +8,7 @@ pub mod browser;
 pub mod build;
 pub mod bus;
 pub mod cache_tracker;
+pub mod catchup;
 pub mod channel;
 pub mod cli;
 pub mod compaction;

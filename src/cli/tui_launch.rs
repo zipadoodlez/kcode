@@ -1069,18 +1069,61 @@ pub fn spawn_selfdev_in_new_terminal(
 
 pub fn list_sessions() -> Result<()> {
     match tui::session_picker::pick_session()? {
-        Some(tui::session_picker::PickerResult::Selected(session_id)) => {
+        Some(tui::session_picker::PickerResult::Selected(session_ids)) => {
             let exe = std::env::current_exe()?;
             let cwd = std::env::current_dir()?;
 
-            let err = crate::platform::replace_process(
-                ProcessCommand::new(&exe)
-                    .arg("--resume")
-                    .arg(&session_id)
-                    .current_dir(cwd),
-            );
+            if session_ids.len() == 1 {
+                let session_id = &session_ids[0];
+                let err = crate::platform::replace_process(
+                    ProcessCommand::new(&exe)
+                        .arg("--resume")
+                        .arg(session_id)
+                        .current_dir(cwd),
+                );
 
-            Err(anyhow::anyhow!("Failed to exec {:?}: {}", exe, err))
+                Err(anyhow::anyhow!("Failed to exec {:?}: {}", exe, err))
+            } else {
+                let mut spawned = 0usize;
+                let mut warned_no_terminal = false;
+
+                for session_id in session_ids {
+                    let mut session_cwd = cwd.clone();
+                    if let Ok(sess) = session::Session::load(&session_id) {
+                        if let Some(dir) = sess.working_dir.as_deref() {
+                            if std::path::Path::new(dir).is_dir() {
+                                session_cwd = std::path::PathBuf::from(dir);
+                            }
+                        }
+                    }
+
+                    match spawn_resume_in_new_terminal(&exe, &session_id, &session_cwd) {
+                        Ok(true) => spawned += 1,
+                        Ok(false) => {
+                            if !warned_no_terminal {
+                                eprintln!(
+                                    "No supported terminal emulator found. Run these commands manually:"
+                                );
+                                warned_no_terminal = true;
+                            }
+                            eprintln!("  jcode --resume {}", session_id);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to spawn session {}: {}", session_id, e);
+                        }
+                    }
+                }
+
+                if spawned == 0 && warned_no_terminal {
+                    return Ok(());
+                }
+
+                if spawned == 0 {
+                    anyhow::bail!("Failed to spawn any selected sessions");
+                }
+
+                Ok(())
+            }
         }
         Some(tui::session_picker::PickerResult::RestoreAllCrashed) => {
             let recovered = session::recover_crashed_sessions()?;
@@ -1218,7 +1261,10 @@ mod tests {
             }
             thread::sleep(Duration::from_millis(20));
         }
-        panic!("timed out waiting for launcher output at {}", path.display());
+        panic!(
+            "timed out waiting for launcher output at {}",
+            path.display()
+        );
     }
 
     #[cfg(unix)]
@@ -1227,7 +1273,11 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
         let output_path = temp.path().join("resume-launch.txt");
         write_fake_handterm(&temp, &output_path);
-        let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap_or_default());
+        let path = format!(
+            "{}:{}",
+            temp.path().display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
         let _path_guard = EnvVarGuard::set_value("PATH", &path);
         let _term_guard = EnvVarGuard::set_value("JCODE_TERMINAL", "handterm");
 
@@ -1256,7 +1306,11 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
         let output_path = temp.path().join("selfdev-launch.txt");
         write_fake_handterm(&temp, &output_path);
-        let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap_or_default());
+        let path = format!(
+            "{}:{}",
+            temp.path().display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
         let _path_guard = EnvVarGuard::set_value("PATH", &path);
         let _term_guard = EnvVarGuard::set_value("JCODE_TERMINAL", "handterm");
 

@@ -4,8 +4,8 @@ use std::process::Command as ProcessCommand;
 
 use crate::auth;
 use crate::provider_catalog::{
-    LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile,
-    OPENAI_COMPAT_LOCAL_ENABLED_ENV, resolve_login_selection, resolve_openai_compatible_profile,
+    LoginProviderDescriptor, LoginProviderTarget, OPENAI_COMPAT_LOCAL_ENABLED_ENV,
+    OpenAiCompatibleProfile, resolve_login_selection, resolve_openai_compatible_profile,
 };
 
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
@@ -345,7 +345,10 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
                 &resolved.env_file,
                 Some(key.trim()),
             )?;
-            eprintln!("\nSaved {} local endpoint setup and optional API key.", resolved.display_name);
+            eprintln!(
+                "\nSaved {} local endpoint setup and optional API key.",
+                resolved.display_name
+            );
         }
     }
 
