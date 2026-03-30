@@ -332,6 +332,7 @@ impl WsTestClient {
         self.send_request(Request::ResumeSession {
             id,
             session_id: session_id.to_string(),
+            client_has_local_history: false,
         })
         .await
     }
