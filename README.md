@@ -51,12 +51,12 @@ jcode is built to built to be as performant and resource efficient as possible. 
 
 ### Headline numbers
 
-- **1 active session:** **~28 MB RSS** for jcode vs **~168 MB** for pi vs **~377 MB** for opencode vs **~677 MB** for Claude Code
-- **10 active sessions:** **~433 MB RSS / ~141 MB PSS** total for jcode
-- **10 active sessions:** **~1555 MB RSS / ~1011 MB PSS** total for pi
-- **10 active sessions:** **~3665 MB RSS / ~3135 MB PSS** total for opencode
-- **10 active sessions:** **~4881 MB RSS / ~3460 MB PSS** total for Claude Code
-- **Scaling at 10 sessions:** jcode used **~3.6× less RSS than pi**, **~8.5× less than opencode**, and **~11.3× less than Claude Code**
+- **At 10 simultaneous sessions, jcode used ~3.6× less RSS than pi**
+- **At 10 simultaneous sessions, jcode used ~8.5× less RSS than OpenCode**
+- **At 10 simultaneous sessions, jcode used ~11.3× less RSS than Claude Code**
+- **jcode reached first terminal output ~44.4× faster than pi**
+- **jcode reached first terminal output ~66.8× faster than OpenCode**
+- **jcode reached first terminal output ~24.3× faster than Claude Code**
 
 ### Memory benchmarks: 10 simultaneous sessions
 
