@@ -604,6 +604,9 @@ struct ProviderCurrentReport {
 #[derive(Debug, Serialize)]
 struct VersionReport {
     version: String,
+    semver: String,
+    base_semver: String,
+    update_semver: String,
     git_hash: String,
     git_tag: String,
     build_time: String,
@@ -714,6 +717,9 @@ pub async fn run_provider_current_command(
 pub fn run_version_command(emit_json: bool) -> Result<()> {
     let report = VersionReport {
         version: env!("JCODE_VERSION").to_string(),
+        semver: env!("JCODE_SEMVER").to_string(),
+        base_semver: env!("JCODE_BASE_SEMVER").to_string(),
+        update_semver: env!("JCODE_UPDATE_SEMVER").to_string(),
         git_hash: env!("JCODE_GIT_HASH").to_string(),
         git_tag: env!("JCODE_GIT_TAG").to_string(),
         build_time: crate::build::current_binary_build_time_string()
@@ -726,6 +732,9 @@ pub fn run_version_command(emit_json: bool) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!("version\t{}", report.version);
+        println!("semver\t{}", report.semver);
+        println!("base_semver\t{}", report.base_semver);
+        println!("update_semver\t{}", report.update_semver);
         println!("git_hash\t{}", report.git_hash);
         println!("git_tag\t{}", report.git_tag);
         println!("build_time\t{}", report.build_time);
@@ -2196,6 +2205,9 @@ mod tests {
     fn version_command_plain_output_includes_core_fields() {
         let report = VersionReport {
             version: "v1.2.3 (abc1234)".to_string(),
+            semver: "1.2.3".to_string(),
+            base_semver: "1.2.0".to_string(),
+            update_semver: "1.2.0".to_string(),
             git_hash: "abc1234".to_string(),
             git_tag: "v1.2.3".to_string(),
             build_time: "2026-03-18 18:00:00 +0000".to_string(),
@@ -2203,8 +2215,11 @@ mod tests {
             release_build: false,
         };
         let text = format!(
-            "version\t{}\ngit_hash\t{}\ngit_tag\t{}\nbuild_time\t{}\ngit_date\t{}\nrelease_build\t{}\n",
+            "version\t{}\nsemver\t{}\nbase_semver\t{}\nupdate_semver\t{}\ngit_hash\t{}\ngit_tag\t{}\nbuild_time\t{}\ngit_date\t{}\nrelease_build\t{}\n",
             report.version,
+            report.semver,
+            report.base_semver,
+            report.update_semver,
             report.git_hash,
             report.git_tag,
             report.build_time,
@@ -2213,6 +2228,7 @@ mod tests {
         );
 
         assert!(text.contains("version\tv1.2.3 (abc1234)"));
+        assert!(text.contains("semver\t1.2.3"));
         assert!(text.contains("git_hash\tabc1234"));
         assert!(text.contains("release_build\tfalse"));
     }

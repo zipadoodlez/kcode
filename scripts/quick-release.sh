@@ -24,6 +24,7 @@ fi
 
 VERSION="${1:?Usage: scripts/quick-release.sh [--dry-run] <version> [title]}"
 TITLE="${2:-$VERSION}"
+VERSION_NUM="${VERSION#v}"
 
 if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "Error: Version must be in format v0.5.4"
@@ -63,7 +64,7 @@ OVERALL_START=$(date +%s)
 echo "▸ Building Linux x86_64 + macOS aarch64 in parallel..."
 
 (
-    JCODE_RELEASE_BUILD=1 cargo build --release 2>/dev/null
+    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" cargo build --release 2>/dev/null
     cp target/release/jcode "$DIST/jcode-linux-x86_64"
     chmod +x "$DIST/jcode-linux-x86_64"
     (cd "$DIST" && tar czf jcode-linux-x86_64.tar.gz jcode-linux-x86_64)
@@ -72,7 +73,7 @@ echo "▸ Building Linux x86_64 + macOS aarch64 in parallel..."
 LINUX_PID=$!
 
 (
-    JCODE_RELEASE_BUILD=1 cargo build --release --target aarch64-apple-darwin 2>/dev/null
+    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" cargo build --release --target aarch64-apple-darwin 2>/dev/null
     cp target/aarch64-apple-darwin/release/jcode "$DIST/jcode-macos-aarch64"
     chmod +x "$DIST/jcode-macos-aarch64"
     (cd "$DIST" && tar czf jcode-macos-aarch64.tar.gz jcode-macos-aarch64)
