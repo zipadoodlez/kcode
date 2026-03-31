@@ -45,7 +45,7 @@ Need Windows, Homebrew, source builds, provider setup, or tell your agent to set
 
 </div>
 
-jcode is built to built to be as performant and resource efficient as possible. Every metric is optimized to the bone, which is importnat for scaling multi-session workflows. 
+jcode is built to be as performant and resource efficient as possible. Every metric is optimized to the bone, which is important for scaling multi-session workflows. Here we sample two metrics to show the difference: RAM usage and startup time.
 
 <!-- Add performance demo thumbnail/video link here: spawning many jcode instances and using them in parallel. -->
 
