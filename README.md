@@ -303,21 +303,6 @@ Then symlink to your PATH:
 scripts/install_release.sh
 ```
 
-### Prerequisites
-
-You need at least one of:
-
-| Provider | Setup |
-|---|---|
-| **Claude** (recommended) | Run `/login claude` inside jcode (opens browser for OAuth) |
-| **GitHub Copilot** | Run `/login copilot` inside jcode (GitHub device flow) |
-| **OpenAI** | Run `/login openai` inside jcode (opens browser for OAuth) |
-| **Google Gemini** | Run `/login gemini` inside jcode (native Google OAuth for Code Assist) |
-| **Azure OpenAI** | Run `jcode login --provider azure` (Microsoft Entra ID or API key) |
-| **Alibaba Cloud Coding Plan** | Run `jcode login --provider alibaba-coding-plan` (Alibaba Cloud Bailian API key) |
-| **OpenRouter** | Set `OPENROUTER_API_KEY=sk-or-v1-...` |
-| **Direct API Key** | Set `ANTHROPIC_API_KEY=sk-ant-...` |
-
 ### Platform Support
 
 | Platform | Status |
