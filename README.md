@@ -33,7 +33,7 @@ all running natively in your terminal.
 curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
 ```
 
-Need Windows, Homebrew, source builds, provider setup, or the full setup prompt?
+Need Windows, Homebrew, source builds, provider setup, or tell your agent to set it up for you?
 [Jump to detailed installation](#detailed-installation).
 
 ---
@@ -134,14 +134,7 @@ jcode works with subscription-backed OAuth flows and multiple providers, so you 
 
 ## Self-Dev
 
-jcode ships with a built-in self-development workflow for release builds, reloads, and debug-driven iteration.
-
-For prompt-level customization that should not require recompiling Rust, add markdown overlays at:
-
-- `~/.jcode/prompt-overlay.md` for global instructions
-- `./.jcode/prompt-overlay.md` for project-local instructions
-
-Those files are injected into the system prompt on the next turn.
+jcode is the most customizable coding agent. Why? Because you can just modify the source code directly. Tell your jcode agent to enter self dev mode, and it will start modifying its own source code. Jcode is optimized to iterate on itself. There is significant infrastrucutre around self developement, including being able to make changes, test, build, and hot reload, fully automously without breaking your flow. 
 
 <!-- Add self-dev demo thumbnail/video and fuller writeup here. -->
 
