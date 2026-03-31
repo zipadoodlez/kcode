@@ -71,11 +71,12 @@ keep multiple clients attached, and run agents in parallel.
 
 ### Headline numbers
 
-- **1 active session:** **~28 MB RSS** for jcode vs **~377 MB** for opencode vs **~677 MB** for Claude Code
+- **1 active session:** **~28 MB RSS** for jcode vs **~168 MB** for pi vs **~377 MB** for opencode vs **~677 MB** for Claude Code
 - **10 active sessions:** **~433 MB RSS / ~141 MB PSS** total for jcode
+- **10 active sessions:** **~1555 MB RSS / ~1011 MB PSS** total for pi
 - **10 active sessions:** **~3665 MB RSS / ~3135 MB PSS** total for opencode
 - **10 active sessions:** **~4881 MB RSS / ~3460 MB PSS** total for Claude Code
-- **Scaling at 10 sessions:** jcode used **~8.5× less RSS than opencode** and **~11.3× less RSS than Claude Code**
+- **Scaling at 10 sessions:** jcode used **~3.6× less RSS than pi**, **~8.5× less than opencode**, and **~11.3× less than Claude Code**
 
 ### Memory benchmarks: 10 simultaneous sessions
 
@@ -84,6 +85,7 @@ Measured on this Linux machine using real interactive PTY sessions and Linux `/p
 Versions tested:
 
 - `jcode v0.8.16-dev (161f9fa)`
+- `pi-coding-agent 0.62.0` (`pi`)
 - `opencode 1.0.203`
 - `Claude Code 2.1.86`
 
@@ -92,6 +94,7 @@ Versions tested:
 | Tool | 1 active session | 10 active sessions | Avg per session at 10 | Architecture |
 |---|---:|---:|---:|---|
 | **jcode** | **28.2 MB RSS** / **8.9 MB PSS** | **433.3 MB RSS** / **140.7 MB PSS** | **43.3 MB RSS** / **14.1 MB PSS** | shared server + lightweight clients |
+| **pi** | **168.4 MB RSS** / **156.2 MB PSS** | **1554.9 MB RSS** / **1010.6 MB PSS** | **155.5 MB RSS** / **101.1 MB PSS** | mostly per-session Node process |
 | **opencode** | **377.0 MB RSS** / **372.6 MB PSS** | **3665.2 MB RSS** / **3135.1 MB PSS** | **366.5 MB RSS** / **313.5 MB PSS** | mostly per-session monolith |
 | **Claude Code** | **677.0 MB RSS** / **674.1 MB PSS** | **4880.9 MB RSS** / **3460.2 MB PSS** | **488.1 MB RSS** / **346.0 MB PSS** | mostly per-session monolith |
 
@@ -104,12 +107,13 @@ Versions tested:
 | Tool | Extra RSS per added session | Extra PSS per added session |
 |---|---:|---:|
 | **jcode** | **~45.0 MB** | **~14.6 MB** |
+| **pi** | **~154.1 MB** | **~94.9 MB** |
 | **opencode** | **~365.4 MB** | **~306.9 MB** |
 | **Claude Code** | **~467.1 MB** | **~309.6 MB** |
 
 </div>
 
-For keeping many sessions open at once, the important number is the 10-session total: on this machine, jcode used roughly **22× less PSS than opencode** and **25× less PSS than Claude Code**.
+For keeping many sessions open at once, the important number is the 10-session total: on this machine, jcode used roughly **7.2× less PSS than pi**, **22× less PSS than opencode**, and **25× less PSS than Claude Code**.
 
 ---
 
