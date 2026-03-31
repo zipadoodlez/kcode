@@ -109,6 +109,8 @@ Persistent memory lets jcode remember facts, preferences, entities, and correcti
 ## Side Panel and Generated UI
 
 The side panel can render linked markdown, diagrams, and generated visual output directly inside the terminal workflow.
+<img width="2877" height="1762" alt="image" src="https://github.com/user-attachments/assets/6c7bec81-ef3f-434d-8a7b-d55f8a54e5cf" />
+
 
 <!-- Add side panel / generated UI demo thumbnail/video and fuller writeup here. -->
 
