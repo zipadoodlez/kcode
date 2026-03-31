@@ -38,34 +38,14 @@ Need Windows, Homebrew, source builds, provider setup, or tell your agent to set
 
 ---
 
-## Features
-
-<div align="center">
-
-| Feature | Jump | Description |
-|---|---|---|
-| **Resource / Performance** | [Open section](#performance--resource-efficiency) | Startup time, FPS benchmarks, RAM footprint, and parallel usage demos |
-| **Memory** | [Open section](#memory) | Persistent cross-session memory for preferences, facts, entities, and corrections |
-| **Side Panel and Generated UI** | [Open section](#side-panel-and-generated-ui) | Rich in-terminal UI panels, markdown rendering, and generated visual output |
-| **Swarm** | [Open section](#swarm) | Multiple agents coordinating in the same repo with communication and task sharing |
-| **OAuth and Providers** | [Open section](#oauth-and-providers) | Use Claude Max, ChatGPT Pro, GitHub Copilot, Gemini, and more without juggling raw API keys |
-| **Self-Dev** | [Open section](#self-dev) | Built-in self-development workflow with release builds, reload, and debug tooling |
-| **iOS Application for Native OpenClaw** | [Open section](#ios-application-for-native-openclaw) | Coming soon: a native iOS experience for OpenClaw ambient workflows |
-
-</div>
-
----
 
 <div align="center">
 
 ## Performance & Resource Efficiency
 
-*A single native binary. No Node.js. No Electron. No Python. Just Rust.*
-
 </div>
 
-jcode is built to stay fast and light even when you launch many sessions in sequence,
-keep multiple clients attached, and run agents in parallel.
+jcode is built to built to be as performant and resource efficient as possible. Every metric is optimized to the bone, which is importnat for scaling multi-session workflows. 
 
 <!-- Add performance demo thumbnail/video link here: spawning many jcode instances and using them in parallel. -->
 
