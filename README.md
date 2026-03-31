@@ -105,8 +105,6 @@ Measured as median **time to first terminal output** across 10 PTY launches on t
 
 </div>
 
-For keeping many sessions open at once, the important number is the 10-session total: on this machine, jcode used roughly **7.2× less PSS than pi**, **22× less PSS than opencode**, and **25× less PSS than Claude Code**.
-
 ---
 
 ## Memory
