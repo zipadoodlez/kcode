@@ -71,52 +71,45 @@ keep multiple clients attached, and run agents in parallel.
 
 ### Headline numbers
 
-- **Startup time:** **Instant**
-- **Rendering:** **0.67 ms** average frame time, or roughly **1,400–1,500 FPS**
-- **Idle client RAM:** **~28 MB**
-- **Base server RAM:** **~40 MB**
-- **Active session RAM:** **~50–65 MB**
-- **Idle CPU:** **~0.3%**
+- **1 active session:** **~28 MB RSS** for jcode vs **~377 MB** for opencode vs **~677 MB** for Claude Code
+- **10 active sessions:** **~433 MB RSS / ~141 MB PSS** total for jcode
+- **10 active sessions:** **~3665 MB RSS / ~3135 MB PSS** total for opencode
+- **10 active sessions:** **~4881 MB RSS / ~3460 MB PSS** total for Claude Code
+- **Scaling at 10 sessions:** jcode used **~8.5× less RSS than opencode** and **~11.3× less RSS than Claude Code**
 
-### Benchmarks
+### Memory benchmarks: 10 simultaneous sessions
 
-<div align="center">
+Measured on this Linux machine using real interactive PTY sessions and Linux `/proc` memory stats. For jcode, the number includes both client memory and the incremental memory growth of the shared server, which is the fair comparison for many active sessions.
 
-| Metric | jcode | Typical AI IDE / Agent |
-|---|---|---|
-| **Startup time** | **Instant** | 3–10 seconds |
-| **Frame render time** | **0.67 ms** | 16 ms (60 FPS, if lucky) |
-| **Rendering throughput** | **~1,400–1,500 FPS** | ~60 FPS |
-| **Idle client memory** | **~28 MB** | 300–800 MB |
-| **Server memory** | **~40 MB** (base) | N/A (monolithic) |
-| **Active session memory** | **~50–65 MB** | 500 MB+ |
-| **CPU at idle** | **~0.3%** | 2–5% |
-| **Runtime dependencies** | **None** | Node.js, Python, Electron, … |
-| **Binary** | **Single 66 MB executable** | Hundreds of MB + package managers |
+Versions tested:
 
-</div>
-
-### Measured `opencode` baseline
-
-Measured on this machine against `opencode v1.0.203` using 5 idle runs per mode and reading Linux `/proc` memory stats after startup settled.
+- `jcode v0.8.16-dev (161f9fa)`
+- `opencode 1.0.203`
+- `Claude Code 2.1.86`
 
 <div align="center">
 
-| Mode | Command | Median RSS | Median PSS | Median peak RSS (HWM) |
-|---|---|---:|---:|---:|
-| **Headless server** | `opencode serve --hostname 127.0.0.1 --port 0` | **231 MB** | **229 MB** | **268 MB** |
-| **TUI in empty dir** | `opencode <empty-dir>` | **382 MB** | **378 MB** | **429 MB** |
-| **TUI in this repo** | `opencode .` | **382 MB** | **378 MB** | **430 MB** |
+| Tool | 1 active session | 10 active sessions | Avg per session at 10 | Architecture |
+|---|---:|---:|---:|---|
+| **jcode** | **28.2 MB RSS** / **8.9 MB PSS** | **433.3 MB RSS** / **140.7 MB PSS** | **43.3 MB RSS** / **14.1 MB PSS** | shared server + lightweight clients |
+| **opencode** | **377.0 MB RSS** / **372.6 MB PSS** | **3665.2 MB RSS** / **3135.1 MB PSS** | **366.5 MB RSS** / **313.5 MB PSS** | mostly per-session monolith |
+| **Claude Code** | **677.0 MB RSS** / **674.1 MB PSS** | **4880.9 MB RSS** / **3460.2 MB PSS** | **488.1 MB RSS** / **346.0 MB PSS** | mostly per-session monolith |
 
 </div>
 
-Observed ranges across runs:
+### Additional memory per added session
 
-- `opencode serve`: **229–258 MB RSS**
-- `opencode <empty-dir>`: **368–411 MB RSS**
-- `opencode .`: **366–400 MB RSS**
+<div align="center">
 
-So, on this machine, `opencode` idles around **~230 MB** in headless server mode and **~380–400 MB** in full TUI mode.
+| Tool | Extra RSS per added session | Extra PSS per added session |
+|---|---:|---:|
+| **jcode** | **~45.0 MB** | **~14.6 MB** |
+| **opencode** | **~365.4 MB** | **~306.9 MB** |
+| **Claude Code** | **~467.1 MB** | **~309.6 MB** |
+
+</div>
+
+For keeping many sessions open at once, the important number is the 10-session total: on this machine, jcode used roughly **22× less PSS than opencode** and **25× less PSS than Claude Code**.
 
 ---
 
