@@ -135,9 +135,22 @@ Swarm mode lets multiple agents coordinate inside the same repo with messaging, 
 
 ## OAuth and Providers
 
-jcode works with subscription-backed OAuth flows and multiple providers, so you can use the models you already pay for.
+jcode works with subscription-backed OAuth flows and many provider integrations, so you can use the models you already pay for and still fall back to direct API providers when needed.
 
-<!-- Add OAuth / provider demo thumbnail/video and fuller writeup here. -->
+### Supported OAuth / login flows
+
+- **Claude** (`jcode login --provider claude`)
+- **OpenAI / ChatGPT / Codex** (`jcode login --provider openai`)
+- **Google Gemini** (`jcode login --provider gemini`)
+- **GitHub Copilot** (`jcode login --provider copilot`)
+- **Azure OpenAI** (`jcode login --provider azure`)
+- **Alibaba Cloud Coding Plan** (`jcode login --provider alibaba-coding-plan`)
+
+### Supported providers
+
+- **Native / first-party style providers:** `jcode`, `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
+- **Aggregator / compatibility providers:** `openrouter`, `openai-compatible`
+- **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `xai`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
 
 ---
 
