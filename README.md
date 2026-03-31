@@ -111,7 +111,7 @@ Persistent memory lets jcode remember facts, preferences, entities, and correcti
 The side panel can render linked markdown, diagrams, and generated visual output directly inside the terminal workflow.
 <img width="2877" height="1762" alt="image" src="https://github.com/user-attachments/assets/6c7bec81-ef3f-434d-8a7b-d55f8a54e5cf" />
 
-
+To make this possible, I created a new mermaid rendering library to render diagrams 1800x faster. It has no browser or Typescript dependency. See https://github.com/1jehuang/mermaid-rs-renderer
 <!-- Add side panel / generated UI demo thumbnail/video and fuller writeup here. -->
 
 ---
