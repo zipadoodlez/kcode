@@ -96,6 +96,28 @@ keep multiple clients attached, and run agents in parallel.
 
 </div>
 
+### Measured `opencode` baseline
+
+Measured on this machine against `opencode v1.0.203` using 5 idle runs per mode and reading Linux `/proc` memory stats after startup settled.
+
+<div align="center">
+
+| Mode | Command | Median RSS | Median PSS | Median peak RSS (HWM) |
+|---|---|---:|---:|---:|
+| **Headless server** | `opencode serve --hostname 127.0.0.1 --port 0` | **231 MB** | **229 MB** | **268 MB** |
+| **TUI in empty dir** | `opencode <empty-dir>` | **382 MB** | **378 MB** | **429 MB** |
+| **TUI in this repo** | `opencode .` | **382 MB** | **378 MB** | **430 MB** |
+
+</div>
+
+Observed ranges across runs:
+
+- `opencode serve`: **229–258 MB RSS**
+- `opencode <empty-dir>`: **368–411 MB RSS**
+- `opencode .`: **366–400 MB RSS**
+
+So, on this machine, `opencode` idles around **~230 MB** in headless server mode and **~380–400 MB** in full TUI mode.
+
 ---
 
 ## Memory
