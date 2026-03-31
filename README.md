@@ -89,6 +89,21 @@ Versions tested:
 - `opencode 1.0.203`
 - `Claude Code 2.1.86`
 
+### Interactive startup time
+
+Measured as median **time to first terminal output** across 10 PTY launches on this Linux machine.
+
+<div align="center">
+
+| Tool | Median startup | Range |
+|---|---:|---:|
+| **jcode** | **13.6 ms** | 9.0–16.9 ms |
+| **Claude Code** | **331.1 ms** | 274.5–466.1 ms |
+| **pi** | **603.9 ms** | 522.3–701.4 ms |
+| **opencode** | **908.9 ms** | 785.5–1014.6 ms |
+
+</div>
+
 <div align="center">
 
 | Tool | 1 active session | 10 active sessions | Avg per session at 10 | Architecture |
