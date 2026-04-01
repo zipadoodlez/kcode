@@ -29,6 +29,7 @@ pub async fn run() -> Result<()> {
     startup_profile::mark("perf_init");
 
     telemetry::record_install_if_first_run();
+    telemetry::record_upgrade_if_needed();
     startup_profile::mark("telemetry_check");
 
     let args = parse_and_prepare_args()?;

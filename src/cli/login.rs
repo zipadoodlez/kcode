@@ -150,6 +150,7 @@ fn login_jcode_flow() -> Result<()> {
             .collect::<Vec<_>>()
             .join(", ")
     );
+    crate::telemetry::record_auth_success("jcode", "api_key");
     Ok(())
 }
 
@@ -178,6 +179,7 @@ async fn login_claude_flow(requested_label: Option<&str>) -> Result<()> {
     if let Some(email) = profile_email {
         eprintln!("Profile email: {}", email);
     }
+    crate::telemetry::record_auth_success("claude", "oauth");
     Ok(())
 }
 
@@ -193,6 +195,7 @@ async fn login_openai_flow(requested_label: Option<&str>) -> Result<()> {
             .join("openai-auth.json")
             .display()
     );
+    crate::telemetry::record_auth_success("openai", "oauth");
     Ok(())
 }
 
@@ -215,6 +218,7 @@ fn login_openrouter_flow() -> Result<()> {
     save_named_api_key("openrouter.env", "OPENROUTER_API_KEY", &key)?;
     eprintln!("\nSuccessfully saved OpenRouter API key!");
     eprintln!("Stored at ~/.config/jcode/openrouter.env");
+    crate::telemetry::record_auth_success("openrouter", "api_key");
     Ok(())
 }
 
@@ -294,6 +298,7 @@ fn login_azure_flow() -> Result<()> {
             "Next step: if you're using Azure CLI auth, run `az login` (and ensure your identity has the Cognitive Services OpenAI User role)."
         );
     }
+    crate::telemetry::record_auth_success("azure", if use_entra { "entra_id" } else { "api_key" });
     Ok(())
 }
 
@@ -354,6 +359,7 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
     if let Some(default_model) = resolved.default_model {
         eprintln!("Default model hint: {}", default_model);
     }
+    crate::telemetry::record_auth_success(&resolved.id, "api_key");
     Ok(())
 }
 
@@ -447,6 +453,7 @@ fn login_cursor_flow() -> Result<()> {
         match run_external_login_command(&binary, &["login"]) {
             Ok(()) => {
                 eprintln!("Cursor login command completed.");
+                crate::telemetry::record_auth_success("cursor", "oauth");
                 crate::auth::AuthStatus::invalidate_cache();
                 return Ok(());
             }
@@ -481,6 +488,7 @@ fn login_cursor_flow() -> Result<()> {
         eprintln!("  - macOS/Linux/WSL: curl https://cursor.com/install -fsS | bash");
         eprintln!("  - Windows (PowerShell): irm 'https://cursor.com/install?win32=true' | iex");
     }
+    crate::telemetry::record_auth_success("cursor", "api_key");
     Ok(())
 }
 
@@ -529,6 +537,7 @@ async fn login_copilot_device_flow() -> Result<()> {
     crate::auth::copilot::save_github_token(&token, &username)?;
 
     eprintln!("  ✓ Authenticated as {} via GitHub Copilot", username);
+    crate::telemetry::record_auth_success("copilot", "oauth_device_code");
     Ok(())
 }
 
@@ -558,6 +567,7 @@ async fn login_antigravity_flow() -> Result<()> {
     if let Some(project_id) = tokens.project_id.as_deref() {
         eprintln!("Resolved Antigravity project: {}", project_id);
     }
+    crate::telemetry::record_auth_success("antigravity", "oauth");
     Ok(())
 }
 
@@ -584,6 +594,7 @@ async fn login_gemini_flow() -> Result<()> {
     if let Some(email) = tokens.email.as_deref() {
         eprintln!("Google account: {}", email);
     }
+    crate::telemetry::record_auth_success("gemini", "oauth");
     Ok(())
 }
 
@@ -812,6 +823,7 @@ async fn login_google_flow() -> Result<()> {
     eprintln!("The 'gmail' tool is now available to the AI agent.");
     eprintln!("Try asking: \"check my recent emails\" or \"search emails from ...\"");
 
+    crate::telemetry::record_auth_success("google", "oauth");
     Ok(())
 }
 
