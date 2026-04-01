@@ -113,7 +113,7 @@ pub(crate) enum Command {
         json: bool,
     },
 
-    /// Show subscription usage limits for connected providers
+    /// Show usage limits for connected providers
     Usage {
         /// Emit JSON instead of plain text
         #[arg(long)]
