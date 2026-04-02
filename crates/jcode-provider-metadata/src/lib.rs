@@ -498,7 +498,7 @@ pub const AUTO_IMPORT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDes
     menu_detail: "review and reuse logins from other tools",
     recommended: false,
     target: LoginProviderTarget::AutoImport,
-    order: LoginProviderSurfaceOrder::new(Some(1), None, None, None, None),
+    order: LoginProviderSurfaceOrder::new(Some(1), Some(1), None, None, None),
 };
 
 pub const JCODE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -1283,10 +1283,14 @@ mod tests {
         let providers = tui_login_providers();
         assert_eq!(
             resolve_login_selection("1", &providers).map(|provider| provider.id),
+            Some("auto-import")
+        );
+        assert_eq!(
+            resolve_login_selection("2", &providers).map(|provider| provider.id),
             Some("claude")
         );
         assert_eq!(
-            resolve_login_selection("14", &providers).map(|provider| provider.id),
+            resolve_login_selection("15", &providers).map(|provider| provider.id),
             Some("cursor")
         );
         assert_eq!(

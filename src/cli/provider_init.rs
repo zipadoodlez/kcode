@@ -314,14 +314,34 @@ enum ExternalAuthReviewAction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ExternalAuthReviewCandidate {
-    provider_summary: String,
-    source_name: String,
-    path: std::path::PathBuf,
+pub(crate) struct ExternalAuthReviewCandidate {
+    pub(crate) provider_summary: String,
+    pub(crate) source_name: String,
+    pub(crate) path: std::path::PathBuf,
     action: ExternalAuthReviewAction,
 }
 
-fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthReviewCandidate>> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExternalAuthAutoImportOutcome {
+    pub imported: usize,
+    pub messages: Vec<String>,
+}
+
+impl ExternalAuthAutoImportOutcome {
+    pub(crate) fn render_markdown(&self) -> String {
+        if self.messages.is_empty() {
+            return "No external auth sources were imported.".to_string();
+        }
+        let mut out = format!("**Auto Import**\n\nImported {} source(s).", self.imported);
+        for line in &self.messages {
+            out.push_str("\n- ");
+            out.push_str(line);
+        }
+        out
+    }
+}
+
+pub(crate) fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthReviewCandidate>> {
     let mut candidates = Vec::new();
 
     for source in auth::external::unconsented_sources() {
@@ -393,7 +413,7 @@ fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthReviewCan
     Ok(candidates)
 }
 
-fn parse_external_auth_review_selection(input: &str, count: usize) -> Result<Vec<usize>> {
+pub(crate) fn parse_external_auth_review_selection(input: &str, count: usize) -> Result<Vec<usize>> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
@@ -644,29 +664,66 @@ pub(crate) async fn maybe_run_external_auth_auto_import_flow() -> Result<Option<
     }
 
     let selected = prompt_to_review_external_auth_sources(&candidates)?;
-    let mut imported = 0usize;
-    for index in selected {
-        let candidate = &candidates[index];
+    let outcome = run_external_auth_auto_import_candidates(&candidates, &selected).await?;
+    for line in &outcome.messages {
+        eprintln!("{}", line);
+    }
+    auth::AuthStatus::invalidate_cache();
+    Ok(Some(outcome.imported))
+}
+
+pub(crate) fn format_external_auth_review_candidates_markdown(
+    candidates: &[ExternalAuthReviewCandidate],
+) -> String {
+    let mut message = String::from(
+        "**Auto Import Existing Logins**\n\nFound existing logins that jcode can reuse. Nothing has been imported yet.\n\nReply with `a` to approve all, `1,3` to approve specific sources, or `/cancel` to abort.\n",
+    );
+    for (index, candidate) in candidates.iter().enumerate() {
+        message.push_str(&format!(
+            "\n{}. **{}** via {}\n   - `{}`\n",
+            index + 1,
+            candidate.provider_summary,
+            candidate.source_name,
+            candidate.path.display()
+        ));
+    }
+    message
+}
+
+pub(crate) async fn run_external_auth_auto_import_candidates(
+    candidates: &[ExternalAuthReviewCandidate],
+    selected: &[usize],
+) -> Result<ExternalAuthAutoImportOutcome> {
+    let mut outcome = ExternalAuthAutoImportOutcome {
+        imported: 0,
+        messages: Vec::new(),
+    };
+
+    for &index in selected {
+        let Some(candidate) = candidates.get(index) else {
+            continue;
+        };
         approve_external_auth_review_candidate(candidate)?;
         match validate_external_auth_review_candidate(candidate).await {
             Ok(detail) => {
-                imported += 1;
-                eprintln!(
+                outcome.imported += 1;
+                outcome.messages.push(format!(
                     "✓ Imported {} from {}. {}",
                     candidate.provider_summary, candidate.source_name, detail
-                );
+                ));
             }
             Err(err) => {
                 let _ = revoke_external_auth_review_candidate(candidate);
-                eprintln!(
+                outcome.messages.push(format!(
                     "✕ Skipped {} from {}: {}",
                     candidate.provider_summary, candidate.source_name, err
-                );
+                ));
             }
         }
     }
+
     auth::AuthStatus::invalidate_cache();
-    Ok(Some(imported))
+    Ok(outcome)
 }
 
 async fn detect_auto_provider_flags() -> (bool, bool, bool, bool, bool, bool) {
