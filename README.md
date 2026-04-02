@@ -166,6 +166,9 @@ jcode works with subscription-backed OAuth flows and many provider integrations,
 - **Fireworks** (`jcode login --provider fireworks`)
 - **MiniMax** (`jcode login --provider minimax`)
 
+<img width="2877" height="1762" alt="Screenshot from 2026-04-02 14-28-51" src="https://github.com/user-attachments/assets/530684c0-9d12-4363-aa0e-1b39a0d4e1be" />
+The above image is the first page of provider logins
+
 ### Supported provider
 
 - **Native / first-party style providers:** `jcode`, `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
