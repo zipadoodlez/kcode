@@ -341,7 +341,8 @@ impl ExternalAuthAutoImportOutcome {
     }
 }
 
-pub(crate) fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthReviewCandidate>> {
+pub(crate) fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthReviewCandidate>>
+{
     let mut candidates = Vec::new();
 
     for source in auth::external::unconsented_sources() {
@@ -413,7 +414,10 @@ pub(crate) fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAu
     Ok(candidates)
 }
 
-pub(crate) fn parse_external_auth_review_selection(input: &str, count: usize) -> Result<Vec<usize>> {
+pub(crate) fn parse_external_auth_review_selection(
+    input: &str,
+    count: usize,
+) -> Result<Vec<usize>> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Ok(Vec::new());
