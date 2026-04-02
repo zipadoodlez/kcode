@@ -8,7 +8,7 @@ J-Code can detect existing local credentials and can also run built-in OAuth and
 
 For auth files managed by other tools/CLIs, jcode asks before reading them. If you
 approve a source, jcode remembers that approval for future sessions and still leaves
-the original file untouched.
+the original file untouched (no move, rewrite, or permission mutation).
 
 Credentials are stored locally:
 - J-Code Claude OAuth (if logged in via `jcode login --provider claude`): `~/.jcode/auth.json`
