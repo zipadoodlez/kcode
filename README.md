@@ -112,7 +112,11 @@ Measured as median **time to first terminal output** across 10 PTY launches on t
 
 ## Memory
 
-Persistent memory lets jcode remember facts, preferences, entities, and corrections across sessions.
+Jcode embedds each turn/response as a semantic vector. Every turn does queries a graph of memories to efficiently find related memory entries via a cosine similarity check. The embedding hits are fed into a memory sideagent which verifies the memories are relevant before injecting into the conversation. This results in a human like memory system which allows the agent to automatically recall relevant information to the conversation without actively calling memory tools or relying on heavy use of subagents. 
+
+To have memories which are retrieved, they must also be extracted and stored. Every so often (semantic drift, K turns since last extraction, session end, etc), memories are extracted via a memory sideagent, and put into the memory graph. 
+
+Memories are automatically consolidated every so often via the ambient mode. This reorganizes, checks for stalenss, etc
 
 <!-- Add memory demo thumbnail/video and fuller writeup here. -->
 
