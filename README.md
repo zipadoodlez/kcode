@@ -176,7 +176,7 @@ jcode works with subscription-backed OAuth flows and many provider integrations,
 
 - OAuth flows use **PKCE + state validation**.
 - Secret files are written with **owner-only permissions** when supported.
-- For auth managed by other tools (for example `~/.codex/auth.json` or `~/.claude/.credentials.json`), jcode asks before reading them, remembers that approval, and does not rewrite or chmod the original external auth file.
+- For auth managed by other tools (for example `~/.codex/auth.json` or `~/.claude/.credentials.json`), jcode asks before reading them, binds that approval to the external file path, rejects symlinked auth files, and does not rewrite or chmod the original external auth file.
 - OpenAI OAuth uses `http://localhost:1455/auth/callback` by default, with a manual paste fallback if the callback port is unavailable.
 - You can verify currently configured providers with `jcode auth-test --all-configured`.
 
