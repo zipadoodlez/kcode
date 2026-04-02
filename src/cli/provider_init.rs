@@ -483,21 +483,190 @@ fn approve_external_auth_review_candidate(candidate: &ExternalAuthReviewCandidat
     Ok(())
 }
 
-fn maybe_review_external_auth_sources_for_auto() -> Result<bool> {
+fn revoke_external_auth_review_candidate(candidate: &ExternalAuthReviewCandidate) -> Result<()> {
+    match candidate.action {
+        ExternalAuthReviewAction::SharedExternal(source) => {
+            crate::config::Config::revoke_external_auth_source_for_path(
+                source.source_id(),
+                &candidate.path,
+            )?
+        }
+        ExternalAuthReviewAction::CodexLegacy => {
+            crate::config::Config::revoke_external_auth_source_for_path(
+                auth::codex::LEGACY_CODEX_AUTH_SOURCE_ID,
+                &candidate.path,
+            )?
+        }
+        ExternalAuthReviewAction::ClaudeCode => {
+            crate::config::Config::revoke_external_auth_source_for_path(
+                auth::claude::CLAUDE_CODE_AUTH_SOURCE_ID,
+                &candidate.path,
+            )?
+        }
+        ExternalAuthReviewAction::GeminiCli => {
+            crate::config::Config::revoke_external_auth_source_for_path(
+                auth::gemini::GEMINI_CLI_AUTH_SOURCE_ID,
+                &candidate.path,
+            )?
+        }
+        ExternalAuthReviewAction::Copilot(source) => {
+            crate::config::Config::revoke_external_auth_source_for_path(
+                source.source_id(),
+                &candidate.path,
+            )?
+        }
+        ExternalAuthReviewAction::Cursor(source) => {
+            crate::config::Config::revoke_external_auth_source_for_path(
+                source.source_id(),
+                &candidate.path,
+            )?
+        }
+    }
+    Ok(())
+}
+
+async fn validate_claude_import() -> Result<String> {
+    let creds = auth::claude::load_credentials()?;
+    let refreshed = crate::auth::oauth::refresh_claude_tokens(&creds.refresh_token).await?;
+    Ok(format!(
+        "Claude refresh probe succeeded (expires_at={}).",
+        refreshed.expires_at
+    ))
+}
+
+async fn validate_openai_import() -> Result<String> {
+    let creds = auth::codex::load_credentials()?;
+    if creds.refresh_token.trim().is_empty() {
+        Ok("Loaded OpenAI API key credentials.".to_string())
+    } else {
+        let refreshed = crate::auth::oauth::refresh_openai_tokens(&creds.refresh_token).await?;
+        Ok(format!(
+            "OpenAI refresh probe succeeded (expires_at={}).",
+            refreshed.expires_at
+        ))
+    }
+}
+
+async fn validate_gemini_import() -> Result<String> {
+    let tokens = auth::gemini::load_or_refresh_tokens().await?;
+    Ok(format!(
+        "Gemini load/refresh probe succeeded (expires_at={}).",
+        tokens.expires_at
+    ))
+}
+
+async fn validate_antigravity_import() -> Result<String> {
+    let tokens = auth::antigravity::load_or_refresh_tokens().await?;
+    Ok(format!(
+        "Antigravity load/refresh probe succeeded (expires_at={}).",
+        tokens.expires_at
+    ))
+}
+
+async fn validate_copilot_import() -> Result<String> {
+    let github_token = auth::copilot::load_github_token()?;
+    let api_token =
+        auth::copilot::exchange_github_token(&reqwest::Client::new(), &github_token).await?;
+    Ok(format!(
+        "Copilot exchange probe succeeded (expires_at={}).",
+        api_token.expires_at
+    ))
+}
+
+async fn validate_cursor_import() -> Result<String> {
+    let has_agent_auth = auth::cursor::has_cursor_agent_auth();
+    let has_api_key = auth::cursor::has_cursor_api_key();
+    let has_vscdb = auth::cursor::has_cursor_vscdb_token();
+    if has_agent_auth || has_api_key || has_vscdb {
+        Ok(format!(
+            "Cursor source loaded (agent_session={}, api_key={}, vscdb_token={}).",
+            has_agent_auth, has_api_key, has_vscdb
+        ))
+    } else {
+        anyhow::bail!("Cursor source did not expose a usable auth token.")
+    }
+}
+
+fn validate_openrouter_like_import() -> Result<String> {
+    for (env_key, env_file) in crate::provider_catalog::openrouter_like_api_key_sources() {
+        if crate::provider_catalog::load_api_key_from_env_or_config(&env_key, &env_file).is_some() {
+            return Ok(format!("Loaded API key for `{}`.", env_key));
+        }
+    }
+    anyhow::bail!("No reusable API key became available after import.")
+}
+
+async fn validate_shared_external_import(
+    source: auth::external::ExternalAuthSource,
+) -> Result<String> {
+    let mut errors = Vec::new();
+    for label in auth::external::source_provider_labels(source) {
+        let result = match label {
+            "OpenAI/Codex" => validate_openai_import().await,
+            "Claude" => validate_claude_import().await,
+            "Gemini" => validate_gemini_import().await,
+            "Antigravity" => validate_antigravity_import().await,
+            "GitHub Copilot" => validate_copilot_import().await,
+            "OpenRouter/API-key providers" => validate_openrouter_like_import(),
+            _ => continue,
+        };
+        match result {
+            Ok(detail) => return Ok(detail),
+            Err(err) => errors.push(format!("{}: {}", label, err)),
+        }
+    }
+    anyhow::bail!(errors.join("; "))
+}
+
+async fn validate_external_auth_review_candidate(
+    candidate: &ExternalAuthReviewCandidate,
+) -> Result<String> {
+    match candidate.action {
+        ExternalAuthReviewAction::SharedExternal(source) => {
+            validate_shared_external_import(source).await
+        }
+        ExternalAuthReviewAction::CodexLegacy => validate_openai_import().await,
+        ExternalAuthReviewAction::ClaudeCode => validate_claude_import().await,
+        ExternalAuthReviewAction::GeminiCli => validate_gemini_import().await,
+        ExternalAuthReviewAction::Copilot(_) => validate_copilot_import().await,
+        ExternalAuthReviewAction::Cursor(_) => validate_cursor_import().await,
+    }
+}
+
+pub(crate) async fn maybe_run_external_auth_auto_import_flow() -> Result<Option<usize>> {
     if !can_prompt_for_external_auth() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let candidates = pending_external_auth_review_candidates()?;
     if candidates.is_empty() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let selected = prompt_to_review_external_auth_sources(&candidates)?;
+    let mut imported = 0usize;
     for index in selected {
-        approve_external_auth_review_candidate(&candidates[index])?;
+        let candidate = &candidates[index];
+        approve_external_auth_review_candidate(candidate)?;
+        match validate_external_auth_review_candidate(candidate).await {
+            Ok(detail) => {
+                imported += 1;
+                eprintln!(
+                    "✓ Imported {} from {}. {}",
+                    candidate.provider_summary, candidate.source_name, detail
+                );
+            }
+            Err(err) => {
+                let _ = revoke_external_auth_review_candidate(candidate);
+                eprintln!(
+                    "✕ Skipped {} from {}: {}",
+                    candidate.provider_summary, candidate.source_name, err
+                );
+            }
+        }
     }
-    Ok(true)
+    auth::AuthStatus::invalidate_cache();
+    Ok(Some(imported))
 }
 
 async fn detect_auto_provider_flags() -> (bool, bool, bool, bool, bool, bool) {
@@ -1015,6 +1184,10 @@ pub async fn login_and_bootstrap_provider(
     eprintln!();
 
     let runtime: Arc<dyn provider::Provider> = match provider.target {
+        LoginProviderTarget::AutoImport => {
+            disable_subscription_runtime_mode();
+            Arc::new(provider::MultiProvider::new())
+        }
         LoginProviderTarget::Jcode => Arc::new(provider::jcode::JcodeProvider::new()),
         LoginProviderTarget::Claude => {
             disable_subscription_runtime_mode();
@@ -1276,7 +1449,7 @@ async fn init_provider_with_options(
                 || has_cursor
                 || has_openrouter)
             {
-                maybe_review_external_auth_sources_for_auto()?
+                maybe_run_external_auth_auto_import_flow().await?.is_some()
             } else {
                 false
             };

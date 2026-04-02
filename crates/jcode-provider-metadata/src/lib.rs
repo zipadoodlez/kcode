@@ -23,6 +23,7 @@ impl LoginProviderAuthKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoginProviderTarget {
+    AutoImport,
     Jcode,
     Claude,
     OpenAi,
@@ -38,6 +39,7 @@ pub enum LoginProviderTarget {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoginProviderAuthStateKey {
+    ExternalImport,
     Jcode,
     Anthropic,
     OpenAi,
@@ -484,6 +486,19 @@ pub const CLAUDE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     recommended: true,
     target: LoginProviderTarget::Claude,
     order: LoginProviderSurfaceOrder::new(Some(1), Some(1), Some(1), Some(1), Some(1)),
+};
+
+pub const AUTO_IMPORT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "auto-import",
+    display_name: "Auto Import",
+    auth_kind: LoginProviderAuthKind::Local,
+    auth_state_key: LoginProviderAuthStateKey::ExternalImport,
+    auth_status_method: "Reuse detected logins",
+    aliases: &["import", "reuse", "autoimport"],
+    menu_detail: "review and reuse logins from other tools",
+    recommended: false,
+    target: LoginProviderTarget::AutoImport,
+    order: LoginProviderSurfaceOrder::new(Some(1), None, None, None, None),
 };
 
 pub const JCODE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -973,7 +988,8 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 38] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 39] = [
+    AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
@@ -1284,27 +1300,31 @@ mod tests {
     fn matrix_cli_login_selection_preserves_existing_order() {
         let providers = cli_login_providers();
         assert_eq!(
-            resolve_login_selection("3", &providers).map(|provider| provider.id),
-            Some("jcode")
+            resolve_login_selection("1", &providers).map(|provider| provider.id),
+            Some("auto-import")
         );
         assert_eq!(
             resolve_login_selection("4", &providers).map(|provider| provider.id),
-            Some("copilot")
+            Some("jcode")
         );
         assert_eq!(
             resolve_login_selection("5", &providers).map(|provider| provider.id),
-            Some("openrouter")
+            Some("copilot")
         );
         assert_eq!(
             resolve_login_selection("6", &providers).map(|provider| provider.id),
+            Some("openrouter")
+        );
+        assert_eq!(
+            resolve_login_selection("7", &providers).map(|provider| provider.id),
             Some("azure")
         );
         assert_eq!(
-            resolve_login_selection("16", &providers).map(|provider| provider.id),
+            resolve_login_selection("17", &providers).map(|provider| provider.id),
             Some("gemini")
         );
         assert_eq!(
-            resolve_login_selection("17", &providers).map(|provider| provider.id),
+            resolve_login_selection("18", &providers).map(|provider| provider.id),
             Some("google")
         );
     }

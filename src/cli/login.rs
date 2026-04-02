@@ -27,6 +27,13 @@ pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> 
                     "`jcode login --provider auto` requires an interactive terminal. Use `jcode login --provider <provider>` in non-interactive mode."
                 );
             }
+            if let Some(imported) =
+                super::provider_init::maybe_run_external_auth_auto_import_flow().await?
+                && imported > 0
+            {
+                eprintln!("\nImported {} existing auth source(s).", imported);
+                return Ok(());
+            }
             eprintln!("Choose a provider to log in:");
             for (index, provider) in providers.iter().enumerate() {
                 eprintln!(
@@ -74,6 +81,17 @@ pub async fn run_login_provider(
     account_label: Option<&str>,
 ) -> Result<()> {
     match provider.target {
+        LoginProviderTarget::AutoImport => {
+            let imported = super::provider_init::maybe_run_external_auth_auto_import_flow()
+                .await?
+                .unwrap_or(0);
+            if imported == 0 {
+                anyhow::bail!(
+                    "No existing logins were imported. Either none were found, nothing was approved, or validation failed."
+                );
+            }
+            eprintln!("Imported {} existing auth source(s).", imported);
+        }
         LoginProviderTarget::Jcode => login_jcode_flow()?,
         LoginProviderTarget::Claude => login_claude_flow(account_label).await?,
         LoginProviderTarget::OpenAi => login_openai_flow(account_label).await?,
