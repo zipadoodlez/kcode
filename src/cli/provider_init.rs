@@ -303,9 +303,137 @@ fn prompt_to_trust_external_auth(
     ))
 }
 
+fn provider_label_for_api_key_env(env_key: &str) -> String {
+    if env_key == "OPENROUTER_API_KEY" {
+        return "OpenRouter".to_string();
+    }
+
+    crate::provider_catalog::openai_compatible_profiles()
+        .iter()
+        .find_map(|profile| {
+            let resolved = resolve_openai_compatible_profile(*profile);
+            (resolved.api_key_env == env_key).then_some(resolved.display_name)
+        })
+        .unwrap_or_else(|| env_key.to_string())
+}
+
+fn provider_login_hint_for_api_key_env(env_key: &str) -> String {
+    if env_key == "OPENROUTER_API_KEY" {
+        return "jcode login --provider openrouter".to_string();
+    }
+
+    crate::provider_catalog::openai_compatible_profiles()
+        .iter()
+        .find_map(|profile| {
+            let resolved = resolve_openai_compatible_profile(*profile);
+            (resolved.api_key_env == env_key)
+                .then(|| format!("jcode login --provider {}", resolved.id))
+        })
+        .unwrap_or_else(|| "jcode login".to_string())
+}
+
+fn ensure_external_api_key_auth_allowed_for_explicit_choice(env_key: &str) -> Result<()> {
+    let Some(source) = auth::external::preferred_unconsented_api_key_source_for_env(env_key) else {
+        return Ok(());
+    };
+    let path = source.path()?;
+    let provider_name = provider_label_for_api_key_env(env_key);
+    let login_hint = provider_login_hint_for_api_key_env(env_key);
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            &provider_name,
+            source.display_name(),
+            &path,
+            &login_hint,
+        ));
+    }
+    if prompt_to_trust_external_auth(&provider_name, source.display_name(), &path)? {
+        auth::external::trust_external_auth_source(source)?;
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Skipped trusting external {} credentials. Run `{}` to authenticate jcode directly.",
+        provider_name,
+        login_hint
+    )
+}
+
+fn maybe_enable_external_api_key_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    if provider::openrouter::OpenRouterProvider::has_credentials() {
+        return Ok(true);
+    }
+    if has_other_provider {
+        return Ok(false);
+    }
+
+    for (env_key, _) in crate::provider_catalog::openrouter_like_api_key_sources() {
+        let Some(source) = auth::external::preferred_unconsented_api_key_source_for_env(&env_key)
+        else {
+            continue;
+        };
+        let path = source.path()?;
+        let provider_name = provider_label_for_api_key_env(&env_key);
+        let login_hint = provider_login_hint_for_api_key_env(&env_key);
+        if !can_prompt_for_external_auth() {
+            anyhow::bail!(external_auth_blocked_message(
+                &provider_name,
+                source.display_name(),
+                &path,
+                &login_hint,
+            ));
+        }
+        if prompt_to_trust_external_auth(&provider_name, source.display_name(), &path)? {
+            auth::external::trust_external_auth_source(source)?;
+            return Ok(provider::openrouter::OpenRouterProvider::has_credentials());
+        }
+        return Ok(false);
+    }
+
+    Ok(false)
+}
+
+fn maybe_prompt_for_generic_oauth_source(
+    provider_name: &str,
+    source: Option<auth::external::ExternalAuthSource>,
+    login_hint: &str,
+    auto: bool,
+    validation: impl Fn() -> bool,
+) -> Result<bool> {
+    let Some(source) = source else {
+        return Ok(false);
+    };
+    let path = source.path()?;
+    if !can_prompt_for_external_auth() {
+        anyhow::bail!(external_auth_blocked_message(
+            provider_name,
+            source.display_name(),
+            &path,
+            login_hint,
+        ));
+    }
+    if prompt_to_trust_external_auth(provider_name, source.display_name(), &path)? {
+        auth::external::trust_external_auth_source(source)?;
+        return Ok(if auto { validation() } else { true });
+    }
+    Ok(false)
+}
+
 fn ensure_openai_auth_allowed_for_explicit_choice() -> Result<()> {
-    if auth::codex::load_credentials().is_ok() || !auth::codex::has_unconsented_legacy_credentials()
-    {
+    if auth::codex::load_credentials().is_ok() {
+        return Ok(());
+    }
+
+    if maybe_prompt_for_generic_oauth_source(
+        "OpenAI/Codex",
+        auth::external::preferred_unconsented_openai_oauth_source(),
+        "jcode login --provider openai",
+        false,
+        || auth::codex::load_credentials().is_ok(),
+    )? {
+        return Ok(());
+    }
+
+    if !auth::codex::has_unconsented_legacy_credentials() {
         return Ok(());
     }
 
@@ -333,6 +461,19 @@ fn ensure_openai_auth_allowed_for_explicit_choice() -> Result<()> {
 fn maybe_enable_legacy_codex_auth_for_auto(has_other_provider: bool) -> Result<bool> {
     if auth::codex::load_credentials().is_ok() {
         return Ok(true);
+    }
+
+    if let Some(source) = auth::external::preferred_unconsented_openai_oauth_source() {
+        if has_other_provider {
+            return Ok(false);
+        }
+        return maybe_prompt_for_generic_oauth_source(
+            "OpenAI/Codex",
+            Some(source),
+            "jcode login --provider openai",
+            true,
+            || auth::codex::load_credentials().is_ok(),
+        );
     }
 
     if !auth::codex::has_unconsented_legacy_credentials() {
@@ -366,6 +507,17 @@ fn ensure_claude_auth_allowed_for_explicit_choice() -> Result<()> {
     if auth::claude::load_credentials().is_ok() {
         return Ok(());
     }
+
+    if maybe_prompt_for_generic_oauth_source(
+        "Claude",
+        auth::external::preferred_unconsented_anthropic_oauth_source(),
+        "jcode login --provider claude",
+        false,
+        || auth::claude::load_credentials().is_ok(),
+    )? {
+        return Ok(());
+    }
+
     let Some(source) = auth::claude::has_unconsented_external_auth() else {
         return Ok(());
     };
@@ -391,6 +543,20 @@ fn maybe_enable_claude_auth_for_auto(has_other_provider: bool) -> Result<bool> {
     if auth::claude::load_credentials().is_ok() {
         return Ok(true);
     }
+
+    if let Some(source) = auth::external::preferred_unconsented_anthropic_oauth_source() {
+        if has_other_provider {
+            return Ok(false);
+        }
+        return maybe_prompt_for_generic_oauth_source(
+            "Claude",
+            Some(source),
+            "jcode login --provider claude",
+            true,
+            || auth::claude::load_credentials().is_ok(),
+        );
+    }
+
     let Some(source) = auth::claude::has_unconsented_external_auth() else {
         return Ok(false);
     };
@@ -414,7 +580,21 @@ fn maybe_enable_claude_auth_for_auto(has_other_provider: bool) -> Result<bool> {
 }
 
 fn ensure_gemini_auth_allowed_for_explicit_choice() -> Result<()> {
-    if auth::gemini::load_tokens().is_ok() || !auth::gemini::has_unconsented_cli_auth() {
+    if auth::gemini::load_tokens().is_ok() {
+        return Ok(());
+    }
+
+    if maybe_prompt_for_generic_oauth_source(
+        "Gemini",
+        auth::external::preferred_unconsented_gemini_oauth_source(),
+        "jcode login --provider gemini",
+        false,
+        || auth::gemini::load_tokens().is_ok(),
+    )? {
+        return Ok(());
+    }
+
+    if !auth::gemini::has_unconsented_cli_auth() {
         return Ok(());
     }
     let path = auth::gemini::gemini_cli_oauth_path()?;
@@ -439,6 +619,20 @@ fn maybe_enable_gemini_auth_for_auto(has_other_provider: bool) -> Result<bool> {
     if auth::gemini::load_tokens().is_ok() {
         return Ok(true);
     }
+
+    if let Some(source) = auth::external::preferred_unconsented_gemini_oauth_source() {
+        if has_other_provider {
+            return Ok(false);
+        }
+        return maybe_prompt_for_generic_oauth_source(
+            "Gemini",
+            Some(source),
+            "jcode login --provider gemini",
+            true,
+            || auth::gemini::load_tokens().is_ok(),
+        );
+    }
+
     if !auth::gemini::has_unconsented_cli_auth() {
         return Ok(false);
     }
@@ -459,6 +653,24 @@ fn maybe_enable_gemini_auth_for_auto(has_other_provider: bool) -> Result<bool> {
         return Ok(auth::gemini::load_tokens().is_ok());
     }
     Ok(false)
+}
+
+fn ensure_antigravity_auth_allowed_for_explicit_choice() -> Result<()> {
+    if auth::antigravity::load_tokens().is_ok() {
+        return Ok(());
+    }
+
+    if maybe_prompt_for_generic_oauth_source(
+        "Antigravity",
+        auth::external::preferred_unconsented_antigravity_oauth_source(),
+        "jcode login --provider antigravity",
+        false,
+        || auth::antigravity::load_tokens().is_ok(),
+    )? {
+        return Ok(());
+    }
+
+    Ok(())
 }
 
 fn ensure_copilot_auth_allowed_for_explicit_choice() -> Result<()> {
@@ -757,6 +969,7 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Openrouter => {
             disable_subscription_runtime_mode();
+            ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
             init_notice("Using OpenRouter provider (provider locked)");
             lock_model_provider("openrouter");
             Arc::new(provider::MultiProvider::new_fast())
@@ -804,6 +1017,9 @@ async fn init_provider_with_options(
             let profile = profile_for_choice(choice)
                 .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
             let resolved = resolve_openai_compatible_profile(profile);
+            if resolved.requires_api_key {
+                ensure_external_api_key_auth_allowed_for_explicit_choice(&resolved.api_key_env)?;
+            }
             init_notice(&format!(
                 "Using {} via OpenAI-compatible API (provider locked)",
                 resolved.display_name
@@ -813,6 +1029,7 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Antigravity => {
             disable_subscription_runtime_mode();
+            ensure_antigravity_auth_allowed_for_explicit_choice()?;
             init_notice("Using Antigravity CLI provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
@@ -841,7 +1058,7 @@ async fn init_provider_with_options(
             let mut has_copilot = auth_status.copilot_has_api_token;
             let mut has_gemini = auth_status.gemini == auth::AuthState::Available;
             let mut has_cursor = auth_status.cursor == auth::AuthState::Available;
-            let has_openrouter = provider::openrouter::OpenRouterProvider::has_credentials();
+            let mut has_openrouter = provider::openrouter::OpenRouterProvider::has_credentials();
             let mut has_other_provider =
                 has_claude || has_copilot || has_gemini || has_cursor || has_openrouter;
 
@@ -888,6 +1105,18 @@ async fn init_provider_with_options(
 
             if !has_cursor {
                 has_cursor = maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
+            }
+
+            has_other_provider = has_openai
+                || has_claude
+                || has_copilot
+                || has_gemini
+                || has_cursor
+                || has_openrouter;
+
+            if !has_openrouter {
+                has_openrouter =
+                    maybe_enable_external_api_key_auth_for_auto(has_other_provider && !has_openrouter)?;
             }
 
             if has_claude || has_openai || has_copilot || has_gemini || has_cursor || has_openrouter

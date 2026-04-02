@@ -14,11 +14,14 @@ rewrite, or permission mutation). Symlinked external auth files are rejected.
 Credentials are stored locally:
 - J-Code Claude OAuth (if logged in via `jcode login --provider claude`): `~/.jcode/auth.json`
 - Claude Code CLI: `~/.claude/.credentials.json`
-- OpenCode (optional): `~/.local/share/opencode/auth.json`
+- OpenCode (optional provider/OAuth import source): `~/.local/share/opencode/auth.json`
+- pi (optional provider/OAuth import source): `~/.pi/agent/auth.json`
 - J-Code OpenAI/Codex OAuth: `~/.jcode/openai-auth.json`
 - Codex CLI auth source (read in place only after confirmation): `~/.codex/auth.json`
 - Gemini native OAuth: `~/.jcode/gemini_oauth.json`
 - Gemini CLI import fallback: `~/.gemini/oauth_creds.json`
+- Copilot CLI plaintext fallback: `~/.copilot/config.json`
+- Legacy Copilot JSON sources: `~/.config/github-copilot/hosts.json`, `~/.config/github-copilot/apps.json`
 
 Relevant code:
 - Claude provider: `src/provider/claude.rs`
@@ -42,6 +45,7 @@ Credential discovery order is:
 1. `~/.jcode/auth.json`
 2. `~/.claude/.credentials.json`
 3. `~/.local/share/opencode/auth.json`
+4. `~/.pi/agent/auth.json`
 
 ### Direct Anthropic API (default)
 `--provider claude` uses the direct Anthropic Messages API by default.
@@ -107,7 +111,8 @@ These environment variables control the deprecated Claude Code CLI transport:
 Credential discovery order is:
 1. `~/.jcode/openai-auth.json`
 2. `~/.codex/auth.json`
-3. `OPENAI_API_KEY`
+3. trusted OpenCode/pi OAuth in `~/.local/share/opencode/auth.json` / `~/.pi/agent/auth.json`
+4. `OPENAI_API_KEY`
 
 If jcode finds existing credentials in `~/.codex/auth.json`, it asks before
 reading them. When approved, it remembers that trust decision for future jcode
@@ -185,6 +190,7 @@ The Azure env file may contain:
 ### Credential discovery order
 1. Native jcode Gemini tokens: `~/.jcode/gemini_oauth.json`
 2. Gemini CLI OAuth source (read only after approval): `~/.gemini/oauth_creds.json`
+3. trusted OpenCode/pi OAuth in `~/.local/share/opencode/auth.json` / `~/.pi/agent/auth.json`
 
 ### Runtime notes
 - jcode uses native Google OAuth and talks to the Google Code Assist backend directly.
@@ -246,6 +252,8 @@ Two notable presets are:
 These are first-class jcode provider presets, not just manual custom endpoint examples.
 You can still use `openai-compatible` for arbitrary custom providers when there is not a built-in preset.
 
+If jcode finds matching API keys in trusted OpenCode/pi auth files, it can reuse them for the corresponding provider preset without asking you to paste the key again.
+
 ## Experimental CLI Providers
 
 J-Code also supports experimental CLI-backed providers, plus Antigravity with native OAuth login:
@@ -270,6 +278,15 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
 
 ### GitHub Copilot
 - Login: `jcode login --provider copilot` (runs `copilot -i /login`, or `gh copilot -- -i /login` if `copilot` is not on PATH)
+- Credential discovery order:
+  1. `COPILOT_GITHUB_TOKEN`
+  2. `GH_TOKEN`
+  3. `GITHUB_TOKEN`
+  4. trusted `~/.copilot/config.json`
+  5. trusted legacy `~/.config/github-copilot/hosts.json`
+  6. trusted legacy `~/.config/github-copilot/apps.json`
+  7. trusted OpenCode/pi OAuth entries
+  8. `gh auth token`
 - Env vars:
   - `JCODE_COPILOT_CLI_PATH` (optional override for CLI path)
   - `JCODE_COPILOT_MODEL` (default: `claude-sonnet-4`)
@@ -277,6 +294,9 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
 ### Antigravity
 - Login: `jcode login --provider antigravity` (native Google OAuth flow; does **not** require Antigravity to be installed)
 - Tokens: `~/.jcode/antigravity_oauth.json`
+- Credential discovery order:
+  1. native jcode tokens at `~/.jcode/antigravity_oauth.json`
+  2. trusted OpenCode/pi OAuth entries when present
 - Runtime:
   - jcode authenticates directly and stores/refreshes Antigravity OAuth tokens itself
   - the provider transport still shells out to the Antigravity CLI for completions if you choose `--provider antigravity`

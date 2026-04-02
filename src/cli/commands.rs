@@ -1344,6 +1344,9 @@ impl AuthTestTarget {
                 crate::storage::user_home_path(".local/share/opencode/auth.json")?
                     .display()
                     .to_string(),
+                crate::storage::user_home_path(".pi/agent/auth.json")?
+                    .display()
+                    .to_string(),
             ]),
             Self::Openai => Ok(vec![
                 crate::storage::jcode_dir()?
@@ -1353,15 +1356,33 @@ impl AuthTestTarget {
                 crate::storage::user_home_path(".codex/auth.json")?
                     .display()
                     .to_string(),
+                crate::storage::user_home_path(".local/share/opencode/auth.json")?
+                    .display()
+                    .to_string(),
+                crate::storage::user_home_path(".pi/agent/auth.json")?
+                    .display()
+                    .to_string(),
             ]),
             Self::Gemini => Ok(vec![
                 crate::auth::gemini::tokens_path()?.display().to_string(),
                 crate::auth::gemini::gemini_cli_oauth_path()?
                     .display()
                     .to_string(),
+                crate::storage::user_home_path(".local/share/opencode/auth.json")?
+                    .display()
+                    .to_string(),
+                crate::storage::user_home_path(".pi/agent/auth.json")?
+                    .display()
+                    .to_string(),
             ]),
             Self::Antigravity => Ok(vec![
                 crate::auth::antigravity::tokens_path()?
+                    .display()
+                    .to_string(),
+                crate::storage::user_home_path(".local/share/opencode/auth.json")?
+                    .display()
+                    .to_string(),
+                crate::storage::user_home_path(".pi/agent/auth.json")?
                     .display()
                     .to_string(),
             ]),
@@ -1372,10 +1393,19 @@ impl AuthTestTarget {
                 crate::auth::google::tokens_path()?.display().to_string(),
             ]),
             Self::Copilot => Ok(vec![
+                crate::storage::user_home_path(".copilot/config.json")?
+                    .display()
+                    .to_string(),
                 crate::storage::user_home_path(".config/github-copilot/hosts.json")?
                     .display()
                     .to_string(),
                 crate::storage::user_home_path(".config/github-copilot/apps.json")?
+                    .display()
+                    .to_string(),
+                crate::storage::user_home_path(".local/share/opencode/auth.json")?
+                    .display()
+                    .to_string(),
+                crate::storage::user_home_path(".pi/agent/auth.json")?
                     .display()
                     .to_string(),
             ]),
