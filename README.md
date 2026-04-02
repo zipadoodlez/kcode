@@ -130,7 +130,13 @@ To make this possible, I created a new mermaid rendering library to render diagr
 
 ## Swarm
 
-Swarm mode lets multiple agents coordinate inside the same repo with messaging, task sharing, and conflict-aware collaboration.
+Spawn two or more agents in the same repo, and they will automatically be managed by the server to allow native collaboration. When agent A edits a file that agent B has read (code shifting under its feet), the server notifies agent B. Agent B can ignore it if it is not relevant, or it can check the diff to make sure that it doesn't conflict. Each agent has messaging abilities, capable of DMing just one agent, broadcasting to all other agents hosted by the server, or just agents working in that repo. This allows you to spawn multiple sessions in the same repo, and have all conflicts automatically resolved. 
+
+
+https://github.com/user-attachments/assets/0b69a309-e4c2-4721-8e4d-b5a93d8865ed
+
+Agents are also able to spawn their own swarms autonomously. They have a swarm tool which allows them to spawn in their own teamates to accomplish tasks in parallel. Doing so turns the main agent into a coordinator and the spawned agents into workers. Groups of agents, their messaging channels, their completion statuses, etc are all automatically managed. 
+
 
 <!-- Add swarm demo thumbnail/video and fuller writeup here. -->
 
@@ -149,7 +155,7 @@ jcode works with subscription-backed OAuth flows and many provider integrations,
 - **Azure OpenAI** (`jcode login --provider azure`)
 - **Alibaba Cloud Coding Plan** (`jcode login --provider alibaba-coding-plan`)
 
-### Supported providers
+### Supported provider
 
 - **Native / first-party style providers:** `jcode`, `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
 - **Aggregator / compatibility providers:** `openrouter`, `openai-compatible`
