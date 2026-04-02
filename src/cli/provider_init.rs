@@ -303,6 +303,219 @@ fn prompt_to_trust_external_auth(
     ))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExternalAuthReviewAction {
+    SharedExternal(auth::external::ExternalAuthSource),
+    CodexLegacy,
+    ClaudeCode,
+    GeminiCli,
+    Copilot(auth::copilot::ExternalCopilotAuthSource),
+    Cursor(auth::cursor::ExternalCursorAuthSource),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExternalAuthReviewCandidate {
+    provider_summary: String,
+    source_name: String,
+    path: std::path::PathBuf,
+    action: ExternalAuthReviewAction,
+}
+
+fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthReviewCandidate>> {
+    let mut candidates = Vec::new();
+
+    for source in auth::external::unconsented_sources() {
+        let provider_summary = auth::external::source_provider_labels(source).join(", ");
+        if provider_summary.is_empty() {
+            continue;
+        }
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary,
+            source_name: source.display_name().to_string(),
+            path: source.path()?,
+            action: ExternalAuthReviewAction::SharedExternal(source),
+        });
+    }
+
+    if auth::codex::has_unconsented_legacy_credentials() {
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary: "OpenAI/Codex".to_string(),
+            source_name: "Codex auth.json".to_string(),
+            path: auth::codex::legacy_auth_file_path()?,
+            action: ExternalAuthReviewAction::CodexLegacy,
+        });
+    }
+
+    if let Some(source) = auth::claude::has_unconsented_external_auth()
+        && matches!(source, auth::claude::ExternalClaudeAuthSource::ClaudeCode)
+    {
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary: "Claude".to_string(),
+            source_name: source.display_name().to_string(),
+            path: source.path()?,
+            action: ExternalAuthReviewAction::ClaudeCode,
+        });
+    }
+
+    if auth::gemini::has_unconsented_cli_auth() {
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary: "Gemini".to_string(),
+            source_name: "Gemini CLI".to_string(),
+            path: auth::gemini::gemini_cli_oauth_path()?,
+            action: ExternalAuthReviewAction::GeminiCli,
+        });
+    }
+
+    if let Some(source) = auth::copilot::has_unconsented_external_auth()
+        && !matches!(
+            source,
+            auth::copilot::ExternalCopilotAuthSource::OpenCodeAuth
+                | auth::copilot::ExternalCopilotAuthSource::PiAuth
+        )
+    {
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary: "GitHub Copilot".to_string(),
+            source_name: source.display_name().to_string(),
+            path: source.path(),
+            action: ExternalAuthReviewAction::Copilot(source),
+        });
+    }
+
+    if let Some(source) = auth::cursor::has_unconsented_external_auth() {
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary: "Cursor".to_string(),
+            source_name: source.display_name().to_string(),
+            path: source.path()?,
+            action: ExternalAuthReviewAction::Cursor(source),
+        });
+    }
+
+    Ok(candidates)
+}
+
+fn parse_external_auth_review_selection(input: &str, count: usize) -> Result<Vec<usize>> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    if matches!(trimmed.to_ascii_lowercase().as_str(), "a" | "all") {
+        return Ok((0..count).collect());
+    }
+
+    let mut selected = Vec::new();
+    for part in trimmed.split(',') {
+        let value = part.trim();
+        if value.is_empty() {
+            continue;
+        }
+        let index: usize = value.parse().map_err(|_| {
+            anyhow::anyhow!(
+                "Invalid selection '{}'. Enter numbers like 1,3 or 'a' for all.",
+                value
+            )
+        })?;
+        if index == 0 || index > count {
+            anyhow::bail!(
+                "Selection '{}' is out of range. Enter 1-{} or 'a' for all.",
+                index,
+                count
+            );
+        }
+        let zero_based = index - 1;
+        if !selected.contains(&zero_based) {
+            selected.push(zero_based);
+        }
+    }
+    Ok(selected)
+}
+
+fn prompt_to_review_external_auth_sources(
+    candidates: &[ExternalAuthReviewCandidate],
+) -> Result<Vec<usize>> {
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    eprintln!();
+    eprintln!("Found existing logins that jcode can reuse.");
+    eprintln!("Nothing has been imported yet.");
+    eprintln!(
+        "Approve the sources you want jcode to read in place; rejected sources stay untouched."
+    );
+    eprintln!();
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        eprintln!(
+            "  {}. {:<22} via {}",
+            index + 1,
+            candidate.provider_summary,
+            candidate.source_name
+        );
+        eprintln!("     {}", candidate.path.display());
+    }
+
+    eprintln!();
+    eprint!("Approve sources [a=all, Enter=skip, example: 1,3]: ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    parse_external_auth_review_selection(&input, candidates.len())
+}
+
+fn approve_external_auth_review_candidate(candidate: &ExternalAuthReviewCandidate) -> Result<()> {
+    match candidate.action {
+        ExternalAuthReviewAction::SharedExternal(source) => {
+            auth::external::trust_external_auth_source(source)?
+        }
+        ExternalAuthReviewAction::CodexLegacy => auth::codex::trust_legacy_auth_for_future_use()?,
+        ExternalAuthReviewAction::ClaudeCode => auth::claude::trust_external_auth_source(
+            auth::claude::ExternalClaudeAuthSource::ClaudeCode,
+        )?,
+        ExternalAuthReviewAction::GeminiCli => auth::gemini::trust_cli_auth_for_future_use()?,
+        ExternalAuthReviewAction::Copilot(source) => {
+            auth::copilot::trust_external_auth_source(source)?
+        }
+        ExternalAuthReviewAction::Cursor(source) => {
+            auth::cursor::trust_external_auth_source(source)?
+        }
+    }
+    Ok(())
+}
+
+fn maybe_review_external_auth_sources_for_auto() -> Result<bool> {
+    if !can_prompt_for_external_auth() {
+        return Ok(false);
+    }
+
+    let candidates = pending_external_auth_review_candidates()?;
+    if candidates.is_empty() {
+        return Ok(false);
+    }
+
+    let selected = prompt_to_review_external_auth_sources(&candidates)?;
+    for index in selected {
+        approve_external_auth_review_candidate(&candidates[index])?;
+    }
+    Ok(true)
+}
+
+async fn detect_auto_provider_flags() -> (bool, bool, bool, bool, bool, bool) {
+    let (has_claude, has_openai) = tokio::join!(
+        tokio::task::spawn_blocking(|| auth::claude::load_credentials().is_ok()),
+        tokio::task::spawn_blocking(|| auth::codex::load_credentials().is_ok()),
+    );
+    let auth_status = auth::AuthStatus::check_fast();
+    (
+        has_claude.unwrap_or(false),
+        has_openai.unwrap_or(false),
+        auth_status.copilot_has_api_token,
+        auth_status.gemini == auth::AuthState::Available,
+        auth_status.cursor == auth::AuthState::Available,
+        provider::openrouter::OpenRouterProvider::has_credentials(),
+    )
+}
+
 fn provider_label_for_api_key_env(env_key: &str) -> String {
     if env_key == "OPENROUTER_API_KEY" {
         return "OpenRouter".to_string();
@@ -1047,76 +1260,100 @@ async fn init_provider_with_options(
         ProviderChoice::Auto => {
             disable_subscription_runtime_mode();
             unlock_model_provider();
-            let (has_claude, has_openai) = tokio::join!(
-                tokio::task::spawn_blocking(|| auth::claude::load_credentials().is_ok()),
-                tokio::task::spawn_blocking(|| auth::codex::load_credentials().is_ok()),
-            );
-            let has_claude = has_claude.unwrap_or(false);
-            let mut has_openai = has_openai.unwrap_or(false);
-            let auth_status = auth::AuthStatus::check_fast();
-            let mut has_claude = has_claude;
-            let mut has_copilot = auth_status.copilot_has_api_token;
-            let mut has_gemini = auth_status.gemini == auth::AuthState::Available;
-            let mut has_cursor = auth_status.cursor == auth::AuthState::Available;
-            let mut has_openrouter = provider::openrouter::OpenRouterProvider::has_credentials();
-            let mut has_other_provider =
-                has_claude || has_copilot || has_gemini || has_cursor || has_openrouter;
+            let (
+                mut has_claude,
+                mut has_openai,
+                mut has_copilot,
+                mut has_gemini,
+                mut has_cursor,
+                mut has_openrouter,
+            ) = detect_auto_provider_flags().await;
 
-            if !has_openai {
-                has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
-            }
-            has_other_provider = has_openai
-                || has_claude
+            let reviewed_external_auth = if !(has_claude
+                || has_openai
                 || has_copilot
                 || has_gemini
                 || has_cursor
-                || has_openrouter;
+                || has_openrouter)
+            {
+                maybe_review_external_auth_sources_for_auto()?
+            } else {
+                false
+            };
 
-            if !has_claude {
-                has_claude = maybe_enable_claude_auth_for_auto(has_other_provider && !has_claude)?;
-            }
-            has_other_provider = has_openai
-                || has_claude
-                || has_copilot
-                || has_gemini
-                || has_cursor
-                || has_openrouter;
+            if reviewed_external_auth {
+                (
+                    has_claude,
+                    has_openai,
+                    has_copilot,
+                    has_gemini,
+                    has_cursor,
+                    has_openrouter,
+                ) = detect_auto_provider_flags().await;
+            } else {
+                let mut has_other_provider =
+                    has_claude || has_copilot || has_gemini || has_cursor || has_openrouter;
 
-            if !has_copilot {
-                has_copilot =
-                    maybe_enable_copilot_auth_for_auto(has_other_provider && !has_copilot)?;
-            }
-            has_other_provider = has_openai
-                || has_claude
-                || has_copilot
-                || has_gemini
-                || has_cursor
-                || has_openrouter;
+                if !has_openai {
+                    has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
+                }
+                has_other_provider = has_openai
+                    || has_claude
+                    || has_copilot
+                    || has_gemini
+                    || has_cursor
+                    || has_openrouter;
 
-            if !has_gemini {
-                has_gemini = maybe_enable_gemini_auth_for_auto(has_other_provider && !has_gemini)?;
-            }
-            has_other_provider = has_openai
-                || has_claude
-                || has_copilot
-                || has_gemini
-                || has_cursor
-                || has_openrouter;
+                if !has_claude {
+                    has_claude =
+                        maybe_enable_claude_auth_for_auto(has_other_provider && !has_claude)?;
+                }
+                has_other_provider = has_openai
+                    || has_claude
+                    || has_copilot
+                    || has_gemini
+                    || has_cursor
+                    || has_openrouter;
 
-            if !has_cursor {
-                has_cursor = maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
-            }
+                if !has_copilot {
+                    has_copilot =
+                        maybe_enable_copilot_auth_for_auto(has_other_provider && !has_copilot)?;
+                }
+                has_other_provider = has_openai
+                    || has_claude
+                    || has_copilot
+                    || has_gemini
+                    || has_cursor
+                    || has_openrouter;
 
-            has_other_provider = has_openai
-                || has_claude
-                || has_copilot
-                || has_gemini
-                || has_cursor
-                || has_openrouter;
+                if !has_gemini {
+                    has_gemini =
+                        maybe_enable_gemini_auth_for_auto(has_other_provider && !has_gemini)?;
+                }
+                has_other_provider = has_openai
+                    || has_claude
+                    || has_copilot
+                    || has_gemini
+                    || has_cursor
+                    || has_openrouter;
 
-            if !has_openrouter {
-                has_openrouter =
-                    maybe_enable_external_api_key_auth_for_auto(has_other_provider && !has_openrouter)?;
+                if !has_cursor {
+                    has_cursor =
+                        maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
+                }
+
+                has_other_provider = has_openai
+                    || has_claude
+                    || has_copilot
+                    || has_gemini
+                    || has_cursor
+                    || has_openrouter;
+
+                if !has_openrouter {
+                    has_openrouter = maybe_enable_external_api_key_auth_for_auto(
+                        has_other_provider && !has_openrouter,
+                    )?;
+                }
             }
 
             if has_claude || has_openai || has_copilot || has_gemini || has_cursor || has_openrouter
@@ -1189,6 +1426,7 @@ mod tests {
         self, resolve_login_selection, resolve_openai_compatible_profile,
     };
     use std::sync::{Mutex, OnceLock};
+    use tempfile::TempDir;
 
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -1412,6 +1650,84 @@ mod tests {
             } else {
                 crate::env::remove_var(&key);
             }
+        }
+    }
+
+    #[test]
+    fn parse_external_auth_review_selection_supports_all_and_deduped_indices() {
+        assert_eq!(
+            parse_external_auth_review_selection("", 3).unwrap(),
+            Vec::<usize>::new()
+        );
+        assert_eq!(
+            parse_external_auth_review_selection("a", 3).unwrap(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            parse_external_auth_review_selection("2,1,2", 3).unwrap(),
+            vec![1, 0]
+        );
+        assert!(parse_external_auth_review_selection("4", 3).is_err());
+        assert!(parse_external_auth_review_selection("nope", 3).is_err());
+    }
+
+    #[test]
+    fn pending_external_auth_review_candidates_include_shared_and_legacy_sources() {
+        let _guard = lock_env();
+        let _env_guard = crate::storage::lock_test_env();
+        let dir = TempDir::new().expect("temp dir");
+        let prev_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", dir.path());
+
+        let opencode_path = crate::auth::external::ExternalAuthSource::OpenCode
+            .path()
+            .expect("opencode path");
+        std::fs::create_dir_all(opencode_path.parent().expect("opencode parent"))
+            .expect("create opencode dir");
+        std::fs::write(
+            &opencode_path,
+            serde_json::json!({
+                "openai": {
+                    "type": "oauth",
+                    "access": "sk-openai",
+                    "refresh": "refresh",
+                    "expires": chrono::Utc::now().timestamp_millis() + 60_000
+                }
+            })
+            .to_string(),
+        )
+        .expect("write opencode auth");
+
+        let codex_path = crate::auth::codex::legacy_auth_file_path().expect("codex path");
+        std::fs::create_dir_all(codex_path.parent().expect("codex parent"))
+            .expect("create codex dir");
+        std::fs::write(
+            &codex_path,
+            serde_json::json!({
+                "tokens": {
+                    "access_token": "sk-codex",
+                    "refresh_token": "refresh",
+                    "expires_at": chrono::Utc::now().timestamp_millis() + 60_000
+                }
+            })
+            .to_string(),
+        )
+        .expect("write codex auth");
+
+        let candidates = pending_external_auth_review_candidates().expect("candidates");
+        assert!(candidates.iter().any(|candidate| {
+            candidate.source_name == "OpenCode auth.json"
+                && candidate.provider_summary.contains("OpenAI/Codex")
+        }));
+        assert!(candidates.iter().any(|candidate| {
+            candidate.source_name == "Codex auth.json"
+                && candidate.provider_summary == "OpenAI/Codex"
+        }));
+
+        if let Some(prev_home) = prev_home {
+            crate::env::set_var("JCODE_HOME", prev_home);
+        } else {
+            crate::env::remove_var("JCODE_HOME");
         }
     }
 }
