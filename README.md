@@ -9,7 +9,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/1jehuang/jcode?style=flat-square)](https://github.com/1jehuang/jcode/stargazers)
 
 The next generation coding agent harness to raise the skill ceiling. <br>
-Built for multi-session workflows, infinite customizability, performance, and beauty. 
+Built for multi-session workflows, infinite customizability, and performance. 
 
 <br>
 
