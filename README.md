@@ -8,9 +8,7 @@
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/1jehuang/jcode?style=flat-square)](https://github.com/1jehuang/jcode/commits/master)
 [![GitHub Stars](https://img.shields.io/github/stars/1jehuang/jcode?style=flat-square)](https://github.com/1jehuang/jcode/stargazers)
 
-A blazing-fast, fully autonomous AI coding agent with a gorgeous TUI,
-multi-model support, swarm coordination, persistent memory, and 30+ built-in tools -
-all running natively in your terminal.
+The next generation coding agent harness to raise the skill ceiling. Built for multi-session workflows, infinite customizability, performance, and beauty. 
 
 <br>
 
