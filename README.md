@@ -126,13 +126,16 @@ Memories are automatically consolidated every so often via the ambient mode. Thi
 
 ---
 
-## Side Panel and Generated UI
+## UI: Diagrams, Infowidgets, Side panels
+
+Jcode can render at over a thousand fps. Your monitor will not have the refresh rate to show you, but this means you will not have silly flicker problems. 
 
 The side panel can render linked markdown, diagrams, and generated visual output directly inside the terminal workflow.
 <img width="2877" height="1762" alt="image" src="https://github.com/user-attachments/assets/6c7bec81-ef3f-434d-8a7b-d55f8a54e5cf" />
 
 To make this possible, I created a new mermaid rendering library to render diagrams 1800x faster. It has no browser or Typescript dependency. See https://github.com/1jehuang/mermaid-rs-renderer
-<!-- Add side panel / generated UI demo thumbnail/video and fuller writeup here. -->
+
+To show you important information without taking space away from the screen that could be used for responses, I developed info widgets. Info widgets will only ever take up the negative space on the screen to show you information, and will get out of the way if there isn't any. 
 
 ---
 
@@ -140,15 +143,11 @@ To make this possible, I created a new mermaid rendering library to render diagr
 
 Spawn two or more agents in the same repo, and they will automatically be managed by the server to allow native collaboration. When agent A edits a file that agent B has read (code shifting under its feet), the server notifies agent B. Agent B can ignore it if it is not relevant, or it can check the diff to make sure that it doesn't conflict. Each agent has messaging abilities, capable of DMing just one agent, broadcasting to all other agents hosted by the server, or just agents working in that repo. This allows you to spawn multiple sessions in the same repo, and have all conflicts automatically resolved. 
 
-
 https://github.com/user-attachments/assets/0b69a309-e4c2-4721-8e4d-b5a93d8865ed
 
 The above is a video of me manually managing a swarm of 20 agents. Some working on the jcode codebase, and some not. This is only possible with the performance/resource efficiency noted in the above section on client/session memory usage. 
 
 Agents are also able to spawn their own swarms autonomously. They have a swarm tool which allows them to spawn in their own teamates to accomplish tasks in parallel. Doing so turns the main agent into a coordinator and the spawned agents into workers. Groups of agents, their messaging channels, their completion statuses, etc are all automatically managed. This can be done headlessly or headed. 
-
-
-<!-- Add swarm demo thumbnail/video and fuller writeup here. -->
 
 ---
 
