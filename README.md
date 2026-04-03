@@ -194,15 +194,15 @@ Jcode is inventing a new form of customizability. One that doesn't limit you to 
 
 ## Misc.
 
-The devil is in the details. There are many undocumented optimizations and nicities that jcode implements. Some examples: 
+The devil is in the details. There are many undocumented optimizations and niceties that jcode implements. Some examples: 
 
-Anthropic's Claude cache goes cold after 5 minutes. If initiate claude after these 5 minutes, you have a cache miss, potentially costing you lots of tokens. The ui warns you when the cache went cold, and notfies you if there was an unexpected cache miss. 
+Anthropic's Claude cache goes cold after 5 minutes. If you initiate Claude after these 5 minutes, you have a cache miss, potentially costing you lots of tokens. The ui warns you when the cache went cold, and notfies you if there was an unexpected cache miss. 
 
-jcode comes with instructions on how to set up firefox agent bridge. Ask you agent to set it up, and then you will have browser automation in jcode as well. 
+jcode comes with instructions on how to set up Firefox Agent Bridge. Ask you agent to set it up, and then you will have browser automation in jcode as well. 
 
-Agent grep is a grep tool I made for the jcode agent. It adds file strucuture information (ie the list of functions, their displacement, etc) to the grep return, so that the agent can infer more of what the file doesn without actually reading the file. It also implements a harness-level integration where adaptively truncates returns based on what the agent has already seen. This saves on context a lot. 
+Agent grep is a grep tool I made for the jcode agent. It adds file strucuture information (ie the list of functions, their displacement, etc) to the grep return, so that the agent can infer more of what the file doesn without actually reading the file. It also implements a harness-level integration that adaptively truncates returns based on what the agent has already seen. This saves on context a lot. 
 
-Inputs are by default interleaved with the working agent. It sends the input as soon as it safely can without breaking kv cache. Submit with shift enter instead, and it will send a queue send, and wait for the agent to fully finish its turn before sending.
+Inputs are by default interleaved with the working agent. It sends the input as soon as it safely can without breaking the KV cache. Submit with shift enter instead, and it will send a queue send, and wait for the agent to fully finish its turn before sending.
 
 ---
 
