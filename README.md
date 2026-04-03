@@ -8,7 +8,7 @@
 [![Commit Activity](https://img.shields.io/github/commit-activity/m/1jehuang/jcode?style=flat-square)](https://github.com/1jehuang/jcode/commits/master)
 [![GitHub Stars](https://img.shields.io/github/stars/1jehuang/jcode?style=flat-square)](https://github.com/1jehuang/jcode/stargazers)
 
-The next generation coding agent harness to raise the skill ceiling. 
+The next generation coding agent harness to raise the skill ceiling. <br>
 Built for multi-session workflows, infinite customizability, performance, and beauty. 
 
 <br>
