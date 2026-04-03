@@ -180,6 +180,8 @@ The above image is the first page of provider logins
 - **Aggregator / compatibility providers:** `openrouter`, `openai-compatible`
 - **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `minimax`, `xai`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
 
+Jcode also supports easy multi-account switching. Ran out of tokens on your first ChatGPT Pro subscription? /account and quickly switch to your second. 
+
 ---
 
 ## Customizability / Self-Dev
@@ -187,6 +189,20 @@ The above image is the first page of provider logins
 Jcode is inventing a new form of customizability. One that doesn't limit you to what a plugin or extension can do. Tell your jcode agent to enter self dev mode, and it will start modifying its own source code. Jcode is optimized to iterate on itself. There is significant infrastructure around self developement, which allows it to edit, build, and test its own source code, then reload its own binary and continue work in your (potentially many) sessions, fully automatically. 
 
 <!-- Add self-dev demo thumbnail/video and fuller writeup here. -->
+
+---
+
+## Misc.
+
+The devil is in the details. There are many undocumented optimizations and nicities that jcode implements. Some examples: 
+
+Anthropic's Claude cache goes cold after 5 minutes. If initiate claude after these 5 minutes, you have a cache miss, potentially costing you lots of tokens. The ui warns you when the cache went cold, and notfies you if there was an unexpected cache miss. 
+
+jcode comes with instructions on how to set up firefox agent bridge. Ask you agent to set it up, and then you will have browser automation in jcode as well. 
+
+Agent grep is a grep tool I made for the jcode agent. It adds file strucuture information (ie the list of functions, their displacement, etc) to the grep return, so that the agent can infer more of what the file doesn without actually reading the file. It also implements a harness-level integration where adaptively truncates returns based on what the agent has already seen. This saves on context a lot. 
+
+Inputs are by default interleaved with the working agent. It sends the input as soon as it safely can without breaking kv cache. Submit with shift enter instead, and it will send a queue send, and wait for the agent to fully finish its turn before sending.
 
 ---
 
