@@ -126,16 +126,20 @@ Memories are automatically consolidated every so often via the ambient mode. Thi
 
 ---
 
-## UI: Diagrams, Infowidgets, Side panels
+## UI: Side panels, Diagrams, Infowidgets, rendering, scrolling, alignment
 
-Jcode can render at over a thousand fps. Your monitor will not have the refresh rate to show you, but this means you will not have silly flicker problems. 
-
-The side panel can render linked markdown, diagrams, and generated visual output directly inside the terminal workflow.
+The side panel is a place for auxiliary information. Tell your jcode agent to load a file into the side panel and see it update in real time, or tell your agent to write directly to the side panel, or use it as a diff viewer. The side panel (and chat) is able to render mermaid diagrams inline. 
 <img width="2877" height="1762" alt="image" src="https://github.com/user-attachments/assets/6c7bec81-ef3f-434d-8a7b-d55f8a54e5cf" />
 
 To make this possible, I created a new mermaid rendering library to render diagrams 1800x faster. It has no browser or Typescript dependency. See https://github.com/1jehuang/mermaid-rs-renderer
 
 To show you important information without taking space away from the screen that could be used for responses, I developed info widgets. Info widgets will only ever take up the negative space on the screen to show you information, and will get out of the way if there isn't any. 
+
+Jcode can render at over a thousand fps. Your monitor will not have the refresh rate to show you, but this means you will not have silly flicker problems. 
+
+The custom scrollback implementation of jcode allows it to do much more than a native scrollback. However, it is a terminal-level limitation that I cannot have smooth scrolling with a custom scrollback. To fix this, I made my own terminal. Handterm https://github.com/1jehuang/handterm implements a native scroll api, and also happens to be very effiecent. This is a work in progress. 
+
+Yes, you can change the alignment to be left-aligned. I prefer the centered mode, but to each their own. Alt-c hotkey to change, or change config for a persistent change. /alignment command as well.
 
 ---
 
