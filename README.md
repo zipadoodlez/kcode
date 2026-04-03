@@ -139,7 +139,7 @@ Jcode can render at over a thousand fps. Your monitor will not have the refresh 
 
 The custom scrollback implementation of jcode allows it to do much more than a native scrollback. However, it is a terminal-level limitation that I cannot have smooth scrolling with a custom scrollback. To fix this, I made my own terminal. Handterm https://github.com/1jehuang/handterm implements a native scroll api, and also happens to be very effiecent. This is a work in progress. 
 
-Yes, you can change the alignment to be left-aligned. I prefer the centered mode, but to each their own. Alt-c hotkey to change, or change config for a persistent change. /alignment command as well.
+Yes, you can change the alignment to be left-aligned. I prefer the centered mode, but to each their own. You can change this with the `Alt, C` hotkey, or with the /aligment command, or in the config.
 
 ---
 
