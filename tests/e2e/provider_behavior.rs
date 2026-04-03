@@ -592,8 +592,8 @@ async fn test_system_prompt_no_claude_code_identity() -> Result<()> {
 
     let system_prompt = &captured_prompts[0];
 
-    // Check only the identity portion at the start of the system prompt
-    // (not the full prompt which may include CLAUDE.md with "Claude Code CLI" references)
+    // Check only the identity portion at the start of the system prompt.
+    // User-provided instruction files may legitimately mention Claude Code CLI.
     // The first ~500 chars contain the identity statement
     let identity_portion = if system_prompt.len() > 500 {
         &system_prompt[..500]
