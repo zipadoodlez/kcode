@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
 use std::time::Duration;
@@ -8,6 +8,10 @@ use std::time::Duration;
 use crate::{browser, gateway, memory, storage, tui};
 
 use super::terminal::{cleanup_tui_runtime, init_tui_runtime};
+
+const DEFAULT_AUTH_TEST_PROVIDER_PROMPT: &str =
+    "Reply with exactly AUTH_TEST_OK and nothing else. Do not call tools.";
+const DEFAULT_AUTH_TEST_TOOL_PROMPT: &str = "If tools are available, use exactly one trivial tool call and then reply with exactly AUTH_TEST_OK and nothing else.";
 
 pub enum AmbientSubcommand {
     Status,
@@ -568,6 +572,13 @@ struct AuthStatusProviderReport {
     display_name: String,
     status: String,
     method: String,
+    health: String,
+    credential_source: String,
+    expiry_confidence: String,
+    refresh_support: String,
+    validation_method: String,
+    last_refresh: Option<String>,
+    validation: Option<String>,
     auth_kind: String,
     recommended: bool,
 }
@@ -576,6 +587,15 @@ struct AuthStatusProviderReport {
 struct AuthStatusReport {
     any_available: bool,
     providers: Vec<AuthStatusProviderReport>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ResolvedAuthTestTarget {
+    Detailed(AuthTestTarget),
+    Generic {
+        provider: crate::provider_catalog::LoginProviderDescriptor,
+        choice: super::provider_init::ProviderChoice,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -637,16 +657,32 @@ struct UsageReport {
 
 pub fn run_auth_status_command(emit_json: bool) -> Result<()> {
     let status = crate::auth::AuthStatus::check();
+    let validation = crate::auth::validation::load_all();
     let providers = crate::provider_catalog::auth_status_login_providers();
     let reports = providers
         .into_iter()
-        .map(|provider| AuthStatusProviderReport {
-            id: provider.id.to_string(),
-            display_name: provider.display_name.to_string(),
-            status: auth_state_label(status.state_for_provider(provider)).to_string(),
-            method: status.method_detail_for_provider(provider),
-            auth_kind: provider.auth_kind.label().to_string(),
-            recommended: provider.recommended,
+        .map(|provider| {
+            let assessment = status.assessment_for_provider(provider);
+            AuthStatusProviderReport {
+                id: provider.id.to_string(),
+                display_name: provider.display_name.to_string(),
+                status: auth_state_label(assessment.state).to_string(),
+                method: assessment.method_detail.clone(),
+                health: assessment.health_summary(),
+                credential_source: assessment.credential_source.label().to_string(),
+                expiry_confidence: assessment.expiry_confidence.label().to_string(),
+                refresh_support: assessment.refresh_support.label().to_string(),
+                validation_method: assessment.validation_method.label().to_string(),
+                last_refresh: assessment
+                    .last_refresh
+                    .as_ref()
+                    .map(crate::auth::refresh_state::format_record_label),
+                validation: validation
+                    .get(provider.id)
+                    .map(crate::auth::validation::format_record_label),
+                auth_kind: provider.auth_kind.label().to_string(),
+                recommended: provider.recommended,
+            }
         })
         .collect::<Vec<_>>();
 
@@ -659,8 +695,13 @@ pub fn run_auth_status_command(emit_json: bool) -> Result<()> {
     } else {
         for provider in reports {
             println!(
-                "{}\t{}\t{}\t{}",
-                provider.id, provider.status, provider.auth_kind, provider.method
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                provider.id,
+                provider.status,
+                provider.auth_kind,
+                provider.method,
+                provider.health,
+                provider.validation.as_deref().unwrap_or("not validated")
             );
         }
     }
@@ -913,7 +954,7 @@ pub async fn run_single_message_command(
     let provider = if emit_json || emit_ndjson {
         super::provider_init::init_provider_quiet(choice, model).await?
     } else {
-        super::provider_init::init_provider(choice, model).await?
+        super::provider_init::init_provider_for_validation(choice, model).await?
     };
     let registry = crate::tool::Registry::new(provider.clone()).await;
     let mut agent = crate::agent::Agent::new(provider.clone(), registry);
@@ -1453,6 +1494,17 @@ impl AuthTestProviderReport {
         }
     }
 
+    fn new_generic(provider_id: String, credential_paths: Vec<String>) -> Self {
+        Self {
+            provider: provider_id,
+            credential_paths,
+            steps: Vec::new(),
+            smoke_output: None,
+            tool_smoke_output: None,
+            success: true,
+        }
+    }
+
     fn push_step(&mut self, name: impl Into<String>, ok: bool, detail: impl Into<String>) {
         if !ok {
             self.success = false;
@@ -1462,6 +1514,27 @@ impl AuthTestProviderReport {
             ok,
             detail: detail.into(),
         });
+    }
+}
+
+impl ResolvedAuthTestTarget {
+    fn from_choice(choice: &super::provider_init::ProviderChoice) -> Option<Self> {
+        let provider = super::provider_init::login_provider_for_choice(choice)?;
+        Some(match AuthTestTarget::from_provider_choice(choice) {
+            Some(target) => Self::Detailed(target),
+            None => Self::Generic {
+                provider,
+                choice: choice.clone(),
+            },
+        })
+    }
+
+    fn from_provider(provider: crate::provider_catalog::LoginProviderDescriptor) -> Option<Self> {
+        let choice = super::provider_init::choice_for_login_provider(provider)?;
+        Some(match AuthTestTarget::from_provider_choice(&choice) {
+            Some(target) => Self::Detailed(target),
+            None => Self::Generic { provider, choice },
+        })
     }
 }
 
@@ -1515,9 +1588,19 @@ impl AuthTestSmokeKind {
         model: Option<&str>,
         prompt: &str,
     ) -> Result<String> {
+        self.run_for_choice(&target.provider_choice(), model, prompt)
+            .await
+    }
+
+    async fn run_for_choice(
+        self,
+        choice: &super::provider_init::ProviderChoice,
+        model: Option<&str>,
+        prompt: &str,
+    ) -> Result<String> {
         match self {
-            Self::Provider => run_provider_smoke(target, model, prompt).await,
-            Self::Tool => run_provider_tool_smoke(target, model, prompt).await,
+            Self::Provider => run_provider_smoke_for_choice(choice, model, prompt).await,
+            Self::Tool => run_provider_tool_smoke_for_choice(choice, model, prompt).await,
         }
     }
 
@@ -1589,6 +1672,100 @@ async fn maybe_run_auth_test_smoke(
     }
 }
 
+async fn maybe_run_auth_test_smoke_for_choice(
+    report: &mut AuthTestProviderReport,
+    kind: AuthTestSmokeKind,
+    choice: &super::provider_init::ProviderChoice,
+    model: Option<&str>,
+    enabled: bool,
+    prompt: &str,
+) {
+    if enabled && report.success {
+        match kind.run_for_choice(choice, model, prompt).await {
+            Ok(output) => {
+                let ok = output.contains("AUTH_TEST_OK");
+                kind.set_output(report, output.clone());
+                report.push_step(
+                    kind.step_name(),
+                    ok,
+                    if ok {
+                        kind.success_detail().to_string()
+                    } else {
+                        kind.failure_detail(&output)
+                    },
+                );
+            }
+            Err(err) => report.push_step(kind.step_name(), false, format!("{err:#}")),
+        }
+    } else if !enabled {
+        report.push_step(kind.step_name(), true, kind.skipped_by_flag_detail());
+    }
+}
+
+pub(crate) async fn run_post_login_validation(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+) -> Result<()> {
+    let Some(choice) = super::provider_init::choice_for_login_provider(provider) else {
+        eprintln!(
+            "\nSkipping automatic runtime validation for {}. Auto Import can add multiple providers; run `jcode auth-test --all-configured` to validate them.",
+            provider.display_name
+        );
+        return Ok(());
+    };
+
+    eprintln!(
+        "\nValidating {} login with live auth/runtime checks...",
+        provider.display_name
+    );
+
+    let report = if let Some(target) = AuthTestTarget::from_provider_choice(&choice) {
+        populate_auth_test_target_report(
+            target,
+            None,
+            true,
+            true,
+            DEFAULT_AUTH_TEST_PROVIDER_PROMPT,
+            DEFAULT_AUTH_TEST_TOOL_PROMPT,
+            AuthTestProviderReport::new(target),
+        )
+        .await
+    } else {
+        populate_generic_auth_test_report(
+            provider,
+            choice.clone(),
+            None,
+            true,
+            true,
+            DEFAULT_AUTH_TEST_PROVIDER_PROMPT,
+            DEFAULT_AUTH_TEST_TOOL_PROMPT,
+            AuthTestProviderReport::new_generic(
+                choice.as_arg_value().to_string(),
+                generic_credential_paths_for_provider(provider),
+            ),
+        )
+        .await
+    };
+
+    persist_auth_test_report(&report);
+    print_auth_test_reports(std::slice::from_ref(&report));
+
+    if report.success {
+        Ok(())
+    } else if AuthTestTarget::from_provider_choice(&choice).is_some() {
+        anyhow::bail!(
+            "Post-login validation failed for {}. Credentials were saved, but jcode could not verify runtime readiness. Re-run `jcode auth-test --provider {}` for details.",
+            provider.display_name,
+            choice.as_arg_value()
+        )
+    } else {
+        anyhow::bail!(
+            "Post-login validation failed for {}. Credentials were saved, but jcode could not verify runtime readiness. Re-test with `jcode --provider {} run \"Reply with exactly AUTH_TEST_OK and nothing else.\"` after fixing the provider/runtime.",
+            provider.display_name,
+            choice.as_arg_value()
+        )
+    }
+}
+
 pub async fn run_auth_test_command(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
@@ -1601,22 +1778,40 @@ pub async fn run_auth_test_command(
     output_path: Option<&str>,
 ) -> Result<()> {
     let targets = resolve_auth_test_targets(choice, all_configured)?;
-    let smoke_prompt =
-        prompt.unwrap_or("Reply with exactly AUTH_TEST_OK and nothing else. Do not call tools.");
+    let provider_smoke_prompt = prompt.unwrap_or(DEFAULT_AUTH_TEST_PROVIDER_PROMPT);
+    let tool_smoke_prompt = prompt.unwrap_or(DEFAULT_AUTH_TEST_TOOL_PROMPT);
 
     let mut reports = Vec::new();
     for target in targets {
-        reports.push(
-            run_auth_test_target(
-                target,
-                model,
-                login,
-                !no_smoke,
-                !no_tool_smoke,
-                smoke_prompt,
-            )
-            .await,
-        );
+        let report = match target {
+            ResolvedAuthTestTarget::Detailed(target) => {
+                run_auth_test_target(
+                    target,
+                    model,
+                    login,
+                    !no_smoke,
+                    !no_tool_smoke,
+                    provider_smoke_prompt,
+                    tool_smoke_prompt,
+                )
+                .await
+            }
+            ResolvedAuthTestTarget::Generic { provider, choice } => {
+                run_generic_auth_test_target(
+                    provider,
+                    choice,
+                    model,
+                    login,
+                    !no_smoke,
+                    !no_tool_smoke,
+                    provider_smoke_prompt,
+                    tool_smoke_prompt,
+                )
+                .await
+            }
+        };
+        persist_auth_test_report(&report);
+        reports.push(report);
     }
 
     let report_json = if emit_json || output_path.is_some() {
@@ -1646,7 +1841,7 @@ pub async fn run_auth_test_command(
 fn resolve_auth_test_targets(
     choice: &super::provider_init::ProviderChoice,
     all_configured: bool,
-) -> Result<Vec<AuthTestTarget>> {
+) -> Result<Vec<ResolvedAuthTestTarget>> {
     if all_configured || matches!(choice, super::provider_init::ProviderChoice::Auto) {
         let status = crate::auth::AuthStatus::check();
         let targets = configured_auth_test_targets(&status);
@@ -1658,38 +1853,24 @@ fn resolve_auth_test_targets(
         return Ok(targets);
     }
 
-    AuthTestTarget::from_provider_choice(choice).map(|target| vec![target]).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Provider '{}' is not yet supported by `jcode auth-test`. Supported: claude, openai, gemini, antigravity, google, copilot, cursor.",
-            choice.as_arg_value()
-        )
-    })
+    ResolvedAuthTestTarget::from_choice(choice)
+        .map(|target| vec![target])
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Provider '{}' is not yet supported by `jcode auth-test`.",
+                choice.as_arg_value()
+            )
+        })
 }
 
-fn configured_auth_test_targets(status: &crate::auth::AuthStatus) -> Vec<AuthTestTarget> {
-    let mut targets = Vec::new();
-    if status.anthropic.state != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Claude);
-    }
-    if status.openai != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Openai);
-    }
-    if status.gemini != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Gemini);
-    }
-    if status.antigravity != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Antigravity);
-    }
-    if status.google != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Google);
-    }
-    if status.copilot != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Copilot);
-    }
-    if status.cursor != crate::auth::AuthState::NotConfigured {
-        targets.push(AuthTestTarget::Cursor);
-    }
-    targets
+fn configured_auth_test_targets(status: &crate::auth::AuthStatus) -> Vec<ResolvedAuthTestTarget> {
+    crate::provider_catalog::auth_status_login_providers()
+        .into_iter()
+        .filter(|provider| {
+            status.state_for_provider(*provider) != crate::auth::AuthState::NotConfigured
+        })
+        .filter_map(ResolvedAuthTestTarget::from_provider)
+        .collect()
 }
 
 async fn run_auth_test_target(
@@ -1698,7 +1879,8 @@ async fn run_auth_test_target(
     login: bool,
     run_smoke: bool,
     run_tool_smoke: bool,
-    smoke_prompt: &str,
+    provider_smoke_prompt: &str,
+    tool_smoke_prompt: &str,
 ) -> AuthTestProviderReport {
     let mut report = AuthTestProviderReport::new(target);
 
@@ -1709,6 +1891,27 @@ async fn run_auth_test_target(
         }
     }
 
+    populate_auth_test_target_report(
+        target,
+        model,
+        run_smoke,
+        run_tool_smoke,
+        provider_smoke_prompt,
+        tool_smoke_prompt,
+        report,
+    )
+    .await
+}
+
+async fn populate_auth_test_target_report(
+    target: AuthTestTarget,
+    model: Option<&str>,
+    run_smoke: bool,
+    run_tool_smoke: bool,
+    provider_smoke_prompt: &str,
+    tool_smoke_prompt: &str,
+    mut report: AuthTestProviderReport,
+) -> AuthTestProviderReport {
     match target {
         AuthTestTarget::Claude => probe_claude_auth(&mut report).await,
         AuthTestTarget::Openai => probe_openai_auth(&mut report).await,
@@ -1725,7 +1928,7 @@ async fn run_auth_test_target(
         target,
         model,
         run_smoke,
-        smoke_prompt,
+        provider_smoke_prompt,
     )
     .await;
 
@@ -1735,11 +1938,167 @@ async fn run_auth_test_target(
         target,
         model,
         run_tool_smoke,
-        smoke_prompt,
+        tool_smoke_prompt,
     )
     .await;
 
     report
+}
+
+async fn run_generic_auth_test_target(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+    choice: super::provider_init::ProviderChoice,
+    model: Option<&str>,
+    login: bool,
+    run_smoke: bool,
+    run_tool_smoke: bool,
+    provider_smoke_prompt: &str,
+    tool_smoke_prompt: &str,
+) -> AuthTestProviderReport {
+    let mut report = AuthTestProviderReport::new_generic(
+        choice.as_arg_value().to_string(),
+        generic_credential_paths_for_provider(provider),
+    );
+
+    if login {
+        match super::login::run_login(&choice, None).await {
+            Ok(()) => report.push_step("login", true, "Login flow completed."),
+            Err(err) => report.push_step("login", false, err.to_string()),
+        }
+    }
+
+    populate_generic_auth_test_report(
+        provider,
+        choice,
+        model,
+        run_smoke,
+        run_tool_smoke,
+        provider_smoke_prompt,
+        tool_smoke_prompt,
+        report,
+    )
+    .await
+}
+
+async fn populate_generic_auth_test_report(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+    choice: super::provider_init::ProviderChoice,
+    model: Option<&str>,
+    run_smoke: bool,
+    run_tool_smoke: bool,
+    provider_smoke_prompt: &str,
+    tool_smoke_prompt: &str,
+    mut report: AuthTestProviderReport,
+) -> AuthTestProviderReport {
+    probe_generic_provider_auth(provider, &mut report);
+
+    maybe_run_auth_test_smoke_for_choice(
+        &mut report,
+        AuthTestSmokeKind::Provider,
+        &choice,
+        model,
+        run_smoke,
+        provider_smoke_prompt,
+    )
+    .await;
+
+    maybe_run_auth_test_smoke_for_choice(
+        &mut report,
+        AuthTestSmokeKind::Tool,
+        &choice,
+        model,
+        run_tool_smoke,
+        tool_smoke_prompt,
+    )
+    .await;
+
+    report
+}
+
+fn persist_auth_test_report(report: &AuthTestProviderReport) {
+    let step_map = report
+        .steps
+        .iter()
+        .map(|step| (step.name.as_str(), step.ok))
+        .collect::<HashMap<_, _>>();
+    let summary = report
+        .steps
+        .iter()
+        .find(|step| !step.ok)
+        .map(|step| format!("{}: {}", step.name, step.detail))
+        .or_else(|| {
+            report
+                .steps
+                .last()
+                .map(|step| format!("{}: {}", step.name, step.detail))
+        })
+        .unwrap_or_else(|| "No validation steps recorded.".to_string());
+
+    let record = crate::auth::validation::ProviderValidationRecord {
+        checked_at_ms: chrono::Utc::now().timestamp_millis(),
+        success: report.success,
+        provider_smoke_ok: step_map.get("provider_smoke").copied(),
+        tool_smoke_ok: step_map.get("tool_smoke").copied(),
+        summary,
+    };
+
+    if let Err(err) = crate::auth::validation::save(&report.provider, record) {
+        crate::logging::warn(&format!(
+            "failed to persist auth validation result for {}: {}",
+            report.provider, err
+        ));
+    }
+}
+
+fn generic_credential_paths_for_provider(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+) -> Vec<String> {
+    let Ok(config_dir) = crate::storage::app_config_dir() else {
+        return Vec::new();
+    };
+
+    match provider.target {
+        crate::provider_catalog::LoginProviderTarget::Jcode => {
+            vec![config_dir.join(crate::subscription_catalog::JCODE_ENV_FILE)]
+        }
+        crate::provider_catalog::LoginProviderTarget::OpenRouter => {
+            vec![config_dir.join("openrouter.env")]
+        }
+        crate::provider_catalog::LoginProviderTarget::Azure => {
+            vec![config_dir.join(crate::auth::azure::ENV_FILE)]
+        }
+        crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
+            let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+            vec![config_dir.join(resolved.env_file)]
+        }
+        _ => Vec::new(),
+    }
+    .into_iter()
+    .map(|path| path.display().to_string())
+    .collect()
+}
+
+fn probe_generic_provider_auth(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+    report: &mut AuthTestProviderReport,
+) {
+    let status = crate::auth::AuthStatus::check();
+    let state = status.state_for_provider(provider);
+    let detail = status.method_detail_for_provider(provider);
+    report.push_step(
+        "credential_probe",
+        state == crate::auth::AuthState::Available,
+        format!(
+            "{} auth status is {} ({detail}).",
+            provider.display_name,
+            auth_state_label(state),
+        ),
+    );
+    report.push_step(
+        "refresh_probe",
+        true,
+        "Skipped: provider does not expose a dedicated refresh probe in jcode today.".to_string(),
+    );
 }
 
 async fn probe_claude_auth(report: &mut AuthTestProviderReport) {
@@ -1940,26 +2299,26 @@ async fn probe_cursor_auth(report: &mut AuthTestProviderReport) {
     );
 }
 
-async fn run_provider_smoke(
-    target: AuthTestTarget,
+async fn run_provider_smoke_for_choice(
+    choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
     prompt: &str,
 ) -> Result<String> {
     run_auth_test_with_retry(async || {
-        let provider = super::provider_init::init_provider(&target.provider_choice(), model)
+        let provider = super::provider_init::init_provider_for_validation(choice, model)
             .await
-            .with_context(|| format!("Failed to initialize {} provider", target.label()))?;
+            .with_context(|| format!("Failed to initialize {} provider", choice.as_arg_value()))?;
         let output = provider
             .complete_simple(prompt, "")
             .await
-            .with_context(|| format!("{} provider smoke prompt failed", target.label()))?;
+            .with_context(|| format!("{} provider smoke prompt failed", choice.as_arg_value()))?;
         Ok(output.trim().to_string())
     })
     .await
 }
 
-async fn run_provider_tool_smoke(
-    target: AuthTestTarget,
+async fn run_provider_tool_smoke_for_choice(
+    choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
     prompt: &str,
 ) -> Result<String> {
@@ -1967,9 +2326,11 @@ async fn run_provider_tool_smoke(
 
     run_auth_test_with_retry(async || {
         let (provider, registry) =
-            super::provider_init::init_provider_and_registry(&target.provider_choice(), model)
+            super::provider_init::init_provider_and_registry_for_validation(choice, model)
                 .await
-                .with_context(|| format!("Failed to initialize {} provider", target.label()))?;
+                .with_context(|| {
+                    format!("Failed to initialize {} provider", choice.as_arg_value())
+                })?;
         registry
             .register_mcp_tools(None, None, Some("auth-test".to_string()))
             .await;
@@ -1991,7 +2352,7 @@ async fn run_provider_tool_smoke(
             .with_context(|| {
                 format!(
                     "{} tool-enabled smoke prompt failed with {} attached tools",
-                    target.label(),
+                    choice.as_arg_value(),
                     tools.len()
                 )
             })?;
@@ -2133,10 +2494,10 @@ mod tests {
         assert_eq!(
             targets,
             vec![
-                AuthTestTarget::Claude,
-                AuthTestTarget::Gemini,
-                AuthTestTarget::Google,
-                AuthTestTarget::Copilot
+                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Claude),
+                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini),
+                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Google),
+                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Copilot)
             ]
         );
     }
@@ -2146,7 +2507,26 @@ mod tests {
         let targets =
             resolve_auth_test_targets(&super::super::provider_init::ProviderChoice::Gemini, false)
                 .expect("resolve target");
-        assert_eq!(targets, vec![AuthTestTarget::Gemini]);
+        assert_eq!(
+            targets,
+            vec![ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini)]
+        );
+    }
+
+    #[test]
+    fn explicit_generic_provider_maps_to_generic_auth_target() {
+        let targets = resolve_auth_test_targets(
+            &super::super::provider_init::ProviderChoice::Openrouter,
+            false,
+        )
+        .expect("resolve target");
+        assert_eq!(
+            targets,
+            vec![ResolvedAuthTestTarget::Generic {
+                provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
+                choice: super::super::provider_init::ProviderChoice::Openrouter,
+            }]
+        );
     }
 
     #[test]
