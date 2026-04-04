@@ -204,6 +204,8 @@ Agent grep is a grep tool I made for the jcode agent. It adds file strucuture in
 
 Inputs are by default interleaved with the working agent. It sends the input as soon as it safely can without breaking the KV cache. Submit with shift enter instead, and it will send a queue send, and wait for the agent to fully finish its turn before sending.
 
+Resume sessions from different harnesses. Claude code broke on you? Resume the session from jcode and continue where you left off. Session resume is supported for codex, claude code, opencode, and pi. 
+
 ---
 
 ## iOS Application / Native OpenClaw
