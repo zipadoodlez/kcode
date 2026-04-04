@@ -113,13 +113,13 @@ Measured as median **time to first terminal output** across 10 PTY launches on t
 
 ## Memory (Agent memory)
 
-Jcode embedds each turn/response as a semantic vector. Every turn does queries a graph of memories to efficiently find related memory entries via a cosine similarity check. The embedding hits are fed into the conversation, or optionally uses a memory sideagent which verifies the memories are relevant, and potentially does more work for information retreival before injecting into the conversation. This results in a human like memory system which allows the agent to automatically recall relevant information to the conversation without actively calling memory tools or being a token burner. 
+Jcode embeds each turn/response as a semantic vector. Every turn does queries a graph of memories to efficiently find related memory entries via a cosine similarity check. The embedding hits are fed into the conversation, or optionally uses a memory sideagent which verifies the memories are relevant, and potentially does more work for information retreival before injecting into the conversation. This results in a human like memory system which allows the agent to automatically recall relevant information to the conversation without actively calling memory tools or being a token burner. 
 ot 
 To have memories which are retrieved, they must also be extracted and stored. Every so often (semantic drift, K turns since last extraction, session end, etc), memories are extracted via a memory sideagent, and put into the memory graph. 
 
 The harness also provides explicit memory tools to allow the agent to actively search or store the memory without relying on a passive background process. The harness also provides session search for traditional RAG on previous sessions. 
 
-Memories are automatically consolidated every so often via the ambient mode. This reorganizes, checks for stalenss, etc
+Memories are automatically consolidated every so often via the ambient mode. This reorganizes, checks for staleness and conflicts, etc
 
 <!-- Add memory demo thumbnail/video and fuller writeup here. -->
 
@@ -138,7 +138,7 @@ Jcode can render at over a thousand fps. Your monitor will not have the refresh 
 
 The custom scrollback implementation of jcode allows it to do much more than a native scrollback. However, it is a terminal-level limitation that I cannot have smooth, partial line scrolling with a custom scrollback. To fix this, I made my own terminal. Handterm https://github.com/1jehuang/handterm implements a native scroll api, and also happens to be very effiecent. This is a work in progress. Scrolling is still well implemented for normal terminals.
 
-Yes, you can change the alignment to be left-aligned. I prefer the centered mode, but to each their own. You can change this with the `Alt, C` hotkey, or with the /aligment command, or in the config.
+Yes, you can change the alignment to be left-aligned. I prefer the centered mode, but to each their own. You can change this with the `Alt, C` hotkey, or with the /alignment command, or in the config.
 
 ---
 
@@ -163,7 +163,6 @@ jcode works with subscription-backed OAuth flows and many provider integrations,
 - **Claude** (`jcode login --provider claude`)
 - **OpenAI / ChatGPT / Codex** (`jcode login --provider openai`)
 - **Google Gemini** (`jcode login --provider gemini`)
-- **Google / Gmail tools** (`jcode login --provider google`)
 - **GitHub Copilot** (`jcode login --provider copilot`)
 - **Azure OpenAI** (`jcode login --provider azure`)
 - **Alibaba Cloud Coding Plan** (`jcode login --provider alibaba-coding-plan`)
@@ -175,7 +174,7 @@ The above image is the first page of provider logins
 
 ### Supported provider
 
-- **Native / first-party style providers:** `jcode`, `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
+- **Native / first-party style providers:** `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
 - **Aggregator / compatibility providers:** `openrouter`, `openai-compatible`
 - **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `minimax`, `xai`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
 
@@ -186,6 +185,8 @@ Jcode also supports easy multi-account switching. Ran out of tokens on your firs
 ## Customizability / Self-Dev
 
 Jcode is inventing a new form of customizability. One that doesn't limit you to what a plugin or extension can do. Tell your jcode agent to enter self dev mode, and it will start modifying its own source code. Jcode is optimized to iterate on itself. There is significant infrastructure around self developement, which allows it to edit, build, and test its own source code, then reload its own binary and continue work in your (potentially many) sessions, fully automatically. 
+
+It is reccomended that you use a frontier model for this. The jcode codebase is not a simple one, and weaker models can make subtle, breaking changes. GPT 5.4+ class models work well. 
 
 <!-- Add self-dev demo thumbnail/video and fuller writeup here. -->
 
@@ -205,9 +206,17 @@ Inputs are by default interleaved with the working agent. It sends the input as 
 
 ---
 
-## iOS Application for Native OpenClaw
+## iOS Application / Native OpenClaw
 
-A native iOS implementation of OpenClaw is coming soon.
+A native iOS application version of jcode is coming soon. This will allow you to work with jcode on your personal machine's environment from your phone, via Tailscale. Openclaw like features will be bundled with this iOS application. 
+
+---
+
+## Other planned features
+
+Agents dont like to commit in dirty git state with active changes. Git was clearly not built for multi-agent workflows, and git worktrees is not a good solution. Given this, I believe that is an opporunity for a new git like primitive to be born. 
+
+Build speed improvements: An incremental debug cargo build with cache enabled takes about 1 minute on my machine. The goal is 5-20 seconds. Refactors and crates seams should be able to make this happen. 
 
 <!-- Add iOS / native OpenClaw preview and fuller writeup here. -->
 
