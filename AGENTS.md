@@ -3,91 +3,25 @@
 ## Development Workflow
 
 - **Commit as you go** - Make small, focused commits after completing each feature or fix
+- If the git state is not clean, or there are other agents working in the codebase in parallel, do your best to still commit your work. 
 - **Push when done** - Push all commits to remote when finishing a task or session
 - **Use fast iteration by default** - Prefer `cargo check`, targeted tests, and dev builds while iterating
-- **Rebuild when done** - Run `cargo build --release` when you need to manually verify release behavior
-- **Promote to stable release only for release/signoff** - Run `scripts/install_release.sh` to update the stable/release binary (this uses `release-lto` and is slow)
-- **Test before committing** - Run `cargo test` (or a focused subset for narrow changes during iteration, then full suite before shipping)
-- **Bump version for releases** - Update version in `Cargo.toml` when making releases
-- **Remote builds available** - Use `scripts/remote_build.sh` to offload heavy cargo work to another machine
-
-## Versioning
-
-jcode uses semantic versions from `Cargo.toml` plus build metadata in the displayed version string.
-
-**Local/source builds:**
-- Use the package version from `Cargo.toml`
-- Display as `vX.Y.Z-dev (<git-hash>)`
-- Dirty trees display as `vX.Y.Z-dev (<git-hash>, dirty)`
-
-**Manual (major/minor):**
-- For big changes, manually update major/minor version in `Cargo.toml`
-- **Minor** (0.1.x → 0.2.0): New features, significant enhancements
-- **Major** (0.x.x → 1.0.0): Breaking changes to CLI, config, or APIs
-
-Release binaries display the release version plus git hash (for example `v0.1.47 (abc1234)`).
-
-## Project Structure & Module Organization
-- `src/` is the core library and CLI entry point (`src/main.rs`). Key areas include `src/agent.rs`, `src/provider/`, `src/mcp/`, `src/tool/`, and `src/tui/`.
-- `src/bin/` holds auxiliary binaries: `test_api.rs` (Claude SDK smoke test) and `harness.rs` (tool harness).
-- `tests/e2e/` contains integration tests and mock providers.
-- `scripts/` includes helper scripts like `agent_trace.sh` and `test_e2e.sh`.
-- Docs live in `README.md`, `OAUTH.md`, and `CLAUDE.md`.
-
-## Build, Test, and Development Commands
-- `cargo install --path .`: install the local CLI.
-- `cargo check`: fastest compile feedback loop (no binary output).
-- `cargo build`: fast dev build for iteration.
-- `cargo build --release`: rebuild latest (jcode on PATH picks it up automatically).
-- `scripts/install_release.sh`: promote current build to stable/release (`release-lto`, slow; use for release/signoff).
-- `jcode`: launch the TUI.
-- `jcode serve` / `jcode connect`: start the daemon and attach a client.
-- `cargo test`: run unit + integration tests.
-- `cargo test <test_name>`: run targeted tests for faster iteration.
-- `cargo test --test e2e`: run only end-to-end tests.
-- `cargo run --bin test_api`: Claude Code CLI smoke test.
-- `cargo run --bin jcode-harness -- --include-network`: exercise tool harness with optional network calls.
-- `scripts/agent_trace.sh`: end-to-end agent trace (set `JCODE_PROVIDER=openai|claude`).
-- `scripts/remote_build.sh --release`: build on remote machine and sync binary back.
-- `scripts/remote_build.sh test`: run tests on remote machine.
+- **Rebuild when done** - When you are done making changes, build the source.
+- **Bump version for releases** - Update version in `Cargo.toml` when making releases. When cutting a new release, look at all the changes that happened since the last release and determine what the version bump should be ie patch or minor, etc. 
+- **Remote builds available** - Use `scripts/remote_build.sh` to offload heavy cargo work to another machine. If your build is terminated, likely is because there are not enough resources on this machine to build. use remote build in that case. Try checking the resource avaliablity on the machine before you run a build. 
 
 ## Logs
 - Logs are written to `~/.jcode/logs/` (daily files like `jcode-YYYY-MM-DD.log`).
 
-## Debug Socket (External Testing)
-- Server exposes a debug socket for automation/introspection (default: main socket name with `-debug.sock` suffix).
-- Enable debug control with `JCODE_DEBUG_CONTROL=1`, set `display.debug_socket`, or start the shared server from a self-dev session; then send `debug_command` requests.
-- Protocol is newline-delimited JSON; see `Request::DebugCommand` in `src/protocol.rs`.
+## Debug Socket
+- Use the debug socket for runtime level debugging
 
 ## Install Notes
-- `~/.local/bin/jcode` is the launcher symlink used from PATH.
-- `~/.jcode/builds/stable/jcode` is the stable channel symlink.
-- `~/.jcode/builds/canary/jcode` is the self-dev channel.
+- `~/.local/bin/jcode` is the launcher symlink used from `PATH`.
+- `~/.jcode/builds/current/jcode` is the active local/source-build channel; self-dev builds and `scripts/install_release.sh` point the launcher here.
+- `~/.jcode/builds/stable/jcode` is the stable release channel; `scripts/install.sh` installs this and points the launcher here.
 - `~/.jcode/builds/versions/<version>/jcode` stores immutable binaries.
+- `~/.jcode/builds/canary/jcode` still exists for canary/testing flows, but it is not the primary self-dev install path.
+- On Windows, the equivalents are `%LOCALAPPDATA%\\jcode\\bin\\jcode.exe` for the launcher, `%LOCALAPPDATA%\\jcode\\builds\\stable\\jcode.exe` for stable, and `%LOCALAPPDATA%\\jcode\\builds\\versions\\<version>\\jcode.exe` for immutable installs; `scripts/install.ps1` currently installs the stable channel.
 - Ensure `~/.local/bin` is **before** `~/.cargo/bin` in `PATH`.
 
-## Coding Style & Naming Conventions
-- Rust 2021 style; format with `cargo fmt`.
-- Files/modules use `snake_case`; types/traits use `CamelCase`; functions use `snake_case`.
-- Keep CLI flags and subcommands consistent with existing `clap` patterns.
-
-## Testing Guidelines
-- Unit tests live alongside modules under `src/` using `#[cfg(test)]`.
-- Integration and provider mocks live in `tests/e2e/`.
-- Before shipping changes that affect providers, run `cargo test` and `cargo run --bin test_api`.
-- Use `scripts/test_e2e.sh` for a full preflight (binary check + targeted suites).
-- **Manual testing** - After making TUI changes, manually test in a real terminal to verify behavior.
-
-## Commit & Pull Request Guidelines
-- Commit messages are concise, imperative, and often start with verbs like “Add …” or “Fix …” (sometimes `Fix:` prefixes).
-- PRs should include a short summary, rationale, and the exact test commands run.
-- Note which provider you validated (`openai` or `claude`) and update docs when CLI behavior changes.
-
-## Multi-Agent Collaboration
-- If you see unexpected local changes, assume they are likely from another active agent.
-- Work alongside those changes; do not stop solely because the tree changed unexpectedly.
-- Do not revert or overwrite another agent’s edits unless explicitly asked.
-
-## Security & Configuration Tips
-- OAuth credentials live at `~/.codex/auth.json` and `~/.claude/.credentials.json`; never commit secrets.
-- For Claude SDK usage, set `JCODE_CLAUDE_SDK_PYTHON` as documented in `CLAUDE.md`.
