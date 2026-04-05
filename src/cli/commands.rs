@@ -563,6 +563,7 @@ struct NdjsonRunState {
     upstream_provider: Option<String>,
     connection_type: Option<String>,
     connection_phase: Option<String>,
+    status_detail: Option<String>,
     usage: crate::agent::TokenUsage,
 }
 
@@ -1032,6 +1033,7 @@ async fn run_single_message_command_ndjson(
                     "upstream_provider": state.upstream_provider,
                     "connection_type": state.connection_type,
                     "connection_phase": state.connection_phase,
+                    "status_detail": state.status_detail,
                 }),
             )?;
             Ok(())
@@ -1136,6 +1138,13 @@ fn emit_ndjson_event(
             write_json_line(
                 stdout,
                 &serde_json::json!({ "type": "connection_phase", "phase": phase }),
+            )
+        }
+        ServerEvent::StatusDetail { detail } => {
+            state.status_detail = Some(detail.clone());
+            write_json_line(
+                stdout,
+                &serde_json::json!({ "type": "status_detail", "detail": detail }),
             )
         }
         ServerEvent::UpstreamProvider { provider } => {
