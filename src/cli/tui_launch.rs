@@ -1068,28 +1068,6 @@ pub fn spawn_selfdev_in_new_terminal(
 }
 
 pub fn list_sessions() -> Result<()> {
-    fn resolve_cli_executable(name: &str) -> std::path::PathBuf {
-        let mut search_dirs: Vec<std::path::PathBuf> = std::env::var_os("PATH")
-            .map(|paths| std::env::split_paths(&paths).collect())
-            .unwrap_or_default();
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = std::path::PathBuf::from(home);
-            for extra in [".npm-global/bin", ".local/bin", ".cargo/bin"] {
-                let path = home.join(extra);
-                if !search_dirs.iter().any(|existing| existing == &path) {
-                    search_dirs.push(path);
-                }
-            }
-        }
-        for dir in search_dirs {
-            let path = dir.join(name);
-            if path.is_file() {
-                return path;
-            }
-        }
-        std::path::PathBuf::from(name)
-    }
-
     fn build_resume_target_command(
         exe: &std::path::Path,
         target: &crate::tui::session_picker::ResumeTarget,
@@ -1100,20 +1078,32 @@ pub fn list_sessions() -> Result<()> {
                 vec!["--resume".to_string(), session_id.clone()],
             ),
             crate::tui::session_picker::ResumeTarget::ClaudeCodeSession { session_id } => (
-                resolve_cli_executable("claude"),
-                vec!["--resume".to_string(), session_id.clone()],
+                exe.to_path_buf(),
+                vec![
+                    "--resume".to_string(),
+                    crate::import::imported_claude_code_session_id(session_id),
+                ],
             ),
             crate::tui::session_picker::ResumeTarget::CodexSession { session_id } => (
-                resolve_cli_executable("codex"),
-                vec!["resume".to_string(), session_id.clone()],
+                exe.to_path_buf(),
+                vec![
+                    "--resume".to_string(),
+                    crate::import::imported_codex_session_id(session_id),
+                ],
             ),
             crate::tui::session_picker::ResumeTarget::PiSession { session_path } => (
-                resolve_cli_executable("pi"),
-                vec!["--session".to_string(), session_path.clone()],
+                exe.to_path_buf(),
+                vec![
+                    "--resume".to_string(),
+                    crate::import::imported_pi_session_id(session_path),
+                ],
             ),
             crate::tui::session_picker::ResumeTarget::OpenCodeSession { session_id } => (
-                resolve_cli_executable("opencode"),
-                vec!["--session".to_string(), session_id.clone()],
+                exe.to_path_buf(),
+                vec![
+                    "--resume".to_string(),
+                    crate::import::imported_opencode_session_id(session_id),
+                ],
             ),
         }
     }
@@ -1243,9 +1233,10 @@ pub fn list_sessions() -> Result<()> {
 
             if targets.len() == 1 {
                 let target = &targets[0];
+                let resolved_target = crate::import::resolve_resume_target_to_jcode(target)?;
                 let mut session_cwd = cwd.clone();
                 if let crate::tui::session_picker::ResumeTarget::JcodeSession { session_id } =
-                    target
+                    &resolved_target
                 {
                     if let Ok(sess) = session::Session::load(session_id) {
                         if let Some(dir) = sess.working_dir.as_deref() {
@@ -1255,7 +1246,7 @@ pub fn list_sessions() -> Result<()> {
                         }
                     }
                 }
-                let (program, args) = build_resume_target_command(&exe, target);
+                let (program, args) = build_resume_target_command(&exe, &resolved_target);
                 let err = crate::platform::replace_process(
                     ProcessCommand::new(&program)
                         .args(&args)
@@ -1268,9 +1259,17 @@ pub fn list_sessions() -> Result<()> {
                 let mut warned_no_terminal = false;
 
                 for target in targets {
+                    let resolved_target =
+                        match crate::import::resolve_resume_target_to_jcode(&target) {
+                            Ok(target) => target,
+                            Err(e) => {
+                                eprintln!("Failed to import selected session: {}", e);
+                                continue;
+                            }
+                        };
                     let mut session_cwd = cwd.clone();
                     if let crate::tui::session_picker::ResumeTarget::JcodeSession { session_id } =
-                        &target
+                        &resolved_target
                     {
                         if let Ok(sess) = session::Session::load(session_id) {
                             if let Some(dir) = sess.working_dir.as_deref() {
@@ -1281,7 +1280,7 @@ pub fn list_sessions() -> Result<()> {
                         }
                     }
 
-                    match spawn_target_in_new_terminal(&target, &exe, &session_cwd) {
+                    match spawn_target_in_new_terminal(&resolved_target, &exe, &session_cwd) {
                         Ok(true) => spawned += 1,
                         Ok(false) => {
                             if !warned_no_terminal {
@@ -1290,7 +1289,8 @@ pub fn list_sessions() -> Result<()> {
                                 );
                                 warned_no_terminal = true;
                             }
-                            let (program, args) = build_resume_target_command(&exe, &target);
+                            let (program, args) =
+                                build_resume_target_command(&exe, &resolved_target);
                             eprintln!("  {}", command_display(&program, &args));
                         }
                         Err(e) => {
