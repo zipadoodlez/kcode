@@ -2504,9 +2504,12 @@ mod tests {
             targets,
             vec![
                 ResolvedAuthTestTarget::Detailed(AuthTestTarget::Claude),
-                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini),
-                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Google),
-                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Copilot)
+                ResolvedAuthTestTarget::Generic {
+                    provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
+                    choice: super::super::provider_init::ProviderChoice::Openrouter,
+                },
+                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Copilot),
+                ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini)
             ]
         );
     }
