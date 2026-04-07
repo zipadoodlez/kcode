@@ -28,6 +28,7 @@ fn tracked_env_vars() -> Vec<String> {
         "JCODE_OPENROUTER_ENV_FILE",
         "JCODE_OPENROUTER_CACHE_NAMESPACE",
         "JCODE_OPENROUTER_PROVIDER_FEATURES",
+        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
         "JCODE_OPENROUTER_PROVIDER",
         "JCODE_OPENROUTER_NO_FALLBACK",
         "JCODE_OPENROUTER_MODEL",
@@ -37,6 +38,7 @@ fn tracked_env_vars() -> Vec<String> {
         "JCODE_OPENAI_COMPAT_ENV_FILE",
         "JCODE_OPENAI_COMPAT_SETUP_URL",
         "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
         "OPENROUTER_API_KEY",
     ]
     .into_iter()
@@ -235,6 +237,33 @@ fn provider_matrix_custom_compat_overrides_flow_into_runtime() -> Result<()> {
     assert_eq!(
         std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
         Some("groq.env")
+    );
+    assert!(OpenRouterProvider::has_credentials());
+    OpenRouterProvider::new()?;
+    assert_eq!(AuthStatus::check().openrouter, AuthState::Available);
+
+    Ok(())
+}
+
+#[test]
+fn provider_matrix_custom_local_compat_without_api_key_activates_openrouter_runtime() -> Result<()>
+{
+    let env = TestEnv::new()?;
+    env.clear_profile_keys();
+
+    jcode::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://localhost:11434/v1");
+
+    apply_openai_compatible_profile_env(Some(OPENAI_COMPAT_PROFILE));
+    let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
+    AuthStatus::invalidate_cache();
+
+    assert_eq!(resolved.api_base, "http://localhost:11434/v1");
+    assert!(!resolved.requires_api_key);
+    assert_eq!(
+        std::env::var("JCODE_OPENROUTER_ALLOW_NO_AUTH")
+            .ok()
+            .as_deref(),
+        Some("1")
     );
     assert!(OpenRouterProvider::has_credentials());
     OpenRouterProvider::new()?;

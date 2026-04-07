@@ -168,6 +168,11 @@ jcode works with subscription-backed OAuth flows and many provider integrations,
 - **Alibaba Cloud Coding Plan** (`jcode login --provider alibaba-coding-plan`)
 - **Fireworks** (`jcode login --provider fireworks`)
 - **MiniMax** (`jcode login --provider minimax`)
+- **LM Studio** (`jcode login --provider lmstudio`)
+- **Ollama** (`jcode login --provider ollama`)
+- **Custom OpenAI-compatible endpoint** (`jcode login --provider openai-compatible`)
+
+For custom OpenAI-compatible endpoints, jcode now prompts for the API base and supports local localhost servers without requiring an API key.
 
 For the built-in OpenAI login flow, jcode opens a local callback on
 `http://localhost:1455/auth/callback` by default.

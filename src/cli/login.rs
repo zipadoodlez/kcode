@@ -320,13 +320,36 @@ fn login_azure_flow() -> Result<()> {
 }
 
 fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()> {
-    let resolved = resolve_openai_compatible_profile(*profile);
+    let is_custom_profile = profile.id == crate::provider_catalog::OPENAI_COMPAT_PROFILE.id;
+    let mut resolved = resolve_openai_compatible_profile(*profile);
 
     eprintln!("Setting up {}...", resolved.display_name);
     eprintln!("See setup details: {}\n", resolved.setup_url);
-    eprintln!("Endpoint: {}", resolved.api_base);
 
-    if resolved.requires_api_key {
+    if is_custom_profile {
+        eprintln!(
+            "You can point this at a hosted OpenAI-compatible API or a local server such as LM Studio or Ollama."
+        );
+        let api_base_input = read_line_trimmed(&format!("API base URL [{}]: ", resolved.api_base))?;
+        if !api_base_input.is_empty() {
+            let normalized = crate::provider_catalog::normalize_api_base(&api_base_input)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Invalid OpenAI-compatible API base. Use https://... or http://localhost..."
+                    )
+                })?;
+            crate::provider_catalog::save_env_value_to_env_file(
+                "JCODE_OPENAI_COMPAT_API_BASE",
+                crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
+                Some(&normalized),
+            )?;
+            resolved = resolve_openai_compatible_profile(*profile);
+        }
+        eprintln!();
+    }
+
+    eprintln!("Endpoint: {}", resolved.api_base);
+    let auth_method = if resolved.requires_api_key {
         eprintln!("API key env variable: {}\n", resolved.api_key_env);
         eprint!("Paste your {} API key: ", resolved.display_name);
         io::stdout().flush()?;
@@ -336,8 +359,14 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
             anyhow::bail!("No API key provided.");
         }
 
+        crate::provider_catalog::save_env_value_to_env_file(
+            OPENAI_COMPAT_LOCAL_ENABLED_ENV,
+            &resolved.env_file,
+            None,
+        )?;
         save_named_api_key(&resolved.env_file, &resolved.api_key_env, &key)?;
         eprintln!("\nSuccessfully saved {} API key!", resolved.display_name);
+        "api_key"
     } else {
         eprintln!("This provider uses a local OpenAI-compatible endpoint.");
         eprintln!(
@@ -359,6 +388,7 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
                 None,
             )?;
             eprintln!("\nSaved {} local endpoint setup.", resolved.display_name);
+            "local_endpoint"
         } else {
             crate::provider_catalog::save_env_value_to_env_file(
                 &resolved.api_key_env,
@@ -369,14 +399,15 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
                 "\nSaved {} local endpoint setup and optional API key.",
                 resolved.display_name
             );
+            "local_endpoint_with_optional_api_key"
         }
-    }
+    };
 
     eprintln!("Stored at ~/.config/jcode/{}", resolved.env_file);
     if let Some(default_model) = resolved.default_model {
         eprintln!("Default model hint: {}", default_model);
     }
-    crate::telemetry::record_auth_success(&resolved.id, "api_key");
+    crate::telemetry::record_auth_success(&resolved.id, auth_method);
     Ok(())
 }
 
