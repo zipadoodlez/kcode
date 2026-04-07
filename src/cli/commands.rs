@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
@@ -1690,19 +1690,27 @@ async fn maybe_run_auth_test_smoke_for_choice(
     prompt: &str,
 ) {
     if enabled && report.success {
-        match kind.run_for_choice(choice, model, prompt).await {
-            Ok(output) => {
-                let ok = output.contains("AUTH_TEST_OK");
-                kind.set_output(report, output.clone());
-                report.push_step(
-                    kind.step_name(),
-                    ok,
-                    if ok {
-                        kind.success_detail().to_string()
-                    } else {
-                        kind.failure_detail(&output)
-                    },
-                );
+        match auth_test_choice_plan(choice, model).await {
+            Ok(AuthTestChoicePlan::Run { model }) => {
+                match kind.run_for_choice(choice, model.as_deref(), prompt).await {
+                    Ok(output) => {
+                        let ok = output.contains("AUTH_TEST_OK");
+                        kind.set_output(report, output.clone());
+                        report.push_step(
+                            kind.step_name(),
+                            ok,
+                            if ok {
+                                kind.success_detail().to_string()
+                            } else {
+                                kind.failure_detail(&output)
+                            },
+                        );
+                    }
+                    Err(err) => report.push_step(kind.step_name(), false, format!("{err:#}")),
+                }
+            }
+            Ok(AuthTestChoicePlan::Skip(detail)) => {
+                report.push_step(kind.step_name(), true, detail);
             }
             Err(err) => report.push_step(kind.step_name(), false, format!("{err:#}")),
         }
@@ -1721,6 +1729,8 @@ pub(crate) async fn run_post_login_validation(
         );
         return Ok(());
     };
+
+    super::provider_init::apply_login_provider_profile_env(provider);
 
     eprintln!(
         "\nValidating {} login with live auth/runtime checks...",
@@ -1999,6 +2009,7 @@ async fn populate_generic_auth_test_report(
     tool_smoke_prompt: &str,
     mut report: AuthTestProviderReport,
 ) -> AuthTestProviderReport {
+    super::provider_init::apply_login_provider_profile_env(provider);
     probe_generic_provider_auth(provider, &mut report);
 
     maybe_run_auth_test_smoke_for_choice(
@@ -2308,6 +2319,97 @@ async fn probe_cursor_auth(report: &mut AuthTestProviderReport) {
     );
 }
 
+#[derive(Debug)]
+enum AuthTestChoicePlan {
+    Run { model: Option<String> },
+    Skip(String),
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleModelsResponse {
+    #[serde(default)]
+    data: Vec<OpenAiCompatibleModelInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiCompatibleModelInfo {
+    id: String,
+}
+
+async fn auth_test_choice_plan(
+    choice: &super::provider_init::ProviderChoice,
+    model: Option<&str>,
+) -> Result<AuthTestChoicePlan> {
+    if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
+        return Ok(AuthTestChoicePlan::Run {
+            model: Some(model.to_string()),
+        });
+    }
+
+    let Some(profile) = super::provider_init::profile_for_choice(choice) else {
+        return Ok(AuthTestChoicePlan::Run { model: None });
+    };
+    let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+    if resolved.requires_api_key || resolved.default_model.is_some() {
+        return Ok(AuthTestChoicePlan::Run { model: None });
+    }
+
+    crate::provider_catalog::apply_openai_compatible_profile_env(Some(profile));
+    let discovered_model = discover_openai_compatible_validation_model(&resolved).await?;
+    if let Some(model) = discovered_model {
+        return Ok(AuthTestChoicePlan::Run { model: Some(model) });
+    }
+
+    Ok(AuthTestChoicePlan::Skip(format!(
+        "Skipped: {} local endpoint reported no models. Re-run `jcode auth-test --provider {} --model <local-model>` or set a default model first.",
+        resolved.display_name,
+        choice.as_arg_value()
+    )))
+}
+
+async fn discover_openai_compatible_validation_model(
+    profile: &crate::provider_catalog::ResolvedOpenAiCompatibleProfile,
+) -> Result<Option<String>> {
+    let url = format!("{}/models", profile.api_base.trim_end_matches('/'));
+    let mut request = crate::provider::shared_http_client().get(&url);
+    if let Some(api_key) = crate::provider_catalog::load_api_key_from_env_or_config(
+        &profile.api_key_env,
+        &profile.env_file,
+    ) {
+        request = request.bearer_auth(api_key);
+    }
+
+    let response = request.send().await.with_context(|| {
+        format!(
+            "Failed to query {} models from {} during auth-test validation",
+            profile.display_name, url
+        )
+    })?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!(
+            "{} model discovery failed (HTTP {}): {}",
+            profile.display_name,
+            status,
+            body.trim()
+        );
+    }
+
+    let parsed: OpenAiCompatibleModelsResponse =
+        serde_json::from_str(&body).with_context(|| {
+            format!(
+                "Failed to parse {} model discovery response from {}",
+                profile.display_name, url
+            )
+        })?;
+    Ok(parsed
+        .data
+        .into_iter()
+        .map(|model| model.id.trim().to_string())
+        .find(|model| !model.is_empty()))
+}
+
 async fn run_provider_smoke_for_choice(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
@@ -2592,6 +2694,36 @@ mod tests {
             "Gemini request generateContent failed (HTTP 400 Bad Request): invalid argument"
         );
         assert!(!auth_test_error_is_retryable(&err));
+    }
+
+    #[tokio::test]
+    async fn auth_test_choice_plan_preserves_explicit_model_for_local_provider() {
+        let plan = auth_test_choice_plan(
+            &super::super::provider_init::ProviderChoice::Ollama,
+            Some("llama3.2"),
+        )
+        .await
+        .expect("choice plan");
+
+        match plan {
+            AuthTestChoicePlan::Run { model } => assert_eq!(model.as_deref(), Some("llama3.2")),
+            AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn auth_test_choice_plan_leaves_non_compat_provider_unchanged() {
+        let plan = auth_test_choice_plan(
+            &super::super::provider_init::ProviderChoice::Openrouter,
+            None,
+        )
+        .await
+        .expect("choice plan");
+
+        match plan {
+            AuthTestChoicePlan::Run { model } => assert!(model.is_none()),
+            AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
+        }
     }
 
     #[test]
