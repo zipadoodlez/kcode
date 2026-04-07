@@ -252,7 +252,7 @@ async fn test_resume_restores_model_and_tool_history() -> Result<()> {
 
 /// Test that subscribe selfdev hint marks the session as canary
 #[tokio::test]
-async fn test_subscribe_target_session_uses_metadata_only_history_and_rebinds_session() -> Result<()> {
+async fn test_resume_session_with_local_history_uses_metadata_only_history() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = std::env::temp_dir().join(format!(
         "jcode-target-subscribe-test-{}",
@@ -299,11 +299,26 @@ async fn test_subscribe_target_session_uses_metadata_only_history_and_rebinds_se
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
     let mut client = wait_for_server_client(&socket_path).await?;
-    let subscribe_id = client
-        .subscribe_with_info(None, None, Some(session.id.clone()), true)
-        .await?;
+    let subscribe_id = client.subscribe().await?;
 
     let mut saw_done = false;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
+        match event {
+            ServerEvent::Done { id } if id == subscribe_id => {
+                saw_done = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    assert!(saw_done, "Did not receive subscribe done event");
+
+    let resume_id = client
+        .resume_session_with_options(&session.id, true)
+        .await?;
     let mut history_checked = false;
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
@@ -316,48 +331,33 @@ async fn test_subscribe_target_session_uses_metadata_only_history_and_rebinds_se
                 messages,
                 provider_model,
                 ..
-            } if id == subscribe_id => {
+            } if id == resume_id => {
                 assert_eq!(session_id, session.id);
                 assert!(messages.is_empty(), "expected metadata-only history payload");
                 assert_eq!(provider_model, Some("model-a".to_string()));
                 history_checked = true;
+                break;
             }
-            ServerEvent::Done { id } if id == subscribe_id => {
-                saw_done = true;
-                if history_checked {
-                    break;
-                }
+            ServerEvent::Error { id, message, .. } if id == resume_id => {
+                anyhow::bail!("resume_session failed: {}", message);
             }
             _ => {}
         }
     }
 
-    assert!(history_checked, "Did not receive subscribe history event");
-    assert!(saw_done, "Did not receive subscribe done event");
+    assert!(history_checked, "Did not receive resume history event");
 
     let msg_id = client.send_message("continue resumed session").await?;
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut saw_message_done = false;
-    let mut seen_events = Vec::new();
     while Instant::now() < deadline {
         let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
-        seen_events.push(format!("{event:?}"));
         if matches!(event, ServerEvent::Done { id } if id == msg_id) {
             saw_message_done = true;
             break;
         }
     }
-    assert!(
-        saw_message_done,
-        "Did not receive Done for resumed message. Seen events: {}\nstate={}\nhistory={}",
-        seen_events.join(" | "),
-        debug_run_command(debug_socket_path.clone(), "state", Some(&session.id))
-            .await
-            .unwrap_or_else(|err| format!("<state error: {err}>")),
-        debug_run_command(debug_socket_path.clone(), "history", Some(&session.id))
-            .await
-            .unwrap_or_else(|err| format!("<history error: {err}>"))
-    );
+    assert!(saw_message_done, "Did not receive Done for resumed message");
 
     let resume_ids = provider.captured_resume_session_ids.lock().unwrap().clone();
     assert_eq!(resume_ids.last().cloned(), Some(Some("provider-resume-123".to_string())));
