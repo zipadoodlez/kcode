@@ -35,10 +35,6 @@ path = "src/bin/test_api.rs"
 name = "jcode-harness"
 path = "src/bin/harness.rs"
 
-[[bin]]
-name = "todoist"
-path = "src/bin/todoist.rs"
-
 [dependencies]
 # Memory allocator (reduces fragmentation for long-running server)
 tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
