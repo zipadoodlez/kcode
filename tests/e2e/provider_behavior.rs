@@ -317,7 +317,7 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     assert!(saw_done, "Did not receive subscribe done event");
 
     let resume_id = client
-        .resume_session_with_options(&session.id, true)
+        .resume_session_with_options(&session.id, true, false)
         .await?;
     let mut history_checked = false;
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -393,7 +393,7 @@ async fn test_subscribe_selfdev_hint_marks_canary() -> Result<()> {
 
     let mut client = wait_for_server_client(&socket_path).await?;
     let subscribe_id = client
-        .subscribe_with_info(None, Some(true), None, false)
+        .subscribe_with_info(None, Some(true), None, false, false)
         .await?;
 
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -452,7 +452,7 @@ async fn test_subscribe_working_dir_without_selfdev_hint_stays_normal() -> Resul
 
     let mut client = wait_for_server_client(&socket_path).await?;
     let subscribe_id = client
-        .subscribe_with_info(Some(nested_dir.display().to_string()), None, None, false)
+        .subscribe_with_info(Some(nested_dir.display().to_string()), None, None, false, false)
         .await?;
 
     let deadline = Instant::now() + Duration::from_secs(2);

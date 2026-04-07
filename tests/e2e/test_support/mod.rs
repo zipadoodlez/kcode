@@ -306,6 +306,7 @@ impl WsTestClient {
             selfdev: None,
             target_session_id: None,
             client_has_local_history: false,
+            allow_session_takeover: false,
         })
         .await
     }
@@ -335,6 +336,7 @@ impl WsTestClient {
             id,
             session_id: session_id.to_string(),
             client_has_local_history: false,
+            allow_session_takeover: false,
         })
         .await
     }
