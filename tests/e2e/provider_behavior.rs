@@ -294,8 +294,11 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     ]);
 
     let provider_dyn: Arc<dyn jcode::provider::Provider> = provider.clone();
-    let server_instance =
-        server::Server::new_with_paths(provider_dyn, socket_path.clone(), debug_socket_path.clone());
+    let server_instance = server::Server::new_with_paths(
+        provider_dyn,
+        socket_path.clone(),
+        debug_socket_path.clone(),
+    );
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
     let mut client = wait_for_server_client(&socket_path).await?;
@@ -333,7 +336,10 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
                 ..
             } if id == resume_id => {
                 assert_eq!(session_id, session.id);
-                assert!(messages.is_empty(), "expected metadata-only history payload");
+                assert!(
+                    messages.is_empty(),
+                    "expected metadata-only history payload"
+                );
                 assert_eq!(provider_model, Some("model-a".to_string()));
                 history_checked = true;
                 break;
@@ -360,7 +366,10 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     assert!(saw_message_done, "Did not receive Done for resumed message");
 
     let resume_ids = provider.captured_resume_session_ids.lock().unwrap().clone();
-    assert_eq!(resume_ids.last().cloned(), Some(Some("provider-resume-123".to_string())));
+    assert_eq!(
+        resume_ids.last().cloned(),
+        Some(Some("provider-resume-123".to_string()))
+    );
 
     server_handle.abort();
     let _ = std::fs::remove_file(&socket_path);
@@ -452,7 +461,13 @@ async fn test_subscribe_working_dir_without_selfdev_hint_stays_normal() -> Resul
 
     let mut client = wait_for_server_client(&socket_path).await?;
     let subscribe_id = client
-        .subscribe_with_info(Some(nested_dir.display().to_string()), None, None, false, false)
+        .subscribe_with_info(
+            Some(nested_dir.display().to_string()),
+            None,
+            None,
+            false,
+            false,
+        )
         .await?;
 
     let deadline = Instant::now() + Duration::from_secs(2);
