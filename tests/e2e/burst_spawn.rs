@@ -18,6 +18,33 @@ struct BurstAttachClientMetrics {
     other_count: usize,
 }
 
+enum BurstAttachOutcome {
+    Attached(BurstAttachClientMetrics),
+    Rejected(String),
+}
+
+fn client_id_map(
+    client_map: &serde_json::Value,
+) -> Result<std::collections::HashMap<String, String>> {
+    let clients = client_map
+        .get("clients")
+        .and_then(|value| value.as_array())
+        .context("clients:map missing clients array")?;
+    let mut mapping = std::collections::HashMap::new();
+    for client in clients {
+        let session_id = client
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .context("clients:map entry missing session_id")?;
+        let client_id = client
+            .get("client_id")
+            .and_then(|value| value.as_str())
+            .context("clients:map entry missing client_id")?;
+        mapping.insert(session_id.to_string(), client_id.to_string());
+    }
+    Ok(mapping)
+}
+
 #[cfg(unix)]
 fn current_process_cpu_time() -> Result<Duration> {
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
@@ -46,7 +73,8 @@ fn percentile_ms(sorted: &[u128], percentile: usize) -> u128 {
 }
 
 async fn read_debug_json(debug_socket_path: &Path, command: &str) -> Result<serde_json::Value> {
-    let mut client = server::Client::connect_debug_with_path(debug_socket_path.to_path_buf()).await?;
+    let mut client =
+        server::Client::connect_debug_with_path(debug_socket_path.to_path_buf()).await?;
     let request_id = client.debug_command(command, None).await?;
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
@@ -136,6 +164,83 @@ async fn burst_attach_resumed_client(
     )
 }
 
+async fn burst_attach_resumed_client_with_options(
+    socket_path: PathBuf,
+    target_session_id: String,
+    client_has_local_history: bool,
+    allow_session_takeover: bool,
+) -> Result<BurstAttachOutcome> {
+    let mut client = wait_for_server_client(&socket_path).await?;
+    let subscribe_start = Instant::now();
+    let subscribe_id = client
+        .subscribe_with_info(
+            None,
+            None,
+            Some(target_session_id.clone()),
+            client_has_local_history,
+            allow_session_takeover,
+        )
+        .await?;
+
+    let mut event_count = 0usize;
+    let mut ack_count = 0usize;
+    let mut history_count = 0usize;
+    let mut done_count = 0usize;
+    let mut other_count = 0usize;
+    let mut returned_session_id = None;
+    let mut history_message_count = 0usize;
+    let mut provider_model = None;
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+        event_count += 1;
+        match event {
+            ServerEvent::Ack { .. } => ack_count += 1,
+            ServerEvent::History {
+                id,
+                session_id,
+                messages,
+                provider_model: event_provider_model,
+                ..
+            } if id == subscribe_id => {
+                history_count += 1;
+                returned_session_id = Some(session_id);
+                history_message_count = messages.len();
+                provider_model = event_provider_model;
+            }
+            ServerEvent::Done { id } if id == subscribe_id => {
+                done_count += 1;
+                let metrics = BurstAttachClientMetrics {
+                    target_session_id,
+                    returned_session_id: returned_session_id
+                        .ok_or_else(|| anyhow::anyhow!("missing subscribe history event"))?,
+                    attach_ms: subscribe_start.elapsed().as_millis(),
+                    history_message_count,
+                    provider_model,
+                    event_count,
+                    ack_count,
+                    history_count,
+                    done_count,
+                    other_count,
+                };
+                drop(client);
+                return Ok(BurstAttachOutcome::Attached(metrics));
+            }
+            ServerEvent::Error { id, message, .. } if id == subscribe_id => {
+                return Ok(BurstAttachOutcome::Rejected(message));
+            }
+            _ => other_count += 1,
+        }
+    }
+
+    anyhow::bail!(
+        "timed out attaching resumed client to {} after {} events",
+        target_session_id,
+        event_count
+    )
+}
+
 async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let _env = setup_test_env()?;
 
@@ -182,8 +287,11 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
 
     let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
     let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
-    let server_instance =
-        server::Server::new_with_paths(provider_dyn, socket_path.clone(), debug_socket_path.clone());
+    let server_instance = server::Server::new_with_paths(
+        provider_dyn,
+        socket_path.clone(),
+        debug_socket_path.clone(),
+    );
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
     let cpu_start = current_process_cpu_time()?;
@@ -199,7 +307,10 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let mut metrics = Vec::with_capacity(burst_size);
     for result in burst_results {
         let (client, client_metrics) = result?;
-        assert_eq!(client_metrics.returned_session_id, client_metrics.target_session_id);
+        assert_eq!(
+            client_metrics.returned_session_id,
+            client_metrics.target_session_id
+        );
         assert_eq!(client_metrics.history_count, 1);
         assert_eq!(client_metrics.done_count, 1);
         assert!(
@@ -207,7 +318,10 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
             "expected resumed history for {} to include persisted messages",
             client_metrics.target_session_id
         );
-        assert_eq!(client_metrics.provider_model.as_deref(), Some("burst-model"));
+        assert_eq!(
+            client_metrics.provider_model.as_deref(),
+            Some("burst-model")
+        );
         connected_clients.push(client);
         metrics.push(client_metrics);
     }
@@ -222,7 +336,10 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
         .get("clients")
         .and_then(|value| value.as_array())
         .context("clients:map missing clients array")?;
-    assert_eq!(client_map.get("count").and_then(|value| value.as_u64()), Some(burst_size as u64));
+    assert_eq!(
+        client_map.get("count").and_then(|value| value.as_u64()),
+        Some(burst_size as u64)
+    );
     assert_eq!(clients.len(), burst_size);
 
     let mapped_session_ids: HashSet<String> = clients
@@ -241,11 +358,18 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
         .iter()
         .filter(|client| client.get("status").and_then(|value| value.as_str()) == Some("ready"))
         .count();
-    assert_eq!(ready_count, burst_size, "all resumed clients should settle to ready");
-
-    assert_eq!(info.get("session_count").and_then(|value| value.as_u64()), Some(burst_size as u64));
     assert_eq!(
-        info.get("swarm_member_count").and_then(|value| value.as_u64()),
+        ready_count, burst_size,
+        "all resumed clients should settle to ready"
+    );
+
+    assert_eq!(
+        info.get("session_count").and_then(|value| value.as_u64()),
+        Some(burst_size as u64)
+    );
+    assert_eq!(
+        info.get("swarm_member_count")
+            .and_then(|value| value.as_u64()),
         Some(burst_size as u64),
         "burst attach should not leak temporary swarm members"
     );
@@ -300,6 +424,113 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     );
 
     drop(connected_clients);
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_connected()
+-> Result<()> {
+    let _env = setup_test_env()?;
+
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-burst-spawn-live-clients-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let unique_suffix = runtime_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("burst-live");
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let live_session_count = 10usize;
+    let mut live_session_ids = Vec::with_capacity(live_session_count);
+    for idx in 0..live_session_count {
+        let mut session = Session::create_with_id(
+            format!("session_live_attach_{idx}_{unique_suffix}"),
+            None,
+            Some(format!("Live Attach {idx}")),
+        );
+        session.model = Some("burst-model".to_string());
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: format!("resume me live {idx}"),
+                cache_control: None,
+            }],
+        );
+        session.add_message(
+            Role::Assistant,
+            vec![ContentBlock::Text {
+                text: format!("live reply {idx}"),
+                cache_control: None,
+            }],
+        );
+        session.save()?;
+        live_session_ids.push(session.id);
+    }
+
+    let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
+    let server_instance = server::Server::new_with_paths(
+        provider_dyn,
+        socket_path.clone(),
+        debug_socket_path.clone(),
+    );
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let mut live_clients = Vec::with_capacity(live_session_count);
+    for session_id in live_session_ids.iter().cloned() {
+        let (client, metrics) =
+            burst_attach_resumed_client(socket_path.clone(), session_id.clone()).await?;
+        assert_eq!(metrics.returned_session_id, session_id);
+        live_clients.push((session_id, client));
+    }
+
+    let initial_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let initial_session_to_client = client_id_map(&initial_client_map)?;
+
+    let retry_results = join_all(live_session_ids.iter().cloned().map(|session_id| {
+        let socket_path = socket_path.clone();
+        async move {
+            burst_attach_resumed_client_with_options(socket_path, session_id, false, true).await
+        }
+    }))
+    .await;
+
+    for result in retry_results {
+        match result? {
+            BurstAttachOutcome::Rejected(message) => {
+                assert!(
+                    message.contains("already has a connected TUI client"),
+                    "unexpected rejection message: {message}"
+                );
+            }
+            BurstAttachOutcome::Attached(metrics) => {
+                anyhow::bail!(
+                    "fresh retry client unexpectedly took over live session {}",
+                    metrics.target_session_id
+                );
+            }
+        }
+    }
+
+    let final_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let final_session_to_client = client_id_map(&final_client_map)?;
+    assert_eq!(
+        final_session_to_client, initial_session_to_client,
+        "existing live client connections should not be replaced during burst retries"
+    );
+
+    drop(live_clients);
     server_handle.abort();
     let _ = std::fs::remove_file(&socket_path);
     let _ = std::fs::remove_file(&debug_socket_path);
