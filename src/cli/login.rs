@@ -80,6 +80,8 @@ pub async fn run_login_provider(
     provider: LoginProviderDescriptor,
     account_label: Option<&str>,
 ) -> Result<()> {
+    crate::telemetry::record_provider_selected(provider.id);
+    crate::telemetry::record_auth_started(provider.id, provider.auth_kind.label());
     match provider.target {
         LoginProviderTarget::AutoImport => {
             let imported = super::provider_init::maybe_run_external_auth_auto_import_flow()
