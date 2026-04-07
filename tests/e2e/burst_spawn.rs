@@ -136,12 +136,8 @@ async fn burst_attach_resumed_client(
     )
 }
 
-/// Stress the burst attach path used when many spawned windows resume pre-created sessions.
-/// This targets the race-prone phase directly and records useful metrics for regressions.
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metrics() -> Result<()> {
+async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let _env = setup_test_env()?;
-    const BURST_SIZE: usize = 20;
 
     let runtime_dir = std::env::temp_dir().join(format!(
         "jcode-burst-spawn-test-{}",
@@ -158,8 +154,8 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
     let socket_path = runtime_dir.join("jcode.sock");
     let debug_socket_path = runtime_dir.join("jcode-debug.sock");
 
-    let mut expected_session_ids = Vec::with_capacity(BURST_SIZE);
-    for idx in 0..BURST_SIZE {
+    let mut expected_session_ids = Vec::with_capacity(burst_size);
+    for idx in 0..burst_size {
         let mut session = Session::create_with_id(
             format!("session_burst_attach_{idx}_{unique_suffix}"),
             None,
@@ -199,8 +195,8 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
     }))
     .await;
 
-    let mut connected_clients = Vec::with_capacity(BURST_SIZE);
-    let mut metrics = Vec::with_capacity(BURST_SIZE);
+    let mut connected_clients = Vec::with_capacity(burst_size);
+    let mut metrics = Vec::with_capacity(burst_size);
     for result in burst_results {
         let (client, client_metrics) = result?;
         assert_eq!(client_metrics.returned_session_id, client_metrics.target_session_id);
@@ -226,8 +222,8 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
         .get("clients")
         .and_then(|value| value.as_array())
         .context("clients:map missing clients array")?;
-    assert_eq!(client_map.get("count").and_then(|value| value.as_u64()), Some(BURST_SIZE as u64));
-    assert_eq!(clients.len(), BURST_SIZE);
+    assert_eq!(client_map.get("count").and_then(|value| value.as_u64()), Some(burst_size as u64));
+    assert_eq!(clients.len(), burst_size);
 
     let mapped_session_ids: HashSet<String> = clients
         .iter()
@@ -245,12 +241,12 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
         .iter()
         .filter(|client| client.get("status").and_then(|value| value.as_str()) == Some("ready"))
         .count();
-    assert_eq!(ready_count, BURST_SIZE, "all resumed clients should settle to ready");
+    assert_eq!(ready_count, burst_size, "all resumed clients should settle to ready");
 
-    assert_eq!(info.get("session_count").and_then(|value| value.as_u64()), Some(BURST_SIZE as u64));
+    assert_eq!(info.get("session_count").and_then(|value| value.as_u64()), Some(burst_size as u64));
     assert_eq!(
         info.get("swarm_member_count").and_then(|value| value.as_u64()),
-        Some(BURST_SIZE as u64),
+        Some(burst_size as u64),
         "burst attach should not leak temporary swarm members"
     );
 
@@ -274,11 +270,11 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
     eprintln!(
         "burst_spawn_metrics={} ",
         serde_json::to_string_pretty(&json!({
-            "burst_size": BURST_SIZE,
+            "burst_size": burst_size,
             "wall_ms": wall_elapsed.as_millis(),
             "cpu_ms": cpu_elapsed.as_millis(),
             "cpu_utilization_ratio": cpu_utilization,
-            "cpu_ms_per_attach": cpu_elapsed.as_secs_f64() * 1000.0 / BURST_SIZE as f64,
+            "cpu_ms_per_attach": cpu_elapsed.as_secs_f64() * 1000.0 / burst_size as f64,
             "latency_ms": {
                 "min": latencies_ms.first().copied().unwrap_or(0),
                 "p50": percentile_ms(&latencies_ms, 50),
@@ -309,4 +305,17 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
     let _ = std::fs::remove_file(&debug_socket_path);
 
     Ok(())
+}
+
+/// Stress the burst attach path used when many spawned windows resume pre-created sessions.
+/// This targets the race-prone phase directly and records useful metrics for regressions.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metrics() -> Result<()> {
+    run_burst_resume_attach_stress(20).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[ignore = "resource-heavy scale validation"]
+async fn burst_spawn_resume_attach_scales_to_100_clients() -> Result<()> {
+    run_burst_resume_attach_stress(100).await
 }
