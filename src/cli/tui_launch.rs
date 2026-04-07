@@ -346,7 +346,7 @@ pub async fn run_tui_client(
     startup_profile::mark("terminal_title");
 
     let mut app = tui::App::new_for_remote(resume_session.clone());
-    if server_spawning {
+    if should_show_server_spawning(server_spawning).await {
         app.set_server_spawning();
     }
     startup_profile::mark("app_new_for_remote");
@@ -378,6 +378,23 @@ pub async fn run_tui_client(
     }
 
     Ok(())
+}
+
+async fn should_show_server_spawning(server_spawning: bool) -> bool {
+    if !server_spawning {
+        return false;
+    }
+
+    let socket_path = server::socket_path();
+    if server::has_live_listener(&socket_path).await {
+        logging::info(&format!(
+            "Skipping stale startup phase: server already listening at {}",
+            socket_path.display()
+        ));
+        return false;
+    }
+
+    true
 }
 
 fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
@@ -1382,9 +1399,13 @@ pub fn list_sessions() -> Result<()> {
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
-    use super::{spawn_resume_in_new_terminal, spawn_selfdev_in_new_terminal};
+    use super::{
+        should_show_server_spawning, spawn_resume_in_new_terminal, spawn_selfdev_in_new_terminal,
+    };
     #[cfg(unix)]
     use crate::platform::set_permissions_executable;
+    #[cfg(unix)]
+    use crate::transport::Listener;
     #[cfg(unix)]
     use std::ffi::OsString;
     #[cfg(unix)]
@@ -1523,5 +1544,38 @@ mod tests {
         assert!(lines[5].contains("ses_selfdev_123"));
         assert!(lines[5].contains("self-dev"));
         assert!(lines[5].contains(exe.to_string_lossy().as_ref()));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn suppresses_stale_server_spawning_phase_when_listener_is_already_live() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let socket_path = temp.path().join("jcode.sock");
+        let _socket_guard = EnvVarGuard::set_path("JCODE_SOCKET", &socket_path);
+        let _listener = Listener::bind(&socket_path).expect("bind listener");
+
+        assert!(
+            !should_show_server_spawning(true).await,
+            "server startup banner should not linger once the listener is already live"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn keeps_server_spawning_phase_while_listener_is_not_live() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let socket_path = temp.path().join("jcode.sock");
+        let _socket_guard = EnvVarGuard::set_path("JCODE_SOCKET", &socket_path);
+
+        assert!(
+            should_show_server_spawning(true).await,
+            "server startup banner should still show before a listener exists"
+        );
+        assert!(
+            !should_show_server_spawning(false).await,
+            "server startup banner should stay hidden when client did not request it"
+        );
     }
 }
