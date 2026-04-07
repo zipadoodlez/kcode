@@ -304,6 +304,8 @@ impl WsTestClient {
             id,
             working_dir: None,
             selfdev: None,
+            target_session_id: None,
+            client_has_local_history: false,
         })
         .await
     }
