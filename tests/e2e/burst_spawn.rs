@@ -1,0 +1,312 @@
+use crate::test_support::*;
+use futures::future::join_all;
+use serde_json::json;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+struct BurstAttachClientMetrics {
+    target_session_id: String,
+    returned_session_id: String,
+    attach_ms: u128,
+    history_message_count: usize,
+    provider_model: Option<String>,
+    event_count: usize,
+    ack_count: usize,
+    history_count: usize,
+    done_count: usize,
+    other_count: usize,
+}
+
+#[cfg(unix)]
+fn current_process_cpu_time() -> Result<Duration> {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let usage = unsafe { usage.assume_init() };
+    let to_duration = |tv: libc::timeval| {
+        Duration::from_secs(tv.tv_sec as u64) + Duration::from_micros(tv.tv_usec as u64)
+    };
+    Ok(to_duration(usage.ru_utime) + to_duration(usage.ru_stime))
+}
+
+#[cfg(not(unix))]
+fn current_process_cpu_time() -> Result<Duration> {
+    Ok(Duration::ZERO)
+}
+
+fn percentile_ms(sorted: &[u128], percentile: usize) -> u128 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let idx = ((sorted.len() - 1) * percentile) / 100;
+    sorted[idx]
+}
+
+async fn read_debug_json(debug_socket_path: &Path, command: &str) -> Result<serde_json::Value> {
+    let mut client = server::Client::connect_debug_with_path(debug_socket_path.to_path_buf()).await?;
+    let request_id = client.debug_command(command, None).await?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+        match event {
+            ServerEvent::Ack { .. } => continue,
+            ServerEvent::DebugResponse { id, ok, output } if id == request_id => {
+                if !ok {
+                    anyhow::bail!("debug command `{command}` failed: {output}");
+                }
+                return Ok(serde_json::from_str(&output)?);
+            }
+            ServerEvent::Error { id, message, .. } if id == request_id => {
+                anyhow::bail!("debug command `{command}` failed: {message}");
+            }
+            _ => {}
+        }
+    }
+    anyhow::bail!("timed out waiting for debug response to `{command}`")
+}
+
+async fn burst_attach_resumed_client(
+    socket_path: PathBuf,
+    target_session_id: String,
+) -> Result<(server::Client, BurstAttachClientMetrics)> {
+    let mut client = wait_for_server_client(&socket_path).await?;
+    let subscribe_start = Instant::now();
+    let subscribe_id = client
+        .subscribe_with_info(None, None, Some(target_session_id.clone()), false)
+        .await?;
+
+    let mut event_count = 0usize;
+    let mut ack_count = 0usize;
+    let mut history_count = 0usize;
+    let mut done_count = 0usize;
+    let mut other_count = 0usize;
+    let mut returned_session_id = None;
+    let mut history_message_count = 0usize;
+    let mut provider_model = None;
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
+        event_count += 1;
+        match event {
+            ServerEvent::Ack { .. } => ack_count += 1,
+            ServerEvent::History {
+                id,
+                session_id,
+                messages,
+                provider_model: event_provider_model,
+                ..
+            } if id == subscribe_id => {
+                history_count += 1;
+                returned_session_id = Some(session_id);
+                history_message_count = messages.len();
+                provider_model = event_provider_model;
+            }
+            ServerEvent::Done { id } if id == subscribe_id => {
+                done_count += 1;
+                let metrics = BurstAttachClientMetrics {
+                    target_session_id,
+                    returned_session_id: returned_session_id
+                        .ok_or_else(|| anyhow::anyhow!("missing subscribe history event"))?,
+                    attach_ms: subscribe_start.elapsed().as_millis(),
+                    history_message_count,
+                    provider_model,
+                    event_count,
+                    ack_count,
+                    history_count,
+                    done_count,
+                    other_count,
+                };
+                return Ok((client, metrics));
+            }
+            ServerEvent::Error { id, message, .. } if id == subscribe_id => {
+                anyhow::bail!("subscribe failed for {}: {}", target_session_id, message);
+            }
+            _ => other_count += 1,
+        }
+    }
+
+    anyhow::bail!(
+        "timed out attaching resumed client to {} after {} events",
+        target_session_id,
+        event_count
+    )
+}
+
+/// Stress the burst attach path used when many spawned windows resume pre-created sessions.
+/// This targets the race-prone phase directly and records useful metrics for regressions.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metrics() -> Result<()> {
+    let _env = setup_test_env()?;
+    const BURST_SIZE: usize = 20;
+
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-burst-spawn-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let unique_suffix = runtime_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("burst");
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let mut expected_session_ids = Vec::with_capacity(BURST_SIZE);
+    for idx in 0..BURST_SIZE {
+        let mut session = Session::create_with_id(
+            format!("session_burst_attach_{idx}_{unique_suffix}"),
+            None,
+            Some(format!("Burst Attach {idx}")),
+        );
+        session.model = Some("burst-model".to_string());
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: format!("resume me {idx}"),
+                cache_control: None,
+            }],
+        );
+        session.add_message(
+            Role::Assistant,
+            vec![ContentBlock::Text {
+                text: format!("attached reply {idx}"),
+                cache_control: None,
+            }],
+        );
+        session.save()?;
+        expected_session_ids.push(session.id);
+    }
+
+    let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
+    let server_instance =
+        server::Server::new_with_paths(provider_dyn, socket_path.clone(), debug_socket_path.clone());
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let cpu_start = current_process_cpu_time()?;
+    let wall_start = Instant::now();
+
+    let burst_results = join_all(expected_session_ids.iter().cloned().map(|session_id| {
+        let socket_path = socket_path.clone();
+        async move { burst_attach_resumed_client(socket_path, session_id).await }
+    }))
+    .await;
+
+    let mut connected_clients = Vec::with_capacity(BURST_SIZE);
+    let mut metrics = Vec::with_capacity(BURST_SIZE);
+    for result in burst_results {
+        let (client, client_metrics) = result?;
+        assert_eq!(client_metrics.returned_session_id, client_metrics.target_session_id);
+        assert_eq!(client_metrics.history_count, 1);
+        assert_eq!(client_metrics.done_count, 1);
+        assert!(
+            client_metrics.history_message_count >= 2,
+            "expected resumed history for {} to include persisted messages",
+            client_metrics.target_session_id
+        );
+        assert_eq!(client_metrics.provider_model.as_deref(), Some("burst-model"));
+        connected_clients.push(client);
+        metrics.push(client_metrics);
+    }
+
+    let wall_elapsed = wall_start.elapsed();
+    let cpu_elapsed = current_process_cpu_time()?.saturating_sub(cpu_start);
+
+    let client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let info = read_debug_json(&debug_socket_path, "server:info").await?;
+
+    let clients = client_map
+        .get("clients")
+        .and_then(|value| value.as_array())
+        .context("clients:map missing clients array")?;
+    assert_eq!(client_map.get("count").and_then(|value| value.as_u64()), Some(BURST_SIZE as u64));
+    assert_eq!(clients.len(), BURST_SIZE);
+
+    let mapped_session_ids: HashSet<String> = clients
+        .iter()
+        .filter_map(|client| {
+            client
+                .get("session_id")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+        })
+        .collect();
+    let expected_session_ids_set: HashSet<String> = expected_session_ids.iter().cloned().collect();
+    assert_eq!(mapped_session_ids, expected_session_ids_set);
+
+    let ready_count = clients
+        .iter()
+        .filter(|client| client.get("status").and_then(|value| value.as_str()) == Some("ready"))
+        .count();
+    assert_eq!(ready_count, BURST_SIZE, "all resumed clients should settle to ready");
+
+    assert_eq!(info.get("session_count").and_then(|value| value.as_u64()), Some(BURST_SIZE as u64));
+    assert_eq!(
+        info.get("swarm_member_count").and_then(|value| value.as_u64()),
+        Some(BURST_SIZE as u64),
+        "burst attach should not leak temporary swarm members"
+    );
+
+    let mut latencies_ms: Vec<u128> = metrics.iter().map(|metric| metric.attach_ms).collect();
+    latencies_ms.sort_unstable();
+    let total_events: usize = metrics.iter().map(|metric| metric.event_count).sum();
+    let total_acks: usize = metrics.iter().map(|metric| metric.ack_count).sum();
+    let total_histories: usize = metrics.iter().map(|metric| metric.history_count).sum();
+    let total_dones: usize = metrics.iter().map(|metric| metric.done_count).sum();
+    let total_other_events: usize = metrics.iter().map(|metric| metric.other_count).sum();
+    let total_history_messages: usize = metrics
+        .iter()
+        .map(|metric| metric.history_message_count)
+        .sum();
+    let cpu_utilization = if wall_elapsed.is_zero() {
+        0.0
+    } else {
+        cpu_elapsed.as_secs_f64() / wall_elapsed.as_secs_f64()
+    };
+
+    eprintln!(
+        "burst_spawn_metrics={} ",
+        serde_json::to_string_pretty(&json!({
+            "burst_size": BURST_SIZE,
+            "wall_ms": wall_elapsed.as_millis(),
+            "cpu_ms": cpu_elapsed.as_millis(),
+            "cpu_utilization_ratio": cpu_utilization,
+            "cpu_ms_per_attach": cpu_elapsed.as_secs_f64() * 1000.0 / BURST_SIZE as f64,
+            "latency_ms": {
+                "min": latencies_ms.first().copied().unwrap_or(0),
+                "p50": percentile_ms(&latencies_ms, 50),
+                "p90": percentile_ms(&latencies_ms, 90),
+                "p99": percentile_ms(&latencies_ms, 99),
+                "max": latencies_ms.last().copied().unwrap_or(0),
+                "spread": latencies_ms.last().copied().unwrap_or(0)
+                    .saturating_sub(latencies_ms.first().copied().unwrap_or(0)),
+            },
+            "events": {
+                "total": total_events,
+                "acks": total_acks,
+                "histories": total_histories,
+                "dones": total_dones,
+                "other": total_other_events,
+            },
+            "history_messages_total": total_history_messages,
+            "connected_clients": clients.len(),
+            "unique_session_mappings": mapped_session_ids.len(),
+            "ready_count": ready_count,
+            "server_info": info,
+        }))?
+    );
+
+    drop(connected_clients);
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+
+    Ok(())
+}
