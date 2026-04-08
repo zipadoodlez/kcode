@@ -139,11 +139,20 @@ struct DiskCacheMemoEntry {
 static DISK_CACHE_MEMO: LazyLock<Mutex<HashMap<PathBuf, DiskCacheMemoEntry>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct EndpointsDiskCache {
     cached_at: u64,
     endpoints: Vec<EndpointInfo>,
 }
+
+#[derive(Debug, Clone)]
+struct EndpointsDiskCacheMemoEntry {
+    modified_at: Option<SystemTime>,
+    cache: Option<EndpointsDiskCache>,
+}
+
+static ENDPOINTS_DISK_CACHE_MEMO: LazyLock<Mutex<HashMap<PathBuf, EndpointsDiskCacheMemoEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Default, Clone)]
 pub struct ModelsCache {
@@ -446,8 +455,27 @@ fn endpoints_cache_path(model: &str) -> PathBuf {
 
 pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo>, u64)> {
     let path = endpoints_cache_path(model);
-    let content = std::fs::read_to_string(&path).ok()?;
-    let cache: EndpointsDiskCache = serde_json::from_str(&content).ok()?;
+    let modified_at = disk_cache_modified_at(&path);
+    let cache = if let Ok(memo) = ENDPOINTS_DISK_CACHE_MEMO.lock()
+        && let Some(entry) = memo.get(&path)
+        && entry.modified_at == modified_at
+    {
+        entry.cache.clone()?
+    } else {
+        let loaded = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<EndpointsDiskCache>(&content).ok());
+        if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
+            memo.insert(
+                path.clone(),
+                EndpointsDiskCacheMemoEntry {
+                    modified_at,
+                    cache: loaded.clone(),
+                },
+            );
+        }
+        loaded?
+    };
     if cache.endpoints.is_empty() {
         return None;
     }
@@ -461,8 +489,27 @@ pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo
 
 pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
     let path = endpoints_cache_path(model);
-    let content = std::fs::read_to_string(&path).ok()?;
-    let cache: EndpointsDiskCache = serde_json::from_str(&content).ok()?;
+    let modified_at = disk_cache_modified_at(&path);
+    let cache = if let Ok(memo) = ENDPOINTS_DISK_CACHE_MEMO.lock()
+        && let Some(entry) = memo.get(&path)
+        && entry.modified_at == modified_at
+    {
+        entry.cache.clone()?
+    } else {
+        let loaded = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| serde_json::from_str::<EndpointsDiskCache>(&content).ok());
+        if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
+            memo.insert(
+                path.clone(),
+                EndpointsDiskCacheMemoEntry {
+                    modified_at,
+                    cache: loaded.clone(),
+                },
+            );
+        }
+        loaded?
+    };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
@@ -489,6 +536,16 @@ pub fn save_endpoints_disk_cache(model: &str, endpoints: &[EndpointInfo]) {
     };
     if let Ok(content) = serde_json::to_string(&cache) {
         let _ = std::fs::write(&path, content);
+    }
+
+    if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
+        memo.insert(
+            path.clone(),
+            EndpointsDiskCacheMemoEntry {
+                modified_at: disk_cache_modified_at(&path),
+                cache: Some(cache),
+            },
+        );
     }
 }
 
