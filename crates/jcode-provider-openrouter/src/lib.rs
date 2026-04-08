@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Instant, SystemTime};
 
 const CACHE_TTL_SECS: u64 = 24 * 60 * 60;
 const ENDPOINTS_CACHE_TTL_SECS: u64 = 60 * 60;
@@ -127,6 +129,15 @@ pub struct DiskCache {
     pub cached_at: u64,
     pub models: Vec<ModelInfo>,
 }
+
+#[derive(Debug, Clone)]
+struct DiskCacheMemoEntry {
+    modified_at: Option<SystemTime>,
+    cache: Option<DiskCache>,
+}
+
+static DISK_CACHE_MEMO: LazyLock<Mutex<HashMap<PathBuf, DiskCacheMemoEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EndpointsDiskCache {
@@ -273,17 +284,46 @@ fn cache_path() -> PathBuf {
         .join(format!("{}_models.json", namespace))
 }
 
-pub fn load_disk_cache_entry() -> Option<DiskCache> {
-    let path = cache_path();
-    let content = std::fs::read_to_string(&path).ok()?;
-    let cache: DiskCache = serde_json::from_str(&content).ok()?;
-    let now = current_unix_secs()?;
+fn disk_cache_modified_at(path: &PathBuf) -> Option<SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
 
+fn fresh_disk_cache(cache: Option<DiskCache>) -> Option<DiskCache> {
+    let now = current_unix_secs()?;
+    let cache = cache?;
     if now.saturating_sub(cache.cached_at) < CACHE_TTL_SECS {
         Some(cache)
     } else {
         None
     }
+}
+
+pub fn load_disk_cache_entry() -> Option<DiskCache> {
+    let path = cache_path();
+    let modified_at = disk_cache_modified_at(&path);
+
+    if let Ok(memo) = DISK_CACHE_MEMO.lock()
+        && let Some(entry) = memo.get(&path)
+        && entry.modified_at == modified_at
+    {
+        return fresh_disk_cache(entry.cache.clone());
+    }
+
+    let loaded = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<DiskCache>(&content).ok());
+
+    if let Ok(mut memo) = DISK_CACHE_MEMO.lock() {
+        memo.insert(
+            path,
+            DiskCacheMemoEntry {
+                modified_at,
+                cache: loaded.clone(),
+            },
+        );
+    }
+
+    fresh_disk_cache(loaded)
 }
 
 pub fn load_disk_cache() -> Option<Vec<ModelInfo>> {
@@ -381,6 +421,16 @@ pub fn save_disk_cache(models: &[ModelInfo]) {
 
     if let Ok(content) = serde_json::to_string(&cache) {
         let _ = std::fs::write(&path, content);
+    }
+
+    if let Ok(mut memo) = DISK_CACHE_MEMO.lock() {
+        memo.insert(
+            path.clone(),
+            DiskCacheMemoEntry {
+                modified_at: disk_cache_modified_at(&path),
+                cache: Some(cache),
+            },
+        );
     }
 }
 
