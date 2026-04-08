@@ -323,8 +323,9 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
         .resume_session_with_options(&session.id, true, false)
         .await?;
     let mut history_checked = false;
+    let mut resume_done = false;
     let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
+    while Instant::now() < deadline && !(history_checked && resume_done) {
         let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
         match event {
             ServerEvent::Ack { .. } => continue,
@@ -342,7 +343,9 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
                 );
                 assert_eq!(provider_model, Some("model-a".to_string()));
                 history_checked = true;
-                break;
+            }
+            ServerEvent::Done { id } if id == resume_id => {
+                resume_done = true;
             }
             ServerEvent::Error { id, message, .. } if id == resume_id => {
                 anyhow::bail!("resume_session failed: {}", message);
@@ -352,18 +355,34 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     }
 
     assert!(history_checked, "Did not receive resume history event");
+    assert!(resume_done, "Did not receive resume done event");
 
     let msg_id = client.send_message("continue resumed session").await?;
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut saw_message_done = false;
+    let mut seen_events = Vec::new();
     while Instant::now() < deadline {
         let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
+        seen_events.push(format!("{event:?}"));
         if matches!(event, ServerEvent::Done { id } if id == msg_id) {
             saw_message_done = true;
             break;
         }
     }
-    assert!(saw_message_done, "Did not receive Done for resumed message");
+    assert!(
+        saw_message_done,
+        "Did not receive Done for resumed message. Seen events: {}\nstate={}\nhistory={}\nlogs={}",
+        seen_events.join(" | "),
+        debug_run_command(debug_socket_path.clone(), "state", Some(&session.id))
+            .await
+            .unwrap_or_else(|err| format!("<state error: {err}>")),
+        debug_run_command(debug_socket_path.clone(), "history", Some(&session.id))
+            .await
+            .unwrap_or_else(|err| format!("<history error: {err}>")),
+        std::env::var_os("JCODE_HOME")
+            .and_then(|home| latest_log_excerpt(std::path::Path::new(&home)))
+            .unwrap_or_else(|| "<no logs>".to_string())
+    );
 
     let resume_ids = provider.captured_resume_session_ids.lock().unwrap().clone();
     assert_eq!(
