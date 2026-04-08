@@ -1285,6 +1285,10 @@ pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
     }
 }
 
+fn resolved_profile_default_model(profile: OpenAiCompatibleProfile) -> Option<String> {
+    resolve_openai_compatible_profile(profile).default_model
+}
+
 pub async fn login_and_bootstrap_provider(
     provider: LoginProviderDescriptor,
     account_label: Option<&str>,
@@ -1325,7 +1329,8 @@ pub async fn login_and_bootstrap_provider(
             apply_openai_compatible_profile_env(Some(profile));
             lock_model_provider("openrouter");
             let multi = provider::MultiProvider::new();
-            if let Some(model) = profile.default_model {
+            let resolved = resolve_openai_compatible_profile(profile);
+            if let Some(model) = resolved.default_model.as_deref() {
                 let _ = multi.set_model(model);
             }
             Arc::new(multi)
@@ -1680,16 +1685,14 @@ async fn init_provider_with_options(
 
     if model.is_none()
         && let Some(profile) = profile_for_choice(choice)
+        && let Some(default_model) = resolved_profile_default_model(profile)
+        && provider.set_model(&default_model).is_ok()
     {
         let resolved = resolve_openai_compatible_profile(profile);
-        if let Some(default_model) = resolved.default_model
-            && provider.set_model(&default_model).is_ok()
-        {
-            init_notice(&format!(
-                "Using default model for {}: {}",
-                resolved.display_name, default_model
-            ));
-        }
+        init_notice(&format!(
+            "Using default model for {}: {}",
+            resolved.display_name, default_model
+        ));
     }
 
     if let Some(model_name) = model {
@@ -2014,6 +2017,37 @@ mod tests {
             choice_for_login_provider(provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER),
             Some(ProviderChoice::OpenaiCompatible)
         );
+    }
+
+    #[test]
+    fn resolved_profile_default_model_uses_openai_compatible_override() {
+        let _guard = lock_env();
+        let _env_guard = crate::storage::lock_test_env();
+        let saved: Vec<(String, Option<String>)> = [
+            "JCODE_OPENAI_COMPAT_API_BASE",
+            "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+            "JCODE_OPENAI_COMPAT_ENV_FILE",
+            "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+        ]
+        .iter()
+        .map(|k| (k.to_string(), std::env::var(k).ok()))
+        .collect();
+
+        crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://localhost:11434/v1");
+        crate::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "llama3.2");
+
+        assert_eq!(
+            resolved_profile_default_model(provider_catalog::OPENAI_COMPAT_PROFILE).as_deref(),
+            Some("llama3.2")
+        );
+
+        for (key, value) in saved {
+            if let Some(value) = value {
+                crate::env::set_var(&key, value);
+            } else {
+                crate::env::remove_var(&key);
+            }
+        }
     }
 
     #[test]

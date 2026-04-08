@@ -2563,6 +2563,63 @@ mod tests {
     use super::*;
     use crate::auth::{AuthState, AuthStatus, ProviderAuth};
     use crate::provider::ModelRoute;
+    use std::io::{Read, Write};
+
+    struct SavedEnv {
+        vars: Vec<(String, Option<String>)>,
+    }
+
+    impl SavedEnv {
+        fn capture(keys: &[&str]) -> Self {
+            Self {
+                vars: keys
+                    .iter()
+                    .map(|key| (key.to_string(), std::env::var(key).ok()))
+                    .collect(),
+            }
+        }
+    }
+
+    impl Drop for SavedEnv {
+        fn drop(&mut self) {
+            for (key, value) in &self.vars {
+                if let Some(value) = value {
+                    crate::env::set_var(key, value);
+                } else {
+                    crate::env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    fn spawn_single_response_http_server(status: u16, body: &str) -> String {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind test server");
+        let addr = listener.local_addr().expect("local addr");
+        let body = body.to_string();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept connection");
+            let mut buf = [0u8; 2048];
+            let _ = stream.read(&mut buf);
+            let status_text = match status {
+                200 => "OK",
+                400 => "Bad Request",
+                404 => "Not Found",
+                500 => "Internal Server Error",
+                _ => "OK",
+            };
+            let response = format!(
+                "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                status,
+                status_text,
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        });
+        format!("http://{}/v1", addr)
+    }
 
     #[test]
     fn test_parse_tailscale_dns_name_trims_trailing_dot() {
@@ -2723,6 +2780,75 @@ mod tests {
         match plan {
             AuthTestChoicePlan::Run { model } => assert!(model.is_none()),
             AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn auth_test_choice_plan_discovers_model_for_local_custom_compat_endpoint() {
+        let _env_guard = crate::storage::lock_test_env();
+        let _saved = SavedEnv::capture(&[
+            "JCODE_OPENAI_COMPAT_API_BASE",
+            "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+            "JCODE_OPENAI_COMPAT_ENV_FILE",
+            "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+            "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
+            "JCODE_OPENROUTER_API_BASE",
+            "JCODE_OPENROUTER_API_KEY_NAME",
+            "JCODE_OPENROUTER_ENV_FILE",
+            "JCODE_OPENROUTER_ALLOW_NO_AUTH",
+        ]);
+        let api_base = spawn_single_response_http_server(200, r#"{"data":[{"id":"llama3.2"}]}"#);
+        crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", &api_base);
+        crate::env::remove_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL");
+        crate::env::remove_var("JCODE_OPENAI_COMPAT_LOCAL_ENABLED");
+        crate::provider_catalog::apply_openai_compatible_profile_env(None);
+
+        let plan = auth_test_choice_plan(
+            &super::super::provider_init::ProviderChoice::OpenaiCompatible,
+            None,
+        )
+        .await
+        .expect("choice plan");
+
+        match plan {
+            AuthTestChoicePlan::Run { model } => assert_eq!(model.as_deref(), Some("llama3.2")),
+            AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn auth_test_choice_plan_skips_local_custom_compat_endpoint_without_models() {
+        let _env_guard = crate::storage::lock_test_env();
+        let _saved = SavedEnv::capture(&[
+            "JCODE_OPENAI_COMPAT_API_BASE",
+            "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+            "JCODE_OPENAI_COMPAT_ENV_FILE",
+            "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+            "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
+            "JCODE_OPENROUTER_API_BASE",
+            "JCODE_OPENROUTER_API_KEY_NAME",
+            "JCODE_OPENROUTER_ENV_FILE",
+            "JCODE_OPENROUTER_ALLOW_NO_AUTH",
+        ]);
+        let api_base = spawn_single_response_http_server(200, r#"{"data":[]}"#);
+        crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", &api_base);
+        crate::env::remove_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL");
+        crate::env::remove_var("JCODE_OPENAI_COMPAT_LOCAL_ENABLED");
+        crate::provider_catalog::apply_openai_compatible_profile_env(None);
+
+        let plan = auth_test_choice_plan(
+            &super::super::provider_init::ProviderChoice::OpenaiCompatible,
+            None,
+        )
+        .await
+        .expect("choice plan");
+
+        match plan {
+            AuthTestChoicePlan::Run { model } => panic!("unexpected run plan: {model:?}"),
+            AuthTestChoicePlan::Skip(detail) => {
+                assert!(detail.contains("reported no models"));
+                assert!(detail.contains("openai-compatible"));
+            }
         }
     }
 
