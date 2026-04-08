@@ -303,6 +303,24 @@ pub(crate) enum Command {
         #[arg(long)]
         output: Option<String>,
     },
+
+    /// Save or restore the current set of open jcode windows across a system reboot
+    Restart {
+        #[command(subcommand)]
+        action: RestartCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum RestartCommand {
+    /// Save a reboot snapshot of currently active jcode windows
+    Save,
+    /// Restore the most recently saved reboot snapshot
+    Restore,
+    /// Show the currently saved reboot snapshot
+    Status,
+    /// Remove the currently saved reboot snapshot
+    Clear,
 }
 
 #[derive(Subcommand, Debug)]
@@ -541,6 +559,15 @@ mod tests {
         let args = Args::try_parse_from(["jcode", "provider", "current", "--json"]).unwrap();
         match args.command {
             Some(Command::Provider(ProviderCommand::Current { json })) => assert!(json),
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn restart_save_subcommand_parses() {
+        let args = Args::try_parse_from(["jcode", "restart", "save"]).unwrap();
+        match args.command {
+            Some(Command::Restart { action: RestartCommand::Save }) => {}
             other => panic!("unexpected command: {:?}", other),
         }
     }
