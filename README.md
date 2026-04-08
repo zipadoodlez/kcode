@@ -55,35 +55,66 @@ jcode is built to be as performant and resource efficient as possible. Every met
 - **jcode uses 7.2× less PSS than pi**
 - **jcode uses 22× less PSS than OpenCode**
 - **jcode uses 25× less PSS than Claude Code**
-- **jcode spawns 44.4× faster than pi**
-- **jcode spawns 66.8× faster than OpenCode**
-- **jcode spawns 24.3× faster than Claude Code**
+- **jcode shows visible UI 42.1× faster than pi**
+- **jcode becomes input-ready 21.5× faster than OpenCode**
+- **jcode becomes input-ready 18.6× faster than Codex CLI**
+- **jcode becomes input-ready 72.2× faster than Claude Code**
+
+### Interactive startup time
+
+Measured on this Linux machine across 10 interactive PTY launches. These numbers intentionally avoid misleading "first byte" / ANSI-handshake timing.
+
+- **First visible content**: first meaningful rendered text visible on screen
+- **Input-ready**: time until typed probe text appears on the rendered screen
+
+Startup versions tested:
+
+- `jcode v0.9.366-dev (dbd480c, dirty)`
+- `pi 0.62.0`
+- `opencode 1.0.203`
+- `codex-cli 0.118.0`
+- `Claude Code 2.1.86`
+- `Cursor Agent 2026.03.18-f6873f7`
+- `GitHub Copilot CLI 0.0.421`
+
+<div align="center">
+
+| Tool | First visible content | Range |
+|---|---:|---:|
+| **jcode** | **14.0 ms** | 10.1–19.3 ms |
+| **pi** | **590.7 ms** | 369.6–934.8 ms |
+| **codex** | **882.8 ms** | 742.3–1640.9 ms |
+| **opencode** | **1035.9 ms** | 922.5–1104.4 ms |
+| **Copilot CLI** | **1518.6 ms** | 1357.4–1826.8 ms |
+| **Cursor Agent** | **1949.7 ms** | 1711.0–2104.8 ms |
+| **Claude Code** | **3436.9 ms** | 2032.7–8927.2 ms |
+
+</div>
+
+<div align="center">
+
+| Tool | Input-ready | Range |
+|---|---:|---:|
+| **jcode** | **48.7 ms** | 30.3–62.7 ms |
+| **pi** | **596.4 ms** | 373.9–955.2 ms |
+| **codex** | **905.8 ms** | 760.1–1675.7 ms |
+| **opencode** | **1047.9 ms** | 931.1–1116.9 ms |
+| **Copilot CLI** | **1583.4 ms** | 1422.8–1880.0 ms |
+| **Cursor Agent** | **1978.7 ms** | 1727.3–2130.0 ms |
+| **Claude Code** | **3512.8 ms** | 2137.4–9002.0 ms |
+
+</div>
 
 ### Memory benchmarks: 10 simultaneous sessions
 
 Measured on this Linux machine using real interactive PTY sessions and Linux `/proc` memory stats. For jcode, the number includes both client memory and the incremental memory growth of the shared server, which is the fair comparison for many active sessions.
 
-Versions tested:
+Memory benchmark versions tested:
 
 - `jcode v0.8.16-dev (161f9fa)`
 - `pi-coding-agent 0.62.0` (`pi`)
 - `opencode 1.0.203`
 - `Claude Code 2.1.86`
-
-### Interactive startup time
-
-Measured as median **time to first terminal output** across 10 PTY launches on this Linux machine.
-
-<div align="center">
-
-| Tool | Median startup | Range |
-|---|---:|---:|
-| **jcode** | **13.6 ms** | 9.0–16.9 ms |
-| **Claude Code** | **331.1 ms** | 274.5–466.1 ms |
-| **pi** | **603.9 ms** | 522.3–701.4 ms |
-| **opencode** | **908.9 ms** | 785.5–1014.6 ms |
-
-</div>
 
 <div align="center">
 
