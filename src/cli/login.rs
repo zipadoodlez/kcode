@@ -21,6 +21,7 @@ pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> 
 
     match choice {
         ProviderChoice::Auto => {
+            crate::telemetry::record_setup_step_once("login_picker_opened");
             let providers = crate::provider_catalog::cli_login_providers();
             if !io::stdin().is_terminal() {
                 anyhow::bail!(
@@ -82,7 +83,7 @@ pub async fn run_login_provider(
 ) -> Result<()> {
     crate::telemetry::record_provider_selected(provider.id);
     crate::telemetry::record_auth_started(provider.id, provider.auth_kind.label());
-    match provider.target {
+    let login_result = match provider.target {
         LoginProviderTarget::AutoImport => {
             let imported = super::provider_init::maybe_run_external_auth_auto_import_flow()
                 .await?
@@ -93,18 +94,23 @@ pub async fn run_login_provider(
                 );
             }
             eprintln!("Imported {} existing auth source(s).", imported);
+            Ok(())
         }
-        LoginProviderTarget::Jcode => login_jcode_flow()?,
-        LoginProviderTarget::Claude => login_claude_flow(account_label).await?,
-        LoginProviderTarget::OpenAi => login_openai_flow(account_label).await?,
-        LoginProviderTarget::OpenRouter => login_openrouter_flow()?,
-        LoginProviderTarget::Azure => login_azure_flow()?,
-        LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile)?,
-        LoginProviderTarget::Cursor => login_cursor_flow()?,
-        LoginProviderTarget::Copilot => login_copilot_flow()?,
-        LoginProviderTarget::Gemini => login_gemini_flow().await?,
-        LoginProviderTarget::Antigravity => login_antigravity_flow().await?,
-        LoginProviderTarget::Google => login_google_flow().await?,
+        LoginProviderTarget::Jcode => login_jcode_flow(),
+        LoginProviderTarget::Claude => login_claude_flow(account_label).await,
+        LoginProviderTarget::OpenAi => login_openai_flow(account_label).await,
+        LoginProviderTarget::OpenRouter => login_openrouter_flow(),
+        LoginProviderTarget::Azure => login_azure_flow(),
+        LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile),
+        LoginProviderTarget::Cursor => login_cursor_flow(),
+        LoginProviderTarget::Copilot => login_copilot_flow(),
+        LoginProviderTarget::Gemini => login_gemini_flow().await,
+        LoginProviderTarget::Antigravity => login_antigravity_flow().await,
+        LoginProviderTarget::Google => login_google_flow().await,
+    };
+    if let Err(err) = login_result {
+        crate::telemetry::record_auth_failed(provider.id, provider.auth_kind.label());
+        return Err(err);
     }
     auth::AuthStatus::invalidate_cache();
     super::commands::run_post_login_validation(provider).await?;
