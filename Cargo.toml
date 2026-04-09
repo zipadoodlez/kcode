@@ -138,6 +138,10 @@ debug = 0
 codegen-units = 256
 incremental = true
 
+[profile.selfdev]
+inherits = "release"
+opt-level = 0
+
 # Full LTO release for stable/distribution builds
 [profile.release-lto]
 inherits = "release"

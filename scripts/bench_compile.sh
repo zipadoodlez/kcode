@@ -13,6 +13,7 @@ Targets:
   check            Run cargo check --quiet
   build            Run cargo build --quiet
   release-jcode    Run scripts/dev_cargo.sh build --release -p jcode --bin jcode --quiet
+  selfdev-jcode    Run scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode --quiet
 
 Options:
   --cold                 Run cargo clean before timing the first run
@@ -28,6 +29,7 @@ Examples:
   scripts/bench_compile.sh check --runs 3 --edit src/server.rs
   scripts/bench_compile.sh build -- --package jcode --bin test_api
   scripts/bench_compile.sh release-jcode --json
+  scripts/bench_compile.sh selfdev-jcode --json
 USAGE
 }
 
@@ -119,6 +121,9 @@ case "$target" in
     ;;
   release-jcode)
     cmd=(scripts/dev_cargo.sh build --release -p jcode --bin jcode --quiet)
+    ;;
+  selfdev-jcode)
+    cmd=(scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode --quiet)
     ;;
   *)
     printf 'error: unsupported target: %s\n' "$target" >&2
