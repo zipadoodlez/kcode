@@ -177,9 +177,11 @@ Yes, you can change the alignment to be left-aligned. I prefer the centered mode
 
 Spawn two or more agents in the same repo, and they will automatically be managed by the server to allow native collaboration. When agent A edits a file that agent B has read (code shifting under its feet), the server notifies agent B. Agent B can ignore it if it is not relevant, or it can check the diff to make sure that it doesn't conflict. Each agent has messaging abilities, capable of DMing just one agent, broadcasting to all other agents hosted by the server, or just agents working in that repo. This allows you to spawn multiple sessions in the same repo, and have all conflicts automatically resolved. 
 
-https://github.com/user-attachments/assets/0b69a309-e4c2-4721-8e4d-b5a93d8865ed
+<div align="center">
+  <img src="assets/readme/100-sessions-spawn-demo.gif" alt="Spawning 100 jcode sessions demo" width="900">
+</div>
 
-The above is a video of me manually managing a swarm of 20 agents. Some working on the jcode codebase, and some not. This is only possible with the performance/resource efficiency noted in the above section on client/session memory usage. 
+The above GIF shows jcode spawning 100 sessions. This kind of large swarm workflow is only practical because of the performance and resource-efficiency described in the section above.
 
 Agents are also able to spawn their own swarms autonomously. They have a swarm tool which allows them to spawn in their own teamates to accomplish tasks in parallel. Doing so turns the main agent into a coordinator and the spawned agents into workers. Groups of agents, their messaging channels, their completion statuses, etc are all automatically managed. This can be done headlessly or headed. 
 
