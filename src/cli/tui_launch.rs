@@ -1140,14 +1140,14 @@ pub fn list_sessions() -> Result<()> {
                 exe.to_path_buf(),
                 vec!["--resume".to_string(), session_id.clone()],
             ),
-            crate::tui::session_picker::ResumeTarget::ClaudeCodeSession { session_id } => (
+            crate::tui::session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
                     crate::import::imported_claude_code_session_id(session_id),
                 ],
             ),
-            crate::tui::session_picker::ResumeTarget::CodexSession { session_id } => (
+            crate::tui::session_picker::ResumeTarget::CodexSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
@@ -1161,7 +1161,7 @@ pub fn list_sessions() -> Result<()> {
                     crate::import::imported_pi_session_id(session_path),
                 ],
             ),
-            crate::tui::session_picker::ResumeTarget::OpenCodeSession { session_id } => (
+            crate::tui::session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => (
                 exe.to_path_buf(),
                 vec![
                     "--resume".to_string(),
@@ -1190,10 +1190,10 @@ pub fn list_sessions() -> Result<()> {
             crate::tui::session_picker::ResumeTarget::JcodeSession { session_id } => {
                 resumed_window_title(session_id)
             }
-            crate::tui::session_picker::ResumeTarget::ClaudeCodeSession { session_id } => {
+            crate::tui::session_picker::ResumeTarget::ClaudeCodeSession { session_id, .. } => {
                 format!("🧵 Claude Code {}", &session_id[..session_id.len().min(8)])
             }
-            crate::tui::session_picker::ResumeTarget::CodexSession { session_id } => {
+            crate::tui::session_picker::ResumeTarget::CodexSession { session_id, .. } => {
                 format!("🧠 Codex {}", &session_id[..session_id.len().min(8)])
             }
             crate::tui::session_picker::ResumeTarget::PiSession { session_path } => {
@@ -1205,7 +1205,7 @@ pub fn list_sessions() -> Result<()> {
                         .unwrap_or("session")
                 )
             }
-            crate::tui::session_picker::ResumeTarget::OpenCodeSession { session_id } => {
+            crate::tui::session_picker::ResumeTarget::OpenCodeSession { session_id, .. } => {
                 format!("◌ OpenCode {}", &session_id[..session_id.len().min(8)])
             }
         };
