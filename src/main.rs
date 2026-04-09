@@ -17,7 +17,31 @@ pub static malloc_conf: Option<&'static [u8; 50]> =
 
 use anyhow::Result;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    jcode::run().await
+#[cfg(all(target_os = "linux", not(feature = "jemalloc")))]
+fn configure_system_allocator() {
+    unsafe extern "C" {
+        fn mallopt(param: i32, value: i32) -> i32;
+    }
+
+    const M_ARENA_MAX: i32 = -8;
+    let arena_max = std::env::var("JCODE_GLIBC_ARENA_MAX")
+        .ok()
+        .and_then(|value| value.trim().parse::<i32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(4);
+
+    let _ = unsafe { mallopt(M_ARENA_MAX, arena_max) };
+}
+
+#[cfg(not(all(target_os = "linux", not(feature = "jemalloc"))))]
+fn configure_system_allocator() {}
+
+fn main() -> Result<()> {
+    configure_system_allocator();
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    runtime.block_on(async { jcode::run().await })
 }

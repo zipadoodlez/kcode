@@ -270,7 +270,11 @@ async fn run_default_command(args: Args) -> Result<()> {
         return Ok(());
     }
 
-    let startup_hints = setup_hints::maybe_show_setup_hints();
+    let startup_hints = if args.fresh_spawn {
+        None
+    } else {
+        setup_hints::maybe_show_setup_hints()
+    };
     startup_profile::mark("setup_hints");
 
     if args.resume.is_none() {
@@ -315,7 +319,11 @@ async fn run_default_command(args: Args) -> Result<()> {
     }
 
     startup_profile::mark("client_mode_start");
-    let mut server_running = server_is_running().await;
+    let mut server_running = if args.fresh_spawn {
+        true
+    } else {
+        server_is_running().await
+    };
     startup_profile::mark("server_check");
 
     if !server_running {

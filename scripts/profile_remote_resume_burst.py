@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--binary", default="./target/release/jcode")
     p.add_argument("--burst", type=int, default=20)
     p.add_argument("--timeout", type=float, default=15.0)
+    p.add_argument("--stagger-ms", type=float, default=0.0)
     p.add_argument("--json-out", default="/tmp/jcode_remote_burst_profile.json")
     return p.parse_args()
 
@@ -215,10 +216,17 @@ def finish_client(client: LiveClient) -> dict:
 
 
 def run_burst(
-    binary: str, env: dict[str, str], session_ids: list[str], timeout_s: float, server_pid: int
+    binary: str,
+    env: dict[str, str],
+    session_ids: list[str],
+    timeout_s: float,
+    server_pid: int,
+    stagger_ms: float,
 ) -> tuple[list[dict], dict[str, float | int]]:
-    clients = [start_resume_client(binary, env, session_id) for session_id in session_ids]
-    fd_to_index = {client.master_fd: idx for idx, client in enumerate(clients)}
+    clients: list[LiveClient] = []
+    fd_to_index: dict[int, int] = {}
+    launch_index = 0
+    next_launch_at = time.perf_counter()
     deadline = time.perf_counter() + timeout_s
     server_tracker = ProcTracker()
     peak_clients_rss_kb = 0
@@ -237,14 +245,29 @@ def run_burst(
         peak_live_clients = max(peak_live_clients, live_clients)
         peak_clients_rss_kb = max(peak_clients_rss_kb, clients_rss_kb)
 
-    sample_processes()
+    while time.perf_counter() < deadline and (
+        launch_index < len(session_ids) or any(not client.done for client in clients)
+    ):
+        now = time.perf_counter()
+        while launch_index < len(session_ids) and now >= next_launch_at:
+            client = start_resume_client(binary, env, session_ids[launch_index])
+            fd_to_index[client.master_fd] = len(clients)
+            clients.append(client)
+            launch_index += 1
+            next_launch_at += stagger_ms / 1000.0 if stagger_ms > 0 else 0.0
+            now = time.perf_counter()
 
-    while time.perf_counter() < deadline and any(not client.done for client in clients):
+        sample_processes()
         active_fds = [client.master_fd for client in clients if not client.done]
+        timeout = 0.05
+        if launch_index < len(session_ids):
+            timeout = max(0.0, min(timeout, next_launch_at - time.perf_counter()))
+        if not active_fds and launch_index < len(session_ids):
+            time.sleep(timeout)
+            continue
         if not active_fds:
             break
-        rlist, _, _ = select.select(active_fds, [], [], 0.05)
-        sample_processes()
+        rlist, _, _ = select.select(active_fds, [], [], timeout)
         for fd in rlist:
             client = clients[fd_to_index[fd]]
             try:
@@ -312,11 +335,19 @@ def main() -> None:
         session_ids = [create_session(debug_socket, os.getcwd()) for _ in range(args.burst)]
 
         wall_start = time.perf_counter()
-        results, proc_metrics = run_burst(args.binary, env, session_ids, args.timeout, server.pid)
+        results, proc_metrics = run_burst(
+            args.binary,
+            env,
+            session_ids,
+            args.timeout,
+            server.pid,
+            args.stagger_ms,
+        )
         wall_ms = (time.perf_counter() - wall_start) * 1000.0
         firsts = [r["first_output_ms"] for r in results if r["first_output_ms"] is not None]
         output = {
             "burst": args.burst,
+            "stagger_ms": args.stagger_ms,
             "wall_ms": wall_ms,
             "server_cpu_ms": proc_metrics["server_cpu_ms"],
             "clients_cpu_ms": proc_metrics["clients_cpu_ms"],
