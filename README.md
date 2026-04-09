@@ -140,6 +140,10 @@ Memory benchmark versions tested:
 
 </div>
 
+https://github.com/user-attachments/assets/630d0957-fa21-44d2-baa1-f6b06ce69d78
+
+The above video is me spawning 102 sessions of jcode. 
+
 ---
 
 ## Memory (Agent memory)
