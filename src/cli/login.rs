@@ -96,6 +96,12 @@ enum PendingScriptableLogin {
     },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PendingScriptableLoginRecord {
+    expires_at_ms: i64,
+    login: PendingScriptableLogin,
+}
+
 impl PendingScriptableLogin {
     fn key(&self) -> &'static str {
         match self {
@@ -111,6 +117,10 @@ impl PendingScriptableLogin {
     fn pending_path(&self) -> Result<PathBuf> {
         pending_login_path(self.key())
     }
+
+    fn default_expires_at_ms(&self) -> i64 {
+        current_time_ms() + 30 * 60 * 1000
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,6 +131,8 @@ struct ScriptableAuthPrompt {
     input_kind: String,
     pending_path: String,
     user_code: Option<String>,
+    expires_at_ms: i64,
+    resume_command: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -300,7 +312,7 @@ async fn start_scriptable_login(
     account_label: Option<&str>,
     options: &LoginOptions,
 ) -> Result<LoginFlowOutcome> {
-    let (pending, auth_url, input_kind, user_code) = match provider.target {
+    let (pending, auth_url, input_kind, user_code, expires_at_ms) = match provider.target {
         LoginProviderTarget::Claude => {
             let label = auth::claude::login_target_label(account_label)?;
             let (verifier, challenge) = auth::oauth::generate_pkce_public();
@@ -315,6 +327,12 @@ async fn start_scriptable_login(
                 auth_url,
                 "auth_code_or_callback_url",
                 None,
+                PendingScriptableLogin::Claude {
+                    account_label: String::new(),
+                    verifier: String::new(),
+                    redirect_uri: String::new(),
+                }
+                .default_expires_at_ms(),
             )
         }
         LoginProviderTarget::OpenAi => {
@@ -338,6 +356,13 @@ async fn start_scriptable_login(
                 auth_url,
                 "callback_url",
                 None,
+                PendingScriptableLogin::Openai {
+                    account_label: String::new(),
+                    verifier: String::new(),
+                    state: String::new(),
+                    redirect_uri: String::new(),
+                }
+                .default_expires_at_ms(),
             )
         }
         LoginProviderTarget::Gemini => {
@@ -353,6 +378,11 @@ async fn start_scriptable_login(
                 auth_url,
                 "auth_code",
                 None,
+                PendingScriptableLogin::Gemini {
+                    verifier: String::new(),
+                    redirect_uri: String::new(),
+                }
+                .default_expires_at_ms(),
             )
         }
         LoginProviderTarget::Antigravity => {
@@ -369,6 +399,12 @@ async fn start_scriptable_login(
                 auth_url,
                 "callback_url",
                 None,
+                PendingScriptableLogin::Antigravity {
+                    verifier: String::new(),
+                    state: String::new(),
+                    redirect_uri: String::new(),
+                }
+                .default_expires_at_ms(),
             )
         }
         LoginProviderTarget::Google => {
@@ -393,6 +429,13 @@ async fn start_scriptable_login(
                 auth_url,
                 "callback_url",
                 None,
+                PendingScriptableLogin::Google {
+                    verifier: String::new(),
+                    state: String::new(),
+                    redirect_uri: String::new(),
+                    tier,
+                }
+                .default_expires_at_ms(),
             )
         }
         LoginProviderTarget::Copilot => {
@@ -408,6 +451,7 @@ async fn start_scriptable_login(
                 device_resp.verification_uri,
                 "complete",
                 Some(device_resp.user_code),
+                current_time_ms() + (device_resp.expires_in as i64 * 1000),
             )
         }
         _ => {
@@ -418,13 +462,19 @@ async fn start_scriptable_login(
     };
 
     let pending_path = pending.pending_path()?;
-    crate::storage::write_json_secret(&pending_path, &pending)?;
+    cleanup_stale_pending_login_files()?;
+    let record = PendingScriptableLoginRecord {
+        expires_at_ms,
+        login: pending,
+    };
+    crate::storage::write_json_secret(&pending_path, &record)?;
     emit_scriptable_auth_prompt(
         provider.id,
         &auth_url,
         input_kind,
         &pending_path,
         user_code.as_deref(),
+        expires_at_ms,
         options.json,
     )?;
     Ok(LoginFlowOutcome::Deferred)
@@ -793,6 +843,10 @@ fn pending_login_path(key: &str) -> Result<PathBuf> {
         .join(format!("{key}.json")))
 }
 
+fn pending_login_dir() -> Result<PathBuf> {
+    Ok(crate::storage::jcode_dir()?.join("pending-login"))
+}
+
 fn require_scriptable_input(input: Option<ProvidedAuthInput>) -> Result<ProvidedAuthInput> {
     input.ok_or_else(|| anyhow::anyhow!("No scriptable auth input was provided."))
 }
@@ -805,8 +859,27 @@ fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptabl
             provider
         );
     }
+    cleanup_stale_pending_login_files()?;
     crate::storage::harden_secret_file_permissions(path);
-    crate::storage::read_json(path).with_context(|| {
+    let data = std::fs::read_to_string(path).with_context(|| {
+        format!(
+            "Failed to read pending {} login state from {}",
+            provider,
+            path.display()
+        )
+    })?;
+    if let Ok(record) = serde_json::from_str::<PendingScriptableLoginRecord>(&data) {
+        if record.expires_at_ms <= current_time_ms() {
+            clear_pending_login(path);
+            anyhow::bail!(
+                "Pending {} login state expired. Run `jcode login --provider {} --print-auth-url` again.",
+                provider,
+                provider
+            );
+        }
+        return Ok(record.login);
+    }
+    serde_json::from_str::<PendingScriptableLogin>(&data).with_context(|| {
         format!(
             "Failed to load pending {} login state from {}",
             provider,
@@ -817,6 +890,37 @@ fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptabl
 
 fn clear_pending_login(path: &PathBuf) {
     let _ = std::fs::remove_file(path);
+}
+
+fn cleanup_stale_pending_login_files() -> Result<()> {
+    let dir = pending_login_dir()?;
+    if !dir.exists() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(data) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(record) = serde_json::from_str::<PendingScriptableLoginRecord>(&data) else {
+            continue;
+        };
+        if record.expires_at_ms <= current_time_ms() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    Ok(())
+}
+
+fn current_time_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
 }
 
 fn resolve_auth_input(value: &str) -> Result<String> {
@@ -841,8 +945,10 @@ fn emit_scriptable_auth_prompt(
     input_kind: &str,
     pending_path: &PathBuf,
     user_code: Option<&str>,
+    expires_at_ms: i64,
     json: bool,
 ) -> Result<()> {
+    let resume_command = scriptable_resume_command(provider, input_kind);
     let prompt = ScriptableAuthPrompt {
         status: "pending",
         provider: provider.to_string(),
@@ -850,6 +956,8 @@ fn emit_scriptable_auth_prompt(
         input_kind: input_kind.to_string(),
         pending_path: pending_path.display().to_string(),
         user_code: user_code.map(str::to_string),
+        expires_at_ms,
+        resume_command: resume_command.clone(),
     };
     if json {
         println!("{}", serde_json::to_string(&prompt)?);
@@ -859,19 +967,31 @@ fn emit_scriptable_auth_prompt(
             eprintln!("User code: {}", user_code);
         }
         eprintln!("Auth URL printed to stdout.");
+        eprintln!("Complete this login later with `{}`.", resume_command);
         eprintln!(
-            "Complete this login later with `jcode login --provider {} --{}`.",
-            provider,
-            match input_kind {
-                "callback_url" => "callback-url '<url-or-query>'",
-                "auth_code" => "auth-code '<code>'",
-                "complete" => "complete",
-                _ => "callback-url '<url>' or --auth-code '<code>'",
-            }
+            "This pending login expires at {} ms since epoch.",
+            expires_at_ms
         );
         eprintln!("Pending login state saved at {}", pending_path.display());
     }
     Ok(())
+}
+
+fn scriptable_resume_command(provider: &str, input_kind: &str) -> String {
+    match input_kind {
+        "callback_url" => {
+            format!(
+                "jcode login --provider {} --callback-url '<url-or-query>'",
+                provider
+            )
+        }
+        "auth_code" => format!("jcode login --provider {} --auth-code '<code>'", provider),
+        "complete" => format!("jcode login --provider {} --complete", provider),
+        _ => format!(
+            "jcode login --provider {} --callback-url '<url>'  # or --auth-code '<code>'",
+            provider
+        ),
+    }
 }
 
 fn emit_scriptable_auth_success(json: bool, success: ScriptableAuthSuccess) -> Result<()> {
@@ -1659,5 +1779,103 @@ fn maybe_open_browser(target: &str, no_browser: bool) -> bool {
         false
     } else {
         open::that(target).is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set_or_clear_env(key: &str, value: Option<std::ffi::OsString>) {
+        if let Some(value) = value {
+            crate::env::set_var(key, value);
+        } else {
+            crate::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn scriptable_resume_command_matches_input_kind() {
+        assert_eq!(
+            scriptable_resume_command("openai", "callback_url"),
+            "jcode login --provider openai --callback-url '<url-or-query>'"
+        );
+        assert_eq!(
+            scriptable_resume_command("gemini", "auth_code"),
+            "jcode login --provider gemini --auth-code '<code>'"
+        );
+        assert_eq!(
+            scriptable_resume_command("copilot", "complete"),
+            "jcode login --provider copilot --complete"
+        );
+    }
+
+    #[test]
+    fn load_pending_login_removes_expired_record() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let prev_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let path = pending_login_path("openai").expect("pending path");
+        let record = PendingScriptableLoginRecord {
+            expires_at_ms: current_time_ms() - 1,
+            login: PendingScriptableLogin::Openai {
+                account_label: "default".to_string(),
+                verifier: "verifier".to_string(),
+                state: "state".to_string(),
+                redirect_uri: "http://localhost:1455/auth/callback".to_string(),
+            },
+        };
+        crate::storage::write_json_secret(&path, &record).expect("write pending login");
+
+        let err = load_pending_login(&path, "openai").expect_err("expected expired state");
+        assert!(err.to_string().contains("expired"));
+        assert!(!path.exists(), "expired pending login should be removed");
+
+        set_or_clear_env("JCODE_HOME", prev_home);
+    }
+
+    #[test]
+    fn load_pending_login_accepts_legacy_format() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let prev_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let path = pending_login_path("gemini").expect("pending path");
+        let legacy = PendingScriptableLogin::Gemini {
+            verifier: "verifier".to_string(),
+            redirect_uri: auth::gemini::GEMINI_MANUAL_REDIRECT_URI.to_string(),
+        };
+        crate::storage::write_json_secret(&path, &legacy).expect("write legacy pending login");
+
+        let loaded = load_pending_login(&path, "gemini").expect("load legacy pending login");
+        match loaded {
+            PendingScriptableLogin::Gemini {
+                verifier,
+                redirect_uri,
+            } => {
+                assert_eq!(verifier, "verifier");
+                assert_eq!(redirect_uri, auth::gemini::GEMINI_MANUAL_REDIRECT_URI);
+            }
+            other => panic!("unexpected login variant: {:?}", other),
+        }
+
+        set_or_clear_env("JCODE_HOME", prev_home);
+    }
+
+    #[test]
+    fn uses_scriptable_flow_detects_dash_input_without_consuming_stdin() {
+        let options = LoginOptions {
+            callback_url: Some("-".to_string()),
+            ..LoginOptions::default()
+        };
+        assert!(
+            options
+                .uses_scriptable_flow()
+                .expect("uses scriptable flow")
+        );
+        assert!(options.has_provided_input());
     }
 }
