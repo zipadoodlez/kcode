@@ -778,20 +778,38 @@ pub(crate) async fn run_external_auth_auto_import_candidates(
     Ok(outcome)
 }
 
-async fn detect_auto_provider_flags() -> (bool, bool, bool, bool, bool, bool) {
-    let (has_claude, has_openai) = tokio::join!(
-        tokio::task::spawn_blocking(|| auth::claude::load_credentials().is_ok()),
-        tokio::task::spawn_blocking(|| auth::codex::load_credentials().is_ok()),
-    );
+struct AutoProviderAvailability {
+    auth_status: auth::AuthStatus,
+    has_claude: bool,
+    has_openai: bool,
+    has_copilot: bool,
+    has_gemini: bool,
+    has_cursor: bool,
+    has_openrouter: bool,
+}
+
+impl AutoProviderAvailability {
+    fn has_any_provider(&self) -> bool {
+        self.has_claude
+            || self.has_openai
+            || self.has_copilot
+            || self.has_gemini
+            || self.has_cursor
+            || self.has_openrouter
+    }
+}
+
+async fn detect_auto_provider_flags() -> AutoProviderAvailability {
     let auth_status = auth::AuthStatus::check_fast();
-    (
-        has_claude.unwrap_or(false),
-        has_openai.unwrap_or(false),
-        auth_status.copilot_has_api_token,
-        auth_status.gemini == auth::AuthState::Available,
-        auth_status.cursor == auth::AuthState::Available,
-        provider::openrouter::OpenRouterProvider::has_credentials(),
-    )
+    AutoProviderAvailability {
+        has_claude: auth_status.anthropic.has_oauth || auth_status.anthropic.has_api_key,
+        has_openai: auth_status.openai_has_oauth || auth_status.openai_has_api_key,
+        has_copilot: auth_status.copilot_has_api_token,
+        has_gemini: auth_status.gemini == auth::AuthState::Available,
+        has_cursor: auth_status.cursor == auth::AuthState::Available,
+        has_openrouter: auth_status.openrouter == auth::AuthState::Available,
+        auth_status,
+    }
 }
 
 fn provider_label_for_api_key_env(env_key: &str) -> String {
@@ -1555,37 +1573,29 @@ async fn init_provider_with_options(
         ProviderChoice::Auto => {
             disable_subscription_runtime_mode();
             unlock_model_provider();
-            let (
-                mut has_claude,
-                mut has_openai,
-                mut has_copilot,
-                mut has_gemini,
-                mut has_cursor,
-                mut has_openrouter,
-            ) = detect_auto_provider_flags().await;
+            let auto_detect_start = std::time::Instant::now();
+            let mut availability = detect_auto_provider_flags().await;
 
-            let reviewed_external_auth = if !(has_claude
-                || has_openai
-                || has_copilot
-                || has_gemini
-                || has_cursor
-                || has_openrouter)
-            {
+            let reviewed_external_auth = if !availability.has_any_provider() {
                 maybe_run_external_auth_auto_import_flow().await?.is_some()
             } else {
                 false
             };
 
             if reviewed_external_auth {
-                (
-                    has_claude,
-                    has_openai,
-                    has_copilot,
-                    has_gemini,
-                    has_cursor,
-                    has_openrouter,
-                ) = detect_auto_provider_flags().await;
-            } else {
+                availability = detect_auto_provider_flags().await;
+            }
+
+            let auto_detect_ms = auto_detect_start.elapsed().as_millis();
+
+            if !availability.has_any_provider() {
+                let supplemental_start = std::time::Instant::now();
+                let mut has_claude = availability.has_claude;
+                let mut has_openai = availability.has_openai;
+                let mut has_copilot = availability.has_copilot;
+                let mut has_gemini = availability.has_gemini;
+                let mut has_cursor = availability.has_cursor;
+                let mut has_openrouter = availability.has_openrouter;
                 let mut has_other_provider =
                     has_claude || has_copilot || has_gemini || has_cursor || has_openrouter;
 
@@ -1649,11 +1659,32 @@ async fn init_provider_with_options(
                         has_other_provider && !has_openrouter,
                     )?;
                 }
+
+                availability = AutoProviderAvailability {
+                    auth_status: auth::AuthStatus::check_fast(),
+                    has_claude,
+                    has_openai,
+                    has_copilot,
+                    has_gemini,
+                    has_cursor,
+                    has_openrouter,
+                };
+                crate::logging::info(&format!(
+                    "[TIMING] auto_provider_bootstrap: detect={}ms, external_import={}, supplemental={}ms, final_has_any={}",
+                    auto_detect_ms,
+                    reviewed_external_auth,
+                    supplemental_start.elapsed().as_millis(),
+                    availability.has_any_provider()
+                ));
+            } else {
+                crate::logging::info(&format!(
+                    "[TIMING] auto_provider_bootstrap: detect={}ms, external_import={}, supplemental=skipped, final_has_any=true",
+                    auto_detect_ms, reviewed_external_auth
+                ));
             }
 
-            if has_claude || has_openai || has_copilot || has_gemini || has_cursor || has_openrouter
-            {
-                let multi = provider::MultiProvider::new_fast();
+            if availability.has_any_provider() {
+                let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
                 init_notice(&format!(
                     "Using {} (use /model to switch models)",
                     multi.name()

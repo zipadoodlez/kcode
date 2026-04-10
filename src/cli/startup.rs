@@ -68,10 +68,7 @@ fn parse_and_prepare_args() -> Result<Args> {
 }
 
 fn spawn_background_update_check(args: &Args) {
-    let check_updates = !args.quiet
-        && !args.no_update
-        && !matches!(args.command, Some(Command::Update))
-        && args.resume.is_none();
+    let check_updates = should_spawn_background_update_check(args);
     let auto_update = should_auto_install_update(args, has_live_terminal_attached());
 
     if !check_updates {
@@ -105,6 +102,7 @@ fn spawn_background_update_check(args: &Args) {
         });
     } else {
         std::thread::spawn(move || {
+            let start = std::time::Instant::now();
             if let Some(update_available) = hot_exec::check_for_updates()
                 && update_available
             {
@@ -120,8 +118,20 @@ fn spawn_background_update_check(args: &Args) {
                     logging::info("Update available! Run `jcode update` or `/reload` to update.");
                 }
             }
+            logging::info(&format!(
+                "[TIMING] background_update_check: auto_update={}, total={}ms",
+                auto_update,
+                start.elapsed().as_millis()
+            ));
         });
     }
+}
+
+fn should_spawn_background_update_check(args: &Args) -> bool {
+    !args.quiet
+        && !args.no_update
+        && !matches!(args.command, Some(Command::Update) | Some(Command::Serve))
+        && args.resume.is_none()
 }
 
 fn has_live_terminal_attached() -> bool {

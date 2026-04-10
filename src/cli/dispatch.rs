@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::process::{Command as ProcessCommand, Stdio};
+use std::time::Instant;
 
 use super::args::{
     AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
@@ -20,10 +21,21 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
 
     match args.command {
         Some(Command::Serve) => {
+            let serve_start = Instant::now();
             crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
+            let provider_start = Instant::now();
             let provider =
                 provider_init::init_provider(&args.provider, args.model.as_deref()).await?;
+            let provider_ms = provider_start.elapsed().as_millis();
+            let server_new_start = Instant::now();
             let server = server::Server::new(provider);
+            let server_new_ms = server_new_start.elapsed().as_millis();
+            crate::logging::info(&format!(
+                "[TIMING] serve bootstrap: provider_init={}ms, server_new={}ms, before_run={}ms",
+                provider_ms,
+                server_new_ms,
+                serve_start.elapsed().as_millis()
+            ));
             server.run().await?;
         }
         Some(Command::Connect) => {
