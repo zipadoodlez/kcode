@@ -229,6 +229,17 @@ For custom OpenAI-compatible endpoints, jcode now prompts for the API base and s
 
 For headless or SSH sessions, OAuth-style providers support `jcode login --provider <provider> --no-browser` (alias: `--headless`) so jcode prints the auth URL/QR and falls back to manual code or callback paste instead of trying to launch a local browser.
 
+For more scriptable remote flows, `claude`, `openai`, `gemini`, and `antigravity` also support a two-step pattern:
+
+```bash
+# Step 1: print a resumable auth URL
+jcode login --provider openai --print-auth-url --json
+
+# Step 2: complete later with the callback URL or auth code
+jcode login --provider openai --callback-url 'http://localhost:1455/auth/callback?...'
+jcode login --provider gemini --auth-code '...'
+```
+
 For the built-in OpenAI login flow, jcode opens a local callback on
 `http://localhost:1455/auth/callback` by default.
 

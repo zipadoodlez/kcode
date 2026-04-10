@@ -106,6 +106,22 @@ pub(crate) enum Command {
         /// Do not try to open a browser locally. Useful over SSH or on headless machines.
         #[arg(long, alias = "headless")]
         no_browser: bool,
+
+        /// Print a script-friendly auth URL and persist temporary login state for later completion.
+        #[arg(long, conflicts_with_all = ["callback_url", "auth_code"])]
+        print_auth_url: bool,
+
+        /// Complete a previously printed auth flow using a full callback URL or query string.
+        #[arg(long, conflicts_with = "auth_code")]
+        callback_url: Option<String>,
+
+        /// Complete a previously printed auth flow using a provider-issued authorization code.
+        #[arg(long, conflicts_with = "callback_url")]
+        auth_code: Option<String>,
+
+        /// Emit machine-readable JSON for script-friendly login flows.
+        #[arg(long)]
+        json: bool,
     },
 
     /// Run in simple REPL mode (no TUI)
@@ -497,9 +513,17 @@ mod tests {
             Some(Command::Login {
                 account,
                 no_browser,
+                print_auth_url,
+                callback_url,
+                auth_code,
+                json,
             }) => {
                 assert!(account.is_none());
                 assert!(no_browser);
+                assert!(!print_auth_url);
+                assert!(callback_url.is_none());
+                assert!(auth_code.is_none());
+                assert!(!json);
             }
             other => panic!("unexpected command: {:?}", other),
         }
@@ -507,6 +531,51 @@ mod tests {
         let args = Args::try_parse_from(["jcode", "login", "--headless"]).unwrap();
         match args.command {
             Some(Command::Login { no_browser, .. }) => assert!(no_browser),
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn login_scriptable_flags_parse() {
+        let args = Args::try_parse_from(["jcode", "login", "--print-auth-url", "--json"]).unwrap();
+        match args.command {
+            Some(Command::Login {
+                print_auth_url,
+                json,
+                callback_url,
+                auth_code,
+                ..
+            }) => {
+                assert!(print_auth_url);
+                assert!(json);
+                assert!(callback_url.is_none());
+                assert!(auth_code.is_none());
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+
+        let args = Args::try_parse_from([
+            "jcode",
+            "login",
+            "--callback-url",
+            "http://localhost:1455/auth/callback?code=x&state=y",
+        ])
+        .unwrap();
+        match args.command {
+            Some(Command::Login { callback_url, .. }) => {
+                assert_eq!(
+                    callback_url.as_deref(),
+                    Some("http://localhost:1455/auth/callback?code=x&state=y")
+                );
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+
+        let args = Args::try_parse_from(["jcode", "login", "--auth-code", "abc123"]).unwrap();
+        match args.command {
+            Some(Command::Login { auth_code, .. }) => {
+                assert_eq!(auth_code.as_deref(), Some("abc123"));
+            }
             other => panic!("unexpected command: {:?}", other),
         }
     }

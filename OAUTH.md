@@ -39,6 +39,7 @@ Relevant code:
 ### Login steps
 1. Run `jcode login --provider claude` (recommended), or `jcode login` and choose Claude.
    - For headless / SSH use: `jcode login --provider claude --no-browser`
+   - For scriptable remote flows: `jcode login --provider claude --print-auth-url`, then later complete with `--callback-url` or `--auth-code`
 2. Alternative: run `claude` (or `claude setup-token`). jcode can detect `~/.claude/.credentials.json`, ask before reading it, and remember that approval for future sessions.
 3. Verify with `jcode --provider claude run "Say hello from jcode"`.
 
@@ -104,6 +105,7 @@ These environment variables control the deprecated Claude Code CLI transport:
 ### Login steps
 1. Run `jcode login --provider openai`.
    - For headless / SSH use: `jcode login --provider openai --no-browser`
+   - For scriptable remote flows: `jcode login --provider openai --print-auth-url`, then later complete with `--callback-url`
 2. Your browser opens to the OpenAI OAuth page unless you use `--no-browser`. The local callback listens on
    `http://localhost:1455/auth/callback` by default.
    If port `1455` is unavailable, jcode falls back to a manual paste flow where
@@ -186,6 +188,7 @@ The Azure env file may contain:
 ### Login steps
 1. Run `jcode login --provider gemini` or `/login gemini` inside the TUI.
    - For headless / SSH use: `jcode login --provider gemini --no-browser`
+   - For scriptable remote flows: `jcode login --provider gemini --print-auth-url`, then later complete with `--auth-code`
 2. jcode opens a browser to the Google OAuth flow used for Gemini Code Assist unless you use `--no-browser`.
 3. If local callback binding is unavailable, jcode falls back to a manual paste flow using `https://codeassist.google.com/authcode`.
 4. Tokens are saved to `~/.jcode/gemini_oauth.json`.
@@ -299,6 +302,7 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
 ### Antigravity
 - Login: `jcode login --provider antigravity` (native Google OAuth flow; does **not** require Antigravity to be installed)
   - Headless / SSH: `jcode login --provider antigravity --no-browser`
+  - Scriptable remote flow: `jcode login --provider antigravity --print-auth-url`, then later complete with `--callback-url`
 - Tokens: `~/.jcode/antigravity_oauth.json`
 - Credential discovery order:
   1. native jcode tokens at `~/.jcode/antigravity_oauth.json`

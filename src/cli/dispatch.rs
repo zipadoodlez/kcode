@@ -58,8 +58,23 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Login {
             account,
             no_browser,
+            print_auth_url,
+            callback_url,
+            auth_code,
+            json,
         }) => {
-            login::run_login(&args.provider, account.as_deref(), no_browser).await?;
+            login::run_login(
+                &args.provider,
+                account.as_deref(),
+                login::LoginOptions {
+                    no_browser,
+                    print_auth_url,
+                    callback_url,
+                    auth_code,
+                    json,
+                },
+            )
+            .await?;
         }
         Some(Command::Repl) => {
             let (provider, registry) =
@@ -569,7 +584,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
             &provider_catalog::server_bootstrap_login_providers(),
             "No credentials found. Let's log in!\n\nChoose a provider:",
         )?;
-        login::run_login_provider(provider, None, false).await?;
+        login::run_login_provider(provider, None, login::LoginOptions::default()).await?;
         provider_init::apply_login_provider_profile_env(provider);
         output::stderr_blank_line();
     }

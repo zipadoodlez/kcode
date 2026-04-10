@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::io::{self, IsTerminal, Write};
+use std::path::PathBuf;
 
 use crate::auth;
 use crate::provider_catalog::{
@@ -9,10 +11,106 @@ use crate::provider_catalog::{
 
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
 
+#[derive(Debug, Clone, Default)]
+pub struct LoginOptions {
+    pub no_browser: bool,
+    pub print_auth_url: bool,
+    pub callback_url: Option<String>,
+    pub auth_code: Option<String>,
+    pub json: bool,
+}
+
+impl LoginOptions {
+    fn provided_input(&self) -> Result<Option<ProvidedAuthInput>> {
+        match (&self.callback_url, &self.auth_code) {
+            (Some(_), Some(_)) => {
+                anyhow::bail!("Specify only one of --callback-url or --auth-code.")
+            }
+            (Some(value), None) => Ok(Some(ProvidedAuthInput::CallbackUrl(resolve_auth_input(
+                value,
+            )?))),
+            (None, Some(value)) => Ok(Some(ProvidedAuthInput::AuthCode(resolve_auth_input(
+                value,
+            )?))),
+            (None, None) => Ok(None),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ProvidedAuthInput {
+    CallbackUrl(String),
+    AuthCode(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoginFlowOutcome {
+    Completed,
+    Deferred,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "snake_case")]
+enum PendingScriptableLogin {
+    Claude {
+        account_label: String,
+        verifier: String,
+        redirect_uri: String,
+    },
+    Openai {
+        account_label: String,
+        verifier: String,
+        state: String,
+        redirect_uri: String,
+    },
+    Gemini {
+        verifier: String,
+        redirect_uri: String,
+    },
+    Antigravity {
+        verifier: String,
+        state: String,
+        redirect_uri: String,
+    },
+}
+
+impl PendingScriptableLogin {
+    fn key(&self) -> &'static str {
+        match self {
+            Self::Claude { .. } => "claude",
+            Self::Openai { .. } => "openai",
+            Self::Gemini { .. } => "gemini",
+            Self::Antigravity { .. } => "antigravity",
+        }
+    }
+
+    fn pending_path(&self) -> Result<PathBuf> {
+        pending_login_path(self.key())
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ScriptableAuthPrompt {
+    status: &'static str,
+    provider: String,
+    auth_url: String,
+    input_kind: String,
+    pending_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ScriptableAuthSuccess {
+    status: &'static str,
+    provider: String,
+    account_label: Option<String>,
+    credentials_path: Option<String>,
+    email: Option<String>,
+}
+
 pub async fn run_login(
     choice: &ProviderChoice,
     account_label: Option<&str>,
-    no_browser: bool,
+    options: LoginOptions,
 ) -> Result<()> {
     if let Some(provider) = login_provider_for_choice(choice) {
         if matches!(choice, ProviderChoice::ClaudeSubprocess) {
@@ -20,11 +118,16 @@ pub async fn run_login(
                 "Warning: Claude subprocess transport is deprecated and will be removed. Direct Anthropic API is already the default for `--provider claude`."
             );
         }
-        return run_login_provider(provider, account_label, no_browser).await;
+        return run_login_provider(provider, account_label, options).await;
     }
 
     match choice {
         ProviderChoice::Auto => {
+            if options.print_auth_url || options.provided_input()?.is_some() {
+                anyhow::bail!(
+                    "Scriptable login flags require an explicit provider. Use `jcode login --provider <provider> ...`."
+                );
+            }
             crate::telemetry::record_setup_step_once("login_picker_opened");
             let providers = crate::provider_catalog::cli_login_providers();
             if !io::stdin().is_terminal() {
@@ -66,7 +169,7 @@ pub async fn run_login(
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             if let Some(provider) = resolve_login_selection(input.trim(), &providers) {
-                run_login_provider(provider, account_label, no_browser).await?;
+                run_login_provider(provider, account_label, options).await?;
             } else {
                 let valid = providers
                     .iter()
@@ -84,42 +187,496 @@ pub async fn run_login(
 pub async fn run_login_provider(
     provider: LoginProviderDescriptor,
     account_label: Option<&str>,
-    no_browser: bool,
+    options: LoginOptions,
 ) -> Result<()> {
     crate::telemetry::record_provider_selected(provider.id);
     crate::telemetry::record_auth_started(provider.id, provider.auth_kind.label());
-    let login_result = match provider.target {
-        LoginProviderTarget::AutoImport => {
-            let imported = super::provider_init::maybe_run_external_auth_auto_import_flow()
-                .await?
-                .unwrap_or(0);
-            if imported == 0 {
-                anyhow::bail!(
-                    "No existing logins were imported. Either none were found, nothing was approved, or validation failed."
-                );
+    let login_result = if options.print_auth_url || options.provided_input()?.is_some() {
+        run_scriptable_login_provider(provider, account_label, &options).await
+    } else {
+        match provider.target {
+            LoginProviderTarget::AutoImport => {
+                let imported = super::provider_init::maybe_run_external_auth_auto_import_flow()
+                    .await?
+                    .unwrap_or(0);
+                if imported == 0 {
+                    anyhow::bail!(
+                        "No existing logins were imported. Either none were found, nothing was approved, or validation failed."
+                    );
+                }
+                eprintln!("Imported {} existing auth source(s).", imported);
+                Ok(LoginFlowOutcome::Completed)
             }
-            eprintln!("Imported {} existing auth source(s).", imported);
-            Ok(())
+            LoginProviderTarget::Jcode => login_jcode_flow().map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::Claude => login_claude_flow(account_label, options.no_browser)
+                .await
+                .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::OpenAi => login_openai_flow(account_label, options.no_browser)
+                .await
+                .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::OpenRouter => {
+                login_openrouter_flow().map(|_| LoginFlowOutcome::Completed)
+            }
+            LoginProviderTarget::Azure => login_azure_flow().map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::OpenAiCompatible(profile) => {
+                login_openai_compatible_flow(&profile).map(|_| LoginFlowOutcome::Completed)
+            }
+            LoginProviderTarget::Cursor => login_cursor_flow().map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::Copilot => {
+                login_copilot_flow(options.no_browser).map(|_| LoginFlowOutcome::Completed)
+            }
+            LoginProviderTarget::Gemini => login_gemini_flow(options.no_browser)
+                .await
+                .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::Antigravity => login_antigravity_flow(options.no_browser)
+                .await
+                .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::Google => login_google_flow(options.no_browser)
+                .await
+                .map(|_| LoginFlowOutcome::Completed),
         }
-        LoginProviderTarget::Jcode => login_jcode_flow(),
-        LoginProviderTarget::Claude => login_claude_flow(account_label, no_browser).await,
-        LoginProviderTarget::OpenAi => login_openai_flow(account_label, no_browser).await,
-        LoginProviderTarget::OpenRouter => login_openrouter_flow(),
-        LoginProviderTarget::Azure => login_azure_flow(),
-        LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile),
-        LoginProviderTarget::Cursor => login_cursor_flow(),
-        LoginProviderTarget::Copilot => login_copilot_flow(no_browser),
-        LoginProviderTarget::Gemini => login_gemini_flow(no_browser).await,
-        LoginProviderTarget::Antigravity => login_antigravity_flow(no_browser).await,
-        LoginProviderTarget::Google => login_google_flow(no_browser).await,
     };
-    if let Err(err) = login_result {
-        crate::telemetry::record_auth_failed(provider.id, provider.auth_kind.label());
-        return Err(err);
+    let outcome = match login_result {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            crate::telemetry::record_auth_failed(provider.id, provider.auth_kind.label());
+            return Err(err);
+        }
+    };
+    if matches!(outcome, LoginFlowOutcome::Deferred) {
+        return Ok(());
     }
     auth::AuthStatus::invalidate_cache();
     super::commands::run_post_login_validation(provider).await?;
     auth::AuthStatus::invalidate_cache();
+    Ok(())
+}
+
+async fn run_scriptable_login_provider(
+    provider: LoginProviderDescriptor,
+    account_label: Option<&str>,
+    options: &LoginOptions,
+) -> Result<LoginFlowOutcome> {
+    if options.print_auth_url {
+        return start_scriptable_login(provider, account_label, options).await;
+    }
+
+    let input = options
+        .provided_input()?
+        .ok_or_else(|| anyhow::anyhow!("No scriptable auth input was provided."))?;
+    complete_scriptable_login(provider, account_label, options, input).await
+}
+
+async fn start_scriptable_login(
+    provider: LoginProviderDescriptor,
+    account_label: Option<&str>,
+    options: &LoginOptions,
+) -> Result<LoginFlowOutcome> {
+    let (pending, auth_url, input_kind) = match provider.target {
+        LoginProviderTarget::Claude => {
+            let label = auth::claude::login_target_label(account_label)?;
+            let (verifier, challenge) = auth::oauth::generate_pkce_public();
+            let redirect_uri = auth::oauth::claude::REDIRECT_URI.to_string();
+            let auth_url = auth::oauth::claude_auth_url(&redirect_uri, &challenge, &verifier);
+            (
+                PendingScriptableLogin::Claude {
+                    account_label: label,
+                    verifier,
+                    redirect_uri,
+                },
+                auth_url,
+                "auth_code_or_callback_url",
+            )
+        }
+        LoginProviderTarget::OpenAi => {
+            let label = auth::codex::login_target_label(account_label)?;
+            let (verifier, challenge) = auth::oauth::generate_pkce_public();
+            let state = auth::oauth::generate_state_public();
+            let redirect_uri = auth::oauth::openai::default_redirect_uri();
+            let auth_url = auth::oauth::openai_auth_url_with_prompt(
+                &redirect_uri,
+                &challenge,
+                &state,
+                Some("login"),
+            );
+            (
+                PendingScriptableLogin::Openai {
+                    account_label: label,
+                    verifier,
+                    state,
+                    redirect_uri,
+                },
+                auth_url,
+                "callback_url",
+            )
+        }
+        LoginProviderTarget::Gemini => {
+            let (verifier, challenge) = auth::oauth::generate_pkce_public();
+            let state = auth::oauth::generate_state_public();
+            let redirect_uri = auth::gemini::GEMINI_MANUAL_REDIRECT_URI.to_string();
+            let auth_url = auth::gemini::build_manual_auth_url(&redirect_uri, &challenge, &state)?;
+            (
+                PendingScriptableLogin::Gemini {
+                    verifier,
+                    redirect_uri,
+                },
+                auth_url,
+                "auth_code",
+            )
+        }
+        LoginProviderTarget::Antigravity => {
+            let (verifier, challenge) = auth::oauth::generate_pkce_public();
+            let state = auth::oauth::generate_state_public();
+            let redirect_uri = auth::antigravity::redirect_uri(auth::antigravity::DEFAULT_PORT);
+            let auth_url = auth::antigravity::build_auth_url(&redirect_uri, &challenge, &state)?;
+            (
+                PendingScriptableLogin::Antigravity {
+                    verifier,
+                    state,
+                    redirect_uri,
+                },
+                auth_url,
+                "callback_url",
+            )
+        }
+        _ => {
+            anyhow::bail!(
+                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity."
+            )
+        }
+    };
+
+    let pending_path = pending.pending_path()?;
+    crate::storage::write_json_secret(&pending_path, &pending)?;
+    emit_scriptable_auth_prompt(
+        provider.id,
+        &auth_url,
+        input_kind,
+        &pending_path,
+        options.json,
+    )?;
+    Ok(LoginFlowOutcome::Deferred)
+}
+
+async fn complete_scriptable_login(
+    provider: LoginProviderDescriptor,
+    account_label: Option<&str>,
+    options: &LoginOptions,
+    input: ProvidedAuthInput,
+) -> Result<LoginFlowOutcome> {
+    if account_label.is_some() {
+        anyhow::bail!(
+            "Do not pass --account when completing a scriptable login. The pending login already stores the target account."
+        );
+    }
+
+    match provider.target {
+        LoginProviderTarget::Claude => {
+            complete_scriptable_claude_login(provider.id, options, input).await
+        }
+        LoginProviderTarget::OpenAi => {
+            complete_scriptable_openai_login(provider.id, options, input).await
+        }
+        LoginProviderTarget::Gemini => {
+            complete_scriptable_gemini_login(provider.id, options, input).await
+        }
+        LoginProviderTarget::Antigravity => {
+            complete_scriptable_antigravity_login(provider.id, options, input).await
+        }
+        _ => anyhow::bail!(
+            "`--callback-url` / `--auth-code` completion is currently supported for: claude, openai, gemini, antigravity."
+        ),
+    }
+}
+
+async fn complete_scriptable_claude_login(
+    provider_id: &str,
+    options: &LoginOptions,
+    input: ProvidedAuthInput,
+) -> Result<LoginFlowOutcome> {
+    let pending_path = pending_login_path("claude")?;
+    let PendingScriptableLogin::Claude {
+        account_label,
+        verifier,
+        redirect_uri,
+    } = load_pending_login(&pending_path, "claude")?
+    else {
+        anyhow::bail!("Pending Claude login state is invalid.");
+    };
+
+    let raw_input = match input {
+        ProvidedAuthInput::CallbackUrl(value) | ProvidedAuthInput::AuthCode(value) => value,
+    };
+    let selected_redirect_uri =
+        auth::oauth::claude_redirect_uri_for_input(&raw_input, &redirect_uri);
+    let tokens =
+        auth::oauth::exchange_claude_code(&verifier, &raw_input, &selected_redirect_uri).await?;
+    auth::oauth::save_claude_tokens_for_account(&tokens, &account_label)?;
+    let profile_email =
+        auth::oauth::update_claude_account_profile(&account_label, &tokens.access_token)
+            .await
+            .unwrap_or(None);
+    clear_pending_login(&pending_path);
+    crate::telemetry::record_auth_success(provider_id, "oauth");
+    emit_scriptable_auth_success(
+        options.json,
+        ScriptableAuthSuccess {
+            status: "authenticated",
+            provider: provider_id.to_string(),
+            account_label: Some(account_label.clone()),
+            credentials_path: Some(auth::claude::jcode_path()?.display().to_string()),
+            email: profile_email.clone(),
+        },
+    )?;
+    if !options.json {
+        eprintln!("Successfully logged in to Claude!");
+        eprintln!(
+            "Account '{}' stored at {}",
+            account_label,
+            auth::claude::jcode_path()?.display()
+        );
+        if let Some(email) = profile_email {
+            eprintln!("Profile email: {}", email);
+        }
+    }
+    Ok(LoginFlowOutcome::Completed)
+}
+
+async fn complete_scriptable_openai_login(
+    provider_id: &str,
+    options: &LoginOptions,
+    input: ProvidedAuthInput,
+) -> Result<LoginFlowOutcome> {
+    let pending_path = pending_login_path("openai")?;
+    let PendingScriptableLogin::Openai {
+        account_label,
+        verifier,
+        state,
+        redirect_uri,
+    } = load_pending_login(&pending_path, "openai")?
+    else {
+        anyhow::bail!("Pending OpenAI login state is invalid.");
+    };
+
+    let callback_input = match input {
+        ProvidedAuthInput::CallbackUrl(value) => value,
+        ProvidedAuthInput::AuthCode(_) => {
+            anyhow::bail!(
+                "OpenAI completion requires --callback-url because state validation is required."
+            )
+        }
+    };
+    let tokens = auth::oauth::exchange_openai_callback_input(
+        &verifier,
+        &callback_input,
+        &state,
+        &redirect_uri,
+    )
+    .await?;
+    auth::oauth::save_openai_tokens_for_account(&tokens, &account_label)?;
+    clear_pending_login(&pending_path);
+    crate::telemetry::record_auth_success(provider_id, "oauth");
+    let credentials_path = crate::storage::jcode_dir()?.join("openai-auth.json");
+    emit_scriptable_auth_success(
+        options.json,
+        ScriptableAuthSuccess {
+            status: "authenticated",
+            provider: provider_id.to_string(),
+            account_label: Some(account_label.clone()),
+            credentials_path: Some(credentials_path.display().to_string()),
+            email: None,
+        },
+    )?;
+    if !options.json {
+        eprintln!(
+            "Successfully logged in to OpenAI! Account '{}' saved to {}",
+            account_label,
+            credentials_path.display()
+        );
+    }
+    Ok(LoginFlowOutcome::Completed)
+}
+
+async fn complete_scriptable_gemini_login(
+    provider_id: &str,
+    options: &LoginOptions,
+    input: ProvidedAuthInput,
+) -> Result<LoginFlowOutcome> {
+    let pending_path = pending_login_path("gemini")?;
+    let PendingScriptableLogin::Gemini {
+        verifier,
+        redirect_uri,
+    } = load_pending_login(&pending_path, "gemini")?
+    else {
+        anyhow::bail!("Pending Gemini login state is invalid.");
+    };
+
+    let auth_code = match input {
+        ProvidedAuthInput::AuthCode(value) => value,
+        ProvidedAuthInput::CallbackUrl(_) => {
+            anyhow::bail!("Gemini completion requires --auth-code.")
+        }
+    };
+    let tokens = auth::gemini::exchange_callback_code(&auth_code, &verifier, &redirect_uri).await?;
+    clear_pending_login(&pending_path);
+    crate::telemetry::record_auth_success(provider_id, "oauth");
+    emit_scriptable_auth_success(
+        options.json,
+        ScriptableAuthSuccess {
+            status: "authenticated",
+            provider: provider_id.to_string(),
+            account_label: None,
+            credentials_path: Some(auth::gemini::tokens_path()?.display().to_string()),
+            email: tokens.email.clone(),
+        },
+    )?;
+    if !options.json {
+        eprintln!("Successfully logged in to Gemini!");
+        eprintln!("Tokens saved to {}", auth::gemini::tokens_path()?.display());
+        if let Some(email) = tokens.email.as_deref() {
+            eprintln!("Google account: {}", email);
+        }
+    }
+    Ok(LoginFlowOutcome::Completed)
+}
+
+async fn complete_scriptable_antigravity_login(
+    provider_id: &str,
+    options: &LoginOptions,
+    input: ProvidedAuthInput,
+) -> Result<LoginFlowOutcome> {
+    let pending_path = pending_login_path("antigravity")?;
+    let PendingScriptableLogin::Antigravity {
+        verifier,
+        state,
+        redirect_uri,
+    } = load_pending_login(&pending_path, "antigravity")?
+    else {
+        anyhow::bail!("Pending Antigravity login state is invalid.");
+    };
+
+    let callback_input = match input {
+        ProvidedAuthInput::CallbackUrl(value) => value,
+        ProvidedAuthInput::AuthCode(_) => {
+            anyhow::bail!("Antigravity completion requires --callback-url.")
+        }
+    };
+    let tokens = auth::antigravity::exchange_callback_input(
+        &verifier,
+        &callback_input,
+        Some(&state),
+        &redirect_uri,
+    )
+    .await?;
+    clear_pending_login(&pending_path);
+    crate::telemetry::record_auth_success(provider_id, "oauth");
+    emit_scriptable_auth_success(
+        options.json,
+        ScriptableAuthSuccess {
+            status: "authenticated",
+            provider: provider_id.to_string(),
+            account_label: None,
+            credentials_path: Some(auth::antigravity::tokens_path()?.display().to_string()),
+            email: tokens.email.clone(),
+        },
+    )?;
+    if !options.json {
+        eprintln!("Successfully logged in to Antigravity!");
+        eprintln!(
+            "Tokens saved to {}",
+            auth::antigravity::tokens_path()?.display()
+        );
+        if let Some(email) = tokens.email.as_deref() {
+            eprintln!("Google account: {}", email);
+        }
+        if let Some(project_id) = tokens.project_id.as_deref() {
+            eprintln!("Resolved Antigravity project: {}", project_id);
+        }
+    }
+    Ok(LoginFlowOutcome::Completed)
+}
+
+fn pending_login_path(key: &str) -> Result<PathBuf> {
+    Ok(crate::storage::jcode_dir()?
+        .join("pending-login")
+        .join(format!("{key}.json")))
+}
+
+fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptableLogin> {
+    if !path.exists() {
+        anyhow::bail!(
+            "No pending {} login state found. Run `jcode login --provider {} --print-auth-url` first.",
+            provider,
+            provider
+        );
+    }
+    crate::storage::harden_secret_file_permissions(path);
+    crate::storage::read_json(path).with_context(|| {
+        format!(
+            "Failed to load pending {} login state from {}",
+            provider,
+            path.display()
+        )
+    })
+}
+
+fn clear_pending_login(path: &PathBuf) {
+    let _ = std::fs::remove_file(path);
+}
+
+fn resolve_auth_input(value: &str) -> Result<String> {
+    if value != "-" {
+        return Ok(value.to_string());
+    }
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .context("Failed to read auth input from stdin")?;
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("No auth input was provided on stdin.");
+    }
+    Ok(trimmed.to_string())
+}
+
+fn emit_scriptable_auth_prompt(
+    provider: &str,
+    auth_url: &str,
+    input_kind: &str,
+    pending_path: &PathBuf,
+    json: bool,
+) -> Result<()> {
+    let prompt = ScriptableAuthPrompt {
+        status: "pending",
+        provider: provider.to_string(),
+        auth_url: auth_url.to_string(),
+        input_kind: input_kind.to_string(),
+        pending_path: pending_path.display().to_string(),
+    };
+    if json {
+        println!("{}", serde_json::to_string(&prompt)?);
+    } else {
+        println!("{}", auth_url);
+        eprintln!("Auth URL printed to stdout.");
+        eprintln!(
+            "Complete this login later with `jcode login --provider {} --{}`.",
+            provider,
+            match input_kind {
+                "callback_url" => "callback-url '<url-or-query>'",
+                "auth_code" => "auth-code '<code>'",
+                _ => "callback-url '<url>' or --auth-code '<code>'",
+            }
+        );
+        eprintln!("Pending login state saved at {}", pending_path.display());
+    }
+    Ok(())
+}
+
+fn emit_scriptable_auth_success(json: bool, success: ScriptableAuthSuccess) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string(&success)?);
+    }
     Ok(())
 }
 
