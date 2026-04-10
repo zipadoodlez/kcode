@@ -52,13 +52,22 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 ### Headline numbers
 
-- **jcode uses 7.2× less PSS than pi**
-- **jcode uses 22× less PSS than OpenCode**
-- **jcode uses 25× less PSS than Claude Code**
-- **jcode shows visible UI 42.1× faster than pi**
-- **jcode becomes input-ready 21.5× faster than OpenCode**
-- **jcode becomes input-ready 18.6× faster than Codex CLI**
-- **jcode becomes input-ready 72.2× faster than Claude Code**
+<div align="center">
+
+| Tool | PSS at 10 sessions (avg/session) | Time to UI | Input-ready time |
+|---|---:|---:|---:|
+| **jcode** | **14.1 MB** | **14.0 ms** | **48.7 ms** |
+| **pi** | **101.1 MB** (**7.2×**) | **590.7 ms** (**42.2×**) | **596.4 ms** (**12.2×**) |
+| **Codex CLI** | n/a | **882.8 ms** (**63.1×**) | **905.8 ms** (**18.6×**) |
+| **OpenCode** | **313.5 MB** (**22.2×**) | **1035.9 ms** (**74.0×**) | **1047.9 ms** (**21.5×**) |
+| **GitHub Copilot CLI** | n/a | **1518.6 ms** (**108.5×**) | **1583.4 ms** (**32.5×**) |
+| **Cursor Agent** | n/a | **1949.7 ms** (**139.3×**) | **1978.7 ms** (**40.6×**) |
+| **Claude Code** | **346.0 MB** (**24.5×**) | **3436.9 ms** (**245.5×**) | **3512.8 ms** (**72.2×**) |
+
+</div>
+
+- Multipliers are relative to jcode.
+- PSS numbers come from the 10-session memory benchmark below. Startup numbers come from the 10-launch interactive startup benchmark below.
 
 ### Interactive startup time
 
