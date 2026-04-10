@@ -62,6 +62,8 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             callback_url,
             auth_code,
             json,
+            complete,
+            google_access_tier,
         }) => {
             login::run_login(
                 &args.provider,
@@ -72,6 +74,15 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                     callback_url,
                     auth_code,
                     json,
+                    complete,
+                    google_access_tier: google_access_tier.map(|tier| match tier {
+                        super::args::GoogleAccessTierArg::Full => {
+                            auth::google::GmailAccessTier::Full
+                        }
+                        super::args::GoogleAccessTierArg::Readonly => {
+                            auth::google::GmailAccessTier::ReadOnly
+                        }
+                    }),
                 },
             )
             .await?;

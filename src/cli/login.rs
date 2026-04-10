@@ -18,10 +18,16 @@ pub struct LoginOptions {
     pub callback_url: Option<String>,
     pub auth_code: Option<String>,
     pub json: bool,
+    pub complete: bool,
+    pub google_access_tier: Option<auth::google::GmailAccessTier>,
 }
 
 impl LoginOptions {
-    fn provided_input(&self) -> Result<Option<ProvidedAuthInput>> {
+    fn has_provided_input(&self) -> bool {
+        self.callback_url.is_some() || self.auth_code.is_some()
+    }
+
+    fn resolve_provided_input(&self) -> Result<Option<ProvidedAuthInput>> {
         match (&self.callback_url, &self.auth_code) {
             (Some(_), Some(_)) => {
                 anyhow::bail!("Specify only one of --callback-url or --auth-code.")
@@ -34,6 +40,10 @@ impl LoginOptions {
             )?))),
             (None, None) => Ok(None),
         }
+    }
+
+    fn uses_scriptable_flow(&self) -> Result<bool> {
+        Ok(self.print_auth_url || self.complete || self.has_provided_input())
     }
 }
 
@@ -72,6 +82,18 @@ enum PendingScriptableLogin {
         state: String,
         redirect_uri: String,
     },
+    Google {
+        verifier: String,
+        state: String,
+        redirect_uri: String,
+        tier: auth::google::GmailAccessTier,
+    },
+    Copilot {
+        device_code: String,
+        user_code: String,
+        verification_uri: String,
+        interval: u64,
+    },
 }
 
 impl PendingScriptableLogin {
@@ -81,6 +103,8 @@ impl PendingScriptableLogin {
             Self::Openai { .. } => "openai",
             Self::Gemini { .. } => "gemini",
             Self::Antigravity { .. } => "antigravity",
+            Self::Google { .. } => "google",
+            Self::Copilot { .. } => "copilot",
         }
     }
 
@@ -96,6 +120,7 @@ struct ScriptableAuthPrompt {
     auth_url: String,
     input_kind: String,
     pending_path: String,
+    user_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,7 +148,7 @@ pub async fn run_login(
 
     match choice {
         ProviderChoice::Auto => {
-            if options.print_auth_url || options.provided_input()?.is_some() {
+            if options.uses_scriptable_flow()? {
                 anyhow::bail!(
                     "Scriptable login flags require an explicit provider. Use `jcode login --provider <provider> ...`."
                 );
@@ -191,7 +216,7 @@ pub async fn run_login_provider(
 ) -> Result<()> {
     crate::telemetry::record_provider_selected(provider.id);
     crate::telemetry::record_auth_started(provider.id, provider.auth_kind.label());
-    let login_result = if options.print_auth_url || options.provided_input()?.is_some() {
+    let login_result = if options.uses_scriptable_flow()? {
         run_scriptable_login_provider(provider, account_label, &options).await
     } else {
         match provider.target {
@@ -261,9 +286,12 @@ async fn run_scriptable_login_provider(
         return start_scriptable_login(provider, account_label, options).await;
     }
 
-    let input = options
-        .provided_input()?
-        .ok_or_else(|| anyhow::anyhow!("No scriptable auth input was provided."))?;
+    let input = options.resolve_provided_input()?;
+    if options.complete && input.is_some() {
+        anyhow::bail!(
+            "Use either --complete or an explicit --callback-url / --auth-code input, not both."
+        );
+    }
     complete_scriptable_login(provider, account_label, options, input).await
 }
 
@@ -272,7 +300,7 @@ async fn start_scriptable_login(
     account_label: Option<&str>,
     options: &LoginOptions,
 ) -> Result<LoginFlowOutcome> {
-    let (pending, auth_url, input_kind) = match provider.target {
+    let (pending, auth_url, input_kind, user_code) = match provider.target {
         LoginProviderTarget::Claude => {
             let label = auth::claude::login_target_label(account_label)?;
             let (verifier, challenge) = auth::oauth::generate_pkce_public();
@@ -286,6 +314,7 @@ async fn start_scriptable_login(
                 },
                 auth_url,
                 "auth_code_or_callback_url",
+                None,
             )
         }
         LoginProviderTarget::OpenAi => {
@@ -308,6 +337,7 @@ async fn start_scriptable_login(
                 },
                 auth_url,
                 "callback_url",
+                None,
             )
         }
         LoginProviderTarget::Gemini => {
@@ -322,6 +352,7 @@ async fn start_scriptable_login(
                 },
                 auth_url,
                 "auth_code",
+                None,
             )
         }
         LoginProviderTarget::Antigravity => {
@@ -337,11 +368,51 @@ async fn start_scriptable_login(
                 },
                 auth_url,
                 "callback_url",
+                None,
+            )
+        }
+        LoginProviderTarget::Google => {
+            let creds = auth::google::load_credentials().context(
+                "Google/Gmail scriptable auth requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
+            )?;
+            let tier = options
+                .google_access_tier
+                .unwrap_or(auth::google::GmailAccessTier::Full);
+            let (verifier, challenge) = auth::oauth::generate_pkce_public();
+            let state = auth::oauth::generate_state_public();
+            let redirect_uri = format!("http://127.0.0.1:{}", auth::google::DEFAULT_PORT);
+            let auth_url =
+                auth::google::build_auth_url(&creds, tier, &redirect_uri, &challenge, &state);
+            (
+                PendingScriptableLogin::Google {
+                    verifier,
+                    state,
+                    redirect_uri,
+                    tier,
+                },
+                auth_url,
+                "callback_url",
+                None,
+            )
+        }
+        LoginProviderTarget::Copilot => {
+            let client = reqwest::Client::new();
+            let device_resp = auth::copilot::initiate_device_flow(&client).await?;
+            (
+                PendingScriptableLogin::Copilot {
+                    device_code: device_resp.device_code.clone(),
+                    user_code: device_resp.user_code.clone(),
+                    verification_uri: device_resp.verification_uri.clone(),
+                    interval: device_resp.interval,
+                },
+                device_resp.verification_uri,
+                "complete",
+                Some(device_resp.user_code),
             )
         }
         _ => {
             anyhow::bail!(
-                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity."
+                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity, google, copilot."
             )
         }
     };
@@ -353,6 +424,7 @@ async fn start_scriptable_login(
         &auth_url,
         input_kind,
         &pending_path,
+        user_code.as_deref(),
         options.json,
     )?;
     Ok(LoginFlowOutcome::Deferred)
@@ -362,7 +434,7 @@ async fn complete_scriptable_login(
     provider: LoginProviderDescriptor,
     account_label: Option<&str>,
     options: &LoginOptions,
-    input: ProvidedAuthInput,
+    input: Option<ProvidedAuthInput>,
 ) -> Result<LoginFlowOutcome> {
     if account_label.is_some() {
         anyhow::bail!(
@@ -372,19 +444,42 @@ async fn complete_scriptable_login(
 
     match provider.target {
         LoginProviderTarget::Claude => {
-            complete_scriptable_claude_login(provider.id, options, input).await
+            complete_scriptable_claude_login(provider.id, options, require_scriptable_input(input)?)
+                .await
         }
         LoginProviderTarget::OpenAi => {
-            complete_scriptable_openai_login(provider.id, options, input).await
+            complete_scriptable_openai_login(provider.id, options, require_scriptable_input(input)?)
+                .await
         }
         LoginProviderTarget::Gemini => {
-            complete_scriptable_gemini_login(provider.id, options, input).await
+            complete_scriptable_gemini_login(provider.id, options, require_scriptable_input(input)?)
+                .await
         }
         LoginProviderTarget::Antigravity => {
-            complete_scriptable_antigravity_login(provider.id, options, input).await
+            complete_scriptable_antigravity_login(
+                provider.id,
+                options,
+                require_scriptable_input(input)?,
+            )
+            .await
+        }
+        LoginProviderTarget::Google => {
+            complete_scriptable_google_login(provider.id, options, require_scriptable_input(input)?)
+                .await
+        }
+        LoginProviderTarget::Copilot => {
+            if input.is_some() {
+                anyhow::bail!(
+                    "Copilot completion uses `--complete` and does not accept --callback-url or --auth-code."
+                )
+            }
+            if !options.complete {
+                anyhow::bail!("Copilot completion requires `--complete`.")
+            }
+            complete_scriptable_copilot_login(provider.id, options).await
         }
         _ => anyhow::bail!(
-            "`--callback-url` / `--auth-code` completion is currently supported for: claude, openai, gemini, antigravity."
+            "Scriptable completion is currently supported for: claude, openai, gemini, antigravity, google, copilot."
         ),
     }
 }
@@ -596,10 +691,110 @@ async fn complete_scriptable_antigravity_login(
     Ok(LoginFlowOutcome::Completed)
 }
 
+async fn complete_scriptable_google_login(
+    provider_id: &str,
+    options: &LoginOptions,
+    input: ProvidedAuthInput,
+) -> Result<LoginFlowOutcome> {
+    let pending_path = pending_login_path("google")?;
+    let PendingScriptableLogin::Google {
+        verifier,
+        state,
+        redirect_uri,
+        tier,
+    } = load_pending_login(&pending_path, "google")?
+    else {
+        anyhow::bail!("Pending Google login state is invalid.");
+    };
+
+    let callback_input = match input {
+        ProvidedAuthInput::CallbackUrl(value) => value,
+        ProvidedAuthInput::AuthCode(_) => {
+            anyhow::bail!("Google completion requires --callback-url.")
+        }
+    };
+    let creds = auth::google::load_credentials().context(
+        "Google/Gmail completion requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
+    )?;
+    let tokens = auth::google::exchange_callback_input(
+        &creds,
+        &verifier,
+        &callback_input,
+        &state,
+        &redirect_uri,
+        tier,
+    )
+    .await?;
+    clear_pending_login(&pending_path);
+    crate::telemetry::record_auth_success(provider_id, "oauth");
+    emit_scriptable_auth_success(
+        options.json,
+        ScriptableAuthSuccess {
+            status: "authenticated",
+            provider: provider_id.to_string(),
+            account_label: None,
+            credentials_path: Some(auth::google::tokens_path()?.display().to_string()),
+            email: tokens.email.clone(),
+        },
+    )?;
+    if !options.json {
+        eprintln!("Successfully logged in to Google/Gmail!");
+        if let Some(email) = tokens.email.as_deref() {
+            eprintln!("Account: {}", email);
+        }
+        eprintln!("Access tier: {}", tokens.tier.label());
+        eprintln!("Tokens saved to {}", auth::google::tokens_path()?.display());
+    }
+    Ok(LoginFlowOutcome::Completed)
+}
+
+async fn complete_scriptable_copilot_login(
+    provider_id: &str,
+    options: &LoginOptions,
+) -> Result<LoginFlowOutcome> {
+    let pending_path = pending_login_path("copilot")?;
+    let PendingScriptableLogin::Copilot {
+        device_code,
+        interval,
+        ..
+    } = load_pending_login(&pending_path, "copilot")?
+    else {
+        anyhow::bail!("Pending Copilot login state is invalid.");
+    };
+
+    let client = reqwest::Client::new();
+    let token = auth::copilot::poll_for_access_token(&client, &device_code, interval).await?;
+    let username = auth::copilot::fetch_github_username(&client, &token)
+        .await
+        .unwrap_or_else(|_| "unknown".to_string());
+    auth::copilot::save_github_token(&token, &username)?;
+    clear_pending_login(&pending_path);
+    crate::telemetry::record_auth_success(provider_id, "oauth_device_code");
+    emit_scriptable_auth_success(
+        options.json,
+        ScriptableAuthSuccess {
+            status: "authenticated",
+            provider: provider_id.to_string(),
+            account_label: Some(username.clone()),
+            credentials_path: Some(auth::copilot::saved_hosts_path().display().to_string()),
+            email: None,
+        },
+    )?;
+    if !options.json {
+        eprintln!("✓ Authenticated as {} via GitHub Copilot", username);
+        eprintln!("Saved at {}", auth::copilot::saved_hosts_path().display());
+    }
+    Ok(LoginFlowOutcome::Completed)
+}
+
 fn pending_login_path(key: &str) -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?
         .join("pending-login")
         .join(format!("{key}.json")))
+}
+
+fn require_scriptable_input(input: Option<ProvidedAuthInput>) -> Result<ProvidedAuthInput> {
+    input.ok_or_else(|| anyhow::anyhow!("No scriptable auth input was provided."))
 }
 
 fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptableLogin> {
@@ -645,6 +840,7 @@ fn emit_scriptable_auth_prompt(
     auth_url: &str,
     input_kind: &str,
     pending_path: &PathBuf,
+    user_code: Option<&str>,
     json: bool,
 ) -> Result<()> {
     let prompt = ScriptableAuthPrompt {
@@ -653,11 +849,15 @@ fn emit_scriptable_auth_prompt(
         auth_url: auth_url.to_string(),
         input_kind: input_kind.to_string(),
         pending_path: pending_path.display().to_string(),
+        user_code: user_code.map(str::to_string),
     };
     if json {
         println!("{}", serde_json::to_string(&prompt)?);
     } else {
         println!("{}", auth_url);
+        if let Some(user_code) = user_code {
+            eprintln!("User code: {}", user_code);
+        }
         eprintln!("Auth URL printed to stdout.");
         eprintln!(
             "Complete this login later with `jcode login --provider {} --{}`.",
@@ -665,6 +865,7 @@ fn emit_scriptable_auth_prompt(
             match input_kind {
                 "callback_url" => "callback-url '<url-or-query>'",
                 "auth_code" => "auth-code '<code>'",
+                "complete" => "complete",
                 _ => "callback-url '<url>' or --auth-code '<code>'",
             }
         );

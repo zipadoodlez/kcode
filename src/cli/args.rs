@@ -10,6 +10,12 @@ pub(crate) enum TranscriptModeArg {
     Send,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum GoogleAccessTierArg {
+    Full,
+    Readonly,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "jcode")]
 #[command(version = env!("JCODE_VERSION"))]
@@ -122,6 +128,14 @@ pub(crate) enum Command {
         /// Emit machine-readable JSON for script-friendly login flows.
         #[arg(long)]
         json: bool,
+
+        /// Resume a pending scriptable login flow that does not require callback/code input.
+        #[arg(long, conflicts_with_all = ["print_auth_url", "callback_url", "auth_code"])]
+        complete: bool,
+
+        /// Gmail/Google access tier for non-interactive flows. Defaults to full.
+        #[arg(long, value_enum)]
+        google_access_tier: Option<GoogleAccessTierArg>,
     },
 
     /// Run in simple REPL mode (no TUI)
@@ -517,6 +531,8 @@ mod tests {
                 callback_url,
                 auth_code,
                 json,
+                complete,
+                google_access_tier,
             }) => {
                 assert!(account.is_none());
                 assert!(no_browser);
@@ -524,6 +540,8 @@ mod tests {
                 assert!(callback_url.is_none());
                 assert!(auth_code.is_none());
                 assert!(!json);
+                assert!(!complete);
+                assert!(google_access_tier.is_none());
             }
             other => panic!("unexpected command: {:?}", other),
         }
@@ -544,12 +562,16 @@ mod tests {
                 json,
                 callback_url,
                 auth_code,
+                complete,
+                google_access_tier,
                 ..
             }) => {
                 assert!(print_auth_url);
                 assert!(json);
                 assert!(callback_url.is_none());
                 assert!(auth_code.is_none());
+                assert!(!complete);
+                assert!(google_access_tier.is_none());
             }
             other => panic!("unexpected command: {:?}", other),
         }
@@ -575,6 +597,26 @@ mod tests {
         match args.command {
             Some(Command::Login { auth_code, .. }) => {
                 assert_eq!(auth_code.as_deref(), Some("abc123"));
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+
+        let args = Args::try_parse_from([
+            "jcode",
+            "login",
+            "--complete",
+            "--google-access-tier",
+            "readonly",
+        ])
+        .unwrap();
+        match args.command {
+            Some(Command::Login {
+                complete,
+                google_access_tier,
+                ..
+            }) => {
+                assert!(complete);
+                assert_eq!(google_access_tier, Some(GoogleAccessTierArg::Readonly));
             }
             other => panic!("unexpected command: {:?}", other),
         }

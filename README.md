@@ -240,6 +240,18 @@ jcode login --provider openai --callback-url 'http://localhost:1455/auth/callbac
 jcode login --provider gemini --auth-code '...'
 ```
 
+Additional scriptable cases:
+
+```bash
+# Copilot device flow: print URL + user code, then complete later
+jcode login --provider copilot --print-auth-url --json
+jcode login --provider copilot --complete
+
+# Gmail/Google OAuth after credentials are already configured
+jcode login --provider google --print-auth-url --google-access-tier readonly
+jcode login --provider google --callback-url 'http://127.0.0.1:8456?...'
+```
+
 For the built-in OpenAI login flow, jcode opens a local callback on
 `http://localhost:1455/auth/callback` by default.
 

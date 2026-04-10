@@ -285,6 +285,7 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
 ### GitHub Copilot
 - Login: `jcode login --provider copilot`
   - Headless / SSH: `jcode login --provider copilot --no-browser`
+  - Scriptable remote flow: `jcode login --provider copilot --print-auth-url`, then later `jcode login --provider copilot --complete`
   - jcode uses GitHub device code flow and can print the verification URL/QR without opening a local browser.
 - Credential discovery order:
   1. `COPILOT_GITHUB_TOKEN`
@@ -318,3 +319,17 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
   - `JCODE_ANTIGRAVITY_MODEL` (default: `default`)
   - `JCODE_ANTIGRAVITY_PROMPT_FLAG` (default: `-p`)
   - `JCODE_ANTIGRAVITY_MODEL_FLAG` (default: `--model`)
+
+## Google / Gmail OAuth
+
+### Login steps
+1. Run `jcode login --provider google`.
+   - For headless / SSH use: `jcode login --provider google --no-browser`
+   - For scriptable remote flows after credentials are already configured: `jcode login --provider google --print-auth-url`
+2. If Google credentials are not configured yet, jcode first walks you through saving your client ID/client secret or importing the JSON credentials file.
+3. For scriptable Google flows, choose the Gmail scope with `--google-access-tier full|readonly` if you do not want the default full access tier.
+4. Complete the printed flow later with `jcode login --provider google --callback-url '<full callback url or query>'`.
+
+### Notes
+- Google/Gmail scriptable auth requires saved OAuth client credentials first.
+- The callback URL can come from a remote browser session that fails on the loopback redirect. Copy the final URL from the address bar and paste or pass it back to jcode.
