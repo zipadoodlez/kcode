@@ -508,17 +508,13 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
 
     for result in retry_results {
         match result? {
-            BurstAttachOutcome::Rejected(message) => {
-                assert!(
-                    message.contains("already has a connected TUI client"),
-                    "unexpected rejection message: {message}"
-                );
-            }
             BurstAttachOutcome::Attached(metrics) => {
-                anyhow::bail!(
-                    "fresh retry client unexpectedly took over live session {}",
-                    metrics.target_session_id
-                );
+                assert_eq!(metrics.returned_session_id, metrics.target_session_id);
+                assert_eq!(metrics.history_count, 1);
+                assert_eq!(metrics.done_count, 1);
+            }
+            BurstAttachOutcome::Rejected(message) => {
+                anyhow::bail!("retry attach should succeed for live shared session: {message}");
             }
         }
     }
