@@ -252,6 +252,8 @@ jcode login --provider google --print-auth-url --google-access-tier readonly
 jcode login --provider google --callback-url 'http://127.0.0.1:8456?...'
 ```
 
+Pending scriptable login state is stored under `~/.jcode/pending-login/`, automatically expires, and stale entries are cleaned up when new scriptable logins start or resume.
+
 For the built-in OpenAI login flow, jcode opens a local callback on
 `http://localhost:1455/auth/callback` by default.
 

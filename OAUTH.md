@@ -333,3 +333,10 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
 ### Notes
 - Google/Gmail scriptable auth requires saved OAuth client credentials first.
 - The callback URL can come from a remote browser session that fails on the loopback redirect. Copy the final URL from the address bar and paste or pass it back to jcode.
+
+## Scriptable auth state lifecycle
+
+- jcode stores temporary scriptable login state in `~/.jcode/pending-login/*.json`
+- pending state expires automatically
+- stale pending entries are cleaned up when scriptable login flows start or resume
+- Copilot `--print-auth-url` stores the GitHub device code session and `--complete` resumes polling later
