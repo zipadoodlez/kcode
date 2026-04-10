@@ -154,6 +154,7 @@ class LiveClient:
     buffer: bytes
     tracker: ProcTracker
     first_output_ms: float | None = None
+    last_output_at: float | None = None
     done: bool = False
 
 
@@ -207,7 +208,7 @@ def finish_client(client: LiveClient) -> dict:
         except ProcessLookupError:
             pass
         try:
-            client.proc.wait(timeout=1)
+            client.proc.wait(timeout=0.05)
         except Exception:
             try:
                 os.killpg(client.proc.pid, signal.SIGKILL)
@@ -223,6 +224,7 @@ def run_burst(
     server_pid: int,
     stagger_ms: float,
 ) -> tuple[list[dict], dict[str, float | int]]:
+    settle_after_output_s = 0.15
     clients: list[LiveClient] = []
     fd_to_index: dict[int, int] = {}
     launch_index = 0
@@ -279,6 +281,7 @@ def run_burst(
                 continue
             if client.first_output_ms is None:
                 client.first_output_ms = (time.perf_counter() - client.start) * 1000.0
+            client.last_output_at = time.perf_counter()
             client.buffer += chunk
             client.buffer = reply_queries(fd, client.buffer)
             lower = client.buffer.lower()
@@ -289,6 +292,13 @@ def run_burst(
             if client.done:
                 continue
             if client.proc.poll() is not None:
+                client.done = True
+                continue
+            if (
+                client.first_output_ms is not None
+                and client.last_output_at is not None
+                and time.perf_counter() - client.last_output_at >= settle_after_output_s
+            ):
                 client.done = True
 
     for client in clients:
