@@ -227,6 +227,8 @@ jcode works with subscription-backed OAuth flows and many provider integrations,
 
 For custom OpenAI-compatible endpoints, jcode now prompts for the API base and supports local localhost servers without requiring an API key.
 
+For headless or SSH sessions, OAuth-style providers support `jcode login --provider <provider> --no-browser` (alias: `--headless`) so jcode prints the auth URL/QR and falls back to manual code or callback paste instead of trying to launch a local browser.
+
 For the built-in OpenAI login flow, jcode opens a local callback on
 `http://localhost:1455/auth/callback` by default.
 

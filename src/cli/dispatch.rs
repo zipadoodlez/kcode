@@ -55,8 +55,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             )
             .await?;
         }
-        Some(Command::Login { account }) => {
-            login::run_login(&args.provider, account.as_deref()).await?;
+        Some(Command::Login {
+            account,
+            no_browser,
+        }) => {
+            login::run_login(&args.provider, account.as_deref(), no_browser).await?;
         }
         Some(Command::Repl) => {
             let (provider, registry) =
@@ -566,7 +569,7 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
             &provider_catalog::server_bootstrap_login_providers(),
             "No credentials found. Let's log in!\n\nChoose a provider:",
         )?;
-        login::run_login_provider(provider, None).await?;
+        login::run_login_provider(provider, None, false).await?;
         provider_init::apply_login_provider_profile_env(provider);
         output::stderr_blank_line();
     }

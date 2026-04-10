@@ -38,6 +38,7 @@ Relevant code:
 
 ### Login steps
 1. Run `jcode login --provider claude` (recommended), or `jcode login` and choose Claude.
+   - For headless / SSH use: `jcode login --provider claude --no-browser`
 2. Alternative: run `claude` (or `claude setup-token`). jcode can detect `~/.claude/.credentials.json`, ask before reading it, and remember that approval for future sessions.
 3. Verify with `jcode --provider claude run "Say hello from jcode"`.
 
@@ -102,7 +103,8 @@ These environment variables control the deprecated Claude Code CLI transport:
 
 ### Login steps
 1. Run `jcode login --provider openai`.
-2. Your browser opens to the OpenAI OAuth page. The local callback listens on
+   - For headless / SSH use: `jcode login --provider openai --no-browser`
+2. Your browser opens to the OpenAI OAuth page unless you use `--no-browser`. The local callback listens on
    `http://localhost:1455/auth/callback` by default.
    If port `1455` is unavailable, jcode falls back to a manual paste flow where
    you can paste the full callback URL or query string.
@@ -183,7 +185,8 @@ The Azure env file may contain:
 
 ### Login steps
 1. Run `jcode login --provider gemini` or `/login gemini` inside the TUI.
-2. jcode opens a browser to the Google OAuth flow used for Gemini Code Assist.
+   - For headless / SSH use: `jcode login --provider gemini --no-browser`
+2. jcode opens a browser to the Google OAuth flow used for Gemini Code Assist unless you use `--no-browser`.
 3. If local callback binding is unavailable, jcode falls back to a manual paste flow using `https://codeassist.google.com/authcode`.
 4. Tokens are saved to `~/.jcode/gemini_oauth.json`.
 
@@ -198,7 +201,7 @@ The Azure env file may contain:
 - Some school / Workspace accounts may require `GOOGLE_CLOUD_PROJECT` or `GOOGLE_CLOUD_PROJECT_ID` for Code Assist entitlement checks.
 
 ### Troubleshooting
-- If browser launch fails, set `NO_BROWSER=true` and use the pasted callback/code flow.
+- If browser launch fails, use `--no-browser` and the pasted callback/code flow.
 - If entitlement or onboarding fails for a Workspace account, set `GOOGLE_CLOUD_PROJECT` and retry.
 - If login succeeds but requests fail later, re-run `jcode login --provider gemini` to refresh the stored session.
 
@@ -277,7 +280,9 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
   - `CURSOR_API_KEY` (optional; overrides saved key)
 
 ### GitHub Copilot
-- Login: `jcode login --provider copilot` (runs `copilot -i /login`, or `gh copilot -- -i /login` if `copilot` is not on PATH)
+- Login: `jcode login --provider copilot`
+  - Headless / SSH: `jcode login --provider copilot --no-browser`
+  - jcode uses GitHub device code flow and can print the verification URL/QR without opening a local browser.
 - Credential discovery order:
   1. `COPILOT_GITHUB_TOKEN`
   2. `GH_TOKEN`
@@ -293,6 +298,7 @@ Cursor and Copilot use each provider's local CLI session/auth and shell out in p
 
 ### Antigravity
 - Login: `jcode login --provider antigravity` (native Google OAuth flow; does **not** require Antigravity to be installed)
+  - Headless / SSH: `jcode login --provider antigravity --no-browser`
 - Tokens: `~/.jcode/antigravity_oauth.json`
 - Credential discovery order:
   1. native jcode tokens at `~/.jcode/antigravity_oauth.json`

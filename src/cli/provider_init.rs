@@ -1311,7 +1311,7 @@ pub async fn login_and_bootstrap_provider(
     provider: LoginProviderDescriptor,
     account_label: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    run_login_provider(provider, account_label).await?;
+    run_login_provider(provider, account_label, false).await?;
     eprintln!();
 
     let runtime: Arc<dyn provider::Provider> = match provider.target {

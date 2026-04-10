@@ -9,14 +9,18 @@ use crate::provider_catalog::{
 
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
 
-pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> Result<()> {
+pub async fn run_login(
+    choice: &ProviderChoice,
+    account_label: Option<&str>,
+    no_browser: bool,
+) -> Result<()> {
     if let Some(provider) = login_provider_for_choice(choice) {
         if matches!(choice, ProviderChoice::ClaudeSubprocess) {
             eprintln!(
                 "Warning: Claude subprocess transport is deprecated and will be removed. Direct Anthropic API is already the default for `--provider claude`."
             );
         }
-        return run_login_provider(provider, account_label).await;
+        return run_login_provider(provider, account_label, no_browser).await;
     }
 
     match choice {
@@ -62,7 +66,7 @@ pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> 
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             if let Some(provider) = resolve_login_selection(input.trim(), &providers) {
-                run_login_provider(provider, account_label).await?;
+                run_login_provider(provider, account_label, no_browser).await?;
             } else {
                 let valid = providers
                     .iter()
@@ -80,6 +84,7 @@ pub async fn run_login(choice: &ProviderChoice, account_label: Option<&str>) -> 
 pub async fn run_login_provider(
     provider: LoginProviderDescriptor,
     account_label: Option<&str>,
+    no_browser: bool,
 ) -> Result<()> {
     crate::telemetry::record_provider_selected(provider.id);
     crate::telemetry::record_auth_started(provider.id, provider.auth_kind.label());
@@ -97,16 +102,16 @@ pub async fn run_login_provider(
             Ok(())
         }
         LoginProviderTarget::Jcode => login_jcode_flow(),
-        LoginProviderTarget::Claude => login_claude_flow(account_label).await,
-        LoginProviderTarget::OpenAi => login_openai_flow(account_label).await,
+        LoginProviderTarget::Claude => login_claude_flow(account_label, no_browser).await,
+        LoginProviderTarget::OpenAi => login_openai_flow(account_label, no_browser).await,
         LoginProviderTarget::OpenRouter => login_openrouter_flow(),
         LoginProviderTarget::Azure => login_azure_flow(),
         LoginProviderTarget::OpenAiCompatible(profile) => login_openai_compatible_flow(&profile),
         LoginProviderTarget::Cursor => login_cursor_flow(),
-        LoginProviderTarget::Copilot => login_copilot_flow(),
-        LoginProviderTarget::Gemini => login_gemini_flow().await,
-        LoginProviderTarget::Antigravity => login_antigravity_flow().await,
-        LoginProviderTarget::Google => login_google_flow().await,
+        LoginProviderTarget::Copilot => login_copilot_flow(no_browser),
+        LoginProviderTarget::Gemini => login_gemini_flow(no_browser).await,
+        LoginProviderTarget::Antigravity => login_antigravity_flow(no_browser).await,
+        LoginProviderTarget::Google => login_google_flow(no_browser).await,
     };
     if let Err(err) = login_result {
         crate::telemetry::record_auth_failed(provider.id, provider.auth_kind.label());
@@ -177,10 +182,10 @@ fn login_jcode_flow() -> Result<()> {
     Ok(())
 }
 
-async fn login_claude_flow(requested_label: Option<&str>) -> Result<()> {
+async fn login_claude_flow(requested_label: Option<&str>, no_browser: bool) -> Result<()> {
     let label = auth::claude::login_target_label(requested_label)?;
     eprintln!("Logging in to Claude (account: {})...", label);
-    let tokens = auth::oauth::login_claude().await?;
+    let tokens = auth::oauth::login_claude(no_browser).await?;
     auth::oauth::save_claude_tokens_for_account(&tokens, &label)?;
     let profile_email =
         match auth::oauth::update_claude_account_profile(&label, &tokens.access_token).await {
@@ -206,10 +211,10 @@ async fn login_claude_flow(requested_label: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-async fn login_openai_flow(requested_label: Option<&str>) -> Result<()> {
+async fn login_openai_flow(requested_label: Option<&str>, no_browser: bool) -> Result<()> {
     let label = auth::codex::login_target_label(requested_label)?;
     eprintln!("Logging in to OpenAI/Codex (account: {})...", label);
-    let tokens = auth::oauth::login_openai().await?;
+    let tokens = auth::oauth::login_openai(no_browser).await?;
     auth::oauth::save_openai_tokens_for_account(&tokens, &label)?;
     eprintln!(
         "Successfully logged in to OpenAI! Account '{}' saved to {}",
@@ -546,15 +551,15 @@ fn login_cursor_flow() -> Result<()> {
     Ok(())
 }
 
-fn login_copilot_flow() -> Result<()> {
+fn login_copilot_flow(no_browser: bool) -> Result<()> {
     eprintln!("Starting GitHub Copilot login...");
 
     tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(login_copilot_device_flow())
+        tokio::runtime::Handle::current().block_on(login_copilot_device_flow(no_browser))
     })
 }
 
-async fn login_copilot_device_flow() -> Result<()> {
+async fn login_copilot_device_flow(no_browser: bool) -> Result<()> {
     let client = reqwest::Client::new();
 
     let device_resp = crate::auth::copilot::initiate_device_flow(&client).await?;
@@ -575,7 +580,7 @@ async fn login_copilot_device_flow() -> Result<()> {
     eprintln!();
     eprintln!("  Waiting for authorization...");
 
-    let _ = open::that(&device_resp.verification_uri);
+    maybe_open_browser(&device_resp.verification_uri, no_browser);
 
     let token = crate::auth::copilot::poll_for_access_token(
         &client,
@@ -595,20 +600,20 @@ async fn login_copilot_device_flow() -> Result<()> {
     Ok(())
 }
 
-async fn login_antigravity_flow() -> Result<()> {
+async fn login_antigravity_flow(no_browser: bool) -> Result<()> {
     eprintln!("Starting native Antigravity login...");
     eprintln!(
         "jcode will authenticate directly with Google Antigravity; the Antigravity desktop app is not required."
     );
     eprintln!(
-        "If browser launch fails, set `NO_BROWSER=true` and jcode will prompt for the callback URL instead."
+        "If browser launch fails, or you pass `--no-browser`, jcode will prompt for the callback URL instead."
     );
     eprintln!(
-        "If the browser later shows a loopback/callback error page, copy the full URL from the address bar and re-run with `NO_BROWSER=true`."
+        "If the browser later shows a loopback/callback error page, copy the full URL from the address bar and re-run with `--no-browser`."
     );
     eprintln!();
 
-    let tokens = crate::auth::antigravity::login().await?;
+    let tokens = crate::auth::antigravity::login(no_browser).await?;
 
     eprintln!("Successfully logged in to Antigravity!");
     eprintln!(
@@ -625,20 +630,20 @@ async fn login_antigravity_flow() -> Result<()> {
     Ok(())
 }
 
-async fn login_gemini_flow() -> Result<()> {
+async fn login_gemini_flow(no_browser: bool) -> Result<()> {
     eprintln!("Starting native Gemini login...");
     eprintln!(
         "If your student/education plan is attached to your Google account, use that account in the browser flow."
     );
     eprintln!(
-        "If browser launch fails, set `NO_BROWSER=true` and jcode will prompt for the manual authorization code."
+        "If browser launch fails, or you pass `--no-browser`, jcode will prompt for the manual authorization code."
     );
     eprintln!(
         "Note: school / Workspace Google accounts may also require GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION for Code Assist entitlement checks."
     );
     eprintln!();
 
-    let tokens = crate::auth::gemini::login().await?;
+    let tokens = crate::auth::gemini::login(no_browser).await?;
 
     eprintln!("Successfully logged in to Gemini!");
     eprintln!(
@@ -652,7 +657,7 @@ async fn login_gemini_flow() -> Result<()> {
     Ok(())
 }
 
-async fn login_google_flow() -> Result<()> {
+async fn login_google_flow(no_browser: bool) -> Result<()> {
     use auth::google::{GmailAccessTier, GoogleCredentials};
 
     eprintln!("╔══════════════════════════════════════════╗");
@@ -757,7 +762,10 @@ async fn login_google_flow() -> Result<()> {
 
                     eprintln!("1. Open Google Cloud Console and create a project:");
                     eprintln!("   Opening: https://console.cloud.google.com/projectcreate\n");
-                    let _ = open::that("https://console.cloud.google.com/projectcreate");
+                    maybe_open_browser(
+                        "https://console.cloud.google.com/projectcreate",
+                        no_browser,
+                    );
                     eprint!("   Press Enter when your project is created...");
                     io::stdout().flush()?;
                     let mut wait = String::new();
@@ -765,8 +773,9 @@ async fn login_google_flow() -> Result<()> {
 
                     eprintln!("\n2. Enable the Gmail API:");
                     eprintln!("   Opening: Gmail API library page\n");
-                    let _ = open::that(
+                    maybe_open_browser(
                         "https://console.cloud.google.com/apis/library/gmail.googleapis.com",
+                        no_browser,
                     );
                     eprintln!("   Click the blue 'Enable' button.");
                     eprint!("   Press Enter when done...");
@@ -775,7 +784,10 @@ async fn login_google_flow() -> Result<()> {
 
                     eprintln!("\n3. Configure OAuth consent screen:");
                     eprintln!("   Opening: OAuth consent screen\n");
-                    let _ = open::that("https://console.cloud.google.com/apis/credentials/consent");
+                    maybe_open_browser(
+                        "https://console.cloud.google.com/apis/credentials/consent",
+                        no_browser,
+                    );
                     eprintln!("   - Choose 'External' user type");
                     eprintln!("   - Fill in app name (e.g. 'jcode') and your email");
                     eprintln!("   - Skip scopes (we'll request them during login)");
@@ -787,7 +799,10 @@ async fn login_google_flow() -> Result<()> {
 
                     eprintln!("\n4. Create OAuth credentials:");
                     eprintln!("   Opening: Credentials page\n");
-                    let _ = open::that("https://console.cloud.google.com/apis/credentials");
+                    maybe_open_browser(
+                        "https://console.cloud.google.com/apis/credentials",
+                        no_browser,
+                    );
                     eprintln!("   - Click '+ Create Credentials' > 'OAuth client ID'");
                     eprintln!("   - Application type: 'Desktop app'");
                     eprintln!("   - Name: 'jcode'");
@@ -857,7 +872,7 @@ async fn login_google_flow() -> Result<()> {
 
     eprintln!("\n── Logging in ──\n");
 
-    let tokens = auth::google::login(tier).await?;
+    let tokens = auth::google::login(tier, no_browser).await?;
 
     eprintln!("\n╔══════════════════════════════════════════╗");
     eprintln!("║  ✓ Gmail setup complete!                 ║");
@@ -879,4 +894,12 @@ async fn login_google_flow() -> Result<()> {
 
     crate::telemetry::record_auth_success("google", "oauth");
     Ok(())
+}
+
+fn maybe_open_browser(target: &str, no_browser: bool) -> bool {
+    if crate::auth::browser_suppressed(no_browser) {
+        false
+    } else {
+        open::that(target).is_ok()
+    }
 }

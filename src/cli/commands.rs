@@ -2152,7 +2152,7 @@ async fn run_auth_test_target(
     let mut report = AuthTestProviderReport::new(target);
 
     if login {
-        match super::login::run_login(&target.provider_choice(), None).await {
+        match super::login::run_login(&target.provider_choice(), None, false).await {
             Ok(()) => report.push_step("login", true, "Login flow completed."),
             Err(err) => report.push_step("login", false, err.to_string()),
         }
@@ -2228,7 +2228,7 @@ async fn run_generic_auth_test_target(
     );
 
     if login {
-        match super::login::run_login(&choice, None).await {
+        match super::login::run_login(&choice, None, false).await {
             Ok(()) => report.push_step("login", true, "Login flow completed."),
             Err(err) => report.push_step("login", false, err.to_string()),
         }

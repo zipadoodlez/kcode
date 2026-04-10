@@ -102,6 +102,10 @@ pub(crate) enum Command {
         /// Account label for multi-account support (stored labels are auto-numbered)
         #[arg(long, short = 'a')]
         account: Option<String>,
+
+        /// Do not try to open a browser locally. Useful over SSH or on headless machines.
+        #[arg(long, alias = "headless")]
+        no_browser: bool,
     },
 
     /// Run in simple REPL mode (no TUI)
@@ -482,6 +486,27 @@ mod tests {
                 assert!(json);
                 assert!(verbose);
             }
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn login_no_browser_flag_parses() {
+        let args = Args::try_parse_from(["jcode", "login", "--no-browser"]).unwrap();
+        match args.command {
+            Some(Command::Login {
+                account,
+                no_browser,
+            }) => {
+                assert!(account.is_none());
+                assert!(no_browser);
+            }
+            other => panic!("unexpected command: {:?}", other),
+        }
+
+        let args = Args::try_parse_from(["jcode", "login", "--headless"]).unwrap();
+        match args.command {
+            Some(Command::Login { no_browser, .. }) => assert!(no_browser),
             other => panic!("unexpected command: {:?}", other),
         }
     }
