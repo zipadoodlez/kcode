@@ -82,6 +82,7 @@ jobs:
           cargo build --release --target ${{ matrix.target }}
         env:
           JCODE_RELEASE_BUILD: "1"
+          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
 
       - name: Package binary
         run: |
@@ -162,6 +163,7 @@ jobs:
           & cargo @cargoArgs
         env:
           JCODE_RELEASE_BUILD: "1"
+          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
 
       - name: Run Windows runtime smoke tests (x64)
         if: matrix.target == 'x86_64-pc-windows-msvc'
