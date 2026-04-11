@@ -52,12 +52,74 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 <div align="center">
 
-| Tool | 1 active session | 10 active sessions | jcode improvement multiplier |
-|---|---:|---:|---:|
-| **jcode** | **28.2 MB RSS** / **8.9 MB PSS** | **433.3 MB RSS** / **140.7 MB PSS** | baseline |
-| **pi** | **168.4 MB RSS** / **156.2 MB PSS** | **1554.9 MB RSS** / **1010.6 MB PSS** | **7.2× less PSS** |
-| **OpenCode** | **377.0 MB RSS** / **372.6 MB PSS** | **3665.2 MB RSS** / **3135.1 MB PSS** | **22.2× less PSS** |
-| **Claude Code** | **677.0 MB RSS** / **674.1 MB PSS** | **4880.9 MB RSS** / **3460.2 MB PSS** | **24.5× less PSS** |
+<table>
+  <tr>
+    <td valign="top" align="center" width="50%">
+      <strong>1 active session</strong>
+      <table>
+        <thead>
+          <tr>
+            <th>Tool</th>
+            <th>Memory usage</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>jcode</strong></td>
+            <td align="right"><strong>28.2 MB RSS</strong> / <strong>8.9 MB PSS</strong></td>
+          </tr>
+          <tr>
+            <td><strong>pi</strong></td>
+            <td align="right"><strong>168.4 MB RSS</strong> / <strong>156.2 MB PSS</strong></td>
+          </tr>
+          <tr>
+            <td><strong>OpenCode</strong></td>
+            <td align="right"><strong>377.0 MB RSS</strong> / <strong>372.6 MB PSS</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Claude Code</strong></td>
+            <td align="right"><strong>677.0 MB RSS</strong> / <strong>674.1 MB PSS</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </td>
+    <td width="24"></td>
+    <td valign="top" align="center" width="50%">
+      <strong>10 active sessions</strong>
+      <table>
+        <thead>
+          <tr>
+            <th>Tool</th>
+            <th>Memory usage</th>
+            <th>jcode improvement multiplier</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>jcode</strong></td>
+            <td align="right"><strong>433.3 MB RSS</strong> / <strong>140.7 MB PSS</strong></td>
+            <td align="right">baseline</td>
+          </tr>
+          <tr>
+            <td><strong>pi</strong></td>
+            <td align="right"><strong>1554.9 MB RSS</strong> / <strong>1010.6 MB PSS</strong></td>
+            <td align="right"><strong>7.2× less PSS</strong></td>
+          </tr>
+          <tr>
+            <td><strong>OpenCode</strong></td>
+            <td align="right"><strong>3665.2 MB RSS</strong> / <strong>3135.1 MB PSS</strong></td>
+            <td align="right"><strong>22.2× less PSS</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Claude Code</strong></td>
+            <td align="right"><strong>4880.9 MB RSS</strong> / <strong>3460.2 MB PSS</strong></td>
+            <td align="right"><strong>24.5× less PSS</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </td>
+  </tr>
+</table>
 
 </div>
 
