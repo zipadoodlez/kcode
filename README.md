@@ -103,44 +103,44 @@ jcode is built to be as performant and resource efficient as possible. Every met
           <tr>
             <th>Tool</th>
             <th>PSS</th>
-            <th>PSS multiple of jcode</th>
+            <th>Comparison</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>jcode</strong></td>
             <td align="right"><strong>140.7 MB</strong></td>
-            <td align="right">1.0×</td>
+            <td align="right">baseline</td>
           </tr>
           <tr>
             <td><strong>pi</strong></td>
             <td align="right"><strong>1010.6 MB</strong></td>
-            <td align="right"><strong>7.2×</strong></td>
+            <td align="right"><strong>7.2× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>Codex CLI</strong></td>
             <td align="right"><strong>181.4 MB</strong></td>
-            <td align="right"><strong>1.3×</strong></td>
+            <td align="right"><strong>1.3× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>OpenCode</strong></td>
             <td align="right"><strong>3135.1 MB</strong></td>
-            <td align="right"><strong>22.3×</strong></td>
+            <td align="right"><strong>22.3× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>GitHub Copilot CLI</strong></td>
             <td align="right"><strong>218.9 MB</strong></td>
-            <td align="right"><strong>1.6×</strong></td>
+            <td align="right"><strong>1.6× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>Cursor Agent</strong></td>
             <td align="right"><strong>2481.1 MB</strong></td>
-            <td align="right"><strong>17.6×</strong></td>
+            <td align="right"><strong>17.6× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>Claude Code</strong></td>
             <td align="right"><strong>3460.2 MB</strong></td>
-            <td align="right"><strong>24.6×</strong></td>
+            <td align="right"><strong>24.6× more RAM</strong></td>
           </tr>
         </tbody>
       </table>
@@ -152,21 +152,21 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 Measured on this Linux machine using real interactive PTY sessions and Linux `/proc` memory stats. For jcode, the PSS number includes both client memory and the incremental memory growth of the shared server, which is the fair comparison for many active sessions.
 
-The last column shows each tool's total PSS divided by jcode's total PSS at 10 active sessions.
+The last column compares each tool's total PSS against jcode at 10 active sessions.
 
 ### Time to first frame
 
 <div align="center">
 
-| Tool | Time to first frame | Range | jcode improvement multiplier |
+| Tool | Time to first frame | Range | Comparison |
 |---|---:|---:|---:|
 | **jcode** | **14.0 ms** | 10.1–19.3 ms | baseline |
-| **pi** | **590.7 ms** | 369.6–934.8 ms | **42.2× faster** |
-| **Codex CLI** | **882.8 ms** | 742.3–1640.9 ms | **63.1× faster** |
-| **OpenCode** | **1035.9 ms** | 922.5–1104.4 ms | **74.0× faster** |
-| **GitHub Copilot CLI** | **1518.6 ms** | 1357.4–1826.8 ms | **108.5× faster** |
-| **Cursor Agent** | **1949.7 ms** | 1711.0–2104.8 ms | **139.3× faster** |
-| **Claude Code** | **3436.9 ms** | 2032.7–8927.2 ms | **245.5× faster** |
+| **pi** | **590.7 ms** | 369.6–934.8 ms | **42.2× slower** |
+| **Codex CLI** | **882.8 ms** | 742.3–1640.9 ms | **63.1× slower** |
+| **OpenCode** | **1035.9 ms** | 922.5–1104.4 ms | **74.0× slower** |
+| **GitHub Copilot CLI** | **1518.6 ms** | 1357.4–1826.8 ms | **108.5× slower** |
+| **Cursor Agent** | **1949.7 ms** | 1711.0–2104.8 ms | **139.3× slower** |
+| **Claude Code** | **3436.9 ms** | 2032.7–8927.2 ms | **245.5× slower** |
 
 </div>
 
@@ -176,15 +176,15 @@ Measured on this Linux machine across 10 interactive PTY launches.
 (time until typed probe text appears on the rendered screen.)
 <div align="center">
 
-| Tool | Time to first input | Range | jcode improvement multiplier |
+| Tool | Time to first input | Range | Comparison |
 |---|---:|---:|---:|
 | **jcode** | **48.7 ms** | 30.3–62.7 ms | baseline |
-| **pi** | **596.4 ms** | 373.9–955.2 ms | **12.2× faster** |
-| **Codex CLI** | **905.8 ms** | 760.1–1675.7 ms | **18.6× faster** |
-| **OpenCode** | **1047.9 ms** | 931.1–1116.9 ms | **21.5× faster** |
-| **GitHub Copilot CLI** | **1583.4 ms** | 1422.8–1880.0 ms | **32.5× faster** |
-| **Cursor Agent** | **1978.7 ms** | 1727.3–2130.0 ms | **40.6× faster** |
-| **Claude Code** | **3512.8 ms** | 2137.4–9002.0 ms | **72.2× faster** |
+| **pi** | **596.4 ms** | 373.9–955.2 ms | **12.2× slower** |
+| **Codex CLI** | **905.8 ms** | 760.1–1675.7 ms | **18.6× slower** |
+| **OpenCode** | **1047.9 ms** | 931.1–1116.9 ms | **21.5× slower** |
+| **GitHub Copilot CLI** | **1583.4 ms** | 1422.8–1880.0 ms | **32.5× slower** |
+| **Cursor Agent** | **1978.7 ms** | 1727.3–2130.0 ms | **40.6× slower** |
+| **Claude Code** | **3512.8 ms** | 2137.4–9002.0 ms | **72.2× slower** |
 
 </div>
 
@@ -196,15 +196,15 @@ A 10-session snapshot is useful, but the scaling story matters just as much. The
 
 <div align="center">
 
-| Tool | Extra PSS per added session | Extra PSS multiple of jcode |
+| Tool | Extra PSS per added session | Comparison |
 |---|---:|---:|
-| **jcode** | **~14.6 MB** | **1.0×** |
-| **pi** | **~94.9 MB** | **6.5×** |
-| **Codex CLI** | **~14.7 MB** | **1.0×** |
-| **OpenCode** | **~306.9 MB** | **21.0×** |
-| **GitHub Copilot CLI** | **~19.5 MB** | **1.3×** |
-| **Cursor Agent** | **~245.8 MB** | **16.8×** |
-| **Claude Code** | **~309.6 MB** | **21.2×** |
+| **jcode** | **~14.6 MB** | baseline |
+| **pi** | **~94.9 MB** | **6.5× more RAM** |
+| **Codex CLI** | **~14.7 MB** | **1.0× more RAM** |
+| **OpenCode** | **~306.9 MB** | **21.0× more RAM** |
+| **GitHub Copilot CLI** | **~19.5 MB** | **1.3× more RAM** |
+| **Cursor Agent** | **~245.8 MB** | **16.8× more RAM** |
+| **Claude Code** | **~309.6 MB** | **21.2× more RAM** |
 
 </div>
 versions tested:
