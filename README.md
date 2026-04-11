@@ -148,18 +148,6 @@ A 10-session snapshot is useful, but the scaling story matters just as much. The
 
 </div>
 
-Same machine, methodology, and tool versions as the RAM comparison above.
-
-<div align="center">
-
-<a href="assets/demos/workflow.mp4">
-  <img src="assets/demos/jcode-vs-claude-code.png" alt="Performance demo video preview" width="900">
-</a>
-
-<p><em>Performance demo: running many interactive jcode sessions in parallel while staying responsive. Click the preview to open the video.</em></p>
-
-</div>
-
 https://github.com/user-attachments/assets/630d0957-fa21-44d2-baa1-f6b06ce69d78
 
 The above video is me spawning 102 sessions of jcode. 
