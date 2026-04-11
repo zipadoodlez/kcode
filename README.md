@@ -73,8 +73,20 @@ jcode is built to be as performant and resource efficient as possible. Every met
             <td align="right"><strong>156.2 MB</strong></td>
           </tr>
           <tr>
+            <td><strong>Codex CLI</strong></td>
+            <td align="right"><strong>48.8 MB</strong></td>
+          </tr>
+          <tr>
             <td><strong>OpenCode</strong></td>
             <td align="right"><strong>372.6 MB</strong></td>
+          </tr>
+          <tr>
+            <td><strong>GitHub Copilot CLI</strong></td>
+            <td align="right"><strong>43.5 MB</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Cursor Agent</strong></td>
+            <td align="right"><strong>268.6 MB</strong></td>
           </tr>
           <tr>
             <td><strong>Claude Code</strong></td>
@@ -91,29 +103,44 @@ jcode is built to be as performant and resource efficient as possible. Every met
           <tr>
             <th>Tool</th>
             <th>PSS</th>
-            <th>jcode improvement multiplier</th>
+            <th>PSS multiple of jcode</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>jcode</strong></td>
             <td align="right"><strong>140.7 MB</strong></td>
-            <td align="right">baseline</td>
+            <td align="right">1.0×</td>
           </tr>
           <tr>
             <td><strong>pi</strong></td>
             <td align="right"><strong>1010.6 MB</strong></td>
-            <td align="right"><strong>7.2× less PSS</strong></td>
+            <td align="right"><strong>7.2×</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Codex CLI</strong></td>
+            <td align="right"><strong>181.4 MB</strong></td>
+            <td align="right"><strong>1.3×</strong></td>
           </tr>
           <tr>
             <td><strong>OpenCode</strong></td>
             <td align="right"><strong>3135.1 MB</strong></td>
-            <td align="right"><strong>22.2× less PSS</strong></td>
+            <td align="right"><strong>22.3×</strong></td>
+          </tr>
+          <tr>
+            <td><strong>GitHub Copilot CLI</strong></td>
+            <td align="right"><strong>218.9 MB</strong></td>
+            <td align="right"><strong>1.6×</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Cursor Agent</strong></td>
+            <td align="right"><strong>2481.1 MB</strong></td>
+            <td align="right"><strong>17.6×</strong></td>
           </tr>
           <tr>
             <td><strong>Claude Code</strong></td>
             <td align="right"><strong>3460.2 MB</strong></td>
-            <td align="right"><strong>24.5× less PSS</strong></td>
+            <td align="right"><strong>24.6×</strong></td>
           </tr>
         </tbody>
       </table>
@@ -125,7 +152,7 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 Measured on this Linux machine using real interactive PTY sessions and Linux `/proc` memory stats. For jcode, the PSS number includes both client memory and the incremental memory growth of the shared server, which is the fair comparison for many active sessions.
 
-The multiplier column is based on average PSS per session at 10 active sessions, where lower is better.
+The last column shows each tool's total PSS divided by jcode's total PSS at 10 active sessions.
 
 ### Time to first frame
 
@@ -169,12 +196,15 @@ A 10-session snapshot is useful, but the scaling story matters just as much. The
 
 <div align="center">
 
-| Tool | Extra RSS per added session | Extra PSS per added session | jcode improvement multiplier |
-|---|---:|---:|---:|
-| **jcode** | **~45.0 MB** | **~14.6 MB** | baseline |
-| **pi** | **~154.1 MB** | **~94.9 MB** | **6.5× less PSS** |
-| **OpenCode** | **~365.4 MB** | **~306.9 MB** | **21.0× less PSS** |
-| **Claude Code** | **~467.1 MB** | **~309.6 MB** | **21.2× less PSS** |
+| Tool | Extra PSS per added session | Extra PSS multiple of jcode |
+|---|---:|---:|
+| **jcode** | **~14.6 MB** | **1.0×** |
+| **pi** | **~94.9 MB** | **6.5×** |
+| **Codex CLI** | **~14.7 MB** | **1.0×** |
+| **OpenCode** | **~306.9 MB** | **21.0×** |
+| **GitHub Copilot CLI** | **~19.5 MB** | **1.3×** |
+| **Cursor Agent** | **~245.8 MB** | **16.8×** |
+| **Claude Code** | **~309.6 MB** | **21.2×** |
 
 </div>
 versions tested:
