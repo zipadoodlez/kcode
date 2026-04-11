@@ -46,8 +46,7 @@ Need Windows, Homebrew, source builds, provider setup, or tell your agent to set
 
 </div>
 
-jcode is built to be as performant and resource efficient as possible. Every metric is optimized to the bone, which is important for scaling multi-session workflows. Here we sample two metrics to show the difference: RAM usage and startup time.
-
+jcode is built to be as performant and resource efficient as possible. Every metric is optimized to the bone, which is important for scaling multi-session workflows. Here we sample a few metrics to show the difference: RAM usage and boot up.
 
 ### RAM comparison
 
@@ -66,13 +65,6 @@ Measured on this Linux machine using real interactive PTY sessions and Linux `/p
 
 The multiplier column is based on average PSS per session at 10 active sessions, where lower is better.
 
-Memory benchmark versions tested:
-
-- `jcode v0.8.16-dev (161f9fa)`
-- `pi-coding-agent 0.62.0` (`pi`)
-- `opencode 1.0.203`
-- `Claude Code 2.1.86`
-
 ### Time to first frame
 
 <div align="center">
@@ -89,22 +81,10 @@ Memory benchmark versions tested:
 
 </div>
 
-Measured on this Linux machine across 10 interactive PTY launches. These numbers intentionally avoid misleading "first byte" / ANSI-handshake timing.
-
-**Time to first frame** means the first meaningful rendered text visible on screen.
-
-Startup versions tested:
-
-- `jcode v0.9.366-dev (dbd480c, dirty)`
-- `pi 0.62.0`
-- `opencode 1.0.203`
-- `codex-cli 0.118.0`
-- `Claude Code 2.1.86`
-- `Cursor Agent 2026.03.18-f6873f7`
-- `GitHub Copilot CLI 0.0.421`
+Measured on this Linux machine across 10 interactive PTY launches.
 
 ### Time to first input
-
+(time until typed probe text appears on the rendered screen.)
 <div align="center">
 
 | Tool | Time to first input | Range | jcode improvement multiplier |
@@ -119,19 +99,7 @@ Startup versions tested:
 
 </div>
 
-Measured on this Linux machine across 10 interactive PTY launches. These numbers intentionally avoid misleading "first byte" / ANSI-handshake timing.
-
-**Time to first input** means the time until typed probe text appears on the rendered screen.
-
-Startup versions tested:
-
-- `jcode v0.9.366-dev (dbd480c, dirty)`
-- `pi 0.62.0`
-- `opencode 1.0.203`
-- `codex-cli 0.118.0`
-- `Claude Code 2.1.86`
-- `Cursor Agent 2026.03.18-f6873f7`
-- `GitHub Copilot CLI 0.0.421`
+Measured on this Linux machine across 10 interactive PTY launches.
 
 ### Additional clients / memory scaling
 
@@ -147,6 +115,15 @@ A 10-session snapshot is useful, but the scaling story matters just as much. The
 | **Claude Code** | **~467.1 MB** | **~309.6 MB** | **21.2× less PSS** |
 
 </div>
+versions tested:
+
+- `jcode v0.9.366-dev (dbd480c, dirty)`
+- `pi 0.62.0`
+- `opencode 1.0.203`
+- `codex-cli 0.118.0`
+- `Claude Code 2.1.86`
+- `Cursor Agent 2026.03.18-f6873f7`
+- `GitHub Copilot CLI 0.0.421`
 
 https://github.com/user-attachments/assets/630d0957-fa21-44d2-baa1-f6b06ce69d78
 
@@ -284,7 +261,8 @@ Inputs are by default interleaved with the working agent. It sends the input as 
 Resume sessions from different harnesses. Claude code broke on you? Resume the session from jcode and continue where you left off. Session resume is supported for codex, claude code, opencode, and pi. 
 
 <img width="2877" height="1762" alt="Screenshot from 2026-04-11 16-28-52" src="https://github.com/user-attachments/assets/c2b383cf-2531-4217-85ae-6a863354dc97" />
-/Resume for codex sessions
+image of /Resume for codex sessions
+
 
 Skills are not all loaded on startup. The conversation is embedded as a semantic vector, and will automatically inject a skill if there is an embedding hit similar to memories. The agent has a skill tool for you to manually activate a skill at anytime. You may also activate via slash commands. 
 
