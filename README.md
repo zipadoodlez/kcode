@@ -61,36 +61,44 @@ jcode is built to be as performant and resource efficient as possible. Every met
           <tr>
             <th>Tool</th>
             <th>PSS</th>
+            <th>Comparison</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>jcode</strong></td>
             <td align="right"><strong>8.9 MB</strong></td>
+            <td align="right">baseline</td>
           </tr>
           <tr>
             <td><strong>pi</strong></td>
             <td align="right"><strong>156.2 MB</strong></td>
+            <td align="right"><strong>17.6× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>Codex CLI</strong></td>
             <td align="right"><strong>48.8 MB</strong></td>
+            <td align="right"><strong>5.5× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>OpenCode</strong></td>
             <td align="right"><strong>372.6 MB</strong></td>
+            <td align="right"><strong>41.9× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>GitHub Copilot CLI</strong></td>
             <td align="right"><strong>43.5 MB</strong></td>
+            <td align="right"><strong>4.9× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>Cursor Agent</strong></td>
             <td align="right"><strong>268.6 MB</strong></td>
+            <td align="right"><strong>30.2× more RAM</strong></td>
           </tr>
           <tr>
             <td><strong>Claude Code</strong></td>
             <td align="right"><strong>674.1 MB</strong></td>
+            <td align="right"><strong>75.7× more RAM</strong></td>
           </tr>
         </tbody>
       </table>
@@ -152,7 +160,7 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 Measured on this Linux machine using real interactive PTY sessions and Linux `/proc` memory stats. For jcode, the PSS number includes both client memory and the incremental memory growth of the shared server, which is the fair comparison for many active sessions.
 
-The last column compares each tool's total PSS against jcode at 10 active sessions.
+The comparison columns compare each tool's PSS against jcode for the corresponding session count.
 
 ### Time to first frame
 
