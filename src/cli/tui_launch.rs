@@ -100,12 +100,19 @@ fn sh_escape(text: &str) -> String {
     format!("'{}'", text.replace('"', "\"").replace('\'', "'\"'\"'"))
 }
 
-#[cfg(unix)]
 fn shell_command(args: &[String]) -> String {
-    args.iter()
-        .map(|arg| sh_escape(arg))
-        .collect::<Vec<_>>()
-        .join(" ")
+    #[cfg(unix)]
+    {
+        args.iter()
+            .map(|arg| sh_escape(arg))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[cfg(not(unix))]
+    {
+        args.join(" ")
+    }
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -1181,7 +1188,7 @@ pub fn list_sessions() -> Result<()> {
         let resume_terminal_candidates = resume_terminal_candidates_windows();
 
         for term in resume_terminal_candidates {
-            let mut cmd = Command::new(&term);
+            let mut cmd = Command::new(term.as_str());
             cmd.current_dir(cwd)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
