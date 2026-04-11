@@ -125,9 +125,15 @@ versions tested:
 - `Cursor Agent 2026.03.18-f6873f7`
 - `GitHub Copilot CLI 0.0.421`
 
-https://github.com/user-attachments/assets/630d0957-fa21-44d2-baa1-f6b06ce69d78
+<div align="center">
 
-The above video is me spawning 102 sessions of jcode. 
+  <img src="assets/readme/jcode-performance-demonstration.gif" alt="jcode performance demonstration" width="900">
+
+  <p><em>jcode performance demonstration</em></p>
+
+</div>
+
+The above GIF shows jcode spawning 102 sessions.
 
 ---
 
