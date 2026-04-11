@@ -142,3 +142,41 @@ jobs:
         shell: pwsh
         run: |
           & ./scripts/check_powershell_syntax.ps1
+
+  windows-cross-check:
+    name: Windows Cross-Target Check (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          submodules: recursive
+
+      - name: Configure SSH for cargo git dependencies
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-cross-check
+          cache-all-crates: "true"
+
+      - name: Install LLVM toolchain for cargo-xwin
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang lld llvm ninja-build
+
+      - name: Install cargo-xwin
+        run: cargo install --locked cargo-xwin
+
+      - name: Check Windows x64 target
+        run: cargo xwin check --locked --target x86_64-pc-windows-msvc
+
+      - name: Check Windows ARM64 target
+        run: cargo xwin check --locked --target aarch64-pc-windows-msvc --no-default-features --features pdf
