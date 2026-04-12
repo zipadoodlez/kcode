@@ -565,7 +565,8 @@ Set up jcode on this machine for me.
    - OpenRouter: help me set `OPENROUTER_API_KEY`
    - Anthropic direct API: help me set `ANTHROPIC_API_KEY`
 7. After setup, run a simple smoke test with `jcode run "say hello"` and confirm it works.
-8. Explain any manual step that still needs me, especially browser OAuth, device login, or API key entry.
+8. If I want browser automation, also check `jcode browser status`. If browser automation is not ready, run `jcode browser setup`, verify the built-in `browser` tool works, and explain any remaining manual step.
+9. Explain any manual step that still needs me, especially browser OAuth, device login, API key entry, or browser extension approval.
 ```
 
 This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.
