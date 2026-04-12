@@ -477,7 +477,7 @@ and hotkey-friendly dictation without requiring a bundled speech-to-text stack.
 
 <div align="center">
 
-  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-workflow-demonstration.mp4">
+  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/workflow.mp4">
     <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-workflow-demonstration.webp" alt="jcode workflow demonstration" width="900">
   </a>
 
