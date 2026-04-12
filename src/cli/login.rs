@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{self, IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::auth;
 use crate::provider_catalog::{
@@ -943,7 +943,7 @@ fn emit_scriptable_auth_prompt(
     provider: &str,
     auth_url: &str,
     input_kind: &str,
-    pending_path: &PathBuf,
+    pending_path: &Path,
     user_code: Option<&str>,
     expires_at_ms: i64,
     json: bool,

@@ -97,7 +97,7 @@ fn applescript_escape(text: &str) -> String {
 
 #[cfg(unix)]
 fn sh_escape(text: &str) -> String {
-    format!("'{}'", text.replace('"', "\"").replace('\'', "'\"'\"'"))
+    format!("'{}'", text.replace('\'', "'\"'\"'"))
 }
 
 fn shell_command(args: &[String]) -> String {
@@ -369,10 +369,10 @@ pub async fn run_tui_client(
         app.set_server_spawning();
     }
     startup_profile::mark("app_new_for_remote");
-    if resume_session.is_none() {
-        if let Some(hints) = startup_hints {
-            apply_startup_hints(&mut app, hints);
-        }
+    if resume_session.is_none()
+        && let Some(hints) = startup_hints
+    {
+        apply_startup_hints(&mut app, hints);
     }
 
     startup_profile::mark("pre_run_remote");
@@ -390,10 +390,10 @@ pub async fn run_tui_client(
 
     execute_requested_action(&run_result)?;
 
-    if !has_requested_action(&run_result) {
-        if let Some(ref session_id) = run_result.session_id {
-            print_session_resume_hint(session_id);
-        }
+    if !has_requested_action(&run_result)
+        && let Some(ref session_id) = run_result.session_id
+    {
+        print_session_resume_hint(session_id);
     }
 
     Ok(())
@@ -428,6 +428,10 @@ fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Replay command maps directly from CLI flags and transport options"
+)]
 pub async fn run_replay_command(
     session_id_or_path: &str,
     swarm: bool,
@@ -1185,6 +1189,10 @@ pub fn list_sessions() -> Result<()> {
             .join(" ")
     }
 
+    #[expect(
+        clippy::collapsible_if,
+        reason = "Resume target cwd restoration keeps the branch order explicit for each spawn path"
+    )]
     fn spawn_target_in_new_terminal(
         target: &crate::tui::session_picker::ResumeTarget,
         exe: &std::path::Path,
@@ -1313,14 +1321,11 @@ pub fn list_sessions() -> Result<()> {
                 let mut session_cwd = cwd.clone();
                 if let crate::tui::session_picker::ResumeTarget::JcodeSession { session_id } =
                     &resolved_target
+                    && let Ok(sess) = session::Session::load(session_id)
+                    && let Some(dir) = sess.working_dir.as_deref()
+                    && std::path::Path::new(dir).is_dir()
                 {
-                    if let Ok(sess) = session::Session::load(session_id) {
-                        if let Some(dir) = sess.working_dir.as_deref() {
-                            if std::path::Path::new(dir).is_dir() {
-                                session_cwd = std::path::PathBuf::from(dir);
-                            }
-                        }
-                    }
+                    session_cwd = std::path::PathBuf::from(dir);
                 }
                 let (program, args) = build_resume_target_command(&exe, &resolved_target);
                 let err = crate::platform::replace_process(
@@ -1346,14 +1351,11 @@ pub fn list_sessions() -> Result<()> {
                     let mut session_cwd = cwd.clone();
                     if let crate::tui::session_picker::ResumeTarget::JcodeSession { session_id } =
                         &resolved_target
+                        && let Ok(sess) = session::Session::load(session_id)
+                        && let Some(dir) = sess.working_dir.as_deref()
+                        && std::path::Path::new(dir).is_dir()
                     {
-                        if let Ok(sess) = session::Session::load(session_id) {
-                            if let Some(dir) = sess.working_dir.as_deref() {
-                                if std::path::Path::new(dir).is_dir() {
-                                    session_cwd = std::path::PathBuf::from(dir);
-                                }
-                            }
-                        }
+                        session_cwd = std::path::PathBuf::from(dir);
                     }
 
                     match spawn_target_in_new_terminal(&resolved_target, &exe, &session_cwd) {
@@ -1405,12 +1407,11 @@ pub fn list_sessions() -> Result<()> {
 
             for session_id in recovered {
                 let mut session_cwd = cwd.clone();
-                if let Ok(sess) = session::Session::load(&session_id) {
-                    if let Some(dir) = sess.working_dir.as_deref() {
-                        if std::path::Path::new(dir).is_dir() {
-                            session_cwd = std::path::PathBuf::from(dir);
-                        }
-                    }
+                if let Ok(sess) = session::Session::load(&session_id)
+                    && let Some(dir) = sess.working_dir.as_deref()
+                    && std::path::Path::new(dir).is_dir()
+                {
+                    session_cwd = std::path::PathBuf::from(dir);
                 }
 
                 match spawn_resume_in_new_terminal(&exe, &session_id, &session_cwd) {

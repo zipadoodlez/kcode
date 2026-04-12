@@ -15,6 +15,47 @@ env:
   SCCACHE_GHA_ENABLED: "true"
 
 jobs:
+  quality:
+    name: Quality Guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          submodules: recursive
+
+      - name: Configure SSH for cargo git dependencies
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: quality-ubuntu
+          cache-all-crates: "true"
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check all targets and all features
+        run: cargo check --all-targets --all-features
+
+      - name: Run clippy with warnings denied
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Enforce warning budget
+        shell: bash
+        run: scripts/check_warning_budget.sh
+
+      - name: Enforce oversized-file ratchet
+        shell: bash
+        run: python3 scripts/check_code_size_budget.py
+
   build:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

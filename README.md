@@ -19,7 +19,7 @@ Built for multi-session workflows, infinite customizability, and performance.
 
 <br>
 
-[Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading)
+[Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading) · [Contributing](CONTRIBUTING.md)
 
 </div>
 

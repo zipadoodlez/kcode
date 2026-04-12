@@ -838,6 +838,10 @@ struct AuthStatusReport {
     providers: Vec<AuthStatusProviderReport>,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Generic auth-test targets carry provider descriptors until this CLI path is refactored"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ResolvedAuthTestTarget {
     Detailed(AuthTestTarget),
@@ -2033,6 +2037,10 @@ pub(crate) async fn run_post_login_validation(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI auth-test entrypoint maps directly from command-line flags"
+)]
 pub async fn run_auth_test_command(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
@@ -2064,15 +2072,31 @@ pub async fn run_auth_test_command(
                 .await
             }
             ResolvedAuthTestTarget::Generic { provider, choice } => {
-                run_generic_auth_test_target(
+                let mut report = AuthTestProviderReport::new_generic(
+                    choice.as_arg_value().to_string(),
+                    generic_credential_paths_for_provider(provider),
+                );
+                if login {
+                    match super::login::run_login(
+                        &choice,
+                        None,
+                        super::login::LoginOptions::default(),
+                    )
+                    .await
+                    {
+                        Ok(()) => report.push_step("login", true, "Login flow completed."),
+                        Err(err) => report.push_step("login", false, err.to_string()),
+                    }
+                }
+                populate_generic_auth_test_report(
                     provider,
                     choice,
                     model,
-                    login,
                     !no_smoke,
                     !no_tool_smoke,
                     provider_smoke_prompt,
                     tool_smoke_prompt,
+                    report,
                 )
                 .await
             }
@@ -2081,11 +2105,9 @@ pub async fn run_auth_test_command(
         reports.push(report);
     }
 
-    let report_json = if emit_json || output_path.is_some() {
-        Some(serde_json::to_string_pretty(&reports)?)
-    } else {
-        None
-    };
+    let report_json = (emit_json || output_path.is_some())
+        .then(|| serde_json::to_string_pretty(&reports))
+        .transpose()?;
 
     if let Some(path) = output_path {
         std::fs::write(path, report_json.as_deref().unwrap_or("[]"))
@@ -2218,41 +2240,10 @@ async fn populate_auth_test_target_report(
     report
 }
 
-async fn run_generic_auth_test_target(
-    provider: crate::provider_catalog::LoginProviderDescriptor,
-    choice: super::provider_init::ProviderChoice,
-    model: Option<&str>,
-    login: bool,
-    run_smoke: bool,
-    run_tool_smoke: bool,
-    provider_smoke_prompt: &str,
-    tool_smoke_prompt: &str,
-) -> AuthTestProviderReport {
-    let mut report = AuthTestProviderReport::new_generic(
-        choice.as_arg_value().to_string(),
-        generic_credential_paths_for_provider(provider),
-    );
-
-    if login {
-        match super::login::run_login(&choice, None, super::login::LoginOptions::default()).await {
-            Ok(()) => report.push_step("login", true, "Login flow completed."),
-            Err(err) => report.push_step("login", false, err.to_string()),
-        }
-    }
-
-    populate_generic_auth_test_report(
-        provider,
-        choice,
-        model,
-        run_smoke,
-        run_tool_smoke,
-        provider_smoke_prompt,
-        tool_smoke_prompt,
-        report,
-    )
-    .await
-}
-
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Auth-test helper carries explicit smoke and prompt controls until structured options land"
+)]
 async fn populate_generic_auth_test_report(
     provider: crate::provider_catalog::LoginProviderDescriptor,
     choice: super::provider_init::ProviderChoice,

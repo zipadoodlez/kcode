@@ -470,26 +470,10 @@ pub(crate) fn summarize_history_invariant(event: &ServerEvent) -> Option<String>
     }
 }
 
-pub(crate) fn summarize_message_invariant(events: &[ServerEvent]) -> Vec<String> {
-    events
-        .iter()
-        .filter_map(|event| match event {
-            ServerEvent::Ack { id } => Some(format!("ack:{id}")),
-            ServerEvent::ConnectionType { connection } => {
-                Some(format!("connection_type:{connection}"))
-            }
-            ServerEvent::TextDelta { text } => Some(format!("text:{text}")),
-            ServerEvent::SessionId { session_id } => Some(format!("session_id:{session_id}")),
-            ServerEvent::Done { id } => Some(format!("done:{id}")),
-            ServerEvent::Error { id, message, .. } => Some(format!("error:{id}:{message}")),
-            _ => None,
-        })
-        .collect()
-}
-
 pub(crate) struct TransportScenarioResult {
     pub(crate) subscribe_events: Vec<ServerEvent>,
     pub(crate) history_events: Vec<ServerEvent>,
+    #[allow(dead_code)]
     pub(crate) message_events: Vec<ServerEvent>,
     pub(crate) resume_events: Vec<ServerEvent>,
 }

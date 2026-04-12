@@ -147,12 +147,12 @@ fn tile_color(
     match state {
         WorkspaceSessionVisualState::Running => {
             if focused {
-                if tick % 2 == 0 {
+                if tick.is_multiple_of(2) {
                     rgb(180, 220, 255)
                 } else {
                     rgb(130, 170, 220)
                 }
-            } else if tick % 2 == 0 {
+            } else if tick.is_multiple_of(2) {
                 rgb(140, 200, 255)
             } else {
                 rgb(90, 140, 190)

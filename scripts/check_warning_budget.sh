@@ -26,7 +26,7 @@ if [[ ! -f "$baseline_file" ]]; then
   exit 1
 fi
 
-current=$(cd "$repo_root" && CARGO_TERM_COLOR=never cargo check -q 2>&1 | rg -c '^warning:')
+current=$(cd "$repo_root" && CARGO_TERM_COLOR=never cargo check -q 2>&1 | rg -c '^warning:' || printf '0\n')
 baseline=$(tr -d '[:space:]' < "$baseline_file")
 
 if [[ "${1:-}" == "--update" ]]; then

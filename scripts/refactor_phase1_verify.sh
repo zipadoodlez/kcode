@@ -10,23 +10,28 @@ run_cargo() {
 
 echo "=== Phase 1 Refactor Verification ==="
 
-echo "[1/6] Isolated environment sanity"
+echo "[1/7] Isolated environment sanity"
 "$repo_root/scripts/refactor_shadow.sh" check
 
-echo "[2/6] Build (debug)"
+echo "[2/7] Build (debug)"
 "$repo_root/scripts/refactor_shadow.sh" build
 
-echo "[3/6] Compile + warning budget"
+echo "[3/7] Compile + budgets"
 run_cargo check -q
 "$repo_root/scripts/check_warning_budget.sh"
+python3 "$repo_root/scripts/check_code_size_budget.py"
 
-echo "[4/6] Security preflight"
+echo "[4/7] Security preflight"
 "$repo_root/scripts/security_preflight.sh"
 
-echo "[5/6] Full tests"
+echo "[5/7] Full tests"
 run_cargo test -q
 
-echo "[6/6] E2E tests"
+echo "[6/7] E2E tests"
 run_cargo test --test e2e -q
+
+echo "[7/7] All-targets/all-features lint"
+run_cargo check --all-targets --all-features
+run_cargo clippy --all-targets --all-features -- -D warnings
 
 echo "=== Phase 1 verification passed ==="
