@@ -13,7 +13,9 @@ Built for multi-session workflows, infinite customizability, and performance.
 
 <br>
 
-<img src="https://github.com/1jehuang/jcode/releases/download/v0.3.1/jcode_demo_jaguar.avif" alt="jcode demo" width="800">
+<a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-memory-demo.mp4">
+  <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-memory-demo.webp" alt="jcode memory demonstration" width="800">
+</a>
 
 <br>
 
@@ -227,7 +229,9 @@ versions tested:
 
 <div align="center">
 
-  <img src="assets/readme/jcode-performance-demonstration.gif" alt="jcode performance demonstration" width="900">
+  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-performance-demo.mp4">
+    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-performance-demo.webp" alt="jcode performance demonstration" width="900">
+  </a>
 
   <p><em>jcode performance demonstration</em></p>
 
@@ -246,7 +250,17 @@ The harness also provides explicit memory tools to allow the agent to actively s
 
 Memories are automatically consolidated every so often via the ambient mode. This reorganizes, checks for staleness and conflicts, etc
 
-<!-- Add memory demo thumbnail/video and fuller writeup here. -->
+<div align="center">
+
+  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-memory-demo.mp4">
+    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-memory-demo.webp" alt="jcode memory demonstration" width="900">
+  </a>
+
+  <p><em>jcode memory demonstration</em></p>
+
+</div>
+
+<!-- Memory demo media is hosted in the readme-assets release. -->
 
 ---
 
