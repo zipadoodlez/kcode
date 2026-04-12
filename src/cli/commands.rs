@@ -772,7 +772,7 @@ pub async fn run_browser(action: &str) -> Result<()> {
     match action {
         "setup" => browser::run_setup_command().await?,
         "status" => {
-            let status = browser::inspect_browser_status().await?;
+            let status = browser::ensure_browser_ready_noninteractive().await?;
             println!("Browser automation");
             println!("  backend: {}", status.backend);
             println!("  browser: {}", status.browser);
