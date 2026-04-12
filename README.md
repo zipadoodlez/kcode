@@ -475,6 +475,16 @@ jcode dictate
 jcode supports interactive TUI use, non-interactive runs, persistent server/client workflows,
 and hotkey-friendly dictation without requiring a bundled speech-to-text stack.
 
+<div align="center">
+
+  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-workflow-demonstration.mp4">
+    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-workflow-demonstration.webp" alt="jcode workflow demonstration" width="900">
+  </a>
+
+  <p><em>jcode workflow demonstration</em></p>
+
+</div>
+
 ---
 
 ## Further Reading
