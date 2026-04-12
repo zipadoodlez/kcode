@@ -233,7 +233,6 @@ versions tested:
 
 </div>
 
-The above GIF shows jcode spawning 102 sessions.
 
 ---
 
