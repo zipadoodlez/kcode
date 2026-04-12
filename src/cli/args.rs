@@ -250,9 +250,9 @@ pub(crate) enum Command {
     /// Install a launcher so jcode appears in your app launcher
     SetupLauncher,
 
-    /// Firefox Agent Bridge - browser automation setup and management
+    /// Browser automation setup and status
     Browser {
-        /// Subcommand (setup, status)
+        /// Action (setup, status)
         #[arg(default_value = "setup")]
         action: String,
     },

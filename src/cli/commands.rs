@@ -772,11 +772,39 @@ pub async fn run_browser(action: &str) -> Result<()> {
     match action {
         "setup" => browser::run_setup_command().await?,
         "status" => {
-            if browser::is_setup_complete() {
-                println!("Browser bridge: installed and ready");
+            let status = browser::inspect_browser_status().await?;
+            println!("Browser automation");
+            println!("  backend: {}", status.backend);
+            println!("  browser: {}", status.browser);
+            println!(
+                "  binary: {}",
+                if status.binary_installed {
+                    "installed"
+                } else {
+                    "missing"
+                }
+            );
+            println!(
+                "  setup: {}",
+                if status.setup_complete {
+                    "complete"
+                } else {
+                    "not complete"
+                }
+            );
+            println!(
+                "  bridge: {}",
+                if status.ready {
+                    "responding"
+                } else {
+                    "not responding"
+                }
+            );
+
+            if status.ready {
+                println!("\nBuilt-in browser tool is ready.");
             } else {
-                println!("Browser bridge: not set up");
-                println!("Run `jcode browser setup` to install");
+                println!("\nRun `jcode browser setup` to install or repair it.");
             }
         }
         other => {
