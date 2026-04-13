@@ -293,7 +293,7 @@ impl WsTestClient {
     async fn send_request(&mut self, request: Request) -> Result<u64> {
         let id = request.id();
         let json = serde_json::to_string(&request)?;
-        self.stream.send(WsMessage::Text(json.into())).await?;
+        self.stream.send(WsMessage::Text(json)).await?;
         Ok(id)
     }
 
@@ -804,7 +804,7 @@ impl PtyChild {
 pub(crate) fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
     let mut master_fd = -1;
     let mut slave_fd = -1;
-    let mut winsize = libc::winsize {
+    let winsize = libc::winsize {
         ws_row: 40,
         ws_col: 120,
         ws_xpixel: 0,
@@ -817,7 +817,7 @@ pub(crate) fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
             &mut slave_fd,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            &mut winsize,
+            &winsize,
         )
     };
     if rc != 0 {

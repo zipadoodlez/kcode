@@ -297,9 +297,9 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let cpu_start = current_process_cpu_time()?;
     let wall_start = Instant::now();
 
-    let burst_results = join_all(expected_session_ids.iter().cloned().map(|session_id| {
+    let burst_results = join_all(expected_session_ids.iter().map(|session_id| {
         let socket_path = socket_path.clone();
-        async move { burst_attach_resumed_client(socket_path, session_id).await }
+        async move { burst_attach_resumed_client(socket_path, session_id.to_string()).await }
     }))
     .await;
 
@@ -498,10 +498,16 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
     let initial_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
     let initial_session_to_client = client_id_map(&initial_client_map)?;
 
-    let retry_results = join_all(live_session_ids.iter().cloned().map(|session_id| {
+    let retry_results = join_all(live_session_ids.iter().map(|session_id| {
         let socket_path = socket_path.clone();
         async move {
-            burst_attach_resumed_client_with_options(socket_path, session_id, false, true).await
+            burst_attach_resumed_client_with_options(
+                socket_path,
+                session_id.to_string(),
+                false,
+                true,
+            )
+            .await
         }
     }))
     .await;

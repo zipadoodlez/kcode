@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
+
 use anyhow::{Context, Result};
 
 const MAX_INTERACTIVE_SWARM_REPLAY_PANES: usize = 16;
@@ -1189,10 +1191,6 @@ pub fn list_sessions() -> Result<()> {
             .join(" ")
     }
 
-    #[expect(
-        clippy::collapsible_if,
-        reason = "Resume target cwd restoration keeps the branch order explicit for each spawn path"
-    )]
     fn spawn_target_in_new_terminal(
         target: &crate::tui::session_picker::ResumeTarget,
         exe: &std::path::Path,

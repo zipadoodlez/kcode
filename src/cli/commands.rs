@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};

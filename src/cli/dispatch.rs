@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
+
 use anyhow::Result;
 use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
