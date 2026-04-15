@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::provider_catalog::{self, resolve_login_selection, resolve_openai_compatible_profile};
 use std::sync::{Mutex, OnceLock};
