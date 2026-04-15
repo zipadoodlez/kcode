@@ -308,7 +308,7 @@ fn collect_cli_model_names_falls_back_when_no_routes_are_available() {
 
 #[test]
 fn list_cli_providers_includes_auto_and_openai() {
-    let providers = list_cli_providers();
+    let providers = super::report_info::list_cli_providers();
     assert!(providers.iter().any(|provider| provider.id == "auto"));
     assert!(providers.iter().any(|provider| {
         provider.id == "openai"
@@ -321,7 +321,7 @@ fn list_cli_providers_includes_auto_and_openai() {
 
 #[test]
 fn version_command_plain_output_includes_core_fields() {
-    let report = VersionReport {
+    let report = super::report_info::VersionReport {
         version: "v1.2.3 (abc1234)".to_string(),
         semver: "1.2.3".to_string(),
         base_semver: "1.2.0".to_string(),
