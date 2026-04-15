@@ -1547,6 +1547,7 @@ async fn init_provider_with_options(
             disable_subscription_runtime_mode();
             let profile = profile_for_choice(choice)
                 .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
+            apply_openai_compatible_profile_env(Some(profile));
             let resolved = resolve_openai_compatible_profile(profile);
             if resolved.requires_api_key {
                 ensure_external_api_key_auth_allowed_for_explicit_choice(&resolved.api_key_env)?;
@@ -2076,6 +2077,51 @@ mod tests {
             resolved_profile_default_model(provider_catalog::OPENAI_COMPAT_PROFILE).as_deref(),
             Some("llama3.2")
         );
+
+        for (key, value) in saved {
+            if let Some(value) = value {
+                crate::env::set_var(&key, value);
+            } else {
+                crate::env::remove_var(&key);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disabling_subscription_mode() {
+        let _guard = lock_env();
+        let _env_guard = crate::storage::lock_test_env();
+        let dir = TempDir::new().expect("temp dir");
+        let saved: Vec<(String, Option<String>)> = [
+            "JCODE_HOME",
+            "JCODE_OPENROUTER_API_BASE",
+            "JCODE_OPENROUTER_API_KEY_NAME",
+            "JCODE_OPENROUTER_ENV_FILE",
+            "JCODE_OPENROUTER_CACHE_NAMESPACE",
+            "JCODE_OPENROUTER_PROVIDER_FEATURES",
+            "JCODE_OPENROUTER_ALLOW_NO_AUTH",
+            "JCODE_FORCE_PROVIDER",
+            "JCODE_ACTIVE_PROVIDER",
+        ]
+        .iter()
+        .map(|k| (k.to_string(), std::env::var(k).ok()))
+        .collect();
+
+        crate::env::set_var("JCODE_HOME", dir.path());
+        crate::subscription_catalog::apply_runtime_env();
+
+        let provider = init_provider_for_validation(&ProviderChoice::Ollama, Some("llama3.2"))
+            .await
+            .expect("init ollama provider");
+
+        assert_eq!(std::env::var("JCODE_OPENROUTER_API_BASE").ok().as_deref(), Some("http://localhost:11434/v1"));
+        assert_eq!(std::env::var("JCODE_OPENROUTER_API_KEY_NAME").ok().as_deref(), Some("OLLAMA_API_KEY"));
+        assert_eq!(std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(), Some("ollama.env"));
+        assert_eq!(std::env::var("JCODE_OPENROUTER_ALLOW_NO_AUTH").ok().as_deref(), Some("1"));
+        assert_eq!(std::env::var("JCODE_FORCE_PROVIDER").ok().as_deref(), Some("1"));
+        assert_eq!(std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(), Some("openrouter"));
+        assert_eq!(provider.name(), "OpenRouter");
+        assert_eq!(provider.model(), "llama3.2");
 
         for (key, value) in saved {
             if let Some(value) = value {
