@@ -16,7 +16,10 @@ pub fn shared_http_client() -> reqwest::Client {
                 .pool_idle_timeout(Duration::from_secs(90))
                 .pool_max_idle_per_host(8)
                 .build()
-                .expect("shared provider HTTP client should build")
+                .unwrap_or_else(|err| {
+                    eprintln!("jcode: failed to build shared provider HTTP client: {err}");
+                    reqwest::Client::new()
+                })
         })
         .clone()
 }
