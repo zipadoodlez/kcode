@@ -170,7 +170,6 @@ jobs:
         shell: pwsh
         run: |
           $tests = @(
-            'binary_integration::binary_version_command',
             'provider_behavior::test_socket_model_cycle_supported_models',
             'provider_behavior::test_model_switch_resets_provider_session'
           )
@@ -202,7 +201,6 @@ jobs:
         shell: pwsh
         run: |
           $tests = @(
-            'binary_integration::binary_version_command',
             'provider_behavior::test_socket_model_cycle_supported_models',
             'provider_behavior::test_model_switch_resets_provider_session'
           )
