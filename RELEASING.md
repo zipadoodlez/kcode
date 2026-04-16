@@ -55,15 +55,16 @@ Tag push (v*)
     │     └─► macOS aarch64  (macos-latest)       ~11 min
     │
     ├─► build-windows (parallel, non-blocking)
-    │     └─► Windows x86_64 (windows-latest)     ~16 min
+    │     ├─► Windows x86_64 (windows-latest)     ~16 min
+    │     └─► Windows ARM64 (windows-11-arm)      ~16 min
     │
     ├─► release (after Linux + macOS complete)
     │     ├─► Create GitHub Release with binaries
     │     ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
     │     └─► Update AUR package (jcode-bin)
     │
-    └─► release-windows (after Windows + release complete)
-          └─► Upload Windows binary to existing release
+    └─► upload-windows-assets (after Windows + release complete)
+          └─► Upload Windows binaries to existing release
 ```
 
 Key design decisions:
@@ -78,7 +79,7 @@ Key design decisions:
 CI handles Homebrew and AUR updates automatically:
 
 - **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
-- **AUR**: Updates `PKGBUILD` and `.SRCINFO` in `aur/jcode-bin`
+- **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `jcode-bin` AUR repo
 
 Both are triggered by the `release` job after Linux + macOS builds complete.
 
