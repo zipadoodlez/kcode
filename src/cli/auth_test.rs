@@ -1126,8 +1126,6 @@ async fn run_provider_tool_smoke_for_choice(
     model: Option<&str>,
     prompt: &str,
 ) -> Result<String> {
-    use futures::StreamExt;
-
     run_auth_test_with_retry(async || {
         let (provider, registry) =
             super::provider_init::init_provider_and_registry_for_validation(choice, model)
@@ -1138,38 +1136,14 @@ async fn run_provider_tool_smoke_for_choice(
         registry
             .register_mcp_tools(None, None, Some("auth-test".to_string()))
             .await;
-        let tools = registry.definitions(None).await;
 
-        let messages = vec![crate::message::Message {
-            role: crate::message::Role::User,
-            content: vec![crate::message::ContentBlock::Text {
-                text: prompt.to_string(),
-                cache_control: None,
-            }],
-            timestamp: None,
-            tool_duration_ms: None,
-        }];
-
-        let response = provider
-            .complete(&messages, &tools, "", None)
-            .await
-            .with_context(|| {
-                format!(
-                    "{} tool-enabled smoke prompt failed with {} attached tools",
-                    choice.as_arg_value(),
-                    tools.len()
-                )
-            })?;
-
-        tokio::pin!(response);
-        let mut output = String::new();
-        while let Some(event) = response.next().await {
-            match event {
-                Ok(crate::message::StreamEvent::TextDelta(text)) => output.push_str(&text),
-                Ok(_) => {}
-                Err(err) => return Err(err),
-            }
-        }
+        let mut agent = crate::agent::Agent::new(provider, registry);
+        let output = agent.run_once_capture(prompt).await.with_context(|| {
+            format!(
+                "{} tool-enabled smoke prompt failed during agent turn execution",
+                choice.as_arg_value()
+            )
+        })?;
 
         Ok(output.trim().to_string())
     })
