@@ -397,6 +397,82 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     Ok(())
 }
 
+#[tokio::test]
+async fn test_resume_session_reports_reload_interruption_for_peer_sessions() -> Result<()> {
+    let _env = setup_test_env()?;
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-reload-interruption-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+
+    let mut session = Session::create(None, Some("Reload Interrupted Session".to_string()));
+    session.model = Some("model-a".to_string());
+    session.add_message(
+        jcode::message::Role::User,
+        vec![jcode::message::ContentBlock::ToolResult {
+            tool_use_id: "tool_bash_1".to_string(),
+            content: "[Tool 'bash' interrupted by server reload after 0.2s]".to_string(),
+            is_error: Some(true),
+        }],
+    );
+    session.save()?;
+
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let provider = Arc::new(MockProvider::with_models(vec!["model-a"]));
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider.clone();
+    let server_instance = server::Server::new_with_paths(
+        provider_dyn,
+        socket_path.clone(),
+        debug_socket_path.clone(),
+    );
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let mut client = wait_for_server_client(&socket_path).await?;
+    let subscribe_id = client.subscribe().await?;
+    let subscribe_events = collect_until_done_unix(&mut client, subscribe_id).await?;
+    assert!(
+        subscribe_events
+            .iter()
+            .any(|event| matches!(event, ServerEvent::Done { id } if *id == subscribe_id)),
+        "expected subscribe to finish, got: {subscribe_events:?}"
+    );
+
+    let resume_id = client.resume_session(&session.id).await?;
+    let events = collect_until_done_unix(&mut client, resume_id).await?;
+
+    let history_event = events
+        .iter()
+        .find_map(|event| match event {
+            ServerEvent::History {
+                id,
+                session_id,
+                was_interrupted,
+                ..
+            } if *id == resume_id => Some((session_id.clone(), *was_interrupted)),
+            _ => None,
+        })
+        .ok_or_else(|| anyhow::anyhow!("Did not receive resume history event: {events:?}"))?;
+
+    assert_eq!(history_event.0, session.id);
+    assert_eq!(
+        history_event.1,
+        Some(true),
+        "reload-interrupted peer sessions should be marked interrupted so clients auto-continue"
+    );
+
+    server_handle.abort();
+    let _ = std::fs::remove_file(&socket_path);
+    let _ = std::fs::remove_file(&debug_socket_path);
+
+    Ok(())
+}
+
 /// Test that subscribe selfdev hint marks the session as canary
 #[tokio::test]
 async fn test_subscribe_selfdev_hint_marks_canary() -> Result<()> {
