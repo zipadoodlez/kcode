@@ -646,7 +646,7 @@ pub(crate) async fn spawn_server(
     startup_profile::mark("server_spawn_start");
     output::stderr_info("Starting server...");
     let client_requested_selfdev = selfdev::client_selfdev_requested();
-    let exe = build::client_update_candidate(client_requested_selfdev)
+    let exe = build::shared_server_update_candidate(client_requested_selfdev)
         .map(|(path, _)| path)
         .or_else(|| std::env::current_exe().ok())
         .ok_or_else(|| anyhow::anyhow!("Could not determine executable path for server spawn"))?;
