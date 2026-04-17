@@ -318,6 +318,10 @@ fn resolved_profile_default_model_uses_openai_compatible_override() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "test env locks intentionally stay held across provider init to isolate process-global runtime env"
+)]
 async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disabling_subscription_mode()
  {
     let _guard = lock_env();
