@@ -11,6 +11,7 @@ integrate work with optional git worktrees.
 - Parallel work across many agents without locks.
 - A comprehensive initial plan, but allowed to evolve as work progresses.
 - Plan distribution is out-of-band (not stored in the repo).
+- Swarm runtime state survives reloads and crash recovery via daemon snapshots.
 - Explicit coordination via broadcast updates, DMs, and channels.
 - Optional git worktrees used only when they make sense.
 - Integration handled by worktree managers, not the coordinator.
@@ -150,9 +151,16 @@ queued as soft interrupts and injected into running agents at safe points, so
 messages can be interleaved during a turn without starting a new turn.
 
 Completed or idle agents do not resume automatically when notifications arrive.
-They only resume when the coordinator assigns new work or respawns them.
+They only resume when the coordinator assigns new work, explicitly starts or wakes an
+assigned task, or respawns them. Recovery handoffs are explicit too: retry keeps the
+same assignee, reassign moves work to another existing agent, replace swaps to a new
+assignee after safe state checks, and salvage reassigns with preserved task-progress
+context.
 
-Summary read and full context read are separate operations:
+Status snapshot, summary read, and full context read are separate operations:
+
+- Status snapshot: lock-free member metadata plus current processing/tool snapshot. This
+  must stay available even while the target agent is busy.
 
 - Summary read: short activity feed (tool calls with intent, brief results, and
   optionally exposed thoughts).
@@ -212,9 +220,10 @@ flowchart LR
 ### Plan info widget
 
 - Graph view of the task DAG with dependencies.
-- Nodes show owner, scope, and status (queued, running, done, blocked, failed).
+- Nodes show owner, scope, and status (queued, running, running_stale, done, blocked, failed).
 - Checkpoints are shown as node badges or subnodes.
-- Progress is visible through completed node count and critical path status.
+- Coordinators can inspect durable per-task progress, including assignment metadata, heartbeat age, and last checkpoint summary.
+- Progress is visible through completed node count, critical path status, and persisted checkpoint/heartbeat data after reloads.
 - Updates in real time from plan broadcasts and task status events.
 
 Plan graph view:
