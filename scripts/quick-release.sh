@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # Quick release script - builds Linux + macOS locally and uploads to GitHub.
+# Linux is built inside an Ubuntu 22.04 container for an older glibc baseline.
 # macOS is cross-compiled via osxcross (~/.osxcross). Windows is built by CI.
 #
 # Setup (one-time):
@@ -33,7 +34,7 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
-for cmd in gh cargo; do
+for cmd in gh cargo docker; do
     command -v "$cmd" &>/dev/null || { echo "Error: $cmd not found."; exit 1; }
 done
 
@@ -64,10 +65,7 @@ OVERALL_START=$(date +%s)
 echo "▸ Building Linux x86_64 + macOS aarch64 in parallel..."
 
 (
-    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" cargo build --release 2>/dev/null
-    cp target/release/jcode "$DIST/jcode-linux-x86_64"
-    chmod +x "$DIST/jcode-linux-x86_64"
-    (cd "$DIST" && tar czf jcode-linux-x86_64.tar.gz jcode-linux-x86_64)
+    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" scripts/build_linux_compat.sh "$DIST" >/dev/null
     echo "  ✅ Linux done ($(( $(date +%s) - OVERALL_START ))s)"
 ) &
 LINUX_PID=$!
