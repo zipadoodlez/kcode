@@ -742,6 +742,15 @@ pub(crate) async fn debug_run_command(
     )
 }
 
+pub(crate) async fn debug_run_command_json(
+    debug_socket_path: std::path::PathBuf,
+    command: &str,
+    session_id: Option<&str>,
+) -> Result<serde_json::Value> {
+    let output = debug_run_command(debug_socket_path, command, session_id).await?;
+    Ok(serde_json::from_str(&output)?)
+}
+
 pub(crate) async fn wait_for_server_client(
     socket_path: &std::path::Path,
 ) -> Result<server::Client> {

@@ -72,30 +72,6 @@ fn percentile_ms(sorted: &[u128], percentile: usize) -> u128 {
     sorted[idx]
 }
 
-async fn read_debug_json(debug_socket_path: &Path, command: &str) -> Result<serde_json::Value> {
-    let mut client =
-        server::Client::connect_debug_with_path(debug_socket_path.to_path_buf()).await?;
-    let request_id = client.debug_command(command, None).await?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
-        match event {
-            ServerEvent::Ack { .. } => continue,
-            ServerEvent::DebugResponse { id, ok, output } if id == request_id => {
-                if !ok {
-                    anyhow::bail!("debug command `{command}` failed: {output}");
-                }
-                return Ok(serde_json::from_str(&output)?);
-            }
-            ServerEvent::Error { id, message, .. } if id == request_id => {
-                anyhow::bail!("debug command `{command}` failed: {message}");
-            }
-            _ => {}
-        }
-    }
-    anyhow::bail!("timed out waiting for debug response to `{command}`")
-}
-
 async fn wait_for_debug_client_count(
     debug_socket_path: &Path,
     expected_count: usize,
@@ -105,7 +81,8 @@ async fn wait_for_debug_client_count(
     let mut last_count = None;
 
     while Instant::now() < deadline {
-        let client_map = read_debug_json(debug_socket_path, "clients:map").await?;
+        let client_map =
+            debug_run_command_json(debug_socket_path.to_path_buf(), "clients:map", None).await?;
         let count = client_map
             .get("count")
             .and_then(|value| value.as_u64())
@@ -357,8 +334,8 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let wall_elapsed = wall_start.elapsed();
     let cpu_elapsed = current_process_cpu_time()?.saturating_sub(cpu_start);
 
-    let client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
-    let info = read_debug_json(&debug_socket_path, "server:info").await?;
+    let client_map = debug_run_command_json(debug_socket_path.clone(), "clients:map", None).await?;
+    let info = debug_run_command_json(debug_socket_path.clone(), "server:info", None).await?;
 
     let clients = client_map
         .get("clients")
@@ -521,7 +498,8 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
         live_clients.push((session_id, client));
     }
 
-    let initial_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let initial_client_map =
+        debug_run_command_json(debug_socket_path.clone(), "clients:map", None).await?;
     let initial_session_to_client = client_id_map(&initial_client_map)?;
 
     let retry_results = join_all(live_session_ids.iter().map(|session_id| {
@@ -551,7 +529,8 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
         }
     }
 
-    let final_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let final_client_map =
+        debug_run_command_json(debug_socket_path.clone(), "clients:map", None).await?;
     let final_session_to_client = client_id_map(&final_client_map)?;
     assert_eq!(
         final_session_to_client, initial_session_to_client,
