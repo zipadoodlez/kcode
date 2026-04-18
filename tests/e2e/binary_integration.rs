@@ -150,8 +150,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
         .spawn()?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let server_info_before =
             debug_run_command(debug_socket_path.clone(), "server:info", None).await?;
         let server_info_before_json: serde_json::Value = serde_json::from_str(&server_info_before)?;
@@ -275,8 +274,7 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
     let mut child = spawn_pty_child(command)?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let session_id =
             wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
 
@@ -391,8 +389,7 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
     let mut child = spawn_pty_child(command)?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
         let session_id =
             wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
@@ -555,8 +552,7 @@ async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Res
     let mut child = spawn_pty_child(command)?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
         let session_id =
             wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;

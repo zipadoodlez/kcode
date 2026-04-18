@@ -179,6 +179,14 @@ pub(crate) async fn wait_for_debug_socket_ready(path: &std::path::Path) -> Resul
     }
 }
 
+pub(crate) async fn wait_for_server_ready(
+    socket_path: &std::path::Path,
+    debug_socket_path: &std::path::Path,
+) -> Result<()> {
+    wait_for_socket(socket_path).await?;
+    wait_for_debug_socket_ready(debug_socket_path).await
+}
+
 pub(crate) async fn wait_for_tcp_port(port: u16) -> Result<()> {
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(10) {
