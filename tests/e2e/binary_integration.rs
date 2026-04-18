@@ -187,7 +187,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
 
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let _client = wait_for_server_client(&socket_path).await?;
 
         let server_info_after =
