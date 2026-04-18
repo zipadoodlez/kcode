@@ -659,6 +659,12 @@ pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenar
     result
 }
 
+pub(crate) async fn wait_for_default_connected_client_session(
+    debug_socket_path: &std::path::Path,
+) -> Result<String> {
+    wait_for_connected_client_session(debug_socket_path, Duration::from_secs(10)).await
+}
+
 pub(crate) async fn debug_create_headless_session_with_command(
     debug_socket_path: std::path::PathBuf,
     command: &str,

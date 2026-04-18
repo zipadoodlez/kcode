@@ -276,7 +276,7 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
     let test_result = async {
         wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let session_id =
-            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+            wait_for_default_connected_client_session(&debug_socket_path).await?;
 
         let state_before =
             debug_run_command(debug_socket_path.clone(), "client:state", None).await?;
@@ -392,7 +392,7 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
         wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
         let session_id =
-            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+            wait_for_default_connected_client_session(&debug_socket_path).await?;
 
         let state_before =
             debug_run_command(debug_socket_path.clone(), "client:state", Some(&session_id)).await?;
@@ -555,7 +555,7 @@ async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Res
         wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
         let session_id =
-            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+            wait_for_default_connected_client_session(&debug_socket_path).await?;
 
         let state_before =
             debug_run_command(debug_socket_path.clone(), "client:state", Some(&session_id)).await?;
