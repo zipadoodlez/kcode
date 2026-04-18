@@ -2,7 +2,7 @@ use crate::test_support::*;
 use futures::future::join_all;
 use serde_json::json;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 struct BurstAttachClientMetrics {
@@ -70,35 +70,6 @@ fn percentile_ms(sorted: &[u128], percentile: usize) -> u128 {
     }
     let idx = ((sorted.len() - 1) * percentile) / 100;
     sorted[idx]
-}
-
-async fn wait_for_debug_client_count(
-    debug_socket_path: &Path,
-    expected_count: usize,
-    timeout: Duration,
-) -> Result<()> {
-    let deadline = Instant::now() + timeout;
-    let mut last_count = None;
-
-    while Instant::now() < deadline {
-        let client_map =
-            debug_run_command_json(debug_socket_path.to_path_buf(), "clients:map", None).await?;
-        let count = client_map
-            .get("count")
-            .and_then(|value| value.as_u64())
-            .context("clients:map missing count")? as usize;
-        if count == expected_count {
-            return Ok(());
-        }
-        last_count = Some(count);
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    anyhow::bail!(
-        "timed out waiting for client count {}; last observed {:?}",
-        expected_count,
-        last_count
-    )
 }
 
 async fn burst_attach_resumed_client(

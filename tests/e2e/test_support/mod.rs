@@ -948,6 +948,35 @@ pub(crate) async fn wait_for_connected_client_session(
     )
 }
 
+pub(crate) async fn wait_for_debug_client_count(
+    debug_socket_path: &std::path::Path,
+    expected_count: usize,
+    timeout: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    let mut last_count = None;
+
+    while Instant::now() < deadline {
+        let client_map =
+            debug_run_command_json(debug_socket_path.to_path_buf(), "clients:map", None).await?;
+        let count = client_map
+            .get("count")
+            .and_then(|value| value.as_u64())
+            .context("clients:map missing count")? as usize;
+        if count == expected_count {
+            return Ok(());
+        }
+        last_count = Some(count);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    anyhow::bail!(
+        "timed out waiting for client count {}; last observed {:?}",
+        expected_count,
+        last_count
+    )
+}
+
 #[cfg(unix)]
 pub(crate) async fn wait_for_selfdev_reload_cycle(
     debug_socket_path: &std::path::Path,
