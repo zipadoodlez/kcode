@@ -315,8 +315,10 @@ fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMo
     }
 }
 
-#[allow(deprecated)]
 async fn run_default_command(args: Args) -> Result<()> {
+    #[allow(deprecated)]
+    let standalone = args.standalone;
+
     startup_profile::mark("run_main_none_branch");
 
     if args.resume.is_none() && commands::maybe_run_pending_restart_restore_on_startup().await? {
@@ -340,7 +342,7 @@ async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("is_jcode_repo");
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
 
-    if in_jcode_repo && !already_in_selfdev && !args.standalone && !args.no_selfdev {
+    if in_jcode_repo && !already_in_selfdev && !standalone && !args.no_selfdev {
         output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
         output::stderr_info("   Using shared server with self-dev session mode");
         output::stderr_info("   (use --no-selfdev to disable auto-detection)");
@@ -350,7 +352,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         crate::process_title::set_initial_title(&args);
     }
 
-    if args.standalone {
+    if standalone {
         output::stderr_info(
             "\x1b[33m⚠️  Warning: --standalone is deprecated and will be removed in a future version.\x1b[0m",
         );
@@ -808,8 +810,10 @@ mod tests {
         let bind_path = env.socket_path.clone();
         let bind_task = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            #[allow(unused_mut)]
+            #[cfg(windows)]
             let mut listener = Listener::bind(&bind_path).expect("bind replacement listener");
+            #[cfg(not(windows))]
+            let listener = Listener::bind(&bind_path).expect("bind replacement listener");
             let (stream, _) = listener.accept().await.expect("accept ping probe");
             let (reader, mut writer) = stream.into_split();
             let mut reader = BufReader::new(reader);
@@ -855,8 +859,10 @@ mod tests {
         let bind_path = env.socket_path.clone();
         let bind_task = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            #[allow(unused_mut)]
+            #[cfg(windows)]
             let mut listener = Listener::bind(&bind_path).expect("bind delayed listener");
+            #[cfg(not(windows))]
+            let listener = Listener::bind(&bind_path).expect("bind delayed listener");
             let (stream, _) = listener.accept().await.expect("accept ping probe");
             let (reader, mut writer) = stream.into_split();
             let mut reader = BufReader::new(reader);
