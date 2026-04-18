@@ -473,8 +473,6 @@ pub(crate) fn summarize_history_invariant(event: &ServerEvent) -> Option<String>
 pub(crate) struct TransportScenarioResult {
     pub(crate) subscribe_events: Vec<ServerEvent>,
     pub(crate) history_events: Vec<ServerEvent>,
-    #[allow(dead_code)]
-    pub(crate) message_events: Vec<ServerEvent>,
     pub(crate) resume_events: Vec<ServerEvent>,
 }
 
@@ -567,7 +565,6 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
             history_events,
-            message_events,
             resume_events,
         })
     }
@@ -635,7 +632,7 @@ pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenar
             .ok_or_else(|| anyhow::anyhow!("missing websocket history session id"))?;
 
         let message_id = client.send_message("hello over transport").await?;
-        let message_events = collect_until_done_ws(&mut client, message_id).await?;
+        collect_until_done_ws(&mut client, message_id).await?;
 
         let resume_id = client.resume_session(&server_session_id).await?;
         let resume_events = collect_until_history_ws(&mut client, resume_id).await?;
@@ -643,7 +640,6 @@ pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenar
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
             history_events,
-            message_events,
             resume_events,
         })
     }
