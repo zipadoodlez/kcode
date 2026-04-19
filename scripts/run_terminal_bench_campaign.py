@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import datetime as dt
 import hashlib
 import json
@@ -233,6 +234,135 @@ def adopt_existing_job(campaign_dir: Path, task: str, task_jobs_dir: Path) -> di
     return None
 
 
+def build_task_command(
+    *,
+    runner: Path,
+    task: str,
+    task_jobs_dir: Path,
+    job_name: str,
+    args: argparse.Namespace,
+    pass_through_args: list[str],
+) -> list[str]:
+    cmd = [
+        str(runner),
+        "--include-task-name", task,
+        "--n-tasks", "1",
+        "--n-concurrent", "1",
+        "--jobs-dir", str(task_jobs_dir),
+        "--job-name", job_name,
+        "--yes",
+        "--timeout-multiplier", str(args.timeout_multiplier),
+        "-k", str(args.n_attempts),
+    ]
+    if args.path:
+        cmd.extend(["--path", str(Path(args.path).resolve())])
+    else:
+        cmd.extend(["--dataset", args.dataset])
+    if args.model:
+        cmd.extend(["--model", args.model])
+    cmd.extend(pass_through_args)
+    return cmd
+
+
+def execute_task_process(
+    *,
+    runner: Path,
+    task: str,
+    task_jobs_dir: Path,
+    job_name: str,
+    args: argparse.Namespace,
+    pass_through_args: list[str],
+) -> tuple[str, str, Path, int]:
+    cmd = build_task_command(
+        runner=runner,
+        task=task,
+        task_jobs_dir=task_jobs_dir,
+        job_name=job_name,
+        args=args,
+        pass_through_args=pass_through_args,
+    )
+    print(f"\n=== Running task {task} as {job_name} ===", flush=True)
+    proc = subprocess.run(cmd, text=True)
+    return task, job_name, task_jobs_dir, proc.returncode
+
+
+def finalize_task_result(
+    *,
+    campaign_dir: Path,
+    task: str,
+    job_name: str,
+    task_jobs_dir: Path,
+    process_return_code: int,
+    continue_on_failure: bool,
+) -> tuple[bool, dict[str, Any]]:
+    job_result_path = task_jobs_dir / job_name / "result.json"
+    trial_results = collect_trial_results(task_jobs_dir / job_name)
+    if job_result_path.exists() and trial_results:
+        task_result = {
+            "task_name": task,
+            "job_name": job_name,
+            "jobs_dir": str(task_jobs_dir),
+            "status": "completed",
+            "process_return_code": process_return_code,
+            **summarize_job(job_result_path, trial_results),
+        }
+        append_result(campaign_dir, task_result)
+        print(
+            f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
+            flush=True,
+        )
+        return True, task_result
+
+    if process_return_code != 0 or not job_result_path.exists():
+        record = {
+            "task_name": task,
+            "job_name": job_name,
+            "status": "failed_to_produce_result",
+            "return_code": process_return_code,
+            "jobs_dir": str(task_jobs_dir),
+        }
+        append_result(campaign_dir, record)
+        if continue_on_failure:
+            print(f"Task {task} failed, continuing because --continue-on-failure is set.", file=sys.stderr)
+        return False, record
+
+    if not trial_results:
+        record = {
+            "task_name": task,
+            "job_name": job_name,
+            "status": "missing_trial_results",
+            "return_code": process_return_code,
+            "job_result_path": str(job_result_path),
+            "jobs_dir": str(task_jobs_dir),
+        }
+        append_result(campaign_dir, record)
+        if continue_on_failure:
+            print(f"Task {task} produced no per-trial results, continuing.", file=sys.stderr)
+        return False, record
+
+    raise AssertionError("unreachable")
+
+
+def prepare_task(campaign_dir: Path, jobs_root: Path, task: str) -> tuple[str, Path] | None:
+    recorded = completed_recorded_jobs(campaign_dir)
+    if task in recorded:
+        print(f"\n=== Skipping task {task}; already recorded as {recorded[task]['job_name']} ===", flush=True)
+        return None
+
+    task_jobs_dir = jobs_root / task
+    task_jobs_dir.mkdir(parents=True, exist_ok=True)
+
+    adopted = adopt_existing_job(campaign_dir, task, task_jobs_dir)
+    if adopted is not None:
+        print(
+            f"\n=== Adopted existing job for {task}: {adopted['job_name']} mean_reward={adopted['mean_reward']} ===",
+            flush=True,
+        )
+        return None
+
+    return task, task_jobs_dir
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a sequential Terminal-Bench campaign for jcode and preserve stitchable artifacts.")
     parser.add_argument("--campaign-dir", required=True, help="Persistent output directory for the campaign")
@@ -244,6 +374,7 @@ def main() -> int:
     parser.add_argument("-k", "--n-attempts", type=int, default=1, help="Attempts per task")
     parser.add_argument("--timeout-multiplier", type=float, default=1.0)
     parser.add_argument("--continue-on-failure", action="store_true", help="Continue to the next task if one task fails")
+    parser.add_argument("--max-parallel-tasks", type=int, default=1, help="Maximum number of separate task jobs to run at once")
     parser.add_argument("harbor_args", nargs=argparse.REMAINDER, help="Extra args passed through after '--'")
     args = parser.parse_args()
 
@@ -263,111 +394,72 @@ def main() -> int:
 
     runner = root / "scripts" / "run_terminal_bench_harbor.sh"
 
+    pending: list[tuple[str, Path, str]] = []
     for task in tasks:
-        recorded = completed_recorded_jobs(campaign_dir)
-        if task in recorded:
-            print(f"\n=== Skipping task {task}; already recorded as {recorded[task]['job_name']} ===", flush=True)
+        prepared = prepare_task(campaign_dir, jobs_root, task)
+        if prepared is None:
             continue
-
-        task_jobs_dir = jobs_root / task
-        task_jobs_dir.mkdir(parents=True, exist_ok=True)
-
-        adopted = adopt_existing_job(campaign_dir, task, task_jobs_dir)
-        if adopted is not None:
-            print(
-                f"\n=== Adopted existing job for {task}: {adopted['job_name']} mean_reward={adopted['mean_reward']} ===",
-                flush=True,
-            )
-            continue
-
+        task_name, task_jobs_dir = prepared
         existing_runs = [p for p in task_jobs_dir.iterdir() if p.is_dir()]
         run_index = len(existing_runs) + 1
         job_name = f"run-{run_index:03d}"
+        pending.append((task_name, task_jobs_dir, job_name))
 
-        cmd = [
-            str(runner),
-            "--include-task-name", task,
-            "--n-tasks", "1",
-            "--n-concurrent", "1",
-            "--jobs-dir", str(task_jobs_dir),
-            "--job-name", job_name,
-            "--yes",
-            "--timeout-multiplier", str(args.timeout_multiplier),
-            "-k", str(args.n_attempts),
-        ]
-        if args.path:
-            cmd.extend(["--path", str(Path(args.path).resolve())])
-        else:
-            cmd.extend(["--dataset", args.dataset])
-        if args.model:
-            cmd.extend(["--model", args.model])
-        cmd.extend(pass_through_args)
+    if not pending:
+        return 0
 
-        print(f"\n=== Running task {task} as {job_name} ===", flush=True)
-        proc = subprocess.run(cmd, text=True)
-        job_result_path = task_jobs_dir / job_name / "result.json"
-        trial_results = collect_trial_results(task_jobs_dir / job_name)
-        if job_result_path.exists() and trial_results:
-            task_result = {
-                "task_name": task,
-                "job_name": job_name,
-                "jobs_dir": str(task_jobs_dir),
-                "status": "completed",
-                "process_return_code": proc.returncode,
-                **summarize_job(job_result_path, trial_results),
-            }
-            append_result(campaign_dir, task_result)
-            print(
-                f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
-                flush=True,
+    max_workers = max(1, args.max_parallel_tasks)
+    if max_workers == 1:
+        for task, task_jobs_dir, job_name in pending:
+            _, _, _, return_code = execute_task_process(
+                runner=runner,
+                task=task,
+                task_jobs_dir=task_jobs_dir,
+                job_name=job_name,
+                args=args,
+                pass_through_args=pass_through_args,
             )
-            continue
+            ok, _record = finalize_task_result(
+                campaign_dir=campaign_dir,
+                task=task,
+                job_name=job_name,
+                task_jobs_dir=task_jobs_dir,
+                process_return_code=return_code,
+                continue_on_failure=args.continue_on_failure,
+            )
+            if not ok and not args.continue_on_failure:
+                return return_code or 1
+        return 0
 
-        if proc.returncode != 0 or not job_result_path.exists():
-            record = {
-                "task_name": task,
-                "job_name": job_name,
-                "status": "failed_to_produce_result",
-                "return_code": proc.returncode,
-                "jobs_dir": str(task_jobs_dir),
-            }
-            append_result(campaign_dir, record)
-            if args.continue_on_failure:
-                print(f"Task {task} failed, continuing because --continue-on-failure is set.", file=sys.stderr)
-                continue
-            return proc.returncode or 1
-
-        trial_results = collect_trial_results(task_jobs_dir / job_name)
-        if not trial_results:
-            record = {
-                "task_name": task,
-                "job_name": job_name,
-                "status": "missing_trial_results",
-                "return_code": proc.returncode,
-                "job_result_path": str(job_result_path),
-                "jobs_dir": str(task_jobs_dir),
-            }
-            append_result(campaign_dir, record)
-            if args.continue_on_failure:
-                print(f"Task {task} produced no per-trial results, continuing.", file=sys.stderr)
-                continue
-            return 1
-
-        task_result = {
-            "task_name": task,
-            "job_name": job_name,
-            "jobs_dir": str(task_jobs_dir),
-            "status": "completed",
-            "process_return_code": proc.returncode,
-            **summarize_job(job_result_path, trial_results),
+    had_failure = False
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(
+                execute_task_process,
+                runner=runner,
+                task=task,
+                task_jobs_dir=task_jobs_dir,
+                job_name=job_name,
+                args=args,
+                pass_through_args=pass_through_args,
+            ): (task, task_jobs_dir, job_name)
+            for task, task_jobs_dir, job_name in pending
         }
-        append_result(campaign_dir, task_result)
-        print(
-            f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
-            flush=True,
-        )
+        for future in concurrent.futures.as_completed(future_map):
+            task, task_jobs_dir, job_name = future_map[future]
+            _task, _job_name, _task_jobs_dir, return_code = future.result()
+            ok, _record = finalize_task_result(
+                campaign_dir=campaign_dir,
+                task=task,
+                job_name=job_name,
+                task_jobs_dir=task_jobs_dir,
+                process_return_code=return_code,
+                continue_on_failure=args.continue_on_failure,
+            )
+            if not ok:
+                had_failure = True
 
-    return 0
+    return 1 if had_failure and not args.continue_on_failure else 0
 
 
 if __name__ == "__main__":
