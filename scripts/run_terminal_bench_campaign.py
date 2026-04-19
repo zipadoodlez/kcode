@@ -143,20 +143,31 @@ def load_manifest(campaign_dir: Path) -> dict[str, Any]:
     return json.loads((campaign_dir / "campaign.json").read_text())
 
 
+def write_results_jsonl(campaign_dir: Path, records: list[dict[str, Any]]) -> None:
+    results_jsonl = campaign_dir / "results.jsonl"
+    with results_jsonl.open("w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+
+
 def append_result(campaign_dir: Path, record: dict[str, Any]) -> None:
     manifest_path = campaign_dir / "campaign.json"
     manifest = json.loads(manifest_path.read_text())
     existing = manifest.setdefault("tasks_run", [])
-    for item in existing:
+    replaced = False
+    for idx, item in enumerate(existing):
         if item.get("task_name") == record.get("task_name") and item.get("job_name") == record.get("job_name"):
-            return
+            if item == record:
+                return
+            existing[idx] = record
+            replaced = True
+            break
 
-    results_jsonl = campaign_dir / "results.jsonl"
-    with results_jsonl.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record) + "\n")
+    if not replaced:
+        existing.append(record)
 
-    existing.append(record)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    write_results_jsonl(campaign_dir, existing)
 
 
 def collect_trial_results(job_dir: Path) -> list[dict[str, Any]]:
@@ -295,6 +306,23 @@ def main() -> int:
         print(f"\n=== Running task {task} as {job_name} ===", flush=True)
         proc = subprocess.run(cmd, text=True)
         job_result_path = task_jobs_dir / job_name / "result.json"
+        trial_results = collect_trial_results(task_jobs_dir / job_name)
+        if job_result_path.exists() and trial_results:
+            task_result = {
+                "task_name": task,
+                "job_name": job_name,
+                "jobs_dir": str(task_jobs_dir),
+                "status": "completed",
+                "process_return_code": proc.returncode,
+                **summarize_job(job_result_path, trial_results),
+            }
+            append_result(campaign_dir, task_result)
+            print(
+                f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
+                flush=True,
+            )
+            continue
+
         if proc.returncode != 0 or not job_result_path.exists():
             record = {
                 "task_name": task,
@@ -330,6 +358,7 @@ def main() -> int:
             "job_name": job_name,
             "jobs_dir": str(task_jobs_dir),
             "status": "completed",
+            "process_return_code": proc.returncode,
             **summarize_job(job_result_path, trial_results),
         }
         append_result(campaign_dir, task_result)
