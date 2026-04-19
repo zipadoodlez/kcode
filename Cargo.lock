@@ -2161,6 +2161,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-mobile-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "jcode-mobile-sim"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "jcode-mobile-core",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "jcode-notify-email"
 version = "0.1.0"
 dependencies = [
