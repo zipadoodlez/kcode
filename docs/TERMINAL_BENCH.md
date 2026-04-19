@@ -8,6 +8,8 @@ This document describes the cleanest currently-working path for running jcode on
   - Harbor custom agent adapter for jcode
 - `scripts/run_terminal_bench_harbor.sh`
   - helper that wires Harbor to the adapter and a Linux-compatible jcode binary
+- `scripts/run_terminal_bench_campaign.py`
+  - sequential campaign runner that preserves small batches in a stitchable layout
 - `scripts/build_linux_compat.sh`
   - builds a Linux jcode artifact against an older glibc baseline for TB-style containers
 
@@ -31,6 +33,30 @@ The current adapter is designed for:
 - priority service tier
 
 Those defaults can be overridden with environment variables.
+
+## Sequential campaign mode
+
+If you want to run only a few tasks at a time but keep a coherent artifact set, use the campaign runner.
+
+Example:
+
+```bash
+python scripts/run_terminal_bench_campaign.py \
+  --campaign-dir ~/tb2-jcode-campaign \
+  --task regex-log \
+  --task largest-eigenval \
+  --task cancel-async-tasks
+```
+
+What it does:
+
+- runs tasks sequentially with `--n-concurrent 1`
+- preserves Harbor jobs under `campaign-dir/harbor-jobs/`
+- writes a pinned `campaign.json`
+- refuses to mix runs if key settings drift
+- appends per-task outcomes to `results.jsonl`
+
+This is the recommended path when you want to batch tasks gradually and stitch them together later.
 
 ## Quick start
 
