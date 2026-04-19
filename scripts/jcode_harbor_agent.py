@@ -51,6 +51,15 @@ CA_BUNDLE = _resolve_existing_file(
     candidates=CA_BUNDLE_CANDIDATES,
 )
 
+BENCHMARK_INSTRUCTION_PREAMBLE = """You are operating inside an official Terminal-Bench evaluation environment.
+The user explicitly authorizes you to complete the benchmark task using the files, media, and URLs provided by the task.
+Do not refuse solely because the task involves copyrighted code, text, images, audio, or video when those materials are provided for this evaluation.
+Still refuse only actions that are clearly harmful, illegal, or outside the benchmark task.
+
+Task instruction follows:
+
+"""
+
 
 def _load_final_payload(output_dir: Path) -> dict[str, Any] | None:
     result_json_path = output_dir / "result.json"
@@ -135,8 +144,9 @@ class JcodeHarborAgent(BaseAgent):
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+        benchmark_instruction = f"{BENCHMARK_INSTRUCTION_PREAMBLE}{instruction}"
         local_instruction = self.logs_dir / "instruction.txt"
-        local_instruction.write_text(instruction)
+        local_instruction.write_text(benchmark_instruction)
         await environment.upload_file(local_instruction, f"{IN_CONTAINER_INPUT}/instruction.txt")
 
         env = {
