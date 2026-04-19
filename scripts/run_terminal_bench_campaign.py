@@ -216,7 +216,8 @@ def completed_recorded_jobs(campaign_dir: Path) -> dict[str, dict[str, Any]]:
     manifest = load_manifest(campaign_dir)
     out: dict[str, dict[str, Any]] = {}
     for item in manifest.get("tasks_run", []):
-        if item.get("status") == "completed" and item.get("task_name"):
+        mean_reward = item.get("mean_reward")
+        if item.get("status") == "completed" and item.get("task_name") and isinstance(mean_reward, (int, float)):
             out[item["task_name"]] = item
     return out
 
@@ -316,12 +317,13 @@ def finalize_task_result(
             "process_return_code": process_return_code,
             **summarize_job(job_result_path, trial_results),
         }
-        append_result(campaign_dir, task_result)
-        print(
-            f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
-            flush=True,
-        )
-        return True, task_result
+        if isinstance(task_result.get("mean_reward"), (int, float)):
+            append_result(campaign_dir, task_result)
+            print(
+                f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
+                flush=True,
+            )
+            return True, task_result
 
     if process_return_code != 0 or not job_result_path.exists():
         record = {
