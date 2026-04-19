@@ -1,7 +1,14 @@
 use super::*;
 use crate::auth::{AuthState, AuthStatus, ProviderAuth};
+use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::provider::ModelRoute;
+use crate::provider::{EventStream, Provider};
+use crate::tool::Registry;
+use async_trait::async_trait;
 use std::io::{Read, Write};
+use std::sync::Arc;
+use tokio::sync::mpsc as tokio_mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 struct SavedEnv {
     vars: Vec<(String, Option<String>)>,
@@ -27,6 +34,38 @@ impl Drop for SavedEnv {
                 crate::env::remove_var(key);
             }
         }
+    }
+}
+
+struct TestProvider;
+
+#[async_trait]
+impl Provider for TestProvider {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        let (tx, rx) = tokio_mpsc::channel::<Result<StreamEvent>>(4);
+        tokio::spawn(async move {
+            let _ = tx.send(Ok(StreamEvent::TextDelta("ok".to_string()))).await;
+            let _ = tx
+                .send(Ok(StreamEvent::MessageEnd {
+                    stop_reason: Some("end_turn".to_string()),
+                }))
+                .await;
+        });
+        Ok(Box::pin(ReceiverStream::new(rx)))
+    }
+
+    fn name(&self) -> &str {
+        "test"
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(Self)
     }
 }
 
@@ -349,4 +388,26 @@ fn version_command_plain_output_includes_core_fields() {
     assert!(text.contains("semver\t1.2.3"));
     assert!(text.contains("git_hash\tabc1234"));
     assert!(text.contains("release_build\tfalse"));
+}
+
+#[tokio::test]
+async fn restore_agent_session_if_requested_restores_resumed_session() {
+    let provider: Arc<dyn Provider> = Arc::new(TestProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut original = crate::agent::Agent::new(provider.clone(), registry);
+    let original_session_id = original.session_id().to_string();
+    original
+        .run_once_capture("seed session for resume test")
+        .await
+        .expect("seed session");
+
+    let registry = Registry::new(provider.clone()).await;
+    let mut resumed = crate::agent::Agent::new(provider, registry);
+    let fresh_session_id = resumed.session_id().to_string();
+    assert_ne!(fresh_session_id, original_session_id);
+
+    restore_agent_session_if_requested(&mut resumed, Some(&original_session_id))
+        .expect("restore session");
+
+    assert_eq!(resumed.session_id(), original_session_id);
 }
