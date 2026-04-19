@@ -472,7 +472,6 @@ async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metric
     run_burst_resume_attach_stress(20).await
 }
 
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn burst_attach_detach_reattach_restores_live_clients_cleanly() -> Result<()> {
     let _env = setup_test_env()?;
