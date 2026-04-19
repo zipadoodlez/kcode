@@ -649,6 +649,7 @@ pub async fn run_usage_command(emit_json: bool) -> Result<()> {
 pub async fn run_single_message_command(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
+    resume_session: Option<&str>,
     message: &str,
     emit_json: bool,
     emit_ndjson: bool,
@@ -660,6 +661,7 @@ pub async fn run_single_message_command(
     };
     let registry = crate::tool::Registry::new(provider.clone()).await;
     let mut agent = crate::agent::Agent::new(provider.clone(), registry);
+    restore_agent_session_if_requested(&mut agent, resume_session)?;
 
     if emit_json {
         let text = agent.run_once_capture(message).await?;
@@ -677,6 +679,16 @@ pub async fn run_single_message_command(
         agent.run_once(message).await?;
     }
 
+    Ok(())
+}
+
+fn restore_agent_session_if_requested(
+    agent: &mut crate::agent::Agent,
+    resume_session: Option<&str>,
+) -> Result<()> {
+    if let Some(session_id) = resume_session {
+        agent.restore_session(session_id)?;
+    }
     Ok(())
 }
 

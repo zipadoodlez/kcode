@@ -51,6 +51,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             commands::run_single_message_command(
                 &args.provider,
                 args.model.as_deref(),
+                args.resume.as_deref(),
                 &message,
                 json,
                 ndjson,
