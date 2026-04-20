@@ -84,17 +84,31 @@ pub fn run_restart_status_command() -> Result<()> {
 }
 
 pub async fn maybe_run_pending_restart_restore_on_startup() -> Result<bool> {
+    let mut synthesized_from_recent_crashes = false;
     let snapshot = match crate::restart_snapshot::load_snapshot() {
         Ok(snapshot) => snapshot,
-        Err(_) => return Ok(false),
+        Err(_) => match crate::restart_snapshot::arm_auto_restore_from_recent_crashes()? {
+            Some(snapshot) => {
+                synthesized_from_recent_crashes = true;
+                snapshot
+            }
+            None => return Ok(false),
+        },
     };
 
     if snapshot.auto_restore_on_next_start {
         let _ = crate::restart_snapshot::set_auto_restore_on_next_start(false);
-        println!(
-            "Found a reboot snapshot with auto-restore enabled. Restoring {} jcode window(s)...\n",
-            snapshot.sessions.len()
-        );
+        if synthesized_from_recent_crashes {
+            println!(
+                "Detected {} recent jcode session crash(es) from an unexpected shutdown. Restoring them now...\n",
+                snapshot.sessions.len()
+            );
+        } else {
+            println!(
+                "Found a reboot snapshot with auto-restore enabled. Restoring {} jcode window(s)...\n",
+                snapshot.sessions.len()
+            );
+        }
         run_restart_restore_command()?;
         return Ok(true);
     }

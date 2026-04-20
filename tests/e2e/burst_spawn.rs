@@ -2,7 +2,7 @@ use crate::test_support::*;
 use futures::future::join_all;
 use serde_json::json;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 struct BurstAttachClientMetrics {
@@ -21,79 +21,6 @@ struct BurstAttachClientMetrics {
 enum BurstAttachOutcome {
     Attached(BurstAttachClientMetrics),
     Rejected(String),
-}
-
-fn client_id_map(
-    client_map: &serde_json::Value,
-) -> Result<std::collections::HashMap<String, String>> {
-    let clients = client_map
-        .get("clients")
-        .and_then(|value| value.as_array())
-        .context("clients:map missing clients array")?;
-    let mut mapping = std::collections::HashMap::new();
-    for client in clients {
-        let session_id = client
-            .get("session_id")
-            .and_then(|value| value.as_str())
-            .context("clients:map entry missing session_id")?;
-        let client_id = client
-            .get("client_id")
-            .and_then(|value| value.as_str())
-            .context("clients:map entry missing client_id")?;
-        mapping.insert(session_id.to_string(), client_id.to_string());
-    }
-    Ok(mapping)
-}
-
-#[cfg(unix)]
-fn current_process_cpu_time() -> Result<Duration> {
-    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
-    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
-    if rc != 0 {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    let usage = unsafe { usage.assume_init() };
-    let to_duration = |tv: libc::timeval| {
-        Duration::from_secs(tv.tv_sec as u64) + Duration::from_micros(tv.tv_usec as u64)
-    };
-    Ok(to_duration(usage.ru_utime) + to_duration(usage.ru_stime))
-}
-
-#[cfg(not(unix))]
-fn current_process_cpu_time() -> Result<Duration> {
-    Ok(Duration::ZERO)
-}
-
-fn percentile_ms(sorted: &[u128], percentile: usize) -> u128 {
-    if sorted.is_empty() {
-        return 0;
-    }
-    let idx = ((sorted.len() - 1) * percentile) / 100;
-    sorted[idx]
-}
-
-async fn read_debug_json(debug_socket_path: &Path, command: &str) -> Result<serde_json::Value> {
-    let mut client =
-        server::Client::connect_debug_with_path(debug_socket_path.to_path_buf()).await?;
-    let request_id = client.debug_command(command, None).await?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        let event = timeout(Duration::from_secs(1), client.read_event()).await??;
-        match event {
-            ServerEvent::Ack { .. } => continue,
-            ServerEvent::DebugResponse { id, ok, output } if id == request_id => {
-                if !ok {
-                    anyhow::bail!("debug command `{command}` failed: {output}");
-                }
-                return Ok(serde_json::from_str(&output)?);
-            }
-            ServerEvent::Error { id, message, .. } if id == request_id => {
-                anyhow::bail!("debug command `{command}` failed: {message}");
-            }
-            _ => {}
-        }
-    }
-    anyhow::bail!("timed out waiting for debug response to `{command}`")
 }
 
 async fn burst_attach_resumed_client(
@@ -329,8 +256,8 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let wall_elapsed = wall_start.elapsed();
     let cpu_elapsed = current_process_cpu_time()?.saturating_sub(cpu_start);
 
-    let client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
-    let info = read_debug_json(&debug_socket_path, "server:info").await?;
+    let client_map = debug_run_command_json(debug_socket_path.clone(), "clients:map", None).await?;
+    let info = debug_run_command_json(debug_socket_path.clone(), "server:info", None).await?;
 
     let clients = client_map
         .get("clients")
@@ -424,9 +351,7 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     );
 
     drop(connected_clients);
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
 
     Ok(())
 }
@@ -495,7 +420,8 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
         live_clients.push((session_id, client));
     }
 
-    let initial_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let initial_client_map =
+        debug_run_command_json(debug_socket_path.clone(), "clients:map", None).await?;
     let initial_session_to_client = client_id_map(&initial_client_map)?;
 
     let retry_results = join_all(live_session_ids.iter().map(|session_id| {
@@ -525,7 +451,8 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
         }
     }
 
-    let final_client_map = read_debug_json(&debug_socket_path, "clients:map").await?;
+    let final_client_map =
+        debug_run_command_json(debug_socket_path.clone(), "clients:map", None).await?;
     let final_session_to_client = client_id_map(&final_client_map)?;
     assert_eq!(
         final_session_to_client, initial_session_to_client,
@@ -533,9 +460,7 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
     );
 
     drop(live_clients);
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
 
     Ok(())
 }
@@ -545,6 +470,100 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn burst_spawn_resume_attach_keeps_unique_live_mappings_and_reports_metrics() -> Result<()> {
     run_burst_resume_attach_stress(20).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn burst_attach_detach_reattach_restores_live_clients_cleanly() -> Result<()> {
+    let _env = setup_test_env()?;
+
+    let runtime_dir = std::env::temp_dir().join(format!(
+        "jcode-burst-spawn-reattach-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+    let unique_suffix = runtime_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("burst-reattach");
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let burst_size = 6usize;
+    let mut session_ids = Vec::with_capacity(burst_size);
+    for idx in 0..burst_size {
+        let mut session = Session::create_with_id(
+            format!("session_burst_reattach_{idx}_{unique_suffix}"),
+            None,
+            Some(format!("Burst Reattach {idx}")),
+        );
+        session.model = Some("burst-model".to_string());
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: format!("resume me reattach {idx}"),
+                cache_control: None,
+            }],
+        );
+        session.add_message(
+            Role::Assistant,
+            vec![ContentBlock::Text {
+                text: format!("reattach reply {idx}"),
+                cache_control: None,
+            }],
+        );
+        session.save()?;
+        session_ids.push(session.id);
+    }
+
+    let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
+    let server_instance = server::Server::new_with_paths(
+        provider_dyn,
+        socket_path.clone(),
+        debug_socket_path.clone(),
+    );
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let initial_results = join_all(session_ids.iter().map(|session_id| {
+        let socket_path = socket_path.clone();
+        async move { burst_attach_resumed_client(socket_path, session_id.to_string()).await }
+    }))
+    .await;
+
+    let mut initial_clients = Vec::with_capacity(burst_size);
+    for result in initial_results {
+        let (client, metrics) = result?;
+        assert_eq!(metrics.returned_session_id, metrics.target_session_id);
+        initial_clients.push(client);
+    }
+    wait_for_debug_client_count(&debug_socket_path, burst_size, Duration::from_secs(5)).await?;
+
+    drop(initial_clients);
+    wait_for_debug_client_count(&debug_socket_path, 0, Duration::from_secs(5)).await?;
+
+    let reattach_results = join_all(session_ids.iter().map(|session_id| {
+        let socket_path = socket_path.clone();
+        async move { burst_attach_resumed_client(socket_path, session_id.to_string()).await }
+    }))
+    .await;
+
+    let mut reattached_clients = Vec::with_capacity(burst_size);
+    for result in reattach_results {
+        let (client, metrics) = result?;
+        assert_eq!(metrics.returned_session_id, metrics.target_session_id);
+        assert_eq!(metrics.history_count, 1);
+        assert_eq!(metrics.done_count, 1);
+        reattached_clients.push(client);
+    }
+    wait_for_debug_client_count(&debug_socket_path, burst_size, Duration::from_secs(5)).await?;
+
+    drop(reattached_clients);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
+
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]

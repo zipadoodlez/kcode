@@ -179,6 +179,14 @@ pub(crate) async fn wait_for_debug_socket_ready(path: &std::path::Path) -> Resul
     }
 }
 
+pub(crate) async fn wait_for_server_ready(
+    socket_path: &std::path::Path,
+    debug_socket_path: &std::path::Path,
+) -> Result<()> {
+    wait_for_socket(socket_path).await?;
+    wait_for_debug_socket_ready(debug_socket_path).await
+}
+
 pub(crate) async fn wait_for_tcp_port(port: u16) -> Result<()> {
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(10) {
@@ -473,8 +481,6 @@ pub(crate) fn summarize_history_invariant(event: &ServerEvent) -> Option<String>
 pub(crate) struct TransportScenarioResult {
     pub(crate) subscribe_events: Vec<ServerEvent>,
     pub(crate) history_events: Vec<ServerEvent>,
-    #[allow(dead_code)]
-    pub(crate) message_events: Vec<ServerEvent>,
     pub(crate) resume_events: Vec<ServerEvent>,
 }
 
@@ -567,15 +573,12 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
             history_events,
-            message_events,
             resume_events,
         })
     }
     .await;
 
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
     result
 }
 
@@ -635,7 +638,7 @@ pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenar
             .ok_or_else(|| anyhow::anyhow!("missing websocket history session id"))?;
 
         let message_id = client.send_message("hello over transport").await?;
-        let message_events = collect_until_done_ws(&mut client, message_id).await?;
+        collect_until_done_ws(&mut client, message_id).await?;
 
         let resume_id = client.resume_session(&server_session_id).await?;
         let resume_events = collect_until_history_ws(&mut client, resume_id).await?;
@@ -643,16 +646,19 @@ pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenar
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
             history_events,
-            message_events,
             resume_events,
         })
     }
     .await;
 
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
     result
+}
+
+pub(crate) async fn wait_for_default_connected_client_session(
+    debug_socket_path: &std::path::Path,
+) -> Result<String> {
+    wait_for_connected_client_session(debug_socket_path, Duration::from_secs(10)).await
 }
 
 pub(crate) async fn debug_create_headless_session_with_command(
@@ -734,6 +740,45 @@ pub(crate) async fn debug_run_command(
             seen_events.join(" | ")
         }
     )
+}
+
+pub(crate) async fn debug_run_command_json(
+    debug_socket_path: std::path::PathBuf,
+    command: &str,
+    session_id: Option<&str>,
+) -> Result<serde_json::Value> {
+    let output = debug_run_command(debug_socket_path, command, session_id).await?;
+    Ok(serde_json::from_str(&output)?)
+}
+
+pub(crate) fn client_id_map(
+    client_map: &serde_json::Value,
+) -> Result<std::collections::HashMap<String, String>> {
+    let clients = client_map
+        .get("clients")
+        .and_then(|value| value.as_array())
+        .context("clients:map missing clients array")?;
+    let mut mapping = std::collections::HashMap::new();
+    for client in clients {
+        let session_id = client
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .context("clients:map entry missing session_id")?;
+        let client_id = client
+            .get("client_id")
+            .and_then(|value| value.as_str())
+            .context("clients:map entry missing client_id")?;
+        mapping.insert(session_id.to_string(), client_id.to_string());
+    }
+    Ok(mapping)
+}
+
+pub(crate) fn percentile_ms(sorted: &[u128], percentile: usize) -> u128 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let idx = ((sorted.len() - 1) * percentile) / 100;
+    sorted[idx]
 }
 
 pub(crate) async fn wait_for_server_client(
@@ -880,6 +925,34 @@ pub(crate) fn set_file_mtime(path: &std::path::Path, when: std::time::SystemTime
 }
 
 #[cfg(unix)]
+pub(crate) fn current_process_cpu_time() -> Result<Duration> {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let usage = unsafe { usage.assume_init() };
+    let to_duration = |tv: libc::timeval| {
+        Duration::from_secs(tv.tv_sec as u64) + Duration::from_micros(tv.tv_usec as u64)
+    };
+    Ok(to_duration(usage.ru_utime) + to_duration(usage.ru_stime))
+}
+
+#[cfg(not(unix))]
+pub(crate) fn current_process_cpu_time() -> Result<Duration> {
+    Ok(Duration::ZERO)
+}
+
+pub(crate) fn abort_server_and_cleanup<T>(
+    server_handle: &tokio::task::JoinHandle<T>,
+    socket_path: &std::path::Path,
+    debug_socket_path: &std::path::Path,
+) {
+    server_handle.abort();
+    let _ = std::fs::remove_file(socket_path);
+    let _ = std::fs::remove_file(debug_socket_path);
+}
+
 pub(crate) async fn wait_for_connected_client_session(
     debug_socket_path: &std::path::Path,
     timeout: Duration,
@@ -921,6 +994,35 @@ pub(crate) async fn wait_for_connected_client_session(
     anyhow::bail!(
         "Timed out waiting for self-dev client to connect: {}",
         last_observation
+    )
+}
+
+pub(crate) async fn wait_for_debug_client_count(
+    debug_socket_path: &std::path::Path,
+    expected_count: usize,
+    timeout: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    let mut last_count = None;
+
+    while Instant::now() < deadline {
+        let client_map =
+            debug_run_command_json(debug_socket_path.to_path_buf(), "clients:map", None).await?;
+        let count = client_map
+            .get("count")
+            .and_then(|value| value.as_u64())
+            .context("clients:map missing count")? as usize;
+        if count == expected_count {
+            return Ok(());
+        }
+        last_count = Some(count);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    anyhow::bail!(
+        "timed out waiting for client count {}; last observed {:?}",
+        expected_count,
+        last_count
     )
 }
 

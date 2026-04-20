@@ -57,7 +57,7 @@ async fn resume_session_restores_persisted_compaction_for_provider_context() -> 
         });
         session.save()?;
 
-        wait_for_socket(&socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
 
         let subscribe_id = client.subscribe().await?;
@@ -117,9 +117,7 @@ async fn resume_session_restores_persisted_compaction_for_provider_context() -> 
     }
     .await;
 
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
     result
 }
 
@@ -188,15 +186,13 @@ async fn test_debug_create_session_marks_debug() -> Result<()> {
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    wait_for_socket(&socket_path).await?;
+    wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
     let session_id = debug_create_headless_session(debug_socket_path.clone()).await?;
     let session = Session::load(&session_id)?;
     assert!(session.is_debug);
 
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
 
     Ok(())
 }
@@ -221,7 +217,7 @@ async fn test_debug_create_selfdev_session_marks_canary() -> Result<()> {
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    wait_for_socket(&socket_path).await?;
+    wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
     let session_id = debug_create_headless_session_with_command(
         debug_socket_path.clone(),
@@ -232,9 +228,7 @@ async fn test_debug_create_selfdev_session_marks_canary() -> Result<()> {
     assert!(session.is_debug);
     assert!(session.is_canary);
 
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
 
     Ok(())
 }
@@ -259,7 +253,7 @@ async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
 
-    wait_for_socket(&socket_path).await?;
+    wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
     let debug_session_id = debug_create_headless_session(debug_socket_path.clone()).await?;
     let mut client = server::Client::connect_with_path(socket_path.clone()).await?;
@@ -308,9 +302,7 @@ async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
     let session = Session::load(&new_session_id)?;
     assert!(session.is_debug);
 
-    server_handle.abort();
-    let _ = std::fs::remove_file(&socket_path);
-    let _ = std::fs::remove_file(&debug_socket_path);
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
 
     Ok(())
 }

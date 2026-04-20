@@ -150,8 +150,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
         .spawn()?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let server_info_before =
             debug_run_command(debug_socket_path.clone(), "server:info", None).await?;
         let server_info_before_json: serde_json::Value = serde_json::from_str(&server_info_before)?;
@@ -188,7 +187,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
 
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
         let _client = wait_for_server_client(&socket_path).await?;
 
         let server_info_after =
@@ -275,10 +274,8 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
     let mut child = spawn_pty_child(command)?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
-        let session_id =
-            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
+        let session_id = wait_for_default_connected_client_session(&debug_socket_path).await?;
 
         let state_before =
             debug_run_command(debug_socket_path.clone(), "client:state", None).await?;
@@ -391,11 +388,9 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
     let mut child = spawn_pty_child(command)?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
-        let session_id =
-            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+        let session_id = wait_for_default_connected_client_session(&debug_socket_path).await?;
 
         let state_before =
             debug_run_command(debug_socket_path.clone(), "client:state", Some(&session_id)).await?;
@@ -555,11 +550,9 @@ async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Res
     let mut child = spawn_pty_child(command)?;
 
     let test_result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_debug_socket_ready(&debug_socket_path).await?;
+        wait_for_server_ready(&socket_path, &debug_socket_path).await?;
 
-        let session_id =
-            wait_for_connected_client_session(&debug_socket_path, Duration::from_secs(10)).await?;
+        let session_id = wait_for_default_connected_client_session(&debug_socket_path).await?;
 
         let state_before =
             debug_run_command(debug_socket_path.clone(), "client:state", Some(&session_id)).await?;

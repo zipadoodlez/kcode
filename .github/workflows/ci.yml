@@ -153,6 +153,121 @@ jobs:
           cargo install cargo-audit --locked
           scripts/security_preflight.sh --strict
 
+  windows-build-test:
+    name: Build & Test (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+          submodules: recursive
+
+      - name: Configure SSH for cargo git dependencies
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+        continue-on-error: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-latest
+          cache-all-crates: "true"
+
+      - name: Build release binary
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --start-server *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $env:RUSTC_WRAPPER = 'sccache'
+            }
+          }
+
+          & cargo build --locked --release --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows release build failed'
+          }
+
+      - name: Compile library and binary tests
+        shell: pwsh
+        run: |
+          & cargo test --locked --target x86_64-pc-windows-msvc --lib --bins --no-run
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows library/binary test compilation failed'
+          }
+
+      - name: Run targeted Windows validation tests
+        shell: pwsh
+        run: |
+          $tests = @(
+            'command_candidates_adds_extension_on_windows',
+            'command_exists_for_known_binary',
+            'command_exists_absolute_path',
+            'sibling_socket_path_roundtrip',
+            'cleanup_socket_pair_removes_main_and_debug_files',
+            'is_process_running_reports_exited_children_as_stopped',
+            'spawn_replacement_process_returns_without_waiting_for_child_exit',
+            'build_shell_command_uses_cmd_and_executes_command',
+            'pipe_name_is_stable_and_normalizes_case_and_separators',
+            'pipe_name_falls_back_when_stem_is_empty',
+            'stream_pair_round_trips_bytes'
+          )
+
+          foreach ($testName in $tests) {
+            & cargo test --locked --target x86_64-pc-windows-msvc --lib $testName -- --nocapture
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows targeted test failed: $testName"
+            }
+          }
+
+      - name: Run Windows e2e smoke tests
+        shell: pwsh
+        run: |
+          $tests = @(
+            'provider_behavior::test_socket_model_cycle_supported_models',
+            'provider_behavior::test_model_switch_resets_provider_session'
+          )
+
+          foreach ($testName in $tests) {
+            & cargo test --locked --target x86_64-pc-windows-msvc --test e2e $testName -- --exact --nocapture
+            if ($LASTEXITCODE -ne 0) {
+              throw "Windows e2e smoke test failed: $testName"
+            }
+          }
+
+      - name: Verify built binary launches
+        shell: pwsh
+        run: |
+          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Built Windows binary failed to run --version'
+          }
+
+      - name: Verify installer using local artifact
+        shell: pwsh
+        run: |
+          $cargoVersion = Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $cargoVersion) {
+            throw 'Could not determine Cargo.toml version'
+          }
+
+          $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value
+          & ./.github/scripts/verify_windows_install.ps1 `
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
+            -Version $version
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
