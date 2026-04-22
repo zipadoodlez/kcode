@@ -18,6 +18,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "agentgrep"
+version = "0.1.1"
+source = "git+https://github.com/1jehuang/agentgrep.git?tag=v0.1.1#61a1f91e4f604bee385a4572db37b3278122dc68"
+dependencies = [
+ "clap",
+ "globset",
+ "ignore",
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2068,6 +2081,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 name = "jcode"
 version = "0.10.2"
 dependencies = [
+ "agentgrep",
  "anyhow",
  "arboard",
  "async-stream",
