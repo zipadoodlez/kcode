@@ -21,6 +21,8 @@ pub async fn run() -> Result<()> {
     logging::cleanup_old_logs();
     startup_profile::mark("log_cleanup");
     logging::info("jcode starting");
+    crate::platform::raise_nofile_limit_best_effort(8_192);
+    startup_profile::mark("nofile_limit");
 
     storage::harden_user_config_permissions();
     startup_profile::mark("perm_harden");
