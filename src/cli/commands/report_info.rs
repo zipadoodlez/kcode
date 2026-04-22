@@ -27,6 +27,27 @@ struct AuthStatusReport {
 }
 
 #[derive(Debug, Serialize)]
+struct AuthDoctorProviderReport {
+    id: String,
+    display_name: String,
+    status: String,
+    method: String,
+    health: String,
+    validation: Option<String>,
+    validation_result: Option<String>,
+    needs_attention: bool,
+    recommended_actions: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthDoctorReport {
+    checked_provider: Option<String>,
+    validate: bool,
+    any_issue: bool,
+    providers: Vec<AuthDoctorProviderReport>,
+}
+
+#[derive(Debug, Serialize)]
 pub(super) struct ProviderListEntry {
     pub(super) id: String,
     pub(super) display_name: String,
@@ -131,6 +152,104 @@ pub(super) fn run_auth_status_command(emit_json: bool) -> Result<()> {
                 provider.health,
                 provider.validation.as_deref().unwrap_or("not validated")
             );
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) async fn run_auth_doctor_command(
+    provider_arg: Option<&str>,
+    validate: bool,
+    emit_json: bool,
+) -> Result<()> {
+    let status = crate::auth::AuthStatus::check();
+    let providers = select_auth_doctor_providers(provider_arg, &status)?;
+    let mut reports = Vec::new();
+
+    for provider in providers {
+        let assessment = status.assessment_for_provider(provider);
+        let mut validation = crate::auth::validation::get(provider.id)
+            .map(|record| crate::auth::validation::format_record_label(&record));
+        let validation_result =
+            if validate && assessment.state != crate::auth::AuthState::NotConfigured {
+                match super::run_post_login_validation(provider).await {
+                    Ok(()) => {
+                        validation = crate::auth::validation::get(provider.id)
+                            .map(|record| crate::auth::validation::format_record_label(&record));
+                        Some("validation passed".to_string())
+                    }
+                    Err(err) => {
+                        validation = crate::auth::validation::get(provider.id)
+                            .map(|record| crate::auth::validation::format_record_label(&record));
+                        Some(err.to_string())
+                    }
+                }
+            } else {
+                None
+            };
+        let recommended_actions = auth_doctor_actions(
+            provider,
+            assessment.state,
+            validation.as_deref(),
+            validation_result.as_deref(),
+        );
+        let method = assessment.method_detail.clone();
+        let health = assessment.health_summary();
+        let needs_attention = assessment.state != crate::auth::AuthState::Available
+            || validation_result
+                .as_deref()
+                .is_some_and(|result| result != "validation passed")
+            || validation
+                .as_deref()
+                .is_some_and(|value| value.contains("validation failed"));
+
+        reports.push(AuthDoctorProviderReport {
+            id: provider.id.to_string(),
+            display_name: provider.display_name.to_string(),
+            status: auth_state_label(assessment.state).to_string(),
+            method,
+            health,
+            validation,
+            validation_result,
+            needs_attention,
+            recommended_actions,
+        });
+    }
+
+    let report = AuthDoctorReport {
+        checked_provider: provider_arg.map(str::to_string),
+        validate,
+        any_issue: reports.iter().any(|provider| provider.needs_attention),
+        providers: reports,
+    };
+
+    if emit_json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    for (index, provider) in report.providers.iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        println!("{} ({})", provider.display_name, provider.id);
+        println!("status: {}", provider.status);
+        println!("method: {}", provider.method);
+        println!("health: {}", provider.health);
+        println!(
+            "validation: {}",
+            provider.validation.as_deref().unwrap_or("not validated")
+        );
+        if let Some(validation_result) = provider.validation_result.as_deref() {
+            println!("validation_run: {}", validation_result);
+        }
+        println!("needs_attention: {}", provider.needs_attention);
+        if !provider.recommended_actions.is_empty() {
+            println!("next_steps:");
+            for action in &provider.recommended_actions {
+                println!("- {}", action);
+            }
         }
     }
 
@@ -280,6 +399,89 @@ pub(super) async fn run_usage_command(emit_json: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn select_auth_doctor_providers(
+    provider_arg: Option<&str>,
+    status: &crate::auth::AuthStatus,
+) -> Result<Vec<crate::provider_catalog::LoginProviderDescriptor>> {
+    if let Some(provider_arg) = provider_arg {
+        let provider =
+            crate::provider_catalog::resolve_login_provider(provider_arg).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Unknown provider '{}'. Use `jcode provider list` to see valid provider ids.",
+                    provider_arg
+                )
+            })?;
+        return Ok(vec![provider]);
+    }
+
+    let configured = crate::provider_catalog::auth_status_login_providers()
+        .into_iter()
+        .filter(|provider| {
+            status.state_for_provider(*provider) != crate::auth::AuthState::NotConfigured
+        })
+        .collect::<Vec<_>>();
+    if configured.is_empty() {
+        Ok(crate::provider_catalog::auth_status_login_providers().to_vec())
+    } else {
+        Ok(configured)
+    }
+}
+
+fn auth_doctor_actions(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+    state: crate::auth::AuthState,
+    validation: Option<&str>,
+    validation_result: Option<&str>,
+) -> Vec<String> {
+    let mut actions = Vec::new();
+    match state {
+        crate::auth::AuthState::NotConfigured => actions.push(format!(
+            "Connect it: `jcode login --provider {}`",
+            provider.id
+        )),
+        crate::auth::AuthState::Expired => actions.push(format!(
+            "Refresh or replace the current login: `jcode login --provider {}`",
+            provider.id
+        )),
+        crate::auth::AuthState::Available => {}
+    }
+
+    if validation.is_none() {
+        actions.push(format!(
+            "Run runtime verification: `jcode auth-test --provider {}`",
+            provider.id
+        ));
+    }
+    if validation.is_some_and(|value| value.contains("validation failed"))
+        || validation_result.is_some_and(|value| value != "validation passed")
+    {
+        actions.push(format!(
+            "Inspect runtime readiness: `jcode auth-test --provider {}`",
+            provider.id
+        ));
+    }
+
+    if matches!(
+        provider.auth_kind,
+        crate::provider_catalog::LoginProviderAuthKind::OAuth
+    ) || matches!(
+        provider.auth_kind,
+        crate::provider_catalog::LoginProviderAuthKind::DeviceCode
+    ) || matches!(
+        provider.auth_kind,
+        crate::provider_catalog::LoginProviderAuthKind::Hybrid
+    ) {
+        actions.push(format!(
+            "Use the manual-safe fallback if browser/callback flow is flaky: `jcode login --provider {} --print-auth-url`",
+            provider.id
+        ));
+    }
+
+    actions.push("Review current state: `jcode auth status --json`".to_string());
+    actions.dedup();
+    actions
 }
 
 fn usage_provider_report(provider: &crate::usage::ProviderUsage) -> UsageProviderReport {

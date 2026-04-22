@@ -276,15 +276,40 @@ pub async fn run_login_provider(
     let outcome = match login_result {
         Ok(outcome) => outcome,
         Err(err) => {
-            crate::telemetry::record_auth_failed(provider.id, provider.auth_kind.label());
-            return Err(err);
+            let reason =
+                crate::auth::login_diagnostics::classify_auth_failure_message(&err.to_string());
+            crate::telemetry::record_auth_failed_reason(
+                provider.id,
+                provider.auth_kind.label(),
+                reason.label(),
+            );
+            return Err(anyhow::anyhow!(
+                crate::auth::login_diagnostics::augment_auth_error_message(
+                    provider.id,
+                    err.to_string(),
+                )
+            ));
         }
     };
     if matches!(outcome, LoginFlowOutcome::Deferred) {
         return Ok(());
     }
     auth::AuthStatus::invalidate_cache();
-    super::commands::run_post_login_validation(provider).await?;
+    if let Err(err) = super::commands::run_post_login_validation(provider).await {
+        let reason =
+            crate::auth::login_diagnostics::classify_auth_failure_message(&err.to_string());
+        crate::telemetry::record_auth_failed_reason(
+            provider.id,
+            provider.auth_kind.label(),
+            reason.label(),
+        );
+        return Err(anyhow::anyhow!(
+            crate::auth::login_diagnostics::augment_auth_error_message(
+                provider.id,
+                err.to_string()
+            )
+        ));
+    }
     auth::AuthStatus::invalidate_cache();
     Ok(())
 }

@@ -626,6 +626,14 @@ pub fn run_auth_status_command(emit_json: bool) -> Result<()> {
     report_info::run_auth_status_command(emit_json)
 }
 
+pub async fn run_auth_doctor_command(
+    provider_arg: Option<&str>,
+    validate: bool,
+    emit_json: bool,
+) -> Result<()> {
+    report_info::run_auth_doctor_command(provider_arg, validate, emit_json).await
+}
+
 pub fn run_provider_list_command(emit_json: bool) -> Result<()> {
     report_info::run_provider_list_command(emit_json)
 }

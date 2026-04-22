@@ -120,6 +120,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::Auth(subcmd)) => match subcmd {
             AuthCommand::Status { json } => commands::run_auth_status_command(json)?,
+            AuthCommand::Doctor {
+                provider,
+                validate,
+                json,
+            } => commands::run_auth_doctor_command(provider.as_deref(), validate, json).await?,
         },
         Some(Command::Provider(subcmd)) => match subcmd {
             ProviderCommand::List { json } => {

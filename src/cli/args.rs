@@ -404,6 +404,19 @@ pub(crate) enum AuthCommand {
         #[arg(long)]
         json: bool,
     },
+    /// Diagnose provider auth issues and suggest next steps
+    Doctor {
+        /// Optional provider id or alias to focus diagnosis on one provider
+        provider: Option<String>,
+
+        /// Run live post-login validation for configured providers during diagnosis
+        #[arg(long)]
+        validate: bool,
+
+        /// Emit JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -685,6 +698,25 @@ mod tests {
         let args = Args::try_parse_from(["jcode", "auth", "status", "--json"]).unwrap();
         match args.command {
             Some(Command::Auth(AuthCommand::Status { json })) => assert!(json),
+            other => panic!("unexpected command: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn auth_doctor_subcommand_parses() {
+        let args =
+            Args::try_parse_from(["jcode", "auth", "doctor", "openai", "--validate", "--json"])
+                .unwrap();
+        match args.command {
+            Some(Command::Auth(AuthCommand::Doctor {
+                provider,
+                validate,
+                json,
+            })) => {
+                assert_eq!(provider.as_deref(), Some("openai"));
+                assert!(validate);
+                assert!(json);
+            }
             other => panic!("unexpected command: {:?}", other),
         }
     }
