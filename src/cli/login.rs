@@ -228,8 +228,27 @@ pub async fn run_login_provider(
 ) -> Result<()> {
     crate::telemetry::record_provider_selected(provider.id);
     crate::telemetry::record_auth_started(provider.id, provider.auth_kind.label());
-    let login_result = if options.uses_scriptable_flow()? {
+    let explicit_scriptable_flow = options.uses_scriptable_flow()?;
+    let auto_scriptable_reason = if explicit_scriptable_flow {
+        None
+    } else {
+        auto_scriptable_flow_reason(provider, &options, io::stdin().is_terminal())
+    };
+    let login_result = if explicit_scriptable_flow {
         run_scriptable_login_provider(provider, account_label, &options).await
+    } else if let Some(reason) = auto_scriptable_reason {
+        crate::telemetry::record_auth_surface_blocked_reason(
+            provider.id,
+            provider.auth_kind.label(),
+            reason,
+        );
+        if !options.json {
+            eprintln!(
+                "Detected a manual-safe login environment for {}. Starting the auth URL flow instead of browser-first login.",
+                provider.display_name
+            );
+        }
+        start_scriptable_login(provider, account_label, &options).await
     } else {
         match provider.target {
             LoginProviderTarget::AutoImport => {
@@ -312,6 +331,37 @@ pub async fn run_login_provider(
     }
     auth::AuthStatus::invalidate_cache();
     Ok(())
+}
+
+fn auto_scriptable_flow_reason(
+    provider: LoginProviderDescriptor,
+    options: &LoginOptions,
+    stdin_is_terminal: bool,
+) -> Option<&'static str> {
+    if options.print_auth_url || options.complete || options.has_provided_input() {
+        return None;
+    }
+
+    let supports_scriptable = matches!(
+        provider.target,
+        LoginProviderTarget::Claude
+            | LoginProviderTarget::OpenAi
+            | LoginProviderTarget::Gemini
+            | LoginProviderTarget::Antigravity
+            | LoginProviderTarget::Google
+            | LoginProviderTarget::Copilot
+    );
+    if !supports_scriptable {
+        return None;
+    }
+
+    if !stdin_is_terminal {
+        Some("non_interactive_terminal")
+    } else if auth::browser_suppressed(options.no_browser) {
+        Some("no_browser_requested")
+    } else {
+        None
+    }
 }
 
 async fn run_scriptable_login_provider(
@@ -1902,5 +1952,51 @@ mod tests {
                 .expect("uses scriptable flow")
         );
         assert!(options.has_provided_input());
+    }
+
+    #[test]
+    fn auto_scriptable_flow_reason_prefers_non_interactive_for_oauth_provider() {
+        let provider = crate::provider_catalog::resolve_login_provider("openai")
+            .expect("resolve openai provider");
+        let reason = auto_scriptable_flow_reason(provider, &LoginOptions::default(), false);
+        assert_eq!(reason, Some("non_interactive_terminal"));
+    }
+
+    #[test]
+    fn auto_scriptable_flow_reason_uses_no_browser_reason_when_requested() {
+        let provider = crate::provider_catalog::resolve_login_provider("claude")
+            .expect("resolve claude provider");
+        let reason = auto_scriptable_flow_reason(
+            provider,
+            &LoginOptions {
+                no_browser: true,
+                ..LoginOptions::default()
+            },
+            true,
+        );
+        assert_eq!(reason, Some("no_browser_requested"));
+    }
+
+    #[test]
+    fn auto_scriptable_flow_reason_skips_api_key_only_provider() {
+        let provider = crate::provider_catalog::resolve_login_provider("openrouter")
+            .expect("resolve openrouter provider");
+        let reason = auto_scriptable_flow_reason(provider, &LoginOptions::default(), false);
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn auto_scriptable_flow_reason_skips_when_scriptable_input_already_explicit() {
+        let provider = crate::provider_catalog::resolve_login_provider("openai")
+            .expect("resolve openai provider");
+        let reason = auto_scriptable_flow_reason(
+            provider,
+            &LoginOptions {
+                print_auth_url: true,
+                ..LoginOptions::default()
+            },
+            false,
+        );
+        assert_eq!(reason, None);
     }
 }
