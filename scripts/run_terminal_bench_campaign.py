@@ -382,7 +382,7 @@ def main() -> int:
     parser.add_argument("--tasks-file", help="File with one task name per line")
     parser.add_argument("--dataset", default="terminal-bench@2.0", help="Harbor dataset name to use")
     parser.add_argument("--path", help="Local task/dataset path to use instead of --dataset")
-    parser.add_argument("--model", default="openai/gpt-5.4", help="Harbor model string")
+    parser.add_argument("--model", default="openai/gpt-5.5", help="Harbor model string")
     parser.add_argument("-k", "--n-attempts", type=int, default=1, help="Attempts per task")
     parser.add_argument("--timeout-multiplier", type=float, default=1.0)
     parser.add_argument("--continue-on-failure", action="store_true", help="Continue to the next task if one task fails")

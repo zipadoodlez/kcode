@@ -73,7 +73,7 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) debug_socket: bool,
 
-    /// Model to use (e.g., claude-opus-4-6, gpt-5.4)
+    /// Model to use (e.g., claude-opus-4-6, gpt-5.5)
     #[arg(short, long, global = true)]
     pub(crate) model: Option<String>,
 
