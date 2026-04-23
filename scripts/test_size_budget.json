@@ -1,0 +1,16 @@
+{
+  "threshold_loc": 1200,
+  "tracked_files": {
+    "src/cli/auth_test.rs": 1226,
+    "src/protocol_tests.rs": 1285,
+    "src/provider/openai_tests.rs": 1869,
+    "src/provider/tests.rs": 1423,
+    "src/server/client_session_tests/resume.rs": 1263,
+    "src/server/comm_control_tests.rs": 1221,
+    "src/tool/communicate_tests.rs": 1666,
+    "src/tui/app/tests.rs": 14863,
+    "src/tui/ui_tests/basic.rs": 1549,
+    "tests/e2e/test_support/mod.rs": 1301
+  },
+  "version": 1
+}

@@ -56,6 +56,14 @@ jobs:
         shell: bash
         run: python3 scripts/check_code_size_budget.py
 
+      - name: Enforce oversized-test ratchet
+        shell: bash
+        run: python3 scripts/check_test_size_budget.py
+
+      - name: Enforce panic-prone usage ratchet
+        shell: bash
+        run: python3 scripts/check_panic_budget.py
+
   build:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
