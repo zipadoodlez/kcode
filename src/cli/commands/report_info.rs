@@ -188,7 +188,7 @@ pub(super) async fn run_auth_doctor_command(
             } else {
                 None
             };
-        let recommended_actions = auth_doctor_actions(
+        let recommended_actions = crate::auth::doctor::recommended_actions(
             provider,
             assessment.state,
             validation.as_deref(),
@@ -427,61 +427,6 @@ fn select_auth_doctor_providers(
     } else {
         Ok(configured)
     }
-}
-
-fn auth_doctor_actions(
-    provider: crate::provider_catalog::LoginProviderDescriptor,
-    state: crate::auth::AuthState,
-    validation: Option<&str>,
-    validation_result: Option<&str>,
-) -> Vec<String> {
-    let mut actions = Vec::new();
-    match state {
-        crate::auth::AuthState::NotConfigured => actions.push(format!(
-            "Connect it: `jcode login --provider {}`",
-            provider.id
-        )),
-        crate::auth::AuthState::Expired => actions.push(format!(
-            "Refresh or replace the current login: `jcode login --provider {}`",
-            provider.id
-        )),
-        crate::auth::AuthState::Available => {}
-    }
-
-    if validation.is_none() {
-        actions.push(format!(
-            "Run runtime verification: `jcode auth-test --provider {}`",
-            provider.id
-        ));
-    }
-    if validation.is_some_and(|value| value.contains("validation failed"))
-        || validation_result.is_some_and(|value| value != "validation passed")
-    {
-        actions.push(format!(
-            "Inspect runtime readiness: `jcode auth-test --provider {}`",
-            provider.id
-        ));
-    }
-
-    if matches!(
-        provider.auth_kind,
-        crate::provider_catalog::LoginProviderAuthKind::OAuth
-    ) || matches!(
-        provider.auth_kind,
-        crate::provider_catalog::LoginProviderAuthKind::DeviceCode
-    ) || matches!(
-        provider.auth_kind,
-        crate::provider_catalog::LoginProviderAuthKind::Hybrid
-    ) {
-        actions.push(format!(
-            "Use the manual-safe fallback if browser/callback flow is flaky: `jcode login --provider {} --print-auth-url`",
-            provider.id
-        ));
-    }
-
-    actions.push("Review current state: `jcode auth status --json`".to_string());
-    actions.dedup();
-    actions
 }
 
 fn usage_provider_report(provider: &crate::usage::ProviderUsage) -> UsageProviderReport {
