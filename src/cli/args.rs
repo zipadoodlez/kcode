@@ -407,6 +407,7 @@ pub(crate) enum AuthCommand {
     /// Diagnose provider auth issues and suggest next steps
     Doctor {
         /// Optional provider id or alias to focus diagnosis on one provider
+        #[arg(id = "auth_provider", value_name = "PROVIDER")]
         provider: Option<String>,
 
         /// Run live post-login validation for configured providers during diagnosis
