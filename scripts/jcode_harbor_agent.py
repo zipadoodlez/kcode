@@ -14,6 +14,7 @@ IN_CONTAINER_RUNTIME = "/tmp/jcode-runtime"
 IN_CONTAINER_INPUT = "/tmp/jcode-input"
 IN_CONTAINER_OUTPUT = "/tmp/jcode-output"
 IN_CONTAINER_BINARY = "/usr/local/bin/jcode"
+IN_CONTAINER_LIB_DIR = f"{IN_CONTAINER_RUNTIME}/lib"
 IN_CONTAINER_CA_BUNDLE = f"{IN_CONTAINER_HOME}/ca-certificates.crt"
 DEFAULT_BINARY_PATH = "/tmp/jcode-compat-dist/jcode-linux-x86_64"
 DEFAULT_OPENAI_AUTH_PATH = "~/.jcode/openai-auth.json"
@@ -21,6 +22,18 @@ CA_BUNDLE_CANDIDATES = (
     os.environ.get("JCODE_HARBOR_CA_BUNDLE"),
     "/etc/ca-certificates/extracted/tls-ca-bundle.pem",
     "/etc/ssl/certs/ca-certificates.crt",
+)
+OPENSSL_RUNTIME_LIB_CANDIDATES = (
+    os.environ.get("JCODE_HARBOR_LIBSSL"),
+    "/usr/lib/libssl.so.3",
+    "/usr/lib/x86_64-linux-gnu/libssl.so.3",
+    "/lib/x86_64-linux-gnu/libssl.so.3",
+)
+OPENSSL_CRYPTO_LIB_CANDIDATES = (
+    os.environ.get("JCODE_HARBOR_LIBCRYPTO"),
+    "/usr/lib/libcrypto.so.3",
+    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+    "/lib/x86_64-linux-gnu/libcrypto.so.3",
 )
 
 
@@ -38,6 +51,16 @@ def _resolve_existing_file(*, env_name: str, default_path: str | None = None, ca
     raise FileNotFoundError(f"Could not find a readable file for {env_name}. Checked: {checked}")
 
 
+def _resolve_optional_existing_file(*, candidates: tuple[str | None, ...]) -> Path | None:
+    for value in candidates:
+        if not value:
+            continue
+        candidate = Path(value).expanduser()
+        if candidate.exists() and candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
 JCODE_BINARY = _resolve_existing_file(
     env_name="JCODE_HARBOR_BINARY",
     default_path=DEFAULT_BINARY_PATH,
@@ -49,6 +72,14 @@ OPENAI_AUTH = _resolve_existing_file(
 CA_BUNDLE = _resolve_existing_file(
     env_name="JCODE_HARBOR_CA_BUNDLE",
     candidates=CA_BUNDLE_CANDIDATES,
+)
+OPENSSL_RUNTIME_LIBS = tuple(
+    lib
+    for lib in (
+        _resolve_optional_existing_file(candidates=OPENSSL_RUNTIME_LIB_CANDIDATES),
+        _resolve_optional_existing_file(candidates=OPENSSL_CRYPTO_LIB_CANDIDATES),
+    )
+    if lib is not None
 )
 
 BENCHMARK_INSTRUCTION_PREAMBLE = """You are operating inside an official Terminal-Bench evaluation environment.
@@ -119,13 +150,15 @@ class JcodeHarborAgent(BaseAgent):
             (
                 "mkdir -p "
                 f"{IN_CONTAINER_HOME} {IN_CONTAINER_RUNTIME} {IN_CONTAINER_INPUT} {IN_CONTAINER_OUTPUT} "
-                "/usr/local/bin /usr/lib/ssl && "
+                f"{IN_CONTAINER_LIB_DIR} /usr/local/bin /usr/lib/ssl && "
                 f"ln -snf {IN_CONTAINER_HOME} /usr/lib/ssl/certs"
             ),
             timeout_sec=30,
         )
         await environment.upload_file(JCODE_BINARY, IN_CONTAINER_BINARY)
         await environment.exec(f"chmod +x {IN_CONTAINER_BINARY}", timeout_sec=30)
+        for lib in OPENSSL_RUNTIME_LIBS:
+            await environment.upload_file(lib, f"{IN_CONTAINER_LIB_DIR}/{lib.name}")
         await environment.upload_file(OPENAI_AUTH, f"{IN_CONTAINER_HOME}/openai-auth.json")
         await environment.upload_file(CA_BUNDLE, IN_CONTAINER_CA_BUNDLE)
         version_result = await environment.exec(
@@ -135,6 +168,7 @@ class JcodeHarborAgent(BaseAgent):
                 "JCODE_HOME": IN_CONTAINER_HOME,
                 "JCODE_RUNTIME_DIR": IN_CONTAINER_RUNTIME,
                 "JCODE_NO_TELEMETRY": "1",
+                "LD_LIBRARY_PATH": IN_CONTAINER_LIB_DIR,
             },
             timeout_sec=60,
         )
@@ -160,17 +194,22 @@ class JcodeHarborAgent(BaseAgent):
             "JCODE_OPENAI_SERVICE_TIER": os.environ.get("JCODE_OPENAI_SERVICE_TIER", "priority"),
             "SSL_CERT_FILE": IN_CONTAINER_CA_BUNDLE,
             "OPENSSL_CERT_FILE": IN_CONTAINER_CA_BUNDLE,
+            "LD_LIBRARY_PATH": IN_CONTAINER_LIB_DIR,
         }
 
         result = await environment.exec(
             command=(
+                'set -e; '
+                'workdir="${JCODE_TASK_WORKDIR:-}"; '
+                'if [ -z "$workdir" ]; then '
+                '  if [ -d /app ]; then workdir=/app; else workdir="$(pwd)"; fi; '
+                'fi; '
                 f'instruction="$(cat {IN_CONTAINER_INPUT}/instruction.txt)"; '
                 f'{IN_CONTAINER_BINARY} --quiet --no-update --no-selfdev '
                 '--provider "$JCODE_PROVIDER" --model "$JCODE_MODEL" '
-                f'-C /app run --ndjson "$instruction" '
+                '-C "$workdir" run --ndjson "$instruction" '
                 f'> {IN_CONTAINER_OUTPUT}/events.ndjson 2> {IN_CONTAINER_OUTPUT}/stderr.txt'
             ),
-            cwd="/app",
             env=env
         )
 
