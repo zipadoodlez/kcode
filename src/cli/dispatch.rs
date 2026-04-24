@@ -706,9 +706,7 @@ pub(crate) async fn spawn_server(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Request, ServerEvent, encode_event};
     use crate::transport::Listener;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     struct ReloadTestEnv {
         prev_socket: Option<std::ffi::OsString>,
@@ -820,33 +818,29 @@ mod tests {
         );
 
         let bind_path = env.socket_path.clone();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
         let bind_task = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            #[cfg(windows)]
-            let mut listener = Listener::bind(&bind_path).expect("bind replacement listener");
-            #[cfg(not(windows))]
             let listener = Listener::bind(&bind_path).expect("bind replacement listener");
-            let (stream, _) = listener.accept().await.expect("accept ping probe");
-            let (reader, mut writer) = stream.into_split();
-            let mut reader = BufReader::new(reader);
-            let mut line = String::new();
-            let n = reader
-                .read_line(&mut line)
-                .await
-                .expect("read ping request");
-            assert!(n > 0, "expected ping request");
-            let request: Request = serde_json::from_str(&line).expect("parse ping request");
-            let id = match request {
-                Request::Ping { id } => id,
-                other => panic!("expected ping request, got {other:?}"),
-            };
-            let pong = encode_event(&ServerEvent::Pong { id });
-            writer.write_all(pong.as_bytes()).await.expect("write pong");
+            crate::server::write_reload_state(
+                "reload-test",
+                "hash",
+                crate::server::ReloadPhase::SocketReady,
+                None,
+            );
+            let _listener = listener;
+            let _ = release_rx.await;
         });
 
-        assert!(wait_for_existing_reload_server("test").await);
-
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            wait_for_existing_reload_server("test"),
+        )
+        .await
+        .expect("reload wait should not hang");
+        let _ = release_tx.send(());
         bind_task.await.expect("bind task");
+        assert!(result);
     }
 
     #[tokio::test]
@@ -869,36 +863,26 @@ mod tests {
         let env = ReloadTestEnv::new();
 
         let bind_path = env.socket_path.clone();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
         let bind_task = tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            #[cfg(windows)]
-            let mut listener = Listener::bind(&bind_path).expect("bind delayed listener");
-            #[cfg(not(windows))]
             let listener = Listener::bind(&bind_path).expect("bind delayed listener");
-            let (stream, _) = listener.accept().await.expect("accept ping probe");
-            let (reader, mut writer) = stream.into_split();
-            let mut reader = BufReader::new(reader);
-            let mut line = String::new();
-            let n = reader
-                .read_line(&mut line)
-                .await
-                .expect("read ping request");
-            assert!(n > 0, "expected ping request");
-            let request: Request = serde_json::from_str(&line).expect("parse ping request");
-            let id = match request {
-                Request::Ping { id } => id,
-                other => panic!("expected ping request, got {other:?}"),
-            };
-            let pong = encode_event(&ServerEvent::Pong { id });
-            writer.write_all(pong.as_bytes()).await.expect("write pong");
+            let _listener = listener;
+            let _ = release_rx.await;
         });
 
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            wait_for_resuming_server("test", std::time::Duration::from_secs(1)),
+        )
+        .await
+        .expect("resume wait should not hang");
+        let _ = release_tx.send(());
+        bind_task.await.expect("bind task");
         assert!(
-            wait_for_resuming_server("test", std::time::Duration::from_secs(1)).await,
+            result,
             "resume wait should detect a delayed server without requiring a reload marker"
         );
-
-        bind_task.await.expect("bind task");
     }
 
     #[tokio::test]
