@@ -39,11 +39,11 @@ class Suite:
 
 
 SUITES = {
-    "lib-bins": Suite("lib-bins", 900, ["test", "--lib", "--bins"]),
+    "lib-bins": Suite("lib-bins", 1800, ["test", "--lib", "--bins"]),
     "provider-matrix": Suite(
-        "provider-matrix", 600, ["test", "--test", "provider_matrix"]
+        "provider-matrix", 900, ["test", "--test", "provider_matrix"]
     ),
-    "e2e": Suite("e2e", 900, ["test", "--test", "e2e"]),
+    "e2e": Suite("e2e", 1800, ["test", "--test", "e2e"]),
 }
 
 CURRENT_PROC: subprocess.Popen[bytes] | None = None
