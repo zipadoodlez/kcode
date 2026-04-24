@@ -791,7 +791,15 @@ pub(crate) async fn wait_for_server_client(
                 let ping_deadline = Instant::now() + Duration::from_secs(5);
                 while Instant::now() < ping_deadline {
                     match client.ping().await {
-                        Ok(true) => return Ok(client),
+                        Ok(true) => {
+                            // A pre-subscribe Ping is handled as a one-shot lightweight
+                            // request so it does not allocate a live session. Drop that
+                            // readiness probe connection and return a fresh client for the
+                            // actual test Subscribe/Resume flow.
+                            drop(client);
+                            return server::Client::connect_with_path(socket_path.to_path_buf())
+                                .await;
+                        }
                         Ok(false) => continue,
                         Err(_) => break,
                     }
