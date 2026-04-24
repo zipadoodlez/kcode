@@ -934,7 +934,6 @@ fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptabl
             provider
         );
     }
-    cleanup_stale_pending_login_files()?;
     crate::storage::harden_secret_file_permissions(path);
     let data = std::fs::read_to_string(path).with_context(|| {
         format!(
@@ -952,15 +951,18 @@ fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptabl
                 provider
             );
         }
+        cleanup_stale_pending_login_files()?;
         return Ok(record.login);
     }
-    serde_json::from_str::<PendingScriptableLogin>(&data).with_context(|| {
+    let login = serde_json::from_str::<PendingScriptableLogin>(&data).with_context(|| {
         format!(
             "Failed to load pending {} login state from {}",
             provider,
             path.display()
         )
-    })
+    })?;
+    cleanup_stale_pending_login_files()?;
+    Ok(login)
 }
 
 fn clear_pending_login(path: &PathBuf) {
