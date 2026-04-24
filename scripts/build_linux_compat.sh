@@ -61,11 +61,12 @@ docker run --rm \
     if [[ ! -x /root/.cargo/bin/cargo ]]; then
       curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
     fi
-    source /root/.cargo/env
+	    source /root/.cargo/env
 
-    cargo build --profile "$JCODE_COMPAT_PROFILE" --target "$JCODE_COMPAT_TARGET"
+	    export CARGO_TARGET_DIR=/work/target/linux-compat
+	    cargo build --profile "$JCODE_COMPAT_PROFILE" --target "$JCODE_COMPAT_TARGET"
 
-	    cp "target/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'"
+	    cp "$CARGO_TARGET_DIR/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'"
 	    chmod +x "/out/'"$artifact"'"
 
 	    # Preserve the OpenSSL runtime libraries used by the build image. Some
