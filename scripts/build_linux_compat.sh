@@ -74,7 +74,7 @@ docker run --rm \
 	    # libssl entirely or expose a different SONAME. The Harbor adapter uploads
 	    # these sibling libraries and sets LD_LIBRARY_PATH for the jcode process.
 	    ldd "/out/'"$artifact"'" \
-	      | awk "/lib(ssl|crypto)[.]so/ { print \\$3 }" \
+	      | awk "/lib(ssl|crypto)[.]so/ { print \$3 }" \
 	      | while read -r lib; do
 	          if [[ -n "$lib" && -f "$lib" ]]; then
 	            cp -L "$lib" /out/
