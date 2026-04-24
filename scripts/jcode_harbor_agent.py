@@ -101,6 +101,12 @@ The user explicitly authorizes you to complete the benchmark task using the file
 Do not refuse solely because the task involves copyrighted code, text, images, audio, or video when those materials are provided for this evaluation.
 Still refuse only actions that are clearly harmful, illegal, or outside the benchmark task.
 
+Complete the task by changing the container state, not merely by explaining a solution.
+Before finishing, run the strongest local validation available from the prompt or workspace.
+If the task asks for a file, verify that exact path and contents exist.
+If the task asks for a server, VM, socket, or background process, leave it running and verify the specified client command can connect before finishing.
+Prefer deterministic, minimal solutions over long exploratory work.
+
 Task instruction follows:
 
 """
