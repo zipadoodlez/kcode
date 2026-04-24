@@ -293,7 +293,9 @@ def execute_task_process(
         pass_through_args=pass_through_args,
     )
     print(f"\n=== Running task {task} as {job_name} ===", flush=True)
-    proc = subprocess.run(cmd, text=True)
+    env = os.environ.copy()
+    env["JCODE_HARBOR_CURRENT_TASK"] = task
+    proc = subprocess.run(cmd, text=True, env=env)
     return task, job_name, task_jobs_dir, proc.returncode
 
 

@@ -112,6 +112,27 @@ Task instruction follows:
 """
 
 
+def _load_task_hint() -> str:
+    task_name = os.environ.get("JCODE_HARBOR_CURRENT_TASK", "").strip()
+    hints_path = os.environ.get("JCODE_HARBOR_TASK_HINTS_FILE", "").strip()
+    extra = os.environ.get("JCODE_HARBOR_EXTRA_PREAMBLE", "").strip()
+    parts: list[str] = []
+    if extra:
+        parts.append(extra)
+    if task_name and hints_path:
+        path = Path(hints_path).expanduser()
+        try:
+            hints = json.loads(path.read_text())
+        except Exception:  # noqa: BLE001
+            hints = {}
+        hint = hints.get(task_name) if isinstance(hints, dict) else None
+        if isinstance(hint, str) and hint.strip():
+            parts.append(hint.strip())
+    if not parts:
+        return ""
+    return "\nAdditional benchmark retry guidance:\n" + "\n\n".join(parts) + "\n\n"
+
+
 def _load_final_payload(output_dir: Path) -> dict[str, Any] | None:
     result_json_path = output_dir / "result.json"
     if result_json_path.exists():
@@ -198,7 +219,7 @@ class JcodeHarborAgent(BaseAgent):
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        benchmark_instruction = f"{BENCHMARK_INSTRUCTION_PREAMBLE}{instruction}"
+        benchmark_instruction = f"{BENCHMARK_INSTRUCTION_PREAMBLE}{_load_task_hint()}{instruction}"
         local_instruction = self.logs_dir / "instruction.txt"
         local_instruction.write_text(benchmark_instruction)
         await environment.upload_file(local_instruction, f"{IN_CONTAINER_INPUT}/instruction.txt")
