@@ -23,18 +23,6 @@ CA_BUNDLE_CANDIDATES = (
     "/etc/ca-certificates/extracted/tls-ca-bundle.pem",
     "/etc/ssl/certs/ca-certificates.crt",
 )
-OPENSSL_RUNTIME_LIB_CANDIDATES = (
-    os.environ.get("JCODE_HARBOR_LIBSSL"),
-    "/usr/lib/libssl.so.3",
-    "/usr/lib/x86_64-linux-gnu/libssl.so.3",
-    "/lib/x86_64-linux-gnu/libssl.so.3",
-)
-OPENSSL_CRYPTO_LIB_CANDIDATES = (
-    os.environ.get("JCODE_HARBOR_LIBCRYPTO"),
-    "/usr/lib/libcrypto.so.3",
-    "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
-    "/lib/x86_64-linux-gnu/libcrypto.so.3",
-)
 
 
 def _resolve_existing_file(*, env_name: str, default_path: str | None = None, candidates: tuple[str | None, ...] = ()) -> Path:
@@ -61,6 +49,10 @@ def _resolve_optional_existing_file(*, candidates: tuple[str | None, ...]) -> Pa
     return None
 
 
+def _sibling_runtime_lib_candidates(binary: Path, stem: str) -> tuple[str, ...]:
+    return tuple(str(path) for path in sorted(binary.parent.glob(f"{stem}.so*")) if path.is_file())
+
+
 JCODE_BINARY = _resolve_existing_file(
     env_name="JCODE_HARBOR_BINARY",
     default_path=DEFAULT_BINARY_PATH,
@@ -76,8 +68,30 @@ CA_BUNDLE = _resolve_existing_file(
 OPENSSL_RUNTIME_LIBS = tuple(
     lib
     for lib in (
-        _resolve_optional_existing_file(candidates=OPENSSL_RUNTIME_LIB_CANDIDATES),
-        _resolve_optional_existing_file(candidates=OPENSSL_CRYPTO_LIB_CANDIDATES),
+        _resolve_optional_existing_file(
+            candidates=(
+                os.environ.get("JCODE_HARBOR_LIBSSL"),
+                *_sibling_runtime_lib_candidates(JCODE_BINARY, "libssl"),
+                "/usr/lib/libssl.so.3",
+                "/usr/lib/x86_64-linux-gnu/libssl.so.3",
+                "/lib/x86_64-linux-gnu/libssl.so.3",
+                "/usr/lib/libssl.so.1.1",
+                "/usr/lib/x86_64-linux-gnu/libssl.so.1.1",
+                "/lib/x86_64-linux-gnu/libssl.so.1.1",
+            )
+        ),
+        _resolve_optional_existing_file(
+            candidates=(
+                os.environ.get("JCODE_HARBOR_LIBCRYPTO"),
+                *_sibling_runtime_lib_candidates(JCODE_BINARY, "libcrypto"),
+                "/usr/lib/libcrypto.so.3",
+                "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+                "/lib/x86_64-linux-gnu/libcrypto.so.3",
+                "/usr/lib/libcrypto.so.1.1",
+                "/usr/lib/x86_64-linux-gnu/libcrypto.so.1.1",
+                "/lib/x86_64-linux-gnu/libcrypto.so.1.1",
+            )
+        ),
     )
     if lib is not None
 )

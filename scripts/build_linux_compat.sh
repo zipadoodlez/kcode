@@ -15,7 +15,7 @@ fi
 
 artifact="${JCODE_COMPAT_ARTIFACT:-jcode-linux-x86_64}"
 profile="${JCODE_COMPAT_PROFILE:-release}"
-image="${JCODE_COMPAT_IMAGE:-ubuntu:22.04}"
+image="${JCODE_COMPAT_IMAGE:-ubuntu:20.04}"
 cache_root="${JCODE_COMPAT_CACHE_DIR:-$HOME/.cache/jcode-linux-compat}"
 target="x86_64-unknown-linux-gnu"
 
@@ -65,12 +65,25 @@ docker run --rm \
 
     cargo build --profile "$JCODE_COMPAT_PROFILE" --target "$JCODE_COMPAT_TARGET"
 
-    cp "target/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'"
-    chmod +x "/out/'"$artifact"'"
-    (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"')
+	    cp "target/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'"
+	    chmod +x "/out/'"$artifact"'"
 
-    chown "$HOST_UID:$HOST_GID" "/out/'"$artifact"'" "/out/'"$artifact"'.tar.gz"
-  '
+	    # Preserve the OpenSSL runtime libraries used by the build image. Some
+	    # Terminal-Bench containers are older than the build host and either lack
+	    # libssl entirely or expose a different SONAME. The Harbor adapter uploads
+	    # these sibling libraries and sets LD_LIBRARY_PATH for the jcode process.
+	    ldd "/out/'"$artifact"'" \
+	      | awk "/lib(ssl|crypto)[.]so/ { print \\$3 }" \
+	      | while read -r lib; do
+	          if [[ -n "$lib" && -f "$lib" ]]; then
+	            cp -L "$lib" /out/
+	          fi
+	        done
+
+	    (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"')
+
+	    chown "$HOST_UID:$HOST_GID" "/out/'"$artifact"'" "/out/'"$artifact"'.tar.gz" /out/libssl.so* /out/libcrypto.so* 2>/dev/null || true
+	  '
 
 echo "Built artifacts:"
 ls -lh "$out_dir/$artifact" "$out_dir/$artifact.tar.gz"
