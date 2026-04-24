@@ -101,7 +101,7 @@ def _load_final_payload(output_dir: Path) -> dict[str, Any] | None:
 class JcodeHarborAgent(BaseAgent):
     def __init__(self, logs_dir: Path, model_name: str | None = None, *args, **kwargs):
         super().__init__(logs_dir, model_name, *args, **kwargs)
-        self._model_arg = model_name or "openai/gpt-5.5"
+        self._model_arg = model_name or "openai/gpt-5.4"
         if "/" in self._model_arg:
             self._provider_arg, self._jcode_model = self._model_arg.split("/", 1)
         else:
