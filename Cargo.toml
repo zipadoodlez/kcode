@@ -19,6 +19,7 @@ members = [
     "crates/jcode-tui-workspace",
     "crates/jcode-mobile-core",
     "crates/jcode-mobile-sim",
+    "crates/jcode-desktop",
 ]
 
 [lib]
