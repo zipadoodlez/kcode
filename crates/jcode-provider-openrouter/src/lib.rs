@@ -346,28 +346,24 @@ pub fn load_model_pricing_disk_cache_public(model_id: &str) -> Option<ModelPrici
         .map(|model| model.pricing)
 }
 
-pub fn model_created_timestamp(model_id: &str) -> Option<u64> {
-    let path = cache_path();
-    let content = std::fs::read_to_string(&path).ok()?;
-    let cache: DiskCache = serde_json::from_str(&content).ok()?;
+pub type ModelTimestampIndex = HashMap<String, u64>;
 
-    if let Some(ts) = cache
-        .models
-        .iter()
-        .find(|m| m.id == model_id)
-        .and_then(|m| m.created)
-    {
+pub fn model_created_timestamp(model_id: &str) -> Option<u64> {
+    let timestamps = load_model_timestamp_index();
+    model_created_timestamp_from_index(model_id, &timestamps)
+}
+
+pub fn model_created_timestamp_from_index(
+    model_id: &str,
+    timestamps: &ModelTimestampIndex,
+) -> Option<u64> {
+    if let Some(ts) = timestamps.get(model_id).copied() {
         return Some(ts);
     }
 
     let candidates = openrouter_id_candidates(model_id);
     for candidate in &candidates {
-        if let Some(ts) = cache
-            .models
-            .iter()
-            .find(|m| m.id == *candidate)
-            .and_then(|m| m.created)
-        {
+        if let Some(ts) = timestamps.get(candidate).copied() {
             return Some(ts);
         }
     }
@@ -395,19 +391,14 @@ fn openrouter_id_candidates(model: &str) -> Vec<String> {
     candidates
 }
 
+pub fn load_model_timestamp_index() -> ModelTimestampIndex {
+    all_model_timestamps().into_iter().collect()
+}
+
 pub fn all_model_timestamps() -> Vec<(String, u64)> {
-    let path = cache_path();
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    let cache: DiskCache = match serde_json::from_str(&content) {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    cache
-        .models
+    load_disk_cache_entry()
         .into_iter()
+        .flat_map(|cache| cache.models)
         .filter_map(|m| m.created.map(|t| (m.id, t)))
         .collect()
 }
@@ -713,6 +704,32 @@ mod tests {
         let (model, provider) = parse_model_spec("anthropic/claude-sonnet-4@auto");
         assert_eq!(model, "anthropic/claude-sonnet-4");
         assert!(provider.is_none());
+    }
+
+    #[test]
+    fn model_created_timestamp_from_index_handles_provider_aliases() {
+        let timestamps = ModelTimestampIndex::from([
+            ("anthropic/claude-opus-4.7".to_string(), 100),
+            ("openai/gpt-5.4".to_string(), 200),
+            ("moonshotai/kimi-k2.6".to_string(), 300),
+        ]);
+
+        assert_eq!(
+            model_created_timestamp_from_index("claude-opus-4-7", &timestamps),
+            Some(100)
+        );
+        assert_eq!(
+            model_created_timestamp_from_index("gpt-5.4", &timestamps),
+            Some(200)
+        );
+        assert_eq!(
+            model_created_timestamp_from_index("moonshotai/kimi-k2.6", &timestamps),
+            Some(300)
+        );
+        assert_eq!(
+            model_created_timestamp_from_index("unknown-model", &timestamps),
+            None
+        );
     }
 
     fn make_endpoint(
