@@ -170,10 +170,6 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 </div>
 
-Measured on this Linux machine using real interactive PTY sessions and Linux `/proc` memory stats. These RAM rows were remeasured using full launched process-tree PSS accounting, so launcher and child runtime processes are included instead of only the top-level PID.
-
-The comparison columns compare each tool's PSS against `jcode (local embedding off)` for the corresponding session count.
-
 ### Time to first frame
 
 <div align="center">
@@ -211,8 +207,6 @@ Measured on this Linux machine across 10 interactive PTY launches.
 Measured on this Linux machine across 10 interactive PTY launches.
 
 ### Additional clients / memory scaling
-
-A 10-session snapshot is useful, but the scaling story matters just as much. The table below shows how much memory each additional active session adds, which is where a shared-server architecture compounds its advantage.
 
 <div align="center">
 
