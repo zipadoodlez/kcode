@@ -1,8 +1,7 @@
 {
-  "total": 1112,
+  "total": 1116,
   "tracked_files": {
-    "crates/jcode-mobile-core/src/lib.rs": 1,
-    "crates/jcode-mobile-sim/src/lib.rs": 9,
+    "crates/jcode-mobile-sim/src/lib.rs": 14,
     "crates/jcode-provider-openrouter/src/lib.rs": 3,
     "crates/jcode-tui-workspace/src/color_support.rs": 1,
     "crates/jcode-tui-workspace/src/workspace_map.rs": 4,
