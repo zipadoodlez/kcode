@@ -93,26 +93,7 @@ jobs:
 
       - name: Run mobile simulator CLI smoke
         shell: bash
-        run: |
-          set -euo pipefail
-          tmpdir="$(mktemp -d)"
-          socket="$tmpdir/mobile-sim.sock"
-          cleanup() {
-            cargo run -p jcode-mobile-sim -- shutdown --socket "$socket" >/dev/null 2>&1 || true
-            rm -rf "$tmpdir"
-          }
-          trap cleanup EXIT
-
-          cargo run -p jcode-mobile-sim -- start --socket "$socket" --scenario pairing_ready
-          cargo run -p jcode-mobile-sim -- status --socket "$socket"
-          cargo run -p jcode-mobile-sim -- assert-screen --socket "$socket" onboarding
-          cargo run -p jcode-mobile-sim -- assert-node --socket "$socket" pair.submit --enabled true --role button
-          cargo run -p jcode-mobile-sim -- tap --socket "$socket" pair.submit
-          cargo run -p jcode-mobile-sim -- assert-screen --socket "$socket" chat
-          cargo run -p jcode-mobile-sim -- set-field --socket "$socket" draft "hello ci simulator"
-          cargo run -p jcode-mobile-sim -- tap --socket "$socket" chat.send
-          cargo run -p jcode-mobile-sim -- assert-text --socket "$socket" "Simulated response to: hello ci simulator"
-          cargo run -p jcode-mobile-sim -- assert-no-error --socket "$socket"
+        run: scripts/mobile_simulator_smoke.sh pairing_ready "hello ci simulator"
 
   build:
     name: Build & Test (${{ matrix.os }})
