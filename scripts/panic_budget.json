@@ -1,5 +1,5 @@
 {
-  "total": 1137,
+  "total": 1112,
   "tracked_files": {
     "crates/jcode-mobile-core/src/lib.rs": 1,
     "crates/jcode-mobile-sim/src/lib.rs": 9,
@@ -75,7 +75,6 @@
     "src/storage.rs": 26,
     "src/telegram.rs": 4,
     "src/tool/agentgrep/context.rs": 8,
-    "src/tool/ambient.rs": 19,
     "src/tool/apply_patch.rs": 23,
     "src/tool/bash.rs": 5,
     "src/tool/batch.rs": 12,
@@ -84,7 +83,6 @@
     "src/tool/goal.rs": 20,
     "src/tool/mcp.rs": 5,
     "src/tool/memory.rs": 1,
-    "src/tool/mod.rs": 2,
     "src/tool/open.rs": 6,
     "src/tool/read.rs": 26,
     "src/tool/session_search.rs": 6,
@@ -105,10 +103,8 @@
     "src/tui/session_picker.rs": 26,
     "src/tui/session_picker/loading.rs": 39,
     "src/tui/test_harness.rs": 1,
-    "src/tui/ui.rs": 1,
     "src/tui/ui_animations.rs": 2,
     "src/tui/ui_header.rs": 2,
-    "src/tui/ui_messages.rs": 3,
     "src/tui/workspace_client.rs": 1
   },
   "version": 1
