@@ -2579,13 +2579,17 @@ name = "jcode-mobile-sim"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "clap",
  "jcode-mobile-core",
  "libc",
+ "pollster",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
