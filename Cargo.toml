@@ -126,7 +126,7 @@ tempfile = "3"
 
 # Mermaid diagram rendering (stable v0.2.0 tag)
 mermaid-rs-renderer = { git = "https://github.com/1jehuang/mermaid-rs-renderer.git", tag = "v0.2.1" }
-agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.1" }
+agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.2" }
 qr2term = "0.3.3"
 
 [features]
