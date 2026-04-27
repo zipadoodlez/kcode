@@ -1,5 +1,5 @@
 {
-  "total": 113,
+  "total": 109,
   "tracked_files": {
     "crates/jcode-provider-openrouter/src/lib.rs": 3,
     "crates/jcode-tui-workspace/src/color_support.rs": 1,
@@ -25,7 +25,7 @@
     "src/server/swarm.rs": 5,
     "src/sidecar.rs": 5,
     "src/telegram.rs": 4,
-    "src/tool/bash.rs": 5,
+    "src/tool/bash.rs": 1,
     "src/tool/conversation_search.rs": 5,
     "src/tool/mcp.rs": 5,
     "src/tool/memory.rs": 1,
