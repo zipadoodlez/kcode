@@ -2619,6 +2619,7 @@ dependencies = [
  "glyphon",
  "libc",
  "pollster",
+ "pulldown-cmark",
  "serde_json",
  "wgpu",
  "winit",
