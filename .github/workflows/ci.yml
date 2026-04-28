@@ -269,10 +269,10 @@ jobs:
           )
 
           foreach ($testName in $tests) {
-            & cargo test --locked --target x86_64-pc-windows-msvc --lib $testName -- --nocapture
-            if ($LASTEXITCODE -ne 0) {
-              throw "Windows targeted test failed: $testName"
-            }
+            & ./scripts/invoke_cargo_with_timeout.ps1 `
+              -Name "Windows targeted test: $testName" `
+              -TimeoutSeconds 300 `
+              -CargoArgs @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--lib', $testName, '--', '--nocapture')
           }
 
       - name: Run Windows e2e smoke tests
@@ -284,10 +284,10 @@ jobs:
           )
 
           foreach ($testName in $tests) {
-            & cargo test --locked --target x86_64-pc-windows-msvc --test e2e $testName -- --exact --nocapture
-            if ($LASTEXITCODE -ne 0) {
-              throw "Windows e2e smoke test failed: $testName"
-            }
+            & ./scripts/invoke_cargo_with_timeout.ps1 `
+              -Name "Windows e2e smoke test: $testName" `
+              -TimeoutSeconds 420 `
+              -CargoArgs @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--test', 'e2e', $testName, '--', '--exact', '--nocapture')
           }
 
       - name: Run Windows lifecycle e2e tests
@@ -296,9 +296,15 @@ jobs:
           JCODE_E2E_ARTIFACT_DIR: ${{ runner.temp }}/jcode-windows-e2e-logs
         run: |
           New-Item -ItemType Directory -Force -Path $env:JCODE_E2E_ARTIFACT_DIR | Out-Null
-          & cargo test --locked --target x86_64-pc-windows-msvc --test e2e windows_lifecycle:: -- --nocapture
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Windows lifecycle e2e tests failed'
+          $tests = @(
+            'windows_lifecycle::windows_binary_server_accepts_clients_and_debug_cli',
+            'windows_lifecycle::windows_binary_server_rebinds_named_pipe_after_exit'
+          )
+          foreach ($testName in $tests) {
+            & ./scripts/invoke_cargo_with_timeout.ps1 `
+              -Name "Windows lifecycle e2e test: $testName" `
+              -TimeoutSeconds 420 `
+              -CargoArgs @('test', '--locked', '--target', 'x86_64-pc-windows-msvc', '--test', 'e2e', $testName, '--', '--exact', '--nocapture')
           }
 
       - name: Upload Windows e2e diagnostics
