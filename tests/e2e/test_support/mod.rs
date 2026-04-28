@@ -855,6 +855,10 @@ impl PtyChild {
 }
 
 #[cfg(unix)]
+#[allow(
+    clippy::unnecessary_mut_passed,
+    reason = "libc::openpty takes a mutable winsize pointer on Apple targets"
+)]
 pub(crate) fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
     let mut master_fd = -1;
     let mut slave_fd = -1;
