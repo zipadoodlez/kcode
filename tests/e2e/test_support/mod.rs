@@ -33,6 +33,17 @@ pub(crate) use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 static JCODE_HOME_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
+pub(crate) fn short_runtime_dir(name: String) -> std::path::PathBuf {
+    #[cfg(unix)]
+    {
+        std::path::PathBuf::from("/tmp").join(name)
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::temp_dir().join(name)
+    }
+}
+
 fn lock_jcode_home() -> std::sync::MutexGuard<'static, ()> {
     let mutex = JCODE_HOME_LOCK.get_or_init(|| Mutex::new(()));
     // Recover from poisoned state if a previous test panicked
@@ -486,7 +497,7 @@ pub(crate) struct TransportScenarioResult {
 }
 
 pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioResult> {
-    let runtime_dir = std::env::temp_dir().join(format!(
+    let runtime_dir = short_runtime_dir(format!(
         "jcode-ws-e2e-unix-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -584,7 +595,7 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
 }
 
 pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenarioResult> {
-    let runtime_dir = std::env::temp_dir().join(format!(
+    let runtime_dir = short_runtime_dir(format!(
         "jcode-ws-e2e-websocket-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
