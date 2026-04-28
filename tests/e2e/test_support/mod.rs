@@ -858,7 +858,7 @@ impl PtyChild {
 pub(crate) fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
     let mut master_fd = -1;
     let mut slave_fd = -1;
-    let winsize = libc::winsize {
+    let mut winsize = libc::winsize {
         ws_row: 40,
         ws_col: 120,
         ws_xpixel: 0,
@@ -871,7 +871,7 @@ pub(crate) fn spawn_pty_child(mut cmd: Command) -> Result<PtyChild> {
             &mut slave_fd,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            &winsize,
+            &mut winsize,
         )
     };
     if rc != 0 {

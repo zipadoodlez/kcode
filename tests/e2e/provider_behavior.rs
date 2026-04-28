@@ -333,9 +333,17 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
                 ..
             } if id == resume_id => {
                 assert_eq!(session_id, session.id);
+                assert_eq!(
+                    messages.len(),
+                    2,
+                    "resume history should include persisted local messages"
+                );
+                assert_eq!(messages[0].role, "user");
+                assert!(messages[0].content.contains("Existing local history"));
+                assert_eq!(messages[1].role, "assistant");
                 assert!(
-                    messages.is_empty(),
-                    "expected metadata-only history payload"
+                    messages[1].content.contains("Existing assistant response"),
+                    "resume history should include persisted assistant response"
                 );
                 assert_eq!(provider_model, Some("model-a".to_string()));
                 history_checked = true;
