@@ -854,7 +854,7 @@
     "src/skill.rs": {
       "dot_ok": 1,
       "let_underscore": 0,
-      "unwrap_or_default": 3
+      "unwrap_or_default": 5
     },
     "src/soft_interrupt_store.rs": {
       "dot_ok": 0,
@@ -999,7 +999,7 @@
     "src/tool/mod.rs": {
       "dot_ok": 0,
       "let_underscore": 2,
-      "unwrap_or_default": 2
+      "unwrap_or_default": 0
     },
     "src/tool/patch.rs": {
       "dot_ok": 1,
