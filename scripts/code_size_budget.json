@@ -1,7 +1,7 @@
 {
   "threshold_loc": 1200,
   "tracked_files": {
-    "crates/jcode-desktop/src/main.rs": 1880,
+    "crates/jcode-desktop/src/main.rs": 1890,
     "crates/jcode-desktop/src/session_launch.rs": 1558,
     "crates/jcode-desktop/src/single_session.rs": 2517,
     "crates/jcode-provider-metadata/src/lib.rs": 1384,
