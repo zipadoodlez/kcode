@@ -2550,6 +2550,7 @@ dependencies = [
  "jcode-azure-auth",
  "jcode-batch-types",
  "jcode-config-types",
+ "jcode-core",
  "jcode-embedding",
  "jcode-message-types",
  "jcode-notify-email",
@@ -2628,6 +2629,14 @@ name = "jcode-config-types"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "jcode-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rand 0.9.3",
 ]
 
 [[package]]

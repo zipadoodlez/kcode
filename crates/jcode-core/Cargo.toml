@@ -1,0 +1,9 @@
+[package]
+name = "jcode-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.9.3"

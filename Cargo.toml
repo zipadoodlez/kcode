@@ -12,6 +12,7 @@ members = [
     "crates/jcode-pdf",
     "crates/jcode-batch-types",
     "crates/jcode-config-types",
+    "crates/jcode-core",
     "crates/jcode-message-types",
     "crates/jcode-plan",
     "crates/jcode-protocol",
@@ -129,6 +130,7 @@ unicode-width = "0.2"   # Unicode character display width
 jcode-pdf = { path = "crates/jcode-pdf", optional = true }
 jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-config-types = { path = "crates/jcode-config-types" }
+jcode-core = { path = "crates/jcode-core" }
 jcode-message-types = { path = "crates/jcode-message-types" }
 jcode-plan = { path = "crates/jcode-plan" }
 jcode-protocol = { path = "crates/jcode-protocol" }
