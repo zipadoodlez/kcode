@@ -2,111 +2,30 @@
 
 Thanks for contributing.
 
-This repo moves quickly, so quality expectations must be explicit and enforceable.
+## Issues vs pull requests
 
-## Baseline workflow
+If the problem is easy for me to reproduce, please prefer opening a GitHub issue. A clear issue with reproduction steps, expected behavior, actual behavior, logs, screenshots, or traces is usually the fastest path to a fix.
 
-Before opening a PR, run the relevant checks for your change. At minimum:
+Pull requests are more useful when the problem depends on an environment I may not have, such as macOS-specific behavior, Windows-specific behavior, unusual shells, terminal emulators, filesystems, GPU/display setups, provider accounts, or other local configuration. In those cases, a PR can be a useful reference because it captures the behavior in the environment where the problem actually occurs.
 
-```bash
-cargo fmt --all -- --check
-cargo check -q
-scripts/check_warning_budget.sh
-scripts/check_code_size_budget.py
-scripts/check_panic_budget.py
-scripts/check_swallowed_error_budget.py
-```
+## Pull request policy
 
-When you touch core orchestration, provider, server, or TUI code, run the stricter set too:
+Pull requests are welcome and encouraged.
 
-```bash
-cargo check --all-targets --all-features
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
-cargo test --test e2e
-```
+That said, most PRs should be treated as proposals or references, not as changes that are likely to be merged directly. This project is developed with heavy use of code generation, and generated code can be deceptively plausible: it may fix the visible problem while introducing subtle correctness, lifecycle, architecture, or maintenance issues.
 
-For larger refactors, use:
+Because of that, I will often use PRs to understand the bug, feature request, test case, design direction, or proposed implementation, then write my own version of the change. The submitted code may still be extremely valuable as a reference, reproduction, or proof of concept, even if the final committed code is different.
 
-```bash
-scripts/refactor_phase1_verify.sh
-```
+This is not a judgment that maintainer-generated code is inherently better than contributor-generated code. It is a practical ownership rule: if I am going to maintain the resulting code, I need to understand its assumptions, tradeoffs, and failure modes.
 
-## Code quality guardrails
+The best PRs therefore include:
 
-### File size targets
+- a clear description of the problem being solved
+- a minimal reproduction or failing test when possible
+- notes about edge cases and tradeoffs
+- focused changes that are easy to review independently
+- any relevant logs, screenshots, traces, or benchmarks
 
-These are targets, not excuses to stop refactoring.
+Large, generated, or highly invasive PRs may be closed even when the underlying idea is good. In those cases, the issue or PR may still be used as a reference for a maintainer-authored change.
 
-- No production Rust file should exceed **1200 LOC** without a documented reason.
-- Most production Rust files should stay below **800 LOC**.
-- Existing oversized files are under a ratcheting budget via `scripts/check_code_size_budget.py`.
-- If you intentionally shrink oversized files, update the baseline with:
-
-```bash
-scripts/check_code_size_budget.py --update
-```
-
-Do **not** update the baseline to permit growth.
-
-### Function size targets
-
-- Most functions should stay below **100 LOC**.
-- Functions larger than that should usually be split into helpers, reducers, or service methods.
-- If a function must stay large temporarily, leave it clearer than you found it and avoid making it larger.
-
-### Warning policy
-
-- Do not introduce new warnings.
-- The warning baseline is ratcheted downward via `scripts/check_warning_budget.sh`.
-- If your change removes warnings, update the baseline deliberately:
-
-```bash
-scripts/check_warning_budget.sh --update
-```
-
-Do **not** update the baseline to permit new warnings.
-
-### Lint policy
-
-- `cargo clippy --all-targets --all-features -- -D warnings` should stay green.
-- Prefer fixing lint findings over suppressing them.
-- Broad module-level suppressions are strongly discouraged.
-- If a suppression is truly necessary, make it narrow and document why.
-
-### Error handling policy
-
-- Production panic-prone usage must stay at zero via `scripts/check_panic_budget.py`.
-- Suspicious swallowed-error patterns are ratcheted via `scripts/check_swallowed_error_budget.py`.
-- Do not add new `let _ = ...`, `.ok()`, or `.unwrap_or_default()` in production code unless the error is intentionally best-effort and there is no clearer helper available.
-- Prefer propagating errors with context, or logging failures with enough context to debug the affected session/provider/path.
-
-### Refactor rules
-
-- Prefer behavior-preserving extraction before logic changes.
-- Avoid mixing unrelated cleanup with feature work unless the cleanup is required to make the change safe.
-- When you touch a large file, leave it smaller, clearer, or better-tested.
-- Delete dead code instead of carrying it forward.
-- Prefer typed enums/structs over new stringly-typed states.
-- Avoid silently ignoring important errors on persistence, protocol, or lifecycle paths.
-
-## Repository docs
-
-If you are working on quality or refactors, read:
-
-- `docs/REFACTORING.md`
-- `docs/CODE_QUALITY_10_10_PLAN.md`
-- `docs/CODE_QUALITY_TODO.md`
-- `docs/COMPILE_PERFORMANCE_PLAN.md`
-
-## CI expectations
-
-CI is expected to catch:
-
-- formatting regressions
-- all-target/all-feature compile regressions
-- clippy regressions
-- warning-budget regressions
-- oversized-file regressions
-
-If your change weakens a guardrail, treat that as a design change and document the reason clearly.
+Handwritten by author: My clanker slop may or may not be better than your clanker slop. I know how to work with my clanker slop though.
