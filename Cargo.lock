@@ -2549,6 +2549,7 @@ dependencies = [
  "jcode-agent-runtime",
  "jcode-azure-auth",
  "jcode-batch-types",
+ "jcode-config-types",
  "jcode-embedding",
  "jcode-message-types",
  "jcode-notify-email",
@@ -2558,6 +2559,8 @@ dependencies = [
  "jcode-provider-gemini",
  "jcode-provider-metadata",
  "jcode-provider-openrouter",
+ "jcode-selfdev-types",
+ "jcode-session-types",
  "jcode-side-panel-types",
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
@@ -2615,6 +2618,13 @@ name = "jcode-batch-types"
 version = "0.1.0"
 dependencies = [
  "jcode-message-types",
+ "serde",
+]
+
+[[package]]
+name = "jcode-config-types"
+version = "0.1.0"
+dependencies = [
  "serde",
 ]
 
@@ -2743,6 +2753,21 @@ dependencies = [
  "dirs",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "jcode-selfdev-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "jcode-session-types"
+version = "0.1.0"
+dependencies = [
+ "jcode-message-types",
+ "serde",
 ]
 
 [[package]]
