@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.9.3"
+libc = "0.2"
