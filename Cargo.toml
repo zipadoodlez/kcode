@@ -26,6 +26,7 @@ members = [
     "crates/jcode-provider-openrouter",
     "crates/jcode-provider-gemini",
     "crates/jcode-tui-markdown",
+    "crates/jcode-tui-core",
     "crates/jcode-tui-mermaid",
     "crates/jcode-tui-render",
     "crates/jcode-tui-workspace",
@@ -109,6 +110,7 @@ jcode-provider-core = { path = "crates/jcode-provider-core" }
 jcode-provider-openrouter = { path = "crates/jcode-provider-openrouter" }
 jcode-provider-gemini = { path = "crates/jcode-provider-gemini" }
 jcode-tui-markdown = { path = "crates/jcode-tui-markdown" }
+jcode-tui-core = { path = "crates/jcode-tui-core" }
 jcode-tui-mermaid = { path = "crates/jcode-tui-mermaid" }
 jcode-tui-render = { path = "crates/jcode-tui-render" }
 jcode-tui-workspace = { path = "crates/jcode-tui-workspace" }
