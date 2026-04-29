@@ -14,6 +14,7 @@ members = [
     "crates/jcode-config-types",
     "crates/jcode-message-types",
     "crates/jcode-plan",
+    "crates/jcode-protocol",
     "crates/jcode-selfdev-types",
     "crates/jcode-session-types",
     "crates/jcode-side-panel-types",
@@ -128,6 +129,7 @@ jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-config-types = { path = "crates/jcode-config-types" }
 jcode-message-types = { path = "crates/jcode-message-types" }
 jcode-plan = { path = "crates/jcode-plan" }
+jcode-protocol = { path = "crates/jcode-protocol" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 jcode-session-types = { path = "crates/jcode-session-types" }
 jcode-side-panel-types = { path = "crates/jcode-side-panel-types" }

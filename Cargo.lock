@@ -2555,6 +2555,7 @@ dependencies = [
  "jcode-notify-email",
  "jcode-pdf",
  "jcode-plan",
+ "jcode-protocol",
  "jcode-provider-core",
  "jcode-provider-gemini",
  "jcode-provider-metadata",
@@ -2719,6 +2720,24 @@ name = "jcode-plan"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "jcode-protocol"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jcode-batch-types",
+ "jcode-config-types",
+ "jcode-message-types",
+ "jcode-plan",
+ "jcode-provider-core",
+ "jcode-selfdev-types",
+ "jcode-session-types",
+ "jcode-side-panel-types",
+ "rand 0.9.3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
