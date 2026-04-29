@@ -2,6 +2,7 @@ use super::{
     maybe_run_pending_restart_restore_on_startup, run_restart_clear_command,
     run_restart_save_command,
 };
+use crate::session::Session;
 use std::ffi::OsString;
 
 struct TestEnvGuard {
@@ -63,6 +64,34 @@ async fn pending_restore_returns_false_for_unarmed_snapshot() {
             .expect("check pending restore")
     );
     assert!(crate::restart_snapshot::load_snapshot().is_ok());
+}
+
+#[tokio::test]
+async fn pending_restore_does_not_auto_restore_recent_crash_without_snapshot() {
+    let _guard = TestEnvGuard::new().expect("setup test env");
+
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("exit 0")
+        .spawn()
+        .expect("spawn child");
+    let dead_pid = child.id();
+    let _ = child.wait().expect("wait for child");
+
+    let mut crashed = Session::create_with_id(
+        "session_no_startup_auto_restore_crash".to_string(),
+        None,
+        Some("Do Not Respawn".to_string()),
+    );
+    crashed.mark_active_with_pid(dead_pid);
+    crashed.save().expect("save active session with dead pid");
+
+    assert!(
+        !maybe_run_pending_restart_restore_on_startup()
+            .await
+            .expect("check pending restore")
+    );
+    assert!(crate::restart_snapshot::load_snapshot().is_err());
 }
 
 #[tokio::test]
