@@ -333,7 +333,17 @@ pub async fn run_login_provider(
         ));
     }
     auth::AuthStatus::invalidate_cache();
+    notify_running_server_auth_changed_best_effort().await;
     Ok(())
+}
+
+/// Best-effort: tell a running jcode server that on-disk auth has changed so it
+/// can hot-initialize any newly-configured providers. No-op if no server is running.
+async fn notify_running_server_auth_changed_best_effort() {
+    let Ok(mut client) = crate::server::Client::connect().await else {
+        return;
+    };
+    let _ = client.notify_auth_changed().await;
 }
 
 fn login_jcode_flow() -> Result<()> {
