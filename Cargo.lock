@@ -2564,6 +2564,7 @@ dependencies = [
  "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-side-panel-types",
+ "jcode-terminal-launch",
  "jcode-tui-core",
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
@@ -2806,6 +2807,14 @@ name = "jcode-side-panel-types"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "jcode-terminal-launch"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
 ]
 
 [[package]]

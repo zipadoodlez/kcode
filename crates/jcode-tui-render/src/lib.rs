@@ -1,3 +1,5 @@
+pub mod layout;
+
 use ratatui::prelude::{Line, Span, Style};
 
 pub fn render_rounded_box(

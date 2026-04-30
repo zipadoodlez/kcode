@@ -29,6 +29,7 @@ members = [
     "crates/jcode-tui-core",
     "crates/jcode-tui-mermaid",
     "crates/jcode-tui-render",
+    "crates/jcode-terminal-launch",
     "crates/jcode-tui-workspace",
     "crates/jcode-mobile-core",
     "crates/jcode-mobile-sim",
@@ -113,6 +114,7 @@ jcode-tui-markdown = { path = "crates/jcode-tui-markdown" }
 jcode-tui-core = { path = "crates/jcode-tui-core" }
 jcode-tui-mermaid = { path = "crates/jcode-tui-mermaid" }
 jcode-tui-render = { path = "crates/jcode-tui-render" }
+jcode-terminal-launch = { path = "crates/jcode-terminal-launch" }
 jcode-tui-workspace = { path = "crates/jcode-tui-workspace" }
 
 # Streaming
