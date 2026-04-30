@@ -17,6 +17,7 @@ members = [
     "crates/jcode-batch-types",
     "crates/jcode-config-types",
     "crates/jcode-core",
+    "crates/jcode-memory-types",
     "crates/jcode-message-types",
     "crates/jcode-plan",
     "crates/jcode-protocol",
@@ -146,6 +147,7 @@ jcode-background-types = { path = "crates/jcode-background-types" }
 jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-config-types = { path = "crates/jcode-config-types" }
 jcode-core = { path = "crates/jcode-core" }
+jcode-memory-types = { path = "crates/jcode-memory-types" }
 jcode-message-types = { path = "crates/jcode-message-types" }
 jcode-plan = { path = "crates/jcode-plan" }
 jcode-protocol = { path = "crates/jcode-protocol" }

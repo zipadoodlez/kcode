@@ -2556,6 +2556,7 @@ dependencies = [
  "jcode-core",
  "jcode-embedding",
  "jcode-gateway-types",
+ "jcode-memory-types",
  "jcode-message-types",
  "jcode-notify-email",
  "jcode-pdf",
@@ -2706,6 +2707,10 @@ version = "0.1.0"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "jcode-memory-types"
+version = "0.1.0"
 
 [[package]]
 name = "jcode-message-types"
