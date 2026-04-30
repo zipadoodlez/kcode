@@ -71,20 +71,37 @@ async fn maybe_run_auth_test_smoke_for_choice(
 pub(crate) async fn run_post_login_validation(
     provider: crate::provider_catalog::LoginProviderDescriptor,
 ) -> Result<()> {
+    run_post_login_validation_inner(provider, true).await
+}
+
+pub(crate) async fn run_post_login_validation_quiet(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+) -> Result<()> {
+    run_post_login_validation_inner(provider, false).await
+}
+
+async fn run_post_login_validation_inner(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+    verbose: bool,
+) -> Result<()> {
     let Some(choice) = super::provider_init::choice_for_login_provider(provider) else {
-        eprintln!(
-            "\nSkipping automatic runtime validation for {}. Auto Import can add multiple providers; run `jcode auth-test --all-configured` to validate them.",
-            provider.display_name
-        );
+        if verbose {
+            eprintln!(
+                "\nSkipping automatic runtime validation for {}. Auto Import can add multiple providers; run `jcode auth-test --all-configured` to validate them.",
+                provider.display_name
+            );
+        }
         return Ok(());
     };
 
     super::provider_init::apply_login_provider_profile_env(provider);
 
-    eprintln!(
-        "\nValidating {} login with live auth/runtime checks...",
-        provider.display_name
-    );
+    if verbose {
+        eprintln!(
+            "\nValidating {} login with live auth/runtime checks...",
+            provider.display_name
+        );
+    }
 
     let report = if let Some(target) = AuthTestTarget::from_provider_choice(&choice) {
         populate_auth_test_target_report(
@@ -115,7 +132,9 @@ pub(crate) async fn run_post_login_validation(
     };
 
     persist_auth_test_report(&report);
-    print_auth_test_reports(std::slice::from_ref(&report));
+    if verbose {
+        print_auth_test_reports(std::slice::from_ref(&report));
+    }
 
     if report.success {
         Ok(())

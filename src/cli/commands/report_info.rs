@@ -1,7 +1,10 @@
 use anyhow::Result;
 use serde::Serialize;
+use std::time::Duration;
 
 use crate::cli::provider_init::{self, ProviderChoice};
+
+const AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Debug, Serialize)]
 struct AuthStatusProviderReport {
@@ -30,13 +33,41 @@ struct AuthStatusReport {
 struct AuthDoctorProviderReport {
     id: String,
     display_name: String,
+    auth_kind: String,
+    recommended: bool,
     status: String,
     method: String,
     health: String,
+    credential_source: String,
+    credential_source_detail: String,
+    expiry_confidence: String,
+    refresh_support: String,
+    validation_method: String,
+    last_refresh: Option<String>,
+    last_refresh_detail: Option<AuthDoctorRefreshDetail>,
     validation: Option<String>,
+    validation_detail: Option<AuthDoctorValidationDetail>,
     validation_result: Option<String>,
+    diagnostics: Vec<String>,
     needs_attention: bool,
     recommended_actions: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthDoctorRefreshDetail {
+    last_attempt_ms: i64,
+    last_success_ms: Option<i64>,
+    last_error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthDoctorValidationDetail {
+    checked_at_ms: i64,
+    success: bool,
+    provider_smoke_ok: Option<bool>,
+    tool_smoke_ok: Option<bool>,
+    stale: bool,
+    summary: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -163,55 +194,74 @@ pub(super) async fn run_auth_doctor_command(
     validate: bool,
     emit_json: bool,
 ) -> Result<()> {
-    let status = crate::auth::AuthStatus::check();
+    let mut status = crate::auth::AuthStatus::check();
     let providers = select_auth_doctor_providers(provider_arg, &status)?;
     let mut reports = Vec::new();
 
     for provider in providers {
+        let state = status.state_for_provider(provider);
+        let validation_result = if validate && state != crate::auth::AuthState::NotConfigured {
+            Some(run_auth_doctor_validation(provider).await)
+        } else {
+            None
+        };
+        if validation_result.is_some() {
+            crate::auth::AuthStatus::invalidate_cache();
+            status = crate::auth::AuthStatus::check();
+        }
         let assessment = status.assessment_for_provider(provider);
-        let mut validation = crate::auth::validation::get(provider.id)
-            .map(|record| crate::auth::validation::format_record_label(&record));
-        let validation_result =
-            if validate && assessment.state != crate::auth::AuthState::NotConfigured {
-                match super::run_post_login_validation(provider).await {
-                    Ok(()) => {
-                        validation = crate::auth::validation::get(provider.id)
-                            .map(|record| crate::auth::validation::format_record_label(&record));
-                        Some("validation passed".to_string())
-                    }
-                    Err(err) => {
-                        validation = crate::auth::validation::get(provider.id)
-                            .map(|record| crate::auth::validation::format_record_label(&record));
-                        Some(err.to_string())
-                    }
-                }
-            } else {
-                None
-            };
+        let validation = assessment
+            .last_validation
+            .as_ref()
+            .map(crate::auth::validation::format_record_label);
+        let validation_detail = assessment
+            .last_validation
+            .as_ref()
+            .map(auth_doctor_validation_detail);
+        let last_refresh = assessment
+            .last_refresh
+            .as_ref()
+            .map(crate::auth::refresh_state::format_record_label);
+        let last_refresh_detail =
+            assessment
+                .last_refresh
+                .as_ref()
+                .map(|record| AuthDoctorRefreshDetail {
+                    last_attempt_ms: record.last_attempt_ms,
+                    last_success_ms: record.last_success_ms,
+                    last_error: record.last_error.clone(),
+                });
         let recommended_actions = crate::auth::doctor::recommended_actions(
             provider,
-            assessment.state,
-            validation.as_deref(),
+            &assessment,
             validation_result.as_deref(),
         );
+        let diagnostics =
+            crate::auth::doctor::diagnostics(provider, &assessment, validation_result.as_deref());
         let method = assessment.method_detail.clone();
         let health = assessment.health_summary();
-        let needs_attention = assessment.state != crate::auth::AuthState::Available
-            || validation_result
-                .as_deref()
-                .is_some_and(|result| result != "validation passed")
-            || validation
-                .as_deref()
-                .is_some_and(|value| value.contains("validation failed"));
+        let needs_attention =
+            crate::auth::doctor::needs_attention(&assessment, validation_result.as_deref());
 
         reports.push(AuthDoctorProviderReport {
             id: provider.id.to_string(),
             display_name: provider.display_name.to_string(),
+            auth_kind: provider.auth_kind.label().to_string(),
+            recommended: provider.recommended,
             status: auth_state_label(assessment.state).to_string(),
             method,
             health,
+            credential_source: assessment.credential_source.label().to_string(),
+            credential_source_detail: assessment.credential_source_detail.clone(),
+            expiry_confidence: assessment.expiry_confidence.label().to_string(),
+            refresh_support: assessment.refresh_support.label().to_string(),
+            validation_method: assessment.validation_method.label().to_string(),
+            last_refresh,
+            last_refresh_detail,
             validation,
+            validation_detail,
             validation_result,
+            diagnostics,
             needs_attention,
             recommended_actions,
         });
@@ -234,9 +284,21 @@ pub(super) async fn run_auth_doctor_command(
             println!();
         }
         println!("{} ({})", provider.display_name, provider.id);
+        println!("auth_kind: {}", provider.auth_kind);
         println!("status: {}", provider.status);
         println!("method: {}", provider.method);
         println!("health: {}", provider.health);
+        println!(
+            "credential_source: {} ({})",
+            provider.credential_source, provider.credential_source_detail
+        );
+        println!("expiry: {}", provider.expiry_confidence);
+        println!("refresh: {}", provider.refresh_support);
+        println!("validation_method: {}", provider.validation_method);
+        println!(
+            "last_refresh: {}",
+            provider.last_refresh.as_deref().unwrap_or("not recorded")
+        );
         println!(
             "validation: {}",
             provider.validation.as_deref().unwrap_or("not validated")
@@ -245,6 +307,12 @@ pub(super) async fn run_auth_doctor_command(
             println!("validation_run: {}", validation_result);
         }
         println!("needs_attention: {}", provider.needs_attention);
+        if !provider.diagnostics.is_empty() {
+            println!("diagnostics:");
+            for diagnostic in &provider.diagnostics {
+                println!("- {}", diagnostic);
+            }
+        }
         if !provider.recommended_actions.is_empty() {
             println!("next_steps:");
             for action in &provider.recommended_actions {
@@ -254,6 +322,37 @@ pub(super) async fn run_auth_doctor_command(
     }
 
     Ok(())
+}
+
+async fn run_auth_doctor_validation(
+    provider: crate::provider_catalog::LoginProviderDescriptor,
+) -> String {
+    match tokio::time::timeout(
+        Duration::from_secs(AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS),
+        super::super::auth_test::run_post_login_validation_quiet(provider),
+    )
+    .await
+    {
+        Ok(Ok(())) => "validation passed".to_string(),
+        Ok(Err(err)) => err.to_string(),
+        Err(_) => format!(
+            "validation timed out after {}s; run `jcode auth-test --provider {}` for detailed output",
+            AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS, provider.id
+        ),
+    }
+}
+
+fn auth_doctor_validation_detail(
+    record: &crate::auth::validation::ProviderValidationRecord,
+) -> AuthDoctorValidationDetail {
+    AuthDoctorValidationDetail {
+        checked_at_ms: record.checked_at_ms,
+        success: record.success,
+        provider_smoke_ok: record.provider_smoke_ok,
+        tool_smoke_ok: record.tool_smoke_ok,
+        stale: crate::auth::doctor::validation_is_stale(record.checked_at_ms),
+        summary: record.summary.clone(),
+    }
 }
 
 pub(super) fn run_provider_list_command(emit_json: bool) -> Result<()> {
