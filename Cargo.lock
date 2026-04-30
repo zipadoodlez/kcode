@@ -2817,6 +2817,7 @@ dependencies = [
 name = "jcode-session-types"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "jcode-message-types",
  "serde",
 ]
