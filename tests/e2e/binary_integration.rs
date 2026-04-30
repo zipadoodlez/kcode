@@ -144,6 +144,8 @@ async fn binary_integration_reload_handoff() -> Result<()> {
         .env("JCODE_RUNTIME_DIR", &runtime_dir)
         .env("JCODE_INSTALL_DIR", &install_dir)
         .env("JCODE_DEBUG_CONTROL", "1")
+        .env("JCODE_TEMP_SERVER", "1")
+        .env("JCODE_SERVER_OWNER_PID", std::process::id().to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::from(stderr_file))

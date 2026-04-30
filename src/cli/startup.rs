@@ -132,7 +132,10 @@ fn spawn_background_update_check(args: &Args) {
 fn should_spawn_background_update_check(args: &Args) -> bool {
     !args.quiet
         && !args.no_update
-        && !matches!(args.command, Some(Command::Update) | Some(Command::Serve))
+        && !matches!(
+            args.command,
+            Some(Command::Update) | Some(Command::Serve { .. })
+        )
         && args.resume.is_none()
 }
 

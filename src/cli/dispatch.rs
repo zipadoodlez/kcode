@@ -34,9 +34,16 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     }
 
     match args.command {
-        Some(Command::Serve) => {
+        Some(Command::Serve {
+            temporary_server,
+            owner_pid,
+            temp_idle_timeout_secs,
+        }) => {
             let serve_start = Instant::now();
             crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
+            if temporary_server {
+                server::configure_temporary_server(owner_pid, temp_idle_timeout_secs);
+            }
             let provider_start = Instant::now();
             let provider =
                 provider_init::init_provider(&args.provider, args.model.as_deref()).await?;

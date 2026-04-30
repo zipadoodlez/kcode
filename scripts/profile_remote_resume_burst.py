@@ -330,6 +330,8 @@ def main() -> None:
     env["JCODE_SOCKET"] = str(run / "jcode.sock")
     env["JCODE_NO_TELEMETRY"] = "1"
     env["JCODE_DEBUG_CONTROL"] = "1"
+    env["JCODE_TEMP_SERVER"] = "1"
+    env["JCODE_SERVER_OWNER_PID"] = str(os.getpid())
     debug_socket = run / "jcode-debug.sock"
 
     server = subprocess.Popen(
