@@ -229,7 +229,10 @@ pub(crate) fn resolve_auth_test_targets(
     all_configured: bool,
 ) -> Result<Vec<ResolvedAuthTestTarget>> {
     if all_configured || matches!(choice, super::provider_init::ProviderChoice::Auto) {
-        let status = crate::auth::AuthStatus::check();
+        // Auth-test discovery must not run slow or blocking provider-global probes.
+        // Generic OpenAI-compatible providers only need local env/config detection,
+        // and detailed providers perform their own provider-specific checks later.
+        let status = crate::auth::AuthStatus::check_fast();
         let targets = configured_auth_test_targets(&status);
         if targets.is_empty() {
             anyhow::bail!(

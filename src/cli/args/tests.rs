@@ -109,6 +109,30 @@ fn login_openai_compatible_scriptable_flags_parse() {
 }
 
 #[test]
+fn login_openai_compatible_accepts_global_provider_and_model_after_subcommand() {
+    let args = Args::try_parse_from([
+        "jcode",
+        "login",
+        "--provider",
+        "openai-compatible",
+        "--api-base",
+        "https://api.deepseek.com",
+        "--model",
+        "deepseek-v4-flash",
+    ])
+    .unwrap();
+
+    assert_eq!(args.provider, ProviderChoice::OpenaiCompatible);
+    assert_eq!(args.model.as_deref(), Some("deepseek-v4-flash"));
+    match args.command {
+        Some(Command::Login { api_base, .. }) => {
+            assert_eq!(api_base.as_deref(), Some("https://api.deepseek.com"));
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
 fn login_scriptable_flags_parse() {
     let args = Args::try_parse_from(["jcode", "login", "--print-auth-url", "--json"]).unwrap();
     match args.command {

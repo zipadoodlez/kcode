@@ -38,7 +38,10 @@ fn probe_generic_provider_auth(
     provider: crate::provider_catalog::LoginProviderDescriptor,
     report: &mut AuthTestProviderReport,
 ) {
-    let status = crate::auth::AuthStatus::check();
+    // Keep generic provider probes provider-local. A DeepSeek/Z.AI/OpenRouter
+    // auth-test should never be delayed or wedged by an unrelated Cursor/Gemini
+    // external auth probe.
+    let status = crate::auth::AuthStatus::check_fast();
     let state = status.state_for_provider(provider);
     let detail = status.method_detail_for_provider(provider);
     report.push_step(
