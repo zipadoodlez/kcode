@@ -28,6 +28,7 @@ members = [
     "crates/jcode-provider-openrouter",
     "crates/jcode-provider-gemini",
     "crates/jcode-tui-markdown",
+    "crates/jcode-usage-types",
     "crates/jcode-tui-core",
     "crates/jcode-tui-mermaid",
     "crates/jcode-tui-render",
@@ -119,6 +120,7 @@ jcode-tui-mermaid = { path = "crates/jcode-tui-mermaid" }
 jcode-tui-render = { path = "crates/jcode-tui-render" }
 jcode-terminal-launch = { path = "crates/jcode-terminal-launch" }
 jcode-tui-workspace = { path = "crates/jcode-tui-workspace" }
+jcode-usage-types = { path = "crates/jcode-usage-types" }
 
 # Streaming
 tokio-stream = "0.1"

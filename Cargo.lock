@@ -2572,6 +2572,7 @@ dependencies = [
  "jcode-tui-mermaid",
  "jcode-tui-render",
  "jcode-tui-workspace",
+ "jcode-usage-types",
  "libc",
  "open",
  "proctitle",
@@ -2890,6 +2891,13 @@ name = "jcode-tui-workspace"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+]
+
+[[package]]
+name = "jcode-usage-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
