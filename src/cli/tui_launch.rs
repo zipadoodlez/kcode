@@ -601,6 +601,28 @@ fn find_wezterm_gui_binary() -> Option<String> {
 }
 
 #[cfg(not(unix))]
+fn resume_terminal_candidates_windows() -> Vec<String> {
+    std::env::var("JCODE_RESUME_TERMINAL")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .filter(|candidates| !candidates.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                "wezterm".to_string(),
+                "wt".to_string(),
+                "alacritty".to_string(),
+            ]
+        })
+}
+
+#[cfg(not(unix))]
 pub fn spawn_resume_in_new_terminal(
     exe: &std::path::Path,
     session_id: &str,
