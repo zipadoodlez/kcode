@@ -2549,6 +2549,7 @@ dependencies = [
  "jcode-agent-runtime",
  "jcode-auth-types",
  "jcode-azure-auth",
+ "jcode-background-types",
  "jcode-batch-types",
  "jcode-config-types",
  "jcode-core",
@@ -2624,6 +2625,13 @@ dependencies = [
  "anyhow",
  "azure_core",
  "azure_identity",
+]
+
+[[package]]
+name = "jcode-background-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

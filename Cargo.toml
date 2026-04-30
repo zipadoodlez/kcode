@@ -11,6 +11,7 @@ members = [
     "crates/jcode-auth-types",
     "crates/jcode-embedding",
     "crates/jcode-pdf",
+    "crates/jcode-background-types",
     "crates/jcode-batch-types",
     "crates/jcode-config-types",
     "crates/jcode-core",
@@ -134,6 +135,7 @@ unicode-width = "0.2"   # Unicode character display width
 
 # PDF parsing (behind feature flag)
 jcode-pdf = { path = "crates/jcode-pdf", optional = true }
+jcode-background-types = { path = "crates/jcode-background-types" }
 jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-config-types = { path = "crates/jcode-config-types" }
 jcode-core = { path = "crates/jcode-core" }
