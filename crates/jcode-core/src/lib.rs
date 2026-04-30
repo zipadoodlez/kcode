@@ -1,4 +1,5 @@
 pub mod catchup_types;
+pub mod copilot_usage_types;
 pub mod env;
 pub mod goal_types;
 pub mod id;
