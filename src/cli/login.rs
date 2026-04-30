@@ -184,6 +184,7 @@ pub async fn run_login(
                 && imported > 0
             {
                 eprintln!("\nImported {} existing auth source(s).", imported);
+                notify_running_server_auth_changed_best_effort().await;
                 return Ok(());
             }
             eprintln!("Choose a provider to log in:");
