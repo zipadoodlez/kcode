@@ -64,6 +64,24 @@ integrate work with optional git worktrees.
   shutdown, or mark complete).
 - Lifecycle updates drive the swarm info widget status indicators.
 
+## Completion Report Policy
+
+- Spawned or assigned agents owned by a coordinator (`report_back_to_session_id`) must
+  finish each prompted work turn with a useful final assistant response. The server
+  automatically forwards that final response to the owning coordinator as the
+  completion report.
+- A completion report should include outcome/status, changes or findings, validation
+  performed, and blockers or follow-ups. It should not be just `done`, a lifecycle
+  status change, or a tool transcript.
+- Reports are required for spawn prompts, assigned plan tasks, and explicit
+  start/wake/resume/retry task-control runs. If a worker fails before producing a
+  final response, the coordinator still receives the failure lifecycle notification.
+- Reports are not required for idle spawn-without-prompt sessions, user-created peers
+  that have no report-back owner, ordinary status broadcasts while work is still
+  running, or intentional cleanup/stop of an idle worker.
+- Agents should avoid sending a separate final-report DM unless they need interactive
+  coordination before finishing; the automatic forwarded report is the default path.
+
 ## User Interaction
 
 - The user primarily interacts with the coordinator.
