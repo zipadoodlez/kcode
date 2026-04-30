@@ -343,7 +343,13 @@ pub fn hot_update(session_id: &str) -> Result<()> {
             ));
             update::print_centered(&format!("Downloading {}...", release.tag_name));
 
-            match update::download_and_install_blocking(&release) {
+            match update::download_and_install_blocking_with_progress(&release, |progress| {
+                update::print_centered(&format!(
+                    "{} {}",
+                    release.tag_name,
+                    update::format_download_progress_bar(progress)
+                ));
+            }) {
                 Ok(path) => {
                     update::print_centered(&format!("✓ Installed {}", release.tag_name));
 
@@ -484,7 +490,14 @@ pub fn run_update() -> Result<()> {
                     env!("JCODE_VERSION"),
                     release.tag_name
                 ));
-                let _path = update::download_and_install_blocking(&release)?;
+                let _path =
+                    update::download_and_install_blocking_with_progress(&release, |progress| {
+                        update::print_centered(&format!(
+                            "{} {}",
+                            release.tag_name,
+                            update::format_download_progress_bar(progress)
+                        ));
+                    })?;
                 update::print_centered(&format!("✅ Updated to {}", release.tag_name));
                 update::print_centered("Restart jcode to use the new version.");
             }
