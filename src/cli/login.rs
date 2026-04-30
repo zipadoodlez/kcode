@@ -23,6 +23,10 @@ pub struct LoginOptions {
     pub json: bool,
     pub complete: bool,
     pub google_access_tier: Option<auth::google::GmailAccessTier>,
+    pub openai_compatible_api_base: Option<String>,
+    pub openai_compatible_api_key: Option<String>,
+    pub openai_compatible_api_key_env: Option<String>,
+    pub openai_compatible_default_model: Option<String>,
 }
 
 impl LoginOptions {
@@ -278,7 +282,8 @@ pub async fn run_login_provider(
             }
             LoginProviderTarget::Azure => login_azure_flow().map(|_| LoginFlowOutcome::Completed),
             LoginProviderTarget::OpenAiCompatible(profile) => {
-                login_openai_compatible_flow(&profile).map(|_| LoginFlowOutcome::Completed)
+                login_openai_compatible_flow(&profile, &options)
+                    .map(|_| LoginFlowOutcome::Completed)
             }
             LoginProviderTarget::Cursor => login_cursor_flow().map(|_| LoginFlowOutcome::Completed),
             LoginProviderTarget::Copilot => {
@@ -333,8 +338,58 @@ pub async fn run_login_provider(
         ));
     }
     auth::AuthStatus::invalidate_cache();
+    maybe_persist_default_provider_after_login(provider, &options);
     notify_running_server_auth_changed_best_effort().await;
     Ok(())
+}
+
+fn maybe_persist_default_provider_after_login(
+    provider: LoginProviderDescriptor,
+    options: &LoginOptions,
+) {
+    let cfg = crate::config::Config::load();
+    if cfg.provider.default_provider.is_some() {
+        return;
+    }
+
+    let provider_id = match provider.target {
+        LoginProviderTarget::Claude => Some("claude"),
+        LoginProviderTarget::OpenAi => Some("openai"),
+        LoginProviderTarget::OpenRouter => Some("openrouter"),
+        LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
+        LoginProviderTarget::Cursor => Some("cursor"),
+        LoginProviderTarget::Copilot => Some("copilot"),
+        LoginProviderTarget::Gemini => Some("gemini"),
+        LoginProviderTarget::Antigravity => Some("antigravity"),
+        _ => None,
+    };
+    let Some(provider_id) = provider_id else {
+        return;
+    };
+
+    let suggested_model = match provider.target {
+        LoginProviderTarget::OpenAiCompatible(profile) => options
+            .openai_compatible_default_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+            .or_else(|| resolve_openai_compatible_profile(profile).default_model),
+        _ => None,
+    };
+
+    let model_to_save = cfg
+        .provider
+        .default_model
+        .as_deref()
+        .or(suggested_model.as_deref());
+
+    if let Err(err) = crate::config::Config::set_default_model(model_to_save, Some(provider_id)) {
+        crate::logging::warn(&format!(
+            "Failed to save {} as the default provider after login: {}",
+            provider_id, err
+        ));
+    }
 }
 
 /// Best-effort: tell a running jcode server that on-disk auth has changed so it
@@ -389,10 +444,7 @@ fn login_jcode_flow() -> Result<()> {
     }
 
     eprintln!("\nSuccessfully saved Jcode subscription credentials!");
-    eprintln!(
-        "Stored at ~/.config/jcode/{}",
-        crate::subscription_catalog::JCODE_ENV_FILE
-    );
+    eprintln!("Stored at {}", file_path.display());
     eprintln!(
         "Curated models available now: {}",
         crate::subscription_catalog::curated_models()
@@ -468,7 +520,12 @@ fn login_openrouter_flow() -> Result<()> {
 
     save_named_api_key("openrouter.env", "OPENROUTER_API_KEY", &key)?;
     eprintln!("\nSuccessfully saved OpenRouter API key!");
-    eprintln!("Stored at ~/.config/jcode/openrouter.env");
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join("openrouter.env")
+            .display()
+    );
     crate::telemetry::record_auth_success("openrouter", "api_key");
     Ok(())
 }
@@ -539,7 +596,12 @@ fn login_azure_flow() -> Result<()> {
     azure::apply_runtime_env()?;
 
     eprintln!("\nSuccessfully saved Azure OpenAI configuration!");
-    eprintln!("Stored at ~/.config/jcode/{}", azure::ENV_FILE);
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join(azure::ENV_FILE)
+            .display()
+    );
     eprintln!("Base URL: {}", azure::load_endpoint().unwrap_or_default());
     if let Some(model) = azure::load_model() {
         eprintln!("Default deployment/model: {}", model);
@@ -553,7 +615,10 @@ fn login_azure_flow() -> Result<()> {
     Ok(())
 }
 
-fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()> {
+fn login_openai_compatible_flow(
+    profile: &OpenAiCompatibleProfile,
+    options: &LoginOptions,
+) -> Result<()> {
     let is_custom_profile = profile.id == crate::provider_catalog::OPENAI_COMPAT_PROFILE.id;
     let mut resolved = resolve_openai_compatible_profile(*profile);
 
@@ -564,7 +629,10 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
         eprintln!(
             "You can point this at a hosted OpenAI-compatible API or a local server such as LM Studio or Ollama."
         );
-        let api_base_input = read_line_trimmed(&format!("API base URL [{}]: ", resolved.api_base))?;
+        let api_base_input = match options.openai_compatible_api_base.as_deref() {
+            Some(value) => value.trim().to_string(),
+            None => read_line_trimmed(&format!("API base URL [{}]: ", resolved.api_base))?,
+        };
         if !api_base_input.is_empty() {
             let normalized = crate::provider_catalog::normalize_api_base(&api_base_input)
                 .ok_or_else(|| {
@@ -579,16 +647,58 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
             )?;
             resolved = resolve_openai_compatible_profile(*profile);
         }
+
+        if let Some(api_key_env) = options
+            .openai_compatible_api_key_env
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if !crate::provider_catalog::is_safe_env_key_name(api_key_env) {
+                anyhow::bail!("Invalid API key environment variable name: {}", api_key_env);
+            }
+            crate::provider_catalog::save_env_value_to_env_file(
+                "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+                crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
+                Some(api_key_env),
+            )?;
+            resolved = resolve_openai_compatible_profile(*profile);
+        }
+
+        let default_model_input = match options.openai_compatible_default_model.as_deref() {
+            Some(value) => value.trim().to_string(),
+            None if !io::stdin().is_terminal() => String::new(),
+            None => read_line_trimmed("Default model name (optional, press Enter to skip): ")?,
+        };
+        if !default_model_input.is_empty() {
+            crate::provider_catalog::save_env_value_to_env_file(
+                "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+                crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
+                Some(&default_model_input),
+            )?;
+            resolved = resolve_openai_compatible_profile(*profile);
+        }
         eprintln!();
+    } else if let Some(model) = options
+        .openai_compatible_default_model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        resolved.default_model = Some(model.to_string());
     }
 
     eprintln!("Endpoint: {}", resolved.api_base);
     let auth_method = if resolved.requires_api_key {
         eprintln!("API key env variable: {}\n", resolved.api_key_env);
-        eprint!("Paste your {} API key: ", resolved.display_name);
-        io::stdout().flush()?;
-
-        let key = read_secret_line()?;
+        let key = match options.openai_compatible_api_key.as_deref() {
+            Some(value) => value.trim().to_string(),
+            None => {
+                eprint!("Paste your {} API key: ", resolved.display_name);
+                io::stdout().flush()?;
+                read_secret_line()?
+            }
+        };
         if key.is_empty() {
             anyhow::bail!("No API key provided.");
         }
@@ -606,10 +716,14 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
         eprintln!(
             "An API key is optional here. Press Enter to skip if your local server does not require one.\n"
         );
-        eprint!("Optional {} API key: ", resolved.display_name);
-        io::stdout().flush()?;
-
-        let key = read_secret_line()?;
+        let key = match options.openai_compatible_api_key.as_deref() {
+            Some(value) => value.trim().to_string(),
+            None => {
+                eprint!("Optional {} API key: ", resolved.display_name);
+                io::stdout().flush()?;
+                read_secret_line()?
+            }
+        };
         crate::provider_catalog::save_env_value_to_env_file(
             OPENAI_COMPAT_LOCAL_ENABLED_ENV,
             &resolved.env_file,
@@ -637,7 +751,12 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
         }
     };
 
-    eprintln!("Stored at ~/.config/jcode/{}", resolved.env_file);
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join(&resolved.env_file)
+            .display()
+    );
     if let Some(default_model) = resolved.default_model {
         eprintln!("Default model hint: {}", default_model);
     }
@@ -648,26 +767,47 @@ fn login_openai_compatible_flow(profile: &OpenAiCompatibleProfile) -> Result<()>
 pub fn read_secret_line() -> Result<String> {
     use crossterm::terminal;
 
+    if !io::stdin().is_terminal() {
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        return Ok(input.trim().to_string());
+    }
+
     let was_raw = crossterm::terminal::is_raw_mode_enabled().unwrap_or(false);
     if !was_raw {
-        terminal::enable_raw_mode()?;
+        if terminal::enable_raw_mode().is_err() {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            return Ok(input.trim().to_string());
+        }
     }
+
+    struct RawModeGuard(bool);
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            if self.0 {
+                let _ = crossterm::terminal::disable_raw_mode();
+            }
+        }
+    }
+
+    let _guard = RawModeGuard(!was_raw);
 
     let mut input = String::new();
     loop {
         if let crossterm::event::Event::Key(key_event) =
             crossterm::event::read().context("Failed to read key input")?
         {
-            use crossterm::event::{KeyCode, KeyModifiers};
+            use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+            if !matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                continue;
+            }
             match key_event.code {
                 KeyCode::Enter => {
                     eprintln!();
                     break;
                 }
                 KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if !was_raw {
-                        terminal::disable_raw_mode()?;
-                    }
                     anyhow::bail!("Cancelled.");
                 }
                 KeyCode::Backspace => {
@@ -679,10 +819,6 @@ pub fn read_secret_line() -> Result<String> {
                 _ => {}
             }
         }
-    }
-
-    if !was_raw {
-        terminal::disable_raw_mode()?;
     }
 
     Ok(input.trim().to_string())
@@ -763,7 +899,12 @@ fn login_cursor_flow() -> Result<()> {
     save_named_api_key("cursor.env", "CURSOR_API_KEY", &key)?;
     crate::auth::AuthStatus::invalidate_cache();
     eprintln!("\nSuccessfully saved Cursor API key!");
-    eprintln!("Stored at ~/.config/jcode/cursor.env");
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join("cursor.env")
+            .display()
+    );
     eprintln!("jcode will pass it to `cursor-agent` automatically.");
     if !crate::auth::cursor::has_cursor_agent_cli() {
         eprintln!("Install Cursor Agent to use the Cursor provider:");

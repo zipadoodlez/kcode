@@ -153,6 +153,18 @@ pub(crate) enum Command {
         /// Gmail/Google access tier for non-interactive flows. Defaults to full.
         #[arg(long, value_enum)]
         google_access_tier: Option<GoogleAccessTierArg>,
+
+        /// OpenAI-compatible API base URL. Used with --provider openai-compatible/custom profiles.
+        #[arg(long)]
+        api_base: Option<String>,
+
+        /// OpenAI-compatible API key. If omitted, jcode prompts securely when needed.
+        #[arg(long)]
+        api_key: Option<String>,
+
+        /// Environment variable name to store/use for an OpenAI-compatible API key.
+        #[arg(long)]
+        api_key_env: Option<String>,
     },
 
     /// Run in simple REPL mode (no TUI)

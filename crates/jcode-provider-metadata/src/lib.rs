@@ -161,7 +161,7 @@ pub const OPENCODE_GO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile
 pub const ZAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "zai",
     display_name: "Z.AI",
-    api_base: "https://api.z.ai/api/paas/v4",
+    api_base: "https://api.z.ai/api/coding/paas/v4",
     api_key_env: "ZHIPU_API_KEY",
     env_file: "zai.env",
     setup_url: "https://docs.z.ai/guides/develop/openai/introduction",
@@ -219,8 +219,8 @@ pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     api_base: "https://api.deepseek.com",
     api_key_env: "DEEPSEEK_API_KEY",
     env_file: "deepseek.env",
-    setup_url: "https://opencode.ai/docs/providers#deepseek",
-    default_model: Some("deepseek-chat"),
+    setup_url: "https://api-docs.deepseek.com/",
+    default_model: Some("deepseek-v4-flash"),
     requires_api_key: true,
 };
 
@@ -439,7 +439,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     api_base: "https://api.openai.com/v1",
     api_key_env: "OPENAI_COMPAT_API_KEY",
     env_file: "openai-compatible.env",
-    setup_url: "https://opencode.ai/docs/providers#custom-providers",
+    setup_url: "https://github.com/1jehuang/jcode#openai-compatible-providers",
     default_model: None,
     requires_api_key: true,
 };

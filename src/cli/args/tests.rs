@@ -52,6 +52,9 @@ fn login_no_browser_flag_parses() {
             json,
             complete,
             google_access_tier,
+            api_base,
+            api_key,
+            api_key_env,
         }) => {
             assert!(account.is_none());
             assert!(no_browser);
@@ -61,6 +64,9 @@ fn login_no_browser_flag_parses() {
             assert!(!json);
             assert!(!complete);
             assert!(google_access_tier.is_none());
+            assert!(api_base.is_none());
+            assert!(api_key.is_none());
+            assert!(api_key_env.is_none());
         }
         other => panic!("unexpected command: {:?}", other),
     }
@@ -68,6 +74,36 @@ fn login_no_browser_flag_parses() {
     let args = Args::try_parse_from(["jcode", "login", "--headless"]).unwrap();
     match args.command {
         Some(Command::Login { no_browser, .. }) => assert!(no_browser),
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
+fn login_openai_compatible_scriptable_flags_parse() {
+    let args = Args::try_parse_from([
+        "jcode",
+        "--provider",
+        "openai-compatible",
+        "--model",
+        "deepseek-v4-flash",
+        "login",
+        "--api-base",
+        "https://api.deepseek.com",
+        "--api-key-env",
+        "DEEPSEEK_API_KEY",
+    ])
+    .unwrap();
+    assert_eq!(args.provider, ProviderChoice::OpenaiCompatible);
+    assert_eq!(args.model.as_deref(), Some("deepseek-v4-flash"));
+    match args.command {
+        Some(Command::Login {
+            api_base,
+            api_key_env,
+            ..
+        }) => {
+            assert_eq!(api_base.as_deref(), Some("https://api.deepseek.com"));
+            assert_eq!(api_key_env.as_deref(), Some("DEEPSEEK_API_KEY"));
+        }
         other => panic!("unexpected command: {:?}", other),
     }
 }

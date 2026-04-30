@@ -51,6 +51,11 @@ async fn discover_openai_compatible_validation_model(
 ) -> Result<Option<String>> {
     let url = format!("{}/models", profile.api_base.trim_end_matches('/'));
     let mut request = crate::provider::shared_http_client().get(&url);
+    if matches!(profile.id.as_str(), "kimi" | "alibaba-coding-plan" | "zai") {
+        request = request
+            .header("User-Agent", "claude-cli/1.0.0")
+            .header("x-app", "cli");
+    }
     if let Some(api_key) = crate::provider_catalog::load_api_key_from_env_or_config(
         &profile.api_key_env,
         &profile.env_file,
