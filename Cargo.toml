@@ -8,6 +8,7 @@ edition = "2024"
 members = [
     ".",
     "crates/jcode-agent-runtime",
+    "crates/jcode-ambient-types",
     "crates/jcode-auth-types",
     "crates/jcode-embedding",
     "crates/jcode-gateway-types",
@@ -111,6 +112,7 @@ open = "5"               # Open URLs in browser
 jcode-auth-types = { path = "crates/jcode-auth-types" }
 jcode-azure-auth = { path = "crates/jcode-azure-auth" }
 jcode-agent-runtime = { path = "crates/jcode-agent-runtime" }
+jcode-ambient-types = { path = "crates/jcode-ambient-types" }
 jcode-notify-email = { path = "crates/jcode-notify-email" }
 jcode-provider-metadata = { path = "crates/jcode-provider-metadata" }
 jcode-provider-core = { path = "crates/jcode-provider-core" }

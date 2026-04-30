@@ -2547,6 +2547,7 @@ dependencies = [
  "ignore",
  "image",
  "jcode-agent-runtime",
+ "jcode-ambient-types",
  "jcode-auth-types",
  "jcode-azure-auth",
  "jcode-background-types",
@@ -2611,6 +2612,14 @@ version = "0.1.0"
 dependencies = [
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "jcode-ambient-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
 ]
 
 [[package]]

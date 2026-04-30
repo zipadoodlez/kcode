@@ -1,4 +1,3 @@
-pub mod ambient_usage_types;
 pub mod catchup_types;
 pub mod env;
 pub mod goal_types;
