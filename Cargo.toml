@@ -8,6 +8,7 @@ edition = "2024"
 members = [
     ".",
     "crates/jcode-agent-runtime",
+    "crates/jcode-auth-types",
     "crates/jcode-embedding",
     "crates/jcode-pdf",
     "crates/jcode-batch-types",
@@ -103,6 +104,7 @@ rand = "0.9.3"
 hex = "0.4"
 url = "2"
 open = "5"               # Open URLs in browser
+jcode-auth-types = { path = "crates/jcode-auth-types" }
 jcode-azure-auth = { path = "crates/jcode-azure-auth" }
 jcode-agent-runtime = { path = "crates/jcode-agent-runtime" }
 jcode-notify-email = { path = "crates/jcode-notify-email" }
