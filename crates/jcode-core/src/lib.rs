@@ -1,3 +1,4 @@
+pub mod ambient_usage_types;
 pub mod catchup_types;
 pub mod copilot_usage_types;
 pub mod env;
