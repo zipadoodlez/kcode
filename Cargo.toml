@@ -33,6 +33,7 @@ members = [
     "crates/jcode-usage-types",
     "crates/jcode-tui-core",
     "crates/jcode-tui-mermaid",
+    "crates/jcode-task-types",
     "crates/jcode-tui-render",
     "crates/jcode-terminal-launch",
     "crates/jcode-tui-workspace",
@@ -150,6 +151,7 @@ jcode-plan = { path = "crates/jcode-plan" }
 jcode-protocol = { path = "crates/jcode-protocol" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 jcode-session-types = { path = "crates/jcode-session-types" }
+jcode-task-types = { path = "crates/jcode-task-types" }
 jcode-side-panel-types = { path = "crates/jcode-side-panel-types" }
 
 # Archive extraction (for auto-update)
