@@ -1008,6 +1008,10 @@ pub enum ServerEvent {
     /// Available models updated (pushed after auth changes)
     #[serde(rename = "available_models_updated")]
     AvailableModelsUpdated {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_model: Option<String>,
         available_models: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         available_model_routes: Vec<jcode_provider_core::ModelRoute>,
