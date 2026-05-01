@@ -64,7 +64,8 @@ docker run --rm \
 	    source /root/.cargo/env
 
 	    export CARGO_TARGET_DIR=/work/target/linux-compat
-	    cargo build --profile "$JCODE_COMPAT_PROFILE" --target "$JCODE_COMPAT_TARGET"
+	    export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+	    cargo build --profile "$JCODE_COMPAT_PROFILE" --target "$JCODE_COMPAT_TARGET" -p jcode --bin jcode
 
 	    cp "$CARGO_TARGET_DIR/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'"
 	    chmod +x "/out/'"$artifact"'"

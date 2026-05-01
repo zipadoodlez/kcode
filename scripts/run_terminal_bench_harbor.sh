@@ -44,7 +44,17 @@ export JCODE_OPENAI_REASONING_EFFORT=${JCODE_OPENAI_REASONING_EFFORT:-high}
 export JCODE_OPENAI_SERVICE_TIER=${JCODE_OPENAI_SERVICE_TIER:-priority}
 export JCODE_NO_TELEMETRY=${JCODE_NO_TELEMETRY:-1}
 
-cmd=(uvx --offline harbor run)
+HARBOR_BIN=${JCODE_HARBOR_BIN:-}
+if [[ -z "$HARBOR_BIN" ]]; then
+  CACHED_HARBOR="$HOME/.cache/uv/archive-v0/qtLT-I4hA5Q9ne5Zq-5cn/bin/harbor"
+  if [[ -x "$CACHED_HARBOR" ]]; then
+    HARBOR_BIN="$CACHED_HARBOR"
+  else
+    HARBOR_BIN="uvx --offline harbor"
+  fi
+fi
+
+cmd=($HARBOR_BIN run)
 if [[ $have_task_source -eq 0 ]]; then
   cmd+=(--path "$DEFAULT_PATH")
 fi

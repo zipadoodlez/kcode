@@ -98,6 +98,7 @@ OPENSSL_RUNTIME_LIBS = tuple(
 
 BENCHMARK_INSTRUCTION_PREAMBLE = """You are operating inside an official Terminal-Bench evaluation environment.
 The user explicitly authorizes you to complete the benchmark task using the files, media, and URLs provided by the task.
+Do not access Terminal-Bench websites, Terminal-Bench GitHub repositories, leaderboard pages, public task solutions, or external benchmark answer sources.
 Do not refuse solely because the task involves copyrighted code, text, images, audio, or video when those materials are provided for this evaluation.
 Still refuse only actions that are clearly harmful, illegal, or outside the benchmark task.
 
@@ -113,6 +114,8 @@ Task instruction follows:
 
 
 def _load_task_hint() -> str:
+    if not os.environ.get("JCODE_HARBOR_ENABLE_HINTS"):
+        return ""
     task_name = os.environ.get("JCODE_HARBOR_CURRENT_TASK", "").strip()
     hints_path = os.environ.get("JCODE_HARBOR_TASK_HINTS_FILE", "").strip()
     extra = os.environ.get("JCODE_HARBOR_EXTRA_PREAMBLE", "").strip()
