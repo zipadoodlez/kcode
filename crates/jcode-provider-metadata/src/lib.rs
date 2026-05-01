@@ -425,7 +425,7 @@ pub const CEREBRAS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
 pub const ALIBABA_CODING_PLAN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "alibaba-coding-plan",
     display_name: "Alibaba Cloud Coding Plan",
-    api_base: "https://coding.dashscope.aliyuncs.com/v1",
+    api_base: "https://coding-intl.dashscope.aliyuncs.com/v1",
     api_key_env: "BAILIAN_CODING_PLAN_API_KEY",
     env_file: "alibaba-coding-plan.env",
     setup_url: "https://www.alibabacloud.com/help/en/model-studio/coding-plan-quickstart",
@@ -1210,6 +1210,14 @@ mod tests {
     fn normalize_api_base_rejects_public_http_hosts() {
         assert_eq!(normalize_api_base("http://example.com/v1"), None);
         assert_eq!(normalize_api_base("http://8.8.8.8/v1"), None);
+    }
+
+    #[test]
+    fn alibaba_coding_plan_uses_current_international_endpoint() {
+        assert_eq!(
+            ALIBABA_CODING_PLAN_PROFILE.api_base,
+            "https://coding-intl.dashscope.aliyuncs.com/v1"
+        );
     }
 
     #[test]
