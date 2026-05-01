@@ -383,7 +383,7 @@ pub(super) async fn run_provider_current_command(
     let report = ProviderCurrentReport {
         requested_provider: choice.as_arg_value().to_string(),
         requested_model: model.map(str::to_string),
-        resolved_provider: provider.name().to_string(),
+        resolved_provider: crate::provider_catalog::runtime_provider_display_name(provider.name()),
         selected_model: provider.model(),
     };
 

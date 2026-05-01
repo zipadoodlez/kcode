@@ -998,14 +998,17 @@ pub async fn run_model_command(
 
     if emit_json {
         let report = ModelListReport {
-            provider: provider.name().to_string(),
+            provider: crate::provider_catalog::runtime_provider_display_name(provider.name()),
             selected_model: provider.model(),
             models,
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         if verbose {
-            println!("Provider: {}", provider.name());
+            println!(
+                "Provider: {}",
+                crate::provider_catalog::runtime_provider_display_name(provider.name())
+            );
             println!("Selected model: {}", provider.model());
             println!("Available models: {}", models.len());
             println!();
