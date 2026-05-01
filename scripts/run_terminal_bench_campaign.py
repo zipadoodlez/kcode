@@ -327,6 +327,16 @@ def finalize_task_result(
             )
             return True, task_result
 
+        task_result["status"] = "completed_without_numeric_reward"
+        append_result(campaign_dir, task_result)
+        if continue_on_failure:
+            print(
+                f"Task {task} produced {len(trial_results)} trial results but no numeric rewards; continuing.",
+                file=sys.stderr,
+            )
+            return False, task_result
+        return False, task_result
+
     if process_return_code != 0 or not job_result_path.exists():
         record = {
             "task_name": task,
