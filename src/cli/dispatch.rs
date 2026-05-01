@@ -160,6 +160,43 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 commands::run_provider_current_command(&args.provider, args.model.as_deref(), json)
                     .await?;
             }
+            ProviderCommand::Add {
+                name,
+                base_url,
+                model,
+                context_window,
+                api_key_env,
+                api_key,
+                api_key_stdin,
+                no_api_key,
+                auth,
+                auth_header,
+                env_file,
+                set_default,
+                overwrite,
+                provider_routing,
+                model_catalog,
+                json,
+            } => {
+                commands::run_provider_add_command(commands::ProviderAddOptions {
+                    name,
+                    base_url,
+                    model,
+                    context_window,
+                    api_key_env,
+                    api_key,
+                    api_key_stdin,
+                    no_api_key,
+                    auth,
+                    auth_header,
+                    env_file,
+                    set_default,
+                    overwrite,
+                    provider_routing,
+                    model_catalog,
+                    json,
+                })?;
+            }
         },
         Some(Command::Memory(subcmd)) => {
             commands::run_memory_command(map_memory_subcommand(subcmd))?;

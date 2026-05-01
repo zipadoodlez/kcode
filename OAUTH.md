@@ -237,6 +237,21 @@ For Gmail/Google it verifies credential discovery and token refresh, but skips m
 J-Code also ships first-class provider presets for many OpenAI-compatible APIs.
 These providers use the same built-in login flow pattern: `jcode login --provider <name>`.
 
+For arbitrary OpenAI-compatible APIs, especially when an agent is doing setup, prefer the named profile command instead of hand-editing config:
+
+```bash
+printf '%s' "$MY_API_KEY" | jcode provider add my-api \
+  --base-url https://llm.example.com/v1 \
+  --model my-model-id \
+  --api-key-stdin \
+  --set-default \
+  --json
+
+jcode --provider-profile my-api auth-test --no-tool-smoke
+```
+
+This writes `[providers.my-api]` in `~/.jcode/config.toml` and stores the key in jcode's private app config dir, for example `~/.config/jcode/provider-my-api.env`. For localhost servers, use `--no-api-key`.
+
 Two notable presets are:
 
 ### Fireworks

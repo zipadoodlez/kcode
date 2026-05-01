@@ -16,6 +16,16 @@ pub(crate) enum GoogleAccessTierArg {
     Readonly,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum ProviderAuthArg {
+    /// Send the API key as Authorization: Bearer <key> (OpenAI-compatible default)
+    Bearer,
+    /// Send the API key in an API-key header (defaults to api-key)
+    ApiKey,
+    /// Do not send authentication, useful for localhost model servers
+    None,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "jcode")]
 #[command(version = env!("JCODE_VERSION"))]
@@ -420,6 +430,72 @@ pub(crate) enum ProviderCommand {
     /// Show the currently requested and resolved provider selection
     Current {
         /// Emit JSON instead of plain text
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Add a named OpenAI-compatible API provider profile
+    Add {
+        /// Profile name used with --provider-profile and config defaults, e.g. my-gateway
+        name: String,
+
+        /// OpenAI-compatible API base URL, e.g. https://llm.example.com/v1
+        #[arg(long, alias = "api-base")]
+        base_url: String,
+
+        /// Default model id for this provider profile
+        #[arg(short, long)]
+        model: String,
+
+        /// Optional model context window in tokens
+        #[arg(long)]
+        context_window: Option<usize>,
+
+        /// Environment variable name that contains the API key
+        #[arg(long, conflicts_with = "no_api_key")]
+        api_key_env: Option<String>,
+
+        /// API key value to store in jcode's private provider env file. Prefer --api-key-stdin for shell history safety.
+        #[arg(long, conflicts_with_all = ["api_key_stdin", "no_api_key"])]
+        api_key: Option<String>,
+
+        /// Read the API key from stdin and store it in jcode's private provider env file
+        #[arg(long, conflicts_with = "no_api_key")]
+        api_key_stdin: bool,
+
+        /// Configure the provider with no API key/authentication
+        #[arg(long, conflicts_with_all = ["api_key", "api_key_stdin", "api_key_env"])]
+        no_api_key: bool,
+
+        /// Authentication style for the API key
+        #[arg(long, value_enum)]
+        auth: Option<ProviderAuthArg>,
+
+        /// Header name when --auth api-key is used (default: api-key)
+        #[arg(long)]
+        auth_header: Option<String>,
+
+        /// Private env file name under jcode's app config directory for stored API keys
+        #[arg(long)]
+        env_file: Option<String>,
+
+        /// Make this profile the startup default provider/model
+        #[arg(long, alias = "default")]
+        set_default: bool,
+
+        /// Replace an existing profile with the same name
+        #[arg(long)]
+        overwrite: bool,
+
+        /// Allow provider-routing features for OpenRouter-style gateways
+        #[arg(long)]
+        provider_routing: bool,
+
+        /// Fetch/list models from the provider's /models endpoint
+        #[arg(long)]
+        model_catalog: bool,
+
+        /// Emit JSON instead of human-readable setup output
         #[arg(long)]
         json: bool,
     },

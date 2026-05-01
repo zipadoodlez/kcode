@@ -305,6 +305,52 @@ fn provider_current_subcommand_parses() {
 }
 
 #[test]
+fn provider_add_subcommand_parses_agent_friendly_flags() {
+    let args = Args::try_parse_from([
+        "jcode",
+        "provider",
+        "add",
+        "my-api",
+        "--base-url",
+        "https://llm.example.com/v1",
+        "--model",
+        "model-a",
+        "--context-window",
+        "128000",
+        "--api-key-stdin",
+        "--auth",
+        "bearer",
+        "--set-default",
+        "--json",
+    ])
+    .unwrap();
+
+    match args.command {
+        Some(Command::Provider(ProviderCommand::Add {
+            name,
+            base_url,
+            model,
+            context_window,
+            api_key_stdin,
+            auth,
+            set_default,
+            json,
+            ..
+        })) => {
+            assert_eq!(name, "my-api");
+            assert_eq!(base_url, "https://llm.example.com/v1");
+            assert_eq!(model, "model-a");
+            assert_eq!(context_window, Some(128000));
+            assert!(api_key_stdin);
+            assert_eq!(auth, Some(ProviderAuthArg::Bearer));
+            assert!(set_default);
+            assert!(json);
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
 fn restart_save_subcommand_parses() {
     let args = Args::try_parse_from(["jcode", "restart", "save"]).unwrap();
     match args.command {

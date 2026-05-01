@@ -282,6 +282,15 @@ pub enum NamedProviderAuth {
 #[serde(default)]
 pub struct NamedProviderModelConfig {
     pub id: String,
+    #[serde(
+        default,
+        alias = "context_limit",
+        alias = "context-length",
+        alias = "context-window",
+        alias = "context_length",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub context_window: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub input: Vec<String>,
 }
