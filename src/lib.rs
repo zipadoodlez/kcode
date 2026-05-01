@@ -45,6 +45,7 @@ pub mod memory_log;
 pub mod memory_types;
 pub mod message;
 pub mod notifications;
+pub mod overnight;
 pub mod perf;
 pub mod plan;
 pub mod platform;
