@@ -212,17 +212,33 @@ def summarize_job(job_result_path: Path, trial_results: list[dict[str, Any]]) ->
     }
 
 
+def has_strict_numeric_trials(record: dict[str, Any], required: int) -> bool:
+    trial_results = record.get("trial_results") or []
+    numeric_rewards = [
+        trial.get("reward")
+        for trial in trial_results
+        if isinstance(trial.get("reward"), (int, float))
+    ]
+    return len(numeric_rewards) >= required
+
+
 def completed_recorded_jobs(campaign_dir: Path) -> dict[str, dict[str, Any]]:
     manifest = load_manifest(campaign_dir)
+    required = int(manifest.get("attempts_per_task") or 1)
     out: dict[str, dict[str, Any]] = {}
     for item in manifest.get("tasks_run", []):
         mean_reward = item.get("mean_reward")
-        if item.get("status") == "completed" and item.get("task_name") and isinstance(mean_reward, (int, float)):
+        if (
+            item.get("status") == "completed"
+            and item.get("task_name")
+            and isinstance(mean_reward, (int, float))
+            and has_strict_numeric_trials(item, required)
+        ):
             out[item["task_name"]] = item
     return out
 
 
-def adopt_existing_job(campaign_dir: Path, task: str, task_jobs_dir: Path) -> dict[str, Any] | None:
+def adopt_existing_job(campaign_dir: Path, task: str, task_jobs_dir: Path, required_attempts: int) -> dict[str, Any] | None:
     for job_dir in sorted([p for p in task_jobs_dir.iterdir() if p.is_dir()], reverse=True):
         job_result_path = job_dir / "result.json"
         if not job_result_path.exists():
@@ -231,7 +247,7 @@ def adopt_existing_job(campaign_dir: Path, task: str, task_jobs_dir: Path) -> di
         if not trial_results:
             continue
         numeric_rewards = [t.get("reward") for t in trial_results if isinstance(t.get("reward"), (int, float))]
-        if not numeric_rewards:
+        if len(numeric_rewards) < required_attempts:
             continue
         record = {
             "task_name": task,
@@ -307,10 +323,16 @@ def finalize_task_result(
     task_jobs_dir: Path,
     process_return_code: int,
     continue_on_failure: bool,
+    required_attempts: int,
 ) -> tuple[bool, dict[str, Any]]:
     job_result_path = task_jobs_dir / job_name / "result.json"
     trial_results = collect_trial_results(task_jobs_dir / job_name)
     if job_result_path.exists() and trial_results:
+        numeric_rewards = [
+            trial.get("reward")
+            for trial in trial_results
+            if isinstance(trial.get("reward"), (int, float))
+        ]
         task_result = {
             "task_name": task,
             "job_name": job_name,
@@ -319,7 +341,7 @@ def finalize_task_result(
             "process_return_code": process_return_code,
             **summarize_job(job_result_path, trial_results),
         }
-        if isinstance(task_result.get("mean_reward"), (int, float)):
+        if isinstance(task_result.get("mean_reward"), (int, float)) and len(numeric_rewards) >= required_attempts:
             append_result(campaign_dir, task_result)
             print(
                 f"Completed {task}: mean_reward={task_result['mean_reward']} trials={len(trial_results)}",
@@ -327,11 +349,15 @@ def finalize_task_result(
             )
             return True, task_result
 
-        task_result["status"] = "completed_without_numeric_reward"
+        task_result["status"] = (
+            "completed_with_partial_numeric_reward"
+            if numeric_rewards
+            else "completed_without_numeric_reward"
+        )
         append_result(campaign_dir, task_result)
         if continue_on_failure:
             print(
-                f"Task {task} produced {len(trial_results)} trial results but no numeric rewards; continuing.",
+                f"Task {task} produced {len(numeric_rewards)}/{required_attempts} numeric trial rewards; continuing.",
                 file=sys.stderr,
             )
             return False, task_result
@@ -367,7 +393,7 @@ def finalize_task_result(
     raise AssertionError("unreachable")
 
 
-def prepare_task(campaign_dir: Path, jobs_root: Path, task: str) -> tuple[str, Path] | None:
+def prepare_task(campaign_dir: Path, jobs_root: Path, task: str, required_attempts: int) -> tuple[str, Path] | None:
     recorded = completed_recorded_jobs(campaign_dir)
     if task in recorded:
         print(f"\n=== Skipping task {task}; already recorded as {recorded[task]['job_name']} ===", flush=True)
@@ -376,7 +402,7 @@ def prepare_task(campaign_dir: Path, jobs_root: Path, task: str) -> tuple[str, P
     task_jobs_dir = jobs_root / task
     task_jobs_dir.mkdir(parents=True, exist_ok=True)
 
-    adopted = adopt_existing_job(campaign_dir, task, task_jobs_dir)
+    adopted = adopt_existing_job(campaign_dir, task, task_jobs_dir, required_attempts)
     if adopted is not None:
         print(
             f"\n=== Adopted existing job for {task}: {adopted['job_name']} mean_reward={adopted['mean_reward']} ===",
@@ -420,7 +446,7 @@ def main() -> int:
 
     pending: list[tuple[str, Path, str]] = []
     for task in tasks:
-        prepared = prepare_task(campaign_dir, jobs_root, task)
+        prepared = prepare_task(campaign_dir, jobs_root, task, args.n_attempts)
         if prepared is None:
             continue
         task_name, task_jobs_dir = prepared
@@ -450,6 +476,7 @@ def main() -> int:
                 task_jobs_dir=task_jobs_dir,
                 process_return_code=return_code,
                 continue_on_failure=args.continue_on_failure,
+                required_attempts=args.n_attempts,
             )
             if not ok and not args.continue_on_failure:
                 return return_code or 1
@@ -479,6 +506,7 @@ def main() -> int:
                 task_jobs_dir=task_jobs_dir,
                 process_return_code=return_code,
                 continue_on_failure=args.continue_on_failure,
+                required_attempts=args.n_attempts,
             )
             if not ok:
                 had_failure = True
