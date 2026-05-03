@@ -702,12 +702,17 @@ fn run_command_auto_poke_enabled() -> bool {
         .unwrap_or(true)
 }
 
-fn run_command_auto_poke_max_turns() -> usize {
+fn run_command_auto_poke_max_turns() -> Option<usize> {
     std::env::var("JCODE_RUN_AUTO_POKE_MAX_TURNS")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
         .filter(|value| *value > 0)
-        .unwrap_or(8)
+}
+
+fn run_command_auto_poke_limit_reached(turns_completed: usize, max_turns: Option<usize>) -> bool {
+    max_turns
+        .map(|max_turns| turns_completed >= max_turns)
+        .unwrap_or(false)
 }
 
 fn incomplete_run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
@@ -732,8 +737,10 @@ async fn run_single_message_command_plain_with_auto_poke(
 ) -> Result<()> {
     let mut next_message = message.to_string();
     let max_turns = run_command_auto_poke_max_turns();
-    for turn_index in 0..max_turns {
+    let mut turns_completed = 0usize;
+    loop {
         agent.run_once(&next_message).await?;
+        turns_completed += 1;
         if !run_command_auto_poke_enabled() {
             break;
         }
@@ -741,11 +748,13 @@ async fn run_single_message_command_plain_with_auto_poke(
         if incomplete.is_empty() {
             break;
         }
-        if turn_index + 1 >= max_turns {
-            eprintln!(
-                "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
-                incomplete.len()
-            );
+        if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+            if let Some(max_turns) = max_turns {
+                eprintln!(
+                    "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
+                    incomplete.len()
+                );
+            }
             break;
         }
         next_message = build_run_poke_message(&incomplete);
@@ -764,8 +773,10 @@ async fn run_single_message_command_capture_with_auto_poke(
     let mut next_message = message.to_string();
     let max_turns = run_command_auto_poke_max_turns();
     let mut outputs = Vec::new();
-    for turn_index in 0..max_turns {
+    let mut turns_completed = 0usize;
+    loop {
         outputs.push(agent.run_once_capture(&next_message).await?);
+        turns_completed += 1;
         if !run_command_auto_poke_enabled() {
             break;
         }
@@ -773,11 +784,13 @@ async fn run_single_message_command_capture_with_auto_poke(
         if incomplete.is_empty() {
             break;
         }
-        if turn_index + 1 >= max_turns {
-            outputs.push(format!(
-                "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
-                incomplete.len()
-            ));
+        if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+            if let Some(max_turns) = max_turns {
+                outputs.push(format!(
+                    "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
+                    incomplete.len()
+                ));
+            }
             break;
         }
         next_message = build_run_poke_message(&incomplete);
@@ -820,7 +833,8 @@ async fn run_single_message_command_ndjson(
     let max_turns = run_command_auto_poke_max_turns();
     let mut next_message = message.to_string();
     let mut result: Result<()> = Ok(());
-    for turn_index in 0..max_turns {
+    let mut turns_completed = 0usize;
+    loop {
         let turn_result = {
             let mut run_future = std::pin::pin!(agent.run_once_streaming_mpsc(
                 &next_message,
@@ -855,6 +869,7 @@ async fn run_single_message_command_ndjson(
             result = Err(err);
             break;
         }
+        turns_completed += 1;
         if !run_command_auto_poke_enabled() {
             break;
         }
@@ -862,16 +877,18 @@ async fn run_single_message_command_ndjson(
         if incomplete.is_empty() {
             break;
         }
-        if turn_index + 1 >= max_turns {
-            write_json_line(
-                &mut stdout,
-                &serde_json::json!({
-                    "type": "auto_poke_stopped",
-                    "session_id": session_id,
-                    "incomplete_todos": incomplete.len(),
-                    "max_turns": max_turns,
-                }),
-            )?;
+        if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+            if let Some(max_turns) = max_turns {
+                write_json_line(
+                    &mut stdout,
+                    &serde_json::json!({
+                        "type": "auto_poke_stopped",
+                        "session_id": session_id,
+                        "incomplete_todos": incomplete.len(),
+                        "max_turns": max_turns,
+                    }),
+                )?;
+            }
             break;
         }
         next_message = build_run_poke_message(&incomplete);
