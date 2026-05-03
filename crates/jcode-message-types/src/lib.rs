@@ -22,6 +22,22 @@ impl ToolCall {
         Self::normalize_input_to_object(input.clone())
     }
 
+    pub fn validation_error(&self) -> Option<String> {
+        if self.name.trim().is_empty() {
+            return Some("Invalid tool call: tool name must not be empty.".to_string());
+        }
+
+        if !self.input.is_object() {
+            return Some(format!(
+                "Invalid tool call for '{}': arguments must be a JSON object, got {}.",
+                self.name,
+                json_value_kind(&self.input)
+            ));
+        }
+
+        None
+    }
+
     pub fn intent_from_input(input: &serde_json::Value) -> Option<String> {
         input
             .get("intent")
@@ -33,6 +49,17 @@ impl ToolCall {
 
     pub fn refresh_intent_from_input(&mut self) {
         self.intent = Self::intent_from_input(&self.input);
+    }
+}
+
+fn json_value_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
 }
 
