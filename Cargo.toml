@@ -23,6 +23,7 @@ members = [
     "crates/jcode-protocol",
     "crates/jcode-selfdev-types",
     "crates/jcode-session-types",
+    "crates/jcode-storage",
     "crates/jcode-side-panel-types",
     "crates/jcode-azure-auth",
     "crates/jcode-notify-email",
@@ -153,6 +154,7 @@ jcode-plan = { path = "crates/jcode-plan" }
 jcode-protocol = { path = "crates/jcode-protocol" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 jcode-session-types = { path = "crates/jcode-session-types" }
+jcode-storage = { path = "crates/jcode-storage" }
 jcode-task-types = { path = "crates/jcode-task-types" }
 jcode-side-panel-types = { path = "crates/jcode-side-panel-types" }
 
