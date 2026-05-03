@@ -11,6 +11,17 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
+    pub fn normalize_input_to_object(input: serde_json::Value) -> serde_json::Value {
+        match input {
+            serde_json::Value::Object(_) => input,
+            _ => serde_json::Value::Object(serde_json::Map::new()),
+        }
+    }
+
+    pub fn input_as_object(input: &serde_json::Value) -> serde_json::Value {
+        Self::normalize_input_to_object(input.clone())
+    }
+
     pub fn intent_from_input(input: &serde_json::Value) -> Option<String> {
         input
             .get("intent")
