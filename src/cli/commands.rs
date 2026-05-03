@@ -674,7 +674,7 @@ pub async fn run_single_message_command(
     restore_agent_session_if_requested(&mut agent, resume_session)?;
 
     if emit_json {
-        let text = agent.run_once_capture(message).await?;
+        let text = run_single_message_command_capture_with_auto_poke(&mut agent, message).await?;
         let report = RunCommandReport {
             session_id: agent.session_id().to_string(),
             provider: provider.name().to_string(),
@@ -686,10 +686,103 @@ pub async fn run_single_message_command(
     } else if emit_ndjson {
         run_single_message_command_ndjson(&mut agent, provider.clone(), message).await?;
     } else {
-        agent.run_once(message).await?;
+        run_single_message_command_plain_with_auto_poke(&mut agent, message).await?;
     }
 
     Ok(())
+}
+
+fn run_command_auto_poke_enabled() -> bool {
+    std::env::var("JCODE_RUN_AUTO_POKE")
+        .ok()
+        .map(|value| {
+            let value = value.trim().to_ascii_lowercase();
+            !matches!(value.as_str(), "0" | "false" | "off" | "no")
+        })
+        .unwrap_or(true)
+}
+
+fn run_command_auto_poke_max_turns() -> usize {
+    std::env::var("JCODE_RUN_AUTO_POKE_MAX_TURNS")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(8)
+}
+
+fn incomplete_run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
+    crate::todo::load_todos(session_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|todo| todo.status != "completed" && todo.status != "cancelled")
+        .collect()
+}
+
+fn build_run_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
+    format!(
+        "You have {} incomplete todo{}. Continue working, or update the todo tool.",
+        incomplete.len(),
+        if incomplete.len() == 1 { "" } else { "s" },
+    )
+}
+
+async fn run_single_message_command_plain_with_auto_poke(
+    agent: &mut crate::agent::Agent,
+    message: &str,
+) -> Result<()> {
+    let mut next_message = message.to_string();
+    let max_turns = run_command_auto_poke_max_turns();
+    for turn_index in 0..max_turns {
+        agent.run_once(&next_message).await?;
+        if !run_command_auto_poke_enabled() {
+            break;
+        }
+        let incomplete = incomplete_run_todos(agent.session_id());
+        if incomplete.is_empty() {
+            break;
+        }
+        if turn_index + 1 >= max_turns {
+            eprintln!(
+                "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
+                incomplete.len()
+            );
+            break;
+        }
+        next_message = build_run_poke_message(&incomplete);
+        eprintln!(
+            "Auto-poking: {} incomplete todo(s). Set JCODE_RUN_AUTO_POKE=0 to disable.",
+            incomplete.len()
+        );
+    }
+    Ok(())
+}
+
+async fn run_single_message_command_capture_with_auto_poke(
+    agent: &mut crate::agent::Agent,
+    message: &str,
+) -> Result<String> {
+    let mut next_message = message.to_string();
+    let max_turns = run_command_auto_poke_max_turns();
+    let mut outputs = Vec::new();
+    for turn_index in 0..max_turns {
+        outputs.push(agent.run_once_capture(&next_message).await?);
+        if !run_command_auto_poke_enabled() {
+            break;
+        }
+        let incomplete = incomplete_run_todos(agent.session_id());
+        if incomplete.is_empty() {
+            break;
+        }
+        if turn_index + 1 >= max_turns {
+            outputs.push(format!(
+                "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
+                incomplete.len()
+            ));
+            break;
+        }
+        next_message = build_run_poke_message(&incomplete);
+    }
+    Ok(outputs.join("\n\n"))
 }
 
 fn restore_agent_session_if_requested(
@@ -709,8 +802,6 @@ async fn run_single_message_command_ndjson(
 ) -> Result<()> {
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
     let session_id = agent.session_id().to_string();
-    let mut run_future =
-        std::pin::pin!(agent.run_once_streaming_mpsc(message, Vec::new(), None, event_tx,));
     let mut stdout = std::io::stdout().lock();
     let mut state = NdjsonRunState {
         session_id: Some(session_id.clone()),
@@ -726,22 +817,75 @@ async fn run_single_message_command_ndjson(
         }),
     )?;
 
-    let mut run_result: Option<Result<()>> = None;
-    loop {
-        tokio::select! {
-            result = &mut run_future, if run_result.is_none() => {
-                run_result = Some(result);
-            }
-            event = event_rx.recv() => {
-                match event {
-                    Some(event) => emit_ndjson_event(&mut stdout, &mut state, event)?,
-                    None => break,
+    let max_turns = run_command_auto_poke_max_turns();
+    let mut next_message = message.to_string();
+    let mut result: Result<()> = Ok(());
+    for turn_index in 0..max_turns {
+        let turn_result = {
+            let mut run_future = std::pin::pin!(agent.run_once_streaming_mpsc(
+                &next_message,
+                Vec::new(),
+                None,
+                event_tx.clone(),
+            ));
+            let mut run_result: Option<Result<()>> = None;
+            loop {
+                tokio::select! {
+                    result = &mut run_future, if run_result.is_none() => {
+                        run_result = Some(result);
+                    }
+                    event = event_rx.recv() => {
+                        match event {
+                            Some(event) => emit_ndjson_event(&mut stdout, &mut state, event)?,
+                            None => break,
+                        }
+                    }
+                }
+                if run_result.is_some() {
+                    while let Ok(event) = event_rx.try_recv() {
+                        emit_ndjson_event(&mut stdout, &mut state, event)?;
+                    }
+                    break;
                 }
             }
+            run_result.unwrap_or(Ok(()))
+        };
+
+        if let Err(err) = turn_result {
+            result = Err(err);
+            break;
         }
+        if !run_command_auto_poke_enabled() {
+            break;
+        }
+        let incomplete = incomplete_run_todos(&session_id);
+        if incomplete.is_empty() {
+            break;
+        }
+        if turn_index + 1 >= max_turns {
+            write_json_line(
+                &mut stdout,
+                &serde_json::json!({
+                    "type": "auto_poke_stopped",
+                    "session_id": session_id,
+                    "incomplete_todos": incomplete.len(),
+                    "max_turns": max_turns,
+                }),
+            )?;
+            break;
+        }
+        next_message = build_run_poke_message(&incomplete);
+        write_json_line(
+            &mut stdout,
+            &serde_json::json!({
+                "type": "auto_poke",
+                "session_id": session_id,
+                "incomplete_todos": incomplete.len(),
+                "message": next_message,
+            }),
+        )?;
     }
 
-    let result = run_result.unwrap_or(Ok(()));
     match result {
         Ok(()) => {
             write_json_line(

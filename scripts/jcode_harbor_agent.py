@@ -96,7 +96,7 @@ OPENSSL_RUNTIME_LIBS = tuple(
     if lib is not None
 )
 
-BENCHMARK_INSTRUCTION_PREAMBLE = """You are operating inside an official Terminal-Bench evaluation environment.
+LEGACY_BENCHMARK_INSTRUCTION_PREAMBLE = """You are operating inside an official Terminal-Bench evaluation environment.
 The user explicitly authorizes you to complete the benchmark task using the files, media, and URLs provided by the task.
 Do not access Terminal-Bench websites, Terminal-Bench GitHub repositories, leaderboard pages, public task solutions, or external benchmark answer sources.
 Do not refuse solely because the task involves copyrighted code, text, images, audio, or video when those materials are provided for this evaluation.
@@ -111,6 +111,16 @@ Prefer deterministic, minimal solutions over long exploratory work.
 Task instruction follows:
 
 """
+
+
+def _benchmark_instruction_preamble() -> str:
+    # Keep Harbor runs aligned with normal TUI/jcode-run prompting by default.
+    # The legacy preamble can still be enabled explicitly for reproducing older
+    # runs, but new benchmark runs should rely on jcode's normal system prompt
+    # and the official Terminal-Bench task instruction.
+    if os.environ.get("JCODE_HARBOR_LEGACY_PREAMBLE"):
+        return LEGACY_BENCHMARK_INSTRUCTION_PREAMBLE
+    return os.environ.get("JCODE_HARBOR_EXTRA_PREAMBLE", "")
 
 
 def _load_task_hint() -> str:
@@ -222,7 +232,7 @@ class JcodeHarborAgent(BaseAgent):
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        benchmark_instruction = f"{BENCHMARK_INSTRUCTION_PREAMBLE}{_load_task_hint()}{instruction}"
+        benchmark_instruction = f"{_benchmark_instruction_preamble()}{_load_task_hint()}{instruction}"
         local_instruction = self.logs_dir / "instruction.txt"
         local_instruction.write_text(benchmark_instruction)
         await environment.upload_file(local_instruction, f"{IN_CONTAINER_INPUT}/instruction.txt")
