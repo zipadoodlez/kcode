@@ -163,16 +163,18 @@ selfdev_low_memory_default_needed() {
   command -v pgrep >/dev/null 2>&1 || return 1
   pgrep -x earlyoom >/dev/null 2>&1 || return 1
 
-  local mem_total_kib swap_total_kib
+  local mem_total_kib mem_available_kib swap_total_kib
   mem_total_kib=$(meminfo_kib MemTotal)
+  mem_available_kib=$(meminfo_kib MemAvailable)
   swap_total_kib=$(meminfo_kib SwapTotal)
-  [[ -n "$mem_total_kib" && -n "$swap_total_kib" ]] || return 1
+  [[ -n "$mem_total_kib" && -n "$mem_available_kib" && -n "$swap_total_kib" ]] || return 1
 
   # On small no-swap machines, earlyoom can terminate the root jcode rustc
   # around 1 GiB RSS before the kernel OOM killer would report anything.
-  # Keep this adaptive so larger workstations retain the faster inherited
-  # selfdev profile by default.
-  (( swap_total_kib == 0 && mem_total_kib < 24576 * 1024 ))
+  # Keep this adaptive so larger workstations, and currently-idle smaller
+  # workstations with enough headroom, retain the faster inherited selfdev
+  # profile by default.
+  (( swap_total_kib == 0 && mem_total_kib < 24576 * 1024 && mem_available_kib < 8192 * 1024 ))
 }
 
 maybe_configure_low_memory_selfdev() {
