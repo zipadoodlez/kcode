@@ -2537,6 +2537,7 @@ dependencies = [
  "jcode-background-types",
  "jcode-batch-types",
  "jcode-build-support",
+ "jcode-compaction-core",
  "jcode-config-types",
  "jcode-core",
  "jcode-embedding",
@@ -2657,6 +2658,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "jcode-compaction-core"
+version = "0.1.0"
+dependencies = [
+ "jcode-message-types",
 ]
 
 [[package]]
