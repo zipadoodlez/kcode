@@ -51,6 +51,127 @@ pub fn is_runnable_status(status: &str) -> bool {
     matches!(status, "queued" | "ready" | "pending" | "todo")
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskControlAction {
+    Start,
+    Wake,
+    Resume,
+    Retry,
+    Reassign,
+    Replace,
+    Salvage,
+}
+
+impl TaskControlAction {
+    pub fn parse(action: &str) -> Option<Self> {
+        match action {
+            "start" => Some(Self::Start),
+            "wake" => Some(Self::Wake),
+            "resume" => Some(Self::Resume),
+            "retry" => Some(Self::Retry),
+            "reassign" => Some(Self::Reassign),
+            "replace" => Some(Self::Replace),
+            "salvage" => Some(Self::Salvage),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Wake => "wake",
+            Self::Resume => "resume",
+            Self::Retry => "retry",
+            Self::Reassign => "reassign",
+            Self::Replace => "replace",
+            Self::Salvage => "salvage",
+        }
+    }
+}
+
+pub fn combine_assignment_text(content: &str, message: Option<&str>) -> String {
+    if let Some(extra) = message {
+        format!(
+            "{}\n\nAdditional coordinator instructions:\n{}",
+            content, extra
+        )
+    } else {
+        content.to_string()
+    }
+}
+
+fn restart_instruction_prefix(action: TaskControlAction) -> Option<&'static str> {
+    match action {
+        TaskControlAction::Resume => Some(
+            "Resume your assigned task from the current session context and continue the work.",
+        ),
+        TaskControlAction::Retry => {
+            Some("Retry your assigned task. Fix any earlier issues and continue toward completion.")
+        }
+        _ => None,
+    }
+}
+
+pub fn build_control_assignment_text(
+    action: TaskControlAction,
+    content: &str,
+    message: Option<&str>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(prefix) = restart_instruction_prefix(action) {
+        parts.push(prefix.to_string());
+    }
+    parts.push(content.to_string());
+    if let Some(extra) = message {
+        parts.push(format!("Additional coordinator instructions:\n{}", extra));
+    }
+    parts.join("\n\n")
+}
+
+pub fn task_control_action_allows_status(action: TaskControlAction, status: &str) -> bool {
+    match action {
+        TaskControlAction::Start | TaskControlAction::Wake => status == "queued",
+        TaskControlAction::Resume => matches!(status, "queued" | "running" | "running_stale"),
+        TaskControlAction::Retry => matches!(status, "failed" | "running_stale"),
+        TaskControlAction::Reassign | TaskControlAction::Replace | TaskControlAction::Salvage => {
+            !matches!(status, "done")
+        }
+    }
+}
+
+pub fn task_control_status_error(action: TaskControlAction, status: &str, task_id: &str) -> String {
+    match action {
+        TaskControlAction::Start => format!(
+            "Task '{}' is '{}' and cannot be started. Use start only for queued assignments.",
+            task_id, status
+        ),
+        TaskControlAction::Wake => format!(
+            "Task '{}' is '{}' and cannot be woken. Use wake only for queued assignments.",
+            task_id, status
+        ),
+        TaskControlAction::Resume => format!(
+            "Task '{}' is '{}' and cannot be resumed safely.",
+            task_id, status
+        ),
+        TaskControlAction::Retry => format!(
+            "Task '{}' is '{}' and cannot be retried. Retry is only for failed or stale work.",
+            task_id, status
+        ),
+        TaskControlAction::Reassign => format!(
+            "Task '{}' is already complete. Reassign unfinished work instead.",
+            task_id
+        ),
+        TaskControlAction::Replace => format!(
+            "Task '{}' is already complete. Replace is only for unfinished work.",
+            task_id
+        ),
+        TaskControlAction::Salvage => format!(
+            "Task '{}' is already complete. Salvage is only for unfinished or failed work.",
+            task_id
+        ),
+    }
+}
+
 pub fn priority_rank(priority: &str) -> u8 {
     match priority {
         "high" | "urgent" | "p0" => 0,
