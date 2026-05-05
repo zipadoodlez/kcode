@@ -1153,7 +1153,12 @@ pub async fn run_model_command(
     }
 
     let routes = provider.model_routes();
-    let models = collect_cli_model_names(&routes, provider.available_models_display());
+    let filtered_routes = filter_cli_model_routes_for_choice(choice, &routes);
+    let models = if filtered_routes.len() == routes.len() {
+        collect_cli_model_names(&routes, provider.available_models_display())
+    } else {
+        collect_cli_model_names(&filtered_routes, Vec::new())
+    };
 
     if models.is_empty() {
         anyhow::bail!(
@@ -1163,8 +1168,13 @@ pub async fn run_model_command(
     }
 
     if emit_json {
+        let provider_label = super::provider_init::login_provider_for_choice(choice)
+            .map(|provider| provider.display_name.to_string())
+            .unwrap_or_else(|| {
+                crate::provider_catalog::runtime_provider_display_name(provider.name())
+            });
         let report = ModelListReport {
-            provider: crate::provider_catalog::runtime_provider_display_name(provider.name()),
+            provider: provider_label,
             selected_model: provider.model(),
             models,
         };
@@ -1219,6 +1229,31 @@ fn collect_cli_model_names(
     }
 
     deduped
+}
+
+fn filter_cli_model_routes_for_choice(
+    choice: &super::provider_init::ProviderChoice,
+    routes: &[crate::provider::ModelRoute],
+) -> Vec<crate::provider::ModelRoute> {
+    use super::provider_init::ProviderChoice;
+
+    let keep = |route: &&crate::provider::ModelRoute| match choice {
+        ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
+            route.api_method == "claude-oauth" || route.api_method == "api-key"
+        }
+        ProviderChoice::Openai => route.api_method == "openai-oauth",
+        ProviderChoice::OpenaiApi => route.api_method == "openai-api-key",
+        ProviderChoice::Openrouter | ProviderChoice::Azure => route.api_method == "openrouter",
+        ProviderChoice::Copilot => route.api_method == "copilot",
+        _ => true,
+    };
+
+    let filtered: Vec<_> = routes.iter().filter(keep).cloned().collect();
+    if filtered.is_empty() {
+        routes.to_vec()
+    } else {
+        filtered
+    }
 }
 #[cfg(test)]
 #[path = "commands_tests.rs"]

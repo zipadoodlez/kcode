@@ -1300,7 +1300,7 @@ async fn init_provider_with_options(
                     )?,
                 )
             } else {
-                Arc::new(provider::MultiProvider::new_fast())
+                Arc::new(provider::openrouter::OpenRouterProvider::new()?)
             }
         }
         ProviderChoice::Antigravity => {

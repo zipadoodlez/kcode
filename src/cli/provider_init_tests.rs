@@ -431,7 +431,7 @@ async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disab
         std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(),
         Some("openrouter")
     );
-    assert_eq!(provider.name(), "OpenRouter");
+    assert_eq!(provider.name(), "openrouter");
     assert_eq!(provider.model(), "llama3.2");
 
     for (key, value) in saved {
