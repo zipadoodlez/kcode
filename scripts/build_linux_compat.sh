@@ -13,6 +13,10 @@ if [[ "$#" -gt 1 ]]; then
   exit 1
 fi
 
+if [[ "$out_dir" != /* ]]; then
+  out_dir="$repo_root/$out_dir"
+fi
+
 artifact="${JCODE_COMPAT_ARTIFACT:-jcode-linux-x86_64}"
 profile="${JCODE_COMPAT_PROFILE:-release}"
 image="${JCODE_COMPAT_IMAGE:-quay.io/pypa/manylinux2014_x86_64}"
