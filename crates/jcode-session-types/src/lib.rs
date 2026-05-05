@@ -375,6 +375,86 @@ pub fn session_search_working_dir_matches(session_wd: &str, filter: &str) -> boo
     !filter_norm.contains('/') && session_norm.contains(&filter_norm)
 }
 
+pub fn session_search_truncate_title_text(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= max_chars {
+        trimmed.to_string()
+    } else {
+        format!(
+            "{}…",
+            trimmed
+                .chars()
+                .take(max_chars.saturating_sub(1))
+                .collect::<String>()
+        )
+    }
+}
+
+pub fn session_search_field_filter_matches(value: Option<&str>, filter: Option<&str>) -> bool {
+    let Some(filter) = filter else {
+        return true;
+    };
+    value
+        .map(|value| value.to_ascii_lowercase().contains(filter))
+        .unwrap_or(false)
+}
+
+pub fn session_search_datetime_matches(
+    value: chrono::DateTime<chrono::Utc>,
+    after: Option<chrono::DateTime<chrono::Utc>>,
+    before: Option<chrono::DateTime<chrono::Utc>>,
+) -> bool {
+    if after.is_some_and(|after| value < after) {
+        return false;
+    }
+    if before.is_some_and(|before| value > before) {
+        return false;
+    }
+    true
+}
+
+pub fn session_search_format_matched_terms(terms: &[String]) -> String {
+    if terms.is_empty() {
+        return "matched exact phrase".to_string();
+    }
+    let rendered = terms
+        .iter()
+        .take(8)
+        .map(|term| format!("`{term}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if terms.len() > 8 {
+        format!("matched terms {rendered}, ...")
+    } else {
+        format!("matched terms {rendered}")
+    }
+}
+
+pub fn session_search_markdown_code_block(text: &str) -> String {
+    let longest_backtick_run = longest_repeated_char_run(text, '`');
+    let fence_len = if longest_backtick_run >= 3 {
+        longest_backtick_run + 1
+    } else {
+        3
+    };
+    let fence = "`".repeat(fence_len);
+    format!("{fence}text\n{text}\n{fence}")
+}
+
+pub fn longest_repeated_char_run(text: &str, needle: char) -> usize {
+    let mut longest = 0;
+    let mut current = 0;
+    for ch in text.chars() {
+        if ch == needle {
+            current += 1;
+            longest = longest.max(current);
+        } else {
+            current = 0;
+        }
+    }
+    longest
+}
+
 pub fn normalize_path_for_session_search_match(path: &str) -> String {
     path.trim()
         .replace('\\', "/")
@@ -509,5 +589,23 @@ mod session_search_tests {
         let text = "αβγ before needle after δεζ";
         let snippet = extract_session_search_snippet(text, text.find("needle"), &query, 12);
         assert!(snippet.contains("needle"));
+    }
+
+    #[test]
+    fn formatting_helpers_are_stable() {
+        assert_eq!(session_search_truncate_title_text("  abcdef  ", 4), "abc…");
+        assert!(session_search_field_filter_matches(
+            Some("Claude Sonnet"),
+            Some("sonnet")
+        ));
+        assert!(!session_search_field_filter_matches(None, Some("sonnet")));
+        assert_eq!(
+            session_search_format_matched_terms(&["alpha".to_string(), "beta".to_string()]),
+            "matched terms `alpha`, `beta`"
+        );
+
+        let fenced = session_search_markdown_code_block("contains ``` fence");
+        assert!(fenced.starts_with("````text\n"));
+        assert!(fenced.ends_with("\n````"));
     }
 }
