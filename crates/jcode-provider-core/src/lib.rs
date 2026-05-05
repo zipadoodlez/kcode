@@ -17,6 +17,18 @@ pub use selection::{
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// Premium request conservation mode for Copilot-compatible providers.
+/// 0 = normal (every user message is premium)
+/// 1 = one premium per session (first user message only, rest are agent)
+/// 2 = zero premium (all requests sent as agent)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum PremiumMode {
+    Normal = 0,
+    OnePerSession = 1,
+    Zero = 2,
+}
+
 /// Shared HTTP client for all providers. Creating a `reqwest::Client` is expensive
 /// (~10ms due to TLS init, connection pool setup), so we reuse a single instance.
 pub fn shared_http_client() -> reqwest::Client {
