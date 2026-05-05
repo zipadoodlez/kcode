@@ -26,11 +26,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - # Build Linux release assets on an older glibc baseline so they run
-            # in Debian bookworm / Ubuntu 22.04-era containers used by many TB tasks.
+          - # Build Linux x86_64 release assets on a CentOS 7 / manylinux2014
+            # glibc 2.17 baseline so they run on older distros as well as newer
+            # Debian/Ubuntu containers used by many TB tasks.
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             artifact: jcode-linux-x86_64
+            compat_container: true
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: jcode-linux-aarch64
@@ -68,12 +70,13 @@ jobs:
           cache-all-crates: "true"
 
       - name: Install mold linker (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.compat_container != true
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq mold
 
       - name: Build release binary
+        if: matrix.compat_container != true
         shell: bash
         run: |
           mkdir -p .cargo
@@ -92,7 +95,17 @@ jobs:
           JCODE_RELEASE_BUILD: "1"
           JCODE_BUILD_SEMVER: ${{ github.ref_name }}
 
+      - name: Build portable Linux x86_64 release binary
+        if: matrix.compat_container == true
+        shell: bash
+        run: scripts/build_linux_compat.sh dist
+        env:
+          JCODE_RELEASE_BUILD: "1"
+          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          JCODE_COMPAT_ARTIFACT: ${{ matrix.artifact }}
+
       - name: Package binary
+        if: matrix.compat_container != true
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/jcode dist/${{ matrix.artifact }}
