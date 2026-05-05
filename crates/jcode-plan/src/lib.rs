@@ -21,6 +21,134 @@ pub struct PlanItem {
     pub assigned_to: Option<String>,
 }
 
+/// Durable progress associated with a swarm plan task.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmTaskProgress {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assignment_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_heartbeat_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checkpoint_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stale_since_unix_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_count: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmPlanItemSpec {
+    pub id: String,
+    pub content: String,
+    pub priority: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subsystem: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub file_scope: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_by: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmPlanDefinition {
+    pub version: u64,
+    pub participants: Vec<String>,
+    pub items: Vec<SwarmPlanItemSpec>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmExecutionItemState {
+    pub task_id: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assigned_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<SwarmTaskProgress>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmExecutionState {
+    pub items: Vec<SwarmExecutionItemState>,
+}
+
+/// Versioned shared swarm plan state.
+#[derive(Clone, Debug)]
+pub struct VersionedPlan {
+    pub items: Vec<PlanItem>,
+    pub version: u64,
+    /// Session ids that should receive this plan's updates.
+    pub participants: HashSet<String>,
+    /// Durable runtime task progress keyed by plan item id.
+    pub task_progress: HashMap<String, SwarmTaskProgress>,
+}
+
+impl VersionedPlan {
+    pub fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            version: 0,
+            participants: HashSet::new(),
+            task_progress: HashMap::new(),
+        }
+    }
+
+    pub fn plan_definition(&self) -> SwarmPlanDefinition {
+        let mut participants: Vec<String> = self.participants.iter().cloned().collect();
+        participants.sort();
+        SwarmPlanDefinition {
+            version: self.version,
+            participants,
+            items: self
+                .items
+                .iter()
+                .map(|item| SwarmPlanItemSpec {
+                    id: item.id.clone(),
+                    content: item.content.clone(),
+                    priority: item.priority.clone(),
+                    subsystem: item.subsystem.clone(),
+                    file_scope: item.file_scope.clone(),
+                    blocked_by: item.blocked_by.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn execution_state(&self) -> SwarmExecutionState {
+        SwarmExecutionState {
+            items: self
+                .items
+                .iter()
+                .map(|item| SwarmExecutionItemState {
+                    task_id: item.id.clone(),
+                    status: item.status.clone(),
+                    assigned_to: item.assigned_to.clone(),
+                    progress: self.task_progress.get(&item.id).cloned(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl Default for VersionedPlan {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlanGraphSummary {
     pub ready_ids: Vec<String>,
