@@ -184,7 +184,10 @@ agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.2" 
 qrcode = { version = "0.14.1", default-features = false }
 
 [features]
-default = ["embeddings", "pdf"]
+# Keep the heavyweight local ONNX/tokenizer embedding stack opt-in. It remains
+# available via `--features embeddings` or `JCODE_DEV_FEATURE_PROFILE=full`, but
+# ordinary check/build loops should not compile the tract/tokenizers subtree.
+default = ["pdf"]
 dev-bins = []
 jemalloc = [
     "dep:tikv-jemallocator",
