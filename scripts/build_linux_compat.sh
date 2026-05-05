@@ -89,14 +89,29 @@ docker run --rm \
 	    export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:--C link-arg=-static-libgcc}"
 	    cargo build --profile "$JCODE_COMPAT_PROFILE" --target "$JCODE_COMPAT_TARGET" -p jcode --bin jcode
 
-	    cp "$CARGO_TARGET_DIR/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'"
+	    cp "$CARGO_TARGET_DIR/$JCODE_COMPAT_TARGET/$JCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'.bin"
+	    chmod +x "/out/'"$artifact"'.bin"
+	    cat > "/out/'"$artifact"'" <<WRAPPER
+#!/usr/bin/env sh
+set -eu
+case "\$0" in
+  */*) self_dir=\$(CDPATH= cd -- "\$(dirname -- "\$0")" && pwd) ;;
+  *) self_dir=\$(pwd) ;;
+esac
+if [ -n "\${LD_LIBRARY_PATH:-}" ]; then
+  export LD_LIBRARY_PATH="\$self_dir:\$LD_LIBRARY_PATH"
+else
+  export LD_LIBRARY_PATH="\$self_dir"
+fi
+exec "\$self_dir/'"$artifact"'.bin" "\$@"
+WRAPPER
 	    chmod +x "/out/'"$artifact"'"
 
 	    # Preserve the OpenSSL runtime libraries used by the build image. Some
 	    # Terminal-Bench containers are older than the build host and either lack
 	    # libssl entirely or expose a different SONAME. The Harbor adapter uploads
 	    # these sibling libraries and sets LD_LIBRARY_PATH for the jcode process.
-	    ldd "/out/'"$artifact"'" \
+	    ldd "/out/'"$artifact"'.bin" \
 	      | awk "/lib(ssl|crypto)[.]so/ { print \$3 }" \
 	      | while read -r lib; do
 	          if [[ -n "$lib" && -f "$lib" ]]; then
@@ -104,9 +119,9 @@ docker run --rm \
 	          fi
 	        done
 
-	    (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"')
+	    (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"' '"$artifact"'.bin libssl.so* libcrypto.so*)
 
-	    chown "$HOST_UID:$HOST_GID" "/out/'"$artifact"'" "/out/'"$artifact"'.tar.gz" /out/libssl.so* /out/libcrypto.so* 2>/dev/null || true
+	    chown "$HOST_UID:$HOST_GID" "/out/'"$artifact"'" "/out/'"$artifact"'.bin" "/out/'"$artifact"'.tar.gz" /out/libssl.so* /out/libcrypto.so* 2>/dev/null || true
 	  '
 
 echo "Built artifacts:"

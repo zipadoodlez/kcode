@@ -88,7 +88,8 @@ echo "Build time: ${BUILD_TIME}s"
 ls -lh "$DIST"/*.tar.gz
 
 # Verify binaries
-file "$DIST/jcode-linux-x86_64" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary"; exit 1; }
+file "$DIST/jcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary"; exit 1; }
+head -1 "$DIST/jcode-linux-x86_64" | grep -q '^#!/' || { echo "Error: bad Linux wrapper"; exit 1; }
 file "$DIST/jcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary"; exit 1; }
 
 if $DRY_RUN; then
