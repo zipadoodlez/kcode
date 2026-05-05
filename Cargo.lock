@@ -2544,6 +2544,7 @@ dependencies = [
  "jcode-memory-types",
  "jcode-message-types",
  "jcode-notify-email",
+ "jcode-overnight-core",
  "jcode-pdf",
  "jcode-plan",
  "jcode-protocol",
@@ -2764,6 +2765,15 @@ dependencies = [
  "native-tls",
  "pulldown-cmark",
  "urlencoding",
+]
+
+[[package]]
+name = "jcode-overnight-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
