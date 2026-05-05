@@ -21,7 +21,7 @@ jobs:
   build-linux-macos:
     name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
