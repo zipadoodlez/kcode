@@ -3,7 +3,11 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+
+pub type ImportCoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// Entry in the Claude Code sessions-index.json file.
 #[derive(Debug, Deserialize)]
@@ -402,6 +406,384 @@ pub fn file_modified_datetime(path: &Path) -> Option<DateTime<Utc>> {
         .and_then(|meta| meta.modified())
         .ok()
         .map(DateTime::<Utc>::from)
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalMessageRecord {
+    pub role: String,
+    pub text: String,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalSessionRecord {
+    pub source: &'static str,
+    pub session_id: String,
+    pub short_name: Option<String>,
+    pub title: Option<String>,
+    pub working_dir: Option<String>,
+    pub provider_key: Option<String>,
+    pub model: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub path: PathBuf,
+    pub messages: Vec<ExternalMessageRecord>,
+}
+
+pub fn load_claude_external_messages(
+    path: &Path,
+    include_tools: bool,
+) -> Vec<ExternalMessageRecord> {
+    let Ok(file) = File::open(path) else {
+        return Vec::new();
+    };
+    BufReader::new(file)
+        .lines()
+        .map_while(|line| line.ok())
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok())
+        .filter_map(|value| {
+            let entry_type = value
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if entry_type != "user" && entry_type != "assistant" {
+                return None;
+            }
+            let message = value.get("message")?;
+            let role = message
+                .get("role")
+                .and_then(|v| v.as_str())
+                .unwrap_or(entry_type)
+                .to_string();
+            let text = extract_external_text_from_json(
+                message.get("content").unwrap_or(&serde_json::Value::Null),
+                include_tools,
+            );
+            if text.trim().is_empty() {
+                return None;
+            }
+            Some(ExternalMessageRecord {
+                role,
+                text,
+                timestamp: parse_rfc3339_json(value.get("timestamp")),
+                id: value
+                    .get("uuid")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+            })
+        })
+        .collect()
+}
+
+pub fn load_codex_external_session(
+    path: &Path,
+    include_tools: bool,
+) -> ImportCoreResult<Option<ExternalSessionRecord>> {
+    let file = File::open(path)?;
+    let mut lines = BufReader::new(file).lines();
+    let Some(first_line) = lines.next() else {
+        return Ok(None);
+    };
+    let header: serde_json::Value = serde_json::from_str(&first_line?)?;
+    let meta = if header.get("type").and_then(|v| v.as_str()) == Some("session_meta") {
+        header.get("payload").unwrap_or(&header)
+    } else {
+        &header
+    };
+    let session_id = meta.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+    if session_id.is_empty() {
+        return Ok(None);
+    }
+    let created_at = parse_rfc3339_json(meta.get("timestamp"))
+        .or_else(|| parse_rfc3339_json(header.get("timestamp")))
+        .unwrap_or_else(Utc::now);
+    let mut updated_at = file_modified_datetime(path).unwrap_or(created_at);
+    let working_dir = meta.get("cwd").and_then(|v| v.as_str()).map(str::to_string);
+    let mut messages = Vec::new();
+    for line in lines.map_while(|line| line.ok()) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+            continue;
+        };
+        let line_type = value
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let (role, content_value) = if line_type == "message" {
+            let Some(role) = value.get("role").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            (
+                role,
+                value.get("content").unwrap_or(&serde_json::Value::Null),
+            )
+        } else if line_type == "response_item" {
+            let Some(payload) = value.get("payload") else {
+                continue;
+            };
+            if payload.get("type").and_then(|v| v.as_str()) != Some("message") {
+                continue;
+            }
+            let Some(role) = payload.get("role").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            (
+                role,
+                payload.get("content").unwrap_or(&serde_json::Value::Null),
+            )
+        } else {
+            continue;
+        };
+        if role != "user" && role != "assistant" {
+            continue;
+        }
+        let text = extract_external_text_from_json(content_value, include_tools);
+        if text.trim().is_empty() {
+            continue;
+        }
+        let timestamp = parse_rfc3339_json(value.get("timestamp"));
+        if let Some(ts) = timestamp {
+            updated_at = updated_at.max(ts);
+        }
+        messages.push(ExternalMessageRecord {
+            role: role.to_string(),
+            text,
+            timestamp,
+            id: value.get("id").and_then(|v| v.as_str()).map(str::to_string),
+        });
+    }
+    Ok(Some(ExternalSessionRecord {
+        source: "codex",
+        session_id: session_id.to_string(),
+        short_name: Some(format!("codex {}", &session_id[..session_id.len().min(8)])),
+        title: Some(format!(
+            "Codex session {}",
+            &session_id[..session_id.len().min(8)]
+        )),
+        working_dir,
+        provider_key: Some("openai-codex".to_string()),
+        model: None,
+        created_at,
+        updated_at,
+        path: path.to_path_buf(),
+        messages,
+    }))
+}
+
+pub fn load_pi_external_session(
+    path: &Path,
+    include_tools: bool,
+) -> ImportCoreResult<Option<ExternalSessionRecord>> {
+    let file = File::open(path)?;
+    let mut lines = BufReader::new(file).lines();
+    let Some(first_line) = lines.next() else {
+        return Ok(None);
+    };
+    let header: serde_json::Value = serde_json::from_str(&first_line?)?;
+    if header.get("type").and_then(|v| v.as_str()) != Some("session") {
+        return Ok(None);
+    }
+    let session_id = header
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    if session_id.is_empty() {
+        return Ok(None);
+    }
+    let created_at = parse_rfc3339_json(header.get("timestamp")).unwrap_or_else(Utc::now);
+    let mut updated_at = file_modified_datetime(path).unwrap_or(created_at);
+    let working_dir = header
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let mut provider_key = Some("pi".to_string());
+    let mut model = None;
+    let mut messages = Vec::new();
+    for line in lines.map_while(|line| line.ok()) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+            continue;
+        };
+        if let Some(ts) = parse_rfc3339_json(value.get("timestamp")) {
+            updated_at = updated_at.max(ts);
+        }
+        match value.get("type").and_then(|v| v.as_str()) {
+            Some("model_change") => {
+                provider_key = value
+                    .get("provider")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .or(provider_key);
+                model = value
+                    .get("modelId")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .or(model);
+            }
+            Some("message") => {
+                let Some(message) = value.get("message") else {
+                    continue;
+                };
+                let role = message
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if role != "user" && role != "assistant" {
+                    continue;
+                }
+                let text = extract_external_text_from_json(
+                    message.get("content").unwrap_or(&serde_json::Value::Null),
+                    include_tools,
+                );
+                if text.trim().is_empty() {
+                    continue;
+                }
+                messages.push(ExternalMessageRecord {
+                    role: role.to_string(),
+                    text,
+                    timestamp: parse_rfc3339_json(value.get("timestamp")),
+                    id: value.get("id").and_then(|v| v.as_str()).map(str::to_string),
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(Some(ExternalSessionRecord {
+        source: "pi",
+        session_id: session_id.to_string(),
+        short_name: Some(format!("pi {}", &session_id[..session_id.len().min(8)])),
+        title: Some(format!(
+            "Pi session {}",
+            &session_id[..session_id.len().min(8)]
+        )),
+        working_dir,
+        provider_key,
+        model,
+        created_at,
+        updated_at,
+        path: path.to_path_buf(),
+        messages,
+    }))
+}
+
+pub fn load_opencode_external_session(
+    path: &Path,
+    messages_base: &Path,
+    include_tools: bool,
+    max_scan_sessions: usize,
+) -> ImportCoreResult<Option<ExternalSessionRecord>> {
+    let value: serde_json::Value = serde_json::from_reader(File::open(path)?)?;
+    let session_id = value.get("id").and_then(|v| v.as_str()).unwrap_or_default();
+    if session_id.is_empty() {
+        return Ok(None);
+    }
+    let created_at = value
+        .get("time")
+        .and_then(|time| time.get("created"))
+        .and_then(|v| v.as_i64())
+        .and_then(DateTime::<Utc>::from_timestamp_millis)
+        .unwrap_or_else(Utc::now);
+    let updated_at = value
+        .get("time")
+        .and_then(|time| time.get("updated"))
+        .and_then(|v| v.as_i64())
+        .and_then(DateTime::<Utc>::from_timestamp_millis)
+        .or_else(|| file_modified_datetime(path))
+        .unwrap_or(created_at);
+    let working_dir = value
+        .get("directory")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(|title| truncate_title_text(title, 72))
+        .unwrap_or_else(|| {
+            format!(
+                "OpenCode session {}",
+                &session_id[..session_id.len().min(8)]
+            )
+        });
+    let mut provider_key = Some("opencode".to_string());
+    let mut model = None;
+    let mut messages = Vec::new();
+    let messages_root = messages_base.join(session_id);
+    if messages_root.exists() {
+        for msg_path in collect_recent_files_recursive(&messages_root, "json", max_scan_sessions) {
+            let Ok(msg_value) =
+                serde_json::from_reader::<_, serde_json::Value>(File::open(&msg_path)?)
+            else {
+                continue;
+            };
+            let role = msg_value
+                .get("role")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if role != "user" && role != "assistant" {
+                continue;
+            }
+            if model.is_none() {
+                model = msg_value
+                    .get("modelID")
+                    .or_else(|| msg_value.get("model").and_then(|m| m.get("modelID")))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+            }
+            provider_key = msg_value
+                .get("providerID")
+                .or_else(|| msg_value.get("model").and_then(|m| m.get("providerID")))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .or(provider_key);
+            let text = msg_value
+                .get("summary")
+                .or_else(|| msg_value.get("content"))
+                .map(|value| extract_external_text_from_json(value, include_tools))
+                .unwrap_or_default();
+            if text.trim().is_empty() {
+                continue;
+            }
+            messages.push(ExternalMessageRecord {
+                role: role.to_string(),
+                text,
+                timestamp: None,
+                id: msg_value
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+            });
+        }
+    }
+    Ok(Some(ExternalSessionRecord {
+        source: "opencode",
+        session_id: session_id.to_string(),
+        short_name: Some(format!(
+            "opencode {}",
+            &session_id[..session_id.len().min(8)]
+        )),
+        title: Some(title),
+        working_dir,
+        provider_key,
+        model,
+        created_at,
+        updated_at,
+        path: path.to_path_buf(),
+        messages,
+    }))
+}
+
+fn truncate_title_text(text: &str, max_chars: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= max_chars {
+        trimmed.to_string()
+    } else {
+        format!(
+            "{}…",
+            trimmed
+                .chars()
+                .take(max_chars.saturating_sub(1))
+                .collect::<String>()
+        )
+    }
 }
 
 pub fn extract_text_from_json_value(value: &serde_json::Value) -> String {
