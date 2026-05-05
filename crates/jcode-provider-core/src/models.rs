@@ -62,6 +62,11 @@ pub fn provider_key_from_hint(provider_hint: Option<&str>) -> Option<&'static st
     }
 }
 
+pub fn is_listable_model_name(model: &str) -> bool {
+    let trimmed = model.trim();
+    !trimmed.is_empty() && !matches!(trimmed, "copilot models" | "openrouter models")
+}
+
 fn model_id_for_capability_lookup(model: &str, provider: Option<&str>) -> (String, bool) {
     let normalized = model.trim().to_ascii_lowercase();
     let (base, is_1m) = if let Some(base) = normalized.strip_suffix("[1m]") {

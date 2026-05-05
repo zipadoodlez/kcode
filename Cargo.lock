@@ -2802,6 +2802,10 @@ dependencies = [
 name = "jcode-provider-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "jcode-message-types",
  "reqwest",
  "serde",
  "serde_json",
