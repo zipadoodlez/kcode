@@ -2542,6 +2542,7 @@ dependencies = [
  "jcode-core",
  "jcode-embedding",
  "jcode-gateway-types",
+ "jcode-import-core",
  "jcode-memory-types",
  "jcode-message-types",
  "jcode-notify-email",
@@ -2721,6 +2722,17 @@ name = "jcode-gateway-types"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "jcode-import-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
