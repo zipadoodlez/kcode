@@ -2964,6 +2964,7 @@ name = "jcode-tui-core"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "jcode-memory-types",
  "serde",
 ]
 

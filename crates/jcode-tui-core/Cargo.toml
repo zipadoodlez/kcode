@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 crossterm = "0.29"
 serde = { version = "1", features = ["derive"] }
+jcode-memory-types = { path = "../jcode-memory-types" }
