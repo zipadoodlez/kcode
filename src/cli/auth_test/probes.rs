@@ -12,6 +12,9 @@ fn generic_credential_paths_for_provider(
         crate::provider_catalog::LoginProviderTarget::OpenRouter => {
             vec![config_dir.join("openrouter.env")]
         }
+        crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
+            vec![config_dir.join("openai.env")]
+        }
         crate::provider_catalog::LoginProviderTarget::Azure => {
             vec![config_dir.join(crate::auth::azure::ENV_FILE)]
         }

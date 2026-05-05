@@ -27,6 +27,7 @@ pub enum LoginProviderTarget {
     Jcode,
     Claude,
     OpenAi,
+    OpenAiApiKey,
     OpenRouter,
     Azure,
     OpenAiCompatible(OpenAiCompatibleProfile),
@@ -539,6 +540,24 @@ pub const OPENAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(2), Some(2), Some(2), Some(2), Some(2)),
 };
 
+pub const OPENAI_API_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "openai-api",
+    display_name: "OpenAI API",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenAi,
+    auth_status_method: "API key",
+    aliases: &[
+        "openai-key",
+        "openai-apikey",
+        "openai-platform",
+        "platform-openai",
+    ],
+    menu_detail: "native OpenAI API key, pay-per-token",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiApiKey,
+    order: LoginProviderSurfaceOrder::new(Some(99), Some(99), Some(99), Some(99), Some(99)),
+};
+
 pub const OPENROUTER_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "openrouter",
     display_name: "OpenRouter",
@@ -1013,10 +1032,11 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 40] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 41] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
+    OPENAI_API_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
     OPENROUTER_LOGIN_PROVIDER,
     AZURE_LOGIN_PROVIDER,

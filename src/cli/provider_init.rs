@@ -30,6 +30,12 @@ pub enum ProviderChoice {
     #[value(alias = "claude-subprocess", hide = true)]
     ClaudeSubprocess,
     Openai,
+    #[value(
+        alias = "openai-key",
+        alias = "openai-apikey",
+        alias = "openai-platform"
+    )]
+    OpenaiApi,
     Openrouter,
     #[value(alias = "azure-openai", alias = "aoai")]
     Azure,
@@ -107,6 +113,7 @@ impl ProviderChoice {
             Self::Claude => "claude",
             Self::ClaudeSubprocess => "claude-subprocess",
             Self::Openai => "openai",
+            Self::OpenaiApi => "openai-api",
             Self::Openrouter => "openrouter",
             Self::Azure => "azure",
             Self::Opencode => "opencode",
@@ -192,6 +199,7 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
             Some(crate::provider_catalog::CLAUDE_LOGIN_PROVIDER)
         }
         ProviderChoice::Openai => Some(crate::provider_catalog::OPENAI_LOGIN_PROVIDER),
+        ProviderChoice::OpenaiApi => Some(crate::provider_catalog::OPENAI_API_LOGIN_PROVIDER),
         ProviderChoice::Openrouter => Some(crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER),
         ProviderChoice::Azure => Some(crate::provider_catalog::AZURE_LOGIN_PROVIDER),
         ProviderChoice::Opencode => Some(crate::provider_catalog::OPENCODE_LOGIN_PROVIDER),
@@ -242,6 +250,7 @@ pub fn choice_for_login_provider(provider: LoginProviderDescriptor) -> Option<Pr
         LoginProviderTarget::Jcode => Some(ProviderChoice::Jcode),
         LoginProviderTarget::Claude => Some(ProviderChoice::Claude),
         LoginProviderTarget::OpenAi => Some(ProviderChoice::Openai),
+        LoginProviderTarget::OpenAiApiKey => Some(ProviderChoice::OpenaiApi),
         LoginProviderTarget::OpenRouter => Some(ProviderChoice::Openrouter),
         LoginProviderTarget::Azure => Some(ProviderChoice::Azure),
         LoginProviderTarget::OpenAiCompatible(profile) => [
@@ -1017,6 +1026,11 @@ pub async fn login_and_bootstrap_provider(
             disable_subscription_runtime_mode();
             Arc::new(provider::MultiProvider::with_preference(true))
         }
+        LoginProviderTarget::OpenAiApiKey => {
+            disable_subscription_runtime_mode();
+            lock_model_provider("openai");
+            Arc::new(provider::MultiProvider::with_preference(true))
+        }
         LoginProviderTarget::OpenRouter => {
             disable_subscription_runtime_mode();
             Arc::new(provider::MultiProvider::new())
@@ -1167,6 +1181,13 @@ async fn init_provider_with_options(
             disable_subscription_runtime_mode();
             ensure_openai_auth_allowed_for_explicit_choice()?;
             init_notice("Using OpenAI (provider locked)");
+            lock_model_provider("openai");
+            Arc::new(provider::MultiProvider::with_preference_fast(true))
+        }
+        ProviderChoice::OpenaiApi => {
+            disable_subscription_runtime_mode();
+            ensure_external_api_key_auth_allowed_for_explicit_choice("OPENAI_API_KEY")?;
+            init_notice("Using OpenAI API key provider (provider locked)");
             lock_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference_fast(true))
         }

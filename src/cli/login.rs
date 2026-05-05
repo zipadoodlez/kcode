@@ -249,6 +249,9 @@ pub async fn run_login_provider(
             LoginProviderTarget::OpenAi => login_openai_flow(account_label, options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::OpenAiApiKey => {
+                login_openai_api_key_flow().map(|_| LoginFlowOutcome::Completed)
+            }
             LoginProviderTarget::OpenRouter => {
                 login_openrouter_flow().map(|_| LoginFlowOutcome::Completed)
             }
@@ -327,6 +330,7 @@ fn maybe_persist_default_provider_after_login(
     let provider_id = match provider.target {
         LoginProviderTarget::Claude => Some("claude"),
         LoginProviderTarget::OpenAi => Some("openai"),
+        LoginProviderTarget::OpenAiApiKey => Some("openai-api"),
         LoginProviderTarget::OpenRouter => Some("openrouter"),
         LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
         LoginProviderTarget::Cursor => Some("cursor"),
@@ -426,6 +430,33 @@ fn login_jcode_flow() -> Result<()> {
             .join(", ")
     );
     crate::telemetry::record_auth_success("jcode", "api_key");
+    Ok(())
+}
+
+fn login_openai_api_key_flow() -> Result<()> {
+    eprintln!("Setting up OpenAI API key...");
+    eprintln!("Get your API key from: https://platform.openai.com/api-keys\n");
+    eprint!("Paste your OpenAI API key: ");
+    io::stdout().flush()?;
+
+    let key = read_secret_line()?;
+    if key.is_empty() {
+        anyhow::bail!("No API key provided.");
+    }
+    if !key.starts_with("sk-") {
+        eprintln!("Warning: OpenAI API keys usually start with 'sk-'. Saving anyway.");
+    }
+
+    save_named_api_key("openai.env", "OPENAI_API_KEY", &key)?;
+    eprintln!("\nSuccessfully saved OpenAI API key!");
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join("openai.env")
+            .display()
+    );
+    eprintln!("Provider: openai-api (native OpenAI Responses API)");
+    crate::telemetry::record_auth_success("openai-api", "api_key");
     Ok(())
 }
 
