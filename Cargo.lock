@@ -2557,6 +2557,7 @@ dependencies = [
  "jcode-storage",
  "jcode-task-types",
  "jcode-terminal-launch",
+ "jcode-tool-types",
  "jcode-tui-core",
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
@@ -2882,6 +2883,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
+]
+
+[[package]]
+name = "jcode-tool-types"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]
