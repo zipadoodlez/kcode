@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Entry in the Claude Code sessions-index.json file.
@@ -267,6 +268,83 @@ pub fn ordered_claude_code_message_entries(entries: &[ClaudeCodeEntry]) -> Vec<&
     ordered_entries
 }
 
+pub fn collect_files_recursive(root: &Path, extension: &str) -> Vec<PathBuf> {
+    fn walk(dir: &Path, extension: &str, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, extension, out);
+            } else if path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case(extension))
+                .unwrap_or(false)
+            {
+                out.push(path);
+            }
+        }
+    }
+
+    let mut files = Vec::new();
+    walk(root, extension, &mut files);
+    files.sort();
+    files
+}
+
+pub fn collect_recent_files_recursive(root: &Path, extension: &str, limit: usize) -> Vec<PathBuf> {
+    fn modified_sort_key(path: &Path) -> u64 {
+        path.metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0)
+    }
+
+    fn walk(
+        dir: &Path,
+        extension: &str,
+        limit: usize,
+        out: &mut BinaryHeap<Reverse<(u64, PathBuf)>>,
+    ) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, extension, limit, out);
+            } else if path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case(extension))
+                .unwrap_or(false)
+            {
+                let key = (modified_sort_key(&path), path);
+                if out.len() < limit {
+                    out.push(Reverse(key));
+                } else if out.peek().map(|smallest| key > smallest.0).unwrap_or(true) {
+                    out.pop();
+                    out.push(Reverse(key));
+                }
+            }
+        }
+    }
+
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let mut heap: BinaryHeap<Reverse<(u64, PathBuf)>> = BinaryHeap::new();
+    walk(root, extension, limit, &mut heap);
+    let mut files: Vec<(u64, PathBuf)> = heap.into_iter().map(|entry| entry.0).collect();
+    files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    files.into_iter().map(|(_, path)| path).collect()
+}
+
 pub fn parse_rfc3339_json(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
     value
         .and_then(|v| v.as_str())
@@ -425,6 +503,11 @@ mod tests {
             imported_pi_session_id("/tmp/session")
         );
         assert!(imported_pi_session_id("/tmp/session").starts_with("imported_pi_"));
+    }
+
+    #[test]
+    fn collect_recent_files_returns_empty_for_zero_limit() {
+        assert!(collect_recent_files_recursive(Path::new("."), "rs", 0).is_empty());
     }
 
     #[test]
