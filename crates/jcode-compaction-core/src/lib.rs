@@ -1,4 +1,6 @@
 use jcode_message_types::{ContentBlock, Message, Role};
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 /// Default token budget (200k tokens - matches Claude's actual context limit)
 pub const DEFAULT_TOKEN_BUDGET: usize = 200_000;
@@ -198,6 +200,158 @@ pub fn mean_embedding(embeddings: &[&Vec<f32>], dim: usize) -> Vec<f32> {
     mean
 }
 
+/// Find a safe compaction cutoff that does not leave kept tool results without
+/// their corresponding tool calls.
+pub fn safe_compaction_cutoff(messages: &[Message], initial_cutoff: usize) -> usize {
+    let mut cutoff = initial_cutoff.min(messages.len());
+
+    // Track tool call/result ids in the kept portion.
+    let mut available_tool_ids = HashSet::new();
+    let mut missing_tool_ids = HashSet::new();
+
+    for msg in &messages[cutoff..] {
+        for block in &msg.content {
+            match block {
+                ContentBlock::ToolUse { id, .. } => {
+                    available_tool_ids.insert(id.clone());
+                    missing_tool_ids.remove(id);
+                }
+                ContentBlock::ToolResult { tool_use_id, .. } => {
+                    if !available_tool_ids.contains(tool_use_id) {
+                        missing_tool_ids.insert(tool_use_id.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if missing_tool_ids.is_empty() {
+        return cutoff;
+    }
+
+    // Walk backward once, progressively growing the kept suffix until every
+    // kept tool result has its matching tool use in the same suffix.
+    for (idx, msg) in messages[..cutoff].iter().enumerate().rev() {
+        for block in &msg.content {
+            match block {
+                ContentBlock::ToolUse { id, .. } => {
+                    available_tool_ids.insert(id.clone());
+                    missing_tool_ids.remove(id);
+                }
+                ContentBlock::ToolResult { tool_use_id, .. } => {
+                    if !available_tool_ids.contains(tool_use_id) {
+                        missing_tool_ids.insert(tool_use_id.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        if missing_tool_ids.is_empty() {
+            cutoff = idx;
+            return cutoff;
+        }
+    }
+
+    // If we couldn't find every matching tool call, don't compact at all.
+    0
+}
+
+pub fn message_char_count(msg: &Message) -> usize {
+    content_char_count(&msg.content)
+}
+
+pub fn content_char_count(content: &[ContentBlock]) -> usize {
+    content
+        .iter()
+        .map(|block| match block {
+            ContentBlock::Text { text, .. } => text.len(),
+            ContentBlock::Reasoning { text } => text.len(),
+            ContentBlock::ToolUse { input, .. } => input.to_string().len() + 50,
+            ContentBlock::ToolResult { content, .. } => content.len() + 20,
+            ContentBlock::Image { data, .. } => data.len(),
+            ContentBlock::OpenAICompaction { encrypted_content } => encrypted_content.len(),
+        })
+        .sum()
+}
+
+pub fn summary_payload_char_count(summary: &Summary) -> usize {
+    summary
+        .openai_encrypted_content
+        .as_ref()
+        .map(|value| value.len())
+        .unwrap_or_else(|| summary.text.len())
+}
+
+pub fn estimate_compaction_tokens(
+    summary: Option<&Summary>,
+    active_message_chars: usize,
+    token_budget: usize,
+) -> usize {
+    let summary_chars = summary.map(summary_payload_char_count).unwrap_or(0);
+    estimate_compaction_tokens_from_chars(summary_chars + active_message_chars, token_budget)
+}
+
+pub fn estimate_compaction_tokens_from_chars(total_chars: usize, token_budget: usize) -> usize {
+    let msg_tokens = total_chars / CHARS_PER_TOKEN;
+    // Add overhead for system prompt + tool definitions, which are not in the
+    // message list but do count toward the context limit. Scale the overhead to
+    // the budget so tests with tiny budgets aren't affected.
+    let overhead = if token_budget >= DEFAULT_TOKEN_BUDGET / 2 {
+        SYSTEM_OVERHEAD_TOKENS
+    } else {
+        0
+    };
+    msg_tokens + overhead
+}
+
+pub fn semantic_goal_text(messages: &[Message]) -> String {
+    let mut text = String::new();
+    for msg in messages {
+        for block in &msg.content {
+            match block {
+                ContentBlock::Text {
+                    text: block_text, ..
+                } => push_semantic_excerpt(&mut text, block_text, 200),
+                ContentBlock::ToolResult { content, .. } => {
+                    push_semantic_excerpt(&mut text, content, 100)
+                }
+                _ => {}
+            }
+        }
+    }
+    text
+}
+
+pub fn semantic_message_text(msg: &Message) -> String {
+    let mut text = String::new();
+    for block in &msg.content {
+        if let ContentBlock::Text {
+            text: block_text, ..
+        } = block
+        {
+            push_semantic_excerpt(&mut text, block_text, EMBED_MAX_CHARS_PER_MSG);
+        }
+    }
+    text
+}
+
+pub fn push_semantic_excerpt(target: &mut String, source: &str, max_chars: usize) {
+    if source.is_empty() {
+        return;
+    }
+    if !target.is_empty() {
+        target.push(' ');
+    }
+    target.extend(source.chars().take(max_chars));
+}
+
+pub fn semantic_cache_key(text: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,5 +385,77 @@ mod tests {
         let mean = mean_embedding(&[&a, &b], 2);
         let norm = (mean[0] * mean[0] + mean[1] * mean[1]).sqrt();
         assert!((norm - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn safe_cutoff_keeps_tool_use_with_tool_result() {
+        let tool_use = Message {
+            role: Role::Assistant,
+            content: vec![ContentBlock::ToolUse {
+                id: "call_1".to_string(),
+                name: "read".to_string(),
+                input: serde_json::json!({"file":"src/lib.rs"}),
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        };
+        let tool_result = Message {
+            role: Role::User,
+            content: vec![ContentBlock::ToolResult {
+                tool_use_id: "call_1".to_string(),
+                content: "ok".to_string(),
+                is_error: None,
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        };
+        let messages = vec![
+            Message::user("old"),
+            tool_use,
+            tool_result,
+            Message::user("new"),
+        ];
+
+        assert_eq!(safe_compaction_cutoff(&messages, 2), 1);
+    }
+
+    #[test]
+    fn estimates_tokens_with_large_budget_overhead() {
+        let summary = Summary {
+            text: "abcd".repeat(100),
+            openai_encrypted_content: None,
+            covers_up_to_turn: 1,
+            original_turn_count: 1,
+        };
+
+        assert_eq!(estimate_compaction_tokens(Some(&summary), 0, 1000), 100);
+        assert_eq!(
+            estimate_compaction_tokens(Some(&summary), 0, DEFAULT_TOKEN_BUDGET),
+            100 + SYSTEM_OVERHEAD_TOKENS
+        );
+    }
+
+    #[test]
+    fn builds_semantic_text_from_relevant_content() {
+        let message = Message {
+            role: Role::User,
+            content: vec![
+                ContentBlock::Text {
+                    text: "hello world".to_string(),
+                    cache_control: None,
+                },
+                ContentBlock::ToolResult {
+                    tool_use_id: "call_1".to_string(),
+                    content: "tool output".to_string(),
+                    is_error: None,
+                },
+            ],
+            timestamp: None,
+            tool_duration_ms: None,
+        };
+
+        assert_eq!(semantic_message_text(&message), "hello world");
+        assert_eq!(semantic_goal_text(&[message]), "hello world tool output");
+        assert_eq!(semantic_cache_key("stable"), semantic_cache_key("stable"));
     }
 }
