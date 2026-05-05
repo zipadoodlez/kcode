@@ -1,8 +1,13 @@
 pub mod catalog_refresh;
+pub mod failover;
 pub mod openai_schema;
 pub mod pricing;
 
 pub use catalog_refresh::{ModelCatalogRefreshSummary, summarize_model_catalog_refresh};
+pub use failover::{
+    FailoverDecision, ProviderFailoverPrompt, classify_failover_error_message,
+    parse_failover_prompt_message,
+};
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
