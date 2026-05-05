@@ -2738,6 +2738,11 @@ dependencies = [
 [[package]]
 name = "jcode-memory-types"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jcode-core",
+ "serde",
+]
 
 [[package]]
 name = "jcode-message-types"
