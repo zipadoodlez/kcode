@@ -385,8 +385,8 @@ fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMo
 }
 
 async fn run_default_command(args: Args) -> Result<()> {
-    // `Args::standalone` remains temporarily deprecated for compatibility while
-    // we continue surfacing the migration warning and behavior below.
+    // `Args::standalone` is kept hidden only so old scripts receive a clear
+    // migration error instead of an unknown-flag failure.
     #[allow(deprecated)]
     let standalone = args.standalone;
 

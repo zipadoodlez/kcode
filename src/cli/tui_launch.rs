@@ -5,11 +5,9 @@ use anyhow::{Context, Result};
 const MAX_INTERACTIVE_SWARM_REPLAY_PANES: usize = 16;
 use std::io::{self, Write};
 use std::process::Command as ProcessCommand;
-use std::sync::Arc;
 
 use crate::{
-    id, logging, provider, replay, server, session, setup_hints, startup_profile, tool, tui,
-    video_export,
+    id, logging, replay, server, session, setup_hints, startup_profile, tui, video_export,
 };
 
 use super::hot_exec::{execute_requested_action, has_requested_action};
@@ -18,68 +16,6 @@ use super::terminal::{
     cleanup_tui_runtime, cleanup_tui_runtime_for_run_result, init_tui_runtime,
     print_session_resume_hint, set_current_session, spawn_session_signal_watchers,
 };
-
-pub async fn run_tui(
-    provider: Arc<dyn provider::Provider>,
-    registry: tool::Registry,
-    resume_session: Option<String>,
-    debug_socket: bool,
-    startup_hints: Option<setup_hints::StartupHints>,
-) -> Result<()> {
-    let (terminal, tui_runtime) = init_tui_runtime()?;
-    let mut app = tui::App::new(provider, registry);
-
-    let _debug_handle = if debug_socket {
-        let rx = app.enable_debug_socket();
-        let handle = app.start_debug_socket_listener(rx);
-        logging::info(&format!(
-            "Debug socket enabled at: {:?}",
-            tui::App::debug_socket_path()
-        ));
-        Some(handle)
-    } else {
-        None
-    };
-
-    if let Some(ref session_id) = resume_session {
-        app.restore_session(session_id);
-    } else if let Some(hints) = startup_hints {
-        apply_startup_hints(&mut app, hints);
-    }
-
-    set_current_session(app.session_id());
-    spawn_session_signal_watchers();
-
-    let session_id = app.session_id().to_string();
-    let session_name = id::extract_session_name(&session_id)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| session_id.clone());
-
-    let icon = id::session_icon(&session_name);
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::terminal::SetTitle(format!("{} jcode {}", icon, session_name))
-    );
-
-    app.init_mcp().await;
-    let result = app.run(terminal).await;
-
-    let run_result = result?;
-
-    cleanup_tui_runtime_for_run_result(&tui_runtime, &run_result, false);
-
-    if let Some(code) = run_result.exit_code {
-        std::process::exit(code);
-    }
-
-    execute_requested_action(&run_result)?;
-
-    if !has_requested_action(&run_result) {
-        print_session_resume_hint(&session_id);
-    }
-
-    Ok(())
-}
 
 pub(crate) fn resumed_window_title(session_id: &str) -> String {
     let session_name = id::extract_session_name(session_id)
