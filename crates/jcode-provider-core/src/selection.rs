@@ -1,3 +1,7 @@
+use crate::{ModelRoute, normalize_copilot_model_name};
+use std::borrow::Cow;
+use std::collections::HashSet;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ActiveProvider {
     Claude,
@@ -94,6 +98,54 @@ pub fn provider_key(provider: ActiveProvider) -> &'static str {
     }
 }
 
+pub fn provider_from_model_key(key: &str) -> Option<ActiveProvider> {
+    match key {
+        "claude" => Some(ActiveProvider::Claude),
+        "openai" => Some(ActiveProvider::OpenAI),
+        "copilot" => Some(ActiveProvider::Copilot),
+        "antigravity" => Some(ActiveProvider::Antigravity),
+        "gemini" => Some(ActiveProvider::Gemini),
+        "cursor" => Some(ActiveProvider::Cursor),
+        "openrouter" => Some(ActiveProvider::OpenRouter),
+        _ => None,
+    }
+}
+
+pub fn explicit_model_provider_prefix(model: &str) -> Option<(ActiveProvider, &'static str, &str)> {
+    if let Some(rest) = model.strip_prefix("copilot:") {
+        Some((ActiveProvider::Copilot, "copilot:", rest))
+    } else if let Some(rest) = model.strip_prefix("antigravity:") {
+        Some((ActiveProvider::Antigravity, "antigravity:", rest))
+    } else if let Some(rest) = model.strip_prefix("cursor:") {
+        Some((ActiveProvider::Cursor, "cursor:", rest))
+    } else {
+        None
+    }
+}
+
+pub fn model_name_for_provider(provider: ActiveProvider, model: &str) -> Cow<'_, str> {
+    if matches!(provider, ActiveProvider::Claude)
+        && let Some(canonical) = normalize_copilot_model_name(model)
+    {
+        return Cow::Borrowed(canonical);
+    }
+    Cow::Borrowed(model)
+}
+
+pub fn dedupe_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
+    let mut seen = HashSet::new();
+    routes
+        .into_iter()
+        .filter(|route| {
+            seen.insert((
+                route.provider.clone(),
+                route.api_method.clone(),
+                route.model.clone(),
+            ))
+        })
+        .collect()
+}
+
 pub fn fallback_sequence(active: ActiveProvider) -> Vec<ActiveProvider> {
     match active {
         ActiveProvider::Claude => vec![
@@ -172,6 +224,55 @@ mod tests {
         );
         assert_eq!(parse_provider_hint("openai"), Some(ActiveProvider::OpenAI));
         assert_eq!(parse_provider_hint("unknown"), None);
+    }
+
+    #[test]
+    fn parses_model_provider_prefixes() {
+        assert_eq!(
+            provider_from_model_key("gemini"),
+            Some(ActiveProvider::Gemini)
+        );
+        assert_eq!(provider_from_model_key("missing"), None);
+
+        let (provider, prefix, model) = explicit_model_provider_prefix("copilot:gpt-5").unwrap();
+        assert_eq!(provider, ActiveProvider::Copilot);
+        assert_eq!(prefix, "copilot:");
+        assert_eq!(model, "gpt-5");
+        assert_eq!(explicit_model_provider_prefix("claude:sonnet"), None);
+    }
+
+    #[test]
+    fn dedupes_model_routes_by_route_identity() {
+        let routes = vec![
+            ModelRoute {
+                model: "m".to_string(),
+                provider: "p".to_string(),
+                api_method: "a".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+            ModelRoute {
+                model: "m".to_string(),
+                provider: "p".to_string(),
+                api_method: "a".to_string(),
+                available: false,
+                detail: "duplicate".to_string(),
+                cheapness: None,
+            },
+            ModelRoute {
+                model: "m".to_string(),
+                provider: "p".to_string(),
+                api_method: "b".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+        ];
+
+        let deduped = dedupe_model_routes(routes);
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0].detail, "");
     }
 
     #[test]
