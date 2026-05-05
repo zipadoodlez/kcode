@@ -607,6 +607,15 @@ struct ModelListReport {
     provider: String,
     selected_model: String,
     models: Vec<String>,
+    routes: Vec<ModelListRouteReport>,
+}
+
+#[derive(Debug, Serialize)]
+struct ModelListRouteReport {
+    provider: String,
+    model: String,
+    method: String,
+    available: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -1177,6 +1186,15 @@ pub async fn run_model_command(
             provider: provider_label,
             selected_model: provider.model(),
             models,
+            routes: filtered_routes
+                .iter()
+                .map(|route| ModelListRouteReport {
+                    provider: cli_route_provider_display(&route.provider, &route.api_method),
+                    model: route.model.clone(),
+                    method: cli_api_method_display(&route.api_method).to_string(),
+                    available: route.available,
+                })
+                .collect(),
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -1195,6 +1213,26 @@ pub async fn run_model_command(
     }
 
     Ok(())
+}
+
+fn cli_api_method_display(raw: &str) -> &str {
+    match raw {
+        "claude-oauth" | "openai-oauth" | "code-assist-oauth" => "oauth",
+        "api-key" | "openai-api-key" => "api key",
+        method if method.starts_with("openai-compatible") => "api key",
+        method => method
+            .split_once(':')
+            .map(|(method, _)| method)
+            .unwrap_or(method),
+    }
+}
+
+fn cli_route_provider_display(provider: &str, api_method: &str) -> String {
+    if api_method == "openrouter" && provider != "auto" && !provider.contains("OpenRouter") {
+        format!("OpenRouter/{}", provider)
+    } else {
+        provider.to_string()
+    }
 }
 
 fn collect_cli_model_names(

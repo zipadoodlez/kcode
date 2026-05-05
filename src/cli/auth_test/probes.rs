@@ -243,14 +243,15 @@ async fn probe_copilot_auth(report: &mut AuthTestProviderReport) {
 async fn probe_cursor_auth(report: &mut AuthTestProviderReport) {
     let has_agent_auth = crate::auth::cursor::has_cursor_agent_auth();
     let has_api_key = crate::auth::cursor::has_cursor_api_key();
+    let has_auth_file = crate::auth::cursor::has_cursor_auth_file_token();
     let has_vscdb = crate::auth::cursor::has_cursor_vscdb_token();
-    let ok = has_agent_auth || has_api_key || has_vscdb;
+    let ok = has_agent_auth || has_api_key || has_auth_file || has_vscdb;
     report.push_step(
         "credential_probe",
         ok,
         format!(
-            "Cursor auth sources: agent_session={}, api_key={}, vscdb_token={}",
-            has_agent_auth, has_api_key, has_vscdb
+            "Cursor auth sources: agent_session={}, api_key={}, auth_json={}, vscdb_token={}",
+            has_agent_auth, has_api_key, has_auth_file, has_vscdb
         ),
     );
     report.push_step(

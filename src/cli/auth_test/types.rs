@@ -147,6 +147,9 @@ impl AuthTestTarget {
                     .join("cursor.env")
                     .display()
                     .to_string(),
+                crate::auth::cursor::cursor_auth_file_path()?
+                    .display()
+                    .to_string(),
                 crate::storage::user_home_path(".config/Cursor/User/globalStorage/state.vscdb")?
                     .display()
                     .to_string(),
