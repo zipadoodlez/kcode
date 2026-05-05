@@ -1,0 +1,8 @@
+[package]
+name = "jcode-swarm-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+jcode-plan = { path = "../jcode-plan" }

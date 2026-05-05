@@ -2555,6 +2555,7 @@ dependencies = [
  "jcode-session-types",
  "jcode-side-panel-types",
  "jcode-storage",
+ "jcode-swarm-core",
  "jcode-task-types",
  "jcode-terminal-launch",
  "jcode-tool-core",
@@ -2874,6 +2875,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "jcode-swarm-core"
+version = "0.1.0"
+dependencies = [
+ "jcode-plan",
 ]
 
 [[package]]
