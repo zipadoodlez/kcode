@@ -2742,6 +2742,7 @@ dependencies = [
  "chrono",
  "jcode-core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
