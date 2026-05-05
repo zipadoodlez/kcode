@@ -264,7 +264,7 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
         #[cfg(unix)]
         "handterm" => {
             let shell = shell_command(&command_parts(command));
-            cmd.args(["--standalone", "--backend", "gpu", "--exec", &shell]);
+            cmd.args(["--backend", "gpu", "--exec", &shell]);
         }
         #[cfg(target_os = "macos")]
         "ghostty" => {

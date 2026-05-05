@@ -54,7 +54,7 @@ impl FailoverDecision {
     }
 }
 
-fn contains_standalone_status_code(haystack: &str, code: &str) -> bool {
+fn contains_independent_status_code(haystack: &str, code: &str) -> bool {
     let haystack_bytes = haystack.as_bytes();
     let code_len = code.len();
 
@@ -85,7 +85,7 @@ pub fn classify_failover_error_message(message: &str) -> FailoverDecision {
     ]
     .iter()
     .any(|needle| lower.contains(needle))
-        || contains_standalone_status_code(&lower, "413");
+        || contains_independent_status_code(&lower, "413");
     if request_size_or_context {
         return FailoverDecision::RetryNextProvider;
     }
@@ -104,8 +104,8 @@ pub fn classify_failover_error_message(message: &str) -> FailoverDecision {
     ]
     .iter()
     .any(|needle| lower.contains(needle))
-        || contains_standalone_status_code(&lower, "429")
-        || contains_standalone_status_code(&lower, "402");
+        || contains_independent_status_code(&lower, "429")
+        || contains_independent_status_code(&lower, "402");
     if rate_or_quota {
         return FailoverDecision::RetryAndMarkUnavailable;
     }
@@ -127,8 +127,8 @@ pub fn classify_failover_error_message(message: &str) -> FailoverDecision {
     ]
     .iter()
     .any(|needle| lower.contains(needle))
-        || contains_standalone_status_code(&lower, "401")
-        || contains_standalone_status_code(&lower, "403");
+        || contains_independent_status_code(&lower, "401")
+        || contains_independent_status_code(&lower, "403");
     if auth_or_access {
         return FailoverDecision::RetryAndMarkUnavailable;
     }

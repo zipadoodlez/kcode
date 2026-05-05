@@ -6,10 +6,10 @@ use crate::test_support::*;
 // Run with: cargo test --test e2e binary_integration -- --ignored
 // ============================================================================
 
-/// Test that the jcode binary can run standalone with Claude provider
+/// Test that the jcode binary can run independent with Claude provider
 #[tokio::test]
 #[ignore] // Requires Claude credentials
-async fn binary_integration_standalone_claude() -> Result<()> {
+async fn binary_integration_independent_claude() -> Result<()> {
     use std::process::Command;
     let _env = setup_test_env()?;
 

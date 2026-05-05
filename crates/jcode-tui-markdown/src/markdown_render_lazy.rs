@@ -519,7 +519,7 @@ pub fn render_markdown_lazy(
                     for line in math_display_lines(&math) {
                         lines.push(with_blockquote_prefix(line, blockquote_depth));
                     }
-                    record_centered_standalone_block(
+                    record_centered_independent_block(
                         &mut centered_blocks,
                         block_start,
                         lines.len(),
@@ -606,7 +606,7 @@ pub fn render_markdown_lazy(
                     Line::from(rule).left_aligned(),
                     blockquote_depth,
                 ));
-                record_centered_standalone_block(&mut centered_blocks, block_start, lines.len());
+                record_centered_independent_block(&mut centered_blocks, block_start, lines.len());
                 if blockquote_depth == 0
                     && list_stack.is_empty()
                     && !in_definition_list
@@ -636,7 +636,7 @@ pub fn render_markdown_lazy(
                         blockquote_depth,
                     ));
                 }
-                record_centered_standalone_block(&mut centered_blocks, block_start, lines.len());
+                record_centered_independent_block(&mut centered_blocks, block_start, lines.len());
                 if blockquote_depth == 0
                     && list_stack.is_empty()
                     && !in_definition_list

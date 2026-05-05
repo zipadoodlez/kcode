@@ -63,12 +63,6 @@ pub(crate) struct Args {
     #[arg(long, global = true, hide = true)]
     pub(crate) fresh_spawn: bool,
 
-    /// Removed: standalone local TUI mode. Kept hidden only to emit a migration error.
-    /// Use the default server/client TUI, or `jcode replay` for deterministic playback.
-    #[arg(long, global = true, hide = true)]
-    #[deprecated = "Use default client/server mode instead"]
-    pub(crate) standalone: bool,
-
     /// Disable auto-detection of jcode repository and self-dev mode
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,

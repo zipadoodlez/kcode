@@ -40,16 +40,16 @@ That changes the mapping to:
 - `surface = client-side attachment/view of a session`
 - `client = container for one or many surfaces`
 
-This preserves standalone windows while enabling a built-in multi-session
+This preserves independent windows while enabling a built-in multi-session
 workspace.
 
 ## Goals
 
 - Add a built-in multi-session workspace UI.
-- Preserve the current standalone-client workflow.
+- Preserve the current independent-client workflow.
 - Preserve interoperability with external window managers like Niri.
 - Make macOS and other platforms first-class for spatial multi-session use.
-- Avoid duplicating the entire TUI stack into separate "standalone" and
+- Avoid duplicating the entire TUI stack into separate "independent" and
   "workspace" apps.
 - Keep the server as the source of truth for sessions.
 
@@ -101,11 +101,11 @@ Client 1 (workspace)
   ├── Surface B -> Session B
   └── Surface C -> Session C
 
-Client 2 (standalone)
+Client 2 (independent)
   └── Surface D -> Session D
 ```
 
-A standalone window becomes just a client hosting one surface. A workspace
+A independent window becomes just a client hosting one surface. A workspace
 becomes a client hosting many surfaces.
 
 ## Terminology
@@ -130,7 +130,7 @@ A client-side interactive or passive view of a session.
 Examples:
 
 - a session shown inside the built-in workspace
-- a standalone jcode window attached to one session
+- a independent jcode window attached to one session
 
 A surface is the UI representation of a session in a specific client.
 
@@ -140,7 +140,7 @@ A TUI process that hosts one or many surfaces.
 
 Examples:
 
-- current standalone jcode window
+- current independent jcode window
 - future multi-session workspace client
 
 ## Key Design Rule
@@ -173,8 +173,8 @@ Owned by a specific client surface:
 This separation is required to support:
 
 - one session shown in different places over time
-- popping a session out into a standalone window
-- docking a standalone session back into a workspace
+- popping a session out into a independent window
+- docking a independent session back into a workspace
 - different local view state for the same underlying session
 
 ## Client Modes
@@ -183,7 +183,7 @@ The same client binary should support two primary modes.
 
 ### Single-surface mode
 
-Equivalent to today's standalone client:
+Equivalent to today's independent client:
 
 - one client
 - one surface
@@ -205,15 +205,15 @@ This mode provides the in-app session manager and workspace UI.
 
 Preserving interop with Niri and similar tools is a core requirement.
 
-The built-in workspace must not replace standalone clients. Instead, both should
+The built-in workspace must not replace independent clients. Instead, both should
 remain first-class.
 
 ### Required workflow support
 
 - attach a session inside the in-app workspace
-- pop a session out into its own standalone client/window
-- optionally dock a standalone session back into a workspace
-- allow multiple standalone clients to coexist with a workspace client
+- pop a session out into its own independent client/window
+- optionally dock a independent session back into a workspace
+- allow multiple independent clients to coexist with a workspace client
 
 ### Resulting model
 
@@ -228,7 +228,7 @@ surface** at a time.
 
 That means:
 
-- if a workspace surface is popped out into a standalone window, the standalone
+- if a workspace surface is popped out into a independent window, the independent
   surface becomes the active interactive owner
 - the workspace surface should either disappear or become passive
 - docking reverses that ownership
@@ -386,7 +386,7 @@ Per-surface local UI state:
 ### Shared session renderer
 
 A reusable rendering layer that can render a session surface into an arbitrary
-rect. This is the key step for making both standalone and workspace modes reuse
+rect. This is the key step for making both independent and workspace modes reuse
 one UI stack.
 
 ## Suggested Internal Model
@@ -422,7 +422,7 @@ struct SessionSurfaceState {
 
 This enables:
 
-- standalone mode = one-surface client
+- independent mode = one-surface client
 - workspace mode = many-surface client
 
 ## Transport / Protocol Strategy
@@ -491,19 +491,19 @@ This avoids conflicts between text entry and spatial movement.
 
 ## Pop-Out / Dock Workflows
 
-### Pop out to standalone window
+### Pop out to independent window
 
 1. User selects a workspace surface.
-2. Client spawns a standalone jcode client attached to the same session.
-3. Standalone surface becomes the active interactive owner.
+2. Client spawns a independent jcode client attached to the same session.
+3. Independent surface becomes the active interactive owner.
 4. Workspace surface is removed or downgraded to passive.
 
 ### Dock into workspace
 
-1. User requests dock for a standalone session.
+1. User requests dock for a independent session.
 2. Workspace client creates a surface for that session.
 3. Workspace surface becomes active interactive owner.
-4. Standalone client exits or detaches.
+4. Independent client exits or detaches.
 
 ## Interop API Surface
 
@@ -573,12 +573,12 @@ smooth Niri-like experience.
 
 ### Phase 4: pop-out support
 
-- Add commands to open a hosted session in a standalone client.
+- Add commands to open a hosted session in a independent client.
 - Preserve current `jcode --resume <session>` workflow.
 
 ### Phase 5: dock support
 
-- Allow a standalone session to be reattached into a workspace client.
+- Allow a independent session to be reattached into a workspace client.
 - Keep one interactive owner per session.
 
 ### Phase 6: protocol cleanup
@@ -604,8 +604,8 @@ Adopt the following design direction:
 
 1. **Expand the client to support multiple session surfaces.**
 2. **Keep the server as the owner of sessions.**
-3. **Preserve standalone clients as first-class.**
-4. **Treat workspace panes and standalone windows as different surfaces for the
+3. **Preserve independent clients as first-class.**
+4. **Treat workspace panes and independent windows as different surfaces for the
    same session model.**
 5. **Start with one active interactive surface per session.**
 6. **Use a Niri-style full-screen workspace with a rectangle-only workspace map

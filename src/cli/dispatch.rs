@@ -385,11 +385,6 @@ fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMo
 }
 
 async fn run_default_command(args: Args) -> Result<()> {
-    // `Args::standalone` is kept hidden only so old scripts receive a clear
-    // migration error instead of an unknown-flag failure.
-    #[allow(deprecated)]
-    let standalone = args.standalone;
-
     startup_profile::mark("run_main_none_branch");
 
     let explicit_provider_or_model = args.provider != ProviderChoice::Auto
@@ -413,12 +408,6 @@ async fn run_default_command(args: Args) -> Result<()> {
         terminal::show_crash_resume_hint();
     }
     startup_profile::mark("crash_resume_hint");
-
-    if standalone {
-        anyhow::bail!(
-            "--standalone has been removed. Start jcode without this flag to use the supported server/client TUI, or use `jcode replay` for deterministic session playback."
-        );
-    }
 
     let cwd = std::env::current_dir()?;
     let in_jcode_repo = build::is_jcode_repo(&cwd);

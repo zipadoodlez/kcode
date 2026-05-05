@@ -860,7 +860,7 @@ fn exit_centered_structured_block(state: &mut CenteredStructuredBlockState, curr
     }
 }
 
-fn record_centered_standalone_block(
+fn record_centered_independent_block(
     state: &mut CenteredStructuredBlockState,
     start_line: usize,
     end_line: usize,
