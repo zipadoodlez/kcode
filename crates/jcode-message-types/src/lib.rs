@@ -75,10 +75,6 @@ pub enum Role {
     Assistant,
 }
 
-/// Plain-text tool output placeholder when execution was interrupted.
-pub const TOOL_OUTPUT_MISSING_TEXT: &str =
-    "Tool output missing (session interrupted before tool execution completed)";
-
 /// A message in the conversation
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Message {
@@ -295,6 +291,105 @@ impl Message {
                 msg
             })
             .collect()
+    }
+}
+
+pub const TOOL_OUTPUT_MISSING_TEXT: &str =
+    "Tool output missing (session interrupted before tool execution completed)";
+
+const STABLE_HASH_SEED: u64 = 0xcbf29ce484222325;
+const STABLE_HASH_PRIME: u64 = 0x100000001b3;
+
+fn stable_hash_bytes(bytes: &[u8]) -> u64 {
+    let mut hash = STABLE_HASH_SEED;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(STABLE_HASH_PRIME);
+    }
+    hash
+}
+
+pub fn extend_stable_hash(acc: u64, next: u64) -> u64 {
+    stable_hash_bytes(&[acc.to_le_bytes().as_slice(), next.to_le_bytes().as_slice()].concat())
+}
+
+pub fn stable_message_hash(message: &Message) -> u64 {
+    match serde_json::to_vec(message) {
+        Ok(bytes) => stable_hash_bytes(&bytes),
+        Err(_) => stable_hash_bytes(format!("{:?}", message).as_bytes()),
+    }
+}
+
+pub fn ends_with_fresh_user_turn(messages: &[Message]) -> bool {
+    for msg in messages.iter().rev() {
+        if msg.role != Role::User {
+            return false;
+        }
+
+        if msg
+            .content
+            .iter()
+            .any(|block| matches!(block, ContentBlock::ToolResult { .. }))
+        {
+            return false;
+        }
+
+        if msg.content.is_empty() {
+            return false;
+        }
+
+        let mut saw_user_text = false;
+        for block in &msg.content {
+            match block {
+                ContentBlock::Text { text, .. } => {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() && !trimmed.starts_with("<system-reminder>") {
+                        saw_user_text = true;
+                    }
+                }
+                _ => return false,
+            }
+        }
+
+        if saw_user_text {
+            return true;
+        }
+
+        if msg.is_internal_system_reminder() {
+            continue;
+        }
+
+        return false;
+    }
+
+    false
+}
+
+/// Sanitize a tool ID so it matches the pattern `^[a-zA-Z0-9_-]+$`.
+///
+/// Different providers generate tool IDs in different formats. When switching
+/// from one provider to another mid-conversation, the historical tool IDs may
+/// contain characters that the new provider rejects (e.g., dots in Copilot IDs
+/// sent to Anthropic). This function replaces any invalid characters with
+/// underscores.
+pub fn sanitize_tool_id(id: &str) -> String {
+    if id.is_empty() {
+        return "unknown".to_string();
+    }
+    let sanitized: String = id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if sanitized.is_empty() {
+        "unknown".to_string()
+    } else {
+        sanitized
     }
 }
 
