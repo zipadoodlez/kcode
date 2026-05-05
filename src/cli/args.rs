@@ -63,10 +63,8 @@ pub(crate) struct Args {
     #[arg(long, global = true, hide = true)]
     pub(crate) fresh_spawn: bool,
 
-    /// DEPRECATED: Run standalone TUI without connecting to server.
-    /// The default mode is now always client/server (even for self-dev).
-    /// Standalone mode is missing features like graceful cancel with partial
-    /// content preservation on the server side. Will be removed in a future version.
+    /// Removed: standalone local TUI mode. Kept hidden only to emit a migration error.
+    /// Use the default server/client TUI, or `jcode replay` for deterministic playback.
     #[arg(long, global = true, hide = true)]
     #[deprecated = "Use default client/server mode instead"]
     pub(crate) standalone: bool,

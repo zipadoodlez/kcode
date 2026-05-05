@@ -414,12 +414,18 @@ async fn run_default_command(args: Args) -> Result<()> {
     }
     startup_profile::mark("crash_resume_hint");
 
+    if standalone {
+        anyhow::bail!(
+            "--standalone has been removed. Start jcode without this flag to use the supported server/client TUI, or use `jcode replay` for deterministic session playback."
+        );
+    }
+
     let cwd = std::env::current_dir()?;
     let in_jcode_repo = build::is_jcode_repo(&cwd);
     startup_profile::mark("is_jcode_repo");
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
 
-    if in_jcode_repo && !already_in_selfdev && !standalone && !args.no_selfdev {
+    if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
         output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
         output::stderr_info("   Using shared server with self-dev session mode");
         output::stderr_info("   (use --no-selfdev to disable auto-detection)");
@@ -427,27 +433,6 @@ async fn run_default_command(args: Args) -> Result<()> {
 
         crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
         crate::process_title::set_initial_title(&args);
-    }
-
-    if standalone {
-        output::stderr_info(
-            "\x1b[33m⚠️  Warning: --standalone is deprecated and will be removed in a future version.\x1b[0m",
-        );
-        output::stderr_info(
-            "\x1b[33m   The default server/client mode now handles all use cases including self-dev.\x1b[0m\n",
-        );
-        let (provider, registry) =
-            provider_init::init_provider_and_registry(&args.provider, args.model.as_deref())
-                .await?;
-        tui_launch::run_tui(
-            provider,
-            registry,
-            args.resume,
-            args.debug_socket,
-            startup_hints,
-        )
-        .await?;
-        return Ok(());
     }
 
     startup_profile::mark("client_mode_start");

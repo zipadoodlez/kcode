@@ -14,9 +14,14 @@ use std::fs;
 #[cfg(unix)]
 use std::path::Path;
 #[cfg(unix)]
+use std::sync::Mutex;
+#[cfg(unix)]
 use std::thread;
 #[cfg(unix)]
 use std::time::{Duration, Instant};
+
+#[cfg(unix)]
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(unix)]
 struct EnvVarGuard {
@@ -83,6 +88,7 @@ fn wait_for_lines(path: &Path, min_lines: usize) -> Vec<String> {
 #[cfg(unix)]
 #[test]
 fn spawn_resume_in_new_terminal_uses_handterm_exec_mode() {
+    let _env_lock = ENV_LOCK.lock().expect("env lock");
     let temp = tempfile::tempdir().expect("temp dir");
     let output_path = temp.path().join("resume-launch.txt");
     write_fake_handterm(&temp, &output_path);
@@ -152,6 +158,7 @@ fn resumed_window_title_includes_server_name_when_registry_matches_socket() {
 #[cfg(unix)]
 #[test]
 fn spawn_selfdev_in_new_terminal_uses_handterm_exec_mode() {
+    let _env_lock = ENV_LOCK.lock().expect("env lock");
     let temp = tempfile::tempdir().expect("temp dir");
     let output_path = temp.path().join("selfdev-launch.txt");
     write_fake_handterm(&temp, &output_path);
