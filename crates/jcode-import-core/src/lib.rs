@@ -267,6 +267,81 @@ pub fn ordered_claude_code_message_entries(entries: &[ClaudeCodeEntry]) -> Vec<&
     ordered_entries
 }
 
+pub fn parse_rfc3339_json(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
+    value
+        .and_then(|v| v.as_str())
+        .and_then(|ts| DateTime::parse_from_rfc3339(ts).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+pub fn extract_text_from_json_value(value: &serde_json::Value) -> String {
+    fn visit(value: &serde_json::Value, out: &mut Vec<String>) {
+        match value {
+            serde_json::Value::String(text) => {
+                if !text.trim().is_empty() {
+                    out.push(text.trim().to_string());
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    visit(item, out);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                if let Some(text) = map.get("text").and_then(|v| v.as_str()) {
+                    if !text.trim().is_empty() {
+                        out.push(text.trim().to_string());
+                    }
+                    return;
+                }
+                if let Some(text) = map.get("title").and_then(|v| v.as_str())
+                    && !text.trim().is_empty()
+                {
+                    out.push(text.trim().to_string());
+                }
+                for (key, nested) in map {
+                    if key == "type" || key == "title" {
+                        continue;
+                    }
+                    visit(nested, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    visit(value, &mut out);
+    out.join(" ")
+}
+
+pub fn truncate_title(s: &str) -> String {
+    let trimmed = s.trim();
+    const MAX_CHARS: usize = 80;
+    if trimmed.chars().count() <= MAX_CHARS {
+        trimmed.to_string()
+    } else {
+        let mut out = trimmed.chars().take(MAX_CHARS).collect::<String>();
+        out.push('…');
+        out
+    }
+}
+
+pub fn codex_title_candidate(text: &str) -> Option<String> {
+    let cleaned = text.replace("<environment_context>", "");
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() {
+        return None;
+    }
+    if cleaned.starts_with("# AGENTS.md instructions")
+        || cleaned.starts_with("<permissions instructions>")
+        || cleaned.contains("\n<INSTRUCTIONS>")
+    {
+        return None;
+    }
+    Some(truncate_title(cleaned))
+}
+
 pub fn imported_claude_code_session_id(session_id: &str) -> String {
     format!("imported_cc_{}", session_id)
 }
@@ -350,5 +425,35 @@ mod tests {
             imported_pi_session_id("/tmp/session")
         );
         assert!(imported_pi_session_id("/tmp/session").starts_with("imported_pi_"));
+    }
+
+    #[test]
+    fn extract_text_from_json_collects_nested_text() {
+        let value = serde_json::json!({
+            "type": "message",
+            "content": [
+                {"type": "text", "text": " hello "},
+                {"title": "ignored title", "other": " world "}
+            ]
+        });
+        assert_eq!(
+            extract_text_from_json_value(&value),
+            "hello ignored title world"
+        );
+    }
+
+    #[test]
+    fn codex_title_candidate_filters_environment_noise() {
+        assert_eq!(
+            codex_title_candidate("<environment_context> Build feature"),
+            Some("Build feature".into())
+        );
+        assert_eq!(
+            codex_title_candidate(
+                "# AGENTS.md instructions
+Do x"
+            ),
+            None
+        );
     }
 }
