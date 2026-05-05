@@ -2557,6 +2557,7 @@ dependencies = [
  "jcode-storage",
  "jcode-task-types",
  "jcode-terminal-launch",
+ "jcode-tool-core",
  "jcode-tool-types",
  "jcode-tui-core",
  "jcode-tui-markdown",
@@ -2884,6 +2885,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
+]
+
+[[package]]
+name = "jcode-tool-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "jcode-agent-runtime",
+ "jcode-message-types",
+ "jcode-tool-types",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
