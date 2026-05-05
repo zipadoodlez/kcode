@@ -2,11 +2,16 @@ pub mod catalog_refresh;
 pub mod failover;
 pub mod openai_schema;
 pub mod pricing;
+pub mod selection;
 
 pub use catalog_refresh::{ModelCatalogRefreshSummary, summarize_model_catalog_refresh};
 pub use failover::{
     FailoverDecision, ProviderFailoverPrompt, classify_failover_error_message,
     parse_failover_prompt_message,
+};
+pub use selection::{
+    ActiveProvider, ProviderAvailability, auto_default_provider, fallback_sequence,
+    parse_provider_hint, provider_key, provider_label,
 };
 
 use serde::{Deserialize, Serialize};
