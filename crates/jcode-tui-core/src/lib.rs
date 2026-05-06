@@ -1,5 +1,5 @@
 pub mod graph_topology;
-pub use graph_topology::{GraphEdge, GraphNode, build_graph_topology};
+pub use graph_topology::{GraphEdge, GraphNode, build_graph_topology, graph_node_score};
 
 pub mod keybind;
 pub mod stream_buffer;
