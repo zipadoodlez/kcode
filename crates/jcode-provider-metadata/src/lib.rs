@@ -583,7 +583,7 @@ pub const BEDROCK_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     menu_detail: "Bedrock API key or AWS credentials, pay-per-token",
     recommended: false,
     target: LoginProviderTarget::Bedrock,
-    order: LoginProviderSurfaceOrder::new(Some(99), Some(99), None, None, Some(99)),
+    order: LoginProviderSurfaceOrder::new(Some(5), Some(4), None, None, Some(4)),
 };
 
 pub const AZURE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -1415,8 +1415,8 @@ mod tests {
             Some("claude")
         );
         assert_eq!(
-            resolve_login_selection("15", &providers).map(|provider| provider.id),
-            Some("cursor")
+            resolve_login_selection("6", &providers).map(|provider| provider.id),
+            Some("bedrock")
         );
         assert_eq!(
             resolve_login_selection("compat", &providers).map(|provider| provider.id),
@@ -1446,15 +1446,15 @@ mod tests {
         );
         assert_eq!(
             resolve_login_selection("7", &providers).map(|provider| provider.id),
+            Some("bedrock")
+        );
+        assert_eq!(
+            resolve_login_selection("8", &providers).map(|provider| provider.id),
             Some("azure")
         );
         assert_eq!(
-            resolve_login_selection("17", &providers).map(|provider| provider.id),
-            Some("gemini")
-        );
-        assert_eq!(
-            resolve_login_selection("18", &providers).map(|provider| provider.id),
-            Some("google")
+            resolve_login_selection("bedrock", &providers).map(|provider| provider.id),
+            Some("bedrock")
         );
     }
 }
