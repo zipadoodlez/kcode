@@ -1,3 +1,4 @@
+pub mod chrome;
 pub mod layout;
 
 use ratatui::prelude::{Line, Span, Style};
