@@ -2567,6 +2567,7 @@ dependencies = [
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
  "jcode-tui-render",
+ "jcode-tui-session-picker",
  "jcode-tui-style",
  "jcode-tui-workspace",
  "jcode-update-core",
@@ -3008,6 +3009,13 @@ version = "0.1.0"
 dependencies = [
  "ratatui",
  "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "jcode-tui-session-picker"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

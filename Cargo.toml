@@ -45,6 +45,7 @@ members = [
     "crates/jcode-tool-core",
     "crates/jcode-tool-types",
     "crates/jcode-tui-render",
+    "crates/jcode-tui-session-picker",
     "crates/jcode-tui-style",
     "crates/jcode-update-core",
     "crates/jcode-terminal-launch",
@@ -151,6 +152,7 @@ jcode-tui-markdown = { path = "crates/jcode-tui-markdown" }
 jcode-tui-core = { path = "crates/jcode-tui-core" }
 jcode-tui-mermaid = { path = "crates/jcode-tui-mermaid" }
 jcode-tui-render = { path = "crates/jcode-tui-render" }
+jcode-tui-session-picker = { path = "crates/jcode-tui-session-picker" }
 jcode-tui-style = { path = "crates/jcode-tui-style" }
 jcode-update-core = { path = "crates/jcode-update-core" }
 jcode-terminal-launch = { path = "crates/jcode-terminal-launch" }
