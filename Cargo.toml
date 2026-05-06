@@ -48,6 +48,7 @@ members = [
     "crates/jcode-tui-render",
     "crates/jcode-tui-session-picker",
     "crates/jcode-tui-style",
+    "crates/jcode-tui-tool-display",
     "crates/jcode-update-core",
     "crates/jcode-terminal-launch",
     "crates/jcode-tui-workspace",
@@ -156,6 +157,7 @@ jcode-tui-account-picker = { path = "crates/jcode-tui-account-picker" }
 jcode-tui-render = { path = "crates/jcode-tui-render" }
 jcode-tui-session-picker = { path = "crates/jcode-tui-session-picker" }
 jcode-tui-style = { path = "crates/jcode-tui-style" }
+jcode-tui-tool-display = { path = "crates/jcode-tui-tool-display" }
 jcode-update-core = { path = "crates/jcode-update-core" }
 jcode-terminal-launch = { path = "crates/jcode-terminal-launch" }
 jcode-tui-workspace = { path = "crates/jcode-tui-workspace" }
