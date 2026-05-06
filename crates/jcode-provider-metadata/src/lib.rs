@@ -583,7 +583,7 @@ pub const BEDROCK_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     menu_detail: "Bedrock API key or AWS credentials, pay-per-token",
     recommended: false,
     target: LoginProviderTarget::Bedrock,
-    order: LoginProviderSurfaceOrder::new(Some(99), None, None, None, Some(99)),
+    order: LoginProviderSurfaceOrder::new(Some(99), Some(99), None, None, Some(99)),
 };
 
 pub const AZURE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
