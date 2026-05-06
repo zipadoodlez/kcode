@@ -151,6 +151,7 @@ struct ScriptableAuthSuccess {
     email: Option<String>,
 }
 
+#[allow(deprecated)]
 pub async fn run_login(
     choice: &ProviderChoice,
     account_label: Option<&str>,
@@ -867,27 +868,7 @@ fn save_named_env_vars(env_file: &str, vars: &[(&str, String)]) -> Result<()> {
 }
 
 fn login_cursor_flow() -> Result<()> {
-    eprintln!("Starting Cursor login...");
-    let binary = crate::auth::cursor::cursor_agent_cli_path();
-
-    if crate::auth::cursor::has_cursor_agent_cli() {
-        match crate::auth::login_flows::run_external_login_command(&binary, &["login"]) {
-            Ok(()) => {
-                eprintln!("Cursor login command completed.");
-                crate::telemetry::record_auth_success("cursor", "oauth");
-                crate::auth::AuthStatus::invalidate_cache();
-                return Ok(());
-            }
-            Err(err) => {
-                eprintln!("Cursor browser login failed: {}", err);
-                eprintln!();
-                eprintln!("Falling back to Cursor API key setup.");
-            }
-        }
-    } else {
-        eprintln!("Cursor Agent CLI was not found on PATH.");
-        eprintln!("You can still save a Cursor API key now and install Cursor Agent later.");
-    }
+    eprintln!("Starting Cursor API key setup...");
 
     eprintln!("Get your API key from: https://cursor.com/settings");
     eprintln!("(Dashboard > Integrations > User API Keys)\n");
@@ -908,12 +889,7 @@ fn login_cursor_flow() -> Result<()> {
             .join("cursor.env")
             .display()
     );
-    eprintln!("jcode will pass it to `cursor-agent` automatically.");
-    if !crate::auth::cursor::has_cursor_agent_cli() {
-        eprintln!("Install Cursor Agent to use the Cursor provider:");
-        eprintln!("  - macOS/Linux/WSL: curl https://cursor.com/install -fsS | bash");
-        eprintln!("  - Windows (PowerShell): irm 'https://cursor.com/install?win32=true' | iex");
-    }
+    eprintln!("jcode will use the native Cursor HTTPS transport.");
     crate::telemetry::record_auth_success("cursor", "api_key");
     Ok(())
 }

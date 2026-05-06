@@ -282,19 +282,16 @@ J-Code also supports experimental CLI-backed providers, plus Antigravity with na
 - `--provider copilot`
 - `--provider antigravity`
 
-Cursor and Copilot use each provider's local CLI session/auth and shell out in print mode. Antigravity still uses a CLI-backed runtime transport today, but login/auth storage is handled natively by jcode.
+Cursor uses jcode's native HTTPS transport. Copilot uses GitHub device-flow auth. Antigravity login/auth storage is handled natively by jcode.
 
 ### Cursor
 - Login: `jcode login --provider cursor`
-  - fast path: runs `cursor-agent login`
-  - fallback: saves `CURSOR_API_KEY` to `~/.config/jcode/cursor.env`
+  - saves `CURSOR_API_KEY` to `~/.config/jcode/cursor.env`
 - Runtime:
-  - jcode shells out to `cursor-agent`
-  - if a Cursor API key is configured, jcode injects it via `CURSOR_API_KEY`
-  - `cursor-agent status` is used to probe whether a local CLI session is authenticated
+  - jcode uses native HTTPS requests
+  - if a Cursor API key is configured, jcode exchanges/uses it directly
 - Env vars:
-  - `JCODE_CURSOR_CLI_PATH` (default: `cursor-agent`)
-  - `JCODE_CURSOR_MODEL` (default: `gpt-5`)
+  - `JCODE_CURSOR_MODEL` (default: `composer-1.5`)
   - `CURSOR_API_KEY` (optional; overrides saved key)
 
 ### GitHub Copilot

@@ -1269,6 +1269,7 @@ fn collect_cli_model_names(
     deduped
 }
 
+#[allow(deprecated)]
 fn filter_cli_model_routes_for_choice(
     choice: &super::provider_init::ProviderChoice,
     routes: &[crate::provider::ModelRoute],

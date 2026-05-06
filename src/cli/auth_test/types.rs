@@ -51,6 +51,7 @@ impl AuthTestTarget {
         !matches!(self, Self::Google)
     }
 
+    #[allow(deprecated)]
     fn from_provider_choice(choice: &super::provider_init::ProviderChoice) -> Option<Self> {
         match choice {
             super::provider_init::ProviderChoice::Claude

@@ -27,6 +27,9 @@ pub(crate) use external_auth::{
 pub enum ProviderChoice {
     Jcode,
     Claude,
+    #[deprecated(
+        note = "Claude Code CLI subprocess transport is deprecated; use ProviderChoice::Claude for native Anthropic OAuth/API transport"
+    )]
     #[value(alias = "claude-subprocess", hide = true)]
     ClaudeSubprocess,
     Openai,
@@ -107,6 +110,7 @@ pub enum ProviderChoice {
 }
 
 impl ProviderChoice {
+    #[allow(deprecated)]
     pub fn as_arg_value(&self) -> &'static str {
         match self {
             Self::Jcode => "jcode",
@@ -192,6 +196,7 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
     }
 }
 
+#[allow(deprecated)]
 pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProviderDescriptor> {
     match choice {
         ProviderChoice::Jcode => Some(crate::provider_catalog::JCODE_LOGIN_PROVIDER),
@@ -1123,6 +1128,7 @@ pub async fn init_provider_for_validation(
     init_provider_with_options(choice, model, false, false).await
 }
 
+#[allow(deprecated)]
 async fn init_provider_with_options(
     choice: &ProviderChoice,
     model: Option<&str>,
@@ -1194,7 +1200,7 @@ async fn init_provider_with_options(
         ProviderChoice::Cursor => {
             disable_subscription_runtime_mode();
             ensure_cursor_auth_allowed_for_explicit_choice()?;
-            init_notice("Using Cursor CLI provider (experimental)");
+            init_notice("Using Cursor native HTTPS provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(provider::cursor::CursorCliProvider::new())
