@@ -2567,6 +2567,7 @@ dependencies = [
  "jcode-tui-core",
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
+ "jcode-tui-messages",
  "jcode-tui-render",
  "jcode-tui-session-picker",
  "jcode-tui-style",
@@ -3011,6 +3012,17 @@ dependencies = [
  "serde",
  "serde_json",
  "usvg",
+]
+
+[[package]]
+name = "jcode-tui-messages"
+version = "0.1.0"
+dependencies = [
+ "jcode-config-types",
+ "jcode-message-types",
+ "jcode-tui-markdown",
+ "ratatui",
+ "serde_json",
 ]
 
 [[package]]
