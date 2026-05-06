@@ -7,6 +7,14 @@ Jcode supports a native AWS Bedrock provider that talks directly to Bedrock Runt
 Use normal AWS credential mechanisms, or a Bedrock API key:
 
 ```bash
+jcode login --provider bedrock
+```
+
+This saves `AWS_BEARER_TOKEN_BEDROCK` and `JCODE_BEDROCK_REGION` to `~/.config/jcode/bedrock.env`.
+
+You can also configure manually:
+
+```bash
 export AWS_BEARER_TOKEN_BEDROCK=your-bedrock-api-key
 export AWS_REGION=us-east-1
 ```

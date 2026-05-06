@@ -122,7 +122,7 @@ pub(crate) enum Command {
         message: String,
     },
 
-    /// Login to a provider via OAuth
+    /// Login to a provider via OAuth, API key, or local credentials
     Login {
         /// Account label for multi-account support (stored labels are auto-numbered)
         #[arg(long, short = 'a')]

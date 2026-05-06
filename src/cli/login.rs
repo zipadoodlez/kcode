@@ -256,6 +256,9 @@ pub async fn run_login_provider(
             LoginProviderTarget::OpenRouter => {
                 login_openrouter_flow().map(|_| LoginFlowOutcome::Completed)
             }
+            LoginProviderTarget::Bedrock => {
+                login_bedrock_flow().map(|_| LoginFlowOutcome::Completed)
+            }
             LoginProviderTarget::Azure => login_azure_flow().map(|_| LoginFlowOutcome::Completed),
             LoginProviderTarget::OpenAiCompatible(profile) => {
                 login_openai_compatible_flow(&profile, &options)
@@ -333,6 +336,7 @@ fn maybe_persist_default_provider_after_login(
         LoginProviderTarget::OpenAi => Some("openai"),
         LoginProviderTarget::OpenAiApiKey => Some("openai-api"),
         LoginProviderTarget::OpenRouter => Some("openrouter"),
+        LoginProviderTarget::Bedrock => Some("bedrock"),
         LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
         LoginProviderTarget::Cursor => Some("cursor"),
         LoginProviderTarget::Copilot => Some("copilot"),
@@ -531,6 +535,51 @@ fn login_openrouter_flow() -> Result<()> {
             .display()
     );
     crate::telemetry::record_auth_success("openrouter", "api_key");
+    Ok(())
+}
+
+fn login_bedrock_flow() -> Result<()> {
+    eprintln!("Setting up AWS Bedrock...");
+    eprintln!(
+        "Generate a Bedrock API key in the AWS Bedrock console: https://console.aws.amazon.com/bedrock/home#/api-keys"
+    );
+    eprintln!("Short-term keys are recommended for onboarding/testing.\n");
+
+    let region = read_line_trimmed("AWS region [us-east-2]: ")?;
+    let region = if region.trim().is_empty() {
+        "us-east-2".to_string()
+    } else {
+        region.trim().to_string()
+    };
+
+    eprint!("Paste your Bedrock API key: ");
+    io::stdout().flush()?;
+    let key = read_secret_line()?;
+    if key.is_empty() {
+        anyhow::bail!("No API key provided.");
+    }
+
+    save_named_api_key(
+        crate::provider::bedrock::ENV_FILE,
+        crate::provider::bedrock::API_KEY_ENV,
+        &key,
+    )?;
+    crate::provider_catalog::save_env_value_to_env_file(
+        crate::provider::bedrock::REGION_ENV,
+        crate::provider::bedrock::ENV_FILE,
+        Some(&region),
+    )?;
+
+    eprintln!("\nSuccessfully saved AWS Bedrock API key!");
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join(crate::provider::bedrock::ENV_FILE)
+            .display()
+    );
+    eprintln!("Region: {}", region);
+    eprintln!("Provider: bedrock (native AWS Bedrock Converse API)");
+    crate::telemetry::record_auth_success("bedrock", "api_key");
     Ok(())
 }
 
