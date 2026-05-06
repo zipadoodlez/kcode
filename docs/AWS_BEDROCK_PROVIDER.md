@@ -4,7 +4,14 @@ Jcode supports a native AWS Bedrock provider that talks directly to Bedrock Runt
 
 ## Configure credentials
 
-Use normal AWS credential mechanisms:
+Use normal AWS credential mechanisms, or a Bedrock API key:
+
+```bash
+export AWS_BEARER_TOKEN_BEDROCK=your-bedrock-api-key
+export AWS_REGION=us-east-1
+```
+
+For IAM/SSO credentials:
 
 ```bash
 export AWS_PROFILE=my-profile
@@ -104,4 +111,5 @@ cargo test -p jcode --lib provider::bedrock::tests::bedrock_live_smoke_test -- -
 - `AccessDenied`: grant Bedrock invoke/list permissions and enable model access in the AWS Console.
 - `model not found` or validation errors: verify model ID/inference profile and region support.
 - SSO token errors: run `aws sso login --profile <profile>`.
+- API key auth: set `AWS_BEARER_TOKEN_BEDROCK` and `AWS_REGION`.
 - Missing region: set `AWS_REGION` or `JCODE_BEDROCK_REGION`.
