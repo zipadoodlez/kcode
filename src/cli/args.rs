@@ -232,6 +232,10 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Memory(MemoryCommand),
 
+    /// Session management commands
+    #[command(subcommand)]
+    Session(SessionCommand),
+
     /// Ambient mode management
     #[command(subcommand)]
     Ambient(AmbientCommand),
@@ -407,6 +411,27 @@ pub(crate) enum ModelCommand {
         /// Show provider/selection summary before the list
         #[arg(long)]
         verbose: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum SessionCommand {
+    /// Rename a saved session's human-readable name/title
+    Rename {
+        /// Session ID or memorable short name, e.g. fox
+        session: String,
+
+        /// New session name/title
+        #[arg(required_unless_present = "clear")]
+        name: Option<String>,
+
+        /// Clear the custom session name/title
+        #[arg(long, conflicts_with = "name")]
+        clear: bool,
+
+        /// Emit JSON instead of human-readable output
+        #[arg(long)]
+        json: bool,
     },
 }
 

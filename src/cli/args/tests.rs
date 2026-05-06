@@ -43,6 +43,49 @@ fn model_list_subcommand_parses() {
 }
 
 #[test]
+fn session_rename_subcommand_parses() {
+    let args = Args::try_parse_from([
+        "jcode",
+        "session",
+        "rename",
+        "fox",
+        "release planning",
+        "--json",
+    ])
+    .unwrap();
+    match args.command {
+        Some(Command::Session(SessionCommand::Rename {
+            session,
+            name,
+            clear,
+            json,
+        })) => {
+            assert_eq!(session, "fox");
+            assert_eq!(name.as_deref(), Some("release planning"));
+            assert!(!clear);
+            assert!(json);
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+
+    let args = Args::try_parse_from(["jcode", "session", "rename", "fox", "--clear"]).unwrap();
+    match args.command {
+        Some(Command::Session(SessionCommand::Rename {
+            session,
+            name,
+            clear,
+            json,
+        })) => {
+            assert_eq!(session, "fox");
+            assert!(name.is_none());
+            assert!(clear);
+            assert!(!json);
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
 fn login_no_browser_flag_parses() {
     let args = Args::try_parse_from(["jcode", "login", "--no-browser"]).unwrap();
     match args.command {
