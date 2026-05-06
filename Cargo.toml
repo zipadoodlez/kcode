@@ -104,6 +104,7 @@ async-trait = "0.1"
 
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
 
 # Serialization
