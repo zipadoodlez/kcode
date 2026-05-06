@@ -2563,6 +2563,7 @@ dependencies = [
  "jcode-terminal-launch",
  "jcode-tool-core",
  "jcode-tool-types",
+ "jcode-tui-account-picker",
  "jcode-tui-core",
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
@@ -2959,6 +2960,13 @@ name = "jcode-tool-types"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "jcode-tui-account-picker"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
