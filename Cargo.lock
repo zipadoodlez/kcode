@@ -2571,6 +2571,7 @@ dependencies = [
  "jcode-tui-session-picker",
  "jcode-tui-style",
  "jcode-tui-tool-display",
+ "jcode-tui-usage-overlay",
  "jcode-tui-workspace",
  "jcode-update-core",
  "jcode-usage-types",
@@ -3042,6 +3043,14 @@ name = "jcode-tui-tool-display"
 version = "0.1.0"
 dependencies = [
  "unicode-width 0.2.0",
+]
+
+[[package]]
+name = "jcode-tui-usage-overlay"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "serde",
 ]
 
 [[package]]
