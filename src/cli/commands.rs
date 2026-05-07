@@ -120,11 +120,12 @@ pub fn run_session_rename_command(
     }
 
     session.save()?;
+    crate::tui::session_picker::invalidate_session_list_cache();
 
     let output = SessionRenameOutput {
         session_id: session.id.clone(),
         display_name: session.display_name().to_string(),
-        title: session.title.clone(),
+        title: session.display_title().map(ToOwned::to_owned),
         cleared: clear,
     };
 
