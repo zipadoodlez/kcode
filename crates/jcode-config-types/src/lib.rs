@@ -619,7 +619,7 @@ impl Default for ProviderConfig {
             default_provider: None,
             openai_reasoning_effort: Some("low".to_string()),
             openai_transport: None,
-            openai_service_tier: None,
+            openai_service_tier: Some("priority".to_string()),
             openai_native_compaction_mode: "auto".to_string(),
             openai_native_compaction_threshold_tokens: 200_000,
             cross_provider_failover: CrossProviderFailoverMode::Countdown,
