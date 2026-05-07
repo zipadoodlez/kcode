@@ -4,6 +4,10 @@ set -euo pipefail
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
+# shellcheck source=scripts/remote_config.sh
+source "$repo_root/scripts/remote_config.sh"
+jcode_load_remote_config
+
 log() {
   printf 'dev_cargo: %s\n' "$*" >&2
 }
@@ -293,5 +297,10 @@ cargo_argv=()
 while IFS= read -r -d '' arg; do
   cargo_argv+=("$arg")
 done < <(build_cargo_argv "$@")
+
+if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
+  log "using remote cargo via scripts/remote_build.sh"
+  exec "$repo_root/scripts/remote_build.sh" "${cargo_argv[@]}"
+fi
 
 exec cargo "${cargo_argv[@]}"
