@@ -99,10 +99,33 @@ impl EndpointInfo {
         if let Some(ref prompt) = self.pricing.prompt
             && let Ok(p) = prompt.parse::<f64>()
         {
-            parts.push(format!("${:.2}/M", p * 1e6));
+            parts.push(format!("in ${:.2}/M", p * 1e6));
+        }
+        if let Some(ref completion) = self.pricing.completion
+            && let Ok(c) = completion.parse::<f64>()
+        {
+            parts.push(format!("out ${:.2}/M", c * 1e6));
+        }
+        if let Some(ref cache_write) = self.pricing.input_cache_write
+            && let Ok(cw) = cache_write.parse::<f64>()
+            && cw > 0.0
+        {
+            parts.push(format!("cache write ${:.2}/M", cw * 1e6));
+        }
+        if let Some(ref cache_read) = self.pricing.input_cache_read
+            && let Ok(cr) = cache_read.parse::<f64>()
+            && cr > 0.0
+        {
+            parts.push(format!("cache read ${:.2}/M", cr * 1e6));
         }
         if let Some(uptime) = self.uptime_last_30m {
             parts.push(format!("{:.0}%", uptime));
+        }
+        if let Some(ref latency) = self.latency_last_30m
+            && let Some(l) = Self::extract_p50(latency)
+            && l > 0.0
+        {
+            parts.push(format!("{:.0}ms p50", l));
         }
         if let Some(ref tps) = self.throughput_last_30m
             && let Some(t) = Self::extract_p50(tps)
@@ -110,11 +133,8 @@ impl EndpointInfo {
         {
             parts.push(format!("{:.0}tps", t));
         }
-        if let Some(ref cache_read) = self.pricing.input_cache_read
-            && let Ok(cr) = cache_read.parse::<f64>()
-            && cr > 0.0
-        {
-            parts.push("cache".to_string());
+        if let Some(cache) = self.supports_implicit_caching {
+            parts.push(if cache { "cache on" } else { "cache off" }.to_string());
         }
         if let Some(ref q) = self.quantization
             && q != "unknown"
