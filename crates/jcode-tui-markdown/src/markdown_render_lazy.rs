@@ -11,6 +11,7 @@ pub fn render_markdown_lazy(
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
     let side_only = diagram_side_only();
+    let deferred_mermaid_mode = deferred_mermaid_render_context_enabled();
     let spacing_mode = effective_markdown_spacing_mode();
     let mut centered_blocks = CenteredStructuredBlockState::default();
 
@@ -374,18 +375,37 @@ pub fn render_markdown_lazy(
                         continue;
                     }
                     let terminal_width = max_width.and_then(|w| u16::try_from(w).ok());
-                    let result = if mermaid_should_register_active() {
-                        mermaid::render_mermaid_sized(&code_block_content, terminal_width)
+                    let result = if deferred_mermaid_mode {
+                        mermaid::render_mermaid_deferred_with_registration(
+                            &code_block_content,
+                            terminal_width,
+                            mermaid_should_register_active(),
+                        )
+                    } else if mermaid_should_register_active() {
+                        Some(mermaid::render_mermaid_sized(
+                            &code_block_content,
+                            terminal_width,
+                        ))
                     } else {
-                        mermaid::render_mermaid_untracked(&code_block_content, terminal_width)
+                        Some(mermaid::render_mermaid_untracked(
+                            &code_block_content,
+                            terminal_width,
+                        ))
                     };
                     match result {
-                        mermaid::RenderResult::Image { .. } if side_only => {
+                        Some(mermaid::RenderResult::Image { .. }) if side_only => {
                             lines.push(mermaid_sidebar_placeholder("↗ mermaid diagram (sidebar)"));
                         }
-                        other => {
+                        Some(other) => {
                             let mermaid_lines = mermaid::result_to_lines(other, max_width);
                             lines.extend(mermaid_lines);
+                        }
+                        None => {
+                            lines.push(mermaid_sidebar_placeholder(if side_only {
+                                "↻ mermaid diagram rendering in sidebar..."
+                            } else {
+                                "↻ rendering mermaid diagram..."
+                            }));
                         }
                     }
                 } else {
