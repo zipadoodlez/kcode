@@ -392,11 +392,17 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                         ));
                         continue;
                     }
-                    let result = if streaming_mode || deferred_mermaid_mode {
+                    let result = if streaming_mode {
+                        mermaid::render_mermaid_deferred_with_stream_scope(
+                            &code_block_content,
+                            terminal_width,
+                            dbg_mermaid_blocks as u64,
+                        )
+                    } else if deferred_mermaid_mode {
                         mermaid::render_mermaid_deferred_with_registration(
                             &code_block_content,
                             terminal_width,
-                            !streaming_mode && mermaid_should_register_active(),
+                            mermaid_should_register_active(),
                         )
                     } else if !mermaid_should_register_active() {
                         Some(mermaid::render_mermaid_untracked(
