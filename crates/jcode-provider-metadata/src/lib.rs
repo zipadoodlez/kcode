@@ -1226,14 +1226,21 @@ fn allows_insecure_http_host(host: &str) -> bool {
         .strip_prefix('[')
         .and_then(|s| s.strip_suffix(']'))
         .unwrap_or(host);
-    if host.eq_ignore_ascii_case("localhost") {
+    let host_lower = host.to_ascii_lowercase();
+    if host_lower == "localhost" || host_lower.ends_with(".local") {
         return true;
     }
 
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         return match ip {
             std::net::IpAddr::V4(v4) => {
-                v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
+                let raw = u32::from(v4);
+                let is_carrier_grade_nat = (raw & 0xffc0_0000) == 0x6440_0000;
+                v4.is_loopback()
+                    || v4.is_private()
+                    || v4.is_link_local()
+                    || v4.is_unspecified()
+                    || is_carrier_grade_nat
             }
             std::net::IpAddr::V6(v6) => {
                 v6.is_loopback()
@@ -1287,6 +1294,14 @@ mod tests {
         assert_eq!(
             normalize_api_base("http://10.0.0.8:11434/v1").as_deref(),
             Some("http://10.0.0.8:11434/v1")
+        );
+        assert_eq!(
+            normalize_api_base("http://100.103.78.84:11434/v1").as_deref(),
+            Some("http://100.103.78.84:11434/v1")
+        );
+        assert_eq!(
+            normalize_api_base("http://hsv.local:11434/v1").as_deref(),
+            Some("http://hsv.local:11434/v1")
         );
         assert_eq!(
             normalize_api_base("http://[fd00::1]:8080/v1").as_deref(),
