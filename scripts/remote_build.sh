@@ -178,10 +178,12 @@ local_git_hash=""
 local_git_date=""
 local_git_tag=""
 local_git_dirty="0"
+local_changelog_raw=""
 if command -v git >/dev/null 2>&1 && git -C "$LOCAL_DIR" rev-parse --git-dir >/dev/null 2>&1; then
     local_git_hash="$(git -C "$LOCAL_DIR" rev-parse --short HEAD 2>/dev/null || true)"
     local_git_date="$(git -C "$LOCAL_DIR" log -1 --format=%ci 2>/dev/null || true)"
     local_git_tag="$(git -C "$LOCAL_DIR" describe --tags --always 2>/dev/null || true)"
+    local_changelog_raw="$(git -C "$LOCAL_DIR" log -700 --format='%h|%ct|%D|%s' 2>/dev/null || true)"
     if [[ -n "$(git -C "$LOCAL_DIR" status --porcelain 2>/dev/null || true)" ]]; then
         local_git_dirty="1"
     fi
@@ -219,6 +221,7 @@ if [[ "$SYNC_SOURCE" -eq 1 ]]; then
         printf 'git_date=%s\n' "$local_git_date"
         printf 'git_tag=%s\n' "$local_git_tag"
         printf 'git_dirty=%s\n' "$local_git_dirty"
+        printf 'changelog_raw<<JCODE_CHANGELOG_EOF\n%s\nJCODE_CHANGELOG_EOF\n' "$local_changelog_raw"
     } > "$metadata_file"
     "$RSYNC_BIN" -avz "$metadata_file" "$REMOTE:$REMOTE_DIR/.jcode-build-meta"
 else
