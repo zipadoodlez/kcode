@@ -121,29 +121,17 @@ fn test_table_cjk_alignment() {
 
 #[test]
 fn test_mermaid_block_detection() {
-    // Mermaid blocks should be detected and rendered differently than regular code
+    // Mermaid rendering is temporarily disabled by default, so Mermaid fences
+    // should safely fall back to normal code blocks unless explicitly opted in.
     let md = "```mermaid\nflowchart LR\n    A --> B\n```";
     let lines = render_markdown(md);
-
-    // Mermaid rendering can return:
-    // 1. Empty lines (image displayed via Kitty/iTerm2 protocol directly to stdout)
-    // 2. ASCII fallback lines (if no graphics support)
-    // 3. Error lines (if parsing failed)
-    // All are valid outcomes
-
-    // Should NOT have the code block border (┌─ mermaid) since mermaid removes it
     let text: String = lines
         .iter()
         .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
         .collect();
 
-    // The key test: it should NOT contain syntax-highlighted code (the raw mermaid source)
-    // It should either be empty (image displayed) or contain mermaid metadata
-    assert!(
-        lines.is_empty() || text.contains("mermaid") || text.contains("flowchart"),
-        "Expected mermaid handling, got: {}",
-        text
-    );
+    assert!(text.contains("mermaid"), "Expected code block header: {text}");
+    assert!(text.contains("flowchart LR"), "Expected raw Mermaid source: {text}");
 }
 
 #[test]

@@ -373,7 +373,8 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
             }
             Event::End(TagEnd::CodeBlock) => {
                 // Check if this is a mermaid diagram
-                let is_mermaid = code_block_lang
+                let is_mermaid = mermaid_rendering_enabled()
+                    && code_block_lang
                     .as_ref()
                     .map(|l| mermaid::is_mermaid_lang(l))
                     .unwrap_or(false);

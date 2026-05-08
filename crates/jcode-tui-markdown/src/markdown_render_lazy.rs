@@ -362,7 +362,8 @@ pub fn render_markdown_lazy(
                 code_block_content.clear();
             }
             Event::End(TagEnd::CodeBlock) => {
-                let is_mermaid = code_block_lang
+                let is_mermaid = mermaid_rendering_enabled()
+                    && code_block_lang
                     .as_ref()
                     .map(|l| mermaid::is_mermaid_lang(l))
                     .unwrap_or(false);

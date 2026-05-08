@@ -10,13 +10,80 @@ use syntect::highlighting::{Style as SynStyle, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(feature = "mermaid-renderer")]
 use jcode_tui_mermaid as mermaid;
+
+#[cfg(not(feature = "mermaid-renderer"))]
+mod mermaid {
+    use ratatui::prelude::*;
+
+    #[derive(Debug, Clone)]
+    pub enum RenderResult {
+        Image {
+            hash: u64,
+            path: std::path::PathBuf,
+            width: u32,
+            height: u32,
+        },
+        Error(String),
+    }
+
+    pub fn is_mermaid_lang(lang: &str) -> bool {
+        lang.eq_ignore_ascii_case("mermaid") || lang.eq_ignore_ascii_case("mmd")
+    }
+
+    pub fn image_protocol_available() -> bool {
+        false
+    }
+
+    pub fn render_mermaid_deferred_with_stream_scope(
+        _content: &str,
+        _terminal_width: Option<u16>,
+        _stream_sequence: u64,
+    ) -> Option<RenderResult> {
+        Some(RenderResult::Error("Mermaid rendering is disabled".to_string()))
+    }
+
+    pub fn render_mermaid_deferred_with_registration(
+        _content: &str,
+        _terminal_width: Option<u16>,
+        _register_active: bool,
+    ) -> Option<RenderResult> {
+        Some(RenderResult::Error("Mermaid rendering is disabled".to_string()))
+    }
+
+    pub fn render_mermaid_untracked(
+        _content: &str,
+        _terminal_width: Option<u16>,
+    ) -> RenderResult {
+        RenderResult::Error("Mermaid rendering is disabled".to_string())
+    }
+
+    pub fn render_mermaid_sized(_content: &str, _terminal_width: Option<u16>) -> RenderResult {
+        RenderResult::Error("Mermaid rendering is disabled".to_string())
+    }
+
+    pub fn set_streaming_preview_diagram(
+        _hash: u64,
+        _width: u32,
+        _height: u32,
+        _label: Option<String>,
+    ) {
+    }
+
+    pub fn result_to_lines(result: RenderResult, _max_width: Option<usize>) -> Vec<Line<'static>> {
+        match result {
+            RenderResult::Image { .. } => Vec::new(),
+            RenderResult::Error(message) => vec![Line::from(message)],
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
 pub enum DiagramDisplayMode {
+    #[default]
     None,
     Margin,
-    #[default]
     Pinned,
 }
 
@@ -781,6 +848,12 @@ fn diagram_side_only() -> bool {
 
 fn mermaid_should_register_active() -> bool {
     !matches!(effective_diagram_mode(), DiagramDisplayMode::None)
+}
+
+fn mermaid_rendering_enabled() -> bool {
+    // Temporarily disable Mermaid for users while the renderer is unstable.
+    // Developers can opt in explicitly to keep iterating on the feature.
+    std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "1")
 }
 
 fn mermaid_sidebar_placeholder(text: &str) -> Line<'static> {
