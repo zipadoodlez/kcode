@@ -238,6 +238,17 @@ pub const COMTEGRA_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     requires_api_key: true,
 };
 
+pub const FPT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "fpt",
+    display_name: "FPT AI Marketplace",
+    api_base: "https://mkp-api.fptcloud.com",
+    api_key_env: "FPT_API_KEY",
+    env_file: "fpt.env",
+    setup_url: "https://ai-docs.fptcloud.com/api-reference/ai-marketplace/api-reference/api-integration-large-language-model-md",
+    default_model: Some("GLM-5.1"),
+    requires_api_key: true,
+};
+
 pub const FIRMWARE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "firmware",
     display_name: "Firmware",
@@ -458,7 +469,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 29] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 30] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -471,6 +482,7 @@ const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 29] = [
     CORTECS_PROFILE,
     DEEPSEEK_PROFILE,
     COMTEGRA_PROFILE,
+    FPT_PROFILE,
     FIRMWARE_PROFILE,
     HUGGING_FACE_PROFILE,
     MOONSHOT_PROFILE,
@@ -761,6 +773,19 @@ pub const COMTEGRA_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescri
     order: LoginProviderSurfaceOrder::new(Some(22), Some(22), Some(22), Some(22), Some(22)),
 };
 
+pub const FPT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "fpt",
+    display_name: "FPT AI Marketplace",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["fpt-ai", "fptcloud", "fpt-cloud"],
+    menu_detail: "OpenAI-compatible FPT AI Marketplace API",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(FPT_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(23), Some(23), Some(23), Some(23), Some(23)),
+};
+
 pub const FIRMWARE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "firmware",
     display_name: "Firmware",
@@ -771,7 +796,7 @@ pub const FIRMWARE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescri
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(FIRMWARE_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(22), Some(22), Some(22), Some(22), Some(22)),
+    order: LoginProviderSurfaceOrder::new(Some(24), Some(24), Some(24), Some(24), Some(24)),
 };
 
 pub const HUGGING_FACE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -784,7 +809,7 @@ pub const HUGGING_FACE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDe
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(HUGGING_FACE_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(23), Some(23), Some(23), Some(23), Some(23)),
+    order: LoginProviderSurfaceOrder::new(Some(25), Some(25), Some(25), Some(25), Some(25)),
 };
 
 pub const MOONSHOT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -797,7 +822,7 @@ pub const MOONSHOT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescri
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(MOONSHOT_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(24), Some(24), Some(24), Some(24), Some(24)),
+    order: LoginProviderSurfaceOrder::new(Some(26), Some(26), Some(26), Some(26), Some(26)),
 };
 
 pub const NEBIUS_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -810,7 +835,7 @@ pub const NEBIUS_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(NEBIUS_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(25), Some(25), Some(25), Some(25), Some(25)),
+    order: LoginProviderSurfaceOrder::new(Some(27), Some(27), Some(27), Some(27), Some(27)),
 };
 
 pub const SCALEWAY_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -823,7 +848,7 @@ pub const SCALEWAY_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescri
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(SCALEWAY_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(26), Some(26), Some(26), Some(26), Some(26)),
+    order: LoginProviderSurfaceOrder::new(Some(28), Some(28), Some(28), Some(28), Some(28)),
 };
 
 pub const STACKIT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -836,7 +861,7 @@ pub const STACKIT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(STACKIT_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(27), Some(27), Some(27), Some(27), Some(27)),
+    order: LoginProviderSurfaceOrder::new(Some(29), Some(29), Some(29), Some(29), Some(29)),
 };
 
 pub const GROQ_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -849,7 +874,7 @@ pub const GROQ_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor
     menu_detail: "API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(GROQ_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(28), Some(28), Some(28), Some(28), Some(28)),
+    order: LoginProviderSurfaceOrder::new(Some(30), Some(30), Some(30), Some(30), Some(30)),
 };
 
 pub const MISTRAL_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
@@ -1047,7 +1072,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 42] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 43] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
@@ -1068,6 +1093,7 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 42] = [
     CORTECS_LOGIN_PROVIDER,
     DEEPSEEK_LOGIN_PROVIDER,
     COMTEGRA_LOGIN_PROVIDER,
+    FPT_LOGIN_PROVIDER,
     FIRMWARE_LOGIN_PROVIDER,
     HUGGING_FACE_LOGIN_PROVIDER,
     MOONSHOT_LOGIN_PROVIDER,

@@ -65,6 +65,8 @@ pub enum ProviderChoice {
     #[value(alias = "cgc", alias = "comtegra-gpu-cloud")]
     Comtegra,
     Deepseek,
+    #[value(alias = "fpt-ai", alias = "fptcloud", alias = "fpt-cloud")]
+    Fpt,
     Firmware,
     #[value(alias = "hugging-face", alias = "hf")]
     HuggingFace,
@@ -132,6 +134,7 @@ impl ProviderChoice {
             Self::Cortecs => "cortecs",
             Self::Comtegra => "comtegra",
             Self::Deepseek => "deepseek",
+            Self::Fpt => "fpt",
             Self::Firmware => "firmware",
             Self::HuggingFace => "huggingface",
             Self::MoonshotAi => "moonshotai",
@@ -173,6 +176,7 @@ pub fn profile_for_choice(choice: &ProviderChoice) -> Option<OpenAiCompatiblePro
         ProviderChoice::Cortecs => Some(crate::provider_catalog::CORTECS_PROFILE),
         ProviderChoice::Comtegra => Some(crate::provider_catalog::COMTEGRA_PROFILE),
         ProviderChoice::Deepseek => Some(crate::provider_catalog::DEEPSEEK_PROFILE),
+        ProviderChoice::Fpt => Some(crate::provider_catalog::FPT_PROFILE),
         ProviderChoice::Firmware => Some(crate::provider_catalog::FIRMWARE_PROFILE),
         ProviderChoice::HuggingFace => Some(crate::provider_catalog::HUGGING_FACE_PROFILE),
         ProviderChoice::MoonshotAi => Some(crate::provider_catalog::MOONSHOT_PROFILE),
@@ -220,6 +224,7 @@ pub fn login_provider_for_choice(choice: &ProviderChoice) -> Option<LoginProvide
         ProviderChoice::Cortecs => Some(crate::provider_catalog::CORTECS_LOGIN_PROVIDER),
         ProviderChoice::Comtegra => Some(crate::provider_catalog::COMTEGRA_LOGIN_PROVIDER),
         ProviderChoice::Deepseek => Some(crate::provider_catalog::DEEPSEEK_LOGIN_PROVIDER),
+        ProviderChoice::Fpt => Some(crate::provider_catalog::FPT_LOGIN_PROVIDER),
         ProviderChoice::Firmware => Some(crate::provider_catalog::FIRMWARE_LOGIN_PROVIDER),
         ProviderChoice::HuggingFace => Some(crate::provider_catalog::HUGGING_FACE_LOGIN_PROVIDER),
         ProviderChoice::MoonshotAi => Some(crate::provider_catalog::MOONSHOT_LOGIN_PROVIDER),
@@ -273,6 +278,7 @@ pub fn choice_for_login_provider(provider: LoginProviderDescriptor) -> Option<Pr
             ProviderChoice::Cortecs,
             ProviderChoice::Comtegra,
             ProviderChoice::Deepseek,
+            ProviderChoice::Fpt,
             ProviderChoice::Firmware,
             ProviderChoice::HuggingFace,
             ProviderChoice::MoonshotAi,
@@ -1262,6 +1268,7 @@ async fn init_provider_with_options(
         | ProviderChoice::Cortecs
         | ProviderChoice::Comtegra
         | ProviderChoice::Deepseek
+        | ProviderChoice::Fpt
         | ProviderChoice::Firmware
         | ProviderChoice::HuggingFace
         | ProviderChoice::MoonshotAi
