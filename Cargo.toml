@@ -238,6 +238,7 @@ jemalloc-prof = [
     "tikv-jemalloc-ctl/profiling",
 ]
 embeddings = ["dep:jcode-embedding"]
+mmdr-size-api = ["jcode-tui-mermaid/mmdr-size-api"]
 pdf = ["dep:jcode-pdf"]
 
 [target.'cfg(windows)'.dependencies]
