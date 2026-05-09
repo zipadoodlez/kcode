@@ -215,6 +215,33 @@ pub async fn run_login_provider(
     } else {
         auto_scriptable_flow_reason(provider, &options, io::stdin().is_terminal())
     };
+    crate::logging::auth_event(
+        "login_flow_resolved",
+        provider.id,
+        &[
+            ("method", provider.auth_kind.label()),
+            (
+                "scriptable",
+                if explicit_scriptable_flow || auto_scriptable_reason.is_some() {
+                    "true"
+                } else {
+                    "false"
+                },
+            ),
+            (
+                "auto_scriptable_reason",
+                auto_scriptable_reason.unwrap_or("none"),
+            ),
+            (
+                "has_account_label",
+                if account_label.is_some() {
+                    "true"
+                } else {
+                    "false"
+                },
+            ),
+        ],
+    );
     let login_result = if explicit_scriptable_flow {
         run_scriptable_login_provider(provider, account_label, &options).await
     } else if let Some(reason) = auto_scriptable_reason {
@@ -290,6 +317,14 @@ pub async fn run_login_provider(
                 provider.auth_kind.label(),
                 reason.label(),
             );
+            crate::logging::auth_event(
+                "login_flow_failed",
+                provider.id,
+                &[
+                    ("method", provider.auth_kind.label()),
+                    ("reason", reason.label()),
+                ],
+            );
             return Err(anyhow::anyhow!(
                 crate::auth::login_diagnostics::augment_auth_error_message(
                     provider.id,
@@ -299,31 +334,54 @@ pub async fn run_login_provider(
         }
     };
     if matches!(outcome, LoginFlowOutcome::Deferred) {
+        crate::logging::auth_event(
+            "login_flow_deferred",
+            provider.id,
+            &[("method", provider.auth_kind.label())],
+        );
         return Ok(());
     }
     auth::AuthStatus::invalidate_cache();
     if options.no_validate {
         eprintln!("Skipping post-login provider validation (--no-validate).");
+        crate::logging::auth_event(
+            "post_login_validation_skipped",
+            provider.id,
+            &[("reason", "no_validate")],
+        );
         maybe_persist_default_provider_after_login(provider, &options);
         notify_running_server_auth_changed_best_effort().await;
         return Ok(());
     }
     if let Err(err) = super::commands::run_post_login_validation(provider).await {
-        let reason =
-            crate::auth::login_diagnostics::classify_auth_failure_message(&err.to_string());
+        let error_message = err.to_string();
+        let reason = crate::auth::login_diagnostics::classify_auth_failure_message(&error_message);
         crate::telemetry::record_auth_failed_reason(
             provider.id,
             provider.auth_kind.label(),
             reason.label(),
         );
+        crate::logging::auth_event(
+            "post_login_validation_failed",
+            provider.id,
+            &[
+                ("method", provider.auth_kind.label()),
+                ("reason", reason.label()),
+            ],
+        );
         return Err(anyhow::anyhow!(
-            crate::auth::login_diagnostics::augment_auth_error_message(
-                provider.id,
-                err.to_string()
-            )
+            crate::auth::login_diagnostics::augment_auth_error_message(provider.id, error_message)
         ));
     }
     auth::AuthStatus::invalidate_cache();
+    crate::logging::auth_event(
+        "login_flow_completed",
+        provider.id,
+        &[
+            ("method", provider.auth_kind.label()),
+            ("validated", "true"),
+        ],
+    );
     maybe_persist_default_provider_after_login(provider, &options);
     notify_running_server_auth_changed_best_effort().await;
     Ok(())
@@ -384,9 +442,24 @@ fn maybe_persist_default_provider_after_login(
 /// can hot-initialize any newly-configured providers. No-op if no server is running.
 async fn notify_running_server_auth_changed_best_effort() {
     let Ok(mut client) = crate::server::Client::connect().await else {
+        crate::logging::auth_event(
+            "auth_changed_notify_skipped",
+            "server",
+            &[("reason", "no_running_server")],
+        );
         return;
     };
-    let _ = client.notify_auth_changed().await;
+    match client.notify_auth_changed().await {
+        Ok(_) => crate::logging::auth_event("auth_changed_notify_sent", "server", &[]),
+        Err(err) => {
+            let reason = err.to_string();
+            crate::logging::auth_event(
+                "auth_changed_notify_failed",
+                "server",
+                &[("reason", reason.as_str())],
+            );
+        }
+    }
 }
 
 fn login_jcode_flow() -> Result<()> {
