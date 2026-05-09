@@ -1,5 +1,6 @@
 use super::*;
 use crate::provider_catalog::{self, resolve_login_selection, resolve_openai_compatible_profile};
+use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
 
@@ -14,6 +15,7 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_provider_choice_arg_values() {
     assert_eq!(ProviderChoice::Jcode.as_arg_value(), "jcode");
     assert_eq!(ProviderChoice::Claude.as_arg_value(), "claude");
@@ -345,6 +347,80 @@ fn choice_for_login_provider_round_trips_openai_compatible_profiles() {
         choice_for_login_provider(provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER),
         Some(ProviderChoice::OpenaiCompatible)
     );
+}
+
+#[test]
+fn login_provider_choice_table_round_trips_catalog_providers() {
+    let mut seen_choices = HashSet::new();
+    let mut reverse_mapped_provider_ids = HashSet::new();
+
+    for (choice, provider) in login_provider_choice_mappings() {
+        assert!(
+            seen_choices.insert(choice.as_arg_value()),
+            "duplicate provider choice mapping for {}",
+            choice.as_arg_value()
+        );
+        assert_eq!(
+            login_provider_for_choice(choice).map(|candidate| candidate.id),
+            Some(provider.id),
+            "choice {} should resolve to {}",
+            choice.as_arg_value(),
+            provider.id
+        );
+
+        if reverse_mapped_provider_ids.insert(provider.id) {
+            assert_eq!(
+                choice_for_login_provider(*provider),
+                Some(*choice),
+                "provider {} should reverse-map to {}",
+                provider.id,
+                choice.as_arg_value()
+            );
+        }
+    }
+
+    for provider in provider_catalog::login_providers() {
+        if matches!(
+            provider.target,
+            provider_catalog::LoginProviderTarget::AutoImport
+        ) {
+            assert_eq!(choice_for_login_provider(*provider), None);
+        } else {
+            assert!(
+                reverse_mapped_provider_ids.contains(provider.id),
+                "provider {} is in the catalog but not the CLI choice table",
+                provider.id
+            );
+        }
+    }
+}
+
+#[test]
+fn auth_integration_registry_matches_cli_choice_runtime_wiring() {
+    for provider in provider_catalog::login_providers() {
+        let integration = crate::auth::integration::auth_provider_integration(provider.id)
+            .expect("catalog provider should have integration metadata");
+        assert_eq!(integration.descriptor, *provider);
+
+        if !matches!(
+            provider.target,
+            provider_catalog::LoginProviderTarget::AutoImport
+        ) {
+            assert!(
+                choice_for_login_provider(*provider).is_some(),
+                "provider {} is missing a CLI choice mapping",
+                provider.id
+            );
+        }
+
+        let status = auth::AuthStatus::default();
+        let assessment = status.assessment_for_provider(*provider);
+        assert!(
+            !assessment.method_detail.is_empty(),
+            "provider {} should have non-empty auth status method detail",
+            provider.id
+        );
+    }
 }
 
 #[test]
