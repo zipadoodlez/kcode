@@ -608,7 +608,7 @@ pub const AZURE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescripto
     menu_detail: "Microsoft Entra ID or Azure OpenAI API key",
     recommended: false,
     target: LoginProviderTarget::Azure,
-    order: LoginProviderSurfaceOrder::new(Some(5), None, None, None, Some(4)),
+    order: LoginProviderSurfaceOrder::new(Some(5), Some(5), None, None, Some(4)),
 };
 
 pub const OPENCODE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
