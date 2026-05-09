@@ -371,10 +371,12 @@ impl NativeToolResult {
 /// (~10ms due to TLS init, connection pool setup), so we reuse a single instance.
 pub fn shared_http_client() -> reqwest::Client {
     use std::sync::OnceLock;
+    const USER_AGENT: &str = concat!("jcode/", env!("CARGO_PKG_VERSION"));
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
             reqwest::Client::builder()
+                .user_agent(USER_AGENT)
                 .connect_timeout(Duration::from_secs(15))
                 .tcp_keepalive(Some(Duration::from_secs(30)))
                 .pool_idle_timeout(Duration::from_secs(90))
