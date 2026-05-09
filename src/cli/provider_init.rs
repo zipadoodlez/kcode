@@ -464,13 +464,13 @@ pub fn render_login_provider_selection_menu(
 
     let _ = writeln!(out);
     for (index, provider) in providers.iter().copied().enumerate() {
-        let auth_state = status.state_for_provider(provider);
+        let assessment = status.assessment_for_provider(provider);
         let _ = writeln!(
             out,
             "  {}. {:<22} [{:<15}] - {}",
             index + 1,
             provider.display_name,
-            login_provider_state_badge(provider, auth_state),
+            login_provider_state_badge(provider, assessment.state),
             provider.menu_detail
         );
     }

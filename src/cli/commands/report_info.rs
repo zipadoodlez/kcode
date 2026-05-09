@@ -199,8 +199,8 @@ pub(super) async fn run_auth_doctor_command(
     let mut reports = Vec::new();
 
     for provider in providers {
-        let state = status.state_for_provider(provider);
-        let validation_result = if validate && state != crate::auth::AuthState::NotConfigured {
+        let pre_validation_assessment = status.assessment_for_provider(provider);
+        let validation_result = if validate && pre_validation_assessment.is_configured() {
             Some(run_auth_doctor_validation(provider).await)
         } else {
             None
@@ -517,9 +517,7 @@ fn select_auth_doctor_providers(
 
     let configured = crate::provider_catalog::auth_status_login_providers()
         .into_iter()
-        .filter(|provider| {
-            status.state_for_provider(*provider) != crate::auth::AuthState::NotConfigured
-        })
+        .filter(|provider| status.assessment_for_provider(*provider).is_configured())
         .collect::<Vec<_>>();
     if configured.is_empty() {
         Ok(crate::provider_catalog::auth_status_login_providers().to_vec())
