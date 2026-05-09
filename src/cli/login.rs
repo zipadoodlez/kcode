@@ -186,7 +186,7 @@ pub async fn run_login(
                 && imported > 0
             {
                 eprintln!("\nImported {} existing auth source(s).", imported);
-                notify_running_server_auth_changed_best_effort().await;
+                notify_running_server_auth_changed_best_effort(None).await;
                 return Ok(());
             }
             match super::provider_init::prompt_login_provider_selection_optional(
@@ -350,7 +350,7 @@ pub async fn run_login_provider(
             &[("reason", "no_validate")],
         );
         maybe_persist_default_provider_after_login(provider, &options);
-        notify_running_server_auth_changed_best_effort().await;
+        notify_running_server_auth_changed_best_effort(Some(provider.id)).await;
         return Ok(());
     }
     if let Err(err) = super::commands::run_post_login_validation(provider).await {
@@ -383,7 +383,7 @@ pub async fn run_login_provider(
         ],
     );
     maybe_persist_default_provider_after_login(provider, &options);
-    notify_running_server_auth_changed_best_effort().await;
+    notify_running_server_auth_changed_best_effort(Some(provider.id)).await;
     Ok(())
 }
 
@@ -440,7 +440,7 @@ fn maybe_persist_default_provider_after_login(
 
 /// Best-effort: tell a running jcode server that on-disk auth has changed so it
 /// can hot-initialize any newly-configured providers. No-op if no server is running.
-async fn notify_running_server_auth_changed_best_effort() {
+async fn notify_running_server_auth_changed_best_effort(provider: Option<&str>) {
     let Ok(mut client) = crate::server::Client::connect().await else {
         crate::logging::auth_event(
             "auth_changed_notify_skipped",
@@ -449,7 +449,7 @@ async fn notify_running_server_auth_changed_best_effort() {
         );
         return;
     };
-    match client.notify_auth_changed().await {
+    match client.notify_auth_changed_for_provider(provider).await {
         Ok(_) => crate::logging::auth_event("auth_changed_notify_sent", "server", &[]),
         Err(err) => {
             let reason = err.to_string();

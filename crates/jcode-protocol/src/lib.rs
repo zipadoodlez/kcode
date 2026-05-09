@@ -300,7 +300,13 @@ pub enum Request {
 
     /// Notify server that auth credentials changed (e.g., after login)
     #[serde(rename = "notify_auth_changed")]
-    NotifyAuthChanged { id: u64 },
+    NotifyAuthChanged {
+        id: u64,
+        /// Optional runtime provider identity whose credentials changed. Older
+        /// clients omit this and get the legacy generic refresh behavior.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+    },
 
     /// Switch active Anthropic account label on the server session.
     /// This keeps account overrides and provider credential caches in sync.
@@ -1913,7 +1919,7 @@ impl Request {
             Request::Transfer { id } => *id,
             Request::Compact { id } => *id,
             Request::TriggerMemoryExtraction { id } => *id,
-            Request::NotifyAuthChanged { id } => *id,
+            Request::NotifyAuthChanged { id, .. } => *id,
             Request::SwitchAnthropicAccount { id, .. } => *id,
             Request::SwitchOpenAiAccount { id, .. } => *id,
             Request::StdinResponse { id, .. } => *id,
