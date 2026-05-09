@@ -994,12 +994,11 @@ fn maybe_enable_cursor_auth_for_auto(has_other_provider: bool) -> Result<bool> {
 }
 
 pub fn lock_model_provider(provider_key: &str) {
-    crate::env::set_var("JCODE_ACTIVE_PROVIDER", provider_key);
-    crate::env::set_var("JCODE_FORCE_PROVIDER", "1");
+    crate::provider::activation::lock_runtime_provider_key(provider_key);
 }
 
 pub fn unlock_model_provider() {
-    crate::env::remove_var("JCODE_FORCE_PROVIDER");
+    crate::provider::activation::unlock_runtime_provider();
 }
 
 fn disable_subscription_runtime_mode() {
@@ -1058,10 +1057,9 @@ pub async fn login_and_bootstrap_provider(
         }
         LoginProviderTarget::Azure => {
             disable_subscription_runtime_mode();
-            crate::auth::azure::apply_runtime_env()?;
-            lock_model_provider("openrouter");
+            let model = crate::provider::activation::apply_azure_openai_runtime()?;
             let multi = provider::MultiProvider::new();
-            if let Some(model) = crate::auth::azure::load_model() {
+            if let Some(model) = model {
                 let _ = multi.set_model(&model);
             }
             Arc::new(multi)
@@ -1069,9 +1067,11 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::OpenAiCompatible(profile) => {
             disable_subscription_runtime_mode();
             apply_openai_compatible_profile_env(Some(profile));
-            lock_model_provider("openrouter");
             let multi = provider::MultiProvider::new();
             let resolved = resolve_openai_compatible_profile(profile);
+            crate::provider::activation::apply_openai_compatible_runtime(
+                resolved.default_model.clone(),
+            )?;
             if let Some(model) = resolved.default_model.as_deref() {
                 let _ = multi.set_model(model);
             }
@@ -1251,11 +1251,10 @@ async fn init_provider_with_options(
         }
         ProviderChoice::Azure => {
             disable_subscription_runtime_mode();
-            crate::auth::azure::apply_runtime_env()?;
+            let model = crate::provider::activation::apply_azure_openai_runtime()?;
             init_notice("Using Azure OpenAI provider (provider locked)");
-            lock_model_provider("openrouter");
             let multi = provider::MultiProvider::new_fast();
-            if let Some(model) = crate::auth::azure::load_model() {
+            if let Some(model) = model {
                 let _ = multi.set_model(&model);
             }
             Arc::new(multi)
@@ -1298,7 +1297,11 @@ async fn init_provider_with_options(
             {
                 apply_openai_compatible_profile_env(Some(profile));
             }
+            let mut runtime_model_hint = None;
             let display_name = if let Ok(named) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE") {
+                if let Some(profile) = crate::config::config().providers.get(&named) {
+                    runtime_model_hint = profile.default_model.clone();
+                }
                 named
             } else {
                 let resolved = resolve_openai_compatible_profile(profile);
@@ -1307,13 +1310,14 @@ async fn init_provider_with_options(
                         &resolved.api_key_env,
                     )?;
                 }
+                runtime_model_hint = resolved.default_model.clone();
                 resolved.display_name
             };
             init_notice(&format!(
                 "Using {} via OpenAI-compatible API (provider locked)",
                 display_name
             ));
-            lock_model_provider("openrouter");
+            crate::provider::activation::apply_openai_compatible_runtime(runtime_model_hint)?;
             if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_some()
                 || std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_some()
             {

@@ -121,6 +121,7 @@ fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
     let _env_guard = crate::storage::lock_test_env();
     crate::subscription_catalog::clear_runtime_env();
     crate::env::remove_var("JCODE_OPENROUTER_MODEL");
+    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
     crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
     crate::env::remove_var("JCODE_FORCE_PROVIDER");
 
@@ -140,12 +141,17 @@ fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
         Some("openrouter")
     );
     assert_eq!(
+        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
+        Some("jcode")
+    );
+    assert_eq!(
         std::env::var("JCODE_FORCE_PROVIDER").ok().as_deref(),
         Some("1")
     );
 
     crate::subscription_catalog::clear_runtime_env();
     crate::env::remove_var("JCODE_OPENROUTER_MODEL");
+    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
     crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
     crate::env::remove_var("JCODE_FORCE_PROVIDER");
 }
@@ -390,6 +396,7 @@ async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disab
         "JCODE_OPENROUTER_CACHE_NAMESPACE",
         "JCODE_OPENROUTER_PROVIDER_FEATURES",
         "JCODE_OPENROUTER_ALLOW_NO_AUTH",
+        "JCODE_RUNTIME_PROVIDER",
         "JCODE_FORCE_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
     ]
@@ -432,6 +439,10 @@ async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disab
         std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(),
         Some("openrouter")
     );
+    assert_eq!(
+        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
+        Some("openai-compatible")
+    );
     assert_eq!(provider.name(), "openrouter");
     assert_eq!(provider.model(), "llama3.2");
 
@@ -462,6 +473,7 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
         "GITHUB_TOKEN",
         "GEMINI_API_KEY",
         "CURSOR_API_KEY",
+        "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
         "JCODE_FORCE_PROVIDER",
     ]
