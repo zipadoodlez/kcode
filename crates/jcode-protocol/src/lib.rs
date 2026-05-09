@@ -664,6 +664,31 @@ pub enum ServerEvent {
         cache_creation_input: Option<u64>,
     },
 
+    /// Prompt-shape signature for the API request that will later report token
+    /// usage. Remote clients use this to diagnose KV-cache misses.
+    #[serde(rename = "kv_cache_request")]
+    KvCacheRequest {
+        system_static_hash: u64,
+        tools_hash: u64,
+        messages_hash: u64,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        message_hashes: Vec<u64>,
+        message_count: usize,
+        tool_count: usize,
+        #[serde(default)]
+        system_static_chars: usize,
+        #[serde(default)]
+        tools_json_chars: usize,
+        #[serde(default)]
+        messages_json_chars: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ephemeral_hash: Option<u64>,
+        #[serde(default)]
+        ephemeral_chars: usize,
+        #[serde(default)]
+        ephemeral_message_count: usize,
+    },
+
     /// Active transport/connection type for the current stream
     #[serde(rename = "connection_type")]
     ConnectionType { connection: String },
