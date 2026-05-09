@@ -218,7 +218,7 @@ impl ResolvedAuthTestTarget {
             Some(target) => Self::Detailed(target),
             None => Self::Generic {
                 provider,
-                choice: choice.clone(),
+                choice: *choice,
             },
         })
     }

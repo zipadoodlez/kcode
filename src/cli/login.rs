@@ -916,12 +916,10 @@ pub fn read_secret_line() -> Result<String> {
     }
 
     let was_raw = crossterm::terminal::is_raw_mode_enabled().unwrap_or(false);
-    if !was_raw {
-        if terminal::enable_raw_mode().is_err() {
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            return Ok(input.trim().to_string());
-        }
+    if !was_raw && terminal::enable_raw_mode().is_err() {
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        return Ok(input.trim().to_string());
     }
 
     struct RawModeGuard(bool);

@@ -412,11 +412,7 @@ pub fn task_card_title(card: &OvernightTaskCard) -> String {
 }
 
 pub fn task_status_bucket(status: &str) -> &'static str {
-    let normalized = status
-        .trim()
-        .to_ascii_lowercase()
-        .replace('-', "_")
-        .replace(' ', "_");
+    let normalized = status.trim().to_ascii_lowercase().replace(['-', ' '], "_");
     match normalized.as_str() {
         "done" | "complete" | "completed" | "fixed" | "validated" | "merged" => "completed",
         "active" | "running" | "in_progress" | "working" | "verifying" | "planned" => "active",

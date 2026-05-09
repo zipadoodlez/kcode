@@ -127,7 +127,7 @@ async fn run_post_login_validation_inner(
     } else {
         populate_generic_auth_test_report(
             provider,
-            choice.clone(),
+            choice,
             None,
             true,
             true,
