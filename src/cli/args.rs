@@ -152,6 +152,11 @@ pub(crate) enum Command {
         #[arg(long, conflicts_with_all = ["print_auth_url", "callback_url", "auth_code"])]
         complete: bool,
 
+        /// Save credentials without running the post-login live provider validation.
+        /// Useful for offline setup, CI, or when entering credentials before network access is available.
+        #[arg(long)]
+        no_validate: bool,
+
         /// Gmail/Google access tier for non-interactive flows. Defaults to full.
         #[arg(long, value_enum)]
         google_access_tier: Option<GoogleAccessTierArg>,

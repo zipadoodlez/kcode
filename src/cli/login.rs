@@ -22,6 +22,7 @@ pub struct LoginOptions {
     pub auth_code: Option<String>,
     pub json: bool,
     pub complete: bool,
+    pub no_validate: bool,
     pub google_access_tier: Option<auth::google::GmailAccessTier>,
     pub openai_compatible_api_base: Option<String>,
     pub openai_compatible_api_key: Option<String>,
@@ -301,6 +302,12 @@ pub async fn run_login_provider(
         return Ok(());
     }
     auth::AuthStatus::invalidate_cache();
+    if options.no_validate {
+        eprintln!("Skipping post-login provider validation (--no-validate).");
+        maybe_persist_default_provider_after_login(provider, &options);
+        notify_running_server_auth_changed_best_effort().await;
+        return Ok(());
+    }
     if let Err(err) = super::commands::run_post_login_validation(provider).await {
         let reason =
             crate::auth::login_diagnostics::classify_auth_failure_message(&err.to_string());
@@ -679,6 +686,15 @@ fn login_openai_compatible_flow(
     eprintln!("See setup details: {}\n", resolved.setup_url);
 
     if is_custom_profile {
+        if !io::stdin().is_terminal()
+            && options.openai_compatible_api_base.is_none()
+            && options.openai_compatible_api_key.is_none()
+        {
+            anyhow::bail!(
+                "Non-interactive OpenAI-compatible login requires --api-base and --api-key. \
+                 This avoids accidentally saving a piped model name or other answer as the API key."
+            );
+        }
         eprintln!(
             "You can point this at a hosted OpenAI-compatible API or a local server such as LM Studio or Ollama."
         );
