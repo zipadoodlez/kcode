@@ -228,7 +228,7 @@ async fn probe_copilot_auth(report: &mut AuthTestProviderReport) {
             )
         },
     ) {
-        let client = reqwest::Client::new();
+        let client = crate::provider::shared_http_client();
         push_result_step(
             report,
             "refresh_probe",

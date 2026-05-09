@@ -1039,7 +1039,7 @@ fn login_copilot_flow(no_browser: bool) -> Result<()> {
 }
 
 async fn login_copilot_device_flow(no_browser: bool) -> Result<()> {
-    let client = reqwest::Client::new();
+    let client = crate::provider::shared_http_client();
 
     let device_resp = crate::auth::copilot::initiate_device_flow(&client).await?;
 

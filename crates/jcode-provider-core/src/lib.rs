@@ -367,16 +367,20 @@ impl NativeToolResult {
     }
 }
 
-/// Shared HTTP client for all providers. Creating a `reqwest::Client` is expensive
-/// (~10ms due to TLS init, connection pool setup), so we reuse a single instance.
+/// Canonical User-Agent for generic outbound Jcode HTTP requests.
+pub const JCODE_USER_AGENT: &str = concat!("jcode/", env!("CARGO_PKG_VERSION"));
+
+/// Shared HTTP client for all generic provider requests. Creating a `reqwest::Client` is expensive
+/// (~10ms due to TLS init, connection pool setup), so we reuse a single instance. Provider-specific
+/// transports may override the User-Agent on individual requests when they intentionally need to
+/// match an official client.
 pub fn shared_http_client() -> reqwest::Client {
     use std::sync::OnceLock;
-    const USER_AGENT: &str = concat!("jcode/", env!("CARGO_PKG_VERSION"));
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
             reqwest::Client::builder()
-                .user_agent(USER_AGENT)
+                .user_agent(JCODE_USER_AGENT)
                 .connect_timeout(Duration::from_secs(15))
                 .tcp_keepalive(Some(Duration::from_secs(30)))
                 .pool_idle_timeout(Duration::from_secs(90))
@@ -384,7 +388,10 @@ pub fn shared_http_client() -> reqwest::Client {
                 .build()
                 .unwrap_or_else(|err| {
                     eprintln!("jcode: failed to build shared provider HTTP client: {err}");
-                    reqwest::Client::new()
+                    reqwest::Client::builder()
+                        .user_agent(JCODE_USER_AGENT)
+                        .build()
+                        .expect("fallback Jcode HTTP client should build")
                 })
         })
         .clone()
@@ -578,5 +585,10 @@ mod tests {
     fn shared_http_client_reuses_builder() {
         let _a = shared_http_client();
         let _b = shared_http_client();
+    }
+
+    #[test]
+    fn canonical_user_agent_identifies_jcode() {
+        assert!(JCODE_USER_AGENT.starts_with("jcode/"));
     }
 }
