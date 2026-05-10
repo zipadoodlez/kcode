@@ -684,9 +684,14 @@ mod tests {
         assert!(before_doctor_provider.diagnostics.iter().any(|line| {
             line == &format!("{} is not configured for jcode yet.", provider.display_name)
         }));
-        assert!(before_doctor_provider.recommended_actions.iter().any(|line| {
-            line == &format!("Connect it: `jcode login --provider {}`", provider.id)
-        }));
+        assert!(
+            before_doctor_provider
+                .recommended_actions
+                .iter()
+                .any(|line| {
+                    line == &format!("Connect it: `jcode login --provider {}`", provider.id)
+                })
+        );
 
         crate::cli::login::run_login(
             &crate::cli::provider_init::ProviderChoice::Cerebras,
@@ -700,7 +705,10 @@ mod tests {
         .await
         .expect("CLI login should save Cerebras key in sandbox");
 
-        assert!(env_file.exists(), "CLI login should create provider env file");
+        assert!(
+            env_file.exists(),
+            "CLI login should create provider env file"
+        );
         assert_eq!(
             crate::provider_catalog::load_api_key_from_env_or_config(
                 &resolved.api_key_env,
@@ -733,14 +741,28 @@ mod tests {
         assert_eq!(after_doctor_provider.status, "available");
         assert_eq!(after_doctor_provider.credential_source, "app config file");
         assert!(after_doctor_provider.needs_attention);
-        assert!(after_doctor_provider.diagnostics.iter().any(|line| {
-            line == "No runtime validation has been recorded."
-        }));
-        assert!(after_doctor_provider.recommended_actions.iter().any(|line| {
-            line == &format!("Run runtime verification: `jcode auth-test --provider {}`", provider.id)
-        }));
-        assert!(after_doctor_provider.recommended_actions.iter().any(|line| {
-            line == "Review current state: `jcode auth status --json`"
-        }));
+        assert!(
+            after_doctor_provider
+                .diagnostics
+                .iter()
+                .any(|line| { line == "No runtime validation has been recorded." })
+        );
+        assert!(
+            after_doctor_provider
+                .recommended_actions
+                .iter()
+                .any(|line| {
+                    line == &format!(
+                        "Run runtime verification: `jcode auth-test --provider {}`",
+                        provider.id
+                    )
+                })
+        );
+        assert!(
+            after_doctor_provider
+                .recommended_actions
+                .iter()
+                .any(|line| { line == "Review current state: `jcode auth status --json`" })
+        );
     }
 }

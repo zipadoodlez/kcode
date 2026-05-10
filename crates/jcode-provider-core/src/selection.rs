@@ -1,6 +1,5 @@
 use crate::{ModelRoute, normalize_copilot_model_name};
 use std::borrow::Cow;
-use std::collections::HashSet;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ActiveProvider {
@@ -154,17 +153,55 @@ pub fn model_name_for_provider(provider: ActiveProvider, model: &str) -> Cow<'_,
 }
 
 pub fn dedupe_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
-    let mut seen = HashSet::new();
-    routes
-        .into_iter()
-        .filter(|route| {
-            seen.insert((
-                route.provider.clone(),
-                route.api_method.clone(),
-                route.model.clone(),
-            ))
-        })
-        .collect()
+    let mut deduped: Vec<ModelRoute> = Vec::with_capacity(routes.len());
+
+    for route in routes {
+        if let Some(existing_idx) = deduped
+            .iter()
+            .position(|existing| duplicate_model_route(existing, &route))
+        {
+            if should_replace_duplicate_route(&deduped[existing_idx], &route) {
+                deduped[existing_idx] = route;
+            }
+            continue;
+        }
+
+        deduped.push(route);
+    }
+
+    deduped
+}
+
+fn duplicate_model_route(existing: &ModelRoute, candidate: &ModelRoute) -> bool {
+    existing.provider == candidate.provider
+        && existing.model == candidate.model
+        && duplicate_route_api_method(&existing.api_method, &candidate.api_method)
+}
+
+fn duplicate_route_api_method(existing: &str, candidate: &str) -> bool {
+    existing == candidate
+        || (is_generic_openai_compatible_route(existing)
+            && is_profile_openai_compatible_route(candidate))
+        || (is_profile_openai_compatible_route(existing)
+            && is_generic_openai_compatible_route(candidate))
+}
+
+fn is_generic_openai_compatible_route(api_method: &str) -> bool {
+    api_method == "openai-compatible"
+}
+
+fn is_profile_openai_compatible_route(api_method: &str) -> bool {
+    api_method.starts_with("openai-compatible:")
+}
+
+fn should_replace_duplicate_route(existing: &ModelRoute, candidate: &ModelRoute) -> bool {
+    // A direct OpenAI-compatible provider can briefly appear twice in merged
+    // catalogs: once as the generic transport and once as the named profile
+    // transport. Keep the profile-scoped route so selection writes
+    // `profile:model` rather than falling back to ambiguous generic routing.
+    let existing_profile_scoped = is_profile_openai_compatible_route(&existing.api_method);
+    let candidate_profile_scoped = is_profile_openai_compatible_route(&candidate.api_method);
+    !existing_profile_scoped && candidate_profile_scoped
 }
 
 pub fn fallback_sequence(active: ActiveProvider) -> Vec<ActiveProvider> {
@@ -356,6 +393,56 @@ mod tests {
         let deduped = dedupe_model_routes(routes);
         assert_eq!(deduped.len(), 2);
         assert_eq!(deduped[0].detail, "");
+    }
+
+    #[test]
+    fn dedupes_openai_compatible_generic_and_profile_aliases() {
+        let routes = vec![
+            ModelRoute {
+                model: "qwen".to_string(),
+                provider: "Cerebras".to_string(),
+                api_method: "openai-compatible".to_string(),
+                available: true,
+                detail: "generic transport".to_string(),
+                cheapness: None,
+            },
+            ModelRoute {
+                model: "qwen".to_string(),
+                provider: "Cerebras".to_string(),
+                api_method: "openai-compatible:cerebras".to_string(),
+                available: true,
+                detail: "profile transport".to_string(),
+                cheapness: None,
+            },
+            ModelRoute {
+                model: "qwen".to_string(),
+                provider: "OtherDirect".to_string(),
+                api_method: "openai-compatible:other".to_string(),
+                available: true,
+                detail: "different provider".to_string(),
+                cheapness: None,
+            },
+            ModelRoute {
+                model: "qwen".to_string(),
+                provider: "Cerebras".to_string(),
+                api_method: "openai-compatible:cerebras-alt".to_string(),
+                available: true,
+                detail: "distinct profile route".to_string(),
+                cheapness: None,
+            },
+        ];
+
+        let deduped = dedupe_model_routes(routes);
+        assert_eq!(deduped.len(), 3);
+        let cerebras = deduped
+            .iter()
+            .find(|route| route.provider == "Cerebras")
+            .expect("Cerebras route remains");
+        assert_eq!(cerebras.api_method, "openai-compatible:cerebras");
+        assert_eq!(cerebras.detail, "profile transport");
+        assert!(deduped.iter().any(|route| {
+            route.provider == "Cerebras" && route.api_method == "openai-compatible:cerebras-alt"
+        }));
     }
 
     #[test]

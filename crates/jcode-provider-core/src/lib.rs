@@ -156,6 +156,13 @@ pub trait Provider: Send + Sync {
     /// Called when auth credentials change (e.g., after login).
     fn on_auth_changed(&self) {}
 
+    /// Called when auth credentials change for an already-open session that
+    /// should learn about refreshed credentials without being silently moved to
+    /// a newly activated provider/profile.
+    fn on_auth_changed_preserve_current_provider(&self) {
+        self.on_auth_changed();
+    }
+
     /// Get the reasoning effort level (if applicable).
     fn reasoning_effort(&self) -> Option<String> {
         None
