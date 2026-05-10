@@ -17,6 +17,7 @@ use jcode_tui_mermaid as mermaid;
 mod mermaid {
     use ratatui::prelude::*;
 
+    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     pub enum RenderResult {
         Image {
@@ -41,7 +42,9 @@ mod mermaid {
         _terminal_width: Option<u16>,
         _stream_sequence: u64,
     ) -> Option<RenderResult> {
-        Some(RenderResult::Error("Mermaid rendering is disabled".to_string()))
+        Some(RenderResult::Error(
+            "Mermaid rendering is disabled".to_string(),
+        ))
     }
 
     pub fn render_mermaid_deferred_with_registration(
@@ -49,13 +52,12 @@ mod mermaid {
         _terminal_width: Option<u16>,
         _register_active: bool,
     ) -> Option<RenderResult> {
-        Some(RenderResult::Error("Mermaid rendering is disabled".to_string()))
+        Some(RenderResult::Error(
+            "Mermaid rendering is disabled".to_string(),
+        ))
     }
 
-    pub fn render_mermaid_untracked(
-        _content: &str,
-        _terminal_width: Option<u16>,
-    ) -> RenderResult {
+    pub fn render_mermaid_untracked(_content: &str, _terminal_width: Option<u16>) -> RenderResult {
         RenderResult::Error("Mermaid rendering is disabled".to_string())
     }
 

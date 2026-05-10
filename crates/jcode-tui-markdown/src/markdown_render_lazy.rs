@@ -364,9 +364,9 @@ pub fn render_markdown_lazy(
             Event::End(TagEnd::CodeBlock) => {
                 let is_mermaid = mermaid_rendering_enabled()
                     && code_block_lang
-                    .as_ref()
-                    .map(|l| mermaid::is_mermaid_lang(l))
-                    .unwrap_or(false);
+                        .as_ref()
+                        .map(|l| mermaid::is_mermaid_lang(l))
+                        .unwrap_or(false);
 
                 if is_mermaid {
                     if !mermaid_should_register_active() && !mermaid::image_protocol_available() {
@@ -589,7 +589,20 @@ pub fn render_markdown_lazy(
                 if in_image {
                     image_alt.push(' ');
                 } else if !in_code_block {
-                    current_spans.push(Span::raw(" "));
+                    if blockquote_depth > 0 {
+                        flush_current_line_with_alignment(
+                            &mut lines,
+                            &mut current_spans,
+                            structured_markdown_alignment(
+                                blockquote_depth,
+                                &list_stack,
+                                in_definition_list,
+                                in_footnote_definition,
+                            ),
+                        );
+                    } else {
+                        current_spans.push(Span::raw(" "));
+                    }
                 }
             }
             Event::HardBreak => {

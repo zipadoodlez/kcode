@@ -1,11 +1,11 @@
 use anyhow::Result;
 use jcode::auth::{AuthState, AuthStatus};
-use jcode::provider::openrouter::OpenRouterProvider;
 use jcode::provider::Provider;
+use jcode::provider::openrouter::OpenRouterProvider;
 use jcode::provider_catalog::{
-    apply_openai_compatible_profile_env, load_api_key_from_env_or_config,
+    OPENAI_COMPAT_PROFILE, apply_openai_compatible_profile_env, load_api_key_from_env_or_config,
     openai_compatible_profile_is_configured, openai_compatible_profiles,
-    resolve_openai_compatible_profile, save_env_value_to_env_file, OPENAI_COMPAT_PROFILE,
+    resolve_openai_compatible_profile, save_env_value_to_env_file,
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -179,8 +179,8 @@ fn clear_openai_compatible_runtime_env() {
 }
 
 #[test]
-fn provider_matrix_openai_compatible_auth_state_space_material_states_preserve_login_invariants(
-) -> Result<()> {
+fn provider_matrix_openai_compatible_auth_state_space_material_states_preserve_login_invariants()
+-> Result<()> {
     let base_states = [
         OpenAiCompatibleBaseState::DefaultRemote,
         OpenAiCompatibleBaseState::SavedRemote,

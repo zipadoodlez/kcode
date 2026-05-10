@@ -343,8 +343,12 @@ fn test_wrapped_text_code_block_with_long_token_keeps_gutter_on_continuations() 
         body.iter().all(|line| line.starts_with("│ ")),
         "every wrapped continuation should preserve the framed gutter: {rendered:?}"
     );
+    let body_text = body
+        .iter()
+        .map(|line| line.trim_start_matches("│ "))
+        .collect::<String>();
     assert!(
-        body.concat().contains("render_native_scrollbar"),
+        body_text.contains("render_native_scrollbar"),
         "wrapped code body should preserve the long identifier: {rendered:?}"
     );
 }

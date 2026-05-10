@@ -272,14 +272,49 @@ mod tests {
 
         for (raw, expected_provider, expected_prefix, expected_model) in [
             ("claude:sonnet", ActiveProvider::Claude, "claude:", "sonnet"),
-            ("anthropic:sonnet", ActiveProvider::Claude, "anthropic:", "sonnet"),
+            (
+                "anthropic:sonnet",
+                ActiveProvider::Claude,
+                "anthropic:",
+                "sonnet",
+            ),
             ("openai:gpt-5", ActiveProvider::OpenAI, "openai:", "gpt-5"),
-            ("copilot:gpt-5", ActiveProvider::Copilot, "copilot:", "gpt-5"),
-            ("antigravity:default", ActiveProvider::Antigravity, "antigravity:", "default"),
-            ("gemini:gemini-2.5-pro", ActiveProvider::Gemini, "gemini:", "gemini-2.5-pro"),
-            ("cursor:composer-1.5", ActiveProvider::Cursor, "cursor:", "composer-1.5"),
-            ("bedrock:anthropic.claude", ActiveProvider::Bedrock, "bedrock:", "anthropic.claude"),
-            ("openrouter:meta/llama", ActiveProvider::OpenRouter, "openrouter:", "meta/llama"),
+            (
+                "copilot:gpt-5",
+                ActiveProvider::Copilot,
+                "copilot:",
+                "gpt-5",
+            ),
+            (
+                "antigravity:default",
+                ActiveProvider::Antigravity,
+                "antigravity:",
+                "default",
+            ),
+            (
+                "gemini:gemini-2.5-pro",
+                ActiveProvider::Gemini,
+                "gemini:",
+                "gemini-2.5-pro",
+            ),
+            (
+                "cursor:composer-1.5",
+                ActiveProvider::Cursor,
+                "cursor:",
+                "composer-1.5",
+            ),
+            (
+                "bedrock:anthropic.claude",
+                ActiveProvider::Bedrock,
+                "bedrock:",
+                "anthropic.claude",
+            ),
+            (
+                "openrouter:meta/llama",
+                ActiveProvider::OpenRouter,
+                "openrouter:",
+                "meta/llama",
+            ),
         ] {
             let (provider, prefix, model) = explicit_model_provider_prefix(raw).unwrap();
             assert_eq!(provider, expected_provider, "{raw}");

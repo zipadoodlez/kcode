@@ -375,9 +375,9 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                 // Check if this is a mermaid diagram
                 let is_mermaid = mermaid_rendering_enabled()
                     && code_block_lang
-                    .as_ref()
-                    .map(|l| mermaid::is_mermaid_lang(l))
-                    .unwrap_or(false);
+                        .as_ref()
+                        .map(|l| mermaid::is_mermaid_lang(l))
+                        .unwrap_or(false);
 
                 if is_mermaid {
                     dbg_mermaid_blocks += 1;
@@ -606,7 +606,20 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                 if in_image {
                     image_alt.push(' ');
                 } else if !in_code_block {
-                    current_spans.push(Span::raw(" "));
+                    if blockquote_depth > 0 {
+                        flush_current_line_with_alignment(
+                            &mut lines,
+                            &mut current_spans,
+                            structured_markdown_alignment(
+                                blockquote_depth,
+                                &list_stack,
+                                in_definition_list,
+                                in_footnote_definition,
+                            ),
+                        );
+                    } else {
+                        current_spans.push(Span::raw(" "));
+                    }
                 }
             }
             Event::HardBreak => {
