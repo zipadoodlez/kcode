@@ -148,6 +148,8 @@ impl EndpointInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiskCache {
     pub cached_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_api_base: Option<String>,
     pub models: Vec<ModelInfo>,
 }
 
@@ -425,6 +427,10 @@ pub fn all_model_timestamps() -> Vec<(String, u64)> {
 }
 
 pub fn save_disk_cache(models: &[ModelInfo]) {
+    save_disk_cache_with_source(models, None);
+}
+
+pub fn save_disk_cache_with_source(models: &[ModelInfo], source_api_base: Option<&str>) {
     let path = cache_path();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -437,6 +443,7 @@ pub fn save_disk_cache(models: &[ModelInfo]) {
 
     let cache = DiskCache {
         cached_at: now,
+        source_api_base: source_api_base.map(ToString::to_string),
         models: models.to_vec(),
     };
 
