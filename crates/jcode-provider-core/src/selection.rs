@@ -121,14 +121,24 @@ pub fn provider_from_model_key(key: &str) -> Option<ActiveProvider> {
 }
 
 pub fn explicit_model_provider_prefix(model: &str) -> Option<(ActiveProvider, &'static str, &str)> {
-    if let Some(rest) = model.strip_prefix("copilot:") {
+    if let Some(rest) = model.strip_prefix("claude:") {
+        Some((ActiveProvider::Claude, "claude:", rest))
+    } else if let Some(rest) = model.strip_prefix("anthropic:") {
+        Some((ActiveProvider::Claude, "anthropic:", rest))
+    } else if let Some(rest) = model.strip_prefix("openai:") {
+        Some((ActiveProvider::OpenAI, "openai:", rest))
+    } else if let Some(rest) = model.strip_prefix("copilot:") {
         Some((ActiveProvider::Copilot, "copilot:", rest))
     } else if let Some(rest) = model.strip_prefix("antigravity:") {
         Some((ActiveProvider::Antigravity, "antigravity:", rest))
+    } else if let Some(rest) = model.strip_prefix("gemini:") {
+        Some((ActiveProvider::Gemini, "gemini:", rest))
     } else if let Some(rest) = model.strip_prefix("cursor:") {
         Some((ActiveProvider::Cursor, "cursor:", rest))
     } else if let Some(rest) = model.strip_prefix("bedrock:") {
         Some((ActiveProvider::Bedrock, "bedrock:", rest))
+    } else if let Some(rest) = model.strip_prefix("openrouter:") {
+        Some((ActiveProvider::OpenRouter, "openrouter:", rest))
     } else {
         None
     }
@@ -260,11 +270,23 @@ mod tests {
         );
         assert_eq!(provider_from_model_key("missing"), None);
 
-        let (provider, prefix, model) = explicit_model_provider_prefix("copilot:gpt-5").unwrap();
-        assert_eq!(provider, ActiveProvider::Copilot);
-        assert_eq!(prefix, "copilot:");
-        assert_eq!(model, "gpt-5");
-        assert_eq!(explicit_model_provider_prefix("claude:sonnet"), None);
+        for (raw, expected_provider, expected_prefix, expected_model) in [
+            ("claude:sonnet", ActiveProvider::Claude, "claude:", "sonnet"),
+            ("anthropic:sonnet", ActiveProvider::Claude, "anthropic:", "sonnet"),
+            ("openai:gpt-5", ActiveProvider::OpenAI, "openai:", "gpt-5"),
+            ("copilot:gpt-5", ActiveProvider::Copilot, "copilot:", "gpt-5"),
+            ("antigravity:default", ActiveProvider::Antigravity, "antigravity:", "default"),
+            ("gemini:gemini-2.5-pro", ActiveProvider::Gemini, "gemini:", "gemini-2.5-pro"),
+            ("cursor:composer-1.5", ActiveProvider::Cursor, "cursor:", "composer-1.5"),
+            ("bedrock:anthropic.claude", ActiveProvider::Bedrock, "bedrock:", "anthropic.claude"),
+            ("openrouter:meta/llama", ActiveProvider::OpenRouter, "openrouter:", "meta/llama"),
+        ] {
+            let (provider, prefix, model) = explicit_model_provider_prefix(raw).unwrap();
+            assert_eq!(provider, expected_provider, "{raw}");
+            assert_eq!(prefix, expected_prefix, "{raw}");
+            assert_eq!(model, expected_model, "{raw}");
+        }
+        assert_eq!(explicit_model_provider_prefix("unknown:sonnet"), None);
     }
 
     #[test]
