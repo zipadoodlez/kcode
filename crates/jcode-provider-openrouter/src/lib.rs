@@ -52,12 +52,41 @@ pub struct ModelInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModelPricing {
+    #[serde(default, deserialize_with = "deserialize_optional_string_or_number")]
     pub prompt: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string_or_number")]
     pub completion: Option<String>,
-    #[serde(default, rename = "input_cache_read")]
+    #[serde(
+        default,
+        rename = "input_cache_read",
+        deserialize_with = "deserialize_optional_string_or_number"
+    )]
     pub input_cache_read: Option<String>,
-    #[serde(default, rename = "input_cache_write")]
+    #[serde(
+        default,
+        rename = "input_cache_write",
+        deserialize_with = "deserialize_optional_string_or_number"
+    )]
     pub input_cache_write: Option<String>,
+}
+
+fn deserialize_optional_string_or_number<'de, D>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(serde_json::Value::String(value)) => Some(value),
+        Some(serde_json::Value::Number(value)) => Some(value.to_string()),
+        Some(serde_json::Value::Null) | None => None,
+        Some(other) => {
+            return Err(serde::de::Error::custom(format!(
+                "expected string, number, or null for pricing value, got {other}"
+            )));
+        }
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

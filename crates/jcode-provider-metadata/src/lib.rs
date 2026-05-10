@@ -432,7 +432,11 @@ pub const CHUTES_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     api_key_env: "CHUTES_API_KEY",
     env_file: "chutes.env",
     setup_url: "https://chutes.ai",
-    default_model: Some("Qwen/Qwen3-Coder-480B-A35B-Instruct"),
+    // Chutes' accessible models change with capacity/key access. Do not keep a
+    // static default here: post-login activation should select from the live
+    // `/models` catalog instead of advertising a stale model that may 404 at
+    // chat/completions time.
+    default_model: None,
     requires_api_key: true,
 };
 
