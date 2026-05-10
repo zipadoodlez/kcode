@@ -146,7 +146,7 @@ pub const OPENCODE_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     api_key_env: "OPENCODE_API_KEY",
     env_file: "opencode.env",
     setup_url: "https://opencode.ai/docs/providers#opencode-zen",
-    default_model: Some("qwen/qwen3-coder-plus"),
+    default_model: Some("minimax-m2.7"),
     requires_api_key: true,
 };
 
@@ -157,7 +157,7 @@ pub const OPENCODE_GO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile
     api_key_env: "OPENCODE_GO_API_KEY",
     env_file: "opencode-go.env",
     setup_url: "https://opencode.ai/docs/providers#opencode-go",
-    default_model: Some("THUDM/GLM-4.5"),
+    default_model: Some("kimi-k2.5"),
     requires_api_key: true,
 };
 
