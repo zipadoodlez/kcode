@@ -396,19 +396,8 @@ fn maybe_persist_default_provider_after_login(
         return;
     }
 
-    let provider_id = match provider.target {
-        LoginProviderTarget::Claude => Some("claude"),
-        LoginProviderTarget::OpenAi => Some("openai"),
-        LoginProviderTarget::OpenAiApiKey => Some("openai-api"),
-        LoginProviderTarget::OpenRouter => Some("openrouter"),
-        LoginProviderTarget::Bedrock => Some("bedrock"),
-        LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
-        LoginProviderTarget::Cursor => Some("cursor"),
-        LoginProviderTarget::Copilot => Some("copilot"),
-        LoginProviderTarget::Gemini => Some("gemini"),
-        LoginProviderTarget::Antigravity => Some("antigravity"),
-        _ => None,
-    };
+    let provider_id =
+        crate::provider::MultiProvider::config_default_provider_for_login_provider(provider);
     let Some(provider_id) = provider_id else {
         return;
     };
