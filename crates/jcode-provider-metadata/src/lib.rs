@@ -420,7 +420,7 @@ pub const OLLAMA_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     api_base: "http://localhost:11434/v1",
     api_key_env: "OLLAMA_API_KEY",
     env_file: "ollama.env",
-    setup_url: "https://ollama.com/blog/openai-compatibility",
+    setup_url: "https://docs.ollama.com/api/openai-compatibility",
     default_model: None,
     requires_api_key: false,
 };
@@ -1339,6 +1339,10 @@ mod tests {
         assert_eq!(OLLAMA_PROFILE.api_base, "http://localhost:11434/v1");
         assert_eq!(OLLAMA_PROFILE.api_key_env, "OLLAMA_API_KEY");
         assert_eq!(OLLAMA_PROFILE.env_file, "ollama.env");
+        assert_eq!(
+            OLLAMA_PROFILE.setup_url,
+            "https://docs.ollama.com/api/openai-compatibility"
+        );
         assert_eq!(OLLAMA_PROFILE.default_model, None);
         assert!(!OLLAMA_PROFILE.requires_api_key);
 
