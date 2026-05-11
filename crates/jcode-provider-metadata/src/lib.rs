@@ -1334,6 +1334,23 @@ mod tests {
     }
 
     #[test]
+    fn ollama_profile_is_local_openai_compatible_without_required_api_key() {
+        assert_eq!(OLLAMA_PROFILE.id, "ollama");
+        assert_eq!(OLLAMA_PROFILE.api_base, "http://localhost:11434/v1");
+        assert_eq!(OLLAMA_PROFILE.api_key_env, "OLLAMA_API_KEY");
+        assert_eq!(OLLAMA_PROFILE.env_file, "ollama.env");
+        assert_eq!(OLLAMA_PROFILE.default_model, None);
+        assert!(!OLLAMA_PROFILE.requires_api_key);
+
+        assert_eq!(OLLAMA_LOGIN_PROVIDER.auth_kind, LoginProviderAuthKind::Local);
+        assert_eq!(OLLAMA_LOGIN_PROVIDER.auth_status_method, "local endpoint");
+        assert!(matches!(
+            OLLAMA_LOGIN_PROVIDER.target,
+            LoginProviderTarget::OpenAiCompatible(profile) if profile.id == "ollama"
+        ));
+    }
+
+    #[test]
     fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
         assert_eq!(
             resolve_login_provider("subscription").map(|provider| provider.id),
