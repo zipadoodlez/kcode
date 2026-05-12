@@ -1005,7 +1005,7 @@ pub const OPENAI_COMPAT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderD
     auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
     auth_status_method: "API key / local endpoint",
     aliases: &["openai_compatible", "compat", "custom"],
-    menu_detail: "custom hosted or local OpenAI-compatible endpoint",
+    menu_detail: "custom endpoint setup: base URL first, then API key",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(OPENAI_COMPAT_PROFILE),
     order: LoginProviderSurfaceOrder::new(Some(10), Some(9), None, None, Some(9)),
@@ -1346,7 +1346,10 @@ mod tests {
         assert_eq!(OLLAMA_PROFILE.default_model, None);
         assert!(!OLLAMA_PROFILE.requires_api_key);
 
-        assert_eq!(OLLAMA_LOGIN_PROVIDER.auth_kind, LoginProviderAuthKind::Local);
+        assert_eq!(
+            OLLAMA_LOGIN_PROVIDER.auth_kind,
+            LoginProviderAuthKind::Local
+        );
         assert_eq!(OLLAMA_LOGIN_PROVIDER.auth_status_method, "local endpoint");
         assert!(matches!(
             OLLAMA_LOGIN_PROVIDER.target,
