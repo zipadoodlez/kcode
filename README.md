@@ -665,6 +665,7 @@ Set up jcode on this machine for me.
    - OpenRouter: `OPENROUTER_API_KEY`
    - Fireworks: `~/.config/jcode/fireworks.env`, `FIREWORKS_API_KEY`
    - MiniMax: `~/.config/jcode/minimax.env`, `MINIMAX_API_KEY`
+   - NVIDIA NIM: `~/.config/jcode/nvidia-nim.env`, `NVIDIA_API_KEY`
    - Alibaba Cloud Coding Plan: existing jcode config/env if present
 5. Prefer whichever provider is already configured and verify it with `jcode auth-test --all-configured` or a provider-specific auth test when appropriate.
 6. Only if no usable provider is already configured, guide me through the minimal manual step needed:
@@ -675,6 +676,7 @@ Set up jcode on this machine for me.
    - Azure OpenAI: `jcode login --provider azure`
    - Fireworks: `jcode login --provider fireworks`
    - MiniMax: `jcode login --provider minimax`
+   - NVIDIA NIM: `jcode login --provider nvidia-nim`
    - Alibaba Cloud Coding Plan: `jcode login --provider alibaba-coding-plan`
    - OpenRouter: help me set `OPENROUTER_API_KEY`
    - Anthropic direct API: help me set `ANTHROPIC_API_KEY`

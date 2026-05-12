@@ -462,6 +462,17 @@ pub const ALIBABA_CODING_PLAN_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibl
     requires_api_key: true,
 };
 
+pub const NVIDIA_NIM_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "nvidia-nim",
+    display_name: "NVIDIA NIM",
+    api_base: "https://integrate.api.nvidia.com/v1",
+    api_key_env: "NVIDIA_API_KEY",
+    env_file: "nvidia-nim.env",
+    setup_url: "https://build.nvidia.com/explore/discover",
+    default_model: Some("nvidia/llama-3.1-nemotron-ultra-253b-v1"),
+    requires_api_key: true,
+};
+
 pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "openai-compatible",
     display_name: "OpenAI-compatible",
@@ -473,7 +484,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 30] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 31] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -501,6 +512,7 @@ const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 30] = [
     FIREWORKS_PROFILE,
     MINIMAX_PROFILE,
     XAI_PROFILE,
+    NVIDIA_NIM_PROFILE,
     LMSTUDIO_PROFILE,
     OLLAMA_PROFILE,
     OPENAI_COMPAT_PROFILE,
@@ -972,6 +984,19 @@ pub const XAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor 
     order: LoginProviderSurfaceOrder::new(Some(33), Some(33), Some(33), Some(33), Some(33)),
 };
 
+pub const NVIDIA_NIM_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "nvidia-nim",
+    display_name: "NVIDIA NIM",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["nvidia", "nim"],
+    menu_detail: "API key",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(NVIDIA_NIM_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(34), Some(34), Some(34), Some(34), Some(34)),
+};
+
 pub const LMSTUDIO_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "lmstudio",
     display_name: "LM Studio",
@@ -1076,7 +1101,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 43] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 44] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
@@ -1112,6 +1137,7 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 43] = [
     FIREWORKS_LOGIN_PROVIDER,
     MINIMAX_LOGIN_PROVIDER,
     XAI_LOGIN_PROVIDER,
+    NVIDIA_NIM_LOGIN_PROVIDER,
     LMSTUDIO_LOGIN_PROVIDER,
     OLLAMA_LOGIN_PROVIDER,
     OPENAI_COMPAT_LOGIN_PROVIDER,
@@ -1331,6 +1357,24 @@ mod tests {
     fn minimax_profile_uses_official_openai_compatible_configuration() {
         assert_eq!(MINIMAX_PROFILE.api_base, "https://api.minimax.io/v1");
         assert_eq!(MINIMAX_PROFILE.api_key_env, "OPENAI_API_KEY");
+    }
+
+    #[test]
+    fn nvidia_nim_profile_uses_hosted_openai_compatible_configuration() {
+        assert_eq!(
+            NVIDIA_NIM_PROFILE.api_base,
+            "https://integrate.api.nvidia.com/v1"
+        );
+        assert_eq!(NVIDIA_NIM_PROFILE.api_key_env, "NVIDIA_API_KEY");
+        assert_eq!(NVIDIA_NIM_PROFILE.env_file, "nvidia-nim.env");
+        assert_eq!(
+            NVIDIA_NIM_PROFILE.default_model,
+            Some("nvidia/llama-3.1-nemotron-ultra-253b-v1")
+        );
+        assert!(matches!(
+            NVIDIA_NIM_LOGIN_PROVIDER.target,
+            LoginProviderTarget::OpenAiCompatible(profile) if profile.id == "nvidia-nim"
+        ));
     }
 
     #[test]
