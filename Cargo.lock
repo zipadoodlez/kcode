@@ -3456,6 +3456,7 @@ dependencies = [
 name = "jcode-desktop"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "anyhow",
  "arboard",
  "base64 0.22.1",
