@@ -68,6 +68,7 @@ pub mod side_panel;
 pub mod sidecar;
 pub mod skill;
 pub mod soft_interrupt_store;
+pub mod ssh_remote;
 pub mod startup_profile;
 pub mod stdin_detect;
 pub mod storage;
