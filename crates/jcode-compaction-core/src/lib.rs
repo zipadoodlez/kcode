@@ -451,11 +451,12 @@ pub fn emergency_truncate_tool_results(messages: &mut [Message], max_chars: usiz
 
     for msg in messages.iter_mut() {
         for block in msg.content.iter_mut() {
-            if let ContentBlock::ToolResult { content, .. } = block
-                && content.len() > max_chars
-            {
-                *content = emergency_truncated_tool_result(content, max_chars);
-                truncated += 1;
+            match block {
+                ContentBlock::ToolResult { content, .. } if content.len() > max_chars => {
+                    *content = emergency_truncated_tool_result(content, max_chars);
+                    truncated += 1;
+                }
+                _ => {}
             }
         }
     }
