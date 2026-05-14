@@ -545,6 +545,8 @@ pub enum Request {
         initial_message: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         request_nonce: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        spawn_mode: Option<String>,
     },
 
     /// Stop/destroy an agent session (coordinator only)
