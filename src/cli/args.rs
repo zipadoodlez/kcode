@@ -79,10 +79,6 @@ pub(crate) struct Args {
     #[arg(short, long, global = true)]
     pub(crate) model: Option<String>,
 
-    /// Internal/launcher: queue an initial message from this file after the TUI starts.
-    #[arg(long, global = true, hide = true)]
-    pub(crate) startup_message_file: Option<String>,
-
     /// Named provider profile from [providers.<name>] in config.toml.
     /// Implies --provider openai-compatible for OpenAI-compatible profiles.
     #[arg(long, global = true)]
