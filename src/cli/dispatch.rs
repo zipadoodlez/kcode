@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
 
@@ -423,11 +423,17 @@ async fn run_default_command(args: Args) -> Result<()> {
         return Ok(());
     }
 
-    let startup_hints = if args.fresh_spawn {
+    let mut startup_hints = if args.fresh_spawn {
         None
     } else {
         setup_hints::maybe_show_setup_hints()
     };
+    if let Some(path) = args.startup_message_file.as_deref() {
+        let message = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read startup message file: {path}"))?;
+        let hints = startup_hints.get_or_insert_with(setup_hints::StartupHints::default);
+        hints.auto_send_message = Some(message);
+    }
     startup_profile::mark("setup_hints");
 
     if args.resume.is_none() {
