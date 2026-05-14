@@ -612,6 +612,62 @@ impl Default for FeatureConfig {
     }
 }
 
+/// Search engine used by the websearch tool.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum WebSearchEngine {
+    /// DuckDuckGo HTML search, no API key required.
+    #[default]
+    Duckduckgo,
+    /// Bing search. Uses the Bing API when configured, otherwise Bing HTML search.
+    Bing,
+}
+
+impl WebSearchEngine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Duckduckgo => "duckduckgo",
+            Self::Bing => "bing",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "duckduckgo" | "ddg" => Some(Self::Duckduckgo),
+            "bing" => Some(Self::Bing),
+            _ => None,
+        }
+    }
+}
+
+/// Configuration for the websearch tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebSearchConfig {
+    /// Preferred engine when the tool input does not specify one.
+    pub engine: WebSearchEngine,
+    /// Keyless HTML engines to try after the preferred engine fails.
+    pub fallback_engines: Vec<WebSearchEngine>,
+    /// Optional Bing API key for primary Bing searches. Fallback Bing uses keyless HTML search.
+    pub bing_api_key: Option<String>,
+    /// Environment variable containing the Bing API key.
+    pub bing_api_key_env: String,
+    /// Bing market, e.g. "en-US" or "zh-CN".
+    pub bing_market: String,
+}
+
+impl Default for WebSearchConfig {
+    fn default() -> Self {
+        Self {
+            engine: WebSearchEngine::Duckduckgo,
+            fallback_engines: vec![WebSearchEngine::Bing],
+            bing_api_key: None,
+            bing_api_key_env: "JCODE_BING_API_KEY".to_string(),
+            bing_market: "en-US".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProviderConfig {
