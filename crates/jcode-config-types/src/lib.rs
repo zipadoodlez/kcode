@@ -32,13 +32,13 @@ impl CompactionMode {
     }
 }
 
-/// Session picker Enter action: "new-terminal" (default) or "current-terminal".
+/// Session picker Enter action: "current-terminal" (default) or "new-terminal".
 /// Ctrl+Enter performs the alternate action.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum SessionPickerResumeAction {
-    #[default]
     NewTerminal,
+    #[default]
     CurrentTerminal,
 }
 
@@ -449,7 +449,7 @@ pub struct KeybindingsConfig {
     pub workspace_up: String,
     /// Workspace navigation right key (default: "alt+l")
     pub workspace_right: String,
-    /// Session picker Enter action: "new-terminal" (default) or "current-terminal".
+    /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
     /// Ctrl+Enter performs the alternate action.
     pub session_picker_enter: SessionPickerResumeAction,
 }
@@ -475,7 +475,7 @@ impl Default for KeybindingsConfig {
             workspace_down: "alt+j".to_string(),
             workspace_up: "alt+k".to_string(),
             workspace_right: "alt+l".to_string(),
-            session_picker_enter: SessionPickerResumeAction::NewTerminal,
+            session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }
 }
