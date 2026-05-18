@@ -1895,9 +1895,10 @@ pub fn resolve_optional_comm_target_session(
     target: Option<String>,
     current_session: &str,
 ) -> String {
-    match target.as_deref() {
-        Some("current") | None => current_session.to_string(),
-        Some(_) => target.expect("target is Some when as_deref returned Some"),
+    match target {
+        Some(target) if target == "current" => current_session.to_string(),
+        Some(target) => target,
+        None => current_session.to_string(),
     }
 }
 

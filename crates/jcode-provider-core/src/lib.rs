@@ -395,10 +395,18 @@ pub fn shared_http_client() -> reqwest::Client {
                 .build()
                 .unwrap_or_else(|err| {
                     eprintln!("jcode: failed to build shared provider HTTP client: {err}");
-                    reqwest::Client::builder()
+                    match reqwest::Client::builder()
                         .user_agent(JCODE_USER_AGENT)
                         .build()
-                        .expect("fallback Jcode HTTP client should build")
+                    {
+                        Ok(client) => client,
+                        Err(fallback_err) => {
+                            eprintln!(
+                                "jcode: failed to build fallback provider HTTP client: {fallback_err}"
+                            );
+                            reqwest::Client::new()
+                        }
+                    }
                 })
         })
         .clone()
