@@ -62,13 +62,13 @@ pub fn hot_reload(session_id: &str) -> Result<()> {
         let binary_path = std::path::PathBuf::from(&migrate_binary);
         if binary_path.exists() {
             crate::logging::info("Migrating to stable binary...");
-            let err = crate::platform::replace_process(
-                ProcessCommand::new(&binary_path)
-                    .arg("--resume")
-                    .arg(session_id)
-                    .arg("--no-update")
-                    .current_dir(cwd),
-            );
+            let mut cmd = ProcessCommand::new(&binary_path);
+            cmd.arg("--resume")
+                .arg(session_id)
+                .arg("--no-update")
+                .env_remove("JCODE_MIGRATE_BINARY")
+                .current_dir(cwd);
+            let err = crate::platform::replace_process(&mut cmd);
             return Err(anyhow::anyhow!("Failed to exec {:?}: {}", binary_path, err));
         } else {
             crate::logging::warn(&format!(
