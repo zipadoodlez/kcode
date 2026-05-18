@@ -477,7 +477,7 @@ fn login_picker_renders_openai_compatible_setup_copy() -> Result<()> {
         "API key / CLI",
         "Detected setup",
         "http://localhost:11434/v1 configured; no API key required",
-        "custom hosted or local OpenAI-compatible endpoint",
+        "custom endpoint setup: base URL first, then API key",
         "Press Enter to begin login.",
     ] {
         assert!(
