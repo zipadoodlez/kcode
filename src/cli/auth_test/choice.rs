@@ -128,17 +128,140 @@ async fn run_provider_tool_smoke_for_choice(
             .register_mcp_tools(None, None, Some("auth-test".to_string()))
             .await;
 
-        let mut agent = crate::agent::Agent::new(provider, registry);
+        let allowed_tools = HashSet::from([AUTH_TEST_TOOL_NAME.to_string()]);
+        let mut agent = crate::agent::Agent::new_with_session(
+            provider,
+            registry,
+            crate::session::Session::create(None, None),
+            Some(allowed_tools),
+        );
+        let transcript_start = agent.messages().len();
         let output = agent.run_once_capture(prompt).await.with_context(|| {
             format!(
                 "{} tool-enabled smoke prompt failed during agent turn execution",
                 choice.as_arg_value()
             )
         })?;
+        validate_auth_test_tool_smoke_transcript(&agent.messages()[transcript_start..], &output)
+            .with_context(|| {
+                format!(
+                    "{} tool-enabled smoke prompt did not complete a valid real Jcode tool loop",
+                    choice.as_arg_value()
+                )
+            })?;
 
         Ok(output.trim().to_string())
     })
     .await
+}
+
+fn validate_auth_test_tool_smoke_transcript(
+    messages: &[crate::session::StoredMessage],
+    output: &str,
+) -> Result<()> {
+    if output.trim() != "AUTH_TEST_OK" {
+        anyhow::bail!(
+            "tool smoke final response was {:?}, expected exactly AUTH_TEST_OK",
+            output.trim()
+        );
+    }
+
+    let mut tool_uses = Vec::new();
+    let mut tool_results = Vec::new();
+    for message in messages {
+        for block in &message.content {
+            match block {
+                crate::message::ContentBlock::ToolUse { id, name, input } => {
+                    tool_uses.push((id.as_str(), name.as_str(), input));
+                }
+                crate::message::ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    is_error,
+                } => {
+                    tool_results.push((tool_use_id.as_str(), content.as_str(), *is_error));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    ensure_auth_test_tool_count(tool_uses.len())?;
+    let (tool_id, tool_name, input) = tool_uses[0];
+    if tool_id.trim().is_empty() {
+        anyhow::bail!("tool smoke emitted tool call with empty id");
+    }
+    let tool_call = crate::message::ToolCall {
+        id: tool_id.to_string(),
+        name: tool_name.to_string(),
+        input: input.clone(),
+        intent: None,
+    };
+    if let Some(error) = tool_call.validation_error() {
+        anyhow::bail!("tool smoke emitted invalid tool call: {error}");
+    }
+    if tool_name != AUTH_TEST_TOOL_NAME {
+        anyhow::bail!(
+            "tool smoke used unexpected tool {:?}; expected {:?}",
+            tool_name,
+            AUTH_TEST_TOOL_NAME
+        );
+    }
+    let command = input
+        .get("command")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim();
+    if command != AUTH_TEST_TOOL_COMMAND {
+        anyhow::bail!(
+            "tool smoke used unsafe or unexpected command {:?}; expected {:?}",
+            command,
+            AUTH_TEST_TOOL_COMMAND
+        );
+    }
+
+    let matching_results = tool_results
+        .iter()
+        .filter(|(tool_use_id, _, _)| *tool_use_id == tool_id)
+        .collect::<Vec<_>>();
+    if matching_results.len() != 1 {
+        anyhow::bail!(
+            "tool smoke expected exactly one matching tool result for {}, got {}",
+            tool_id,
+            matching_results.len()
+        );
+    }
+    let (_, content, is_error) = matching_results[0];
+    if is_error.unwrap_or(false) {
+        anyhow::bail!("tool smoke tool result was marked as an error: {content}");
+    }
+    if !content.contains(AUTH_TEST_TOOL_OUTPUT_MARKER) {
+        anyhow::bail!(
+            "tool smoke result did not contain marker {:?}: {}",
+            AUTH_TEST_TOOL_OUTPUT_MARKER,
+            crate::util::truncate_str(content, 500)
+        );
+    }
+
+    let errored_results = tool_results
+        .iter()
+        .filter(|(_, content, is_error)| {
+            is_error.unwrap_or(false) || content.contains("Invalid tool call")
+        })
+        .count();
+    if errored_results > 0 {
+        anyhow::bail!("tool smoke transcript contained {errored_results} errored tool result(s)");
+    }
+
+    Ok(())
+}
+
+fn ensure_auth_test_tool_count(count: usize) -> Result<()> {
+    match count {
+        1 => Ok(()),
+        0 => anyhow::bail!("tool smoke did not emit any tool call"),
+        other => anyhow::bail!("tool smoke emitted {other} tool calls; expected exactly one"),
+    }
 }
 
 async fn run_auth_test_with_retry<F, Fut>(mut f: F) -> Result<String>
@@ -213,5 +336,98 @@ fn print_auth_test_reports(reports: &[AuthTestProviderReport]) {
             println!("tool smoke output: {}", output);
         }
         println!("result: {}\n", if report.success { "PASS" } else { "FAIL" });
+    }
+}
+
+#[cfg(test)]
+mod auth_tool_smoke_tests {
+    use super::*;
+
+    fn stored_message(
+        role: crate::message::Role,
+        content: Vec<crate::message::ContentBlock>,
+    ) -> crate::session::StoredMessage {
+        crate::session::StoredMessage {
+            id: "msg_test".to_string(),
+            role,
+            content,
+            display_role: None,
+            timestamp: None,
+            tool_duration_ms: None,
+            token_usage: None,
+        }
+    }
+
+    fn valid_tool_transcript() -> Vec<crate::session::StoredMessage> {
+        vec![
+            stored_message(
+                crate::message::Role::Assistant,
+                vec![crate::message::ContentBlock::ToolUse {
+                    id: "call_1".to_string(),
+                    name: AUTH_TEST_TOOL_NAME.to_string(),
+                    input: serde_json::json!({"command": AUTH_TEST_TOOL_COMMAND}),
+                }],
+            ),
+            stored_message(
+                crate::message::Role::User,
+                vec![crate::message::ContentBlock::ToolResult {
+                    tool_use_id: "call_1".to_string(),
+                    content: format!("{}\n", AUTH_TEST_TOOL_OUTPUT_MARKER),
+                    is_error: None,
+                }],
+            ),
+        ]
+    }
+
+    #[test]
+    fn auth_test_tool_smoke_validation_accepts_real_successful_loop() {
+        validate_auth_test_tool_smoke_transcript(&valid_tool_transcript(), "AUTH_TEST_OK")
+            .expect("valid tool smoke transcript");
+    }
+
+    #[test]
+    fn auth_test_tool_smoke_validation_rejects_no_tool_call() {
+        let err = validate_auth_test_tool_smoke_transcript(&[], "AUTH_TEST_OK")
+            .expect_err("missing tool call should fail")
+            .to_string();
+        assert!(err.contains("did not emit any tool call"), "{err}");
+    }
+
+    #[test]
+    fn auth_test_tool_smoke_validation_rejects_empty_tool_name() {
+        let mut messages = valid_tool_transcript();
+        if let crate::message::ContentBlock::ToolUse { name, .. } = &mut messages[0].content[0] {
+            name.clear();
+        }
+        let err = validate_auth_test_tool_smoke_transcript(&messages, "AUTH_TEST_OK")
+            .expect_err("empty tool name should fail")
+            .to_string();
+        assert!(err.contains("tool name must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn auth_test_tool_smoke_validation_rejects_unexpected_command() {
+        let mut messages = valid_tool_transcript();
+        if let crate::message::ContentBlock::ToolUse { input, .. } = &mut messages[0].content[0] {
+            *input = serde_json::json!({"command": "ls"});
+        }
+        let err = validate_auth_test_tool_smoke_transcript(&messages, "AUTH_TEST_OK")
+            .expect_err("unexpected command should fail")
+            .to_string();
+        assert!(err.contains("unsafe or unexpected command"), "{err}");
+    }
+
+    #[test]
+    fn auth_test_tool_smoke_validation_rejects_tool_result_error() {
+        let mut messages = valid_tool_transcript();
+        if let crate::message::ContentBlock::ToolResult { is_error, .. } =
+            &mut messages[1].content[0]
+        {
+            *is_error = Some(true);
+        }
+        let err = validate_auth_test_tool_smoke_transcript(&messages, "AUTH_TEST_OK")
+            .expect_err("errored tool result should fail")
+            .to_string();
+        assert!(err.contains("marked as an error"), "{err}");
     }
 }

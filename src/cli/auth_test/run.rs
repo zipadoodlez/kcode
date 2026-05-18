@@ -141,7 +141,7 @@ async fn run_post_login_validation_inner(
         .await
     };
 
-    persist_auth_test_report(&report);
+    persist_auth_test_report(&report, None);
     let step_count = report.steps.len().to_string();
     crate::logging::auth_event(
         "post_login_validation_completed",
@@ -237,7 +237,7 @@ pub async fn run_auth_test_command(
                 .await
             }
         };
-        persist_auth_test_report(&report);
+        persist_auth_test_report(&report, model);
         reports.push(report);
     }
 
@@ -419,7 +419,7 @@ async fn populate_generic_auth_test_report(
     report
 }
 
-fn persist_auth_test_report(report: &AuthTestProviderReport) {
+fn persist_auth_test_report(report: &AuthTestProviderReport, model: Option<&str>) {
     let step_map = report
         .steps
         .iter()
@@ -452,4 +452,111 @@ fn persist_auth_test_report(report: &AuthTestProviderReport) {
             report.provider, err
         ));
     }
+
+    if let Err(err) = persist_auth_test_live_verification_event(report, model) {
+        crate::logging::warn(&format!(
+            "failed to persist auth-test live verification event for {}: {}",
+            report.provider, err
+        ));
+    }
+}
+
+fn persist_auth_test_live_verification_event(
+    report: &AuthTestProviderReport,
+    model: Option<&str>,
+) -> Result<()> {
+    let mut stages = Vec::new();
+    let mut expected = Vec::new();
+    let mut capabilities = Vec::new();
+
+    for step in &report.steps {
+        match step.name.as_str() {
+            "credential_probe" => {
+                expected.push(crate::live_tests::checkpoints::AUTH_CREDENTIAL_LOADED);
+                stages.push(auth_test_step_stage(
+                    crate::live_tests::checkpoints::AUTH_CREDENTIAL_LOADED,
+                    step,
+                ));
+            }
+            "provider_smoke" => {
+                capabilities.push("provider_smoke");
+            }
+            "tool_smoke" => {
+                capabilities.push("real_jcode_tool_smoke");
+                expected.push(crate::live_tests::checkpoints::TOOL_EXECUTION_LOOP);
+                expected.push(crate::live_tests::checkpoints::TOOL_RESULT_FOLLOWUP);
+                expected.push(crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE);
+                let stage = auth_test_step_stage(
+                    crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE,
+                    step,
+                )
+                .with_evidence("tool_name", serde_json::json!(AUTH_TEST_TOOL_NAME))
+                .with_evidence("tool_command", serde_json::json!(AUTH_TEST_TOOL_COMMAND));
+                stages.push(stage.clone());
+                stages.push(auth_test_tool_derived_stage(
+                    crate::live_tests::checkpoints::TOOL_EXECUTION_LOOP,
+                    step,
+                ));
+                stages.push(auth_test_tool_derived_stage(
+                    crate::live_tests::checkpoints::TOOL_RESULT_FOLLOWUP,
+                    step,
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if expected.is_empty() {
+        return Ok(());
+    }
+
+    let result = if report.success {
+        crate::live_tests::LiveVerificationResult::Passed
+    } else {
+        crate::live_tests::LiveVerificationResult::Failed
+    };
+    let mut event = crate::live_tests::LiveVerificationEvent::new(
+        "auth_test_real_jcode_runtime",
+        report.provider.clone(),
+        report.provider.clone(),
+        crate::live_tests::LiveVerificationAuth::non_secret("auth-test", None::<String>),
+        result,
+    )
+    .with_expected_checkpoints(expected)
+    .with_capabilities(capabilities)
+    .with_stages(stages)
+    .with_metadata(
+        "checkpoint_taxonomy_version",
+        serde_json::json!(crate::live_tests::CHECKPOINT_TAXONOMY_VERSION),
+    )
+    .with_metadata("auth_test_steps", serde_json::json!(report.steps));
+    if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
+        event = event.with_model(model.to_string());
+    }
+    crate::live_tests::append_event(&event)?;
+    Ok(())
+}
+
+fn auth_test_step_stage(
+    checkpoint: &'static str,
+    step: &AuthTestStepReport,
+) -> crate::live_tests::LiveVerificationStage {
+    let status = if step.ok {
+        crate::live_tests::LiveVerificationStageStatus::Passed
+    } else {
+        crate::live_tests::LiveVerificationStageStatus::Failed
+    };
+    crate::live_tests::LiveVerificationStage::new(checkpoint, status)
+        .with_evidence("auth_test_step", serde_json::json!(step.name))
+        .with_evidence("detail", serde_json::json!(step.detail))
+}
+
+fn auth_test_tool_derived_stage(
+    checkpoint: &'static str,
+    step: &AuthTestStepReport,
+) -> crate::live_tests::LiveVerificationStage {
+    auth_test_step_stage(checkpoint, step).with_evidence(
+        "derived_from",
+        serde_json::json!(crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE),
+    )
 }
