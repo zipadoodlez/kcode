@@ -334,6 +334,58 @@ remote_cargo_fallback_mode() {
   esac
 }
 
+cargo_test_has_explicit_filter() {
+  [[ "${1:-}" == "test" ]] || return 1
+
+  local expect_value=""
+  shift
+  for arg in "$@"; do
+    if [[ -n "$expect_value" ]]; then
+      expect_value=""
+      continue
+    fi
+
+    case "$arg" in
+      --)
+        return 1
+        ;;
+      --bench|--bin|--example|--features|--manifest-path|--message-format|--package|-p|--profile|--target|--target-dir)
+        expect_value="$arg"
+        ;;
+      --bench=*|--bin=*|--example=*|--features=*|--manifest-path=*|--message-format=*|--package=*|-p=*|--profile=*|--target=*|--target-dir=*)
+        ;;
+      --*)
+        ;;
+      -*)
+        ;;
+      *)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+run_local_cargo() {
+  if cargo_test_has_explicit_filter "${cargo_argv[@]}" && [[ "${JCODE_DEV_CARGO_ALLOW_ZERO_TESTS:-0}" != "1" ]]; then
+    local output_file
+    output_file=$(mktemp "${TMPDIR:-/tmp}/jcode-dev-cargo.XXXXXX")
+    local status=0
+    cargo "${cargo_argv[@]}" 2>&1 | tee "$output_file" || status=${PIPESTATUS[0]}
+    if [[ "$status" -eq 0 ]] \
+      && grep -qE '^running 0 tests$' "$output_file" \
+      && ! grep -qE '^running [1-9][0-9]* tests$' "$output_file"; then
+      printf 'dev_cargo: explicit cargo test filter matched zero tests; check the test path/name or set JCODE_DEV_CARGO_ALLOW_ZERO_TESTS=1 to allow this intentionally\n' >&2
+      rm -f "$output_file"
+      return 97
+    fi
+    rm -f "$output_file"
+    return "$status"
+  fi
+
+  exec cargo "${cargo_argv[@]}"
+}
+
 validate_feature_profile
 maybe_configure_low_memory_selfdev "$@"
 maybe_enable_sccache
@@ -365,4 +417,4 @@ if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
   fi
 fi
 
-exec cargo "${cargo_argv[@]}"
+run_local_cargo
