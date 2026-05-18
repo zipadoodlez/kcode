@@ -473,6 +473,17 @@ pub const NVIDIA_NIM_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile 
     requires_api_key: true,
 };
 
+pub const XIAOMI_MIMO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "xiaomi-mimo",
+    display_name: "Xiaomi MiMo",
+    api_base: "https://api.xiaomimimo.com/v1",
+    api_key_env: "XIAOMI_MIMO_API_KEY",
+    env_file: "xiaomi-mimo.env",
+    setup_url: "https://platform.xiaomimimo.com",
+    default_model: Some("mimo-v2.5"),
+    requires_api_key: true,
+};
+
 pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "openai-compatible",
     display_name: "OpenAI-compatible",
@@ -484,7 +495,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 31] = [
+const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 32] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -513,6 +524,7 @@ const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 31] = [
     MINIMAX_PROFILE,
     XAI_PROFILE,
     NVIDIA_NIM_PROFILE,
+    XIAOMI_MIMO_PROFILE,
     LMSTUDIO_PROFILE,
     OLLAMA_PROFILE,
     OPENAI_COMPAT_PROFILE,
@@ -1088,6 +1100,19 @@ pub const ANTIGRAVITY_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDes
     order: LoginProviderSurfaceOrder::new(Some(12), Some(12), None, Some(12), Some(12)),
 };
 
+pub const XIAOMI_MIMO_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "xiaomi-mimo",
+    display_name: "Xiaomi MiMo",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["xiaomi", "mimo", "xiaomi-mimo-api"],
+    menu_detail: "OpenAI-compatible Xiaomi MiMo API",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(XIAOMI_MIMO_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(37), Some(37), Some(37), Some(37), Some(37)),
+};
+
 pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "google",
     display_name: "Google/Gmail",
@@ -1101,7 +1126,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-const LOGIN_PROVIDERS: [LoginProviderDescriptor; 44] = [
+const LOGIN_PROVIDERS: [LoginProviderDescriptor; 45] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
@@ -1138,6 +1163,7 @@ const LOGIN_PROVIDERS: [LoginProviderDescriptor; 44] = [
     MINIMAX_LOGIN_PROVIDER,
     XAI_LOGIN_PROVIDER,
     NVIDIA_NIM_LOGIN_PROVIDER,
+    XIAOMI_MIMO_LOGIN_PROVIDER,
     LMSTUDIO_LOGIN_PROVIDER,
     OLLAMA_LOGIN_PROVIDER,
     OPENAI_COMPAT_LOGIN_PROVIDER,
