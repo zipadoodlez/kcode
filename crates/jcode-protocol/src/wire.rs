@@ -96,6 +96,10 @@ pub enum Request {
     #[serde(rename = "get_history")]
     GetHistory { id: u64 },
 
+    /// Get only provider/model metadata and available models.
+    #[serde(rename = "get_model_catalog")]
+    GetModelCatalog { id: u64 },
+
     /// Get a bounded view of compacted historical messages for lazy transcript expansion.
     #[serde(rename = "get_compacted_history")]
     GetCompactedHistory {
