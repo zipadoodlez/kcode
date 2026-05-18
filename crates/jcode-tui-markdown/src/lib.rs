@@ -14,131 +14,13 @@ use unicode_width::UnicodeWidthStr;
 use jcode_tui_mermaid as mermaid;
 
 #[cfg(not(feature = "mermaid-renderer"))]
-mod mermaid {
-    use ratatui::prelude::*;
+#[path = "markdown_mermaid_fallback.rs"]
+mod mermaid;
 
-    #[allow(dead_code)]
-    #[derive(Debug, Clone)]
-    pub enum RenderResult {
-        Image {
-            hash: u64,
-            path: std::path::PathBuf,
-            width: u32,
-            height: u32,
-        },
-        Error(String),
-    }
+#[path = "markdown_types.rs"]
+mod types;
 
-    pub fn is_mermaid_lang(lang: &str) -> bool {
-        lang.eq_ignore_ascii_case("mermaid") || lang.eq_ignore_ascii_case("mmd")
-    }
-
-    pub fn image_protocol_available() -> bool {
-        false
-    }
-
-    pub fn render_mermaid_deferred_with_stream_scope(
-        _content: &str,
-        _terminal_width: Option<u16>,
-        _stream_sequence: u64,
-    ) -> Option<RenderResult> {
-        Some(RenderResult::Error(
-            "Mermaid rendering is disabled".to_string(),
-        ))
-    }
-
-    pub fn render_mermaid_deferred_with_registration(
-        _content: &str,
-        _terminal_width: Option<u16>,
-        _register_active: bool,
-    ) -> Option<RenderResult> {
-        Some(RenderResult::Error(
-            "Mermaid rendering is disabled".to_string(),
-        ))
-    }
-
-    pub fn render_mermaid_untracked(_content: &str, _terminal_width: Option<u16>) -> RenderResult {
-        RenderResult::Error("Mermaid rendering is disabled".to_string())
-    }
-
-    pub fn render_mermaid_sized(_content: &str, _terminal_width: Option<u16>) -> RenderResult {
-        RenderResult::Error("Mermaid rendering is disabled".to_string())
-    }
-
-    pub fn set_streaming_preview_diagram(
-        _hash: u64,
-        _width: u32,
-        _height: u32,
-        _label: Option<String>,
-    ) {
-    }
-
-    pub fn result_to_lines(result: RenderResult, _max_width: Option<usize>) -> Vec<Line<'static>> {
-        match result {
-            RenderResult::Image { .. } => Vec::new(),
-            RenderResult::Error(message) => vec![Line::from(message)],
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
-pub enum DiagramDisplayMode {
-    #[default]
-    None,
-    Margin,
-    Pinned,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
-pub enum MarkdownSpacingMode {
-    #[default]
-    Compact,
-    Document,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CopyTargetKind {
-    CodeBlock { language: Option<String> },
-    Error,
-    ToolOutput,
-}
-
-impl CopyTargetKind {
-    pub fn label(&self) -> String {
-        match self {
-            Self::CodeBlock { language } => language
-                .as_deref()
-                .filter(|lang| !lang.is_empty())
-                .unwrap_or("code")
-                .to_string(),
-            Self::Error => "error".to_string(),
-            Self::ToolOutput => "output".to_string(),
-        }
-    }
-
-    pub fn copied_notice(&self) -> String {
-        match self {
-            Self::CodeBlock { language } => {
-                let label = language
-                    .as_deref()
-                    .filter(|lang| !lang.is_empty())
-                    .unwrap_or("code block");
-                format!("Copied {}", label)
-            }
-            Self::Error => "Copied error".to_string(),
-            Self::ToolOutput => "Copied output".to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct RawCopyTarget {
-    pub kind: CopyTargetKind,
-    pub content: String,
-    pub start_raw_line: usize,
-    pub end_raw_line: usize,
-    pub badge_raw_line: usize,
-}
+pub use types::{CopyTargetKind, DiagramDisplayMode, MarkdownSpacingMode, RawCopyTarget};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MarkdownConfigSnapshot {
