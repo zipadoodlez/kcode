@@ -3466,6 +3466,7 @@ dependencies = [
  "libc",
  "pollster",
  "pulldown-cmark",
+ "serde",
  "serde_json",
  "wgpu",
  "whoami",
