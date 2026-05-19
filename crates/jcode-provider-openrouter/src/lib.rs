@@ -482,7 +482,26 @@ pub fn save_disk_cache(models: &[ModelInfo]) {
 }
 
 pub fn save_disk_cache_with_source(models: &[ModelInfo], source_api_base: Option<&str>) {
-    let path = cache_path();
+    save_disk_cache_with_source_to_path(cache_path(), models, source_api_base);
+}
+
+pub fn save_disk_cache_with_source_for_namespace(
+    namespace: &str,
+    models: &[ModelInfo],
+    source_api_base: Option<&str>,
+) {
+    save_disk_cache_with_source_to_path(
+        cache_path_for_namespace(namespace),
+        models,
+        source_api_base,
+    );
+}
+
+fn save_disk_cache_with_source_to_path(
+    path: PathBuf,
+    models: &[ModelInfo],
+    source_api_base: Option<&str>,
+) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
