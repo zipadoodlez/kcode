@@ -41,6 +41,12 @@ async fn maybe_run_auth_test_smoke_for_choice(
     if enabled && report.success {
         match auth_test_choice_plan(choice, model).await {
             Ok(AuthTestChoicePlan::Run { model }) => {
+                if matches!(kind, AuthTestSmokeKind::Tool)
+                    && let Some(detail) = tool_smoke_skip_detail_for_choice(choice, model.as_deref())
+                {
+                    report.push_step(kind.step_name(), true, detail);
+                    return;
+                }
                 match kind.run_for_choice(choice, model.as_deref(), prompt).await {
                     Ok(output) => {
                         let ok = output.contains("AUTH_TEST_OK");

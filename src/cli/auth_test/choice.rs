@@ -46,6 +46,75 @@ pub(crate) async fn auth_test_choice_plan(
     )))
 }
 
+pub(crate) fn tool_smoke_skip_detail_for_choice(
+    choice: &super::provider_init::ProviderChoice,
+    model: Option<&str>,
+) -> Option<String> {
+    if !matches!(choice, super::provider_init::ProviderChoice::NvidiaNim) {
+        return None;
+    }
+
+    let model = effective_openai_compatible_auth_test_model(
+        crate::provider_catalog::NVIDIA_NIM_PROFILE,
+        model,
+    )?;
+    if !nvidia_nim_model_supports_openai_tools(&model) {
+        return Some(format!(
+            "Skipped: NVIDIA NIM model '{}' is documented by NVIDIA as a request/status-polling model rather than a standard OpenAI tool-calling chat model. Basic provider smoke still validates chat; choose a NIM model with OpenAI tool support to run tool_smoke.",
+            model
+        ));
+    }
+
+    None
+}
+
+fn effective_openai_compatible_auth_test_model(
+    profile: crate::provider_catalog::OpenAiCompatibleProfile,
+    model: Option<&str>,
+) -> Option<String> {
+    model
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            std::env::var("JCODE_OPENROUTER_MODEL")
+                .ok()
+                .map(|model| model.trim().to_string())
+                .filter(|model| !model.is_empty())
+        })
+        .or_else(|| {
+            let cfg = crate::config::config();
+            let default_provider_is_profile = cfg
+                .provider
+                .default_provider
+                .as_deref()
+                .map(str::trim)
+                .map(|provider| {
+                    provider == profile.id
+                        || crate::provider_catalog::resolve_openai_compatible_profile_selection(
+                            provider,
+                        )
+                        .map(|resolved| resolved.id == profile.id)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            default_provider_is_profile
+                .then(|| cfg.provider.default_model.clone())
+                .flatten()
+        })
+        .or_else(|| crate::provider_catalog::resolve_openai_compatible_profile(profile).default_model)
+}
+
+fn nvidia_nim_model_supports_openai_tools(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase().replace('_', "-");
+    // NVIDIA documents moonshotai/kimi-k2.6 under the request/status-polling
+    // visual-model API family. The OpenAI-compatible chat endpoint accepts basic
+    // prompts for this model, but tool-enabled smoke has been observed returning
+    // a server-side `unhashable type: 'dict'` 500 when sent OpenAI tools.
+    !(normalized.contains("moonshotai/kimi-k2.6")
+        || normalized.contains("moonshotai/kimi-k2-6"))
+}
+
 async fn discover_openai_compatible_validation_model(
     profile: &crate::provider_catalog::ResolvedOpenAiCompatibleProfile,
 ) -> Result<Option<String>> {
@@ -92,6 +161,45 @@ async fn discover_openai_compatible_validation_model(
         .into_iter()
         .map(|model| model.id.trim().to_string())
         .find(|model| !model.is_empty()))
+}
+
+#[cfg(test)]
+mod nvidia_nim_tool_smoke_tests {
+    use super::*;
+
+    #[test]
+    fn skips_kimi_k2_6_tool_smoke_for_nvidia_nim() {
+        let detail = tool_smoke_skip_detail_for_choice(
+            &super::super::provider_init::ProviderChoice::NvidiaNim,
+            Some("moonshotai/kimi-k2.6"),
+        )
+        .expect("kimi-k2.6 should skip NIM tool smoke");
+
+        assert!(detail.contains("NVIDIA NIM model 'moonshotai/kimi-k2.6'"));
+        assert!(detail.contains("tool_smoke"));
+    }
+
+    #[test]
+    fn allows_other_nvidia_nim_models_to_attempt_tool_smoke() {
+        assert!(
+            tool_smoke_skip_detail_for_choice(
+                &super::super::provider_init::ProviderChoice::NvidiaNim,
+                Some("nvidia/llama-3.1-nemotron-ultra-253b-v1"),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn does_not_apply_nvidia_skip_to_other_providers() {
+        assert!(
+            tool_smoke_skip_detail_for_choice(
+                &super::super::provider_init::ProviderChoice::Groq,
+                Some("moonshotai/kimi-k2.6"),
+            )
+            .is_none()
+        );
+    }
 }
 
 async fn run_provider_smoke_for_choice(
