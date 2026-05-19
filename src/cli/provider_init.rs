@@ -566,6 +566,36 @@ impl AutoProviderAvailability {
     }
 }
 
+fn maybe_enable_config_default_provider_for_auto() -> Result<bool> {
+    let cfg = crate::config::config();
+    let Some(default_provider) = cfg
+        .provider
+        .default_provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(false);
+    };
+
+    if let Some(profile) =
+        crate::provider_catalog::resolve_openai_compatible_profile_selection(default_provider)
+    {
+        apply_openai_compatible_profile_env(Some(profile));
+        return Ok(provider::openrouter::OpenRouterProvider::has_credentials());
+    }
+
+    if cfg.providers.contains_key(default_provider) {
+        crate::provider_catalog::apply_named_provider_profile_env_from_config(
+            default_provider,
+            cfg,
+        )?;
+        return Ok(provider::openrouter::OpenRouterProvider::has_credentials());
+    }
+
+    Ok(false)
+}
+
 async fn detect_auto_provider_flags() -> AutoProviderAvailability {
     let auth_status = auth::AuthStatus::check_fast();
     AutoProviderAvailability {
@@ -1513,6 +1543,10 @@ async fn init_provider_with_options(
                 if !has_cursor {
                     has_cursor =
                         maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
+                }
+
+                if !has_openrouter {
+                    has_openrouter = maybe_enable_config_default_provider_for_auto()?;
                 }
 
                 has_other_provider = has_openai
