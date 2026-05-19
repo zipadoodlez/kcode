@@ -3463,6 +3463,7 @@ dependencies = [
  "bytemuck",
  "glyphon",
  "image",
+ "jcode-tui-messages",
  "libc",
  "pollster",
  "pulldown-cmark",
@@ -3790,6 +3791,7 @@ version = "0.1.0"
 dependencies = [
  "jcode-config-types",
  "jcode-message-types",
+ "jcode-session-types",
  "jcode-tui-markdown",
  "ratatui",
  "serde_json",
