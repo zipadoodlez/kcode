@@ -512,6 +512,22 @@ fn apply_login_provider_profile_env_locks_compatible_profile_for_auto_spawn() {
         Some("OPENCODE_GO_API_KEY")
     );
 
+    // A later explicit compatible-provider selection in the same process must
+    // still replace the active profile instead of being blocked by the marker.
+    apply_login_provider_profile_env(provider_catalog::OPENCODE_LOGIN_PROVIDER);
+    assert_eq!(
+        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
+            .ok()
+            .as_deref(),
+        Some("OPENCODE_API_KEY")
+    );
+    assert_eq!(
+        std::env::var("JCODE_PROVIDER_PROFILE_ACTIVE")
+            .ok()
+            .as_deref(),
+        Some("1")
+    );
+
     for (key, value) in saved {
         if let Some(value) = value {
             crate::env::set_var(&key, value);

@@ -7,8 +7,9 @@ use crate::provider;
 use crate::provider::Provider;
 use crate::provider_catalog::{
     LoginProviderDescriptor, LoginProviderTarget, OpenAiCompatibleProfile,
-    apply_openai_compatible_profile_env, is_safe_env_file_name, is_safe_env_key_name,
-    resolve_login_selection, resolve_openai_compatible_profile,
+    apply_openai_compatible_profile_env, force_apply_openai_compatible_profile_env,
+    is_safe_env_file_name, is_safe_env_key_name, resolve_login_selection,
+    resolve_openai_compatible_profile,
 };
 use crate::tool;
 
@@ -1111,7 +1112,7 @@ fn disable_subscription_runtime_mode() {
 
 pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
     if let LoginProviderTarget::OpenAiCompatible(profile) = provider.target {
-        apply_openai_compatible_profile_env(Some(profile));
+        force_apply_openai_compatible_profile_env(Some(profile));
         // Bootstrap login still spawns the daemon with `--provider auto`. Mark the
         // just-selected compatible provider as active so the child process does
         // not clear these inherited runtime vars before credential detection.
