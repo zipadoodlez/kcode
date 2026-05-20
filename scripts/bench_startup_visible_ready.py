@@ -106,6 +106,7 @@ def build_tool_specs() -> list[ToolSpec]:
         ToolSpec(name="claude_code", argv=["claude"]),
         ToolSpec(name="cursor_agent", argv=["cursor-agent"]),
         ToolSpec(name="copilot_cli", argv=["copilot"]),
+        ToolSpec(name="antigravity_cli", argv=["agy"]),
     ]
     return specs
 
