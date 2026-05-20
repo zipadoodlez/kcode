@@ -384,7 +384,9 @@ mod tests {
             "https://docs.ollama.com/api/openai-compatibility"
         );
         assert_eq!(OLLAMA_PROFILE.default_model, None);
-        assert!(!OLLAMA_PROFILE.requires_api_key);
+        const {
+            assert!(!OLLAMA_PROFILE.requires_api_key);
+        }
 
         assert_eq!(
             OLLAMA_LOGIN_PROVIDER.auth_kind,
