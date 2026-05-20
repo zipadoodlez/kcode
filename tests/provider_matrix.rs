@@ -55,7 +55,14 @@ fn tracked_env_vars() -> Vec<String> {
         "JCODE_NAMED_PROVIDER_PROFILE",
         "JCODE_PROVIDER_PROFILE_ACTIVE",
         "JCODE_PROVIDER_PROFILE_NAME",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
+        "COPILOT_GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "CURSOR_API_KEY",
+        "GEMINI_API_KEY",
     ]
     .into_iter()
     .map(ToString::to_string)
@@ -210,6 +217,22 @@ fn openai_compatible_login_providers(
         .collect()
 }
 
+fn non_compatible_login_providers(
+    providers: impl IntoIterator<Item = LoginProviderDescriptor>,
+) -> Vec<LoginProviderDescriptor> {
+    providers
+        .into_iter()
+        .filter(|provider| {
+            !matches!(
+                provider.target,
+                LoginProviderTarget::OpenAiCompatible(_)
+                    | LoginProviderTarget::AutoImport
+                    | LoginProviderTarget::Google
+            )
+        })
+        .collect()
+}
+
 fn login_provider_profile(provider: LoginProviderDescriptor) -> OpenAiCompatibleProfile {
     match provider.target {
         LoginProviderTarget::OpenAiCompatible(profile) => profile,
@@ -327,6 +350,66 @@ fn assert_runtime_profile_env(profile: OpenAiCompatibleProfile, context: &str) {
     );
 }
 
+fn assert_no_compatible_runtime_profile_env(context: &str) {
+    for key in [
+        "JCODE_OPENROUTER_API_BASE",
+        "JCODE_OPENROUTER_API_KEY_NAME",
+        "JCODE_OPENROUTER_ENV_FILE",
+        "JCODE_OPENROUTER_CACHE_NAMESPACE",
+        "JCODE_OPENROUTER_PROVIDER_FEATURES",
+        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
+        "JCODE_OPENROUTER_STATIC_MODELS",
+        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "JCODE_PROVIDER_PROFILE_NAME",
+        "JCODE_NAMED_PROVIDER_PROFILE",
+    ] {
+        assert!(
+            std::env::var_os(key).is_none(),
+            "{key} should be cleared for {context}; value={:?}",
+            std::env::var_os(key)
+        );
+    }
+}
+
+fn assert_no_active_compatible_profile_lock(context: &str) {
+    for key in [
+        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "JCODE_PROVIDER_PROFILE_NAME",
+    ] {
+        assert!(
+            std::env::var_os(key).is_none(),
+            "{key} should not stay locked for {context}; value={:?}",
+            std::env::var_os(key)
+        );
+    }
+}
+
+fn seed_non_compatible_auto_auth(provider: LoginProviderDescriptor) -> bool {
+    match provider.target {
+        LoginProviderTarget::Claude => {
+            jcode::env::set_var("ANTHROPIC_API_KEY", "test-anthropic-key");
+            true
+        }
+        LoginProviderTarget::OpenAiApiKey => {
+            jcode::env::set_var("OPENAI_API_KEY", "sk-test-openai-key");
+            true
+        }
+        LoginProviderTarget::OpenRouter => {
+            jcode::env::set_var("OPENROUTER_API_KEY", "sk-test-openrouter-key");
+            true
+        }
+        LoginProviderTarget::Copilot => {
+            jcode::env::set_var("COPILOT_GITHUB_TOKEN", "gho_test-copilot-token");
+            true
+        }
+        LoginProviderTarget::Cursor => {
+            jcode::env::set_var("CURSOR_API_KEY", "sk-test-cursor-key");
+            true
+        }
+        _ => false,
+    }
+}
+
 fn assert_model_picker_has_profile_route(
     provider: &dyn Provider,
     profile: OpenAiCompatibleProfile,
@@ -384,6 +467,89 @@ async fn provider_matrix_bootstrap_login_profile_survives_auto_daemon_state_spac
             assert_runtime_profile_env(selected, &context);
             assert_model_picker_has_profile_route(runtime.as_ref(), selected, &context);
         }
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn provider_matrix_non_compatible_bootstrap_login_clears_stale_compatible_profile_state_space()
+-> Result<()> {
+    let stale_provider = openai_compatible_login_providers(server_bootstrap_login_providers())
+        .into_iter()
+        .next()
+        .expect("compatible bootstrap provider");
+    let stale_profile = login_provider_profile(stale_provider);
+    let providers = non_compatible_login_providers(server_bootstrap_login_providers());
+    assert!(
+        !providers.is_empty(),
+        "server bootstrap login surface should include non-compatible providers"
+    );
+
+    for provider in providers {
+        let env = TestEnv::new()?;
+        env.clear_profile_keys();
+        write_profile_login_material(&env, stale_profile, "stale-non-compatible")?;
+        apply_login_provider_profile_env(stale_provider);
+        let context = format!(
+            "non-compatible bootstrap provider={} stale_profile={}",
+            provider.id, stale_profile.id
+        );
+        assert_runtime_profile_env(stale_profile, &context);
+
+        apply_login_provider_profile_env(provider);
+        AuthStatus::invalidate_cache();
+        assert_no_compatible_runtime_profile_env(&context);
+
+        if seed_non_compatible_auto_auth(provider) {
+            AuthStatus::invalidate_cache();
+            let runtime = init_provider_for_validation(&ProviderChoice::Auto, None)
+                .await
+                .unwrap_or_else(|err| panic!("auto init failed for {context}: {err}"));
+            // Auto-init may legitimately rediscover the stale compatible key file
+            // as an additional available route. The bug-prone invariant is that a
+            // non-compatible selection must clear the active compatible-profile
+            // lock so it cannot force the daemon/model picker to stay on that
+            // previous profile.
+            assert_no_active_compatible_profile_lock(&context);
+            assert!(
+                !runtime.model_routes().is_empty(),
+                "model picker routes should remain renderable for {context}"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn provider_matrix_concurrent_auto_init_preserves_bootstrap_compatible_profile() -> Result<()>
+{
+    let providers = openai_compatible_login_providers(server_bootstrap_login_providers());
+    assert!(!providers.is_empty(), "compatible bootstrap providers");
+
+    for provider in providers {
+        let selected = login_provider_profile(provider);
+        let env = TestEnv::new()?;
+        env.clear_profile_keys();
+        write_profile_login_material(&env, selected, "concurrent-auto")?;
+        apply_login_provider_profile_env(provider);
+        AuthStatus::invalidate_cache();
+
+        let context = format!(
+            "concurrent auto init provider={} selected={}",
+            provider.id, selected.id
+        );
+        let (a, b, c, d) = tokio::join!(
+            init_provider_for_validation(&ProviderChoice::Auto, None),
+            init_provider_for_validation(&ProviderChoice::Auto, None),
+            init_provider_for_validation(&ProviderChoice::Auto, None),
+            init_provider_for_validation(&ProviderChoice::Auto, None),
+        );
+        for result in [a, b, c, d] {
+            result.unwrap_or_else(|err| panic!("auto init failed for {context}: {err}"));
+        }
+        assert_runtime_profile_env(selected, &context);
     }
 
     Ok(())
