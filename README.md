@@ -187,7 +187,7 @@ jcode is built to be as performant and resource efficient as possible. Every met
 | Tool | Time to first frame | Range | Comparison |
 |---|---:|---:|---:|
 | **jcode** | **14.0 ms** | 10.1–19.3 ms | baseline |
-| **Antigravity CLI** | **408.0 ms** | 322.5–474.4 ms | **29.1× slower** |
+| **Antigravity CLI** | **383.5 ms** | 363.1–415.4 ms | **27.4× slower** |
 | **pi** | **590.7 ms** | 369.6–934.8 ms | **42.2× slower** |
 | **Codex CLI** | **882.8 ms** | 742.3–1640.9 ms | **63.1× slower** |
 | **OpenCode** | **1035.9 ms** | 922.5–1104.4 ms | **74.0× slower** |
@@ -200,13 +200,13 @@ jcode is built to be as performant and resource efficient as possible. Every met
 Measured on this Linux machine across 10 interactive PTY launches.
 
 ### Time to first input
-(time until typed probe text appears on the rendered screen.)
+(time until typed probe text appears on the rendered screen; Antigravity uses its internal input-ready log marker because the sign-in screen suppresses probe echo.)
 <div align="center">
 
 | Tool | Time to first input | Range | Comparison |
 |---|---:|---:|---:|
 | **jcode** | **48.7 ms** | 30.3–62.7 ms | baseline |
-| **Antigravity CLI** | **N/A** | N/A | sign-in screen did not echo probe |
+| **Antigravity CLI** | **383.7 ms** | 363.4–415.7 ms | **7.9× slower** |
 | **pi** | **596.4 ms** | 373.9–955.2 ms | **12.2× slower** |
 | **Codex CLI** | **905.8 ms** | 760.1–1675.7 ms | **18.6× slower** |
 | **OpenCode** | **1047.9 ms** | 931.1–1116.9 ms | **21.5× slower** |
@@ -216,7 +216,7 @@ Measured on this Linux machine across 10 interactive PTY launches.
 
 </div>
 
-Measured on this Linux machine across 10 interactive PTY launches. Antigravity CLI was unauthenticated for this run, so its sign-in screen rendered normally but did not echo the typed probe.
+Measured on this Linux machine across 10 interactive PTY launches. Antigravity CLI was unauthenticated for this run; its sign-in screen rendered normally and emitted an internal `CLI ready for user input` marker, but did not echo the typed probe.
 
 ### Additional clients / memory scaling
 
