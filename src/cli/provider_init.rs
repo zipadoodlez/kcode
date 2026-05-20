@@ -1112,6 +1112,10 @@ fn disable_subscription_runtime_mode() {
 pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
     if let LoginProviderTarget::OpenAiCompatible(profile) = provider.target {
         apply_openai_compatible_profile_env(Some(profile));
+        // Bootstrap login still spawns the daemon with `--provider auto`. Mark the
+        // just-selected compatible provider as active so the child process does
+        // not clear these inherited runtime vars before credential detection.
+        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
     }
 }
 
