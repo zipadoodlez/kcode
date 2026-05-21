@@ -28,6 +28,17 @@ append_rustflags() {
 }
 
 maybe_enable_sccache() {
+  case "${SCCACHE_DISABLE:-}" in
+    1|true|yes|on)
+      if [[ -n "${RUSTC_WRAPPER:-}" && "${RUSTC_WRAPPER}" == *sccache* ]]; then
+        unset RUSTC_WRAPPER
+      fi
+      sccache_status="disabled-by-env"
+      log "sccache disabled by SCCACHE_DISABLE"
+      return
+      ;;
+  esac
+
   if [[ -n "${RUSTC_WRAPPER:-}" ]]; then
     sccache_status="external:${RUSTC_WRAPPER}"
     log "keeping existing RUSTC_WRAPPER=${RUSTC_WRAPPER}"
@@ -174,7 +185,7 @@ selfdev_low_memory_default_needed() {
   [[ -n "$mem_total_kib" && -n "$mem_available_kib" && -n "$swap_total_kib" ]] || return 1
 
   # On small no-swap machines, earlyoom can terminate the root jcode rustc
-  # around 1 GiB RSS before the kernel OOM killer would report anything.
+  # around 1-3 GiB RSS before the kernel OOM killer would report anything.
   # Keep this adaptive so larger workstations, and currently-idle smaller
   # workstations with enough headroom, retain the faster inherited selfdev
   # profile by default.
@@ -207,9 +218,14 @@ maybe_configure_low_memory_selfdev() {
       ;;
   esac
 
-  export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
-  export CARGO_PROFILE_SELFDEV_INCREMENTAL="${CARGO_PROFILE_SELFDEV_INCREMENTAL:-false}"
-  export CARGO_PROFILE_SELFDEV_CODEGEN_UNITS="${CARGO_PROFILE_SELFDEV_CODEGEN_UNITS:-16}"
+  export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}"
+  export CARGO_PROFILE_SELFDEV_INCREMENTAL="${CARGO_PROFILE_SELFDEV_INCREMENTAL:-true}"
+  export CARGO_PROFILE_SELFDEV_CODEGEN_UNITS="${CARGO_PROFILE_SELFDEV_CODEGEN_UNITS:-256}"
+  # The low-memory profile deliberately keeps incremental compilation enabled
+  # to avoid repeatedly rebuilding large root crates. sccache rejects Cargo
+  # incremental builds, so default to direct rustc unless the caller opts out
+  # of low-memory mode entirely.
+  export SCCACHE_DISABLE="${SCCACHE_DISABLE:-1}"
   selfdev_low_memory_status="enabled:incremental=${CARGO_PROFILE_SELFDEV_INCREMENTAL},codegen-units=${CARGO_PROFILE_SELFDEV_CODEGEN_UNITS}"
   log "using low-memory selfdev overrides (${selfdev_low_memory_status#enabled:})"
 }
