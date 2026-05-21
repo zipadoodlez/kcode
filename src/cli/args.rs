@@ -380,6 +380,18 @@ pub(crate) enum Command {
         /// Write the full auth-test report JSON to a file
         #[arg(long)]
         output: Option<String>,
+
+        /// Show strict live provider/model E2E coverage instead of running auth tests
+        #[arg(long, conflicts_with_all = ["login", "all_configured", "no_smoke", "no_tool_smoke", "prompt"])]
+        coverage: bool,
+
+        /// Read coverage from this JSON file instead of the default live-test coverage ledger
+        #[arg(long, requires = "coverage")]
+        coverage_file: Option<String>,
+
+        /// Maximum uncovered provider/model gaps to show in the text coverage report
+        #[arg(long, requires = "coverage", default_value_t = 50)]
+        coverage_limit: usize,
     },
 
     /// Save or restore the current set of open jcode windows across a system reboot

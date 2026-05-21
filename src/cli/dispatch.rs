@@ -294,19 +294,31 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             prompt,
             json,
             output,
+            coverage,
+            coverage_file,
+            coverage_limit,
         }) => {
-            commands::run_auth_test_command(
-                &args.provider,
-                args.model.as_deref(),
-                login,
-                all_configured,
-                no_smoke,
-                no_tool_smoke,
-                prompt.as_deref(),
-                json,
-                output.as_deref(),
-            )
-            .await?;
+            if coverage {
+                commands::run_auth_test_coverage_command(
+                    json,
+                    output.as_deref(),
+                    coverage_file.as_deref(),
+                    coverage_limit,
+                )?;
+            } else {
+                commands::run_auth_test_command(
+                    &args.provider,
+                    args.model.as_deref(),
+                    login,
+                    all_configured,
+                    no_smoke,
+                    no_tool_smoke,
+                    prompt.as_deref(),
+                    json,
+                    output.as_deref(),
+                )
+                .await?;
+            }
         }
         Some(Command::Restart { action }) => match action {
             RestartCommand::Save { auto_restore } => {

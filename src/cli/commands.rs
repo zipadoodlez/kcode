@@ -14,13 +14,13 @@ mod provider_setup;
 mod report_info;
 mod restart;
 
-pub use super::auth_test::run_auth_test_command;
 pub(crate) use super::auth_test::run_post_login_validation;
 #[cfg(test)]
 pub(crate) use super::auth_test::{
     AuthTestChoicePlan, AuthTestTarget, ResolvedAuthTestTarget, auth_test_choice_plan,
     auth_test_error_is_retryable, configured_auth_test_targets, resolve_auth_test_targets,
 };
+pub use super::auth_test::{run_auth_test_command, run_auth_test_coverage_command};
 pub(crate) use provider_setup::{ProviderAddOptions, run_provider_add_command};
 pub use restart::{
     maybe_run_pending_restart_restore_on_startup, run_restart_clear_command,
