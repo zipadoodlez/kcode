@@ -521,9 +521,16 @@ fn persist_auth_test_live_verification_event(
             }
             "provider_smoke" => {
                 capabilities.push("provider_smoke");
+                capabilities.push("non_streaming_chat_completion");
+                expected.push(crate::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION);
+                stages.push(auth_test_step_stage(
+                    crate::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
+                    step,
+                ));
             }
             "tool_smoke" => {
                 capabilities.push("real_jcode_tool_smoke");
+                expected.push(crate::live_tests::checkpoints::TOOL_CALL_PARSE);
                 expected.push(crate::live_tests::checkpoints::TOOL_EXECUTION_LOOP);
                 expected.push(crate::live_tests::checkpoints::TOOL_RESULT_FOLLOWUP);
                 expected.push(crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE);
@@ -534,6 +541,10 @@ fn persist_auth_test_live_verification_event(
                 .with_evidence("tool_name", serde_json::json!(AUTH_TEST_TOOL_NAME))
                 .with_evidence("tool_command", serde_json::json!(AUTH_TEST_TOOL_COMMAND));
                 stages.push(stage.clone());
+                stages.push(auth_test_tool_derived_stage(
+                    crate::live_tests::checkpoints::TOOL_CALL_PARSE,
+                    step,
+                ));
                 stages.push(auth_test_tool_derived_stage(
                     crate::live_tests::checkpoints::TOOL_EXECUTION_LOOP,
                     step,
