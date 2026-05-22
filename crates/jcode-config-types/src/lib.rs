@@ -597,6 +597,9 @@ pub struct FeatureConfig {
     pub swarm: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)
     pub message_timestamps: bool,
+    /// Persist auto-recalled memory injections into normal session history instead of sending
+    /// them as request-only ephemeral suffix messages (default: false)
+    pub persist_memory_injections: bool,
     /// Update channel: "stable" (releases only) or "main" (latest commits)
     pub update_channel: UpdateChannel,
 }
@@ -607,6 +610,7 @@ impl Default for FeatureConfig {
             memory: true,
             swarm: true,
             message_timestamps: true,
+            persist_memory_injections: false,
             update_channel: UpdateChannel::default(),
         }
     }
