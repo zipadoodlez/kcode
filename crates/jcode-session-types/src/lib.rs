@@ -13,8 +13,12 @@ pub struct RenderedMessage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenderedCompactedHistoryInfo {
+    /// Number of compacted historical messages that can render visibly in the UI.
+    /// Hidden internal reminders are excluded from this count.
     pub total_messages: usize,
+    /// Number of renderable compacted historical messages included in this payload.
     pub visible_messages: usize,
+    /// Number of older renderable compacted historical messages still hidden.
     pub remaining_messages: usize,
 }
 
