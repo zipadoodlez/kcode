@@ -84,6 +84,22 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) provider_profile: Option<String>,
 
+    /// Tool profile to expose to the model: full, minimal/lite, or none.
+    #[arg(long, global = true)]
+    pub(crate) tool_profile: Option<String>,
+
+    /// Comma-separated explicit allow-list of tools to expose, e.g. bash,read,write,apply_patch.
+    #[arg(long, global = true)]
+    pub(crate) tools: Option<String>,
+
+    /// Comma-separated list of tools to hide after applying the selected profile.
+    #[arg(long, global = true)]
+    pub(crate) disabled_tools: Option<String>,
+
+    /// Hide all built-in tools unless --tools or [tools].enabled opts tools back in.
+    #[arg(long, global = true)]
+    pub(crate) disable_base_tools: bool,
+
     #[command(subcommand)]
     pub(crate) command: Option<Command>,
 }

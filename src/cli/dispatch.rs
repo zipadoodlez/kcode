@@ -33,6 +33,26 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         args.provider = ProviderChoice::OpenaiCompatible;
     }
 
+    if let Some(tool_profile) = args.tool_profile.as_deref() {
+        crate::env::set_var("JCODE_TOOL_PROFILE", tool_profile);
+    }
+    if let Some(tools) = args.tools.as_deref() {
+        crate::env::set_var("JCODE_TOOLS", tools);
+    }
+    if let Some(disabled_tools) = args.disabled_tools.as_deref() {
+        crate::env::set_var("JCODE_DISABLED_TOOLS", disabled_tools);
+    }
+    if args.disable_base_tools {
+        crate::env::set_var("JCODE_DISABLE_BASE_TOOLS", "1");
+    }
+    if args.tool_profile.is_some()
+        || args.tools.is_some()
+        || args.disabled_tools.is_some()
+        || args.disable_base_tools
+    {
+        crate::config::invalidate_config_cache();
+    }
+
     match args.command {
         Some(Command::Serve {
             temporary_server,
@@ -428,8 +448,13 @@ async fn run_default_command(args: Args) -> Result<()> {
     let explicit_provider_or_model = args.provider != ProviderChoice::Auto
         || args.model.is_some()
         || args.provider_profile.is_some();
+    let explicit_tool_options = args.tool_profile.is_some()
+        || args.tools.is_some()
+        || args.disabled_tools.is_some()
+        || args.disable_base_tools;
     if args.resume.is_none()
         && !explicit_provider_or_model
+        && !explicit_tool_options
         && commands::maybe_run_pending_restart_restore_on_startup().await?
     {
         return Ok(());
@@ -494,6 +519,12 @@ async fn run_default_command(args: Args) -> Result<()> {
                 .map(|m| format!(" --model {}", m))
                 .unwrap_or_default()
         ));
+    }
+
+    if server_running && explicit_tool_options {
+        output::stderr_info(
+            "Server already running; tool flags only apply when starting a new server. Restart server or edit [tools] in config.toml to change the active toolset.",
+        );
     }
 
     if !server_running {
