@@ -32,6 +32,7 @@ pub struct EditToolRange {
     pub file_path: String,
     pub start_line: usize,
     pub end_line: usize,
+    pub expandable: bool,
 }
 
 #[derive(Clone)]
@@ -144,6 +145,7 @@ impl PreparedChatFrame {
                 file_path: range.file_path.clone(),
                 start_line: range.start_line + line_start,
                 end_line: range.end_line + line_start,
+                expandable: range.expandable,
             }));
             copy_targets.extend(prepared.copy_targets.iter().map(|target| CopyTarget {
                 kind: target.kind.clone(),
