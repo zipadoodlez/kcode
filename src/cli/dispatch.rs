@@ -98,6 +98,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             .await?;
         }
         Some(Command::Login {
+            provider: login_provider,
             account,
             no_browser,
             print_auth_url,
@@ -112,7 +113,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             api_key_env,
         }) => {
             login::run_login(
-                &args.provider,
+                &login_provider.unwrap_or(args.provider),
                 account.as_deref(),
                 login::LoginOptions {
                     no_browser,

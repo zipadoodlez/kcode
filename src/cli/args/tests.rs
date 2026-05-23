@@ -90,6 +90,7 @@ fn login_no_browser_flag_parses() {
     let args = Args::try_parse_from(["jcode", "login", "--no-browser"]).unwrap();
     match args.command {
         Some(Command::Login {
+            provider,
             account,
             no_browser,
             print_auth_url,
@@ -103,6 +104,7 @@ fn login_no_browser_flag_parses() {
             api_key_env,
             no_validate,
         }) => {
+            assert!(provider.is_none());
             assert!(account.is_none());
             assert!(no_browser);
             assert!(!print_auth_url);
@@ -122,6 +124,17 @@ fn login_no_browser_flag_parses() {
     let args = Args::try_parse_from(["jcode", "login", "--headless"]).unwrap();
     match args.command {
         Some(Command::Login { no_browser, .. }) => assert!(no_browser),
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
+fn login_accepts_provider_positional() {
+    let args = Args::try_parse_from(["jcode", "login", "google"]).unwrap();
+    match args.command {
+        Some(Command::Login { provider, .. }) => {
+            assert_eq!(provider, Some(ProviderChoice::Google));
+        }
         other => panic!("unexpected command: {:?}", other),
     }
 }

@@ -88,7 +88,7 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) tool_profile: Option<String>,
 
-    /// Comma-separated explicit allow-list of tools to expose, e.g. bash,read,write,apply_patch.
+    /// Comma-separated explicit allow-list of tools to expose, e.g. bash,read,write,apply_patch. Use '*' or 'all' to expose all tools, including default-disabled tools.
     #[arg(long, global = true)]
     pub(crate) tools: Option<String>,
 
@@ -140,6 +140,10 @@ pub(crate) enum Command {
 
     /// Login to a provider via OAuth, API key, or local credentials
     Login {
+        /// Provider to log in to. Equivalent to --provider for this command, e.g. `jcode login google`.
+        #[arg(value_enum)]
+        provider: Option<ProviderChoice>,
+
         /// Account label for multi-account support (stored labels are auto-numbered)
         #[arg(long, short = 'a')]
         account: Option<String>,

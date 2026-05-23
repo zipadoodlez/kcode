@@ -1478,7 +1478,9 @@ async fn init_provider_with_options(
             init_notice(
                 "Note: Google/Gmail is not a model provider. Using auto-detect for model provider.",
             );
-            init_notice("Gmail tool is available if you've run `jcode login google`.");
+            init_notice(
+                "Gmail credentials can be configured with `jcode login google`; the gmail tool is disabled by default for privacy.",
+            );
             unlock_model_provider();
             Arc::new(provider::MultiProvider::new_fast())
         }

@@ -302,9 +302,11 @@ pub async fn run_login_provider(
             LoginProviderTarget::Antigravity => login_antigravity_flow(options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
-            LoginProviderTarget::Google => login_google_flow(options.no_browser)
-                .await
-                .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::Google => {
+                login_google_flow(options.no_browser, options.google_access_tier)
+                    .await
+                    .map(|_| LoginFlowOutcome::Completed)
+            }
         }
     };
     let outcome = match login_result {
@@ -1139,7 +1141,10 @@ async fn login_gemini_flow(no_browser: bool) -> Result<()> {
     Ok(())
 }
 
-async fn login_google_flow(no_browser: bool) -> Result<()> {
+async fn login_google_flow(
+    no_browser: bool,
+    access_tier: Option<auth::google::GmailAccessTier>,
+) -> Result<()> {
     use auth::google::{GmailAccessTier, GoogleCredentials};
 
     eprintln!("╔══════════════════════════════════════════╗");
@@ -1329,24 +1334,28 @@ async fn login_google_flow(no_browser: bool) -> Result<()> {
         }
     };
 
-    eprintln!("── Gmail Access Level ──\n");
-    eprintln!("  [1] Full Access (recommended)");
-    eprintln!("      Search, read, draft, send, and manage emails.");
-    eprintln!("      Send and delete always require your confirmation.\n");
-    eprintln!("  [2] Read & Draft Only");
-    eprintln!("      Search, read emails, create drafts. Cannot send or delete.");
-    eprintln!("      API-level restriction - impossible even if the AI tries.\n");
-    eprint!("Choose [1/2] (default: 1): ");
-    io::stdout().flush()?;
+    let tier = if let Some(tier) = access_tier {
+        tier
+    } else {
+        eprintln!("── Gmail Access Level ──\n");
+        eprintln!("  [1] Full Access (recommended)");
+        eprintln!("      Search, read, draft, send, and manage emails.");
+        eprintln!("      Send and delete always require your confirmation.\n");
+        eprintln!("  [2] Read & Draft Only");
+        eprintln!("      Search, read emails, create drafts. Cannot send or delete.");
+        eprintln!("      API-level restriction - impossible even if the AI tries.\n");
+        eprint!("Choose [1/2] (default: 1): ");
+        io::stdout().flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let tier = match input.trim() {
-        "" | "1" => GmailAccessTier::Full,
-        "2" => GmailAccessTier::ReadOnly,
-        _ => {
-            eprintln!("Invalid choice, defaulting to Full Access.");
-            GmailAccessTier::Full
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        match input.trim() {
+            "" | "1" => GmailAccessTier::Full,
+            "2" => GmailAccessTier::ReadOnly,
+            _ => {
+                eprintln!("Invalid choice, defaulting to Full Access.");
+                GmailAccessTier::Full
+            }
         }
     };
 
@@ -1371,8 +1380,10 @@ async fn login_google_flow(no_browser: bool) -> Result<()> {
         "  Tokens:       {}\n",
         auth::google::tokens_path()?.display()
     );
-    eprintln!("The 'gmail' tool is now available to the AI agent.");
-    eprintln!("Try asking: \"check my recent emails\" or \"search emails from ...\"");
+    eprintln!("The 'gmail' tool is configured, but it is disabled by default for privacy.");
+    eprintln!("To expose it to the AI agent, add this to [tools] in config.toml:");
+    eprintln!("  enabled = [\"*\"]");
+    eprintln!("Then try asking: \"check my recent emails\" or \"search emails from ...\"");
 
     crate::telemetry::record_auth_success("google", "oauth");
     Ok(())
