@@ -14,7 +14,7 @@ use crate::{
 };
 
 use super::{
-    commands, debug, hot_exec, login, output, provider_init, selfdev, terminal, tui_launch,
+    acp, commands, debug, hot_exec, login, output, provider_init, selfdev, terminal, tui_launch,
 };
 use provider_init::ProviderChoice;
 
@@ -78,6 +78,15 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 serve_start.elapsed().as_millis()
             ));
             server.run().await?;
+        }
+        Some(Command::Acp) => {
+            acp::run_acp_command(
+                args.provider,
+                args.model.clone(),
+                args.provider_profile.clone(),
+                args.tool_profile.is_some(),
+            )
+            .await?;
         }
         Some(Command::Connect) => {
             tui_launch::run_client().await?;

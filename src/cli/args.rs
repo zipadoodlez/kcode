@@ -121,6 +121,9 @@ pub(crate) enum Command {
         temp_idle_timeout_secs: Option<u64>,
     },
 
+    /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
+    Acp,
+
     /// Connect to a running server
     Connect,
 
