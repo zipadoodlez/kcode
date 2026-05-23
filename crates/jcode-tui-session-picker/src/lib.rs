@@ -111,6 +111,7 @@ impl SessionFilterMode {
 
 /// Session info for display in the interactive session picker.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SessionInfo {
     pub id: String,
     pub parent_id: Option<String>,
@@ -150,6 +151,7 @@ pub struct SessionInfo {
 
 /// A group of sessions under a server.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ServerGroup {
     pub name: String,
     pub icon: String,
@@ -160,6 +162,7 @@ pub struct ServerGroup {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PreviewMessage {
     pub role: String,
     pub content: String,
