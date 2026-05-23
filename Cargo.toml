@@ -220,10 +220,11 @@ aws-sdk-bedrock = "1.141.0"
 aws-sdk-sts = "1.103.0"
 
 [features]
-# Keep the heavyweight local ONNX/tokenizer embedding stack opt-in. It remains
-# available via `--features embeddings` or `JCODE_DEV_FEATURE_PROFILE=full`, but
-# ordinary check/build loops should not compile the tract/tokenizers subtree.
-default = ["pdf"]
+# Include local ONNX/tokenizer embeddings in default builds so memory recall,
+# semantic retrieval, and embedding-backed features work out of the box.
+# Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
+# to skip optional default feature stacks.
+default = ["pdf", "embeddings"]
 dev-bins = []
 jemalloc = [
     "dep:tikv-jemallocator",
