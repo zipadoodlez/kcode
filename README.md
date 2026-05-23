@@ -708,6 +708,15 @@ This is intended to be a copy-paste bootstrap prompt for jcode itself or any oth
 curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
 ```
 
+On Termux, install the glibc runtime and `patchelf` first so the installer can
+patch the downloaded Linux binary to Termux's glibc dynamic linker and create a
+launcher that avoids Termux's `LD_PRELOAD` shim:
+
+```bash
+pkg install glibc patchelf
+curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.sh | bash
+```
+
 ```powershell
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/install.ps1 | iex
@@ -753,5 +762,6 @@ scripts/install_release.sh
 | **Linux** x86_64 / aarch64 | Fully supported |
 | **macOS** Apple Silicon & Intel | Supported |
 | **Windows** x86_64 | Supported (native + WSL2) |
+| **Termux** aarch64 / x86_64 | Supported with `pkg install glibc patchelf` |
 
 </div>
