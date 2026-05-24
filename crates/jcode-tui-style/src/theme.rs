@@ -56,6 +56,7 @@ pub fn header_session_color() -> Color {
 // grow/recede pulse mirrors the desktop streaming cue's dot/beam animation.
 const SPINNER_FRAMES: &[&str] = &["⠂", "⠆", "⠇", "⠧", "⠷", "⠧", "⠇", "⠆"];
 const STATIC_ACTIVITY_INDICATOR: &str = "•";
+const TOOL_HALO_WIDTH: usize = 3;
 
 pub fn spinner_frame_index(elapsed: f32, fps: f32) -> usize {
     ((elapsed * fps) as usize) % SPINNER_FRAMES.len()
@@ -87,6 +88,39 @@ pub fn activity_indicator(
     } else {
         STATIC_ACTIVITY_INDICATOR
     }
+}
+
+pub fn animated_tool_halo_frame_index(elapsed: f32, enable_decorative_animations: bool) -> usize {
+    if enable_decorative_animations {
+        ((elapsed * 6.0) as usize) % TOOL_HALO_WIDTH
+    } else {
+        0
+    }
+}
+
+/// Matching left/right pulse used around active tool-call labels.
+pub fn animated_tool_halo_segments(
+    elapsed: f32,
+    enable_decorative_animations: bool,
+) -> (String, String) {
+    if !enable_decorative_animations {
+        return ("···".to_string(), "···".to_string());
+    }
+
+    let filled_pos = animated_tool_halo_frame_index(elapsed, true);
+    let left: String = (0..TOOL_HALO_WIDTH)
+        .map(|i| if i == filled_pos { '●' } else { '·' })
+        .collect();
+    let right: String = (0..TOOL_HALO_WIDTH)
+        .map(|i| {
+            if i == (TOOL_HALO_WIDTH - 1 - filled_pos) {
+                '●'
+            } else {
+                '·'
+            }
+        })
+        .collect();
+    (left, right)
 }
 
 /// Convert HSL to RGB (h in 0-360, s and l in 0-1)
