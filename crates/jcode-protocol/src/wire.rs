@@ -185,7 +185,12 @@ pub enum Request {
 
     /// Set reasoning effort for providers that expose it (OpenAI/Anthropic: none|low|medium|high|xhigh; DeepSeek: none|low|medium|high|max)
     #[serde(rename = "set_reasoning_effort")]
-    SetReasoningEffort { id: u64, effort: String },
+    SetReasoningEffort {
+        id: u64,
+        effort: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_session_id: Option<String>,
+    },
 
     /// Set service tier for OpenAI models (priority|fast|flex|off)
     #[serde(rename = "set_service_tier")]
