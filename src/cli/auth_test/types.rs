@@ -176,6 +176,25 @@ struct AuthTestProviderReport {
     success: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct AuthTestContextModelReport {
+    model: String,
+    catalog_context_window: usize,
+    resolved_context_window: usize,
+    ok: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthTestContextAuditReport {
+    provider: String,
+    display_name: String,
+    checked_models: usize,
+    skipped_models_without_context: usize,
+    mismatches: Vec<AuthTestContextModelReport>,
+    success: bool,
+    detail: String,
+}
+
 impl AuthTestProviderReport {
     fn new(target: AuthTestTarget) -> Self {
         Self {

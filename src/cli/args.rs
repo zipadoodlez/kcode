@@ -408,6 +408,10 @@ pub(crate) enum Command {
         #[arg(long, conflicts_with_all = ["login", "all_configured", "no_smoke", "no_tool_smoke", "prompt"])]
         coverage: bool,
 
+        /// Fetch live model catalogs and verify context-window resolution for each model with metadata
+        #[arg(long, conflicts_with_all = ["login", "no_smoke", "no_tool_smoke", "prompt", "coverage"])]
+        context_audit: bool,
+
         /// Read coverage from this JSON file instead of the default live-test coverage ledger
         #[arg(long, requires = "coverage")]
         coverage_file: Option<String>,

@@ -214,6 +214,194 @@ pub fn run_auth_test_coverage_command(
     Ok(())
 }
 
+pub async fn run_auth_test_context_audit_command(
+    choice: &super::provider_init::ProviderChoice,
+    all_configured: bool,
+    emit_json: bool,
+    output_path: Option<&str>,
+) -> Result<()> {
+    let targets = resolve_auth_test_targets(choice, all_configured)?;
+    let mut reports = Vec::new();
+
+    for target in targets {
+        reports.push(run_context_audit_for_target(target).await);
+    }
+
+    let report_json = (emit_json || output_path.is_some())
+        .then(|| serde_json::to_string_pretty(&reports))
+        .transpose()?;
+
+    if let Some(path) = output_path {
+        std::fs::write(path, report_json.as_deref().unwrap_or("[]"))
+            .with_context(|| format!("failed to write auth-test context audit report to {path}"))?;
+    }
+
+    if emit_json {
+        println!("{}", report_json.as_deref().unwrap_or("[]"));
+    } else {
+        print_context_audit_reports(&reports);
+    }
+
+    if reports.iter().all(|report| report.success) {
+        Ok(())
+    } else {
+        anyhow::bail!("One or more live context audits failed")
+    }
+}
+
+async fn run_context_audit_for_target(
+    target: ResolvedAuthTestTarget,
+) -> AuthTestContextAuditReport {
+    let (provider_id, display_name, supports_openrouter_catalog) = match target {
+        ResolvedAuthTestTarget::Generic { provider, choice } => {
+            super::provider_init::apply_login_provider_profile_env(provider);
+            let supports_openrouter_catalog = matches!(
+                provider.target,
+                crate::provider_catalog::LoginProviderTarget::OpenRouter
+                    | crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(_)
+            );
+            (
+                choice.as_arg_value().to_string(),
+                provider.display_name.to_string(),
+                supports_openrouter_catalog,
+            )
+        }
+        ResolvedAuthTestTarget::Detailed(target) => (
+            target.label().to_string(),
+            target.label().to_string(),
+            false,
+        ),
+    };
+
+    if !supports_openrouter_catalog {
+        return AuthTestContextAuditReport {
+            provider: provider_id,
+            display_name,
+            checked_models: 0,
+            skipped_models_without_context: 0,
+            mismatches: Vec::new(),
+            success: true,
+            detail: "Skipped: provider does not use the OpenRouter/OpenAI-compatible live catalog path.".to_string(),
+        };
+    }
+
+    audit_openrouter_context_windows(provider_id, display_name).await
+}
+
+async fn audit_openrouter_context_windows(
+    provider_id: String,
+    display_name: String,
+) -> AuthTestContextAuditReport {
+    use crate::provider::Provider as _;
+
+    let provider = match crate::provider::openrouter::OpenRouterProvider::new() {
+        Ok(provider) => provider,
+        Err(err) => {
+            return AuthTestContextAuditReport {
+                provider: provider_id,
+                display_name,
+                checked_models: 0,
+                skipped_models_without_context: 0,
+                mismatches: Vec::new(),
+                success: false,
+                detail: format!("Failed to initialize provider: {err:#}"),
+            };
+        }
+    };
+
+    let models = match provider.refresh_models().await {
+        Ok(models) => models,
+        Err(err) => {
+            return AuthTestContextAuditReport {
+                provider: provider_id,
+                display_name,
+                checked_models: 0,
+                skipped_models_without_context: 0,
+                mismatches: Vec::new(),
+                success: false,
+                detail: format!("Failed to fetch live model catalog: {err:#}"),
+            };
+        }
+    };
+
+    let mut checked_models = 0usize;
+    let mut skipped_models_without_context = 0usize;
+    let mut mismatches = Vec::new();
+
+    for model in models {
+        let Some(catalog_context_window) = model.context_length.map(|value| value as usize) else {
+            skipped_models_without_context += 1;
+            continue;
+        };
+        checked_models += 1;
+
+        if let Err(err) = provider.set_model(&model.id) {
+            mismatches.push(AuthTestContextModelReport {
+                model: model.id,
+                catalog_context_window,
+                resolved_context_window: 0,
+                ok: false,
+            });
+            crate::logging::info(&format!(
+                "live context audit could not switch model for {}: {err:#}",
+                provider_id
+            ));
+            continue;
+        }
+
+        let resolved_context_window = provider.context_window();
+        if resolved_context_window != catalog_context_window {
+            mismatches.push(AuthTestContextModelReport {
+                model: model.id,
+                catalog_context_window,
+                resolved_context_window,
+                ok: false,
+            });
+        }
+    }
+
+    let success = mismatches.is_empty();
+    let detail = if success {
+        format!(
+            "Checked {checked_models} live catalog models with context metadata; skipped {skipped_models_without_context} without context metadata."
+        )
+    } else {
+        format!(
+            "Found {} context-window mismatches across {checked_models} live catalog models with context metadata; skipped {skipped_models_without_context} without context metadata.",
+            mismatches.len()
+        )
+    };
+
+    AuthTestContextAuditReport {
+        provider: provider_id,
+        display_name,
+        checked_models,
+        skipped_models_without_context,
+        mismatches,
+        success,
+        detail,
+    }
+}
+
+fn print_context_audit_reports(reports: &[AuthTestContextAuditReport]) {
+    for report in reports {
+        println!("{} ({})", report.display_name, report.provider);
+        println!("  success: {}", report.success);
+        println!("  {}", report.detail);
+        for mismatch in report.mismatches.iter().take(20) {
+            println!(
+                "  mismatch: {} catalog={} resolved={}",
+                mismatch.model,
+                mismatch.catalog_context_window,
+                mismatch.resolved_context_window
+            );
+        }
+        if report.mismatches.len() > 20 {
+            println!("  ... {} more mismatches", report.mismatches.len() - 20);
+        }
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "CLI auth-test entrypoint maps directly from command-line flags"

@@ -325,6 +325,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             json,
             output,
             coverage,
+            context_audit,
             coverage_file,
             coverage_limit,
         }) => {
@@ -335,6 +336,14 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                     coverage_file.as_deref(),
                     coverage_limit,
                 )?;
+            } else if context_audit {
+                commands::run_auth_test_context_audit_command(
+                    &args.provider,
+                    all_configured,
+                    json,
+                    output.as_deref(),
+                )
+                .await?;
             } else {
                 commands::run_auth_test_command(
                     &args.provider,
