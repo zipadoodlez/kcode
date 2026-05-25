@@ -84,7 +84,8 @@ fn spawn_background_update_check(args: &Args) {
                 logging::info(&format!("Update available: {} -> {}", current, latest));
             }
             update::UpdateCheckResult::UpdateInstalled { version, path } => {
-                update::print_centered(&format!("✅ Updated to {}. Restarting...", version));
+                logging::info(&format!("Updated to {}. Restarting...", version));
+                std::thread::sleep(std::time::Duration::from_millis(250));
                 let args: Vec<String> = std::env::args().skip(1).collect();
                 let exec_path = build::client_update_candidate(false)
                     .map(|(p, _)| p)
@@ -103,13 +104,25 @@ fn spawn_background_update_check(args: &Args) {
         });
     } else {
         std::thread::spawn(move || {
+            use crate::bus::{Bus, BusEvent, UpdateStatus};
+
             let start = std::time::Instant::now();
+            Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Checking));
             if let Some(update_available) = hot_exec::check_for_updates()
                 && update_available
             {
+                Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Available {
+                    current: env!("JCODE_VERSION").to_string(),
+                    latest: "latest source".to_string(),
+                }));
                 if auto_update {
                     logging::info("Update available - auto-updating...");
+                    Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Installing {
+                        version: "latest source".to_string(),
+                    }));
                     if let Err(e) = hot_exec::run_auto_update() {
+                        Bus::global()
+                            .publish(BusEvent::UpdateStatus(UpdateStatus::Error(e.to_string())));
                         logging::error(&format!(
                             "Auto-update failed: {}. Continuing with current version.",
                             e
@@ -118,6 +131,8 @@ fn spawn_background_update_check(args: &Args) {
                 } else {
                     logging::info("Update available! Run `jcode update` or `/reload` to update.");
                 }
+            } else {
+                Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::UpToDate));
             }
             logging::info(&format!(
                 "[TIMING] background_update_check: auto_update={}, total={}ms",

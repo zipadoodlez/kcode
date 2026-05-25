@@ -240,23 +240,33 @@ pub fn check_for_updates() -> Option<bool> {
 }
 
 pub fn run_auto_update() -> Result<()> {
+    use crate::bus::{Bus, BusEvent, UpdateStatus};
+
     let repo_dir =
         get_repo_dir().ok_or_else(|| anyhow::anyhow!("Could not find jcode repository"))?;
 
     update::run_git_pull_ff_only(&repo_dir, true)?;
 
-    update::print_centered("Building new version...");
-    let build_status = ProcessCommand::new("cargo")
+    crate::logging::info("Building updated source version...");
+    let build_output = ProcessCommand::new("cargo")
         .args(["build", "--release"])
         .current_dir(&repo_dir)
-        .status()?;
+        .output()?;
 
-    if !build_status.success() {
+    if !build_output.status.success() {
+        let stderr = String::from_utf8_lossy(&build_output.stderr);
+        let stdout = String::from_utf8_lossy(&build_output.stdout);
+        if !stderr.trim().is_empty() {
+            crate::logging::error(&format!("auto-update cargo stderr:\n{}", stderr.trim()));
+        }
+        if !stdout.trim().is_empty() {
+            crate::logging::info(&format!("auto-update cargo stdout:\n{}", stdout.trim()));
+        }
         anyhow::bail!("cargo build failed");
     }
 
     if let Err(e) = build::install_local_release(&repo_dir) {
-        update::print_centered(&format!("Warning: install failed: {}", e));
+        crate::logging::warn(&format!("auto-update install failed: {}", e));
     }
 
     let hash = ProcessCommand::new("git")
@@ -264,7 +274,12 @@ pub fn run_auto_update() -> Result<()> {
         .current_dir(&repo_dir)
         .output()?;
     let hash = String::from_utf8_lossy(&hash.stdout);
-    update::print_centered(&format!("Updated to {}. Restarting...", hash.trim()));
+    let version = format!("main-{}", hash.trim());
+    Bus::global().publish(BusEvent::UpdateStatus(UpdateStatus::Installed {
+        version: version.clone(),
+    }));
+    crate::logging::info(&format!("Updated to {}. Restarting...", version));
+    std::thread::sleep(std::time::Duration::from_millis(250));
 
     let exe = build::client_update_candidate(false)
         .map(|(p, _)| p)
