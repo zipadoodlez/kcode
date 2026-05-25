@@ -52,9 +52,9 @@ pub fn header_session_color() -> Color {
 }
 
 // Spinner frames for animated status. Keep these single-cell because the fast
-// spinner-only renderer patches one status cell between full TUI redraws. The
-// grow/recede pulse mirrors the desktop streaming cue's dot/beam animation.
-const SPINNER_FRAMES: &[&str] = &["⠂", "⠆", "⠇", "⠧", "⠷", "⠧", "⠇", "⠆"];
+// spinner-only renderer patches one status cell between full TUI redraws. This
+// sequence should read as a circular spin, not a grow/recede pulse.
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const STATIC_ACTIVITY_INDICATOR: &str = "•";
 
 pub fn spinner_frame_index(elapsed: f32, fps: f32) -> usize {
@@ -189,4 +189,25 @@ pub fn animated_tool_color(elapsed: f32, enable_decorative_animations: bool) -> 
     let b = (220.0 + t * 35.0) as u8; // 220 -> 255
 
     rgb(r, g, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spinner_frames_are_circular_braille_sequence() {
+        assert_eq!(
+            SPINNER_FRAMES,
+            &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        );
+    }
+
+    #[test]
+    fn spinner_frame_wraps_at_sequence_length() {
+        let fps = 10.0;
+        assert_eq!(spinner_frame(0.0, fps), "⠋");
+        assert_eq!(spinner_frame(0.9, fps), "⠏");
+        assert_eq!(spinner_frame(1.0, fps), "⠋");
+    }
 }
