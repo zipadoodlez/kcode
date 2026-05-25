@@ -863,6 +863,9 @@ pub enum ServerEvent {
         /// Total session token usage (input, output)
         #[serde(skip_serializing_if = "Option::is_none")]
         total_tokens: Option<(u64, u64)>,
+        /// Detailed persisted token usage totals for diagnostics and cache stats.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        token_usage_totals: Option<TokenUsageTotals>,
         /// All session IDs on the server
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         all_sessions: Vec<String>,

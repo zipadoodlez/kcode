@@ -64,6 +64,19 @@ pub struct SessionActivitySnapshot {
     pub current_tool_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TokenUsageTotals {
+    pub messages_with_token_usage: usize,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    /// Input tokens from requests where the provider reported cache telemetry.
+    /// This may be lower than `input_tokens` for providers or older sessions that
+    /// did not expose cache-read/cache-write fields.
+    pub cache_reported_input_tokens: u64,
+    pub cache_read_input_tokens: u64,
+    pub cache_creation_input_tokens: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct AuthProviderId(pub String);
