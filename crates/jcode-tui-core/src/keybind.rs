@@ -314,6 +314,16 @@ impl ScrollKeys {
                 _ => {}
             }
         }
+
+        // macOS compatibility fallback: terminals that forward Command as SUPER/META
+        // can use Cmd+[ / Cmd+] for prompt jumps, mirroring Ctrl+[ / Ctrl+].
+        if modifiers.contains(KeyModifiers::SUPER) || modifiers.contains(KeyModifiers::META) {
+            match code {
+                KeyCode::Char('[') => return Some(-1),
+                KeyCode::Char(']') => return Some(1),
+                _ => {}
+            }
+        }
         None
     }
 
@@ -555,6 +565,27 @@ mod tests {
         );
         assert_eq!(
             keys.prompt_jump(KeyCode::Char(']'), KeyModifiers::CONTROL),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_prompt_jump_cmd_bracket_fallback() {
+        let keys = test_scroll_keys();
+        assert_eq!(
+            keys.prompt_jump(KeyCode::Char('['), KeyModifiers::SUPER),
+            Some(-1)
+        );
+        assert_eq!(
+            keys.prompt_jump(KeyCode::Char(']'), KeyModifiers::SUPER),
+            Some(1)
+        );
+        assert_eq!(
+            keys.prompt_jump(KeyCode::Char('['), KeyModifiers::META),
+            Some(-1)
+        );
+        assert_eq!(
+            keys.prompt_jump(KeyCode::Char(']'), KeyModifiers::META),
             Some(1)
         );
     }
