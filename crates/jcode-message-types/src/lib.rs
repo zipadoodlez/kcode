@@ -117,6 +117,12 @@ pub enum ContentBlock {
     Reasoning {
         text: String,
     },
+    /// Anthropic signed thinking content. Anthropic requires the signature when
+    /// replaying thinking blocks in future request context.
+    AnthropicThinking {
+        thinking: String,
+        signature: String,
+    },
     ToolUse {
         id: String,
         name: String,
@@ -584,6 +590,8 @@ pub enum StreamEvent {
     ThinkingStart,
     /// Extended thinking delta (reasoning content)
     ThinkingDelta(String),
+    /// Provider signature for the current thinking block.
+    ThinkingSignatureDelta(String),
     /// Extended thinking ended
     ThinkingEnd,
     /// Extended thinking completed with duration
