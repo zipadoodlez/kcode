@@ -898,6 +898,27 @@ fn login_openai_compatible_flow(
         }
     };
 
+    if !resolved.requires_api_key && resolved.default_model.is_none() {
+        match resolved.id.as_str() {
+            "ollama" => {
+                eprintln!(
+                    "Next step: install a model with `ollama pull llama3.2`, then run `jcode --provider ollama --model llama3.2 run 'hello'`."
+                );
+            }
+            "lmstudio" => {
+                eprintln!(
+                    "Next step: load a chat model in LM Studio's Local Server, then run jcode with that exact model id, for example `jcode --provider lmstudio --model <model-id> run 'hello'`."
+                );
+            }
+            _ => {
+                eprintln!(
+                    "Next step: run jcode with a model available on this endpoint, for example `jcode --provider {} --model <model-id> run 'hello'`.",
+                    resolved.id
+                );
+            }
+        }
+    }
+
     eprintln!(
         "Stored at {}",
         crate::storage::app_config_dir()?
