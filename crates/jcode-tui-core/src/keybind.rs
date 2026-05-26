@@ -626,6 +626,16 @@ mod tests {
         assert_eq!(cmd.code, KeyCode::Char('j'));
         assert!(cmd.modifiers.contains(KeyModifiers::SUPER));
 
+        for raw in ["command+k", "super+k", "win+k", "windows+k"] {
+            let binding = parse_keybinding(raw).unwrap_or_else(|| panic!("{raw} should parse"));
+            assert_eq!(binding.code, KeyCode::Char('k'));
+            assert_eq!(binding.modifiers, KeyModifiers::SUPER);
+        }
+
+        let control = parse_keybinding("control+j").expect("control+j should parse");
+        assert_eq!(control.code, KeyCode::Char('j'));
+        assert_eq!(control.modifiers, KeyModifiers::CONTROL);
+
         let option_left = parse_keybinding("option+left").expect("option+left should parse");
         assert_eq!(option_left.code, KeyCode::Left);
         assert!(option_left.modifiers.contains(KeyModifiers::ALT));
