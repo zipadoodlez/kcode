@@ -1,5 +1,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 
+pub const LINE_SCROLL_AMOUNT: i32 = 3;
+
 #[derive(Clone, Debug)]
 pub struct KeyBinding {
     pub code: KeyCode,
@@ -258,10 +260,10 @@ impl ScrollKeys {
     /// Check if a key matches scroll up (returns scroll amount, negative = up)
     pub fn scroll_amount(&self, code: KeyCode, modifiers: KeyModifiers) -> Option<i32> {
         if self.matches_scroll_up(code, modifiers) {
-            return Some(-3); // Scroll up 3 lines
+            return Some(-LINE_SCROLL_AMOUNT);
         }
         if self.matches_scroll_down(code, modifiers) {
-            return Some(3); // Scroll down 3 lines
+            return Some(LINE_SCROLL_AMOUNT);
         }
         if self.page_up.matches(code, modifiers) {
             return Some(-10); // Page up
@@ -273,8 +275,8 @@ impl ScrollKeys {
             && self.down.matches(KeyCode::Char('j'), KeyModifiers::CONTROL);
         if legacy_ctrl_fallback && modifiers.contains(KeyModifiers::CONTROL) {
             match code {
-                KeyCode::Char('k') => return Some(-3),
-                KeyCode::Char('j') => return Some(3),
+                KeyCode::Char('k') => return Some(-LINE_SCROLL_AMOUNT),
+                KeyCode::Char('j') => return Some(LINE_SCROLL_AMOUNT),
                 _ => {}
             }
         }
@@ -287,8 +289,8 @@ impl ScrollKeys {
             && (modifiers.contains(KeyModifiers::SUPER) || modifiers.contains(KeyModifiers::META));
         if mac_command {
             match code {
-                KeyCode::Char('k') | KeyCode::Char('K') => return Some(-3),
-                KeyCode::Char('j') | KeyCode::Char('J') => return Some(3),
+                KeyCode::Char('k') | KeyCode::Char('K') => return Some(-LINE_SCROLL_AMOUNT),
+                KeyCode::Char('j') | KeyCode::Char('J') => return Some(LINE_SCROLL_AMOUNT),
                 _ => {}
             }
         }
@@ -534,6 +536,21 @@ mod tests {
         );
         assert_eq!(
             keys.scroll_amount(KeyCode::Char('J'), KeyModifiers::SHIFT),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn test_line_scroll_keys_scroll_three_lines() {
+        let keys = test_scroll_keys();
+
+        assert_eq!(LINE_SCROLL_AMOUNT, 3);
+        assert_eq!(
+            keys.scroll_amount(KeyCode::Char('k'), KeyModifiers::ALT),
+            Some(-3)
+        );
+        assert_eq!(
+            keys.scroll_amount(KeyCode::Char('j'), KeyModifiers::ALT),
             Some(3)
         );
     }
