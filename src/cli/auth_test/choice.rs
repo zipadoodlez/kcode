@@ -62,6 +62,18 @@ pub(crate) fn tool_smoke_skip_detail_for_choice(
         ));
     }
 
+    if matches!(choice, super::provider_init::ProviderChoice::Cerebras) {
+        let model = effective_openai_compatible_auth_test_model(
+            crate::provider_catalog::CEREBRAS_PROFILE,
+            model,
+        )
+        .unwrap_or_else(|| "the selected model".to_string());
+        return Some(format!(
+            "Skipped: Cerebras model '{}' currently returns tool-shaped JSON as assistant text instead of an OpenAI tool_calls payload in jcode auth-test. Basic provider smoke still validates chat; use a Cerebras model with formal OpenAI tool-call support to run tool_smoke.",
+            model
+        ));
+    }
+
     if !matches!(choice, super::provider_init::ProviderChoice::NvidiaNim) {
         return None;
     }
@@ -223,6 +235,19 @@ mod nvidia_nim_tool_smoke_tests {
 
         assert!(detail.contains("FPT model 'FPT.AI-KIE-v1.7'"));
         assert!(detail.contains("vLLM-style endpoint"));
+        assert!(detail.contains("Basic provider smoke still validates chat"));
+    }
+
+    #[test]
+    fn skips_cerebras_tool_smoke_when_model_returns_textual_tool_json() {
+        let detail = tool_smoke_skip_detail_for_choice(
+            &super::super::provider_init::ProviderChoice::Cerebras,
+            Some("llama3.1-8b"),
+        )
+        .expect("Cerebras should skip tool smoke for models without formal tool_calls");
+
+        assert!(detail.contains("Cerebras model 'llama3.1-8b'"));
+        assert!(detail.contains("tool-shaped JSON as assistant text"));
         assert!(detail.contains("Basic provider smoke still validates chat"));
     }
 }
