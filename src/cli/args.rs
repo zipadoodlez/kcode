@@ -374,20 +374,24 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Model(ModelCommand),
 
-    /// Show live verification evidence for a provider/model pair
+    /// Show live verification coverage. With no provider/model, prints the full coverage summary.
     #[command(name = "provider-test-coverage", alias = "model-status")]
     ProviderTestCoverage {
-        /// Provider to look up. Defaults to the global --provider value, or auto when unset.
+        /// Provider to look up. Omit provider and model to print the full coverage summary.
         #[arg(value_name = "PROVIDER")]
         provider_query: Option<String>,
 
-        /// Model to look up. Defaults to the global --model value, or * to show the latest provider-level match.
+        /// Model to look up. Defaults to the global --model value only when PROVIDER is supplied.
         #[arg(value_name = "MODEL")]
         model_query: Option<String>,
 
         /// Read coverage from this JSON file instead of the default live-test coverage ledger
         #[arg(long)]
         coverage_file: Option<String>,
+
+        /// Maximum uncovered provider/model gaps to show in the full summary
+        #[arg(long, default_value_t = 50)]
+        coverage_limit: usize,
     },
 
     /// Test authentication end-to-end: login (optional), credential probe, refresh, and provider smoke
