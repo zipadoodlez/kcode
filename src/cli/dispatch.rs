@@ -316,6 +316,26 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                     .await?;
             }
         },
+        Some(Command::ProviderTestCoverage {
+            provider_query,
+            model_query,
+            coverage_file,
+        }) => {
+            let provider =
+                provider_query.unwrap_or_else(|| args.provider.as_arg_value().to_string());
+            let model = model_query
+                .or_else(|| args.model.clone())
+                .unwrap_or_else(|| "*".to_string());
+            let coverage_path = coverage_file.as_deref().map(std::path::Path::new);
+            print!(
+                "{}",
+                crate::live_tests::format_provider_test_coverage_report(
+                    &provider,
+                    &model,
+                    coverage_path,
+                )
+            );
+        }
         Some(Command::AuthTest {
             login,
             all_configured,
