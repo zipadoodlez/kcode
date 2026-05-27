@@ -303,7 +303,7 @@ pub(crate) enum Command {
         r#type: bool,
     },
 
-    /// Set up a global hotkey (Alt+;) to launch jcode
+    /// Set up the platform global hotkey to launch jcode
     SetupHotkey {
         /// Internal: run as the macOS hotkey listener process.
         #[arg(long, hide = true)]
