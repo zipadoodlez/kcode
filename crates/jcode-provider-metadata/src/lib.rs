@@ -375,6 +375,36 @@ mod tests {
     }
 
     #[test]
+    fn cerebras_profile_uses_official_openai_compatible_configuration() {
+        assert_eq!(CEREBRAS_PROFILE.id, "cerebras");
+        assert_eq!(CEREBRAS_PROFILE.display_name, "Cerebras");
+        assert_eq!(CEREBRAS_PROFILE.api_base, "https://api.cerebras.ai/v1");
+        assert_eq!(CEREBRAS_PROFILE.api_key_env, "CEREBRAS_API_KEY");
+        assert_eq!(CEREBRAS_PROFILE.env_file, "cerebras.env");
+        assert_eq!(
+            CEREBRAS_PROFILE.setup_url,
+            "https://inference-docs.cerebras.ai/introduction"
+        );
+        assert_eq!(
+            CEREBRAS_PROFILE.default_model,
+            Some("qwen-3-235b-a22b-instruct-2507")
+        );
+        assert!(CEREBRAS_PROFILE.requires_api_key);
+        assert_eq!(
+            CEREBRAS_LOGIN_PROVIDER.auth_kind,
+            LoginProviderAuthKind::ApiKey
+        );
+        assert_eq!(
+            CEREBRAS_LOGIN_PROVIDER.auth_state_key,
+            LoginProviderAuthStateKey::OpenRouterLike
+        );
+        assert!(matches!(
+            CEREBRAS_LOGIN_PROVIDER.target,
+            LoginProviderTarget::OpenAiCompatible(profile) if profile.id == "cerebras"
+        ));
+    }
+
+    #[test]
     fn ollama_profile_is_local_openai_compatible_without_required_api_key() {
         assert_eq!(OLLAMA_PROFILE.id, "ollama");
         assert_eq!(OLLAMA_PROFILE.api_base, "http://localhost:11434/v1");
