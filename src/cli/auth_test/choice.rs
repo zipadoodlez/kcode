@@ -62,18 +62,6 @@ pub(crate) fn tool_smoke_skip_detail_for_choice(
         ));
     }
 
-    if matches!(choice, super::provider_init::ProviderChoice::Cerebras) {
-        let model = effective_openai_compatible_auth_test_model(
-            crate::provider_catalog::CEREBRAS_PROFILE,
-            model,
-        )
-        .unwrap_or_else(|| "the selected model".to_string());
-        return Some(format!(
-            "Skipped: Cerebras model '{}' currently returns tool-shaped JSON as assistant text instead of an OpenAI tool_calls payload in jcode auth-test. Basic provider smoke still validates chat; use a Cerebras model with formal OpenAI tool-call support to run tool_smoke.",
-            model
-        ));
-    }
-
     if !matches!(choice, super::provider_init::ProviderChoice::NvidiaNim) {
         return None;
     }
@@ -126,7 +114,9 @@ fn effective_openai_compatible_auth_test_model(
                 .then(|| cfg.provider.default_model.clone())
                 .flatten()
         })
-        .or_else(|| crate::provider_catalog::resolve_openai_compatible_profile(profile).default_model)
+        .or_else(|| {
+            crate::provider_catalog::resolve_openai_compatible_profile(profile).default_model
+        })
 }
 
 fn nvidia_nim_model_supports_openai_tools(model: &str) -> bool {
@@ -135,8 +125,7 @@ fn nvidia_nim_model_supports_openai_tools(model: &str) -> bool {
     // visual-model API family. The OpenAI-compatible chat endpoint accepts basic
     // prompts for this model, but tool-enabled smoke has been observed returning
     // a server-side `unhashable type: 'dict'` 500 when sent OpenAI tools.
-    !(normalized.contains("moonshotai/kimi-k2.6")
-        || normalized.contains("moonshotai/kimi-k2-6"))
+    !(normalized.contains("moonshotai/kimi-k2.6") || normalized.contains("moonshotai/kimi-k2-6"))
 }
 
 async fn discover_openai_compatible_validation_model(
@@ -239,16 +228,21 @@ mod nvidia_nim_tool_smoke_tests {
     }
 
     #[test]
-    fn skips_cerebras_tool_smoke_when_model_returns_textual_tool_json() {
-        let detail = tool_smoke_skip_detail_for_choice(
-            &super::super::provider_init::ProviderChoice::Cerebras,
-            Some("llama3.1-8b"),
-        )
-        .expect("Cerebras should skip tool smoke for models without formal tool_calls");
-
-        assert!(detail.contains("Cerebras model 'llama3.1-8b'"));
-        assert!(detail.contains("tool-shaped JSON as assistant text"));
-        assert!(detail.contains("Basic provider smoke still validates chat"));
+    fn allows_cerebras_models_to_attempt_tool_smoke() {
+        assert!(
+            tool_smoke_skip_detail_for_choice(
+                &super::super::provider_init::ProviderChoice::Cerebras,
+                Some("gpt-oss-120b"),
+            )
+            .is_none()
+        );
+        assert!(
+            tool_smoke_skip_detail_for_choice(
+                &super::super::provider_init::ProviderChoice::Cerebras,
+                Some("zai-glm-4.7"),
+            )
+            .is_none()
+        );
     }
 }
 

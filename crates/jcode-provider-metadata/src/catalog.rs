@@ -311,7 +311,7 @@ pub const CEREBRAS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     api_key_env: "CEREBRAS_API_KEY",
     env_file: "cerebras.env",
     setup_url: "https://inference-docs.cerebras.ai/introduction",
-    default_model: Some("qwen-3-235b-a22b-instruct-2507"),
+    default_model: Some("gpt-oss-120b"),
     requires_api_key: true,
 };
 
