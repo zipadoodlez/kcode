@@ -250,7 +250,7 @@ fn cli_route_display_uses_typed_api_methods() {
 fn cli_provider_choice_filter_uses_typed_api_methods() {
     let routes = vec![
         test_route("claude-opus-4-6", "Anthropic", "claude-oauth"),
-        test_route("claude-opus-4-6", "Anthropic", "api-key"),
+        test_route("claude-opus-4-6", "Anthropic", "claude-api"),
         test_route("gpt-5.5", "OpenAI", "openai-oauth"),
         test_route("gpt-5.5", "OpenAI", "openai-api-key"),
         test_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
