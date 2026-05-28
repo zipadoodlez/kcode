@@ -548,6 +548,97 @@ impl ModelRouteApiMethod {
     }
 }
 
+pub fn normalize_model_route_provider_label(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '_', '-'], "")
+}
+
+pub fn model_route_provider_labels_match(route_provider: &str, current_provider: &str) -> bool {
+    let route = normalize_model_route_provider_label(route_provider);
+    let current = normalize_model_route_provider_label(current_provider);
+    if route.is_empty() || current.is_empty() {
+        return false;
+    }
+    if route == current {
+        return true;
+    }
+
+    matches!(
+        (current.as_str(), route.as_str()),
+        ("claude" | "anthropic", "anthropic" | "claude")
+            | ("openai", "openai")
+            | ("gemini" | "google", "gemini" | "google")
+            | ("antigravity", "antigravity")
+            | (
+                "copilot" | "copilotcode" | "githubcopilot",
+                "copilot" | "githubcopilot"
+            )
+            | ("cursor", "cursor")
+            | ("bedrock" | "awsbedrock", "bedrock" | "awsbedrock")
+            | ("openrouter", "openrouter" | "auto")
+    )
+}
+
+pub fn model_route_provider_labels_related(route_provider: &str, login_provider: &str) -> bool {
+    let route = normalize_model_route_provider_label(route_provider);
+    let login = normalize_model_route_provider_label(login_provider);
+    if route.is_empty() || login.is_empty() {
+        return false;
+    }
+    if route == login || route.contains(&login) || login.contains(&route) {
+        return true;
+    }
+    model_route_provider_labels_match(&route, &login)
+}
+
+pub fn model_route_provider_matches_key(
+    route_provider_key: Option<&str>,
+    route_provider_label: &str,
+    desired_provider: &str,
+) -> bool {
+    let desired_provider = desired_provider.trim();
+    if desired_provider.is_empty() {
+        return false;
+    }
+    if let Some(route_provider_key) = route_provider_key
+        && normalize_model_route_provider_label(route_provider_key)
+            == normalize_model_route_provider_label(desired_provider)
+    {
+        return true;
+    }
+    model_route_provider_labels_match(route_provider_label, desired_provider)
+}
+
+pub fn model_route_metadata_is_recommended(
+    model: &str,
+    provider: &str,
+    api_method: &str,
+    available: bool,
+) -> bool {
+    if !available {
+        return false;
+    }
+    let api_method = ModelRouteApiMethod::parse(api_method);
+    match model {
+        "gpt-5.5" => {
+            matches!(&api_method, ModelRouteApiMethod::OpenAIOAuth)
+                && model_route_provider_labels_match(provider, "openai")
+        }
+        "claude-opus-4-7" => {
+            matches!(&api_method, ModelRouteApiMethod::ClaudeOAuth)
+                && model_route_provider_labels_match(provider, "anthropic")
+        }
+        "deepseek/deepseek-v4-pro" => {
+            (matches!(&api_method, ModelRouteApiMethod::OpenRouter) && provider == "auto")
+                || (api_method.is_openai_compatible()
+                    && model_route_provider_labels_match(provider, "deepseek"))
+        }
+        _ => false,
+    }
+}
+
 impl ModelRoute {
     pub fn api_method_kind(&self) -> ModelRouteApiMethod {
         ModelRouteApiMethod::parse(&self.api_method)
@@ -796,6 +887,98 @@ mod tests {
             ModelRouteApiMethod::parse("claude-api"),
             ModelRouteApiMethod::AnthropicApiKey
         );
+    }
+
+    #[test]
+    fn model_route_provider_label_matching_uses_aliases_without_substring_false_positives() {
+        assert!(model_route_provider_labels_match("Anthropic", "Claude"));
+        assert!(model_route_provider_labels_match("auto", "OpenRouter"));
+        assert!(model_route_provider_labels_match(
+            "GitHub Copilot",
+            "Copilot"
+        ));
+        assert!(model_route_provider_labels_match("AWS Bedrock", "Bedrock"));
+        assert!(!model_route_provider_labels_match(
+            "OpenRouter/OpenAI",
+            "OpenAI"
+        ));
+        assert!(!model_route_provider_labels_match("OpenAI", "OpenRouter"));
+        assert!(!model_route_provider_labels_match("", ""));
+        assert!(!model_route_provider_labels_related("OpenAI", ""));
+    }
+
+    #[test]
+    fn model_route_provider_key_matching_prefers_explicit_route_key() {
+        assert!(model_route_provider_matches_key(
+            Some("cerebras"),
+            "Cerebras Cloud",
+            "CEREBRAS"
+        ));
+        assert!(model_route_provider_matches_key(
+            None,
+            "Anthropic",
+            "Claude"
+        ));
+        assert!(!model_route_provider_matches_key(
+            Some("cerebras"),
+            "Cerebras",
+            "groq"
+        ));
+    }
+
+    #[test]
+    fn model_route_recommendation_policy_is_provider_aware() {
+        assert!(model_route_metadata_is_recommended(
+            "gpt-5.5",
+            "OpenAI",
+            "openai-oauth",
+            true
+        ));
+        assert!(!model_route_metadata_is_recommended(
+            "gpt-5.5",
+            "OpenAI",
+            "openai-api-key",
+            true
+        ));
+        assert!(!model_route_metadata_is_recommended(
+            "gpt-5.5", "Copilot", "copilot", true
+        ));
+        assert!(!model_route_metadata_is_recommended(
+            "gpt-5.5",
+            "OpenAI",
+            "openai-oauth",
+            false
+        ));
+        assert!(model_route_metadata_is_recommended(
+            "claude-opus-4-7",
+            "Anthropic",
+            "claude-oauth",
+            true
+        ));
+        assert!(!model_route_metadata_is_recommended(
+            "claude-opus-4-7",
+            "Anthropic",
+            "openrouter",
+            true
+        ));
+        assert!(model_route_metadata_is_recommended(
+            "deepseek/deepseek-v4-pro",
+            "auto",
+            "openrouter",
+            true
+        ));
+        assert!(model_route_metadata_is_recommended(
+            "deepseek/deepseek-v4-pro",
+            "DeepSeek",
+            "openai-compatible:deepseek",
+            true
+        ));
+        assert!(!model_route_metadata_is_recommended(
+            "deepseek/deepseek-v4-pro",
+            "DeepSeek",
+            "openrouter",
+            true
+        ));
     }
 
     struct SnapshotTestProvider;
