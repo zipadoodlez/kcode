@@ -497,6 +497,22 @@ impl ModelRouteApiMethod {
         matches!(self, Self::OpenAiCompatible { .. })
     }
 
+    pub fn is_openrouter(&self) -> bool {
+        matches!(self, Self::OpenRouter)
+    }
+
+    pub fn is_copilot(&self) -> bool {
+        matches!(self, Self::Copilot)
+    }
+
+    pub fn is_cursor(&self) -> bool {
+        matches!(self, Self::Cursor)
+    }
+
+    pub fn is_bedrock(&self) -> bool {
+        matches!(self, Self::Bedrock)
+    }
+
     pub fn matches_openai_compatible_profile(&self, provider_id: &str) -> bool {
         self.profile_id()
             .is_some_and(|profile_id| profile_id.eq_ignore_ascii_case(provider_id))
@@ -508,6 +524,27 @@ impl ModelRouteApiMethod {
 
     pub fn is_openai_credential_route(&self) -> bool {
         matches!(self, Self::OpenAIOAuth | Self::OpenAIApiKey)
+    }
+
+    pub fn display_label(&self) -> String {
+        match self {
+            Self::ClaudeOAuth | Self::OpenAIOAuth | Self::CodeAssistOAuth => "oauth".to_string(),
+            Self::AnthropicApiKey | Self::OpenAIApiKey | Self::OpenAiCompatible { .. } => {
+                "api key".to_string()
+            }
+            Self::OpenRouter => "openrouter".to_string(),
+            Self::Copilot => "copilot".to_string(),
+            Self::Cursor => "cursor".to_string(),
+            Self::Bedrock => "bedrock".to_string(),
+            Self::AntigravityHttps => "https".to_string(),
+            Self::RemoteCatalog => "remote-catalog".to_string(),
+            Self::Current => "current".to_string(),
+            Self::Other(method) => method
+                .split_once(':')
+                .map(|(method, _)| method)
+                .unwrap_or(method)
+                .to_string(),
+        }
     }
 }
 

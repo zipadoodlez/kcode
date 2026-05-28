@@ -220,6 +220,65 @@ fn collect_cli_model_names_prefers_available_routes_and_dedupes() {
     assert_eq!(models, vec!["gpt-5.4", "claude-sonnet-4"]);
 }
 
+fn test_route(model: &str, provider: &str, api_method: &str) -> ModelRoute {
+    ModelRoute {
+        model: model.to_string(),
+        provider: provider.to_string(),
+        api_method: api_method.to_string(),
+        available: true,
+        detail: String::new(),
+        cheapness: None,
+    }
+}
+
+#[test]
+fn cli_route_display_uses_typed_api_methods() {
+    assert_eq!(cli_api_method_display("openai-oauth"), "oauth");
+    assert_eq!(cli_api_method_display("openai-api-key"), "api key");
+    assert_eq!(
+        cli_api_method_display("openai-compatible:cerebras"),
+        "api key"
+    );
+    assert_eq!(cli_api_method_display("mock-auth:profile"), "mock-auth");
+    assert_eq!(
+        cli_route_provider_display("DeepSeek", "openrouter"),
+        "OpenRouter/DeepSeek"
+    );
+}
+
+#[test]
+fn cli_provider_choice_filter_uses_typed_api_methods() {
+    let routes = vec![
+        test_route("claude-opus-4-6", "Anthropic", "claude-oauth"),
+        test_route("claude-opus-4-6", "Anthropic", "api-key"),
+        test_route("gpt-5.5", "OpenAI", "openai-oauth"),
+        test_route("gpt-5.5", "OpenAI", "openai-api-key"),
+        test_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
+        test_route("grok-code-fast-1", "Copilot", "copilot"),
+    ];
+
+    let openai = filter_cli_model_routes_for_choice(
+        &super::super::provider_init::ProviderChoice::Openai,
+        &routes,
+    );
+    assert_eq!(openai.len(), 1);
+    assert_eq!(
+        openai[0].api_method_kind(),
+        crate::provider::ModelRouteApiMethod::OpenAIOAuth
+    );
+
+    let claude = filter_cli_model_routes_for_choice(
+        &super::super::provider_init::ProviderChoice::Claude,
+        &routes,
+    );
+    assert_eq!(claude.len(), 2);
+    assert!(
+        claude
+            .iter()
+            .all(|route| route.api_method_kind().is_anthropic_credential_route())
+    );
+}
+
 #[test]
 fn auth_test_retryable_error_detection_handles_rate_limits() {
     let err = anyhow::anyhow!(

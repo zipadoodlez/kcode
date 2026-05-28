@@ -1246,7 +1246,7 @@ pub async fn run_model_command(
                 .map(|route| ModelListRouteReport {
                     provider: cli_route_provider_display(&route.provider, &route.api_method),
                     model: route.model.clone(),
-                    method: cli_api_method_display(&route.api_method).to_string(),
+                    method: cli_api_method_display(&route.api_method),
                     available: route.available,
                 })
                 .collect(),
@@ -1270,20 +1270,15 @@ pub async fn run_model_command(
     Ok(())
 }
 
-fn cli_api_method_display(raw: &str) -> &str {
-    match raw {
-        "claude-oauth" | "openai-oauth" | "code-assist-oauth" => "oauth",
-        "api-key" | "openai-api-key" => "api key",
-        method if method.starts_with("openai-compatible") => "api key",
-        method => method
-            .split_once(':')
-            .map(|(method, _)| method)
-            .unwrap_or(method),
-    }
+fn cli_api_method_display(raw: &str) -> String {
+    crate::provider::ModelRouteApiMethod::parse(raw).display_label()
 }
 
 fn cli_route_provider_display(provider: &str, api_method: &str) -> String {
-    if api_method == "openrouter" && provider != "auto" && !provider.contains("OpenRouter") {
+    if crate::provider::ModelRouteApiMethod::parse(api_method).is_openrouter()
+        && provider != "auto"
+        && !provider.contains("OpenRouter")
+    {
         format!("OpenRouter/{}", provider)
     } else {
         provider.to_string()
@@ -1333,12 +1328,20 @@ fn filter_cli_model_routes_for_choice(
 
     let keep = |route: &&crate::provider::ModelRoute| match choice {
         ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
-            route.api_method == "claude-oauth" || route.api_method == "api-key"
+            route.api_method_kind().is_anthropic_credential_route()
         }
-        ProviderChoice::Openai => route.api_method == "openai-oauth",
-        ProviderChoice::OpenaiApi => route.api_method == "openai-api-key",
-        ProviderChoice::Openrouter | ProviderChoice::Azure => route.api_method == "openrouter",
-        ProviderChoice::Copilot => route.api_method == "copilot",
+        ProviderChoice::Openai => matches!(
+            route.api_method_kind(),
+            crate::provider::ModelRouteApiMethod::OpenAIOAuth
+        ),
+        ProviderChoice::OpenaiApi => matches!(
+            route.api_method_kind(),
+            crate::provider::ModelRouteApiMethod::OpenAIApiKey
+        ),
+        ProviderChoice::Openrouter | ProviderChoice::Azure => {
+            route.api_method_kind().is_openrouter()
+        }
+        ProviderChoice::Copilot => route.api_method_kind().is_copilot(),
         _ => true,
     };
 
