@@ -784,12 +784,40 @@ fn run_command_auto_poke_limit_reached(turns_completed: usize, max_turns: Option
         .unwrap_or(false)
 }
 
-fn incomplete_run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
-    crate::todo::load_todos(session_id)
-        .unwrap_or_default()
-        .into_iter()
+const RUN_TODO_CONFIDENCE_THRESHOLD: u8 = 90;
+const RUN_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
+
+enum RunAutoPokeFollowUp {
+    Incomplete { count: usize, message: String },
+    ConfidenceSummary { total_todos: usize, message: String },
+}
+
+fn run_todos(session_id: &str) -> Vec<crate::todo::TodoItem> {
+    crate::todo::load_todos(session_id).unwrap_or_default()
+}
+
+fn build_run_auto_poke_follow_up_from_todos(
+    todos: &[crate::todo::TodoItem],
+    confidence_summary_sent: bool,
+) -> Option<RunAutoPokeFollowUp> {
+    let incomplete: Vec<_> = todos
+        .iter()
         .filter(|todo| todo.status != "completed" && todo.status != "cancelled")
-        .collect()
+        .cloned()
+        .collect();
+    if !incomplete.is_empty() {
+        return Some(RunAutoPokeFollowUp::Incomplete {
+            count: incomplete.len(),
+            message: build_run_poke_message(&incomplete),
+        });
+    }
+    if !confidence_summary_sent && !todos.is_empty() {
+        return Some(RunAutoPokeFollowUp::ConfidenceSummary {
+            total_todos: todos.len(),
+            message: build_run_todo_confidence_summary_message(todos),
+        });
+    }
+    None
 }
 
 fn build_run_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
@@ -800,6 +828,150 @@ fn build_run_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
     )
 }
 
+fn run_todo_confidence_weight(priority: &str) -> u32 {
+    match priority {
+        "high" => 3,
+        "medium" => 2,
+        _ => 1,
+    }
+}
+
+fn run_weighted_confidence_average(scores: impl IntoIterator<Item = (u8, u32)>) -> Option<u8> {
+    let mut weighted_sum = 0u32;
+    let mut total_weight = 0u32;
+    for (score, weight) in scores {
+        weighted_sum += u32::from(score) * weight;
+        total_weight += weight;
+    }
+    if total_weight == 0 {
+        None
+    } else {
+        Some(((weighted_sum + total_weight / 2) / total_weight) as u8)
+    }
+}
+
+fn build_run_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) -> String {
+    let completed: Vec<&crate::todo::TodoItem> = todos
+        .iter()
+        .filter(|todo| todo.status == "completed")
+        .collect();
+    let cancelled_count = todos
+        .iter()
+        .filter(|todo| todo.status == "cancelled")
+        .count();
+
+    let planning_average = run_weighted_confidence_average(todos.iter().filter_map(|todo| {
+        todo.confidence
+            .map(|score| (score, run_todo_confidence_weight(&todo.priority)))
+    }));
+    let completion_scores: Vec<(&crate::todo::TodoItem, u8, u32)> = completed
+        .iter()
+        .filter_map(|todo| {
+            todo.completion_confidence
+                .map(|score| (*todo, score, run_todo_confidence_weight(&todo.priority)))
+        })
+        .collect();
+    let completion_average = run_weighted_confidence_average(
+        completion_scores
+            .iter()
+            .map(|(_, score, weight)| (*score, *weight)),
+    );
+    let missing_completion_confidence = completed
+        .iter()
+        .filter(|todo| todo.completion_confidence.is_none())
+        .count();
+    let below_threshold_count = completion_scores
+        .iter()
+        .filter(|(_, score, _)| *score < RUN_TODO_CONFIDENCE_THRESHOLD)
+        .count();
+    let lowest_completed = completion_scores
+        .iter()
+        .min_by_key(|(_, score, _)| *score)
+        .map(|(_, score, _)| *score);
+
+    let mut lines = vec![RUN_TODO_CONFIDENCE_SUMMARY_PREFIX.to_string()];
+    lines.push(format!(
+        "- Completed todos: {}{}.",
+        completed.len(),
+        if cancelled_count == 0 {
+            String::new()
+        } else {
+            format!(
+                " ({} cancelled todo{} skipped)",
+                cancelled_count,
+                if cancelled_count == 1 { "" } else { "s" }
+            )
+        }
+    ));
+
+    match completion_average {
+        Some(avg) => lines.push(format!("- Weighted completion confidence: {}%.", avg)),
+        None if !completed.is_empty() => lines.push(
+            "- Weighted completion confidence: unknown because no completed todo has completion_confidence."
+                .to_string(),
+        ),
+        None => lines.push("- No completed todos recorded completion confidence.".to_string()),
+    }
+    lines.push(format!(
+        "- Confidence threshold: {}%.",
+        RUN_TODO_CONFIDENCE_THRESHOLD
+    ));
+
+    match planning_average {
+        Some(avg) => lines.push(format!("- Weighted planning confidence: {}%.", avg)),
+        None => lines.push("- Weighted planning confidence: unknown.".to_string()),
+    }
+
+    match lowest_completed {
+        Some(score) => lines.push(format!("- Lowest completed todo confidence: {}%.", score)),
+        None => lines.push("- Lowest completed todo confidence: unknown.".to_string()),
+    }
+
+    if missing_completion_confidence > 0 {
+        lines.push(format!(
+            "- Missing completion_confidence on {} completed todo{}.",
+            missing_completion_confidence,
+            if missing_completion_confidence == 1 {
+                ""
+            } else {
+                "s"
+            }
+        ));
+    }
+
+    if below_threshold_count > 0 {
+        lines.push(format!(
+            "- {} completed todo{} below the {}% confidence threshold.",
+            below_threshold_count,
+            if below_threshold_count == 1 {
+                " is"
+            } else {
+                "s are"
+            },
+            RUN_TODO_CONFIDENCE_THRESHOLD
+        ));
+    }
+
+    let needs_validation = completion_average
+        .map(|avg| avg < RUN_TODO_CONFIDENCE_THRESHOLD)
+        .unwrap_or(true)
+        || missing_completion_confidence > 0
+        || below_threshold_count > 0;
+    if needs_validation {
+        lines.push(
+            "- Suggested action: validate or test before finalizing. Inspect the result and update completion_confidence when the evidence changes."
+                .to_string(),
+        );
+    } else {
+        lines.push(
+            "- Suggested action: use this confidence summary when deciding whether any further validation would materially improve certainty before finalizing."
+                .to_string(),
+        );
+    }
+
+    lines.join("\n")
+}
+
 async fn run_single_message_command_plain_with_auto_poke(
     agent: &mut crate::agent::Agent,
     message: &str,
@@ -807,30 +979,41 @@ async fn run_single_message_command_plain_with_auto_poke(
     let mut next_message = message.to_string();
     let max_turns = run_command_auto_poke_max_turns();
     let mut turns_completed = 0usize;
+    let mut confidence_summary_sent = false;
     loop {
         agent.run_once(&next_message).await?;
         turns_completed += 1;
         if !run_command_auto_poke_enabled() {
             break;
         }
-        let incomplete = incomplete_run_todos(agent.session_id());
-        if incomplete.is_empty() {
-            break;
-        }
-        if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
-            if let Some(max_turns) = max_turns {
+        let todos = run_todos(agent.session_id());
+        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_summary_sent) {
+            Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
+                confidence_summary_sent = true;
+                next_message = message;
                 eprintln!(
-                    "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
-                    incomplete.len()
+                    "Auto-poking: todos complete; sending confidence summary follow-up. Set JCODE_RUN_AUTO_POKE=0 to disable."
+                );
+                continue;
+            }
+            Some(RunAutoPokeFollowUp::Incomplete { count, message }) => {
+                if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+                    if let Some(max_turns) = max_turns {
+                        eprintln!(
+                            "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
+                            count
+                        );
+                    }
+                    break;
+                }
+                next_message = message;
+                eprintln!(
+                    "Auto-poking: {} incomplete todo(s). Set JCODE_RUN_AUTO_POKE=0 to disable.",
+                    count
                 );
             }
-            break;
+            None => break,
         }
-        next_message = build_run_poke_message(&incomplete);
-        eprintln!(
-            "Auto-poking: {} incomplete todo(s). Set JCODE_RUN_AUTO_POKE=0 to disable.",
-            incomplete.len()
-        );
     }
     Ok(())
 }
@@ -843,26 +1026,34 @@ async fn run_single_message_command_capture_with_auto_poke(
     let max_turns = run_command_auto_poke_max_turns();
     let mut outputs = Vec::new();
     let mut turns_completed = 0usize;
+    let mut confidence_summary_sent = false;
     loop {
         outputs.push(agent.run_once_capture(&next_message).await?);
         turns_completed += 1;
         if !run_command_auto_poke_enabled() {
             break;
         }
-        let incomplete = incomplete_run_todos(agent.session_id());
-        if incomplete.is_empty() {
-            break;
-        }
-        if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
-            if let Some(max_turns) = max_turns {
-                outputs.push(format!(
-                    "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
-                    incomplete.len()
-                ));
+        let todos = run_todos(agent.session_id());
+        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_summary_sent) {
+            Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
+                confidence_summary_sent = true;
+                next_message = message;
+                continue;
             }
-            break;
+            Some(RunAutoPokeFollowUp::Incomplete { count, message }) => {
+                if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+                    if let Some(max_turns) = max_turns {
+                        outputs.push(format!(
+                            "Auto-poke stopped after {max_turns} turn(s) with {} incomplete todo(s).",
+                            count
+                        ));
+                    }
+                    break;
+                }
+                next_message = message;
+            }
+            None => break,
         }
-        next_message = build_run_poke_message(&incomplete);
     }
     Ok(outputs.join("\n\n"))
 }
@@ -903,6 +1094,7 @@ async fn run_single_message_command_ndjson(
     let mut next_message = message.to_string();
     let mut result: Result<()> = Ok(());
     let mut turns_completed = 0usize;
+    let mut confidence_summary_sent = false;
     loop {
         let turn_result = {
             let mut run_future = std::pin::pin!(agent.run_once_streaming_mpsc(
@@ -942,34 +1134,53 @@ async fn run_single_message_command_ndjson(
         if !run_command_auto_poke_enabled() {
             break;
         }
-        let incomplete = incomplete_run_todos(&session_id);
-        if incomplete.is_empty() {
-            break;
-        }
-        if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
-            if let Some(max_turns) = max_turns {
+        let todos = run_todos(&session_id);
+        match build_run_auto_poke_follow_up_from_todos(&todos, confidence_summary_sent) {
+            Some(RunAutoPokeFollowUp::ConfidenceSummary {
+                total_todos,
+                message,
+            }) => {
+                confidence_summary_sent = true;
+                next_message = message;
                 write_json_line(
                     &mut stdout,
                     &serde_json::json!({
-                        "type": "auto_poke_stopped",
+                        "type": "auto_poke_confidence_summary",
                         "session_id": session_id,
-                        "incomplete_todos": incomplete.len(),
-                        "max_turns": max_turns,
+                        "todos": total_todos,
+                        "message": next_message,
+                    }),
+                )?;
+                continue;
+            }
+            Some(RunAutoPokeFollowUp::Incomplete { count, message }) => {
+                if run_command_auto_poke_limit_reached(turns_completed, max_turns) {
+                    if let Some(max_turns) = max_turns {
+                        write_json_line(
+                            &mut stdout,
+                            &serde_json::json!({
+                                "type": "auto_poke_stopped",
+                                "session_id": session_id,
+                                "incomplete_todos": count,
+                                "max_turns": max_turns,
+                            }),
+                        )?;
+                    }
+                    break;
+                }
+                next_message = message;
+                write_json_line(
+                    &mut stdout,
+                    &serde_json::json!({
+                        "type": "auto_poke",
+                        "session_id": session_id,
+                        "incomplete_todos": count,
+                        "message": next_message,
                     }),
                 )?;
             }
-            break;
+            None => break,
         }
-        next_message = build_run_poke_message(&incomplete);
-        write_json_line(
-            &mut stdout,
-            &serde_json::json!({
-                "type": "auto_poke",
-                "session_id": session_id,
-                "incomplete_todos": incomplete.len(),
-                "message": next_message,
-            }),
-        )?;
     }
 
     match result {

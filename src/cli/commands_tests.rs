@@ -246,6 +246,75 @@ fn cli_route_display_uses_typed_api_methods() {
     );
 }
 
+fn test_todo(
+    id: &str,
+    status: &str,
+    priority: &str,
+    confidence: Option<u8>,
+    completion_confidence: Option<u8>,
+) -> crate::todo::TodoItem {
+    crate::todo::TodoItem {
+        id: id.to_string(),
+        content: format!("todo {id}"),
+        status: status.to_string(),
+        priority: priority.to_string(),
+        confidence,
+        completion_confidence,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn run_auto_poke_followup_sends_confidence_summary_when_todos_are_done() {
+    let todos = vec![
+        test_todo("a", "completed", "high", Some(90), Some(90)),
+        test_todo("b", "completed", "low", Some(80), Some(80)),
+    ];
+
+    let followup = build_run_auto_poke_follow_up_from_todos(&todos, false);
+
+    match followup {
+        Some(RunAutoPokeFollowUp::ConfidenceSummary {
+            total_todos,
+            message,
+        }) => {
+            assert_eq!(total_todos, 2);
+            assert!(message.contains("All todos are done. Todo confidence summary:"));
+            assert!(message.contains("- Weighted completion confidence: 88%."));
+            assert!(message.contains("- 1 completed todo is below the 90% confidence threshold."));
+        }
+        _ => panic!("expected confidence-summary follow-up"),
+    }
+}
+
+#[test]
+fn run_auto_poke_followup_prioritizes_incomplete_todos() {
+    let todos = vec![
+        test_todo("a", "completed", "high", Some(95), Some(95)),
+        test_todo("b", "in_progress", "medium", Some(80), None),
+    ];
+
+    let followup = build_run_auto_poke_follow_up_from_todos(&todos, false);
+
+    match followup {
+        Some(RunAutoPokeFollowUp::Incomplete { count, message }) => {
+            assert_eq!(count, 1);
+            assert_eq!(
+                message,
+                "You have 1 incomplete todo. Continue working, or update the todo tool."
+            );
+        }
+        _ => panic!("expected incomplete-todo follow-up"),
+    }
+}
+
+#[test]
+fn run_auto_poke_followup_sends_confidence_summary_once() {
+    let todos = vec![test_todo("a", "completed", "high", Some(95), Some(95))];
+
+    assert!(build_run_auto_poke_follow_up_from_todos(&todos, true).is_none());
+}
+
 #[test]
 fn cli_provider_choice_filter_uses_typed_api_methods() {
     let routes = vec![
