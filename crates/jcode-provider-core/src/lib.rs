@@ -630,8 +630,7 @@ pub fn model_route_metadata_is_recommended(
             matches!(
                 &api_method,
                 ModelRouteApiMethod::ClaudeOAuth | ModelRouteApiMethod::AnthropicApiKey
-            )
-                && model_route_provider_labels_match(provider, "anthropic")
+            ) && model_route_provider_labels_match(provider, "anthropic")
         }
         _ => false,
     }
