@@ -124,6 +124,10 @@ pub fn explicit_model_provider_prefix(model: &str) -> Option<(ActiveProvider, &'
         Some((ActiveProvider::Claude, "claude:", rest))
     } else if let Some(rest) = model.strip_prefix("anthropic:") {
         Some((ActiveProvider::Claude, "anthropic:", rest))
+    } else if let Some(rest) = model.strip_prefix("openai-api:") {
+        Some((ActiveProvider::OpenAI, "openai-api:", rest))
+    } else if let Some(rest) = model.strip_prefix("openai-oauth:") {
+        Some((ActiveProvider::OpenAI, "openai-oauth:", rest))
     } else if let Some(rest) = model.strip_prefix("openai:") {
         Some((ActiveProvider::OpenAI, "openai:", rest))
     } else if let Some(rest) = model.strip_prefix("copilot:") {
@@ -316,6 +320,18 @@ mod tests {
                 "sonnet",
             ),
             ("openai:gpt-5", ActiveProvider::OpenAI, "openai:", "gpt-5"),
+            (
+                "openai-oauth:gpt-5",
+                ActiveProvider::OpenAI,
+                "openai-oauth:",
+                "gpt-5",
+            ),
+            (
+                "openai-api:gpt-5",
+                ActiveProvider::OpenAI,
+                "openai-api:",
+                "gpt-5",
+            ),
             (
                 "copilot:gpt-5",
                 ActiveProvider::Copilot,
