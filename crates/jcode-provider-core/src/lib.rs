@@ -430,7 +430,92 @@ pub struct ModelRoute {
     pub cheapness: Option<RouteCheapnessEstimate>,
 }
 
+/// Typed view of [`ModelRoute::api_method`].
+///
+/// The wire format intentionally remains a string so older clients and saved
+/// catalogs continue to round-trip, but routing/picker code should parse it at
+/// module boundaries instead of scattering string comparisons everywhere.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelRouteApiMethod {
+    ClaudeOAuth,
+    AnthropicApiKey,
+    OpenAIOAuth,
+    OpenAIApiKey,
+    OpenRouter,
+    OpenAiCompatible { profile_id: Option<String> },
+    Copilot,
+    Cursor,
+    Bedrock,
+    CodeAssistOAuth,
+    AntigravityHttps,
+    RemoteCatalog,
+    Current,
+    Other(String),
+}
+
+impl ModelRouteApiMethod {
+    pub fn parse(value: &str) -> Self {
+        let trimmed = value.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        match lower.as_str() {
+            "claude" | "claude-oauth" => Self::ClaudeOAuth,
+            "api-key" | "claude-api" | "anthropic-api-key" => Self::AnthropicApiKey,
+            "openai" | "openai-oauth" => Self::OpenAIOAuth,
+            "openai-api" | "openai-api-key" => Self::OpenAIApiKey,
+            "openrouter" => Self::OpenRouter,
+            "openai-compatible" => Self::OpenAiCompatible { profile_id: None },
+            "copilot" => Self::Copilot,
+            "cursor" => Self::Cursor,
+            "bedrock" => Self::Bedrock,
+            "code-assist-oauth" => Self::CodeAssistOAuth,
+            "https" => Self::AntigravityHttps,
+            "remote-catalog" => Self::RemoteCatalog,
+            "current" => Self::Current,
+            _ => {
+                if let Some(("openai-compatible", profile_id)) = lower.split_once(':') {
+                    let profile_id = profile_id.trim();
+                    Self::OpenAiCompatible {
+                        profile_id: (!profile_id.is_empty()).then(|| profile_id.to_string()),
+                    }
+                } else {
+                    Self::Other(trimmed.to_string())
+                }
+            }
+        }
+    }
+
+    pub fn profile_id(&self) -> Option<&str> {
+        match self {
+            Self::OpenAiCompatible {
+                profile_id: Some(profile_id),
+            } => Some(profile_id.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn is_openai_compatible(&self) -> bool {
+        matches!(self, Self::OpenAiCompatible { .. })
+    }
+
+    pub fn matches_openai_compatible_profile(&self, provider_id: &str) -> bool {
+        self.profile_id()
+            .is_some_and(|profile_id| profile_id.eq_ignore_ascii_case(provider_id))
+    }
+
+    pub fn is_anthropic_credential_route(&self) -> bool {
+        matches!(self, Self::ClaudeOAuth | Self::AnthropicApiKey)
+    }
+
+    pub fn is_openai_credential_route(&self) -> bool {
+        matches!(self, Self::OpenAIOAuth | Self::OpenAIApiKey)
+    }
+}
+
 impl ModelRoute {
+    pub fn api_method_kind(&self) -> ModelRouteApiMethod {
+        ModelRouteApiMethod::parse(&self.api_method)
+    }
+
     pub fn estimated_reference_cost_micros(&self) -> Option<u64> {
         self.cheapness
             .as_ref()
@@ -605,5 +690,27 @@ mod tests {
     #[test]
     fn canonical_user_agent_identifies_jcode() {
         assert!(JCODE_USER_AGENT.starts_with("jcode/"));
+    }
+
+    #[test]
+    fn model_route_api_method_parser_keeps_profile_identity() {
+        assert_eq!(
+            ModelRouteApiMethod::parse("openai-compatible:cerebras"),
+            ModelRouteApiMethod::OpenAiCompatible {
+                profile_id: Some("cerebras".to_string())
+            }
+        );
+        assert!(
+            ModelRouteApiMethod::parse("openai-compatible:cerebras")
+                .matches_openai_compatible_profile("CEREBRAS")
+        );
+        assert_eq!(
+            ModelRouteApiMethod::parse("openai-api"),
+            ModelRouteApiMethod::OpenAIApiKey
+        );
+        assert_eq!(
+            ModelRouteApiMethod::parse("claude-api"),
+            ModelRouteApiMethod::AnthropicApiKey
+        );
     }
 }
