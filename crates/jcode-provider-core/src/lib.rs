@@ -560,6 +560,53 @@ impl ModelRoute {
     }
 }
 
+/// Canonical snapshot of a provider's model catalog at a point in time.
+///
+/// This is the local contract shared by server-side providers, remote clients,
+/// and persisted remote catalog caches. The websocket wire format may still
+/// flatten these fields for backwards compatibility, but internal code should
+/// pass catalog state as this single value instead of loose parallel vectors.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelCatalogSnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub available_models: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_routes: Vec<ModelRoute>,
+}
+
+impl ModelCatalogSnapshot {
+    pub fn new(
+        provider_name: Option<String>,
+        provider_model: Option<String>,
+        available_models: Vec<String>,
+        model_routes: Vec<ModelRoute>,
+    ) -> Self {
+        Self {
+            provider_name,
+            provider_model,
+            available_models,
+            model_routes,
+        }
+    }
+
+    pub fn from_provider(provider: &dyn Provider) -> Self {
+        Self::new(
+            Some(provider.name().to_string()),
+            Some(provider.model()),
+            provider.available_models_display(),
+            provider.model_routes(),
+        )
+    }
+
+    pub fn has_routes(&self) -> bool {
+        !self.model_routes.is_empty()
+    }
+}
+
 pub const CHEAPNESS_REFERENCE_INPUT_TOKENS: u64 = 25_000;
 pub const CHEAPNESS_REFERENCE_OUTPUT_TOKENS: u64 = 5_000;
 
@@ -749,5 +796,58 @@ mod tests {
             ModelRouteApiMethod::parse("claude-api"),
             ModelRouteApiMethod::AnthropicApiKey
         );
+    }
+
+    struct SnapshotTestProvider;
+
+    #[async_trait]
+    impl Provider for SnapshotTestProvider {
+        async fn complete(
+            &self,
+            _messages: &[Message],
+            _tools: &[ToolDefinition],
+            _system: &str,
+            _resume_session_id: Option<&str>,
+        ) -> Result<EventStream> {
+            unreachable!("snapshot test does not call complete")
+        }
+
+        fn name(&self) -> &str {
+            "snapshot-provider"
+        }
+
+        fn model(&self) -> String {
+            "snapshot-model".to_string()
+        }
+
+        fn available_models_display(&self) -> Vec<String> {
+            vec!["snapshot-model".to_string()]
+        }
+
+        fn model_routes(&self) -> Vec<ModelRoute> {
+            vec![ModelRoute {
+                model: "snapshot-model".to_string(),
+                provider: "Snapshot".to_string(),
+                api_method: "snapshot-api".to_string(),
+                available: true,
+                detail: "test route".to_string(),
+                cheapness: None,
+            }]
+        }
+
+        fn fork(&self) -> Arc<dyn Provider> {
+            Arc::new(SnapshotTestProvider)
+        }
+    }
+
+    #[test]
+    fn model_catalog_snapshot_materializes_provider_catalog_contract() {
+        let snapshot = ModelCatalogSnapshot::from_provider(&SnapshotTestProvider);
+
+        assert_eq!(snapshot.provider_name.as_deref(), Some("snapshot-provider"));
+        assert_eq!(snapshot.provider_model.as_deref(), Some("snapshot-model"));
+        assert_eq!(snapshot.available_models, ["snapshot-model"]);
+        assert!(snapshot.has_routes());
+        assert_eq!(snapshot.model_routes[0].api_method, "snapshot-api");
     }
 }
