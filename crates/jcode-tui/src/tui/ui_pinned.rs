@@ -888,6 +888,17 @@ pub(super) fn draw_pinned_content_cached(
             Style::default().fg(dim_color()),
         ));
     }
+    title_parts.push(Span::styled(
+        if total_images > 0 {
+            format!(
+                " {} hide ",
+                crate::tui::keybind::side_panel_toggle_key_label()
+            )
+        } else {
+            " ⇧Tab hide ".to_string()
+        },
+        Style::default().fg(dim_color()),
+    ));
     let border_style = side_panel_border_style(focused);
     let Some(inner) =
         super::draw_right_rail_chrome(frame, area, Line::from(title_parts), border_style)

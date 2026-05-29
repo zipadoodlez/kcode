@@ -526,10 +526,10 @@ pub(super) fn draw_file_diff_view(
         let Some(inner) = super::draw_right_rail_chrome(
             frame,
             area,
-            Line::from(vec![Span::styled(
-                " file ",
-                Style::default().fg(tool_color()),
-            )]),
+            Line::from(vec![
+                Span::styled(" file ", Style::default().fg(tool_color())),
+                Span::styled(" ⇧Tab hide ", Style::default().fg(dim_color())),
+            ]),
             super::right_rail_border_style(false, tool_color()),
         ) else {
             return;
@@ -633,6 +633,10 @@ pub(super) fn draw_file_diff_view(
     title_parts.push(Span::styled(
         format!(" edit#{} ", active_context.edit_index),
         Style::default().fg(file_link_color()),
+    ));
+    title_parts.push(Span::styled(
+        " ⇧Tab hide ",
+        Style::default().fg(dim_color()),
     ));
 
     let border_style = super::right_rail_border_style(focused, tool_color());
