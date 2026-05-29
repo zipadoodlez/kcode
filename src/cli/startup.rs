@@ -53,6 +53,13 @@ pub async fn run() -> Result<()> {
             .collect()
     });
 
+    // Invert the legacy server -> tui dependency: the TUI session picker owns
+    // the session-list cache and registers its invalidator here, so the server
+    // can drop the cache (e.g. after a rename) without referencing tui.
+    crate::session_list_cache::register_invalidator(
+        crate::tui::session_picker::invalidate_session_list_cache,
+    );
+
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 
