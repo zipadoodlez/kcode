@@ -60,6 +60,21 @@ pub async fn run() -> Result<()> {
         crate::tui::session_picker::invalidate_session_list_cache,
     );
 
+    // Invert the legacy tui -> cli dependency for shared-server spawning: the
+    // CLI owns the provider-bootstrap spawn logic and registers it here, so the
+    // TUI reconnect loop can request a replacement server via server_spawn
+    // without referencing cli.
+    crate::server_spawn::register_default_server_spawner(Box::new(|| {
+        Box::pin(async {
+            dispatch::spawn_server(
+                &crate::cli::provider_init::ProviderChoice::Auto,
+                None,
+                None,
+            )
+            .await
+        })
+    }));
+
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 

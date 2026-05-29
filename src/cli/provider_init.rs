@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, Write};
 use std::sync::Arc;
 
 use crate::auth;
@@ -16,13 +16,10 @@ use crate::tool;
 use super::login::run_login_provider;
 use super::output;
 
-mod external_auth;
-use external_auth::*;
-pub(crate) use external_auth::{
-    ExternalAuthReviewCandidate, format_external_auth_review_candidates_markdown,
-    maybe_run_external_auth_auto_import_flow, parse_external_auth_review_selection,
-    pending_external_auth_review_candidates, run_external_auth_auto_import_candidates,
+use crate::external_auth::{
+    can_prompt_for_external_auth, external_auth_blocked_message, prompt_to_trust_external_auth,
 };
+pub(crate) use crate::external_auth::maybe_run_external_auth_auto_import_flow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ProviderChoice {

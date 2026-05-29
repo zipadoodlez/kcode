@@ -31,6 +31,7 @@ pub mod embedding_stub;
 #[cfg(not(feature = "embeddings"))]
 pub use embedding_stub as embedding;
 pub mod env;
+pub mod external_auth;
 pub mod gateway;
 pub mod generated_image;
 pub mod gmail;
@@ -67,8 +68,10 @@ pub mod runtime_memory_log;
 pub mod safety;
 pub mod secret_input;
 pub mod server;
+pub mod server_spawn;
 pub mod session;
 pub mod session_launch;
+pub mod session_rebuild;
 pub mod session_list_cache;
 pub mod setup_hints;
 pub mod side_panel;
