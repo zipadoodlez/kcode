@@ -65,6 +65,7 @@ pub mod replay;
 pub mod restart_snapshot;
 pub mod runtime_memory_log;
 pub mod safety;
+pub mod secret_input;
 pub mod server;
 pub mod session;
 pub mod session_list_cache;
