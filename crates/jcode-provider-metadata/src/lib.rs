@@ -190,6 +190,24 @@ pub fn resolve_login_provider(input: &str) -> Option<LoginProviderDescriptor> {
     })
 }
 
+/// Resolve a login provider by id, alias, or display name.
+///
+/// Login completion events carry the human-readable provider label (e.g.
+/// "Anthropic API") rather than the canonical id/alias, so the stricter
+/// [`resolve_login_provider`] (id/alias only) misses them. Auth-change routing
+/// needs to map those labels back to a provider id; matching the display name
+/// here keeps the post-login model refresh attributed to the correct provider.
+pub fn resolve_login_provider_loose(input: &str) -> Option<LoginProviderDescriptor> {
+    if let Some(provider) = resolve_login_provider(input) {
+        return Some(provider);
+    }
+    let normalized = normalize_provider_input(input)?;
+    login_providers()
+        .iter()
+        .copied()
+        .find(|provider| provider.display_name.to_ascii_lowercase() == normalized)
+}
+
 pub fn resolve_login_selection(
     input: &str,
     providers: &[LoginProviderDescriptor],
