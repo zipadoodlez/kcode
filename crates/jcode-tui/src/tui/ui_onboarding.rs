@@ -89,7 +89,10 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                             .fg(welcome_accent())
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(format!("(type {})", prompt), Style::default().fg(dim_color())),
+                    Span::styled(
+                        format!("(type {})", prompt),
+                        Style::default().fg(dim_color()),
+                    ),
                 ]
             } else {
                 vec![
@@ -132,7 +135,10 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
     let body_h = body.len() as u16;
 
     // Donut shrinks if the area is short so the welcome text always fits.
-    let donut_h = DONUT_HEIGHT.min(area.height.saturating_sub(telemetry_h + body_h + GAP * 2 + 1));
+    let donut_h = DONUT_HEIGHT.min(
+        area.height
+            .saturating_sub(telemetry_h + body_h + GAP * 2 + 1),
+    );
     let donut_h = donut_h.max(0);
 
     let used = telemetry_h + GAP + donut_h + GAP + body_h;
@@ -167,5 +173,8 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
     }
     // skip gap chunk
     idx += 1;
-    frame.render_widget(Paragraph::new(body).alignment(Alignment::Center), chunks[idx]);
+    frame.render_widget(
+        Paragraph::new(body).alignment(Alignment::Center),
+        chunks[idx],
+    );
 }

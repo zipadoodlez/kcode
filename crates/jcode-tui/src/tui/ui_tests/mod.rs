@@ -133,6 +133,8 @@ struct TestState {
     changelog_scroll: Option<usize>,
     help_scroll: Option<usize>,
     chat_native_scrollbar: bool,
+    onboarding_preview: bool,
+    suggestions: Vec<(String, String)>,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -425,7 +427,10 @@ impl crate::tui::TuiState for TestState {
         None
     }
     fn suggestion_prompts(&self) -> Vec<(String, String)> {
-        Vec::new()
+        self.suggestions.clone()
+    }
+    fn onboarding_preview_mode(&self) -> bool {
+        self.onboarding_preview
     }
     fn cache_ttl_status(&self) -> Option<crate::tui::CacheTtlInfo> {
         None
@@ -448,6 +453,8 @@ fn reset_prompt_viewport_state_for_test() {
 mod basic;
 #[path = "diagrams.rs"]
 mod diagrams;
+#[path = "onboarding.rs"]
+mod onboarding;
 #[path = "prepare.rs"]
 mod prepared_messages_tests;
 #[path = "rendering.rs"]
