@@ -26,6 +26,77 @@ SRC = os.path.normpath(SRC)
 
 CRATE_RE = re.compile(r"\bcrate::([a-z_][a-z0-9_]*)")
 FACADE_RE = re.compile(r"pub use jcode_[a-z0-9_]+::")
+# `use crate::...;` statement body (may span lines); group 1 is everything
+# between `crate::` and the terminating `;`.
+USE_CRATE_RE = re.compile(r"\buse\s+crate::([^;]*);", re.DOTALL)
+
+
+def _split_top_level(body: str) -> list[str]:
+    """Split a brace-group body on top-level commas (ignoring nested braces)."""
+    parts: list[str] = []
+    depth = 0
+    cur = []
+    for ch in body:
+        if ch == "{":
+            depth += 1
+            cur.append(ch)
+        elif ch == "}":
+            depth -= 1
+            cur.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        parts.append("".join(cur))
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _module_imports(joined: str):
+    """Parse `use crate::...;` statements in `joined` source text.
+
+    Returns (group_edge_counts, alias_set):
+      * group_edge_counts: target module -> number of grouped-import references
+        that `CRATE_RE` cannot see (because `{` immediately follows `crate::`).
+        Non-grouped `use crate::name...;` imports are intentionally left to
+        `CRATE_RE` so we never double count.
+      * alias_set: module names brought into local scope as a bare `name::`
+        path prefix (so later bare `name::` usages can be attributed).
+    """
+    group_edges: dict[str, int] = defaultdict(int)
+    aliases: set[str] = set()
+    ident = re.compile(r"^[a-z_][a-z0-9_]*$")
+    for m in USE_CRATE_RE.finditer(joined):
+        rest = m.group(1).strip()
+        if rest.startswith("{"):
+            # Grouped import: `use crate::{a, b, c::Foo, d::{self, X}};`
+            inner = rest[1 : rest.rfind("}")] if "}" in rest else rest[1:]
+            for entry in _split_top_level(inner):
+                if entry in ("self", "*"):
+                    continue
+                head = entry.split("::", 1)[0].split(" as ")[0].strip()
+                if not ident.match(head):
+                    continue
+                group_edges[head] += 1
+                # Bare `head` (no `::`) or `head::{self...}` brings `head` itself
+                # into scope as a usable module path prefix.
+                if "::" not in entry:
+                    aliases.add(head)
+                elif re.match(rf"^{re.escape(head)}::\{{\s*self\b", entry):
+                    aliases.add(head)
+        else:
+            # Non-grouped: `use crate::name;`, `name::Item`, `name::{...}`,
+            # `name as X`. CRATE_RE already counts the `crate::name` edge, so we
+            # only track whether `name` becomes a bare path alias here.
+            head = rest.split("::", 1)[0].split(" as ")[0].strip()
+            if not ident.match(head):
+                continue
+            if "::" not in rest:
+                aliases.add(head)
+            elif re.match(rf"^{re.escape(head)}::\{{\s*self\b", rest):
+                aliases.add(head)
+    return dict(group_edges), aliases
 
 
 def top_level_modules() -> dict[str, list[str]]:
@@ -155,6 +226,7 @@ def outbound_refs(files: list[str], self_name: str, exclude_tests: bool = True):
         test_block_depth = 0
         depth = 0
         pending_cfg_test = False
+        code_lines: list[str] = []
         for ln in lines:
             stripped = ln.strip()
             if exclude_tests and stripped.startswith("#[cfg(test)]"):
@@ -170,8 +242,28 @@ def outbound_refs(files: list[str], self_name: str, exclude_tests: bool = True):
                     in_test_block = False
                 continue
             depth += ln.count("{") - ln.count("}")
+            code_lines.append(ln)
             for m in CRATE_RE.finditer(ln):
                 counts[m.group(1)] += 1
+        # Grouped `use crate::{...}` edges (invisible to CRATE_RE) and bare
+        # `alias::` usages from imported module aliases. Without this, any
+        # module pulled in via a grouped import (e.g. `use crate::{id, tui};`)
+        # and then referenced as `tui::App` would be entirely uncounted,
+        # badly undercounting edge weights for crate-split planning.
+        joined = "".join(code_lines)
+        group_edges, aliases = _module_imports(joined)
+        for name, c in group_edges.items():
+            counts[name] += c
+        aliases.discard(self_name)
+        if aliases:
+            alias_re = re.compile(
+                r"(?<![\w:])(" + "|".join(re.escape(a) for a in sorted(aliases)) + r")::"
+            )
+            for ln in code_lines:
+                if ln.lstrip().startswith("use "):
+                    continue
+                for m in alias_re.finditer(ln):
+                    counts[m.group(1)] += 1
     counts.pop(self_name, None)
     return set(counts), dict(counts)
 
