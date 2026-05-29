@@ -152,6 +152,65 @@ fn render_assistant_tool_call_lines(
     lines
 }
 
+/// Wrap plaintext content into lines without any markdown interpretation.
+///
+/// System messages are status/notice text and must render verbatim (no bold,
+/// headings, list bullets, code fences, etc.). This word-wraps on whitespace
+/// and hard-splits tokens that are wider than `wrap_width`, preserving the
+/// author's own line breaks.
+fn render_plaintext_lines(content: &str, wrap_width: usize) -> Vec<Line<'static>> {
+    let wrap_width = wrap_width.max(1);
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    for raw_line in content.split('\n') {
+        let raw_line = raw_line.trim_end_matches('\r');
+        if raw_line.trim().is_empty() {
+            lines.push(Line::from(String::new()));
+            continue;
+        }
+
+        let mut current = String::new();
+        let mut current_width = 0usize;
+
+        for word in raw_line.split_whitespace() {
+            let word_width = word.width();
+
+            // Token longer than the wrap width: hard-split it on display width.
+            if word_width > wrap_width {
+                if !current.is_empty() {
+                    lines.push(Line::from(std::mem::take(&mut current)));
+                    current_width = 0;
+                }
+                for chunk in split_by_display_width(word, wrap_width) {
+                    lines.push(Line::from(chunk));
+                }
+                continue;
+            }
+
+            let sep_width = if current.is_empty() { 0 } else { 1 };
+            if current_width + sep_width + word_width > wrap_width && !current.is_empty() {
+                lines.push(Line::from(std::mem::take(&mut current)));
+                current_width = 0;
+            }
+            if !current.is_empty() {
+                current.push(' ');
+                current_width += 1;
+            }
+            current.push_str(word);
+            current_width += word_width;
+        }
+
+        if !current.is_empty() {
+            lines.push(Line::from(current));
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::from(String::new()));
+    }
+    lines
+}
+
 pub(crate) fn render_system_message(
     msg: &DisplayMessage,
     width: u16,
@@ -181,22 +240,8 @@ pub(crate) fn render_system_message(
     let centered = markdown::center_code_blocks();
     let wrap_width = centered_wrap_width(width.saturating_sub(4), centered, 96);
     let display_content = normalize_system_content_for_display(&msg.content);
-    let mut lines = markdown::render_markdown_with_width(&display_content, Some(wrap_width));
-    if lines.iter().any(|line| line.width() > wrap_width) {
-        lines = display_content
-            .lines()
-            .flat_map(|line| {
-                if line.is_empty() {
-                    vec![Line::from("")]
-                } else {
-                    split_by_display_width(line, wrap_width)
-                        .into_iter()
-                        .map(Line::from)
-                        .collect::<Vec<_>>()
-                }
-            })
-            .collect();
-    }
+    // System messages render as plaintext, never markdown.
+    let mut lines = render_plaintext_lines(&display_content, wrap_width);
     if centered {
         left_pad_lines_for_centered_mode(&mut lines, width);
     }
@@ -981,8 +1026,8 @@ fn render_connection_system_message(msg: &DisplayMessage, width: u16) -> Vec<Lin
             )
         } else {
             let display_content = normalize_system_content_for_display(content);
-            let mut lines =
-                markdown::render_markdown_with_width(&display_content, Some(inner_width));
+            // System messages render as plaintext, never markdown.
+            let mut lines = render_plaintext_lines(&display_content, inner_width);
             if centered {
                 left_pad_lines_for_centered_mode(&mut lines, width);
             }

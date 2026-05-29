@@ -35,6 +35,27 @@ fn render_system_message_forces_system_color_on_all_spans() {
 }
 
 #[test]
+fn render_system_message_renders_markdown_syntax_verbatim() {
+    let msg = DisplayMessage::system(
+        "**bold** and `code` and # heading\n- bullet item\n[link](http://example.com)",
+    );
+
+    let lines = render_system_message(&msg, 80, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Markdown markers must survive as literal plaintext (no formatting applied).
+    assert!(plain.contains("**bold**"), "got: {plain:?}");
+    assert!(plain.contains("`code`"), "got: {plain:?}");
+    assert!(plain.contains("# heading"), "got: {plain:?}");
+    assert!(plain.contains("- bullet item"), "got: {plain:?}");
+    assert!(plain.contains("[link](http://example.com)"), "got: {plain:?}");
+}
+
+#[test]
 fn render_system_message_centered_mode_left_aligns_with_padding() {
     let saved = crate::tui::markdown::center_code_blocks();
     crate::tui::markdown::set_center_code_blocks(true);
