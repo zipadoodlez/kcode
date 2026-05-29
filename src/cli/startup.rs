@@ -27,6 +27,13 @@ pub async fn run() -> Result<()> {
     crate::config::on_config_reloaded(|| crate::auth::AuthStatus::invalidate_cache());
     crate::config::on_config_reloaded(|| crate::bus::Bus::global().publish_models_updated());
 
+    // Invert the legacy provider_catalog -> auth dependency: provider_catalog
+    // consults registered fallback resolvers, and auth (the higher layer)
+    // registers its external-CLI credential scan here.
+    crate::provider_catalog::register_api_key_fallback_resolver(
+        crate::auth::external::load_api_key_for_env,
+    );
+
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 
