@@ -304,6 +304,112 @@ remote_connect_timeout() {
   printf '%s\n' "$value"
 }
 
+remote_tcp_timeout() {
+  # Bounded probe used the first time we contact a host (or after the recovery
+  # window expires) so an unreachable host fails fast instead of waiting for
+  # the full SSH ConnectTimeout. Accepts fractional seconds (GNU timeout).
+  local value="${JCODE_REMOTE_TCP_TIMEOUT:-1}"
+  if [[ ! "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    value=1
+  fi
+  printf '%s\n' "$value"
+}
+
+remote_recovery_tcp_timeout() {
+  # Shorter probe used while a host was recently seen down. An up host always
+  # answers in a few ms, so this still detects recovery on the next build while
+  # keeping per-build cost low during an outage.
+  local value="${JCODE_REMOTE_RECOVERY_TCP_TIMEOUT:-0.3}"
+  if [[ ! "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    value=0.3
+  fi
+  printf '%s\n' "$value"
+}
+
+remote_down_cache_ttl() {
+  # How long (seconds) a recent failure keeps using the shorter recovery probe
+  # timeout. Recovery is still detected on the very next build; this only
+  # controls how long downtime builds stay cheap before reverting to the full
+  # probe timeout. Set to 0 to always use the full timeout.
+  local value="${JCODE_REMOTE_DOWN_TTL:-300}"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    value=300
+  fi
+  printf '%s\n' "$value"
+}
+
+remote_down_cache_path() {
+  local remote="${JCODE_REMOTE_HOST:-}"
+  local key
+  if command -v cksum >/dev/null 2>&1; then
+    key="$(printf '%s' "$remote" | cksum | awk '{print $1}')"
+  else
+    key="${remote//[^A-Za-z0-9_-]/_}"
+  fi
+  printf '%s/jcode-remote-down-%s\n' "${TMPDIR:-/tmp}" "$key"
+}
+
+remote_down_cache_fresh() {
+  local ttl
+  ttl="$(remote_down_cache_ttl)"
+  [[ "$ttl" -gt 0 ]] || return 1
+  local cache
+  cache="$(remote_down_cache_path)"
+  [[ -f "$cache" ]] || return 1
+  local recorded now age
+  recorded="$(cat "$cache" 2>/dev/null || printf '0')"
+  [[ "$recorded" =~ ^[0-9]+$ ]] || return 1
+  now="$(date +%s)"
+  age=$((now - recorded))
+  (( age >= 0 && age < ttl ))
+}
+
+record_remote_down() {
+  local ttl
+  ttl="$(remote_down_cache_ttl)"
+  [[ "$ttl" -gt 0 ]] || return 0
+  local cache
+  cache="$(remote_down_cache_path)"
+  date +%s >"$cache" 2>/dev/null || true
+}
+
+clear_remote_down() {
+  local cache
+  cache="$(remote_down_cache_path)"
+  rm -f "$cache" 2>/dev/null || true
+}
+
+# Resolve the effective hostname/port for the remote alias and report whether
+# the connection goes through a ProxyJump/ProxyCommand (where a direct TCP
+# probe to the final hostname would be misleading).
+remote_resolve_endpoint() {
+  local ssh_bin="$1" remote="$2"
+  local hostname="$remote" port=22 uses_proxy="false"
+  local config line key value
+  if config="$("$ssh_bin" -G "$remote" 2>/dev/null)"; then
+    while IFS=' ' read -r key value; do
+      case "$key" in
+        hostname) [[ -n "$value" ]] && hostname="$value" ;;
+        port) [[ "$value" =~ ^[0-9]+$ ]] && port="$value" ;;
+        proxyjump|proxycommand)
+          [[ -n "$value" && "$value" != "none" ]] && uses_proxy="true"
+          ;;
+      esac
+    done <<<"$config"
+  fi
+  printf '%s\t%s\t%s\n' "$hostname" "$port" "$uses_proxy"
+}
+
+# Fast TCP reachability check using bash /dev/tcp with a hard timeout.
+remote_tcp_reachable() {
+  local hostname="$1" port="$2"
+  local tcp_timeout="${3:-}"
+  if [[ -z "$tcp_timeout" ]]; then
+    tcp_timeout="$(remote_tcp_timeout)"
+  fi
+  timeout "$tcp_timeout" bash -c "exec 3<>/dev/tcp/$hostname/$port" 2>/dev/null
+}
+
 remote_cargo_preflight() {
   local remote="${JCODE_REMOTE_HOST:-}"
   if [[ -z "$remote" ]]; then
@@ -315,6 +421,37 @@ remote_cargo_preflight() {
   if ! command -v "$ssh_bin" >/dev/null 2>&1; then
     log "remote cargo requested but ssh binary is unavailable: $ssh_bin"
     return 1
+  fi
+
+  # Choose probe timeout: while a host was recently seen down, use a short
+  # recovery timeout so downtime builds stay cheap. An up host answers in a few
+  # ms regardless, so recovery is still detected on the very next build.
+  local tcp_timeout
+  if remote_down_cache_fresh; then
+    tcp_timeout="$(remote_recovery_tcp_timeout)"
+  else
+    tcp_timeout="$(remote_tcp_timeout)"
+  fi
+
+  # Fast TCP pre-probe to fail fast when the host is offline, unless the
+  # connection is proxied (where a direct probe would be wrong) or explicitly
+  # disabled via JCODE_REMOTE_TCP_PROBE=0.
+  local tcp_probe="${JCODE_REMOTE_TCP_PROBE:-1}"
+  case "$tcp_probe" in
+    0|false|no|off) tcp_probe="0" ;;
+    *) tcp_probe="1" ;;
+  esac
+  if [[ "$tcp_probe" == "1" ]]; then
+    local endpoint hostname port uses_proxy
+    endpoint="$(remote_resolve_endpoint "$ssh_bin" "$remote")"
+    IFS=$'\t' read -r hostname port uses_proxy <<<"$endpoint"
+    if [[ "$uses_proxy" != "true" ]]; then
+      if ! remote_tcp_reachable "$hostname" "$port" "$tcp_timeout"; then
+        log "remote host $remote ($hostname:$port) unreachable within ${tcp_timeout}s TCP probe; using local cargo"
+        record_remote_down
+        return 1
+      fi
+    fi
   fi
 
   local connect_timeout
@@ -329,8 +466,10 @@ remote_cargo_preflight() {
     -o ServerAliveCountMax="$server_alive_count" \
     "$remote" "printf 'jcode-remote-ok\\n'" 2>&1); then
     log "remote cargo preflight failed for $remote after ~${connect_timeout}s: $output"
+    record_remote_down
     return 1
   fi
+  clear_remote_down
   return 0
 }
 
