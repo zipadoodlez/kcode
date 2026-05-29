@@ -589,6 +589,76 @@ fn cloud_sessions_sync_respects_min_interval_throttle() {
 }
 
 #[test]
+fn render_cloud_sessions_dashboard_html_escapes_and_lists_rows() {
+    let items: Vec<CloudSessionListItem> = serde_json::from_str(
+        r#"[
+          {"session_id":"session_x","title":"Hello <b> & \"world\"","message_count":12,"uploaded_at":"2026-05-29T00:00:00Z"},
+          {"session_id":"session_y","short_name":"shorty","message_count":"3","uploaded_at":"2026-05-28T00:00:00Z"}
+        ]"#,
+    )
+    .expect("parse items");
+
+    let html = render_cloud_sessions_dashboard_html("alice", &items);
+    assert!(html.contains("Jade Cloud Sessions"));
+    assert!(html.contains("user: alice"));
+    assert!(html.contains("2 session(s)"));
+    assert!(html.contains("session_x"));
+    assert!(html.contains("shorty"));
+    // Raw title must be escaped (no live markup, quotes escaped).
+    assert!(!html.contains("Hello <b>"));
+    assert!(html.contains("Hello &lt;b&gt; &amp; &quot;world&quot;"));
+    // Numeric and string message counts both render.
+    assert!(html.contains(">12<"));
+    assert!(html.contains(">3<"));
+}
+
+#[test]
+fn render_cloud_sessions_dashboard_html_handles_empty() {
+    let html = render_cloud_sessions_dashboard_html("dev", &[]);
+    assert!(html.contains("0 session(s)"));
+    assert!(html.contains("No uploaded sessions found."));
+}
+
+#[test]
+fn parse_cloud_session_list_json_accepts_array_and_object_wrappers() {
+    // Real helper shape: a top-level array.
+    let array = parse_cloud_session_list_json(
+        r#"[{"session_id":"session_a","message_count":2,"uploaded_at":"2026-05-29T00:00:00Z"}]"#,
+    )
+    .expect("parse array");
+    assert_eq!(array.len(), 1);
+    assert_eq!(array[0].session_id.as_deref(), Some("session_a"));
+
+    // Tolerated object wrappers.
+    let items = parse_cloud_session_list_json(r#"{"items":[{"session_id":"session_b"}]}"#)
+        .expect("parse items wrapper");
+    assert_eq!(items[0].session_id.as_deref(), Some("session_b"));
+
+    let sessions = parse_cloud_session_list_json(r#"{"sessions":[{"session_id":"session_c"}]}"#)
+        .expect("parse sessions wrapper");
+    assert_eq!(sessions[0].session_id.as_deref(), Some("session_c"));
+
+    // Empty array stays empty.
+    assert!(
+        parse_cloud_session_list_json("[]")
+            .expect("parse empty")
+            .is_empty()
+    );
+}
+
+#[test]
+fn parse_cloud_session_list_json_rejects_unexpected_shapes() {
+    // A bare object without a recognized array key is an error.
+    let err = parse_cloud_session_list_json(r#"{"unexpected":true}"#)
+        .expect_err("object without items/sessions");
+    assert!(err.to_string().contains("items"));
+
+    // A scalar is also rejected with a descriptive message.
+    let err = parse_cloud_session_list_json("42").expect_err("scalar");
+    assert!(err.to_string().contains("a number"));
+}
+
+#[test]
 fn resolve_jade_sessions_helper_prefers_explicit_and_env_paths() {
     let _saved = SavedEnv::capture(&["JCODE_JADE_SESSIONS_HELPER"]);
     crate::env::set_var("JCODE_JADE_SESSIONS_HELPER", "/tmp/from-env.py");

@@ -102,6 +102,15 @@ pub enum CloudSessionsSubcommand {
         region: Option<String>,
         helper: Option<String>,
     },
+    Dashboard {
+        limit: usize,
+        output: Option<String>,
+        open: bool,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
     View {
         session_id: String,
         format: String,
@@ -162,6 +171,25 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             );
         }
         CloudSessionsSubcommand::Status { json } => return run_cloud_sessions_status(json),
+        CloudSessionsSubcommand::Dashboard {
+            limit,
+            output,
+            open,
+            user_id,
+            profile,
+            region,
+            helper,
+        } => {
+            return run_cloud_sessions_dashboard(CloudSessionsDashboardRequest {
+                limit,
+                output,
+                open,
+                user_id,
+                profile,
+                region,
+                helper,
+            });
+        }
         CloudSessionsSubcommand::Sync {
             sessions_dir,
             since_days,
@@ -787,6 +815,224 @@ fn run_cloud_sessions_sync(request: CloudSessionsSyncRequest) -> Result<()> {
     Ok(())
 }
 
+struct CloudSessionsDashboardRequest {
+    limit: usize,
+    output: Option<String>,
+    open: bool,
+    user_id: String,
+    profile: Option<String>,
+    region: Option<String>,
+    helper: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CloudSessionListItem {
+    #[serde(default)]
+    session_id: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    short_name: Option<String>,
+    #[serde(default)]
+    message_count: Option<serde_json::Value>,
+    #[serde(default)]
+    uploaded_at: Option<String>,
+}
+
+fn fetch_cloud_session_list_json(
+    helper: &Path,
+    helper_env: &[(&'static str, String)],
+    user_id: &str,
+    profile: Option<&str>,
+    region: Option<&str>,
+    limit: usize,
+) -> Result<Vec<CloudSessionListItem>> {
+    let mut args = vec!["list".to_string()];
+    append_common_jade_args(
+        &mut args,
+        user_id.to_string(),
+        profile.map(ToOwned::to_owned),
+        region.map(ToOwned::to_owned),
+    );
+    args.extend(["--limit".to_string(), limit.to_string()]);
+    args.push("--json".to_string());
+
+    let output = ProcessCommand::new(helper)
+        .args(&args)
+        .envs(helper_env.iter().cloned())
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|err| anyhow::anyhow!("failed to run {}: {err}", helper.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        anyhow::bail!(
+            "{} list failed: {}",
+            helper.display(),
+            if detail.is_empty() {
+                format!("exited with status {}", output.status)
+            } else {
+                detail.to_string()
+            }
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    parse_cloud_session_list_json(stdout.trim())
+}
+
+/// Parse the helper's `list --json` output.
+///
+/// The Jade helper prints a top-level JSON array, but we also accept an object
+/// wrapper keyed by `items` or `sessions` so the dashboard keeps working if the
+/// helper's output shape changes.
+fn parse_cloud_session_list_json(raw: &str) -> Result<Vec<CloudSessionListItem>> {
+    let value: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|err| anyhow::anyhow!("failed to parse Jade list JSON: {err}"))?;
+    let array = match value {
+        serde_json::Value::Array(items) => items,
+        serde_json::Value::Object(mut map) => map
+            .remove("items")
+            .or_else(|| map.remove("sessions"))
+            .and_then(|value| match value {
+                serde_json::Value::Array(items) => Some(items),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "failed to parse Jade list JSON: expected an array or an object with an `items`/`sessions` array"
+                )
+            })?,
+        other => anyhow::bail!(
+            "failed to parse Jade list JSON: expected an array, found {}",
+            json_value_kind(&other)
+        ),
+    };
+    array
+        .into_iter()
+        .map(|item| {
+            serde_json::from_value(item)
+                .map_err(|err| anyhow::anyhow!("failed to parse Jade list item: {err}"))
+        })
+        .collect()
+}
+
+fn json_value_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "a boolean",
+        serde_json::Value::Number(_) => "a number",
+        serde_json::Value::String(_) => "a string",
+        serde_json::Value::Array(_) => "an array",
+        serde_json::Value::Object(_) => "an object",
+    }
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn message_count_label(value: Option<&serde_json::Value>) -> String {
+    match value {
+        Some(serde_json::Value::Number(num)) => num.to_string(),
+        Some(serde_json::Value::String(text)) => text.clone(),
+        _ => "-".to_string(),
+    }
+}
+
+fn render_cloud_sessions_dashboard_html(user_id: &str, items: &[CloudSessionListItem]) -> String {
+    let generated = chrono::Utc::now().to_rfc3339();
+    let mut rows = String::new();
+    for item in items {
+        let session_id = item.session_id.as_deref().unwrap_or("(unknown)");
+        let title = item
+            .title
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or(item.short_name.as_deref())
+            .unwrap_or("(untitled)");
+        let uploaded = item.uploaded_at.as_deref().unwrap_or("-");
+        rows.push_str(&format!(
+            "<tr><td class='id'>{}</td><td>{}</td><td class='num'>{}</td><td class='ts'>{}</td></tr>\n",
+            html_escape(session_id),
+            html_escape(title),
+            html_escape(&message_count_label(item.message_count.as_ref())),
+            html_escape(uploaded),
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("<tr><td colspan='4' class='empty'>No uploaded sessions found.</td></tr>\n");
+    }
+    format!(
+        "<!doctype html><meta charset='utf-8'>\n\
+<title>Jade Cloud Sessions Dashboard</title>\n\
+<style>body{{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#1b1b1f}}\
+h1{{margin-bottom:0.2rem}}.meta{{color:#666;margin-bottom:1.5rem}}\
+table{{border-collapse:collapse;width:100%}}th,td{{text-align:left;padding:0.5rem 0.6rem;border-bottom:1px solid #e3e3e8}}\
+th{{background:#f6f8fa;position:sticky;top:0}}td.id{{font-family:ui-monospace,monospace;font-size:0.85rem}}\
+td.num{{text-align:right}}td.ts{{white-space:nowrap;color:#555}}td.empty{{text-align:center;color:#888;padding:2rem}}\
+tr:hover td{{background:#fafbff}}</style>\n\
+<h1>Jade Cloud Sessions</h1>\n\
+<div class='meta'>user: {user} &middot; {count} session(s) &middot; generated {generated}</div>\n\
+<table><thead><tr><th>Session ID</th><th>Title</th><th>Messages</th><th>Uploaded</th></tr></thead>\n\
+<tbody>\n{rows}</tbody></table>\n",
+        user = html_escape(user_id),
+        count = items.len(),
+        generated = html_escape(&generated),
+        rows = rows,
+    )
+}
+
+fn run_cloud_sessions_dashboard(request: CloudSessionsDashboardRequest) -> Result<()> {
+    let config = load_cloud_sessions_config()?.unwrap_or_default();
+    let helper_override = request.helper.clone().or_else(|| config.helper.clone());
+    let helper = resolve_jade_sessions_helper(helper_override.as_deref())?;
+    let helper_env = cloud_sessions_helper_env(&config);
+    let user_id = config_or_default_user_id(request.user_id.clone(), &config);
+
+    let items = fetch_cloud_session_list_json(
+        &helper,
+        &helper_env,
+        &user_id,
+        request.profile.as_deref(),
+        request.region.as_deref(),
+        request.limit,
+    )?;
+    let html = render_cloud_sessions_dashboard_html(&user_id, &items);
+
+    let output_path = match request
+        .output
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        Some(path) => expand_home_path(path),
+        None => std::env::temp_dir().join(format!(
+            "jade-cloud-dashboard-{}.html",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        )),
+    };
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&output_path, html.as_bytes())
+        .map_err(|err| anyhow::anyhow!("failed to write {}: {err}", output_path.display()))?;
+
+    println!(
+        "Wrote Jade cloud sessions dashboard ({} session(s)) to {}",
+        items.len(),
+        output_path.display()
+    );
+    if request.open {
+        let _ = open::that(&output_path);
+    }
+    Ok(())
+}
+
 fn configured_label(value: Option<&str>) -> &str {
     value
         .filter(|value| !value.is_empty())
@@ -824,6 +1070,7 @@ fn cloud_sessions_helper_override(action: &CloudSessionsSubcommand) -> Option<St
         | CloudSessionsSubcommand::UploadLatest { helper, .. }
         | CloudSessionsSubcommand::List { helper, .. }
         | CloudSessionsSubcommand::Verify { helper, .. }
+        | CloudSessionsSubcommand::Dashboard { helper, .. }
         | CloudSessionsSubcommand::View { helper, .. } => helper.clone(),
     }
 }
@@ -855,8 +1102,11 @@ fn build_jade_sessions_args_with_config(
     match action {
         CloudSessionsSubcommand::Configure { .. }
         | CloudSessionsSubcommand::Status { .. }
-        | CloudSessionsSubcommand::Sync { .. } => {
-            unreachable!("configure/status/sync do not invoke the Jade helper directly")
+        | CloudSessionsSubcommand::Sync { .. }
+        | CloudSessionsSubcommand::Dashboard { .. } => {
+            unreachable!(
+                "configure/status/sync/dashboard do not invoke the Jade helper via this builder"
+            )
         }
         CloudSessionsSubcommand::Upload {
             session_file,

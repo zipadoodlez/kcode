@@ -588,6 +588,20 @@ fn map_cloud_sessions_subcommand(
                 helper: jade.helper,
             }
         }
+        CloudSessionsCommand::Dashboard {
+            limit,
+            output,
+            open,
+            jade,
+        } => commands::CloudSessionsSubcommand::Dashboard {
+            limit,
+            output,
+            open,
+            user_id: jade.user_id,
+            profile: jade.profile,
+            region: jade.region,
+            helper: jade.helper,
+        },
         CloudSessionsCommand::View {
             session_id,
             format,

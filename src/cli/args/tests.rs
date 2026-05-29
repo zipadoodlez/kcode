@@ -40,6 +40,37 @@ fn model_list_subcommand_parses() {
         }
         other => panic!("unexpected command: {:?}", other),
     }
+
+    let args = Args::try_parse_from([
+        "jcode",
+        "cloud",
+        "sessions",
+        "dashboard",
+        "--limit",
+        "10",
+        "--open",
+        "--user-id",
+        "jeremy",
+    ])
+    .unwrap();
+
+    match args.command {
+        Some(Command::Cloud(CloudCommand::Sessions {
+            action:
+                CloudSessionsCommand::Dashboard {
+                    limit,
+                    output,
+                    open,
+                    jade,
+                },
+        })) => {
+            assert_eq!(limit, 10);
+            assert!(output.is_none());
+            assert!(open);
+            assert_eq!(jade.user_id, "jeremy");
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
 }
 
 #[test]

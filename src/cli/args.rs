@@ -593,6 +593,24 @@ pub(crate) enum CloudSessionsCommand {
         jade: JadeCloudOptions,
     },
 
+    /// Render a local HTML dashboard of cloud-uploaded sessions from the Jade index
+    Dashboard {
+        /// Maximum number of sessions to include
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+
+        /// Write the dashboard HTML to this path (default: a temp file)
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Open the generated dashboard in the default browser
+        #[arg(long)]
+        open: bool,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+
     /// Download and view a cloud-uploaded session
     View {
         /// Session ID to view
