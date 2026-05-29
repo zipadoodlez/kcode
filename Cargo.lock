@@ -3300,6 +3300,7 @@ dependencies = [
  "jcode-azure-auth",
  "jcode-background-types",
  "jcode-batch-types",
+ "jcode-build-meta",
  "jcode-build-support",
  "jcode-compaction-core",
  "jcode-config-types",
@@ -3421,6 +3422,10 @@ dependencies = [
  "jcode-message-types",
  "serde",
 ]
+
+[[package]]
+name = "jcode-build-meta"
+version = "0.1.0"
 
 [[package]]
 name = "jcode-build-support"

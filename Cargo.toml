@@ -9,6 +9,7 @@ autobins = false
 members = [
     ".",
     "crates/jcode-agent-runtime",
+    "crates/jcode-build-meta",
     "crates/jcode-ambient-types",
     "crates/jcode-auth-types",
     "crates/jcode-embedding",
@@ -192,6 +193,7 @@ jcode-pdf = { path = "crates/jcode-pdf", optional = true }
 jcode-background-types = { path = "crates/jcode-background-types" }
 jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-build-support = { path = "crates/jcode-build-support" }
+jcode-build-meta = { path = "crates/jcode-build-meta" }
 jcode-compaction-core = { path = "crates/jcode-compaction-core" }
 jcode-config-types = { path = "crates/jcode-config-types" }
 jcode-core = { path = "crates/jcode-core" }
