@@ -68,6 +68,7 @@ pub mod safety;
 pub mod secret_input;
 pub mod server;
 pub mod session;
+pub mod session_launch;
 pub mod session_list_cache;
 pub mod setup_hints;
 pub mod side_panel;
