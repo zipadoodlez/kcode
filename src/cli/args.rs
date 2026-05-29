@@ -268,6 +268,10 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Ambient(AmbientCommand),
 
+    /// Optional Jcode Cloud/Jade integration commands
+    #[command(subcommand)]
+    Cloud(CloudCommand),
+
     /// Generate a pairing code for iOS/web client
     Pair {
         /// List paired devices instead of generating a code
@@ -446,6 +450,125 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: RestartCommand,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum CloudCommand {
+    /// Upload, list, verify, and view cloud-synced sessions
+    Sessions {
+        #[command(subcommand)]
+        action: CloudSessionsCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum CloudSessionsCommand {
+    /// Upload a specific local session JSON file to Jade cloud storage
+    Upload {
+        /// Path to a local Jcode session JSON file
+        session_file: String,
+
+        /// Upload without Jade's redaction pass
+        #[arg(long)]
+        raw: bool,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+
+    /// Upload the newest local Jcode session to Jade cloud storage
+    UploadLatest {
+        /// Directory containing local Jcode session JSON files
+        #[arg(long, default_value = "~/.jcode/sessions")]
+        sessions_dir: String,
+
+        /// Upload without Jade's redaction pass
+        #[arg(long)]
+        raw: bool,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+
+    /// List cloud-uploaded sessions from the Jade index
+    List {
+        /// Maximum number of sessions to show
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+
+        /// Emit JSON instead of human-readable text
+        #[arg(long)]
+        json: bool,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+
+    /// Verify that cloud metadata and the S3 session blob both exist
+    Verify {
+        /// Session ID to verify
+        session_id: String,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+
+    /// Download and view a cloud-uploaded session
+    View {
+        /// Session ID to view
+        session_id: String,
+
+        /// Output format
+        #[arg(long, default_value = "summary")]
+        format: CloudSessionViewFormat,
+
+        /// Write HTML output to this path when --format html is used
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Open the generated HTML file when --format html is used
+        #[arg(long)]
+        open: bool,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+}
+
+#[derive(Parser, Debug, Clone)]
+pub(crate) struct JadeCloudOptions {
+    /// Jade user id to pass to the dev helper
+    #[arg(long, default_value = "dev")]
+    pub(crate) user_id: String,
+
+    /// AWS CLI profile used by the private dev Jade helper. If omitted, the helper decides.
+    #[arg(long)]
+    pub(crate) profile: Option<String>,
+
+    /// AWS region used by the private dev Jade helper. If omitted, the helper decides.
+    #[arg(long)]
+    pub(crate) region: Option<String>,
+
+    /// Path to the private Jade session helper. Defaults to $JCODE_JADE_SESSIONS_HELPER or ~/jade/scripts/jade_sessions.py.
+    #[arg(long)]
+    pub(crate) helper: Option<String>,
+}
+
+#[derive(ValueEnum, Debug, Clone, Copy)]
+pub(crate) enum CloudSessionViewFormat {
+    Summary,
+    Json,
+    Html,
+}
+
+impl CloudSessionViewFormat {
+    pub(crate) fn as_arg(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Json => "json",
+            Self::Html => "html",
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]

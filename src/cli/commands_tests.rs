@@ -349,6 +349,79 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
 }
 
 #[test]
+fn cloud_sessions_args_match_jade_helper_contract() {
+    let args = build_jade_sessions_args(CloudSessionsSubcommand::UploadLatest {
+        sessions_dir: "/tmp/sessions".to_string(),
+        raw: true,
+        user_id: "jeremy".to_string(),
+        profile: Some("test-profile".to_string()),
+        region: Some("us-east-1".to_string()),
+        helper: None,
+    });
+
+    assert_eq!(
+        args,
+        vec![
+            "upload-latest",
+            "--user-id",
+            "jeremy",
+            "--profile",
+            "test-profile",
+            "--region",
+            "us-east-1",
+            "--sessions-dir",
+            "/tmp/sessions",
+            "--raw",
+        ]
+    );
+
+    let args = build_jade_sessions_args(CloudSessionsSubcommand::View {
+        session_id: "session_123".to_string(),
+        format: "html".to_string(),
+        output: Some("/tmp/session.html".to_string()),
+        open: true,
+        user_id: "dev".to_string(),
+        profile: Some("profile".to_string()),
+        region: Some("region".to_string()),
+        helper: None,
+    });
+
+    assert_eq!(
+        args,
+        vec![
+            "view",
+            "--user-id",
+            "dev",
+            "--profile",
+            "profile",
+            "--region",
+            "region",
+            "--format",
+            "html",
+            "--output",
+            "/tmp/session.html",
+            "--open",
+            "session_123",
+        ]
+    );
+}
+
+#[test]
+fn resolve_jade_sessions_helper_prefers_explicit_and_env_paths() {
+    let _saved = SavedEnv::capture(&["JCODE_JADE_SESSIONS_HELPER"]);
+    crate::env::set_var("JCODE_JADE_SESSIONS_HELPER", "/tmp/from-env.py");
+
+    assert_eq!(
+        resolve_jade_sessions_helper(Some("/tmp/explicit.py")).unwrap(),
+        std::path::PathBuf::from("/tmp/explicit.py")
+    );
+    assert_eq!(
+        resolve_jade_sessions_helper(None).unwrap(),
+        std::path::PathBuf::from("/tmp/from-env.py")
+    );
+}
+
+#[test]
 fn auth_test_retryable_error_detection_handles_rate_limits() {
     let err = anyhow::anyhow!(
         "Gemini request generateContent failed (HTTP 429 Too Many Requests): RESOURCE_EXHAUSTED"

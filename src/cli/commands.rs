@@ -5,6 +5,8 @@ use serde::Serialize;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
+use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, Stdio};
 
 use crate::{browser, gateway, memory, session, storage, tui};
 
@@ -35,6 +37,237 @@ pub enum AmbientSubcommand {
     Trigger,
     Stop,
     RunVisible,
+}
+
+pub enum CloudSubcommand {
+    Sessions(CloudSessionsSubcommand),
+}
+
+pub enum CloudSessionsSubcommand {
+    Upload {
+        session_file: String,
+        raw: bool,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
+    UploadLatest {
+        sessions_dir: String,
+        raw: bool,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
+    List {
+        limit: usize,
+        json: bool,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
+    Verify {
+        session_id: String,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
+    View {
+        session_id: String,
+        format: String,
+        output: Option<String>,
+        open: bool,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
+}
+
+pub fn run_cloud_command(cmd: CloudSubcommand) -> Result<()> {
+    match cmd {
+        CloudSubcommand::Sessions(action) => run_cloud_sessions_command(action),
+    }
+}
+
+fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
+    let helper_override = cloud_sessions_helper_override(&action);
+    let helper = resolve_jade_sessions_helper(helper_override.as_deref())?;
+    let args = build_jade_sessions_args(action);
+    let status = ProcessCommand::new(&helper)
+        .args(&args)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|err| anyhow::anyhow!("failed to run {}: {err}", helper.display()))?;
+
+    if !status.success() {
+        anyhow::bail!("{} exited with status {status}", helper.display());
+    }
+    Ok(())
+}
+
+fn cloud_sessions_helper_override(action: &CloudSessionsSubcommand) -> Option<String> {
+    match action {
+        CloudSessionsSubcommand::Upload { helper, .. }
+        | CloudSessionsSubcommand::UploadLatest { helper, .. }
+        | CloudSessionsSubcommand::List { helper, .. }
+        | CloudSessionsSubcommand::Verify { helper, .. }
+        | CloudSessionsSubcommand::View { helper, .. } => helper.clone(),
+    }
+}
+
+fn append_common_jade_args(
+    args: &mut Vec<String>,
+    user_id: String,
+    profile: Option<String>,
+    region: Option<String>,
+) {
+    args.extend(["--user-id".to_string(), user_id]);
+    if let Some(profile) = profile {
+        args.extend(["--profile".to_string(), profile]);
+    }
+    if let Some(region) = region {
+        args.extend(["--region".to_string(), region]);
+    }
+}
+
+fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
+    match action {
+        CloudSessionsSubcommand::Upload {
+            session_file,
+            raw,
+            user_id,
+            profile,
+            region,
+            ..
+        } => {
+            let mut args = vec!["upload".to_string()];
+            append_common_jade_args(&mut args, user_id, profile, region);
+            if raw {
+                args.push("--raw".to_string());
+            }
+            args.push(session_file);
+            args
+        }
+        CloudSessionsSubcommand::UploadLatest {
+            sessions_dir,
+            raw,
+            user_id,
+            profile,
+            region,
+            ..
+        } => {
+            let mut args = vec!["upload-latest".to_string()];
+            append_common_jade_args(&mut args, user_id, profile, region);
+            args.extend(["--sessions-dir".to_string(), sessions_dir]);
+            if raw {
+                args.push("--raw".to_string());
+            }
+            args
+        }
+        CloudSessionsSubcommand::List {
+            limit,
+            json,
+            user_id,
+            profile,
+            region,
+            ..
+        } => {
+            let mut args = vec!["list".to_string()];
+            append_common_jade_args(&mut args, user_id, profile, region);
+            args.extend(["--limit".to_string(), limit.to_string()]);
+            if json {
+                args.push("--json".to_string());
+            }
+            args
+        }
+        CloudSessionsSubcommand::Verify {
+            session_id,
+            user_id,
+            profile,
+            region,
+            ..
+        } => {
+            let mut args = vec!["verify".to_string()];
+            append_common_jade_args(&mut args, user_id, profile, region);
+            args.push(session_id);
+            args
+        }
+        CloudSessionsSubcommand::View {
+            session_id,
+            format,
+            output,
+            open,
+            user_id,
+            profile,
+            region,
+            ..
+        } => {
+            let mut args = vec!["view".to_string()];
+            append_common_jade_args(&mut args, user_id, profile, region);
+            args.extend(["--format".to_string(), format]);
+            if let Some(output) = output {
+                args.extend(["--output".to_string(), output]);
+            }
+            if open {
+                args.push("--open".to_string());
+            }
+            args.push(session_id);
+            args
+        }
+    }
+}
+
+fn resolve_jade_sessions_helper(override_path: Option<&str>) -> Result<PathBuf> {
+    if let Some(path) = override_path.map(str::trim).filter(|path| !path.is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+
+    if let Some(path) = std::env::var_os("JCODE_JADE_SESSIONS_HELPER")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+    {
+        return Ok(path);
+    }
+
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("../jade/scripts/jade_sessions.py"));
+        candidates.push(cwd.join("jade/scripts/jade_sessions.py"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join("jade/scripts/jade_sessions.py"));
+    }
+
+    for candidate in candidates {
+        if is_executable_file(&candidate) {
+            return Ok(candidate);
+        }
+    }
+
+    anyhow::bail!(
+        "Could not find Jade session helper. Set --helper PATH or JCODE_JADE_SESSIONS_HELPER. Expected a private helper like ~/jade/scripts/jade_sessions.py"
+    );
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.is_file()
+        && path
+            .metadata()
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
 }
 
 pub async fn run_ambient_command(cmd: AmbientSubcommand) -> Result<()> {

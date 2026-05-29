@@ -86,6 +86,72 @@ fn session_rename_subcommand_parses() {
 }
 
 #[test]
+fn cloud_sessions_subcommands_parse() {
+    let args = Args::try_parse_from([
+        "jcode",
+        "cloud",
+        "sessions",
+        "upload-latest",
+        "--sessions-dir",
+        "/tmp/sessions",
+        "--user-id",
+        "jeremy",
+        "--profile",
+        "test-profile",
+        "--region",
+        "us-east-1",
+    ])
+    .unwrap();
+
+    match args.command {
+        Some(Command::Cloud(CloudCommand::Sessions {
+            action:
+                CloudSessionsCommand::UploadLatest {
+                    sessions_dir,
+                    raw,
+                    jade,
+                },
+        })) => {
+            assert_eq!(sessions_dir, "/tmp/sessions");
+            assert!(!raw);
+            assert_eq!(jade.user_id, "jeremy");
+            assert_eq!(jade.profile.as_deref(), Some("test-profile"));
+            assert_eq!(jade.region.as_deref(), Some("us-east-1"));
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+
+    let args = Args::try_parse_from([
+        "jcode",
+        "cloud",
+        "sessions",
+        "view",
+        "session_123",
+        "--format",
+        "html",
+        "--open",
+    ])
+    .unwrap();
+
+    match args.command {
+        Some(Command::Cloud(CloudCommand::Sessions {
+            action:
+                CloudSessionsCommand::View {
+                    session_id,
+                    format,
+                    open,
+                    ..
+                },
+        })) => {
+            assert_eq!(session_id, "session_123");
+            assert!(matches!(format, CloudSessionViewFormat::Html));
+            assert!(open);
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
 fn login_no_browser_flag_parses() {
     let args = Args::try_parse_from(["jcode", "login", "--no-browser"]).unwrap();
     match args.command {

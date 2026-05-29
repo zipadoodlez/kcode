@@ -6,8 +6,8 @@ use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
 
 use super::args::{
-    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
-    RestartCommand, SessionCommand, TranscriptModeArg,
+    AmbientCommand, Args, AuthCommand, CloudCommand, CloudSessionsCommand, Command, MemoryCommand,
+    ModelCommand, ProviderCommand, RestartCommand, SessionCommand, TranscriptModeArg,
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
@@ -248,6 +248,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Ambient(subcmd)) => {
             commands::run_ambient_command(map_ambient_subcommand(subcmd)).await?;
         }
+        Some(Command::Cloud(subcmd)) => {
+            commands::run_cloud_command(map_cloud_subcommand(subcmd))?;
+        }
         Some(Command::Pair { list, revoke }) => {
             commands::run_pair_command(list, revoke)?;
         }
@@ -483,6 +486,80 @@ fn map_ambient_subcommand(subcmd: AmbientCommand) -> commands::AmbientSubcommand
         AmbientCommand::Trigger => commands::AmbientSubcommand::Trigger,
         AmbientCommand::Stop => commands::AmbientSubcommand::Stop,
         AmbientCommand::RunVisible => commands::AmbientSubcommand::RunVisible,
+    }
+}
+
+fn map_cloud_subcommand(subcmd: CloudCommand) -> commands::CloudSubcommand {
+    match subcmd {
+        CloudCommand::Sessions { action } => {
+            commands::CloudSubcommand::Sessions(map_cloud_sessions_subcommand(action))
+        }
+    }
+}
+
+fn map_cloud_sessions_subcommand(
+    action: CloudSessionsCommand,
+) -> commands::CloudSessionsSubcommand {
+    match action {
+        CloudSessionsCommand::Upload {
+            session_file,
+            raw,
+            jade,
+        } => commands::CloudSessionsSubcommand::Upload {
+            session_file,
+            raw,
+            user_id: jade.user_id,
+            profile: jade.profile,
+            region: jade.region,
+            helper: jade.helper,
+        },
+        CloudSessionsCommand::UploadLatest {
+            sessions_dir,
+            raw,
+            jade,
+        } => commands::CloudSessionsSubcommand::UploadLatest {
+            sessions_dir,
+            raw,
+            user_id: jade.user_id,
+            profile: jade.profile,
+            region: jade.region,
+            helper: jade.helper,
+        },
+        CloudSessionsCommand::List { limit, json, jade } => {
+            commands::CloudSessionsSubcommand::List {
+                limit,
+                json,
+                user_id: jade.user_id,
+                profile: jade.profile,
+                region: jade.region,
+                helper: jade.helper,
+            }
+        }
+        CloudSessionsCommand::Verify { session_id, jade } => {
+            commands::CloudSessionsSubcommand::Verify {
+                session_id,
+                user_id: jade.user_id,
+                profile: jade.profile,
+                region: jade.region,
+                helper: jade.helper,
+            }
+        }
+        CloudSessionsCommand::View {
+            session_id,
+            format,
+            output,
+            open,
+            jade,
+        } => commands::CloudSessionsSubcommand::View {
+            session_id,
+            format: format.as_arg().to_string(),
+            output,
+            open,
+            user_id: jade.user_id,
+            profile: jade.profile,
+            region: jade.region,
+            helper: jade.helper,
+        },
     }
 }
 
