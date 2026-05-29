@@ -1095,6 +1095,22 @@ impl App {
         true
     }
 
+    /// Whether to show the dedicated first-run onboarding welcome screen
+    /// (gray telemetry header, prominent donut, welcome text, login prompt).
+    ///
+    /// This is true exactly when the empty screen is showing onboarding
+    /// suggestion prompts (brand-new install / unauthenticated / new user) so
+    /// the welcome layout and the suggestions stay in sync.
+    pub fn onboarding_welcome_active(&self) -> bool {
+        if self.onboarding_preview_mode {
+            return true;
+        }
+        if !self.display_messages.is_empty() || self.is_processing {
+            return false;
+        }
+        !self.suggestion_prompts().is_empty()
+    }
+
     /// Get suggestion prompts for new users on the initial empty screen.
     /// Returns (label, prompt_text) pairs. Empty once user is experienced or not authenticated.
     pub fn suggestion_prompts(&self) -> Vec<(String, String)> {

@@ -1437,6 +1437,10 @@ impl crate::tui::TuiState for App {
         self.onboarding_preview_mode
     }
 
+    fn onboarding_welcome_active(&self) -> bool {
+        App::onboarding_welcome_active(self)
+    }
+
     fn suggestion_prompts(&self) -> Vec<(String, String)> {
         App::suggestion_prompts(self)
     }

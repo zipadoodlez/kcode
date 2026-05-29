@@ -88,6 +88,8 @@ mod memory_estimates;
 mod memory_ui;
 #[path = "ui_messages.rs"]
 mod messages;
+#[path = "ui_onboarding.rs"]
+mod onboarding;
 #[path = "ui_overlays.rs"]
 mod overlays;
 #[path = "ui_pinned.rs"]
@@ -2019,7 +2021,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         })
     };
 
-    let show_donut = super::idle_donut_active(app);
+    // The first-run onboarding welcome screen draws its own (prominent,
+    // top-positioned) donut, so suppress the default bottom idle donut while it
+    // is active to avoid two donuts on screen.
+    let onboarding_welcome = app.onboarding_welcome_active();
+    let show_donut = !onboarding_welcome && super::idle_donut_active(app);
     let donut_height: u16 = if show_donut { 14 } else { 0 };
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
     let fixed_height = 1
@@ -2215,13 +2221,22 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     }
     record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[6]));
 
-    let margins = draw_messages(
-        frame,
-        app,
-        messages_area,
-        prepared.clone(),
-        chat_scrollbar_visible,
-    );
+    let margins = if onboarding_welcome {
+        onboarding::draw_onboarding_welcome(frame, app, messages_area);
+        info_widget::Margins {
+            right_widths: Vec::new(),
+            left_widths: Vec::new(),
+            centered: app.centered_mode(),
+        }
+    } else {
+        draw_messages(
+            frame,
+            app,
+            messages_area,
+            prepared.clone(),
+            chat_scrollbar_visible,
+        )
+    };
 
     crate::tui::reset_pinned_diagram_debug_snapshot();
     // Render pinned diagram if we have one

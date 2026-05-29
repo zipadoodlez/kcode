@@ -316,6 +316,13 @@ pub trait TuiState {
     fn onboarding_preview_mode(&self) -> bool {
         false
     }
+    /// Whether to render the dedicated first-run onboarding welcome screen
+    /// (gray telemetry header, prominent donut, welcome text, and the login
+    /// prompt). True for brand-new installs / unauthenticated users, or when
+    /// previewing onboarding.
+    fn onboarding_welcome_active(&self) -> bool {
+        self.onboarding_preview_mode()
+    }
     /// Suggestion prompts for new users (shown in initial empty state).
     /// Returns (label, prompt_text) pairs. Empty if user is experienced or not authenticated.
     fn suggestion_prompts(&self) -> Vec<(String, String)>;
