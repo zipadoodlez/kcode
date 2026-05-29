@@ -31,6 +31,7 @@ pub mod embedding_stub;
 pub use embedding_stub as embedding;
 pub mod env;
 pub mod gateway;
+pub mod generated_image;
 pub mod gmail;
 pub mod goal;
 pub mod id;
