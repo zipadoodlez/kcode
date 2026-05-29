@@ -77,6 +77,11 @@ pub fn resolve_openai_compatible_profile_with_api_key_hint(
     apply_profile_key_based_endpoint_overrides(profile, &mut resolved, api_key_hint);
 
     if profile.id != OPENAI_COMPAT_PROFILE.id {
+        if let Some(newest_model) =
+            newest_released_model_for_resolved_openai_compatible_profile(profile.id, &resolved)
+        {
+            resolved.default_model = Some(newest_model);
+        }
         return resolved;
     }
 
@@ -126,6 +131,41 @@ pub fn resolve_openai_compatible_profile_with_api_key_hint(
     }
 
     resolved
+}
+
+pub fn newest_released_model_for_openai_compatible_profile(profile_id: &str) -> Option<String> {
+    let profile = openai_compatible_profile_by_id(profile_id)?;
+    let resolved = resolve_openai_compatible_profile(profile);
+    newest_released_model_for_resolved_openai_compatible_profile(profile_id, &resolved)
+}
+
+fn newest_released_model_for_resolved_openai_compatible_profile(
+    profile_id: &str,
+    resolved: &ResolvedOpenAiCompatibleProfile,
+) -> Option<String> {
+    openai_compatible_profile_by_id(profile_id)?;
+    let cache = jcode_provider_openrouter::load_disk_cache_entry_for_namespace(&resolved.id)?;
+
+    let source_matches = cache
+        .source_api_base
+        .as_deref()
+        .and_then(normalize_api_base)
+        == normalize_api_base(&resolved.api_base);
+    if !source_matches {
+        return None;
+    }
+
+    cache
+        .models
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, model)| {
+            let id = model.id.trim().to_string();
+            let created = model.created?;
+            (!id.is_empty()).then_some((created, std::cmp::Reverse(index), id))
+        })
+        .max_by_key(|(created, reverse_index, _)| (*created, *reverse_index))
+        .map(|(_, _, id)| id)
 }
 
 fn apply_profile_key_based_endpoint_overrides(

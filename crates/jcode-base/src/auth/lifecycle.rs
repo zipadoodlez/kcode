@@ -193,6 +193,18 @@ pub fn provider_model_to_select_after_auth(
             .map(|route| route.model.clone());
     }
 
+    if let Some(provider_id) = activation.provider_id.as_deref()
+        && let Some(newest_model) =
+            crate::provider_catalog::newest_released_model_for_openai_compatible_profile(
+                provider_id,
+            )
+        && matching_routes
+            .iter()
+            .any(|route| route.model == newest_model)
+    {
+        return Some(newest_model);
+    }
+
     matching_routes.first().map(|route| route.model.clone())
 }
 
@@ -247,9 +259,7 @@ fn normalize_model_for_preference(model: &str) -> String {
     let lowered = model.trim().to_ascii_lowercase();
     let without_long_context = lowered.strip_suffix("[1m]").unwrap_or(&lowered);
     match without_long_context.rsplit_once('-') {
-        Some((head, tail))
-            if tail.len() == 8 && tail.bytes().all(|byte| byte.is_ascii_digit()) =>
-        {
+        Some((head, tail)) if tail.len() == 8 && tail.bytes().all(|byte| byte.is_ascii_digit()) => {
             head.to_string()
         }
         _ => without_long_context.to_string(),
@@ -1133,7 +1143,12 @@ mod tests {
             expected_catalog_namespace: Some("cerebras".to_string()),
         };
         let routes = vec![
-            route("llama3.1-8b", "Cerebras", "openai-compatible:cerebras", true),
+            route(
+                "llama3.1-8b",
+                "Cerebras",
+                "openai-compatible:cerebras",
+                true,
+            ),
             route(
                 "qwen-3-235b-a22b-instruct-2507",
                 "Cerebras",
@@ -1149,14 +1164,75 @@ mod tests {
         );
     }
 
+    #[test]
+    fn post_auth_model_selection_prefers_newest_live_release_for_unranked_provider() {
+        let _env = EnvGuard::new(&["JCODE_HOME"]);
+        let temp = tempfile::tempdir().expect("tempdir");
+        crate::env::set_var("JCODE_HOME", temp.path());
+        jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
+            "cerebras",
+            &[
+                jcode_provider_openrouter::ModelInfo {
+                    id: "llama3.1-8b".to_string(),
+                    name: String::new(),
+                    context_length: None,
+                    pricing: Default::default(),
+                    created: Some(1_700_000_000),
+                },
+                jcode_provider_openrouter::ModelInfo {
+                    id: "qwen-3-235b-a22b-instruct-2507".to_string(),
+                    name: String::new(),
+                    context_length: None,
+                    pricing: Default::default(),
+                    created: Some(1_800_000_000),
+                },
+            ],
+            Some("https://api.cerebras.ai/v1"),
+        );
+
+        let activation = AuthActivationResult {
+            provider_id: Some("cerebras".to_string()),
+            provider_label: Some("Cerebras".to_string()),
+            activated_model: None,
+            expected_runtime: Some("openai-compatible".to_string()),
+            expected_catalog_namespace: Some("cerebras".to_string()),
+        };
+        let routes = vec![
+            route(
+                "llama3.1-8b",
+                "Cerebras",
+                "openai-compatible:cerebras",
+                true,
+            ),
+            route(
+                "qwen-3-235b-a22b-instruct-2507",
+                "Cerebras",
+                "openai-compatible:cerebras",
+                true,
+            ),
+        ];
+
+        assert_eq!(
+            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("qwen-3-235b-a22b-instruct-2507"),
+            "unranked providers should prefer the newest live release when the catalog includes release timestamps"
+        );
+    }
+
     /// The set of canonical provider ids whose post-login fallback must apply a
     /// curated flagship-first order. These are the providers that expose
     /// Claude/OpenAI models under their bare canonical ids and report no
     /// `activated_model`, so a "cheap model first" catalog would otherwise
     /// auto-select the wrong default. Kept here as the single source of truth
     /// the exhaustive walk asserts against.
-    const RANKED_PROVIDER_IDS: &[&str] =
-        &["claude", "claude-api", "openai", "openai-api", "copilot", "cursor"];
+    const RANKED_PROVIDER_IDS: &[&str] = &[
+        "claude",
+        "claude-api",
+        "openai",
+        "openai-api",
+        "copilot",
+        "cursor",
+    ];
 
     fn activation_for_provider_id(provider_id: &str) -> AuthActivationResult {
         AuthActivationResult {
@@ -1195,8 +1271,10 @@ mod tests {
                 ranked_seen.insert(provider_id.to_string());
             }
         }
-        let expected_ranked: std::collections::BTreeSet<String> =
-            RANKED_PROVIDER_IDS.iter().map(|id| id.to_string()).collect();
+        let expected_ranked: std::collections::BTreeSet<String> = RANKED_PROVIDER_IDS
+            .iter()
+            .map(|id| id.to_string())
+            .collect();
         assert_eq!(
             ranked_seen, expected_ranked,
             "the ranked providers reachable from the login catalog drifted from RANKED_PROVIDER_IDS"

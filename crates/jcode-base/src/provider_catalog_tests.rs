@@ -106,6 +106,38 @@ fn auth_issue_profile_metadata_matches_direct_provider_endpoints() {
 }
 
 #[test]
+fn resolved_named_profile_suggests_newest_cached_live_release() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvGuard::save(&["JCODE_HOME"]);
+    let temp = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+    jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
+        "cerebras",
+        &[
+            jcode_provider_openrouter::ModelInfo {
+                id: "older-model".to_string(),
+                name: String::new(),
+                context_length: None,
+                pricing: Default::default(),
+                created: Some(1_700_000_000),
+            },
+            jcode_provider_openrouter::ModelInfo {
+                id: "newer-model".to_string(),
+                name: String::new(),
+                context_length: None,
+                pricing: Default::default(),
+                created: Some(1_800_000_000),
+            },
+        ],
+        Some(CEREBRAS_PROFILE.api_base),
+    );
+
+    let resolved = resolve_openai_compatible_profile(CEREBRAS_PROFILE);
+
+    assert_eq!(resolved.default_model.as_deref(), Some("newer-model"));
+}
+
+#[test]
 fn minimax_token_plan_keys_resolve_to_china_endpoint_without_changing_international_default() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&["OPENAI_API_KEY"]);
