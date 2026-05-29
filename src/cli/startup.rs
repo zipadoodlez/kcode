@@ -42,6 +42,17 @@ pub async fn run() -> Result<()> {
             .dispatch_permission_request(action, description, request_id);
     });
 
+    // Invert the legacy memory -> skill dependency: memory collects synthetic
+    // entries from registered providers, and skill (the higher layer that
+    // depends on MemoryEntry) registers its registry->memory adapter here.
+    crate::memory::register_synthetic_entry_provider(|| {
+        crate::skill::SkillRegistry::shared_snapshot()
+            .list()
+            .into_iter()
+            .map(|skill| skill.as_memory_entry())
+            .collect()
+    });
+
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 
