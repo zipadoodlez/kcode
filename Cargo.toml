@@ -15,6 +15,7 @@ members = [
     "crates/jcode-gateway-types",
     "crates/jcode-import-core",
     "crates/jcode-pdf",
+    "crates/jcode-logging",
     "crates/jcode-background-types",
     "crates/jcode-batch-types",
     "crates/jcode-build-support",
@@ -137,6 +138,7 @@ proctitle = "0.1"
 jcode-embedding = { path = "crates/jcode-embedding", optional = true }
 jcode-gateway-types = { path = "crates/jcode-gateway-types" }
 jcode-import-core = { path = "crates/jcode-import-core" }
+jcode-logging = { path = "crates/jcode-logging" }
 
 # OAuth
 base64 = "0.22"
