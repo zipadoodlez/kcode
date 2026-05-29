@@ -9,6 +9,8 @@ autobins = false
 members = [
     ".",
     "crates/jcode-agent-runtime",
+    "crates/jcode-app-core",
+    "crates/jcode-base",
     "crates/jcode-build-meta",
     "crates/jcode-ambient-types",
     "crates/jcode-auth-types",

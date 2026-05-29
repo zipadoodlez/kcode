@@ -6,102 +6,44 @@
     clippy::useless_conversion
 )]
 
-//! Application core for jcode.
+//! Application core for jcode (upper layer).
 //!
-//! This crate holds every non-presentation module (server, agent, provider,
-//! auth, session, tool, config, memory, telemetry, ...) that used to live in
-//! the monolithic root `jcode` crate. It is compiled as its own rustc unit so
-//! the largest compilation unit (and its peak memory) is much smaller.
-//!
-//! The root `jcode` crate (cli + tui + bin) re-exports this crate's modules via
-//! `pub use jcode_app_core::*`, so existing `crate::<module>` paths continue to
-//! resolve unchanged.
+//! This crate holds the server/tool/agent layer and its presentation-adjacent
+//! leaves. The foundational layer it builds on (provider, auth, config, session,
+//! message, memory, telemetry, ...) lives in the `jcode-base` crate and is
+//! re-exported here via `pub use jcode_base::*`, so every existing
+//! `crate::<module>` path (e.g. `crate::config`, `crate::provider`) keeps
+//! resolving unchanged across this crate and the root `jcode` crate, which in
+//! turn re-exports this crate via `pub use jcode_app_core::*`.
 
+// Foundational layer: re-export every `jcode-base` module so `crate::<module>`
+// paths resolve here exactly as they did before the split.
+pub use jcode_base::*;
+
+// Upper layer (server / tool / agent and supporting leaves).
 pub mod agent;
 pub mod ambient;
 pub mod ambient_runner;
 pub mod ambient_scheduler;
-pub mod auth;
-pub mod background;
-pub mod browser;
-pub mod build;
-pub mod bus;
-pub mod cache_tracker;
 pub mod catchup;
 pub mod channel;
-pub mod client_input;
-pub mod compaction;
-pub mod config;
-pub mod copilot_usage;
-pub mod dictation;
-#[cfg(feature = "embeddings")]
-pub mod embedding;
-#[cfg(not(feature = "embeddings"))]
-pub mod embedding_stub;
-#[cfg(not(feature = "embeddings"))]
-pub use embedding_stub as embedding;
-pub mod env;
 pub mod external_auth;
-pub mod gateway;
-pub mod generated_image;
-pub mod gmail;
-pub mod goal;
-pub mod id;
-pub mod import;
-pub mod live_tests;
-pub mod logging;
-pub mod login_qr;
-pub mod mcp;
-pub mod memory;
-pub mod memory_agent;
-pub mod memory_graph;
-pub mod memory_log;
-pub mod memory_types;
-pub mod message;
 pub mod mission;
 pub mod network_retry;
 pub mod notifications;
 pub mod overnight;
 pub mod perf;
-pub mod plan;
-pub mod platform;
-pub mod process_memory;
-pub mod process_title;
-pub mod prompt;
-pub mod protocol;
-pub mod provider;
-pub mod provider_catalog;
-pub mod registry;
 pub mod replay;
 pub mod restart_snapshot;
-pub mod runtime_memory_log;
-pub mod safety;
-pub mod secret_input;
 pub mod server;
 pub mod server_spawn;
-pub mod session;
 pub mod session_launch;
 pub mod session_rebuild;
-pub mod session_list_cache;
 pub mod setup_hints;
-pub mod side_panel;
-pub mod sidecar;
-pub mod skill;
-pub mod soft_interrupt_store;
 pub mod ssh_remote;
 pub mod startup_profile;
-pub mod stdin_detect;
-pub mod storage;
-pub mod subscription_catalog;
-pub mod telegram;
-pub mod telemetry;
-pub mod terminal_launch;
-pub mod todo;
 pub mod tool;
-pub mod transport;
 pub mod update;
-pub mod usage;
-pub mod util;
 
 use std::sync::Mutex;
 

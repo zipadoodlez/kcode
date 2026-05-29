@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-const MISSION_CONTINUATION_TEMPLATE: &str = include_str!("prompt/mission_continuation.md");
+use crate::prompt::MISSION_CONTINUATION_TEMPLATE;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
