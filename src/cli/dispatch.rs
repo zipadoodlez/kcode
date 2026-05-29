@@ -592,11 +592,13 @@ fn map_cloud_sessions_subcommand(
             limit,
             output,
             open,
+            with_view,
             jade,
         } => commands::CloudSessionsSubcommand::Dashboard {
             limit,
             output,
             open,
+            with_view,
             user_id: jade.user_id,
             profile: jade.profile,
             region: jade.region,

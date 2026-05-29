@@ -607,6 +607,10 @@ pub(crate) enum CloudSessionsCommand {
         #[arg(long)]
         open: bool,
 
+        /// Also download each session and link rows to a local per-session viewer
+        #[arg(long)]
+        with_view: bool,
+
         #[command(flatten)]
         jade: JadeCloudOptions,
     },

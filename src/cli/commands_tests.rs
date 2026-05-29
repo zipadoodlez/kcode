@@ -598,7 +598,8 @@ fn render_cloud_sessions_dashboard_html_escapes_and_lists_rows() {
     )
     .expect("parse items");
 
-    let html = render_cloud_sessions_dashboard_html("alice", &items);
+    let html =
+        render_cloud_sessions_dashboard_html("alice", &items, &std::collections::BTreeMap::new());
     assert!(html.contains("Jade Cloud Sessions"));
     assert!(html.contains("user: alice"));
     assert!(html.contains("2 session(s)"));
@@ -614,9 +615,55 @@ fn render_cloud_sessions_dashboard_html_escapes_and_lists_rows() {
 
 #[test]
 fn render_cloud_sessions_dashboard_html_handles_empty() {
-    let html = render_cloud_sessions_dashboard_html("dev", &[]);
+    let html = render_cloud_sessions_dashboard_html("dev", &[], &std::collections::BTreeMap::new());
     assert!(html.contains("0 session(s)"));
     assert!(html.contains("No uploaded sessions found."));
+}
+
+#[test]
+fn render_cloud_sessions_dashboard_html_links_rows_with_view_files() {
+    let items: Vec<CloudSessionListItem> = serde_json::from_str(
+        r#"[
+          {"session_id":"session_x","title":"X","message_count":1,"uploaded_at":"2026-05-29T00:00:00Z"},
+          {"session_id":"session_y","title":"Y","message_count":2,"uploaded_at":"2026-05-28T00:00:00Z"}
+        ]"#,
+    )
+    .expect("parse items");
+    let mut links = std::collections::BTreeMap::new();
+    links.insert(
+        "session_x".to_string(),
+        "dash-views/session_x.html".to_string(),
+    );
+
+    let html = render_cloud_sessions_dashboard_html("alice", &items, &links);
+    // Linked session gets an anchor to its relative viewer file.
+    assert!(html.contains("<a href='dash-views/session_x.html'>session_x</a>"));
+    // Session without a generated viewer stays plain text (no anchor).
+    assert!(html.contains("<td class='id'>session_y</td>"));
+}
+
+#[test]
+fn sanitize_filename_keeps_safe_chars_and_replaces_others() {
+    assert_eq!(
+        sanitize_filename("session_abc-123.json"),
+        "session_abc-123.json"
+    );
+    assert_eq!(sanitize_filename("a/b c:d"), "a_b_c_d");
+}
+
+#[test]
+fn dashboard_views_dir_is_sibling_of_dashboard() {
+    let dir = dashboard_views_dir(std::path::Path::new("/tmp/out/dash.html"));
+    assert_eq!(dir, std::path::PathBuf::from("/tmp/out/dash-views"));
+}
+
+#[test]
+fn relative_link_is_relative_to_dashboard_parent() {
+    let link = relative_link(
+        std::path::Path::new("/tmp/out/dash.html"),
+        std::path::Path::new("/tmp/out/dash-views/session_x.html"),
+    );
+    assert_eq!(link.as_deref(), Some("dash-views/session_x.html"));
 }
 
 #[test]

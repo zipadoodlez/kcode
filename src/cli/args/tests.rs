@@ -49,6 +49,7 @@ fn model_list_subcommand_parses() {
         "--limit",
         "10",
         "--open",
+        "--with-view",
         "--user-id",
         "jeremy",
     ])
@@ -61,12 +62,14 @@ fn model_list_subcommand_parses() {
                     limit,
                     output,
                     open,
+                    with_view,
                     jade,
                 },
         })) => {
             assert_eq!(limit, 10);
             assert!(output.is_none());
             assert!(open);
+            assert!(with_view);
             assert_eq!(jade.user_id, "jeremy");
         }
         other => panic!("unexpected command: {:?}", other),
