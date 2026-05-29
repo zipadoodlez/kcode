@@ -453,6 +453,8 @@ fn reset_prompt_viewport_state_for_test() {
 mod basic;
 #[path = "diagrams.rs"]
 mod diagrams;
+#[path = "inline_picker.rs"]
+mod inline_picker;
 #[path = "onboarding.rs"]
 mod onboarding;
 #[path = "prepare.rs"]

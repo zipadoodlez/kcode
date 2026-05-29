@@ -400,15 +400,18 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         0
     };
     if let Some(hint) = keybind_hint.filter(|_| hint_rows == 1) {
+        // The hint lives outside the box, so it may use the full available
+        // width rather than the (often narrow) intrinsic box width. This keeps
+        // the favorites/default shortcuts visible even for short model lists.
         let hint_area = Rect {
-            x: area.x + horizontal_offset,
+            x: area.x,
             y: area.y,
-            width: outer_width as u16,
+            width: area.width,
             height: 1,
         };
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                truncate_display(hint, outer_width.saturating_sub(1)),
+                truncate_display(hint, area.width.saturating_sub(1) as usize),
                 Style::default().fg(rgb(120, 120, 150)).italic(),
             ))),
             hint_area,
