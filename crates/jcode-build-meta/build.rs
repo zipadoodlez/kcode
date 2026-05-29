@@ -1,9 +1,6 @@
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::thread;
-use std::time::{Duration, SystemTime};
 
 // Build metadata generator for the jcode workspace.
 //
@@ -142,22 +139,42 @@ fn main() {
         println!("cargo:rustc-env=JCODE_RELEASE_BUILD=1");
     }
 
-    // Re-run if git HEAD changes (paths resolved against the repo root, since
-    // the build script's CWD is this crate's directory, not the workspace root).
-    println!(
-        "cargo:rerun-if-changed={}",
-        repo_root.join(".git/HEAD").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        repo_root.join(".git/index").display()
-    );
+    // Re-run only on inputs that should genuinely change the embedded metadata.
+    //
+    // IMPORTANT: we deliberately do NOT declare `.git/HEAD` or `.git/index` as
+    // `rerun-if-changed` inputs. Those files' mtimes change on every `git add`,
+    // `git status`, commit, and concurrent-agent git op. Cargo treats a build
+    // script as dirty whenever any declared input is newer than the script's
+    // output file, reruns it, and then force-recompiles every dependent crate
+    // via StaleDepFingerprint -- even when the emitted output is byte-identical.
+    // Since `jcode-build-meta` sits at the bottom of the crate graph
+    // (base -> app-core -> tui -> cli all depend on it), watching the git files
+    // turned routine git activity into a full-tree recompile (~18s) on every
+    // incremental build. See the deterministic-semver note in
+    // `resolve_build_semver` for the companion fix.
+    //
+    // Correctness is preserved where it matters:
+    //   * Release/dist builds set JCODE_RELEASE_BUILD=1 and JCODE_BUILD_SEMVER,
+    //     both of which DO force a rerun (declared below), so released binaries
+    //     always embed the exact version/hash.
+    //   * A `[package].version` bump touches Cargo.toml (declared below), which
+    //     refreshes the embedded metadata for the next build.
+    //   * `cargo clean` / editing this build script naturally re-runs it.
+    // For ordinary dev builds the embedded git hash/dirty flag may lag the very
+    // latest commit within a session; that is a cosmetic `--version` detail and
+    // an acceptable trade for keeping incremental builds incremental.
     println!(
         "cargo:rerun-if-changed={}",
         repo_root.join("Cargo.toml").display()
     );
     println!("cargo:rerun-if-env-changed=JCODE_RELEASE_BUILD");
     println!("cargo:rerun-if-env-changed=JCODE_BUILD_SEMVER");
+    // Allow callers to force a metadata refresh (e.g. install scripts) without a
+    // full clean, by bumping this env var.
+    println!("cargo:rerun-if-env-changed=JCODE_BUILD_GIT_HASH");
+    println!("cargo:rerun-if-env-changed=JCODE_BUILD_GIT_DATE");
+    println!("cargo:rerun-if-env-changed=JCODE_BUILD_GIT_DIRTY");
+    println!("cargo:rerun-if-env-changed=JCODE_BUILD_GIT_TAG");
 }
 
 /// Workspace root, derived from this crate's manifest dir (`crates/jcode-build-meta`).
@@ -219,145 +236,32 @@ fn resolve_build_semver(base_version: (u32, u32, u32)) -> Result<String, String>
         return Ok(explicit);
     }
 
-    let next_patch = next_build_patch(base_version)?;
-    Ok(format!(
-        "{}.{}.{}",
-        base_version.0, base_version.1, next_patch
-    ))
+    // Dev builds derive the patch number deterministically from committed git
+    // state: `base.patch + <commits since the base-version tag>`. This is a pure
+    // function of HEAD, so the emitted JCODE_SEMVER/JCODE_VERSION only change when
+    // an actual commit lands, NOT on every build-script rerun.
+    //
+    // The previous implementation incremented a persistent counter on every
+    // rerun. Because the build script reruns whenever `.git/index`/`.git/HEAD`
+    // change (any `git add`, commit, or concurrent agent git op), that side
+    // effect churned the version string on essentially every build, which in
+    // turn invalidated `jcode-build-meta` and force-recompiled the entire crate
+    // graph (base -> app-core -> tui -> cli). Deriving the value deterministically
+    // keeps incremental rebuilds incremental.
+    let offset = commits_since_base_tag(base_version).unwrap_or(0);
+    let patch = base_version.2.saturating_add(offset);
+    Ok(format!("{}.{}.{}", base_version.0, base_version.1, patch))
 }
 
-fn next_build_patch(base_version: (u32, u32, u32)) -> Result<u32, String> {
-    let counter_file = build_counter_file();
-    if let Some(parent) = counter_file.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("create counter dir {}: {err}", parent.display()))?;
-    }
-
-    let lock_path = counter_file.with_extension("lock");
-    let _lock = BuildCounterLock::acquire(&lock_path)?;
-    let mut counters = load_patch_counters(&counter_file)
-        .map_err(|err| format!("read counter file {}: {err}", counter_file.display()))?;
-
-    let key = format!("{}.{}", base_version.0, base_version.1);
-    let previous = counters.get(&key).copied().unwrap_or(base_version.2);
-    let next = previous.max(base_version.2).saturating_add(1);
-    counters.insert(key, next);
-    save_patch_counters(&counter_file, &counters)
-        .map_err(|err| format!("write counter file {}: {err}", counter_file.display()))?;
-    Ok(next)
-}
-
-fn build_counter_file() -> PathBuf {
-    if let Some(target_root) = target_root_from_out_dir() {
-        return target_root.join("jcode-build").join("patch-counters.txt");
-    }
-
-    repo_root()
-        .join("target")
-        .join("jcode-build")
-        .join("patch-counters.txt")
-}
-
-fn target_root_from_out_dir() -> Option<PathBuf> {
-    let out_dir = std::env::var("OUT_DIR").ok()?;
-    let out_dir = PathBuf::from(out_dir);
-    for ancestor in out_dir.ancestors() {
-        if ancestor.file_name().and_then(|name| name.to_str()) == Some("target") {
-            return Some(ancestor.to_path_buf());
-        }
-    }
-    None
-}
-
-fn load_patch_counters(path: &Path) -> std::io::Result<std::collections::BTreeMap<String, u32>> {
-    let mut counters = std::collections::BTreeMap::new();
-    let data = match fs::read_to_string(path) {
-        Ok(data) => data,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(counters),
-        Err(err) => return Err(err),
-    };
-
-    for line in data.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        if let Some((key, value)) = line.split_once('=')
-            && let Ok(value) = value.trim().parse::<u32>()
-        {
-            counters.insert(key.trim().to_string(), value);
-        }
-    }
-
-    Ok(counters)
-}
-
-fn save_patch_counters(
-    path: &Path,
-    counters: &std::collections::BTreeMap<String, u32>,
-) -> std::io::Result<()> {
-    let contents = counters
-        .iter()
-        .map(|(key, value)| format!("{key}={value}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    fs::write(path, format!("{contents}\n"))
-}
-
-struct BuildCounterLock {
-    path: PathBuf,
-}
-
-impl BuildCounterLock {
-    fn acquire(path: &Path) -> Result<Self, String> {
-        const MAX_ATTEMPTS: usize = 200;
-        const SLEEP_MS: u64 = 50;
-        const STALE_SECS: u64 = 300;
-
-        for _ in 0..MAX_ATTEMPTS {
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(path)
-            {
-                Ok(_) => {
-                    return Ok(Self {
-                        path: path.to_path_buf(),
-                    });
-                }
-                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
-                    if lock_is_stale(path, STALE_SECS) {
-                        let _ = fs::remove_file(path);
-                        continue;
-                    }
-                    thread::sleep(Duration::from_millis(SLEEP_MS));
-                }
-                Err(err) => {
-                    return Err(format!("create lock {}: {err}", path.display()));
-                }
-            }
-        }
-
-        Err(format!(
-            "timed out waiting for build counter lock {}",
-            path.display()
-        ))
-    }
-}
-
-impl Drop for BuildCounterLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
-}
-
-fn lock_is_stale(path: &Path, stale_after_secs: u64) -> bool {
-    let Ok(metadata) = fs::metadata(path) else {
-        return false;
-    };
-    let Ok(modified) = metadata.modified() else {
-        return false;
-    };
-    let Ok(elapsed) = SystemTime::now().duration_since(modified) else {
-        return false;
-    };
-    elapsed.as_secs() >= stale_after_secs
+/// Count commits between the base-version tag (`vMAJOR.MINOR.PATCH`) and HEAD.
+/// Returns `None` when git is unavailable or the tag does not exist yet, in which
+/// case the caller falls back to the base patch (still deterministic).
+fn commits_since_base_tag(base_version: (u32, u32, u32)) -> Option<u32> {
+    let repo_root = repo_root();
+    let tag = format!("v{}.{}.{}", base_version.0, base_version.1, base_version.2);
+    let range = format!("{tag}..HEAD");
+    let out = git_output(&repo_root, ["rev-list", "--count", range.as_str()])?;
+    out.trim().parse::<u32>().ok()
 }
 
 fn env_or_metadata_or_git<const N: usize>(
