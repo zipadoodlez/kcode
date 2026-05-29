@@ -905,7 +905,14 @@ fn test_render_tool_message_keeps_bash_command_visible_when_row_is_narrow() {
 /// window; it should be empty so only the tool name renders.
 #[test]
 fn test_action_tools_hide_missing_placeholder_for_streaming_input() {
-    let action_tools = ["bg", "swarm", "initiative", "selfdev", "side_panel", "memory"];
+    let action_tools = [
+        "bg",
+        "swarm",
+        "initiative",
+        "selfdev",
+        "side_panel",
+        "memory",
+    ];
     let transient_inputs = [serde_json::Value::Null, serde_json::json!({})];
 
     for name in action_tools {
@@ -957,4 +964,3 @@ fn test_action_tools_degrade_to_tool_name_when_action_absent() {
         );
     }
 }
-

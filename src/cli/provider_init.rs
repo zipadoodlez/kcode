@@ -16,10 +16,10 @@ use crate::tool;
 use super::login::run_login_provider;
 use super::output;
 
+pub(crate) use crate::external_auth::maybe_run_external_auth_auto_import_flow;
 use crate::external_auth::{
     can_prompt_for_external_auth, external_auth_blocked_message, prompt_to_trust_external_auth,
 };
-pub(crate) use crate::external_auth::maybe_run_external_auth_auto_import_flow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ProviderChoice {

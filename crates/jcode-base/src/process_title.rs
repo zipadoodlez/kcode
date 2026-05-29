@@ -101,11 +101,7 @@ pub fn set_client_display_title(session_name: &str, is_selfdev: bool) {
     set_title(compact_process_title(prefix, Some(session_name)));
 }
 
-pub fn set_client_remote_display_title(
-    server_name: &str,
-    session_name: &str,
-    is_selfdev: bool,
-) {
+pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is_selfdev: bool) {
     if server_name.is_empty() || server_name.eq_ignore_ascii_case("jcode") {
         set_client_display_title(session_name, is_selfdev);
         return;

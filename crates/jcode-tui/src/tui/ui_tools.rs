@@ -817,7 +817,11 @@ pub(super) fn get_tool_summary_with_budget(
     // completes. Rendering field-specific placeholders like "action missing" in
     // that window produces flicker and log spam, so fall back to an empty
     // summary (the tool name is shown separately) until real arguments exist.
-    if tool.input.as_object().is_none_or(|object| object.is_empty()) {
+    if tool
+        .input
+        .as_object()
+        .is_none_or(|object| object.is_empty())
+    {
         return String::new();
     }
 

@@ -87,13 +87,17 @@ impl GeneratedImagePanelInfo {
     fn summary_parts(&self) -> Vec<String> {
         let mut parts = Vec::new();
         if let Some((width, height)) = self.dimensions {
-            parts.push(jcode_terminal_image::metadata::format_dimensions(width, height));
+            parts.push(jcode_terminal_image::metadata::format_dimensions(
+                width, height,
+            ));
         }
         parts.push(jcode_terminal_image::metadata::compact_image_format(
             &self.output_format,
         ));
         if let Some(byte_count) = self.byte_count {
-            parts.push(jcode_terminal_image::metadata::format_byte_count(byte_count));
+            parts.push(jcode_terminal_image::metadata::format_byte_count(
+                byte_count,
+            ));
         }
         if let Some(source) = self.source_summary() {
             parts.push(source);
@@ -148,7 +152,9 @@ impl GeneratedImagePanelInfo {
         if let Some(byte_count) = self.byte_count {
             markdown.push_str(&format!(
                 "- Bytes: {}\n",
-                markdown_code(&jcode_terminal_image::metadata::format_byte_count(byte_count))
+                markdown_code(&jcode_terminal_image::metadata::format_byte_count(
+                    byte_count
+                ))
             ));
         }
         if let Some(metadata_path) = self.metadata_path.as_deref() {

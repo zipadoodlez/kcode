@@ -376,7 +376,10 @@ impl App {
             if recovery.did_anything() {
                 self.messages = provider_messages.clone();
                 self.sync_session_compaction_state_from_manager(&manager);
-                return Some(format!("{} You can continue.", recovery.summary_line(usage)));
+                return Some(format!(
+                    "{} You can continue.",
+                    recovery.summary_line(usage)
+                ));
             }
         }
 

@@ -52,10 +52,7 @@ impl Default for ProviderRuntimeState {
 }
 
 impl ProviderStateEvent {
-    pub fn selected_model(
-        source: ProviderModelSelectionSource,
-        model: impl Into<String>,
-    ) -> Self {
+    pub fn selected_model(source: ProviderModelSelectionSource, model: impl Into<String>) -> Self {
         match source {
             ProviderModelSelectionSource::Startup => Self::RuntimeModelObserved {
                 model: model.into(),

@@ -38,8 +38,11 @@ pub async fn run() -> Result<()> {
     // permission request and the notifications layer (which depends on safety
     // types) delivers it via the dispatcher registered here.
     crate::safety::register_permission_notifier(|action, description, request_id| {
-        crate::notifications::NotificationDispatcher::new()
-            .dispatch_permission_request(action, description, request_id);
+        crate::notifications::NotificationDispatcher::new().dispatch_permission_request(
+            action,
+            description,
+            request_id,
+        );
     });
 
     // Invert the legacy memory -> skill dependency: memory collects synthetic
@@ -66,12 +69,8 @@ pub async fn run() -> Result<()> {
     // without referencing cli.
     crate::server_spawn::register_default_server_spawner(Box::new(|| {
         Box::pin(async {
-            dispatch::spawn_server(
-                &crate::cli::provider_init::ProviderChoice::Auto,
-                None,
-                None,
-            )
-            .await
+            dispatch::spawn_server(&crate::cli::provider_init::ProviderChoice::Auto, None, None)
+                .await
         })
     }));
 

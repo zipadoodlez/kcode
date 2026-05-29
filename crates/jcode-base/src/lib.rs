@@ -28,6 +28,10 @@ pub mod compaction;
 pub mod config;
 pub mod copilot_usage;
 pub mod dictation;
+#[cfg(feature = "embeddings")]
+pub mod embedding;
+#[cfg(not(feature = "embeddings"))]
+pub mod embedding_stub;
 pub mod env;
 pub mod gateway;
 pub mod generated_image;
@@ -73,10 +77,5 @@ pub mod todo;
 pub mod transport;
 pub mod usage;
 pub mod util;
-#[cfg(feature = "embeddings")]
-pub mod embedding;
-#[cfg(not(feature = "embeddings"))]
-pub mod embedding_stub;
 #[cfg(not(feature = "embeddings"))]
 pub use embedding_stub as embedding;
-
