@@ -369,6 +369,56 @@ mod tests {
     }
 
     #[test]
+    fn resolve_login_provider_loose_matches_id_alias_and_display_name() {
+        // id
+        assert_eq!(
+            resolve_login_provider_loose("anthropic-api").map(|d| d.id),
+            Some("anthropic-api")
+        );
+        // alias
+        assert_eq!(
+            resolve_login_provider_loose("claude-api").map(|d| d.id),
+            Some("anthropic-api")
+        );
+        // display name (the form LoginCompleted carries for API-key paste logins)
+        assert_eq!(
+            resolve_login_provider_loose("Anthropic API").map(|d| d.id),
+            Some("anthropic-api")
+        );
+        // display name is matched case-insensitively
+        assert_eq!(
+            resolve_login_provider_loose("anthropic api").map(|d| d.id),
+            Some("anthropic-api")
+        );
+        // unknown input stays unresolved
+        assert_eq!(resolve_login_provider_loose("not-a-provider"), None);
+    }
+
+    #[test]
+    fn resolve_login_provider_loose_resolves_every_descriptor_by_id_and_display_name() {
+        // Guards the LoginCompleted attribution path: the TUI publishes either a
+        // descriptor id (OAuth logins) or a display label (API-key paste logins),
+        // and both must resolve so the post-login auth-change refresh is
+        // attributed to the right provider instead of falling back to the
+        // session's active provider.
+        for descriptor in login_providers() {
+            assert_eq!(
+                resolve_login_provider_loose(descriptor.id).map(|d| d.id),
+                Some(descriptor.id),
+                "descriptor id {:?} should resolve",
+                descriptor.id
+            );
+            assert_eq!(
+                resolve_login_provider_loose(descriptor.display_name).map(|d| d.id),
+                Some(descriptor.id),
+                "display name {:?} (id {:?}) should resolve",
+                descriptor.display_name,
+                descriptor.id
+            );
+        }
+    }
+
+    #[test]
     fn minimax_profile_uses_official_openai_compatible_configuration() {
         assert_eq!(MINIMAX_PROFILE.api_base, "https://api.minimax.io/v1");
         assert_eq!(MINIMAX_PROFILE.api_key_env, "OPENAI_API_KEY");
