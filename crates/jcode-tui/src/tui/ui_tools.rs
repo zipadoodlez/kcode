@@ -59,22 +59,6 @@ fn infer_selfdev_action_from_display_text(text: Option<&str>) -> Option<&'static
     }
 }
 
-fn log_missing_tool_action_for_display(tool: &ToolCall, display_context: &str) {
-    log_missing_tool_field_for_display(tool, display_context, "action");
-}
-
-fn log_missing_tool_field_for_display(tool: &ToolCall, display_context: &str, field: &str) {
-    let keys = tool
-        .input
-        .as_object()
-        .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
-        .unwrap_or_else(|| format!("non-object:{}", tool.input));
-    crate::logging::warn(&format!(
-        "tool summary missing field: context={} tool={} id={} field={} intent={:?} input_keys={}",
-        display_context, tool.name, tool.id, field, tool.intent, keys
-    ));
-}
-
 #[path = "ui_tools/batch.rs"]
 mod batch;
 
@@ -311,10 +295,7 @@ fn summarize_swarm_tool_action(tool: &ToolCall, bounded: &dyn Fn(usize) -> usize
         .input
         .get("action")
         .and_then(|v| v.as_str())
-        .unwrap_or_else(|| {
-            log_missing_tool_action_for_display(tool, "swarm");
-            "action missing"
-        });
+        .unwrap_or("swarm");
     let target = tool
         .input
         .get("to_session")
@@ -578,15 +559,12 @@ fn browser_summary(tool: &ToolCall, max_width: Option<usize>) -> String {
             }
         }
         "press" => {
-            let key = tool
-                .input
-                .get("key")
-                .and_then(|v| v.as_str())
-                .unwrap_or("key missing");
-            if let Some(target) = browser_target_summary(tool, max_width, false) {
-                format!("press {} on {}", key, target)
-            } else {
-                format!("press {}", key)
+            let key = tool.input.get("key").and_then(|v| v.as_str());
+            match (key, browser_target_summary(tool, max_width, false)) {
+                (Some(key), Some(target)) => format!("press {} on {}", key, target),
+                (Some(key), None) => format!("press {}", key),
+                (None, Some(target)) => format!("press {}", target),
+                (None, None) => "press".to_string(),
             }
         }
         "provider_command" => tool
@@ -833,6 +811,15 @@ pub(super) fn get_tool_summary_with_budget(
     max_width: Option<usize>,
 ) -> String {
     let bounded = |preferred: usize| max_width.unwrap_or(preferred);
+
+    // While a tool call is still streaming, its arguments arrive as a separate
+    // delta string and `input` stays `null` (or an empty object) until parsing
+    // completes. Rendering field-specific placeholders like "action missing" in
+    // that window produces flicker and log spam, so fall back to an empty
+    // summary (the tool name is shown separately) until real arguments exist.
+    if tool.input.as_object().is_none_or(|object| object.is_empty()) {
+        return String::new();
+    }
 
     match canonical_tool_name(&tool.name) {
         "bash" => tool
@@ -1138,10 +1125,7 @@ pub(super) fn get_tool_summary_with_budget(
                 .input
                 .get("action")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {
-                    log_missing_tool_action_for_display(tool, "memory");
-                    "action missing"
-                });
+                .unwrap_or("memory");
             match action {
                 "remember" => {
                     let content = tool
@@ -1173,31 +1157,19 @@ pub(super) fn get_tool_summary_with_budget(
                         truncate_query_display(query, bounded(35).saturating_sub(2))
                     )
                 }
-                "forget" => {
-                    let id = tool
-                        .input
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("id missing");
-                    format!("forget {}", truncate_identifier_display(id, bounded(30)))
-                }
-                "tag" => {
-                    let id = tool
-                        .input
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("id missing");
-                    format!("tag {}", truncate_identifier_display(id, bounded(30)))
-                }
+                "forget" => match tool.input.get("id").and_then(|v| v.as_str()) {
+                    Some(id) => format!("forget {}", truncate_identifier_display(id, bounded(30))),
+                    None => "forget".to_string(),
+                },
+                "tag" => match tool.input.get("id").and_then(|v| v.as_str()) {
+                    Some(id) => format!("tag {}", truncate_identifier_display(id, bounded(30))),
+                    None => "tag".to_string(),
+                },
                 "link" => "link".to_string(),
-                "related" => {
-                    let id = tool
-                        .input
-                        .get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("id missing");
-                    format!("related {}", truncate_identifier_display(id, bounded(30)))
-                }
+                "related" => match tool.input.get("id").and_then(|v| v.as_str()) {
+                    Some(id) => format!("related {}", truncate_identifier_display(id, bounded(30))),
+                    None => "related".to_string(),
+                },
                 _ => action.to_string(),
             }
         }
@@ -1206,10 +1178,7 @@ pub(super) fn get_tool_summary_with_budget(
                 .input
                 .get("action")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {
-                    log_missing_tool_action_for_display(tool, "initiative");
-                    "action missing"
-                });
+                .unwrap_or("initiative");
             let id = tool.input.get("id").and_then(|v| v.as_str());
             let title = tool.input.get("title").and_then(|v| v.as_str());
             match (action, id, title) {
@@ -1242,10 +1211,7 @@ pub(super) fn get_tool_summary_with_budget(
                             .or_else(|| tool.input.get("context").and_then(|value| value.as_str())),
                     )
                 })
-                .unwrap_or_else(|| {
-                    log_missing_tool_action_for_display(tool, "selfdev");
-                    "selfdev"
-                });
+                .unwrap_or("selfdev");
             action.to_string()
         }
         "side_panel" => {
@@ -1253,10 +1219,7 @@ pub(super) fn get_tool_summary_with_budget(
                 .input
                 .get("action")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {
-                    log_missing_tool_action_for_display(tool, "side_panel");
-                    "action missing"
-                });
+                .unwrap_or("side_panel");
             let target = tool
                 .input
                 .get("title")
@@ -1306,10 +1269,7 @@ pub(super) fn get_tool_summary_with_budget(
                 .input
                 .get("operation")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {
-                    log_missing_tool_field_for_display(tool, "lsp", "operation");
-                    "command missing"
-                });
+                .unwrap_or("lsp");
             let file = tool
                 .input
                 .get("file_path")
@@ -1331,10 +1291,7 @@ pub(super) fn get_tool_summary_with_budget(
                             .or_else(|| tool.input.get("intent").and_then(|value| value.as_str())),
                     )
                 })
-                .unwrap_or_else(|| {
-                    log_missing_tool_action_for_display(tool, "bg");
-                    "action missing"
-                });
+                .unwrap_or("bg");
             let task_id = tool.input.get("task_id").and_then(|v| v.as_str());
             if let Some(id) = task_id {
                 format!(
@@ -1369,17 +1326,11 @@ pub(super) fn get_tool_summary_with_budget(
             format!("{} ({})", desc, agent_type)
         }
         "debug_socket" => {
-            if !tool.input.is_object() {
-                return String::new();
-            }
             let cmd = tool
                 .input
                 .get("command")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| {
-                    log_missing_tool_field_for_display(tool, "debug_socket", "command");
-                    "command missing"
-                });
+                .unwrap_or("debug_socket");
             truncate_middle_display(cmd, bounded(40))
         }
         name if name.starts_with("mcp__") => tool

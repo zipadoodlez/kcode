@@ -897,3 +897,64 @@ fn test_render_tool_message_keeps_bash_command_visible_when_row_is_narrow() {
         "narrow bash tool rows should include a command preview: {rendered:?}"
     );
 }
+
+/// Regression for https://github.com/1jehuang/jcode/issues/284:
+/// While a tool call is still streaming, its arguments arrive separately and
+/// `input` is `null` (or an empty object) for many render frames. The summary
+/// must not show "action missing" / "command missing" placeholders in that
+/// window; it should be empty so only the tool name renders.
+#[test]
+fn test_action_tools_hide_missing_placeholder_for_streaming_input() {
+    let action_tools = ["bg", "swarm", "initiative", "selfdev", "side_panel", "memory"];
+    let transient_inputs = [serde_json::Value::Null, serde_json::json!({})];
+
+    for name in action_tools {
+        for input in &transient_inputs {
+            let tool = ToolCall {
+                id: format!("{name}-streaming"),
+                name: name.to_string(),
+                input: input.clone(),
+                intent: None,
+            };
+
+            let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(200));
+            assert!(
+                !summary.contains("missing"),
+                "tool={name} input={input} summary={summary:?}"
+            );
+            assert_eq!(
+                summary, "",
+                "transient streaming input should yield an empty summary: tool={name} input={input}"
+            );
+        }
+    }
+}
+
+/// Even when a tool call carries a populated, valid input object, a missing
+/// `action` field must degrade to the tool name rather than the alarming
+/// "action missing" placeholder.
+#[test]
+fn test_action_tools_degrade_to_tool_name_when_action_absent() {
+    let cases = [
+        ("bg", serde_json::json!({ "task_id": "abc" })),
+        ("swarm", serde_json::json!({ "to_session": "worker-1" })),
+        ("initiative", serde_json::json!({ "id": "plan-1" })),
+        ("memory", serde_json::json!({ "query": "notes" })),
+    ];
+
+    for (name, input) in cases {
+        let tool = ToolCall {
+            id: format!("{name}-no-action"),
+            name: name.to_string(),
+            input,
+            intent: None,
+        };
+
+        let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(200));
+        assert!(
+            !summary.contains("missing"),
+            "tool={name} summary={summary:?}"
+        );
+    }
+}
+
