@@ -862,6 +862,53 @@ pub(super) fn handle_model_status_command(app: &mut App, trimmed: &str) -> bool 
     true
 }
 
+pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
+    let Some(rest) = slash_command_rest(trimmed, "/log") else {
+        return false;
+    };
+
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let subcommand = parts.next().unwrap_or_default();
+    let note = parts.next().unwrap_or_default().trim();
+
+    if subcommand != "mark" {
+        app.push_display_message(DisplayMessage::error(
+            "Usage: `/log mark [note]`".to_string(),
+        ));
+        return true;
+    }
+
+    let marker_id = format!(
+        "logmark-{}",
+        chrono::Local::now().format("%Y%m%d-%H%M%S%.3f")
+    );
+    let working_dir = active_working_dir(app)
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let note_for_log = if note.is_empty() { "(none)" } else { note };
+
+    crate::logging::info(&format!(
+        "JCODE_LOG_MARK id={} session={} provider={} model={} cwd={} note={}",
+        marker_id,
+        app.session.id,
+        app.provider_name(),
+        app.provider_model(),
+        working_dir,
+        note_for_log
+    ));
+
+    let mut message = format!(
+        "Log mark written: `{}`\n\nAgents can search `~/.jcode/logs/` for `JCODE_LOG_MARK` or this marker id.",
+        marker_id
+    );
+    if !note.is_empty() {
+        message.push_str(&format!("\n\nNote: {}", note));
+    }
+    app.push_display_message(DisplayMessage::system(message));
+    app.set_status_notice(format!("Log mark {}", marker_id));
+    true
+}
+
 fn build_model_status_report(provider_query: &str, model_query: &str) -> String {
     crate::live_tests::format_provider_test_coverage_report(provider_query, model_query, None)
 }

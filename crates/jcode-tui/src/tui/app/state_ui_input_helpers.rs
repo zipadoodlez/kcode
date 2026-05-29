@@ -97,6 +97,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/feedback", "Send feedback about jcode"),
     RegisteredCommand::public("/subscription", "Show jcode subscription status"),
     RegisteredCommand::public("/config", "Show or edit configuration"),
+    RegisteredCommand::public("/log", "Mark the current location in the jcode logs"),
     RegisteredCommand::public(
         "/onboarding-preview",
         "Preview the first-run onboarding screen",

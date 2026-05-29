@@ -191,6 +191,51 @@ fn test_help_topic_shows_provider_test_coverage_command_details() {
 }
 
 #[test]
+fn test_help_topic_shows_log_command_details() {
+    let mut app = create_test_app();
+    app.input = "/help log".to_string();
+    app.submit_input();
+
+    let msg = app
+        .display_messages()
+        .last()
+        .expect("missing help response");
+    assert_eq!(msg.role, "system");
+    assert!(msg.content.contains("`/log mark [note]`"));
+    assert!(msg.content.contains("JCODE_LOG_MARK"));
+}
+
+#[test]
+fn slash_log_mark_reports_marker_and_note() {
+    let mut app = create_test_app();
+    app.input = "/log mark before repro".to_string();
+    app.submit_input();
+
+    let msg = app
+        .display_messages()
+        .last()
+        .expect("missing log mark response");
+    assert_eq!(msg.role, "system");
+    assert!(msg.content.contains("Log mark written: `logmark-"));
+    assert!(msg.content.contains("JCODE_LOG_MARK"));
+    assert!(msg.content.contains("Note: before repro"));
+}
+
+#[test]
+fn slash_log_without_mark_shows_usage() {
+    let mut app = create_test_app();
+    app.input = "/log".to_string();
+    app.submit_input();
+
+    let msg = app
+        .display_messages()
+        .last()
+        .expect("missing log usage response");
+    assert_eq!(msg.role, "error");
+    assert!(msg.content.contains("Usage: `/log mark [note]`"));
+}
+
+#[test]
 fn slash_provider_test_coverage_without_args_shows_cli_style_summary() {
     let mut app = create_test_app();
     app.input = "/provider-test-coverage".to_string();
