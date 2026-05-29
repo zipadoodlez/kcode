@@ -215,6 +215,51 @@ where
     })
 }
 
+/// Fetch model availability from the OpenAI platform API using an API key.
+///
+/// The ChatGPT/Codex backend catalog endpoint only accepts ChatGPT OAuth
+/// bearer tokens. OpenAI platform API keys return 401 there, so API-key
+/// sessions must use the public platform models endpoint. That endpoint does
+/// not currently expose context windows, so callers keep any built-in/cached
+/// limits and only update account model availability.
+pub async fn fetch_openai_api_key_model_catalog(api_key: &str) -> Result<OpenAIModelCatalog> {
+    note_openai_model_catalog_refresh_attempt();
+
+    let client = shared_http_client();
+    let resp = client
+        .get("https://api.openai.com/v1/models")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        anyhow::bail!(
+            "Failed to fetch OpenAI platform model catalog: {}",
+            resp.status()
+        );
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    let mut available_models: Vec<String> = data
+        .get("data")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.get("id").and_then(|id| id.as_str()))
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(ToString::to_string)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    available_models.sort();
+
+    Ok(OpenAIModelCatalog {
+        available_models,
+        context_limits: HashMap::new(),
+    })
+}
+
 /// Fetch context window sizes from the Codex backend API.
 /// Returns a map of model slug -> context_window tokens.
 pub async fn fetch_openai_context_limits(access_token: &str) -> Result<HashMap<String, usize>> {

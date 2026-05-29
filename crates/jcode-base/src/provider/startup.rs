@@ -380,20 +380,22 @@ impl MultiProvider {
     }
 
     pub(super) fn spawn_openai_catalog_refresh_if_needed(&self) {
-        if self.openai_provider().is_none() {
+        let Some(provider) = self.openai_provider() else {
             return;
-        }
+        };
         if !begin_openai_model_catalog_refresh() {
             return;
         }
 
-        let creds = auth::codex::load_credentials();
-        let token = creds
-            .as_ref()
-            .ok()
-            .map(|c| c.access_token.clone())
-            .unwrap_or_default();
-        refresh_openai_model_catalog_in_background(token, "multi-provider");
+        tokio::spawn(async move {
+            if let Err(err) = provider.prefetch_models().await {
+                crate::logging::info(&format!(
+                    "Failed to refresh OpenAI model catalog from provider bootstrap: {}",
+                    err
+                ));
+            }
+            finish_openai_model_catalog_refresh();
+        });
     }
 
     pub(super) fn spawn_anthropic_catalog_refresh_if_needed(&self) {

@@ -11,7 +11,8 @@ use anyhow::Result;
 pub(crate) use catalog::parse_anthropic_model_catalog;
 pub use catalog::{
     AnthropicModelCatalog, OpenAIModelCatalog, fetch_anthropic_model_catalog,
-    fetch_anthropic_model_catalog_oauth, fetch_openai_context_limits, fetch_openai_model_catalog,
+    fetch_anthropic_model_catalog_oauth, fetch_openai_api_key_model_catalog,
+    fetch_openai_context_limits, fetch_openai_model_catalog,
 };
 use catalog_service::{ModelCatalogService, RuntimeModelUnavailability};
 use jcode_provider_core::{
@@ -677,15 +678,26 @@ pub fn refresh_openai_model_catalog_in_background(access_token: String, context:
         return;
     }
 
+    let use_platform_api = openai_catalog_token_looks_like_api_key(&access_token);
+
     tokio::spawn(async move {
-        let refresh_result = fetch_openai_model_catalog(&access_token).await;
+        let refresh_result = if use_platform_api {
+            fetch_openai_api_key_model_catalog(&access_token).await
+        } else {
+            fetch_openai_model_catalog(&access_token).await
+        };
         match refresh_result {
             Ok(catalog)
                 if !catalog.available_models.is_empty() || !catalog.context_limits.is_empty() =>
             {
                 crate::logging::info(&format!(
-                    "Refreshed OpenAI model catalog ({}): {} available, {} with context limits",
+                    "Refreshed OpenAI model catalog ({}{}): {} available, {} with context limits",
                     context,
+                    if use_platform_api {
+                        ", platform-api"
+                    } else {
+                        ", codex-api"
+                    },
                     catalog.available_models.len(),
                     catalog.context_limits.len()
                 ));
@@ -705,14 +717,25 @@ pub fn refresh_openai_model_catalog_in_background(access_token: String, context:
             }
             Err(e) => {
                 crate::logging::info(&format!(
-                    "Failed to refresh OpenAI model catalog from Codex API ({}): {}",
-                    context, e
+                    "Failed to refresh OpenAI model catalog from {} ({}): {}",
+                    if use_platform_api {
+                        "platform API"
+                    } else {
+                        "Codex API"
+                    },
+                    context,
+                    e
                 ));
             }
         }
         note_openai_model_catalog_refresh_attempt_for_scope(&scope);
         finish_openai_model_catalog_refresh_for_scope(&scope);
     });
+}
+
+fn openai_catalog_token_looks_like_api_key(access_token: &str) -> bool {
+    let token = access_token.trim();
+    token.starts_with("sk-")
 }
 
 pub fn record_model_unavailable_for_account(model: &str, reason: &str) {
@@ -957,4 +980,26 @@ pub fn provider_for_model_with_hint(
 /// Detect which provider a model belongs to
 pub fn provider_for_model(model: &str) -> Option<&'static str> {
     provider_for_model_with_hint(model, None)
+}
+
+#[cfg(test)]
+mod openai_catalog_refresh_tests {
+    use super::openai_catalog_token_looks_like_api_key;
+
+    #[test]
+    fn openai_catalog_refresh_routes_platform_keys_away_from_codex_endpoint() {
+        for token in ["sk-test", "sk-proj-abc", "  sk-svcacct-abc  "] {
+            assert!(
+                openai_catalog_token_looks_like_api_key(token),
+                "OpenAI API key {token:?} should use the platform /v1/models endpoint, not the ChatGPT Codex catalog endpoint"
+            );
+        }
+
+        for token in ["eyJhbGciOi", "chatgpt-oauth-token", "sess-oauthish"] {
+            assert!(
+                !openai_catalog_token_looks_like_api_key(token),
+                "OAuth-looking token {token:?} should keep using the Codex catalog endpoint"
+            );
+        }
+    }
 }
