@@ -1,6 +1,7 @@
 use super::*;
 use crate::tui::TuiState;
 use crossterm::cursor::{RestorePosition, SavePosition};
+use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use ratatui::{buffer::Buffer, layout::Rect, style::Style};
 use std::io::Write;
 
@@ -108,6 +109,11 @@ impl StatusSpinnerRenderer {
         terminal: &mut DefaultTerminal,
     ) -> Result<()> {
         let force_full_redraw = app.force_full_redraw;
+        // Wrap the whole frame (optional clear + diff flush) in a synchronized update so the
+        // terminal applies every cell change atomically. Without this, ratatui's crossterm
+        // backend streams cells one-by-one and eagerly-repainting terminals (and slow/remote or
+        // multiplexed sessions) show visible flicker. See issue #282.
+        let sync = crossterm::execute!(terminal.backend_mut(), BeginSynchronizedUpdate).is_ok();
         if app.force_full_redraw {
             terminal.clear()?;
             app.force_full_redraw = false;
@@ -134,6 +140,12 @@ impl StatusSpinnerRenderer {
                     .count()
             });
         let total_cells = Some(completed.buffer.content.len());
+        let completed_buffer = completed.buffer.clone();
+        // `completed` borrows the terminal; drop it before touching the backend again.
+        drop(completed);
+        if sync {
+            let _ = crossterm::execute!(terminal.backend_mut(), EndSynchronizedUpdate);
+        }
         crate::tui::ui::record_draw_call_attribution(crate::tui::ui::DrawCallAttribution {
             timestamp_ms: crate::tui::ui::wall_clock_ms(),
             total_ms: total_elapsed.as_secs_f64() * 1000.0,
@@ -144,7 +156,7 @@ impl StatusSpinnerRenderer {
             force_full_redraw,
             input: crate::tui::ui::frame_input_attribution_snapshot(),
         });
-        self.last_frame = Some(completed.buffer.clone());
+        self.last_frame = Some(completed_buffer);
         Ok(())
     }
 
@@ -175,10 +187,19 @@ impl StatusSpinnerRenderer {
 
         // Keep ratatui's virtual buffers authoritative while preserving the user's cursor position.
         // The only terminal mutation outside ratatui here is cursor save/restore; cell contents still
-        // go through Terminal::flush so the next full-frame diff remains synchronized.
-        crossterm::queue!(terminal.backend_mut(), SavePosition)?;
+        // go through Terminal::flush so the next full-frame diff remains synchronized. Wrap the
+        // single-cell update in a synchronized update so it applies atomically (see issue #282).
+        crossterm::queue!(
+            terminal.backend_mut(),
+            BeginSynchronizedUpdate,
+            SavePosition
+        )?;
         terminal.flush()?;
-        crossterm::queue!(terminal.backend_mut(), RestorePosition)?;
+        crossterm::queue!(
+            terminal.backend_mut(),
+            RestorePosition,
+            EndSynchronizedUpdate
+        )?;
         terminal.swap_buffers();
         terminal.backend_mut().flush()?;
         self.last_frame = Some(next_frame);
