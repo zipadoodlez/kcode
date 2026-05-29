@@ -3296,7 +3296,6 @@ dependencies = [
  "image",
  "jcode-agent-runtime",
  "jcode-ambient-types",
- "jcode-app-core",
  "jcode-auth-types",
  "jcode-azure-auth",
  "jcode-background-types",
@@ -3332,6 +3331,7 @@ dependencies = [
  "jcode-terminal-launch",
  "jcode-tool-core",
  "jcode-tool-types",
+ "jcode-tui",
  "jcode-tui-account-picker",
  "jcode-tui-core",
  "jcode-tui-markdown",
@@ -3985,6 +3985,56 @@ name = "jcode-tool-types"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "jcode-tui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "crossterm",
+ "dirs",
+ "futures",
+ "global-hotkey",
+ "hex",
+ "image",
+ "jcode-app-core",
+ "jcode-build-meta",
+ "jcode-core",
+ "jcode-logging",
+ "jcode-protocol",
+ "jcode-provider-core",
+ "jcode-selfdev-types",
+ "jcode-session-types",
+ "jcode-terminal-image",
+ "jcode-tui-account-picker",
+ "jcode-tui-core",
+ "jcode-tui-markdown",
+ "jcode-tui-mermaid",
+ "jcode-tui-messages",
+ "jcode-tui-render",
+ "jcode-tui-session-picker",
+ "jcode-tui-style",
+ "jcode-tui-tool-display",
+ "jcode-tui-usage-overlay",
+ "jcode-tui-workspace",
+ "libc",
+ "open",
+ "rand 0.9.3",
+ "ratatui",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "similar",
+ "tempfile",
+ "tokio",
+ "unicode-width 0.2.0",
+ "url",
 ]
 
 [[package]]

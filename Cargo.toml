@@ -11,6 +11,7 @@ members = [
     "crates/jcode-agent-runtime",
     "crates/jcode-app-core",
     "crates/jcode-base",
+    "crates/jcode-tui",
     "crates/jcode-build-meta",
     "crates/jcode-ambient-types",
     "crates/jcode-auth-types",
@@ -196,11 +197,13 @@ jcode-background-types = { path = "crates/jcode-background-types" }
 jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-build-support = { path = "crates/jcode-build-support" }
 jcode-build-meta = { path = "crates/jcode-build-meta" }
-# Application core: all non-presentation modules, compiled as a separate rustc
-# unit. The root crate (cli + tui + bin) re-exports it via `pub use
-# jcode_app_core::*`. default-features=false so the root feature set fully
-# controls app-core's features (see [features]).
-jcode-app-core = { path = "crates/jcode-app-core", default-features = false }
+# Presentation layer: the terminal UI (`tui`) + offline replay (`video_export`),
+# compiled as a separate rustc unit. It re-exports the application core
+# (`jcode-app-core`, which re-exports `jcode-base`), so the root crate (cli +
+# bin) re-exports everything via `pub use jcode_tui::*`. default-features=false
+# so the root feature set fully controls the downstream features (see
+# [features]).
+jcode-tui = { path = "crates/jcode-tui", default-features = false }
 jcode-compaction-core = { path = "crates/jcode-compaction-core" }
 jcode-config-types = { path = "crates/jcode-config-types" }
 jcode-core = { path = "crates/jcode-core" }
@@ -238,24 +241,24 @@ aws-sdk-sts = "1.103.0"
 # Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
 default = ["pdf", "embeddings"]
-dev-bins = []
+dev-bins = ["jcode-tui/dev-bins"]
 jemalloc = [
     "dep:tikv-jemallocator",
     "dep:tikv-jemalloc-ctl",
     "dep:tikv-jemalloc-sys",
     "tikv-jemallocator/stats",
     "tikv-jemalloc-ctl/stats",
-    "jcode-app-core/jemalloc",
+    "jcode-tui/jemalloc",
 ]
 jemalloc-prof = [
     "jemalloc",
     "tikv-jemallocator/profiling",
     "tikv-jemalloc-ctl/profiling",
-    "jcode-app-core/jemalloc-prof",
+    "jcode-tui/jemalloc-prof",
 ]
-embeddings = ["dep:jcode-embedding", "jcode-app-core/embeddings"]
-mmdr-size-api = ["jcode-tui-mermaid/mmdr-size-api"]
-pdf = ["dep:jcode-pdf", "jcode-app-core/pdf"]
+embeddings = ["dep:jcode-embedding", "jcode-tui/embeddings"]
+mmdr-size-api = ["jcode-tui/mmdr-size-api"]
+pdf = ["dep:jcode-pdf", "jcode-tui/pdf"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
