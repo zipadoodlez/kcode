@@ -528,6 +528,44 @@ pub(crate) enum CloudSessionsCommand {
         jade: JadeCloudOptions,
     },
 
+    /// Sync new or changed local sessions to Jade cloud storage (idempotent; safe to schedule)
+    Sync {
+        /// Directory containing local Jcode session JSON files (default: ~/.jcode/sessions)
+        #[arg(long)]
+        sessions_dir: Option<String>,
+
+        /// Only consider sessions modified within this many days (ignored with --all)
+        #[arg(long)]
+        since_days: Option<u64>,
+
+        /// Sync all matching sessions regardless of age
+        #[arg(long)]
+        all: bool,
+
+        /// Maximum number of sessions to upload in this run
+        #[arg(long, default_value_t = 50)]
+        max: usize,
+
+        /// Upload without Jade's redaction pass
+        #[arg(long)]
+        raw: bool,
+
+        /// Show what would be uploaded without uploading or recording state
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Re-upload sessions even if local sync state says they are unchanged
+        #[arg(long)]
+        force: bool,
+
+        /// Emit JSON instead of human-readable text
+        #[arg(long)]
+        json: bool,
+
+        #[command(flatten)]
+        jade: JadeCloudOptions,
+    },
+
     /// List cloud-uploaded sessions from the Jade index
     List {
         /// Maximum number of sessions to show

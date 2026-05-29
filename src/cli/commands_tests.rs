@@ -469,6 +469,76 @@ fn cloud_sessions_config_persists_secret_and_feeds_helper_env_without_args() {
 }
 
 #[test]
+fn is_syncable_session_stem_filters_non_session_files() {
+    assert!(is_syncable_session_stem("session_abc_123"));
+    assert!(is_syncable_session_stem("imported_codex_456"));
+    assert!(!is_syncable_session_stem("req"));
+    assert!(!is_syncable_session_stem("test_selfdev_session"));
+    assert!(!is_syncable_session_stem("session_abc.journal"));
+}
+
+#[test]
+fn collect_sync_candidates_picks_only_session_json() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let dir = temp.path();
+    std::fs::write(dir.join("session_one.json"), b"{\"id\":\"one\"}").unwrap();
+    std::fs::write(dir.join("imported_codex_two.json"), b"{\"id\":\"two\"}").unwrap();
+    std::fs::write(dir.join("req.json"), b"{}").unwrap();
+    std::fs::write(dir.join("session_three.journal.json"), b"{}").unwrap();
+    std::fs::write(dir.join("session_four.bak"), b"{}").unwrap();
+
+    let mut ids: Vec<String> = collect_sync_candidates(dir)
+        .expect("collect")
+        .into_iter()
+        .map(|candidate| candidate.session_id)
+        .collect();
+    ids.sort();
+    assert_eq!(ids, vec!["imported_codex_two", "session_one"]);
+}
+
+#[test]
+fn cloud_sessions_sync_dry_run_reports_without_uploading_or_writing_state() {
+    let _guard = crate::storage::lock_test_env();
+    let _saved = SavedEnv::capture(&["JCODE_HOME", "JCODE_JADE_SESSIONS_HELPER"]);
+    let temp = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    // A dummy helper that should never run during a dry run.
+    let helper = temp.path().join("never_runs.sh");
+    std::fs::write(&helper, b"#!/bin/sh\nexit 7\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    crate::env::set_var("JCODE_JADE_SESSIONS_HELPER", &helper);
+
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    std::fs::write(sessions_dir.join("session_alpha.json"), b"{\"id\":\"a\"}").unwrap();
+    std::fs::write(sessions_dir.join("session_beta.json"), b"{\"id\":\"b\"}").unwrap();
+
+    run_cloud_sessions_sync(CloudSessionsSyncRequest {
+        sessions_dir: Some(sessions_dir.display().to_string()),
+        since_days: None,
+        all: true,
+        max: 50,
+        raw: false,
+        dry_run: true,
+        force: false,
+        json: true,
+        user_id: "dev".to_string(),
+        profile: None,
+        region: None,
+        helper: None,
+    })
+    .expect("dry run sync");
+
+    // Dry run must not persist any sync state.
+    assert!(!cloud_sessions_sync_state_path().unwrap().exists());
+}
+
+#[test]
 fn resolve_jade_sessions_helper_prefers_explicit_and_env_paths() {
     let _saved = SavedEnv::capture(&["JCODE_JADE_SESSIONS_HELPER"]);
     crate::env::set_var("JCODE_JADE_SESSIONS_HELPER", "/tmp/from-env.py");

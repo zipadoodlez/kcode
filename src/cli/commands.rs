@@ -72,6 +72,20 @@ pub enum CloudSessionsSubcommand {
         region: Option<String>,
         helper: Option<String>,
     },
+    Sync {
+        sessions_dir: Option<String>,
+        since_days: Option<u64>,
+        all: bool,
+        max: usize,
+        raw: bool,
+        dry_run: bool,
+        force: bool,
+        json: bool,
+        user_id: String,
+        profile: Option<String>,
+        region: Option<String>,
+        helper: Option<String>,
+    },
     List {
         limit: usize,
         json: bool,
@@ -147,6 +161,35 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             );
         }
         CloudSessionsSubcommand::Status { json } => return run_cloud_sessions_status(json),
+        CloudSessionsSubcommand::Sync {
+            sessions_dir,
+            since_days,
+            all,
+            max,
+            raw,
+            dry_run,
+            force,
+            json,
+            user_id,
+            profile,
+            region,
+            helper,
+        } => {
+            return run_cloud_sessions_sync(CloudSessionsSyncRequest {
+                sessions_dir,
+                since_days,
+                all,
+                max,
+                raw,
+                dry_run,
+                force,
+                json,
+                user_id,
+                profile,
+                region,
+                helper,
+            });
+        }
         other => run_cloud_sessions_helper_command(other),
     }
 }
@@ -334,6 +377,366 @@ fn non_empty(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+struct CloudSessionsSyncRequest {
+    sessions_dir: Option<String>,
+    since_days: Option<u64>,
+    all: bool,
+    max: usize,
+    raw: bool,
+    dry_run: bool,
+    force: bool,
+    json: bool,
+    user_id: String,
+    profile: Option<String>,
+    region: Option<String>,
+    helper: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct CloudSessionsSyncState {
+    #[serde(default)]
+    sessions: std::collections::BTreeMap<String, CloudSessionsSyncRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudSessionsSyncRecord {
+    sha256: String,
+    size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified_unix: Option<i64>,
+    uploaded_at: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudSessionsSyncEntry {
+    session_id: String,
+    path: String,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudSessionsSyncReport {
+    sessions_dir: String,
+    dry_run: bool,
+    scanned: usize,
+    uploaded: usize,
+    skipped_unchanged: usize,
+    failed: usize,
+    reached_max: bool,
+    entries: Vec<CloudSessionsSyncEntry>,
+}
+
+struct SyncCandidate {
+    session_id: String,
+    path: PathBuf,
+    size: u64,
+    modified_unix: Option<i64>,
+}
+
+fn cloud_sessions_sync_state_path() -> Result<PathBuf> {
+    Ok(crate::storage::jcode_dir()?.join("cloud_sessions_sync.json"))
+}
+
+fn load_cloud_sessions_sync_state() -> Result<CloudSessionsSyncState> {
+    let path = cloud_sessions_sync_state_path()?;
+    if !path.exists() {
+        return Ok(CloudSessionsSyncState::default());
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", path.display()))?;
+    serde_json::from_str(&content)
+        .map_err(|err| anyhow::anyhow!("failed to parse {}: {err}", path.display()))
+}
+
+fn save_cloud_sessions_sync_state(state: &CloudSessionsSyncState) -> Result<PathBuf> {
+    let path = cloud_sessions_sync_state_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let content = serde_json::to_vec_pretty(state)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(&path)?;
+        file.write_all(&content)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&path, &content)?;
+    }
+    Ok(path)
+}
+
+fn resolve_sync_sessions_dir(override_path: Option<&str>) -> Result<PathBuf> {
+    if let Some(path) = override_path.map(str::trim).filter(|path| !path.is_empty()) {
+        return Ok(expand_home_path(path));
+    }
+    Ok(crate::storage::jcode_dir()?.join("sessions"))
+}
+
+fn expand_home_path(path: &str) -> PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
+    }
+    if path == "~"
+        && let Some(home) = dirs::home_dir()
+    {
+        return home;
+    }
+    PathBuf::from(path)
+}
+
+fn is_syncable_session_stem(stem: &str) -> bool {
+    (stem.starts_with("session_") || stem.starts_with("imported_")) && !stem.ends_with(".journal")
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path)
+        .map_err(|err| anyhow::anyhow!("failed to open {}: {err}", path.display()))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)
+        .map_err(|err| anyhow::anyhow!("failed to hash {}: {err}", path.display()))?;
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn collect_sync_candidates(dir: &Path) -> Result<Vec<SyncCandidate>> {
+    let mut candidates = Vec::new();
+    if !dir.exists() {
+        anyhow::bail!("sessions directory not found: {}", dir.display());
+    }
+    for entry in std::fs::read_dir(dir)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", dir.display()))?
+        .flatten()
+    {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        if !is_syncable_session_stem(stem) {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => continue,
+        };
+        let modified_unix = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|dur| dur.as_secs() as i64);
+        candidates.push(SyncCandidate {
+            session_id: stem.to_string(),
+            path,
+            size: metadata.len(),
+            modified_unix,
+        });
+    }
+    Ok(candidates)
+}
+
+fn run_jade_upload(
+    helper: &Path,
+    helper_env: &[(&'static str, String)],
+    file: &Path,
+    user_id: &str,
+    profile: Option<&str>,
+    region: Option<&str>,
+    raw: bool,
+) -> Result<()> {
+    let mut args = vec!["upload".to_string()];
+    append_common_jade_args(
+        &mut args,
+        user_id.to_string(),
+        profile.map(ToOwned::to_owned),
+        region.map(ToOwned::to_owned),
+    );
+    if raw {
+        args.push("--raw".to_string());
+    }
+    args.push(file.display().to_string());
+
+    let output = ProcessCommand::new(helper)
+        .args(&args)
+        .envs(helper_env.iter().cloned())
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|err| anyhow::anyhow!("failed to run {}: {err}", helper.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        let detail = if detail.is_empty() {
+            format!("exited with status {}", output.status)
+        } else {
+            detail.lines().last().unwrap_or(detail).to_string()
+        };
+        anyhow::bail!(detail);
+    }
+    Ok(())
+}
+
+fn run_cloud_sessions_sync(request: CloudSessionsSyncRequest) -> Result<()> {
+    let config = load_cloud_sessions_config()?.unwrap_or_default();
+    let helper_override = request.helper.clone().or_else(|| config.helper.clone());
+    let helper = resolve_jade_sessions_helper(helper_override.as_deref())?;
+    let helper_env = cloud_sessions_helper_env(&config);
+    let user_id = config_or_default_user_id(request.user_id.clone(), &config);
+
+    let sessions_dir = resolve_sync_sessions_dir(request.sessions_dir.as_deref())?;
+    let mut candidates = collect_sync_candidates(&sessions_dir)?;
+
+    if !request.all {
+        let since_days = request.since_days.unwrap_or(7);
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|dur| dur.as_secs() as i64)
+            .unwrap_or(0)
+            - (since_days as i64) * 86_400;
+        candidates.retain(|candidate| candidate.modified_unix.map(|m| m >= cutoff).unwrap_or(true));
+    }
+
+    // Newest first so --max keeps the most recent sessions.
+    candidates.sort_by(|a, b| b.modified_unix.cmp(&a.modified_unix));
+
+    let mut state = load_cloud_sessions_sync_state()?;
+    let mut report = CloudSessionsSyncReport {
+        sessions_dir: sessions_dir.display().to_string(),
+        dry_run: request.dry_run,
+        scanned: 0,
+        uploaded: 0,
+        skipped_unchanged: 0,
+        failed: 0,
+        reached_max: false,
+        entries: Vec::new(),
+    };
+    let mut state_dirty = false;
+
+    for candidate in candidates {
+        if report.uploaded + report.failed >= request.max {
+            report.reached_max = true;
+            break;
+        }
+        report.scanned += 1;
+        let sha = match sha256_file(&candidate.path) {
+            Ok(sha) => sha,
+            Err(err) => {
+                report.failed += 1;
+                report.entries.push(CloudSessionsSyncEntry {
+                    session_id: candidate.session_id,
+                    path: candidate.path.display().to_string(),
+                    status: "failed",
+                    error: Some(err.to_string()),
+                });
+                continue;
+            }
+        };
+
+        if !request.force
+            && let Some(record) = state.sessions.get(&candidate.session_id)
+            && record.sha256 == sha
+        {
+            report.skipped_unchanged += 1;
+            continue;
+        }
+
+        if request.dry_run {
+            report.uploaded += 1;
+            report.entries.push(CloudSessionsSyncEntry {
+                session_id: candidate.session_id,
+                path: candidate.path.display().to_string(),
+                status: "would-upload",
+                error: None,
+            });
+            continue;
+        }
+
+        match run_jade_upload(
+            &helper,
+            &helper_env,
+            &candidate.path,
+            &user_id,
+            request.profile.as_deref(),
+            request.region.as_deref(),
+            request.raw,
+        ) {
+            Ok(()) => {
+                report.uploaded += 1;
+                state.sessions.insert(
+                    candidate.session_id.clone(),
+                    CloudSessionsSyncRecord {
+                        sha256: sha,
+                        size: candidate.size,
+                        modified_unix: candidate.modified_unix,
+                        uploaded_at: chrono::Utc::now().to_rfc3339(),
+                    },
+                );
+                state_dirty = true;
+                report.entries.push(CloudSessionsSyncEntry {
+                    session_id: candidate.session_id,
+                    path: candidate.path.display().to_string(),
+                    status: "uploaded",
+                    error: None,
+                });
+            }
+            Err(err) => {
+                report.failed += 1;
+                report.entries.push(CloudSessionsSyncEntry {
+                    session_id: candidate.session_id,
+                    path: candidate.path.display().to_string(),
+                    status: "failed",
+                    error: Some(err.to_string()),
+                });
+            }
+        }
+    }
+
+    if state_dirty {
+        save_cloud_sessions_sync_state(&state)?;
+    }
+
+    if request.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        let verb = if request.dry_run {
+            "Would upload"
+        } else {
+            "Uploaded"
+        };
+        println!("Jade cloud sessions sync ({})", report.sessions_dir);
+        println!(
+            "scanned: {}  {}: {}  unchanged: {}  failed: {}",
+            report.scanned, verb, report.uploaded, report.skipped_unchanged, report.failed
+        );
+        if report.reached_max {
+            println!("note: reached --max {}; rerun to continue", request.max);
+        }
+        for entry in &report.entries {
+            match entry.error.as_deref() {
+                Some(error) => println!("  [{}] {} ({})", entry.status, entry.session_id, error),
+                None => println!("  [{}] {}", entry.status, entry.session_id),
+            }
+        }
+    }
+
+    if report.failed > 0 {
+        anyhow::bail!("{} session(s) failed to upload", report.failed);
+    }
+    Ok(())
+}
+
 fn configured_label(value: Option<&str>) -> &str {
     value
         .filter(|value| !value.is_empty())
@@ -364,7 +767,9 @@ fn cloud_sessions_helper_env(config: &CloudSessionsConfig) -> Vec<(&'static str,
 
 fn cloud_sessions_helper_override(action: &CloudSessionsSubcommand) -> Option<String> {
     match action {
-        CloudSessionsSubcommand::Configure { .. } | CloudSessionsSubcommand::Status { .. } => None,
+        CloudSessionsSubcommand::Configure { .. }
+        | CloudSessionsSubcommand::Status { .. }
+        | CloudSessionsSubcommand::Sync { .. } => None,
         CloudSessionsSubcommand::Upload { helper, .. }
         | CloudSessionsSubcommand::UploadLatest { helper, .. }
         | CloudSessionsSubcommand::List { helper, .. }
@@ -398,8 +803,10 @@ fn build_jade_sessions_args_with_config(
     config: &CloudSessionsConfig,
 ) -> Vec<String> {
     match action {
-        CloudSessionsSubcommand::Configure { .. } | CloudSessionsSubcommand::Status { .. } => {
-            unreachable!("configure/status do not invoke the Jade helper")
+        CloudSessionsSubcommand::Configure { .. }
+        | CloudSessionsSubcommand::Status { .. }
+        | CloudSessionsSubcommand::Sync { .. } => {
+            unreachable!("configure/status/sync do not invoke the Jade helper directly")
         }
         CloudSessionsSubcommand::Upload {
             session_file,

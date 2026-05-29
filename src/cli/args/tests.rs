@@ -198,6 +198,49 @@ fn cloud_sessions_subcommands_parse() {
         }
         other => panic!("unexpected command: {:?}", other),
     }
+
+    let args = Args::try_parse_from([
+        "jcode",
+        "cloud",
+        "sessions",
+        "sync",
+        "--all",
+        "--max",
+        "5",
+        "--dry-run",
+        "--json",
+        "--user-id",
+        "jeremy",
+    ])
+    .unwrap();
+
+    match args.command {
+        Some(Command::Cloud(CloudCommand::Sessions {
+            action:
+                CloudSessionsCommand::Sync {
+                    sessions_dir,
+                    since_days,
+                    all,
+                    max,
+                    raw,
+                    dry_run,
+                    force,
+                    json,
+                    jade,
+                },
+        })) => {
+            assert!(sessions_dir.is_none());
+            assert!(since_days.is_none());
+            assert!(all);
+            assert_eq!(max, 5);
+            assert!(!raw);
+            assert!(dry_run);
+            assert!(!force);
+            assert!(json);
+            assert_eq!(jade.user_id, "jeremy");
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
 }
 
 #[test]
