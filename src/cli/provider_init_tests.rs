@@ -852,11 +852,12 @@ fn pending_external_auth_review_candidates_include_shared_and_legacy_sources() {
 
     let candidates = pending_external_auth_review_candidates().expect("candidates");
     assert!(candidates.iter().any(|candidate| {
-        candidate.source_name == "OpenCode auth.json"
-            && candidate.provider_summary.contains("OpenAI/Codex")
+        candidate.source_name() == "OpenCode auth.json"
+            && candidate.provider_summary().contains("OpenAI/Codex")
     }));
     assert!(candidates.iter().any(|candidate| {
-        candidate.source_name == "Codex auth.json" && candidate.provider_summary == "OpenAI/Codex"
+        candidate.source_name() == "Codex auth.json"
+            && candidate.provider_summary() == "OpenAI/Codex"
     }));
 
     if let Some(prev_home) = prev_home {

@@ -76,6 +76,19 @@ pub struct ExternalAuthReviewCandidate {
     action: ExternalAuthReviewAction,
 }
 
+// Read-only accessors exposed to downstream crates' test targets via the
+// `test-support` feature, so the production field surface stays `pub(crate)`.
+#[cfg(any(test, feature = "test-support"))]
+impl ExternalAuthReviewCandidate {
+    pub fn provider_summary(&self) -> &str {
+        &self.provider_summary
+    }
+
+    pub fn source_name(&self) -> &str {
+        &self.source_name
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExternalAuthAutoImportOutcome {
     pub imported: usize,

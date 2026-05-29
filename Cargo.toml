@@ -297,5 +297,11 @@ codegen-units = 256
 
 [dev-dependencies]
 async-stream = "0.3"
+# Enables the downstream test-support helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, the
+# ExternalAuthReviewCandidate read accessors) for the root crate's own cli test
+# target. Feature unification applies this only to test/bench/example builds,
+# never to a normal `cargo build`/release binary.
+jcode-tui = { path = "crates/jcode-tui", features = ["test-support"] }
 
 [build-dependencies]

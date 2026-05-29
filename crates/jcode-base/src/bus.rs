@@ -388,8 +388,8 @@ fn models_updated_publish_state() -> &'static Mutex<ModelsUpdatedPublishState> {
     STATE.get_or_init(|| Mutex::new(ModelsUpdatedPublishState::default()))
 }
 
-#[cfg(test)]
-pub(crate) fn reset_models_updated_publish_state_for_tests() {
+#[cfg(any(test, feature = "test-support"))]
+pub fn reset_models_updated_publish_state_for_tests() {
     let mut state = models_updated_publish_state()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

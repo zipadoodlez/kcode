@@ -21,17 +21,17 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-#[cfg(test)]
-pub(crate) fn test_env_lock() -> &'static Mutex<()> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn test_env_lock() -> &'static Mutex<()> {
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     ENV_LOCK.get_or_init(|| Mutex::new(()))
 }
 
-#[cfg(test)]
-pub(crate) fn lock_test_env() -> MutexGuard<'static, ()> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn lock_test_env() -> MutexGuard<'static, ()> {
     test_env_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

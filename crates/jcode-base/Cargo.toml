@@ -148,6 +148,12 @@ aws-sdk-sts = "1.103.0"
 
 [features]
 default = ["embeddings"]
+# Compiles the in-crate test helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, ...) as
+# `pub` so downstream crates' test targets can reach them. Enabled as a
+# dev-dependency feature by jcode-app-core / jcode / etc.; never in normal
+# (non-test) builds.
+test-support = []
 jemalloc = [
     "dep:tikv-jemallocator",
     "dep:tikv-jemalloc-ctl",

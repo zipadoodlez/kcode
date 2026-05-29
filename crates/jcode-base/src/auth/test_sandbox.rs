@@ -3,14 +3,14 @@ use std::sync::MutexGuard;
 
 use crate::provider_catalog::{OpenAiCompatibleProfile, openai_compatible_profiles};
 
-pub(crate) struct AuthTestSandbox {
+pub struct AuthTestSandbox {
     _lock: MutexGuard<'static, ()>,
     temp: tempfile::TempDir,
     saved_env: Vec<(String, Option<String>)>,
 }
 
 impl AuthTestSandbox {
-    pub(crate) fn new() -> anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         let lock = crate::storage::lock_test_env();
         let temp = tempfile::Builder::new()
             .prefix("jcode-auth-lifecycle-")
@@ -40,23 +40,23 @@ impl AuthTestSandbox {
         })
     }
 
-    pub(crate) fn root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         self.temp.path()
     }
 
-    pub(crate) fn config_dir(&self) -> PathBuf {
+    pub fn config_dir(&self) -> PathBuf {
         self.root().join("config").join("jcode")
     }
 
-    pub(crate) fn external_dir(&self) -> PathBuf {
+    pub fn external_dir(&self) -> PathBuf {
         self.root().join("external")
     }
 
-    pub(crate) fn env_file_path(&self, file_name: &str) -> PathBuf {
+    pub fn env_file_path(&self, file_name: &str) -> PathBuf {
         self.config_dir().join(file_name)
     }
 
-    pub(crate) fn write_env_file(
+    pub fn write_env_file(
         &self,
         file_name: &str,
         env_key: &str,
@@ -70,7 +70,7 @@ impl AuthTestSandbox {
         Ok(path)
     }
 
-    pub(crate) fn write_openai_compatible_api_key(
+    pub fn write_openai_compatible_api_key(
         &self,
         profile: OpenAiCompatibleProfile,
         value: &str,

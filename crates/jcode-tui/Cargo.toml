@@ -89,6 +89,15 @@ jemalloc-prof = ["jcode-app-core/jemalloc-prof"]
 embeddings = ["jcode-app-core/embeddings"]
 pdf = ["jcode-app-core/pdf"]
 mmdr-size-api = ["jcode-tui-mermaid/mmdr-size-api"]
+# Forwards the application core's `test-support` feature (and onward to
+# jcode-base) so downstream crates' test targets can reach the whole stack's
+# test helpers. Never enabled in normal (non-test) builds.
+test-support = ["jcode-app-core/test-support"]
+
+[dev-dependencies]
+# Enables the downstream test-support helpers for *this* crate's own test
+# target. Feature unification applies this only to test/bench/example builds.
+jcode-app-core = { path = "../jcode-app-core", features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 global-hotkey = "0.7"

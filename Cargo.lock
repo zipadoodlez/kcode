@@ -3400,6 +3400,7 @@ dependencies = [
  "agentgrep",
  "anyhow",
  "arboard",
+ "async-stream",
  "async-trait",
  "aws-config",
  "aws-credential-types",

@@ -158,6 +158,20 @@ jemalloc-prof = ["jcode-base/jemalloc-prof"]
 embeddings = ["jcode-base/embeddings"]
 # PDF text extraction lives in this crate (tool/read.rs).
 pdf = ["dep:jcode-pdf"]
+# Compiles this crate's test-only helpers/accessors (e.g. the
+# ExternalAuthReviewCandidate read accessors) as `pub` and forwards
+# jcode-base's `test-support` so downstream crates' test targets can reach the
+# whole stack's helpers. Never enabled in normal (non-test) builds.
+test-support = ["jcode-base/test-support"]
+
+[dev-dependencies]
+# Used by async streaming tests (ambient/runner_tests, server/client_actions_tests).
+async-stream = "0.3"
+# Enables jcode-base's test-support helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests) for
+# *this* crate's own test target. Feature unification applies this only to
+# test/bench/example builds, not to a normal `cargo build`.
+jcode-base = { path = "../jcode-base", features = ["test-support"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
