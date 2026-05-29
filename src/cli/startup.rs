@@ -20,6 +20,13 @@ pub async fn run() -> Result<()> {
     logging::cleanup_old_logs();
     startup_profile::mark("log_cleanup");
     logging::info("jcode starting");
+
+    // Wire config-reload reactions without making config depend on auth/bus:
+    // when the config cache reloads, invalidate the auth-status cache and
+    // broadcast a models-updated event.
+    crate::config::on_config_reloaded(|| crate::auth::AuthStatus::invalidate_cache());
+    crate::config::on_config_reloaded(|| crate::bus::Bus::global().publish_models_updated());
+
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 
