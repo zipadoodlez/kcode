@@ -315,7 +315,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
     if cfg!(target_os = "macos")
-        && app.input.is_empty()
         && !matches!(app.status, ProcessingStatus::RunningTool(_))
         && let Some(direction) = app
             .effort_switch_keys

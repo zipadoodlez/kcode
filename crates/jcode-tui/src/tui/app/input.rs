@@ -1519,7 +1519,6 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
     if cfg!(target_os = "macos")
-        && app.input.is_empty()
         && !matches!(app.status, ProcessingStatus::RunningTool(_))
         && let Some(direction) = app
             .effort_switch_keys
