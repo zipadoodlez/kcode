@@ -501,6 +501,24 @@ fn map_cloud_sessions_subcommand(
     action: CloudSessionsCommand,
 ) -> commands::CloudSessionsSubcommand {
     match action {
+        CloudSessionsCommand::Configure {
+            api_base,
+            api_token,
+            api_token_env,
+            api_token_id,
+            user_id,
+            helper,
+            clear,
+        } => commands::CloudSessionsSubcommand::Configure {
+            api_base,
+            api_token,
+            api_token_env,
+            api_token_id,
+            user_id,
+            helper,
+            clear,
+        },
+        CloudSessionsCommand::Status { json } => commands::CloudSessionsSubcommand::Status { json },
         CloudSessionsCommand::Upload {
             session_file,
             raw,

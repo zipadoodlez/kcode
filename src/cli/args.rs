@@ -463,6 +463,44 @@ pub(crate) enum CloudCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum CloudSessionsCommand {
+    /// Configure Jade API defaults for cloud sessions on this machine
+    Configure {
+        /// Jade Session API base URL
+        #[arg(long)]
+        api_base: Option<String>,
+
+        /// Jade Session API bearer token. Prefer --api-token-env to avoid shell history.
+        #[arg(long, conflicts_with = "api_token_env")]
+        api_token: Option<String>,
+
+        /// Read the Jade Session API bearer token from this environment variable
+        #[arg(long, conflicts_with = "api_token")]
+        api_token_env: Option<String>,
+
+        /// Optional Jade token id, e.g. dev-admin
+        #[arg(long)]
+        api_token_id: Option<String>,
+
+        /// Default Jade user id for commands that do not pass --user-id
+        #[arg(long)]
+        user_id: Option<String>,
+
+        /// Default private Jade session helper path
+        #[arg(long)]
+        helper: Option<String>,
+
+        /// Remove the saved cloud sessions config
+        #[arg(long)]
+        clear: bool,
+    },
+
+    /// Show saved Jade API defaults for cloud sessions without printing secrets
+    Status {
+        /// Emit JSON instead of human-readable text
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Upload a specific local session JSON file to Jade cloud storage
     Upload {
         /// Path to a local Jcode session JSON file

@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
@@ -44,6 +44,18 @@ pub enum CloudSubcommand {
 }
 
 pub enum CloudSessionsSubcommand {
+    Configure {
+        api_base: Option<String>,
+        api_token: Option<String>,
+        api_token_env: Option<String>,
+        api_token_id: Option<String>,
+        user_id: Option<String>,
+        helper: Option<String>,
+        clear: bool,
+    },
+    Status {
+        json: bool,
+    },
     Upload {
         session_file: String,
         raw: bool,
@@ -87,6 +99,26 @@ pub enum CloudSessionsSubcommand {
     },
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct CloudSessionsConfig {
+    api_base: Option<String>,
+    api_token: Option<String>,
+    api_token_id: Option<String>,
+    helper: Option<String>,
+    user_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CloudSessionsConfigStatus {
+    path: String,
+    exists: bool,
+    api_base: Option<String>,
+    api_token_configured: bool,
+    api_token_id: Option<String>,
+    helper: Option<String>,
+    user_id: Option<String>,
+}
+
 pub fn run_cloud_command(cmd: CloudSubcommand) -> Result<()> {
     match cmd {
         CloudSubcommand::Sessions(action) => run_cloud_sessions_command(action),
@@ -94,14 +126,45 @@ pub fn run_cloud_command(cmd: CloudSubcommand) -> Result<()> {
 }
 
 fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
-    let helper_override = cloud_sessions_helper_override(&action);
+    match action {
+        CloudSessionsSubcommand::Configure {
+            api_base,
+            api_token,
+            api_token_env,
+            api_token_id,
+            user_id,
+            helper,
+            clear,
+        } => {
+            return run_cloud_sessions_configure(
+                api_base,
+                api_token,
+                api_token_env,
+                api_token_id,
+                user_id,
+                helper,
+                clear,
+            );
+        }
+        CloudSessionsSubcommand::Status { json } => return run_cloud_sessions_status(json),
+        other => run_cloud_sessions_helper_command(other),
+    }
+}
+
+fn run_cloud_sessions_helper_command(action: CloudSessionsSubcommand) -> Result<()> {
+    let config = load_cloud_sessions_config()?.unwrap_or_default();
+    let helper_override = cloud_sessions_helper_override(&action).or_else(|| config.helper.clone());
     let helper = resolve_jade_sessions_helper(helper_override.as_deref())?;
-    let args = build_jade_sessions_args(action);
-    let status = ProcessCommand::new(&helper)
+    let helper_env = cloud_sessions_helper_env(&config);
+    let args = build_jade_sessions_args_with_config(action, &config);
+    let mut command = ProcessCommand::new(&helper);
+    command
         .args(&args)
+        .envs(helper_env)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    let status = command
         .status()
         .map_err(|err| anyhow::anyhow!("failed to run {}: {err}", helper.display()))?;
 
@@ -111,8 +174,197 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
     Ok(())
 }
 
+fn cloud_sessions_config_path() -> Result<PathBuf> {
+    Ok(crate::storage::jcode_dir()?.join("cloud_sessions.json"))
+}
+
+fn load_cloud_sessions_config() -> Result<Option<CloudSessionsConfig>> {
+    let path = cloud_sessions_config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|err| anyhow::anyhow!("failed to read {}: {err}", path.display()))?;
+    let config = serde_json::from_str(&content)
+        .map_err(|err| anyhow::anyhow!("failed to parse {}: {err}", path.display()))?;
+    Ok(Some(config))
+}
+
+fn save_cloud_sessions_config(config: &CloudSessionsConfig) -> Result<PathBuf> {
+    let path = cloud_sessions_config_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let content = serde_json::to_vec_pretty(config)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(&path)?;
+        file.write_all(&content)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&path, &content)?;
+    }
+    Ok(path)
+}
+
+fn run_cloud_sessions_configure(
+    api_base: Option<String>,
+    api_token: Option<String>,
+    api_token_env: Option<String>,
+    api_token_id: Option<String>,
+    user_id: Option<String>,
+    helper: Option<String>,
+    clear: bool,
+) -> Result<()> {
+    let path = cloud_sessions_config_path()?;
+    if clear {
+        match std::fs::remove_file(&path) {
+            Ok(()) => println!("Removed Jade cloud sessions config at {}", path.display()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                println!("No Jade cloud sessions config found at {}", path.display());
+            }
+            Err(err) => return Err(err.into()),
+        }
+        return Ok(());
+    }
+
+    if api_base.is_none()
+        && api_token.is_none()
+        && api_token_env.is_none()
+        && api_token_id.is_none()
+        && user_id.is_none()
+        && helper.is_none()
+    {
+        anyhow::bail!(
+            "nothing to configure; pass --api-base, --api-token/--api-token-env, --api-token-id, --user-id, --helper, or --clear"
+        );
+    }
+
+    let mut config = load_cloud_sessions_config()?.unwrap_or_default();
+    if let Some(value) = non_empty(api_base) {
+        config.api_base = Some(value);
+    }
+    if let Some(value) = non_empty(api_token) {
+        config.api_token = Some(value);
+    }
+    if let Some(var) = non_empty(api_token_env) {
+        let value = std::env::var(&var)
+            .map_err(|err| anyhow::anyhow!("failed to read {var} for --api-token-env: {err}"))?;
+        let value = non_empty(Some(value))
+            .ok_or_else(|| anyhow::anyhow!("{var} for --api-token-env was empty"))?;
+        config.api_token = Some(value);
+    }
+    if let Some(value) = non_empty(api_token_id) {
+        config.api_token_id = Some(value);
+    }
+    if let Some(value) = non_empty(user_id) {
+        config.user_id = Some(value);
+    }
+    if let Some(value) = non_empty(helper) {
+        config.helper = Some(value);
+    }
+
+    let path = save_cloud_sessions_config(&config)?;
+    println!("Saved Jade cloud sessions config to {}", path.display());
+    println!("api_base: {}", configured_label(config.api_base.as_deref()));
+    println!(
+        "api_token: {}",
+        if config.api_token.is_some() {
+            "configured"
+        } else {
+            "not configured"
+        }
+    );
+    println!(
+        "api_token_id: {}",
+        configured_label(config.api_token_id.as_deref())
+    );
+    println!("user_id: {}", configured_label(config.user_id.as_deref()));
+    println!("helper: {}", configured_label(config.helper.as_deref()));
+    Ok(())
+}
+
+fn run_cloud_sessions_status(json: bool) -> Result<()> {
+    let path = cloud_sessions_config_path()?;
+    let config = load_cloud_sessions_config()?.unwrap_or_default();
+    let status = CloudSessionsConfigStatus {
+        path: path.display().to_string(),
+        exists: path.exists(),
+        api_base: config.api_base,
+        api_token_configured: config.api_token.is_some(),
+        api_token_id: config.api_token_id,
+        helper: config.helper,
+        user_id: config.user_id,
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else {
+        println!("Jade cloud sessions config: {}", status.path);
+        println!("exists: {}", status.exists);
+        println!("api_base: {}", configured_label(status.api_base.as_deref()));
+        println!(
+            "api_token: {}",
+            if status.api_token_configured {
+                "configured"
+            } else {
+                "not configured"
+            }
+        );
+        println!(
+            "api_token_id: {}",
+            configured_label(status.api_token_id.as_deref())
+        );
+        println!("user_id: {}", configured_label(status.user_id.as_deref()));
+        println!("helper: {}", configured_label(status.helper.as_deref()));
+    }
+    Ok(())
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn configured_label(value: Option<&str>) -> &str {
+    value
+        .filter(|value| !value.is_empty())
+        .unwrap_or("not configured")
+}
+
+fn config_or_default_user_id(user_id: String, config: &CloudSessionsConfig) -> String {
+    if user_id == "dev" {
+        config.user_id.clone().unwrap_or(user_id)
+    } else {
+        user_id
+    }
+}
+
+fn cloud_sessions_helper_env(config: &CloudSessionsConfig) -> Vec<(&'static str, String)> {
+    let mut env = Vec::new();
+    if let Some(api_base) = non_empty(config.api_base.clone()) {
+        env.push(("JADE_API_BASE", api_base));
+    }
+    if let Some(api_token) = non_empty(config.api_token.clone()) {
+        env.push(("JADE_API_TOKEN", api_token));
+    }
+    if let Some(api_token_id) = non_empty(config.api_token_id.clone()) {
+        env.push(("JADE_API_TOKEN_ID", api_token_id));
+    }
+    env
+}
+
 fn cloud_sessions_helper_override(action: &CloudSessionsSubcommand) -> Option<String> {
     match action {
+        CloudSessionsSubcommand::Configure { .. } | CloudSessionsSubcommand::Status { .. } => None,
         CloudSessionsSubcommand::Upload { helper, .. }
         | CloudSessionsSubcommand::UploadLatest { helper, .. }
         | CloudSessionsSubcommand::List { helper, .. }
@@ -136,8 +388,19 @@ fn append_common_jade_args(
     }
 }
 
+#[cfg(test)]
 fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
+    build_jade_sessions_args_with_config(action, &CloudSessionsConfig::default())
+}
+
+fn build_jade_sessions_args_with_config(
+    action: CloudSessionsSubcommand,
+    config: &CloudSessionsConfig,
+) -> Vec<String> {
     match action {
+        CloudSessionsSubcommand::Configure { .. } | CloudSessionsSubcommand::Status { .. } => {
+            unreachable!("configure/status do not invoke the Jade helper")
+        }
         CloudSessionsSubcommand::Upload {
             session_file,
             raw,
@@ -147,7 +410,12 @@ fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
             ..
         } => {
             let mut args = vec!["upload".to_string()];
-            append_common_jade_args(&mut args, user_id, profile, region);
+            append_common_jade_args(
+                &mut args,
+                config_or_default_user_id(user_id, config),
+                profile,
+                region,
+            );
             if raw {
                 args.push("--raw".to_string());
             }
@@ -163,7 +431,12 @@ fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
             ..
         } => {
             let mut args = vec!["upload-latest".to_string()];
-            append_common_jade_args(&mut args, user_id, profile, region);
+            append_common_jade_args(
+                &mut args,
+                config_or_default_user_id(user_id, config),
+                profile,
+                region,
+            );
             args.extend(["--sessions-dir".to_string(), sessions_dir]);
             if raw {
                 args.push("--raw".to_string());
@@ -179,7 +452,12 @@ fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
             ..
         } => {
             let mut args = vec!["list".to_string()];
-            append_common_jade_args(&mut args, user_id, profile, region);
+            append_common_jade_args(
+                &mut args,
+                config_or_default_user_id(user_id, config),
+                profile,
+                region,
+            );
             args.extend(["--limit".to_string(), limit.to_string()]);
             if json {
                 args.push("--json".to_string());
@@ -194,7 +472,12 @@ fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
             ..
         } => {
             let mut args = vec!["verify".to_string()];
-            append_common_jade_args(&mut args, user_id, profile, region);
+            append_common_jade_args(
+                &mut args,
+                config_or_default_user_id(user_id, config),
+                profile,
+                region,
+            );
             args.push(session_id);
             args
         }
@@ -209,7 +492,12 @@ fn build_jade_sessions_args(action: CloudSessionsSubcommand) -> Vec<String> {
             ..
         } => {
             let mut args = vec!["view".to_string()];
-            append_common_jade_args(&mut args, user_id, profile, region);
+            append_common_jade_args(
+                &mut args,
+                config_or_default_user_id(user_id, config),
+                profile,
+                region,
+            );
             args.extend(["--format".to_string(), format]);
             if let Some(output) = output {
                 args.extend(["--output".to_string(), output]);

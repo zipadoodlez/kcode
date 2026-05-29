@@ -91,6 +91,55 @@ fn cloud_sessions_subcommands_parse() {
         "jcode",
         "cloud",
         "sessions",
+        "configure",
+        "--api-base",
+        "https://jade.example",
+        "--api-token-env",
+        "JADE_TOKEN",
+        "--api-token-id",
+        "dev-admin",
+        "--user-id",
+        "jeremy",
+        "--helper",
+        "/tmp/jade_sessions.py",
+    ])
+    .unwrap();
+
+    match args.command {
+        Some(Command::Cloud(CloudCommand::Sessions {
+            action:
+                CloudSessionsCommand::Configure {
+                    api_base,
+                    api_token_env,
+                    api_token_id,
+                    user_id,
+                    helper,
+                    clear,
+                    ..
+                },
+        })) => {
+            assert_eq!(api_base.as_deref(), Some("https://jade.example"));
+            assert_eq!(api_token_env.as_deref(), Some("JADE_TOKEN"));
+            assert_eq!(api_token_id.as_deref(), Some("dev-admin"));
+            assert_eq!(user_id.as_deref(), Some("jeremy"));
+            assert_eq!(helper.as_deref(), Some("/tmp/jade_sessions.py"));
+            assert!(!clear);
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+
+    let args = Args::try_parse_from(["jcode", "cloud", "sessions", "status", "--json"]).unwrap();
+    match args.command {
+        Some(Command::Cloud(CloudCommand::Sessions {
+            action: CloudSessionsCommand::Status { json },
+        })) => assert!(json),
+        other => panic!("unexpected command: {:?}", other),
+    }
+
+    let args = Args::try_parse_from([
+        "jcode",
+        "cloud",
+        "sessions",
         "upload-latest",
         "--sessions-dir",
         "/tmp/sessions",

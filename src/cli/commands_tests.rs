@@ -407,6 +407,68 @@ fn cloud_sessions_args_match_jade_helper_contract() {
 }
 
 #[test]
+fn cloud_sessions_config_persists_secret_and_feeds_helper_env_without_args() {
+    let _guard = crate::storage::lock_test_env();
+    let _saved = SavedEnv::capture(&["JCODE_HOME", "JADE_TOKEN_FOR_TEST"]);
+    let temp = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("JADE_TOKEN_FOR_TEST", "secret-token-value");
+
+    run_cloud_sessions_configure(
+        Some("https://jade.example".to_string()),
+        None,
+        Some("JADE_TOKEN_FOR_TEST".to_string()),
+        Some("dev-admin".to_string()),
+        Some("alice".to_string()),
+        Some("/tmp/jade_sessions.py".to_string()),
+        false,
+    )
+    .expect("configure");
+
+    let path = cloud_sessions_config_path().expect("config path");
+    assert!(path.exists());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    let config = load_cloud_sessions_config()
+        .expect("load config")
+        .expect("config exists");
+    assert_eq!(config.api_base.as_deref(), Some("https://jade.example"));
+    assert_eq!(config.api_token.as_deref(), Some("secret-token-value"));
+    assert_eq!(config.api_token_id.as_deref(), Some("dev-admin"));
+    assert_eq!(config.user_id.as_deref(), Some("alice"));
+    assert_eq!(config.helper.as_deref(), Some("/tmp/jade_sessions.py"));
+
+    let env = cloud_sessions_helper_env(&config);
+    assert!(env.contains(&("JADE_API_BASE", "https://jade.example".to_string())));
+    assert!(env.contains(&("JADE_API_TOKEN", "secret-token-value".to_string())));
+    assert!(env.contains(&("JADE_API_TOKEN_ID", "dev-admin".to_string())));
+
+    let args = build_jade_sessions_args_with_config(
+        CloudSessionsSubcommand::List {
+            limit: 2,
+            json: true,
+            user_id: "dev".to_string(),
+            profile: None,
+            region: None,
+            helper: None,
+        },
+        &config,
+    );
+    assert_eq!(
+        args,
+        vec!["list", "--user-id", "alice", "--limit", "2", "--json"]
+    );
+    assert!(!args.iter().any(|arg| arg.contains("secret-token-value")));
+
+    run_cloud_sessions_configure(None, None, None, None, None, None, true).expect("clear");
+    assert!(!path.exists());
+}
+
+#[test]
 fn resolve_jade_sessions_helper_prefers_explicit_and_env_paths() {
     let _saved = SavedEnv::capture(&["JCODE_JADE_SESSIONS_HELPER"]);
     crate::env::set_var("JCODE_JADE_SESSIONS_HELPER", "/tmp/from-env.py");
