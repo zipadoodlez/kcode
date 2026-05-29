@@ -7,6 +7,7 @@ pub mod dispatch;
 pub mod hot_exec;
 pub mod login;
 pub mod output;
+pub mod proctitle;
 pub mod provider_init;
 pub mod selfdev;
 pub mod startup;

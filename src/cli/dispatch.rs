@@ -674,7 +674,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         output::stderr_blank_line();
 
         crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
-        crate::process_title::set_initial_title(&args);
+        crate::cli::proctitle::set_initial_title(&args);
     }
 
     startup_profile::mark("client_mode_start");
