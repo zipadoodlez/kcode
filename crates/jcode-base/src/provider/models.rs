@@ -671,14 +671,27 @@ fn account_models_observed_at() -> Option<SystemTime> {
     OPENAI_MODEL_CATALOG_SERVICE.observed_at(&scope)
 }
 
-pub fn refresh_openai_model_catalog_in_background(access_token: String, context: &'static str) {
+/// Refresh the OpenAI model catalog in the background.
+///
+/// `is_chatgpt_mode` is the authoritative discriminator for which endpoint to
+/// hit and must come from the loaded credential's shape
+/// (`OpenAIProvider::is_chatgpt_mode`), never from sniffing the token string or
+/// the requested credential *intent*. ChatGPT/Codex OAuth sessions use the
+/// `backend-api/codex/models` endpoint; platform API keys (`sk-*`) use
+/// `api.openai.com/v1/models`, which rejects Codex tokens (and vice versa) with
+/// a 401.
+pub fn refresh_openai_model_catalog_in_background(
+    access_token: String,
+    is_chatgpt_mode: bool,
+    context: &'static str,
+) {
     let scope = current_openai_account_scope();
     if access_token.trim().is_empty() {
         finish_openai_model_catalog_refresh_for_scope(&scope);
         return;
     }
 
-    let use_platform_api = openai_catalog_token_looks_like_api_key(&access_token);
+    let use_platform_api = !is_chatgpt_mode;
 
     tokio::spawn(async move {
         let refresh_result = if use_platform_api {
@@ -731,11 +744,6 @@ pub fn refresh_openai_model_catalog_in_background(access_token: String, context:
         note_openai_model_catalog_refresh_attempt_for_scope(&scope);
         finish_openai_model_catalog_refresh_for_scope(&scope);
     });
-}
-
-fn openai_catalog_token_looks_like_api_key(access_token: &str) -> bool {
-    let token = access_token.trim();
-    token.starts_with("sk-")
 }
 
 pub fn record_model_unavailable_for_account(model: &str, reason: &str) {
@@ -980,26 +988,4 @@ pub fn provider_for_model_with_hint(
 /// Detect which provider a model belongs to
 pub fn provider_for_model(model: &str) -> Option<&'static str> {
     provider_for_model_with_hint(model, None)
-}
-
-#[cfg(test)]
-mod openai_catalog_refresh_tests {
-    use super::openai_catalog_token_looks_like_api_key;
-
-    #[test]
-    fn openai_catalog_refresh_routes_platform_keys_away_from_codex_endpoint() {
-        for token in ["sk-test", "sk-proj-abc", "  sk-svcacct-abc  "] {
-            assert!(
-                openai_catalog_token_looks_like_api_key(token),
-                "OpenAI API key {token:?} should use the platform /v1/models endpoint, not the ChatGPT Codex catalog endpoint"
-            );
-        }
-
-        for token in ["eyJhbGciOi", "chatgpt-oauth-token", "sess-oauthish"] {
-            assert!(
-                !openai_catalog_token_looks_like_api_key(token),
-                "OAuth-looking token {token:?} should keep using the Codex catalog endpoint"
-            );
-        }
-    }
 }

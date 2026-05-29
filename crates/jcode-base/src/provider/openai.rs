@@ -900,9 +900,11 @@ impl OpenAIProvider {
                 {
                     let creds = self.credentials.read().await;
                     let token = creds.access_token.clone();
+                    let is_chatgpt_mode = Self::is_chatgpt_mode(&creds);
                     drop(creds);
                     crate::provider::refresh_openai_model_catalog_in_background(
                         token,
+                        is_chatgpt_mode,
                         "openai-request-setup",
                     );
                 }
