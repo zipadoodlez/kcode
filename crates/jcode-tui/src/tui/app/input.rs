@@ -1029,15 +1029,22 @@ impl App {
             if todos.is_empty() {
                 return false;
             }
-            self.push_display_message(DisplayMessage::system(
-                "✅ Todos complete. Auto-poke finished; queued hidden confidence reminder."
-                    .to_string(),
-            ));
-            self.hidden_queued_system_messages.push(
-                super::commands::build_todo_confidence_summary_message(&todos),
-            );
-            self.pending_queued_dispatch = true;
-            return true;
+            let confidence_summary = super::commands::todo_confidence_summary(&todos);
+            let confidence_label =
+                super::commands::format_todo_completion_confidence(confidence_summary);
+            self.push_display_message(DisplayMessage::system(format!(
+                "✅ Todos complete. Auto-poke finished. Cumulative confidence: {}.",
+                confidence_label
+            )));
+            if confidence_summary.needs_more_work {
+                self.hidden_queued_system_messages.push(
+                    super::commands::build_todo_confidence_summary_message(&todos),
+                );
+                self.pending_queued_dispatch = true;
+                return true;
+            }
+            self.pending_queued_dispatch = false;
+            return false;
         }
 
         self.push_display_message(DisplayMessage::system(format!(
