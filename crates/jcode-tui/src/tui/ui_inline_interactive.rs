@@ -74,6 +74,8 @@ fn picker_entry_display_name(entry: &crate::tui::PickerEntry) -> String {
         .any(|option| option.detail.contains("recently added"));
     let suffix = if is_new && !entry.is_current {
         format!(" new{}", default_marker)
+    } else if entry.is_favorite {
+        format!(" ♥{}", default_marker)
     } else if entry.recommended {
         format!(" ★{}", default_marker)
     } else if entry.old && !entry.is_current {
@@ -156,6 +158,16 @@ fn selected_route_notice_text(
         return Some((format!("ⓘ {}", detail), false));
     }
     None
+}
+
+fn model_picker_keybind_hint(picker: &crate::tui::InlineInteractiveState) -> Option<&'static str> {
+    if picker.kind == crate::tui::PickerKind::Model && !picker.preview {
+        Some(
+            " keys: Enter select · Ctrl+D default · Ctrl+F favorite · Alt+F next favorite · type filter · Esc close",
+        )
+    } else {
+        None
+    }
 }
 
 fn account_picker_shows_provider_badge(picker: &crate::tui::InlineInteractiveState) -> bool {
@@ -515,6 +527,12 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         .and_then(|entry| selected_route_notice_text(picker, entry.active_option()));
 
     let mut lines: Vec<Line> = Vec::new();
+    if let Some(hint) = model_picker_keybind_hint(picker) {
+        lines.push(Line::from(Span::styled(
+            truncate_display(hint, width.saturating_sub(1)),
+            Style::default().fg(rgb(60, 60, 80)).italic(),
+        )));
+    }
     lines.push(Line::from(header_spans));
     if let Some((notice, warning)) = selected_route_notice.as_ref() {
         let notice_width = width.saturating_sub(1);
@@ -537,7 +555,9 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         return;
     }
 
-    let list_header_lines = 1 + usize::from(selected_route_notice.is_some());
+    let list_header_lines = 1
+        + usize::from(model_picker_keybind_hint(picker).is_some())
+        + usize::from(selected_route_notice.is_some());
     let list_height = height.saturating_sub(list_header_lines);
     if list_height == 0 {
         frame.render_widget(Paragraph::new(lines), inner);
@@ -598,6 +618,8 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
             Style::default().fg(color).bold()
         } else if entry.is_current {
             Style::default().fg(accent_color())
+        } else if entry.is_favorite {
+            Style::default().fg(rgb(255, 160, 210)).bold()
         } else if entry.recommended {
             Style::default().fg(rgb(255, 220, 120))
         } else if entry.old {
@@ -852,6 +874,7 @@ mod tests {
                 selected_option: 0,
                 is_current: true,
                 is_default: false,
+                is_favorite: false,
                 recommended: true,
                 recommendation_rank: 0,
                 usage_score: 0,
@@ -879,6 +902,7 @@ mod tests {
             selected_option: 0,
             is_current: true,
             is_default: false,
+            is_favorite: false,
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
@@ -906,6 +930,7 @@ mod tests {
                 selected_option: 0,
                 is_current: false,
                 is_default: false,
+                is_favorite: false,
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
@@ -947,6 +972,7 @@ mod tests {
                 selected_option: 0,
                 is_current: false,
                 is_default: false,
+                is_favorite: false,
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
@@ -1086,6 +1112,27 @@ mod tests {
         let picker = sample_picker();
 
         assert!(picker.shows_default_shortcut_hint());
+    }
+
+    #[test]
+    fn model_picker_keybind_hint_mentions_default_and_favorites() {
+        let picker = sample_picker();
+        let hint =
+            model_picker_keybind_hint(&picker).expect("active model picker should show hint");
+
+        assert!(hint.contains("Ctrl+D default"));
+        assert!(hint.contains("Ctrl+F favorite"));
+        assert!(hint.contains("Alt+F next favorite"));
+    }
+
+    #[test]
+    fn picker_entry_display_name_labels_favorites() {
+        let mut picker = sample_picker();
+        let entry = &mut picker.entries[0];
+        entry.is_favorite = true;
+        entry.recommended = true;
+
+        assert!(picker_entry_display_name(entry).contains("♥"));
     }
 
     #[test]

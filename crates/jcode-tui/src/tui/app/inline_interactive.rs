@@ -5,7 +5,7 @@ use crate::tui::{
     PickerOption,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[path = "inline_interactive/helpers.rs"]
@@ -26,6 +26,8 @@ const REMOTE_MODEL_CATALOG_CACHE_FILE: &str = "remote_model_catalog_cache.json";
 const REMOTE_MODEL_CATALOG_CACHE_VERSION: u8 = 1;
 const MODEL_PICKER_USAGE_FILE: &str = "model_picker_usage.json";
 const MODEL_PICKER_USAGE_VERSION: u8 = 1;
+const MODEL_PICKER_FAVORITES_FILE: &str = "model_picker_favorites.json";
+const MODEL_PICKER_FAVORITES_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RemoteModelCatalogCache {
@@ -47,10 +49,22 @@ struct ModelPickerUsageStore {
     selections: HashMap<String, ModelPickerUsageEntry>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct ModelPickerFavoritesStore {
+    version: u8,
+    favorites: HashSet<String>,
+}
+
 fn model_picker_usage_path() -> Option<std::path::PathBuf> {
     crate::storage::app_config_dir()
         .ok()
         .map(|dir| dir.join(MODEL_PICKER_USAGE_FILE))
+}
+
+fn model_picker_favorites_path() -> Option<std::path::PathBuf> {
+    crate::storage::app_config_dir()
+        .ok()
+        .map(|dir| dir.join(MODEL_PICKER_FAVORITES_FILE))
 }
 
 fn model_picker_usage_key(model_name: &str, route: &PickerOption, effort: Option<&str>) -> String {
@@ -113,6 +127,46 @@ fn record_model_picker_selection(model_name: &str, route: &PickerOption, effort:
     entry.count = entry.count.saturating_add(1);
     entry.last_selected_unix_secs = remote_model_catalog_observed_at_unix_secs();
     save_model_picker_usage_store(&store);
+}
+
+fn load_model_picker_favorites_store() -> ModelPickerFavoritesStore {
+    let Some(path) = model_picker_favorites_path() else {
+        return ModelPickerFavoritesStore::default();
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return ModelPickerFavoritesStore::default();
+    };
+    let Ok(mut store) = serde_json::from_slice::<ModelPickerFavoritesStore>(&bytes) else {
+        return ModelPickerFavoritesStore::default();
+    };
+    if store.version != MODEL_PICKER_FAVORITES_VERSION {
+        return ModelPickerFavoritesStore::default();
+    }
+    store.favorites.retain(|key| !key.trim().is_empty());
+    store
+}
+
+fn save_model_picker_favorites_store(store: &ModelPickerFavoritesStore) {
+    let Some(path) = model_picker_favorites_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_vec_pretty(store) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
+fn model_picker_is_favorite(
+    store: &ModelPickerFavoritesStore,
+    model_name: &str,
+    route: &PickerOption,
+    effort: Option<&str>,
+) -> bool {
+    store
+        .favorites
+        .contains(&model_picker_usage_key(model_name, route, effort))
 }
 
 fn remote_model_catalog_cache_path() -> Option<std::path::PathBuf> {
@@ -604,6 +658,7 @@ impl App {
                 selected_option: 0,
                 is_current: true,
                 is_default: false,
+                is_favorite: false,
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
@@ -881,6 +936,7 @@ impl App {
 
         let entries_started = std::time::Instant::now();
         let usage_store = load_model_picker_usage_store();
+        let favorites_store = load_model_picker_favorites_store();
         let mut entries: Vec<PickerEntry> = Vec::new();
         for name in &model_order {
             let mut entry_routes = model_options.remove(name).unwrap_or_default();
@@ -952,6 +1008,12 @@ impl App {
                             created_date: or_created.map(format_created),
                             effort: Some(effort.to_string()),
                             is_default: is_config_default(name, route),
+                            is_favorite: model_picker_is_favorite(
+                                &favorites_store,
+                                name,
+                                route,
+                                Some(effort),
+                            ),
                         });
                     }
                 }
@@ -981,6 +1043,7 @@ impl App {
                         created_date: or_created.map(format_created),
                         effort: None,
                         is_default,
+                        is_favorite: model_picker_is_favorite(&favorites_store, name, &route, None),
                     });
                 }
             }
@@ -1009,6 +1072,8 @@ impl App {
             };
             let a_rec = if a.recommended { 0u8 } else { 1 };
             let b_rec = if b.recommended { 0u8 } else { 1 };
+            let a_favorite = if a.is_favorite { 0u8 } else { 1 };
+            let b_favorite = if b.is_favorite { 0u8 } else { 1 };
             let a_usage = std::cmp::Reverse(a.usage_score);
             let b_usage = std::cmp::Reverse(b.usage_score);
             let a_rec_rank = if a.recommended {
@@ -1035,6 +1100,7 @@ impl App {
             let b_old = if b.old { 1u8 } else { 0 };
             a_current
                 .cmp(&b_current)
+                .then(a_favorite.cmp(&b_favorite))
                 .then(a_recent.cmp(&b_recent))
                 .then(a_usage.cmp(&b_usage))
                 .then(a_rec.cmp(&b_rec))
@@ -1863,6 +1929,77 @@ impl App {
         Ok(())
     }
 
+    fn toggle_selected_model_favorite(&mut self) {
+        let Some((entry_name, is_favorite, store)) = (|| {
+            let picker = self.inline_interactive_state.as_mut()?;
+            if picker.kind != PickerKind::Model || picker.filtered.is_empty() {
+                return None;
+            }
+            let idx = picker.filtered[picker.selected];
+            let entry = picker.entries.get_mut(idx)?;
+            if !matches!(entry.action, PickerAction::Model) {
+                return None;
+            }
+            let base_name = model_entry_base_name(entry);
+            let effort = entry.effort.clone();
+            let route = entry.options.get(entry.selected_option).cloned()?;
+            let key = model_picker_usage_key(&base_name, &route, effort.as_deref());
+            let mut store = load_model_picker_favorites_store();
+            store.version = MODEL_PICKER_FAVORITES_VERSION;
+            let is_favorite = if store.favorites.remove(&key) {
+                false
+            } else {
+                store.favorites.insert(key);
+                true
+            };
+            entry.is_favorite = is_favorite;
+            Some((entry.name.clone(), is_favorite, store))
+        })() else {
+            return;
+        };
+        save_model_picker_favorites_store(&store);
+        self.invalidate_model_picker_cache();
+        let action = if is_favorite {
+            "Favorited"
+        } else {
+            "Unfavorited"
+        };
+        self.set_status_notice(format!("{} {}", action, entry_name));
+    }
+
+    fn cycle_selected_model_favorite(&mut self) {
+        let selected_name = (|| {
+            let picker = self.inline_interactive_state.as_mut()?;
+            if picker.kind != PickerKind::Model || picker.filtered.is_empty() {
+                return None;
+            }
+            let total = picker.filtered.len();
+            for offset in 1..=total {
+                let next = (picker.selected + offset) % total;
+                let entry_idx = picker.filtered[next];
+                if picker
+                    .entries
+                    .get(entry_idx)
+                    .map(|entry| entry.is_favorite)
+                    .unwrap_or(false)
+                {
+                    picker.selected = next;
+                    picker.column = 0;
+                    return picker
+                        .entries
+                        .get(entry_idx)
+                        .map(|entry| entry.name.clone());
+                }
+            }
+            None
+        })();
+        if let Some(entry_name) = selected_name {
+            self.set_status_notice(format!("Favorite → {}", entry_name));
+        } else {
+            self.set_status_notice("No favorited models yet. Use Ctrl+F to favorite one.");
+        }
+    }
+
     pub(super) fn handle_inline_interactive_key(
         &mut self,
         code: KeyCode,
@@ -2028,6 +2165,12 @@ impl App {
                         Err(e) => self.set_status_notice(format!("Failed to save default: {}", e)),
                     }
                 }
+            }
+            KeyCode::Char('f') if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.toggle_selected_model_favorite();
+            }
+            KeyCode::Char('f') if modifiers.contains(KeyModifiers::ALT) => {
+                self.cycle_selected_model_favorite();
             }
             KeyCode::Enter => {
                 let Some(ref mut picker) = self.inline_interactive_state else {
@@ -2377,6 +2520,7 @@ mod tests {
             selected_option: 0,
             is_current: false,
             is_default: false,
+            is_favorite: false,
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score,
