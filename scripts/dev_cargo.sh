@@ -27,6 +27,43 @@ append_rustflags() {
   fi
 }
 
+selected_profile() {
+  # Print the Cargo profile selected by the args, defaulting to "dev" (cargo's
+  # default for build/check) when no --profile/--release is present.
+  local expect_profile_name="false"
+  local profile="dev"
+  for arg in "$@"; do
+    if [[ "$expect_profile_name" == "true" ]]; then
+      profile="$arg"
+      expect_profile_name="false"
+      continue
+    fi
+    case "$arg" in
+      --release|-r) profile="release" ;;
+      --profile=*) profile="${arg#--profile=}" ;;
+      --profile) expect_profile_name="true" ;;
+    esac
+  done
+  printf '%s\n' "$profile"
+}
+
+# Determine whether the effective build will use incremental compilation.
+# sccache cannot cache incremental units, so this gates whether sccache is
+# useful at all. CARGO_INCREMENTAL (if set) wins; otherwise infer from the
+# profile's incremental setting in Cargo.toml.
+build_is_incremental() {
+  case "${CARGO_INCREMENTAL:-}" in
+    0|false|no|off) return 1 ;;
+    1|true|yes|on) return 0 ;;
+  esac
+  case "$(selected_profile "$@")" in
+    # Non-incremental profiles (see Cargo.toml): sccache can produce hits here.
+    release-lto) return 1 ;;
+    # selfdev/dev/release/test and unknown profiles default to incremental.
+    *) return 0 ;;
+  esac
+}
+
 maybe_enable_sccache() {
   case "${SCCACHE_DISABLE:-}" in
     1|true|yes|on)
@@ -44,6 +81,27 @@ maybe_enable_sccache() {
     log "keeping existing RUSTC_WRAPPER=${RUSTC_WRAPPER}"
     return
   fi
+
+  # sccache cannot cache incremental compilations, so for our default
+  # incremental profiles it produces 0% hits while adding wrapper overhead and
+  # misleading "enabled" status. Skip it for incremental builds unless the
+  # caller explicitly forces it via JCODE_SCCACHE=1/on/force.
+  local force_sccache="${JCODE_SCCACHE:-auto}"
+  case "$force_sccache" in
+    1|true|yes|on|force) force_sccache="1" ;;
+    0|false|no|off|never)
+      sccache_status="disabled-by-jcode-sccache"
+      log "sccache disabled by JCODE_SCCACHE"
+      return
+      ;;
+    *) force_sccache="auto" ;;
+  esac
+  if [[ "$force_sccache" != "1" ]] && build_is_incremental "$@"; then
+    sccache_status="skipped-incremental"
+    log "sccache skipped for incremental build (it cannot cache incremental units; set JCODE_SCCACHE=on to force, or use a non-incremental profile)"
+    return
+  fi
+
   if command -v sccache >/dev/null 2>&1; then
     sccache --start-server >/dev/null 2>&1 || true
     export RUSTC_WRAPPER=sccache
@@ -543,7 +601,7 @@ run_local_cargo() {
 
 validate_feature_profile
 maybe_configure_low_memory_selfdev "$@"
-maybe_enable_sccache
+maybe_enable_sccache "$@"
 
 if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]]; then
   configure_linux_linker
