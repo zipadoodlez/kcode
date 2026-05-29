@@ -194,6 +194,11 @@ jcode-background-types = { path = "crates/jcode-background-types" }
 jcode-batch-types = { path = "crates/jcode-batch-types" }
 jcode-build-support = { path = "crates/jcode-build-support" }
 jcode-build-meta = { path = "crates/jcode-build-meta" }
+# Application core: all non-presentation modules, compiled as a separate rustc
+# unit. The root crate (cli + tui + bin) re-exports it via `pub use
+# jcode_app_core::*`. default-features=false so the root feature set fully
+# controls app-core's features (see [features]).
+jcode-app-core = { path = "crates/jcode-app-core", default-features = false }
 jcode-compaction-core = { path = "crates/jcode-compaction-core" }
 jcode-config-types = { path = "crates/jcode-config-types" }
 jcode-core = { path = "crates/jcode-core" }
@@ -238,15 +243,17 @@ jemalloc = [
     "dep:tikv-jemalloc-sys",
     "tikv-jemallocator/stats",
     "tikv-jemalloc-ctl/stats",
+    "jcode-app-core/jemalloc",
 ]
 jemalloc-prof = [
     "jemalloc",
     "tikv-jemallocator/profiling",
     "tikv-jemalloc-ctl/profiling",
+    "jcode-app-core/jemalloc-prof",
 ]
-embeddings = ["dep:jcode-embedding"]
+embeddings = ["dep:jcode-embedding", "jcode-app-core/embeddings"]
 mmdr-size-api = ["jcode-tui-mermaid/mmdr-size-api"]
-pdf = ["dep:jcode-pdf"]
+pdf = ["dep:jcode-pdf", "jcode-app-core/pdf"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
