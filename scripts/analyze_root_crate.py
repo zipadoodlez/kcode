@@ -354,6 +354,37 @@ def main() -> int:
             print(f"  {u} -> {v}   ({w} refs)")
         if len(back_edges) > limit:
             print(f"  ... and {len(back_edges) - limit} more (use --full to list all)")
+
+        # Per-node eviction cost: a module only leaves the SCC once ALL of its
+        # out-edges into the cycle are cut. Rank cycle members by how few/cheap
+        # those out-edges are -- those are the cheapest modules to evict next
+        # (turning the SCC strictly smaller, which is what shrinks the largest
+        # compile unit). For each node, list its in-cycle out-edges.
+        evict = []
+        for n in big:
+            edges = sorted(
+                ((w, d) for d, w in out_edges[n].items()),
+                key=lambda x: (x[0], x[1]),
+            )
+            n_edges = len(edges)
+            total_w = sum(w for w, _ in edges)
+            evict.append((n_edges, total_w, n, edges))
+        evict.sort(key=lambda x: (x[0], x[1], -info[x[2]]["loc"]))
+        print()
+        print(
+            "=== Cheapest modules to evict next from the cycle "
+            "(fewest in-cycle out-edges first) ==="
+        )
+        print("    A module leaves the SCC once all these out-edges are inverted/cut:")
+        ev_limit = 1000 if "--full" in sys.argv else 12
+        for n_edges, total_w, n, edges in evict[:ev_limit]:
+            tgt = ", ".join(f"{d}({w})" for w, d in edges) or "-- (none)"
+            print(
+                f"  {n:<20} {info[n]['loc']:>7} loc  "
+                f"{n_edges} edges / {total_w} refs -> {tgt}"
+            )
+        if len(evict) > ev_limit:
+            print(f"  ... and {len(evict) - ev_limit} more (use --full to list all)")
     return 0
 
 
