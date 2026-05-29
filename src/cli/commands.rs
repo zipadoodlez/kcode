@@ -77,6 +77,7 @@ pub enum CloudSessionsSubcommand {
         since_days: Option<u64>,
         all: bool,
         max: usize,
+        min_interval_mins: Option<u64>,
         raw: bool,
         dry_run: bool,
         force: bool,
@@ -166,6 +167,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             since_days,
             all,
             max,
+            min_interval_mins,
             raw,
             dry_run,
             force,
@@ -180,6 +182,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
                 since_days,
                 all,
                 max,
+                min_interval_mins,
                 raw,
                 dry_run,
                 force,
@@ -382,6 +385,7 @@ struct CloudSessionsSyncRequest {
     since_days: Option<u64>,
     all: bool,
     max: usize,
+    min_interval_mins: Option<u64>,
     raw: bool,
     dry_run: bool,
     force: bool,
@@ -394,6 +398,8 @@ struct CloudSessionsSyncRequest {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct CloudSessionsSyncState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_sync_at: Option<String>,
     #[serde(default)]
     sessions: std::collections::BTreeMap<String, CloudSessionsSyncRecord>,
 }
@@ -420,6 +426,8 @@ struct CloudSessionsSyncEntry {
 struct CloudSessionsSyncReport {
     sessions_dir: String,
     dry_run: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    throttled: bool,
     scanned: usize,
     uploaded: usize,
     skipped_unchanged: usize,
@@ -591,11 +599,47 @@ fn run_jade_upload(
 fn run_cloud_sessions_sync(request: CloudSessionsSyncRequest) -> Result<()> {
     let config = load_cloud_sessions_config()?.unwrap_or_default();
     let helper_override = request.helper.clone().or_else(|| config.helper.clone());
+    let user_id = config_or_default_user_id(request.user_id.clone(), &config);
+    let sessions_dir = resolve_sync_sessions_dir(request.sessions_dir.as_deref())?;
+    let mut state = load_cloud_sessions_sync_state()?;
+
+    // Self-throttle so the command is safe to call from cron/systemd timers without
+    // re-uploading or even rescanning more often than requested.
+    if !request.force
+        && !request.dry_run
+        && let Some(min_interval) = request.min_interval_mins
+        && min_interval > 0
+        && let Some(last) = state
+            .last_sync_at
+            .as_deref()
+            .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+    {
+        let elapsed_mins = (chrono::Utc::now() - last.with_timezone(&chrono::Utc)).num_minutes();
+        if elapsed_mins < min_interval as i64 {
+            let report = CloudSessionsSyncReport {
+                sessions_dir: sessions_dir.display().to_string(),
+                dry_run: request.dry_run,
+                throttled: true,
+                scanned: 0,
+                uploaded: 0,
+                skipped_unchanged: 0,
+                failed: 0,
+                reached_max: false,
+                entries: Vec::new(),
+            };
+            if request.json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "Jade cloud sessions sync skipped: last sync {elapsed_mins}m ago (< --min-interval-mins {min_interval})"
+                );
+            }
+            return Ok(());
+        }
+    }
+
     let helper = resolve_jade_sessions_helper(helper_override.as_deref())?;
     let helper_env = cloud_sessions_helper_env(&config);
-    let user_id = config_or_default_user_id(request.user_id.clone(), &config);
-
-    let sessions_dir = resolve_sync_sessions_dir(request.sessions_dir.as_deref())?;
     let mut candidates = collect_sync_candidates(&sessions_dir)?;
 
     if !request.all {
@@ -611,10 +655,10 @@ fn run_cloud_sessions_sync(request: CloudSessionsSyncRequest) -> Result<()> {
     // Newest first so --max keeps the most recent sessions.
     candidates.sort_by(|a, b| b.modified_unix.cmp(&a.modified_unix));
 
-    let mut state = load_cloud_sessions_sync_state()?;
     let mut report = CloudSessionsSyncReport {
         sessions_dir: sessions_dir.display().to_string(),
         dry_run: request.dry_run,
+        throttled: false,
         scanned: 0,
         uploaded: 0,
         skipped_unchanged: 0,
@@ -703,7 +747,13 @@ fn run_cloud_sessions_sync(request: CloudSessionsSyncRequest) -> Result<()> {
         }
     }
 
-    if state_dirty {
+    // Record completion time for non-dry runs (even if nothing changed) so
+    // --min-interval-mins throttling works for schedulers, and persist any
+    // newly uploaded session records.
+    if !request.dry_run {
+        state.last_sync_at = Some(chrono::Utc::now().to_rfc3339());
+        save_cloud_sessions_sync_state(&state)?;
+    } else if state_dirty {
         save_cloud_sessions_sync_state(&state)?;
     }
 

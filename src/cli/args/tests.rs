@@ -222,6 +222,7 @@ fn cloud_sessions_subcommands_parse() {
                     since_days,
                     all,
                     max,
+                    min_interval_mins,
                     raw,
                     dry_run,
                     force,
@@ -233,6 +234,7 @@ fn cloud_sessions_subcommands_parse() {
             assert!(since_days.is_none());
             assert!(all);
             assert_eq!(max, 5);
+            assert!(min_interval_mins.is_none());
             assert!(!raw);
             assert!(dry_run);
             assert!(!force);

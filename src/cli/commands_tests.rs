@@ -523,6 +523,7 @@ fn cloud_sessions_sync_dry_run_reports_without_uploading_or_writing_state() {
         since_days: None,
         all: true,
         max: 50,
+        min_interval_mins: None,
         raw: false,
         dry_run: true,
         force: false,
@@ -536,6 +537,55 @@ fn cloud_sessions_sync_dry_run_reports_without_uploading_or_writing_state() {
 
     // Dry run must not persist any sync state.
     assert!(!cloud_sessions_sync_state_path().unwrap().exists());
+}
+
+#[test]
+fn cloud_sessions_sync_respects_min_interval_throttle() {
+    let _guard = crate::storage::lock_test_env();
+    let _saved = SavedEnv::capture(&["JCODE_HOME", "JCODE_JADE_SESSIONS_HELPER"]);
+    let temp = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    // Helper that would fail loudly if it ever ran during a throttled run.
+    let helper = temp.path().join("must_not_run.sh");
+    std::fs::write(&helper, b"#!/bin/sh\nexit 13\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    crate::env::set_var("JCODE_JADE_SESSIONS_HELPER", &helper);
+
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    std::fs::write(sessions_dir.join("session_gamma.json"), b"{\"id\":\"g\"}").unwrap();
+
+    // Seed sync state with a very recent last_sync_at so throttle should trigger.
+    let mut state = CloudSessionsSyncState::default();
+    state.last_sync_at = Some(chrono::Utc::now().to_rfc3339());
+    save_cloud_sessions_sync_state(&state).expect("seed state");
+
+    // Should be skipped (not error) because last sync was just now.
+    run_cloud_sessions_sync(CloudSessionsSyncRequest {
+        sessions_dir: Some(sessions_dir.display().to_string()),
+        since_days: None,
+        all: true,
+        max: 50,
+        min_interval_mins: Some(60),
+        raw: false,
+        dry_run: false,
+        force: false,
+        json: true,
+        user_id: "dev".to_string(),
+        profile: None,
+        region: None,
+        helper: None,
+    })
+    .expect("throttled sync returns ok without running helper");
+
+    // The session should NOT be recorded as uploaded.
+    let reloaded = load_cloud_sessions_sync_state().expect("reload state");
+    assert!(!reloaded.sessions.contains_key("session_gamma"));
 }
 
 #[test]

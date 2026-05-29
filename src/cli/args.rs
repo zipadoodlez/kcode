@@ -546,6 +546,10 @@ pub(crate) enum CloudSessionsCommand {
         #[arg(long, default_value_t = 50)]
         max: usize,
 
+        /// Skip this run if the last sync ran fewer than this many minutes ago (for cron/timers)
+        #[arg(long)]
+        min_interval_mins: Option<u64>,
+
         /// Upload without Jade's redaction pass
         #[arg(long)]
         raw: bool,
