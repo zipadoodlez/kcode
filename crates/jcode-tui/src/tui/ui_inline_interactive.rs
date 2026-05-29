@@ -390,11 +390,36 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
     } else {
         0
     };
+
+    // Hotkey hint sits ABOVE the picker box (outside its border) so the
+    // shortcuts are always visible without competing with the column headers.
+    let keybind_hint = model_picker_keybind_hint(picker);
+    let hint_rows: u16 = if keybind_hint.is_some() && area.height > 3 {
+        1
+    } else {
+        0
+    };
+    if let Some(hint) = keybind_hint.filter(|_| hint_rows == 1) {
+        let hint_area = Rect {
+            x: area.x + horizontal_offset,
+            y: area.y,
+            width: outer_width as u16,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                truncate_display(hint, outer_width.saturating_sub(1)),
+                Style::default().fg(rgb(120, 120, 150)).italic(),
+            ))),
+            hint_area,
+        );
+    }
+
     let render_area = Rect {
         x: area.x + horizontal_offset,
-        y: area.y,
+        y: area.y + hint_rows,
         width: outer_width as u16,
-        height: area.height,
+        height: area.height.saturating_sub(hint_rows),
     };
     let block = Block::default()
         .borders(Borders::ALL)
@@ -527,12 +552,6 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         .and_then(|entry| selected_route_notice_text(picker, entry.active_option()));
 
     let mut lines: Vec<Line> = Vec::new();
-    if let Some(hint) = model_picker_keybind_hint(picker) {
-        lines.push(Line::from(Span::styled(
-            truncate_display(hint, width.saturating_sub(1)),
-            Style::default().fg(rgb(60, 60, 80)).italic(),
-        )));
-    }
     lines.push(Line::from(header_spans));
     if let Some((notice, warning)) = selected_route_notice.as_ref() {
         let notice_width = width.saturating_sub(1);
@@ -555,9 +574,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         return;
     }
 
-    let list_header_lines = 1
-        + usize::from(model_picker_keybind_hint(picker).is_some())
-        + usize::from(selected_route_notice.is_some());
+    let list_header_lines = 1 + usize::from(selected_route_notice.is_some());
     let list_height = height.saturating_sub(list_header_lines);
     if list_height == 0 {
         frame.render_widget(Paragraph::new(lines), inner);
