@@ -17,6 +17,7 @@ selected_linker_desc=""
 sccache_status="disabled"
 selfdev_low_memory_status="disabled"
 feature_profile_status="default"
+build_jobs_status="cargo-default"
 
 append_rustflags() {
   local new_flag="$1"
@@ -250,6 +251,70 @@ selfdev_low_memory_default_needed() {
   (( swap_total_kib == 0 && mem_total_kib < 24576 * 1024 && mem_available_kib < 8192 * 1024 ))
 }
 
+cpu_count() {
+  local n
+  n=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
+  [[ "$n" =~ ^[0-9]+$ && "$n" -ge 1 ]] || n=1
+  printf '%s\n' "$n"
+}
+
+# Choose a Cargo job count from *currently available* memory so concurrent
+# builds (e.g. several self-dev agents on one machine) self-throttle instead of
+# all assuming the full core count and tripping earlyoom/OOM.
+#
+# rustc on the large root jcode crate peaks around 2.5-3 GiB RSS, so we budget
+# ~2 GiB of currently-available memory per job and clamp into [1, cpus]. When
+# the machine is idle this still uses every core; under memory pressure a fresh
+# build backs off to 1-2 jobs. An explicit CARGO_BUILD_JOBS / JCODE_BUILD_JOBS
+# always wins, and non-Linux hosts fall back to the cargo/.cargo default.
+select_build_jobs() {
+  # Respect an explicit override from either env var.
+  local override="${JCODE_BUILD_JOBS:-${CARGO_BUILD_JOBS:-}}"
+  if [[ -n "$override" ]]; then
+    if [[ "$override" =~ ^[0-9]+$ && "$override" -ge 1 ]]; then
+      export CARGO_BUILD_JOBS="$override"
+      build_jobs_status="override:$override"
+      return
+    fi
+    # Invalid override: warn and fall through to adaptive sizing.
+    log "ignoring invalid job override '$override' (expected a positive integer); using adaptive sizing"
+    unset CARGO_BUILD_JOBS
+  fi
+
+  # Adaptive sizing only on Linux where /proc/meminfo is available; elsewhere we
+  # leave cargo to honor the .cargo/config.toml default.
+  if [[ "$(uname -s)" != "Linux" || ! -r /proc/meminfo ]]; then
+    build_jobs_status="cargo-default"
+    return
+  fi
+
+  local cpus mem_available_kib mib_per_job_default mib_per_job
+  cpus=$(cpu_count)
+  mem_available_kib=$(meminfo_kib MemAvailable)
+  [[ -n "$mem_available_kib" && "$mem_available_kib" =~ ^[0-9]+$ ]] || mem_available_kib=0
+
+  # Per-job memory budget (MiB). Tunable for hosts with heavier/lighter crates.
+  mib_per_job_default=2048
+  mib_per_job="${JCODE_BUILD_MIB_PER_JOB:-$mib_per_job_default}"
+  [[ "$mib_per_job" =~ ^[0-9]+$ && "$mib_per_job" -ge 256 ]] || mib_per_job="$mib_per_job_default"
+
+  local mem_available_mib jobs_by_mem jobs
+  mem_available_mib=$(( mem_available_kib / 1024 ))
+  jobs_by_mem=$(( mem_available_mib / mib_per_job ))
+  (( jobs_by_mem < 1 )) && jobs_by_mem=1
+
+  # Final job count is the smaller of "fits in memory" and core count.
+  jobs="$jobs_by_mem"
+  (( jobs > cpus )) && jobs="$cpus"
+  (( jobs < 1 )) && jobs=1
+
+  export CARGO_BUILD_JOBS="$jobs"
+  build_jobs_status="adaptive:${jobs} (cpus=${cpus}, mem_avail=${mem_available_mib}MiB, budget=${mib_per_job}MiB/job)"
+  if (( jobs < cpus )); then
+    log "limiting cargo to ${jobs} job(s) under memory pressure (${mem_available_mib}MiB available, ~${mib_per_job}MiB/job); override with JCODE_BUILD_JOBS"
+  fi
+}
+
 maybe_configure_low_memory_selfdev() {
   if ! uses_selfdev_profile "$@"; then
     selfdev_low_memory_status="not-selfdev"
@@ -345,6 +410,8 @@ os=$(uname -s)
 arch=$(uname -m)
 sccache_status=$sccache_status
 selfdev_low_memory_status=$selfdev_low_memory_status
+build_jobs_status=$build_jobs_status
+cargo_build_jobs=${CARGO_BUILD_JOBS:-<unset>}
 feature_profile_status=$feature_profile_status
 rustc_wrapper=${RUSTC_WRAPPER:-<unset>}
 linker_mode=$selected_linker_mode
@@ -602,6 +669,7 @@ run_local_cargo() {
 validate_feature_profile
 maybe_configure_low_memory_selfdev "$@"
 maybe_enable_sccache "$@"
+select_build_jobs
 
 if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]]; then
   configure_linux_linker
