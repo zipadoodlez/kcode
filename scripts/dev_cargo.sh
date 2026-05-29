@@ -262,11 +262,15 @@ cpu_count() {
 # builds (e.g. several self-dev agents on one machine) self-throttle instead of
 # all assuming the full core count and tripping earlyoom/OOM.
 #
-# rustc on the large root jcode crate peaks around 2.5-3 GiB RSS, so we budget
-# ~2 GiB of currently-available memory per job and clamp into [1, cpus]. When
-# the machine is idle this still uses every core; under memory pressure a fresh
-# build backs off to 1-2 jobs. An explicit CARGO_BUILD_JOBS / JCODE_BUILD_JOBS
-# always wins, and non-Linux hosts fall back to the cargo/.cargo default.
+# After the monolith was split into the jcode-base/app-core/tui/cli crate DAG,
+# the largest single rustc unit now peaks at ~1.28 GiB RSS (measured VmHWM,
+# selfdev profile), down from the old 2.5-3 GiB monolith. We budget ~1.5 GiB of
+# currently-available memory per job: comfortably above the measured peak yet
+# low enough to use every core on an idle 15 GiB machine (the old 2 GiB budget
+# needlessly capped such a box at 6 jobs). Clamp into [1, cpus]. When the
+# machine is idle this uses every core; under memory pressure a fresh build
+# backs off. An explicit CARGO_BUILD_JOBS / JCODE_BUILD_JOBS always wins, and
+# non-Linux hosts fall back to the cargo/.cargo default.
 select_build_jobs() {
   # Respect an explicit override from either env var.
   local override="${JCODE_BUILD_JOBS:-${CARGO_BUILD_JOBS:-}}"
@@ -293,8 +297,10 @@ select_build_jobs() {
   mem_available_kib=$(meminfo_kib MemAvailable)
   [[ -n "$mem_available_kib" && "$mem_available_kib" =~ ^[0-9]+$ ]] || mem_available_kib=0
 
-  # Per-job memory budget (MiB). Tunable for hosts with heavier/lighter crates.
-  mib_per_job_default=2048
+  # Per-job memory budget (MiB). Sized just above the largest measured rustc
+  # unit (~1.28 GiB after the crate decomposition) so an idle machine uses every
+  # core while a memory-pressured one still backs off. Tunable per host.
+  mib_per_job_default=1536
   mib_per_job="${JCODE_BUILD_MIB_PER_JOB:-$mib_per_job_default}"
   [[ "$mib_per_job" =~ ^[0-9]+$ && "$mib_per_job" -ge 256 ]] || mib_per_job="$mib_per_job_default"
 

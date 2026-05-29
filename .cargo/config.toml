@@ -11,6 +11,8 @@
 # full core count and tripping earlyoom/OOM. Override either path explicitly
 # with CARGO_BUILD_JOBS / JCODE_BUILD_JOBS.
 #
-# rustc on the large root jcode crate peaks around 2.5-3 GiB RSS, so 4 keeps a
-# single direct build memory-safe on a ~15 GiB machine while staying parallel.
+# After the crate decomposition the largest rustc unit peaks at ~1.28 GiB RSS
+# (was 2.5-3 GiB as a monolith), so 4 jobs (~5 GiB) keeps a single direct build
+# comfortably memory-safe on a ~15 GiB machine while staying parallel. The
+# adaptive dev_cargo.sh path uses every core when memory allows.
 jobs = 4
