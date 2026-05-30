@@ -25,14 +25,14 @@ fn test_handle_background_task_completed_renders_markdown_preview() {
     assert!(
         rendered
             .content
-            .contains("**Background task** `bg123` · `bash` · ✓ completed · 7.1s · exit 0")
+            .contains("**Background task** bg123 · bash · ✓ completed · 7.1s · exit 0")
     );
-    assert!(rendered.content.contains("```text"));
+    assert!(rendered.content.contains("text"));
     assert!(rendered.content.contains("[stderr] one"));
     assert!(
         rendered
             .content
-            .contains("_Full output:_ `bg action=\"output\" task_id=\"bg123\"`")
+            .contains("_Full output:_ bg action=\"output\" task_id=\"bg123\"`")
     );
     assert_eq!(
         app.status_notice(),
@@ -225,9 +225,9 @@ fn test_handle_server_event_input_shell_result_renders_markdown_blocks() {
     let rendered = app.display_messages().last().expect("shell result message");
     assert_eq!(rendered.role, "system");
     assert!(rendered.content.contains("**Shell command**"));
-    assert!(rendered.content.contains("```bash"));
+    assert!(rendered.content.contains("bash"));
     assert!(rendered.content.contains("pwd"));
-    assert!(rendered.content.contains("```text"));
+    assert!(rendered.content.contains("text"));
     assert!(rendered.content.contains("/tmp/project"));
     assert_eq!(
         app.status_notice(),

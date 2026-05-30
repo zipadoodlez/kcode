@@ -827,13 +827,13 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
                     "Failed to auto-reload server: {}. Use `/reload` to retry.",
                     err
                 )));
-                app.set_status_notice("Server update available — auto reload failed");
+                app.set_status_notice("Server update available - auto reload failed");
             }
         } else {
             app.push_display_message(DisplayMessage::system(
                 "ℹ Newer server binary detected. Auto-reload is disabled by `display.auto_server_reload = false`. Use `/reload` manually when you're ready.".to_string(),
             ));
-            app.set_status_notice("Server update available — manual /reload recommended");
+            app.set_status_notice("Server update available - manual /reload recommended");
         }
     }
 

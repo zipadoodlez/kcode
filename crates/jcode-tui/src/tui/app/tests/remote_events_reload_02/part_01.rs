@@ -245,7 +245,7 @@ fn test_handle_server_event_remote_observe_tracks_tool_exec_and_done() {
         page.content
             .contains("Latest tool call emitted by the model")
     );
-    assert!(page.content.contains("`read`"));
+    assert!(page.content.contains("read"));
     assert!(page.content.contains("src/main.rs"));
 
     app.handle_server_event(
@@ -715,7 +715,7 @@ fn test_handle_server_event_soft_interrupt_injected_background_task_renders_card
         .last()
         .expect("missing injected background task message");
     assert_eq!(last.role, "background_task");
-    assert!(last.content.contains("**Background task** `abc123`"));
+    assert!(last.content.contains("**Background task** abc123"));
 }
 
 #[test]
@@ -836,7 +836,7 @@ fn test_handle_remote_disconnect_flushes_streaming_text_and_sets_reconnect_state
         .expect("missing reconnect status message");
     assert_eq!(last.role, "system");
     assert_eq!(last.title.as_deref(), Some("Connection"));
-    assert!(last.content.contains("⚡ Connection lost — retrying"));
+    assert!(last.content.contains("⚡ Connection lost - retrying"));
     assert!(last.content.contains("connection to server dropped"));
     assert!(
         !last.content.contains('\n'),

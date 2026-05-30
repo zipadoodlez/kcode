@@ -154,8 +154,8 @@ fn test_autojudge_prompt_is_continue_or_stop_manager() {
 
     assert!(prompt.contains("act like a strong completion manager/reviewer"));
     assert!(prompt.contains("tell it exactly what to do next"));
-    assert!(prompt.contains("Default to `CONTINUE:` unless you are genuinely convinced"));
-    assert!(prompt.contains("Start with either `CONTINUE:` or `STOP:`"));
+    assert!(prompt.contains("Default to CONTINUE: unless you are genuinely convinced"));
+    assert!(prompt.contains("Start with either CONTINUE: or STOP:"));
     assert!(prompt.contains("Address the DM to the parent agent, not to the user"));
 }
 
@@ -353,7 +353,7 @@ fn test_new_for_remote_restores_spawn_startup_hints_and_dispatch_state() {
         assert!(
             startup_banner
                 .content
-                .contains("send exactly one DM back telling the parent either to `CONTINUE:`")
+                .contains("send exactly one DM back telling the parent either to CONTINUE:")
         );
         assert!(startup_banner.content.contains("user-visible mirror"));
         assert!(startup_banner.content.contains("session_parent_123"));

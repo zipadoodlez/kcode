@@ -342,7 +342,7 @@ fn test_handle_post_connect_marker_without_reload_context_does_not_queue_selfdev
     assert!(
         !app.display_messages()
             .iter()
-            .any(|m| m.content.starts_with("Reload complete — continuing")),
+            .any(|m| m.content.starts_with("Reload complete - continuing")),
         "marker-only reconnect should not queue selfdev continuation"
     );
     assert!(app.reload_info.is_empty());

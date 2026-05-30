@@ -133,7 +133,7 @@ impl App {
 
 pub(super) fn split_view_status_message(app: &App) -> String {
     format!(
-        "Split view: **{}**\n\nWhen enabled, the side panel mirrors the current chat so you can scroll older context there while keeping the main composer and live output in view. It is transient and not persisted to session side-panel storage.",
+        "Split view: {}\n\nWhen enabled, the side panel mirrors the current chat so you can scroll older context there while keeping the main composer and live output in view. It is transient and not persisted to session side-panel storage.",
         if app.split_view_enabled() {
             "enabled"
         } else {

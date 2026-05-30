@@ -82,7 +82,7 @@ fn swarm_member_line(member: &SwarmMemberStatus, max_width: usize) -> Line<'stat
     let name = swarm_member_label(member);
     let mut detail = member.detail.clone().unwrap_or_default();
     if !detail.is_empty() {
-        detail = format!(" — {}", detail);
+        detail = format!(" - {}", detail);
     }
     let role_prefix = swarm_role_prefix(member);
     let line_text = truncate_smart(&format!("{} {}{}", name, member.status, detail), max_width);

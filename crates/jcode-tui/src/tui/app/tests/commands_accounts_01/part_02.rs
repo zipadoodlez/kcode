@@ -108,7 +108,7 @@ fn test_alignment_invalid_usage_shows_error() {
 
     let last = app.display_messages().last().expect("missing response");
     assert_eq!(last.role, "error");
-    assert!(last.content.contains("Usage: `/alignment`"));
+    assert!(last.content.contains("Usage: /alignment"));
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn test_help_topic_shows_fix_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/fix`"));
+    assert!(msg.content.contains("/fix"));
 }
 
 #[test]

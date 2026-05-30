@@ -315,7 +315,7 @@ impl App {
                 .ok()
                 .flatten()
                 .is_some();
-            let message = format!("Reload complete — continuing.{}", stats);
+            let message = format!("Reload complete - continuing.{}", stats);
 
             // Add success message with stats (only if there's actual content or a reload happened)
             if total_turns > 0 || has_reload_ctx {
@@ -452,7 +452,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
                 "off"
             };
             app.push_display_message(DisplayMessage::system(format!(
-                "Onboarding preview is **{}**. Use `/onboarding-preview on` to mimic the first-run empty screen, or `/onboarding-preview off` to return to this session.",
+                "Onboarding preview is {}. Use /onboarding-preview on to mimic the first-run empty screen, or /onboarding-preview off to return to this session.",
                 status
             )));
             return true;
@@ -569,7 +569,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
                 _ => "unset (normal)",
             };
             app.push_display_message(DisplayMessage::system(format!(
-                "Premium mode: **{}**\nEnv JCODE_COPILOT_PREMIUM: {}",
+                "Premium mode: {}\nEnv JCODE_COPILOT_PREMIUM: {}",
                 label, env_label,
             )));
             return true;
@@ -612,7 +612,7 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
             };
             app.set_status_notice(format!("Premium: {}", label));
             app.push_display_message(DisplayMessage::system(format!(
-                "Premium mode: **{}**. Toggle off with `/z`. (saved to config)",
+                "Premium mode: {}. Toggle off with /z. (saved to config)",
                 label,
             )));
         }

@@ -624,7 +624,7 @@ fn test_improve_command_starts_improvement_loop() {
         &msg.content[0],
         ContentBlock::Text { text, .. }
             if text.contains("You are entering improvement mode for this repository")
-                && text.contains("write a concise ranked todo list using `todo`")
+                && text.contains("write a concise ranked todo list using todo")
     ));
 
     let display = app

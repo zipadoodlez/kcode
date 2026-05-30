@@ -290,7 +290,7 @@ fn test_restore_session_adds_reload_message() {
     assert!(
         app.display_messages()[1]
             .content
-            .contains("Reload complete — continuing.")
+            .contains("Reload complete - continuing.")
     );
 
     // Local restore keeps provider messages lazy until the next active turn.

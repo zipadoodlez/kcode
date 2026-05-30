@@ -35,15 +35,13 @@ impl App {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         if accounts.is_empty() {
-            return "**OpenAI Accounts:** none configured\n\n\
-                 Use `/account openai add` to add the next numbered account, or `/login openai` to refresh the active one."
+            return "OpenAI Accounts: none configured\n\n\
+                 Use /account openai add to add the next numbered account, or /login openai to refresh the active one."
                 .to_string();
         }
 
-        let mut lines = vec!["**OpenAI Accounts:**\n".to_string()];
-        lines.push("| Account | Email | Status | ChatGPT Account ID | Active |".to_string());
-        lines.push("|---------|-------|--------|--------------------|--------|".to_string());
-
+        let headers = ["Account", "Email", "Status", "ChatGPT Account ID", "Active"];
+        let mut rows: Vec<[String; 5]> = Vec::new();
         for account in &accounts {
             let is_active = active_label.as_deref() == Some(&account.label);
             let status = match account.expires_at {
@@ -58,15 +56,20 @@ impl App {
                 .unwrap_or_else(|| "unknown".to_string());
             let account_id = account.account_id.as_deref().unwrap_or("unknown");
             let active_mark = if is_active { "active" } else { "" };
-            lines.push(format!(
-                "| {} | {} | {} | {} | {} |",
-                account.label, email, status, account_id, active_mark
-            ));
+            rows.push([
+                account.label.clone(),
+                email,
+                status.to_string(),
+                account_id.to_string(),
+                active_mark.to_string(),
+            ]);
         }
 
+        let mut lines = vec!["OpenAI Accounts:".to_string(), String::new()];
+        lines.extend(format_account_table(&headers, &rows));
         lines.push(String::new());
         lines.push(
-            "Commands: `/account openai switch <label>`, `/account openai add`, `/account openai remove <label>`"
+            "Commands: /account openai switch <label>, /account openai add, /account openai remove <label>"
                 .to_string(),
         );
 
@@ -79,15 +82,13 @@ impl App {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         if accounts.is_empty() {
-            return "**Anthropic Accounts:** none configured\n\n\
-                 Use `/account claude add` to add the next numbered account, or `/login claude` to refresh the active one."
+            return "Anthropic Accounts: none configured\n\n\
+                 Use /account claude add to add the next numbered account, or /login claude to refresh the active one."
                 .to_string();
         }
 
-        let mut lines = vec!["**Anthropic Accounts:**\n".to_string()];
-        lines.push("| Account | Email | Status | Subscription | Active |".to_string());
-        lines.push("|---------|-------|--------|-------------|--------|".to_string());
-
+        let headers = ["Account", "Email", "Status", "Subscription", "Active"];
+        let mut rows: Vec<[String; 5]> = Vec::new();
         for account in &accounts {
             let is_active = active_label.as_deref() == Some(&account.label);
             let status = if account.expires > now_ms {
@@ -102,15 +103,20 @@ impl App {
                 .unwrap_or_else(|| "unknown".to_string());
             let sub = account.subscription_type.as_deref().unwrap_or("unknown");
             let active_mark = if is_active { "active" } else { "" };
-            lines.push(format!(
-                "| {} | {} | {} | {} | {} |",
-                account.label, email, status, sub, active_mark
-            ));
+            rows.push([
+                account.label.clone(),
+                email,
+                status.to_string(),
+                sub.to_string(),
+                active_mark.to_string(),
+            ]);
         }
 
+        let mut lines = vec!["Anthropic Accounts:".to_string(), String::new()];
+        lines.extend(format_account_table(&headers, &rows));
         lines.push(String::new());
         lines.push(
-            "Commands: `/account claude switch <label>`, `/account claude add`, `/account claude remove <label>`"
+            "Commands: /account claude switch <label>, /account claude add, /account claude remove <label>"
                 .to_string(),
         );
 
@@ -232,4 +238,33 @@ impl App {
             ));
         }
     }
+}
+
+fn format_account_table(headers: &[&str; 5], rows: &[[String; 5]]) -> Vec<String> {
+    let mut widths = [0usize; 5];
+    for (i, h) in headers.iter().enumerate() {
+        widths[i] = unicode_width::UnicodeWidthStr::width(*h);
+    }
+    for row in rows {
+        for (i, cell) in row.iter().enumerate() {
+            widths[i] = widths[i].max(unicode_width::UnicodeWidthStr::width(cell.as_str()));
+        }
+    }
+
+    let render_row = |cells: &[String; 5]| -> String {
+        let mut parts: Vec<String> = Vec::with_capacity(5);
+        for (i, cell) in cells.iter().enumerate() {
+            let pad = widths[i].saturating_sub(unicode_width::UnicodeWidthStr::width(cell.as_str()));
+            parts.push(format!("{}{}", cell, " ".repeat(pad)));
+        }
+        format!("  {}", parts.join("  ").trim_end())
+    };
+
+    let header_cells: [String; 5] =
+        std::array::from_fn(|i| headers[i].to_string());
+    let mut lines = vec![render_row(&header_cells)];
+    for row in rows {
+        lines.push(render_row(row));
+    }
+    lines
 }

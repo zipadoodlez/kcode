@@ -26,14 +26,14 @@ impl App {
         note: impl Into<String>,
     ) -> String {
         let note = note.into();
-        let mut content = format!("**Status:** {}", status.into());
+        let mut content = format!("Status: {}", status.into());
         if !note.is_empty() {
             content.push_str("\n\n");
             content.push_str(&note);
         }
         if action == crate::bus::ClientMaintenanceAction::Rebuild {
             content.push_str(
-                "\n\n**Pipeline:** `git pull --ff-only` → `cargo build --release` → `cargo test --release -- --test-threads=1`",
+                "\n\nPipeline: git pull --ff-only → cargo build --release → cargo test --release -- --test-threads=1",
             );
         }
         content
@@ -302,7 +302,7 @@ impl App {
                 if self.is_processing {
                     self.pending_background_client_reload = Some((session_id, action));
                     self.set_status_notice(format!(
-                        "{} ready — will reload after the current turn",
+                        "{} ready - will reload after the current turn",
                         action.title()
                     ));
                     self.set_client_maintenance_message(

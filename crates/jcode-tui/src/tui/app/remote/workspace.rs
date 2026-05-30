@@ -97,7 +97,7 @@ pub(super) async fn handle_workspace_command(
         if app.is_processing {
             app.pending_split_request = true;
             app.push_display_message(DisplayMessage::system(
-                "Workspace add queued — new session will be created when idle.".to_string(),
+                "Workspace add queued - new session will be created when idle.".to_string(),
             ));
             app.set_status_notice("Workspace add queued");
         } else {
@@ -108,7 +108,7 @@ pub(super) async fn handle_workspace_command(
     }
 
     app.push_display_message(DisplayMessage::system(
-        "`/workspace`\nShow workspace status.\n\n`/workspace on`\nEnable/import workspace mode for current remote sessions.\n\n`/workspace off`\nDisable workspace mode.\n\n`/workspace add`\nSplit current session and add it to the right in the current workspace row.\n\n`/workspace add up`\nSplit current session into the workspace above.\n\n`/workspace add down`\nSplit current session into the workspace below."
+        "/workspace\n  Show workspace status.\n\n/workspace on\n  Enable/import workspace mode for current remote sessions.\n\n/workspace off\n  Disable workspace mode.\n\n/workspace add\n  Split current session and add it to the right in the current workspace row.\n\n/workspace add up\n  Split current session into the workspace above.\n\n/workspace add down\n  Split current session into the workspace below."
             .to_string(),
     ));
     Ok(true)

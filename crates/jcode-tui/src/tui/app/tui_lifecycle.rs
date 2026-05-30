@@ -103,7 +103,7 @@ impl App {
         self.status_detail = Some("offline; waiting for network before retry".to_string());
 
         let content = format!(
-            "📡 Network appears offline — waiting to retry automatically. {} — {}",
+            "📡 Network appears offline - waiting to retry automatically. {} - {}",
             plan.listener_summary,
             reason.trim().trim_end_matches('.')
         );
@@ -170,7 +170,7 @@ impl App {
             Ok((retry_attempts, backoff_secs, retry_at)) => {
                 self.rate_limit_reset = Some(retry_at);
                 let content = format!(
-                    "⚡ Connection lost — retrying (attempt {}/{}, in {}s) — {}",
+                    "⚡ Connection lost - retrying (attempt {}/{}, in {}s) - {}",
                     retry_attempts,
                     max_attempts,
                     backoff_secs,
@@ -187,7 +187,7 @@ impl App {
                         && (message.title.as_deref() == Some("Connection")
                             || message
                                 .content
-                                .starts_with("⚡ Server reload in progress — waiting for handoff")
+                                .starts_with("⚡ Server reload in progress - waiting for handoff")
                             || message.content.starts_with("⚡ Connection lost"))
                 }) {
                     self.replace_display_message_title_and_content(

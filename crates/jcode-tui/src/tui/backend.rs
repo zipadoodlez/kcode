@@ -798,7 +798,7 @@ impl RemoteConnection {
             .await
     }
 
-    /// Split the current session — ask server to clone conversation into a new session
+    /// Split the current session - ask server to clone conversation into a new session
     pub async fn split(&mut self) -> Result<u64> {
         let id = self.next_request_id;
         let request = Request::Split { id };

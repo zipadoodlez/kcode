@@ -99,12 +99,12 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
     assert!(last.content.contains("Models: 12 → 15  (+3 / -0)"));
     assert!(last.content.contains("Routes: 20 → 29  (+9 / -0 / ~2)"));
     assert!(last.content.contains("Added models:"));
-    assert!(last.content.contains("`cerebras-fast`"));
-    assert!(last.content.contains("`cerebras-large`"));
-    assert!(last.content.contains("`cerebras-reasoning`"));
+    assert!(last.content.contains("cerebras-fast"));
+    assert!(last.content.contains("cerebras-large"));
+    assert!(last.content.contains("cerebras-reasoning"));
     assert!(app.display_messages.iter().any(|message| {
         message.role == "background_task"
-            && message.content.contains("**Background task progress** `refresh-model-list`")
+            && message.content.contains("**Background task progress** refresh-model-list")
             && message.content.contains("Starting provider model catalog refresh")
     }));
 }
@@ -172,7 +172,7 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
     assert!(last.content.contains("**Model List Refresh Complete**"));
     assert!(last.content.contains("Models: 1 → 2  (+1 / -0)"));
     assert!(last.content.contains("Routes: 1 → 2  (+1 / -0 / ~1)"));
-    assert!(last.content.contains("Added models: `new-model`"));
+    assert!(last.content.contains("Added models: new-model"));
 }
 
 #[test]

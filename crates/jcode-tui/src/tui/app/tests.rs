@@ -173,15 +173,15 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
     ));
     let stats = app.display_messages().last().unwrap().content.clone();
     assert!(
-        stats.contains("- total_cache_reported_input_tokens: **63.8k (63,762)**"),
+        stats.contains("- total_cache_reported_input_tokens: 63.8k (63,762)"),
         "{stats}"
     );
     assert!(
-        stats.contains("- baseline.signature.messages_json_chars: **198.6k (198,612)**"),
+        stats.contains("- baseline.signature.messages_json_chars: 198.6k (198,612)"),
         "{stats}"
     );
     assert!(
-        stats.contains("- current_api_usage_recorded: **true**"),
+        stats.contains("- current_api_usage_recorded: true"),
         "{stats}"
     );
 }
@@ -210,7 +210,7 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
         "{stats}"
     );
     assert!(
-        stats.contains("- total_input_tokens: **1.25m (1,250,000)**"),
+        stats.contains("- total_input_tokens: 1.25m (1,250,000)"),
         "{stats}"
     );
     assert!(
@@ -218,7 +218,7 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
         "{stats}"
     );
     assert!(
-        stats.contains("- total_cache_reported_input_tokens: **1m (1,000,000)**"),
+        stats.contains("- total_cache_reported_input_tokens: 1m (1,000,000)"),
         "{stats}"
     );
     assert!(
@@ -226,7 +226,7 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
         "{stats}"
     );
     assert!(
-        stats.contains("- messages_with_token_usage: **3**"),
+        stats.contains("- messages_with_token_usage: 3"),
         "{stats}"
     );
 }

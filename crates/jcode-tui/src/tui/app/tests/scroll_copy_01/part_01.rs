@@ -442,7 +442,7 @@ fn test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact() {
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
     app.pending_soft_interrupts = vec![
-        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs — amber previously read this file: read lines 1-9999"
+        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9999"
             .to_string(),
     ];
     let first = render_and_snap(&app, &mut terminal);
@@ -452,7 +452,7 @@ fn test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact() {
     );
 
     app.pending_soft_interrupts = vec![
-        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs — amber previously read this file: read lines 1-9"
+        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
             .to_string(),
     ];
     let second = render_and_snap(&app, &mut terminal);
@@ -518,7 +518,7 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
 
     let mut lines = vec![
-        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs — amber previously read this file: read lines 1-9"
+        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
             .to_string(),
     ];
     for idx in 1..=40 {
@@ -642,14 +642,14 @@ fn test_local_alt_s_toggles_typing_scroll_lock() {
         .unwrap();
     assert_eq!(
         app.status_notice(),
-        Some("Typing scroll lock: ON — typing stays at current chat position".to_string())
+        Some("Typing scroll lock: ON - typing stays at current chat position".to_string())
     );
 
     app.handle_key(KeyCode::Char('s'), KeyModifiers::ALT)
         .unwrap();
     assert_eq!(
         app.status_notice(),
-        Some("Typing scroll lock: OFF — typing follows chat bottom".to_string())
+        Some("Typing scroll lock: OFF - typing follows chat bottom".to_string())
     );
 }
 

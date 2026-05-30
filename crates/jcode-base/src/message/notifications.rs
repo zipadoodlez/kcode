@@ -17,28 +17,33 @@ pub fn format_input_shell_result_markdown(shell: &InputShellResult) -> String {
 
     let mut meta = vec![status, Message::format_duration(shell.duration_ms)];
     if let Some(cwd) = shell.cwd.as_deref() {
-        meta.push(format!("cwd `{}`", cwd));
+        meta.push(format!("cwd {}", cwd));
     }
     if shell.truncated {
         meta.push("truncated".to_string());
     }
 
     let mut message = format!(
-        "**Shell command** · {}\n\n```bash\n{}\n```",
+        "Shell command · {}\n\n{}",
         meta.join(" · "),
-        sanitize_fenced_block(&shell.command)
+        indent_block(&shell.command)
     );
 
     if shell.output.trim().is_empty() {
-        message.push_str("\n\n_No output._");
+        message.push_str("\n\nNo output.");
     } else {
-        message.push_str(&format!(
-            "\n\n```text\n{}\n```",
-            sanitize_fenced_block(shell.output.trim_end())
-        ));
+        message.push_str("\n\n");
+        message.push_str(&indent_block(shell.output.trim_end()));
     }
 
     message
+}
+
+fn indent_block(text: &str) -> String {
+    text.lines()
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn input_shell_status_notice(shell: &InputShellResult) -> String {

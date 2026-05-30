@@ -159,7 +159,7 @@ fn test_duplicate_history_for_same_session_is_ignored_after_fast_path_restore() 
     assert!(
         app.display_messages()
             .iter()
-            .any(|m| m.role == "system" && m.content.starts_with("Reload complete — continuing"))
+            .any(|m| m.role == "system" && m.content.starts_with("Reload complete - continuing"))
     );
 }
 
@@ -168,7 +168,7 @@ fn test_compacted_history_marker_scroll_queues_lazy_load() {
     let mut app = create_test_app();
     app.is_remote = true;
     app.replace_display_messages(vec![DisplayMessage::system(
-        "Earlier conversation compacted — 128 historical messages hidden from the UI. Scroll to the top to load older history.",
+        "Earlier conversation compacted - 128 historical messages hidden from the UI. Scroll to the top to load older history.",
     )]);
 
     let state = app.compacted_history_lazy_state();
@@ -271,7 +271,7 @@ fn test_compacted_history_event_applies_expanded_window() {
             messages: vec![
                 crate::protocol::HistoryMessage {
                     role: "system".to_string(),
-                    content: "Earlier conversation compacted — 64 older historical messages hidden. Showing 64 of 128 compacted messages. Scroll to the top to load more.".to_string(),
+                    content: "Earlier conversation compacted - 64 older historical messages hidden. Showing 64 of 128 compacted messages. Scroll to the top to load more.".to_string(),
                     tool_calls: None,
                     tool_data: None,
                 },

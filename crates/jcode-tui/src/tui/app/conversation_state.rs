@@ -41,7 +41,7 @@ impl App {
     pub(super) fn format_compaction_started_message(trigger: &str) -> String {
         let strategy = Self::format_compaction_strategy_label(trigger);
         format!(
-            "📦 **Compacting context** ({}) — summarizing older messages in the background to stay within the context window.",
+            "📦 Compacting context ({}) - summarizing older messages in the background to stay within the context window.",
             strategy
         )
     }
@@ -83,7 +83,7 @@ impl App {
         };
         let strategy = Self::format_compaction_strategy_label(&event.trigger);
         let mut message = format!(
-            "📦 **Context compacted** ({}) — older messages were summarized {}.",
+            "📦 Context compacted ({}) - older messages were summarized {}.",
             strategy, reason
         );
         let details = Self::format_compaction_detail_segments(event, context_limit, false);
@@ -99,7 +99,7 @@ impl App {
         context_limit: u64,
     ) -> String {
         let mut message =
-            "📦 **Emergency compaction** — older messages were dropped to recover from context pressure. Recent context was kept.".to_string();
+            "📦 Emergency compaction - older messages were dropped to recover from context pressure. Recent context was kept.".to_string();
         let details = Self::format_compaction_detail_segments(event, context_limit, true);
         if !details.is_empty() {
             message.push_str("\n\n");
@@ -655,7 +655,7 @@ impl App {
         let sample = missing
             .iter()
             .take(3)
-            .map(|id| format!("`{}`", id))
+            .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(", ");
         let count = missing.len();

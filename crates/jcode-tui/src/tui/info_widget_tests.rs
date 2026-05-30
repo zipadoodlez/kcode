@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 #[test]
 fn truncate_smart_handles_unicode() {
-    let s = "eagle running — keep going";
+    let s = "eagle running - keep going";
     let out = truncate_smart(s, 15);
     assert_eq!(out, "eagle runnin...");
 }
@@ -796,11 +796,11 @@ fn swarm_widget_renders_member_roles_and_details() {
     assert!(text.contains("★"), "got: {text}");
     assert!(text.contains("◆"), "got: {text}");
     assert!(
-        text.contains("coord running — orchestrating patch"),
+        text.contains("coord running - orchestrating patch"),
         "got: {text}"
     );
     assert!(
-        text.contains("trees ready — worktree synced"),
+        text.contains("trees ready - worktree synced"),
         "got: {text}"
     );
 }

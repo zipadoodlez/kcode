@@ -222,17 +222,17 @@ pub fn render_messages_and_images_with_compacted_history(
             .unwrap_or(0);
         let content = if remaining_compacted == 0 {
             format!(
-                "Earlier conversation compacted — showing all {} compacted historical messages. Redraw may be slower while this view is open.",
+                "Earlier conversation compacted - showing all {} compacted historical messages. Redraw may be slower while this view is open.",
                 total_compacted
             )
         } else if visible_compacted == 0 {
             format!(
-                "Earlier conversation compacted — {} historical messages hidden from the UI. Scroll to the top to load older history.",
+                "Earlier conversation compacted - {} historical messages hidden from the UI. Scroll to the top to load older history.",
                 remaining_compacted
             )
         } else {
             format!(
-                "Earlier conversation compacted — {} older historical messages hidden. Showing {} of {} compacted messages. Scroll to the top to load more.",
+                "Earlier conversation compacted - {} older historical messages hidden. Showing {} of {} compacted messages. Scroll to the top to load more.",
                 remaining_compacted, visible_compacted, total_compacted
             )
         };

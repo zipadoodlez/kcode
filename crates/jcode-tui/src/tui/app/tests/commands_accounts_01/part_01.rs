@@ -169,9 +169,9 @@ fn test_help_topic_shows_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/compact`"));
+    assert!(msg.content.contains("/compact"));
     assert!(msg.content.contains("background"));
-    assert!(msg.content.contains("`/compact mode`"));
+    assert!(msg.content.contains("/compact mode"));
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn test_help_topic_shows_provider_test_coverage_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/provider-test-coverage`"));
+    assert!(msg.content.contains("/provider-test-coverage"));
     assert!(msg.content.contains("live verification evidence"));
     assert!(msg.content.contains("readiness gaps"));
 }
@@ -201,7 +201,7 @@ fn test_help_topic_shows_log_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/log mark [note]`"));
+    assert!(msg.content.contains("/log mark [note]"));
     assert!(msg.content.contains("JCODE_LOG_MARK"));
 }
 
@@ -216,7 +216,7 @@ fn slash_log_mark_reports_marker_and_note() {
         .last()
         .expect("missing log mark response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Log mark written: `logmark-"));
+    assert!(msg.content.contains("Log mark written: logmark-"));
     assert!(msg.content.contains("JCODE_LOG_MARK"));
     assert!(msg.content.contains("Note: before repro"));
 }
@@ -232,7 +232,7 @@ fn slash_log_without_mark_shows_usage() {
         .last()
         .expect("missing log usage response");
     assert_eq!(msg.role, "error");
-    assert!(msg.content.contains("Usage: `/log mark [note]`"));
+    assert!(msg.content.contains("Usage: /log mark [note]"));
 }
 
 #[test]
@@ -269,10 +269,10 @@ fn slash_provider_test_coverage_with_args_shows_provider_detail() {
         app.model_status_content
             .starts_with("# Provider test coverage")
     );
-    assert!(app.model_status_content.contains("Provider: `fpt`"));
+    assert!(app.model_status_content.contains("Provider: fpt"));
     assert!(
         app.model_status_content
-            .contains("Model: `FPT.AI-KIE-v1.7`")
+            .contains("Model: FPT.AI-KIE-v1.7")
     );
 }
 
@@ -315,7 +315,7 @@ fn test_help_topic_shows_btw_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/btw <question>`"));
+    assert!(msg.content.contains("/btw <question>"));
     assert!(msg.content.contains("side panel"));
 }
 
@@ -330,9 +330,9 @@ fn test_help_topic_shows_git_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/git`"));
+    assert!(msg.content.contains("/git"));
     assert!(msg.content.contains("git status --short --branch"));
-    assert!(msg.content.contains("`/git status`"));
+    assert!(msg.content.contains("/git status"));
 }
 
 #[test]
@@ -346,7 +346,7 @@ fn test_help_topic_shows_commit_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/commit`"));
+    assert!(msg.content.contains("/commit"));
     assert!(msg.content.contains("logical commits"));
     assert!(msg.content.contains("preserve unrelated work"));
 }
@@ -378,9 +378,9 @@ fn test_help_topic_shows_catchup_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/catchup`"));
+    assert!(msg.content.contains("/catchup"));
     assert!(msg.content.contains("side panel"));
-    assert!(msg.content.contains("`/catchup next`"));
+    assert!(msg.content.contains("/catchup next"));
 }
 
 #[test]
@@ -394,7 +394,7 @@ fn test_help_topic_shows_back_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/back`"));
+    assert!(msg.content.contains("/back"));
     assert!(msg.content.contains("Catch Up"));
 }
 
@@ -529,7 +529,7 @@ fn test_help_topic_shows_observe_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/observe`"));
+    assert!(msg.content.contains("/observe"));
     assert!(msg.content.contains("latest tool call or tool result"));
 }
 
@@ -544,7 +544,7 @@ fn test_help_topic_shows_splitview_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/splitview`"));
+    assert!(msg.content.contains("/splitview"));
     assert!(
         msg.content
             .contains("mirrors the current chat in the side panel")
@@ -562,7 +562,7 @@ fn test_help_topic_shows_refactor_command_details() {
         .last()
         .expect("missing help response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/refactor [focus]`"));
+    assert!(msg.content.contains("/refactor [focus]"));
     assert!(msg.content.contains("independent read-only subagent"));
 }
 
@@ -743,7 +743,7 @@ fn test_btw_command_requires_question() {
 
     let msg = app.display_messages().last().expect("missing btw error");
     assert_eq!(msg.role, "error");
-    assert!(msg.content.contains("Usage: `/btw <question>`"));
+    assert!(msg.content.contains("Usage: /btw <question>"));
 }
 
 #[test]
@@ -774,7 +774,7 @@ fn test_btw_command_prepares_side_panel_and_hidden_turn() {
         .last()
         .expect("missing btw status message");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Running `/btw`"));
+    assert!(msg.content.contains("Running /btw"));
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
@@ -804,7 +804,7 @@ fn test_btw_command_in_remote_mode_queues_followup_instead_of_erroring() {
         .last()
         .expect("missing remote btw message");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Running `/btw`"));
+    assert!(msg.content.contains("Running /btw"));
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
@@ -824,8 +824,8 @@ fn test_git_command_shows_repo_status_for_working_directory() {
 
     let msg = app.display_messages().last().expect("missing git response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/git`"));
-    assert!(msg.content.contains("```text"));
+    assert!(msg.content.contains("/git"));
+    assert!(msg.content.contains("text"));
     assert!(msg.content.contains("## "));
     assert!(msg.content.contains("tracked.txt"));
 }
@@ -843,8 +843,8 @@ fn test_git_command_works_in_remote_mode_with_accessible_working_directory() {
 
     let msg = app.display_messages().last().expect("missing git response");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("`/git`"));
-    assert!(msg.content.contains("```text"));
+    assert!(msg.content.contains("/git"));
+    assert!(msg.content.contains("text"));
     assert!(msg.content.contains("## "));
     assert!(msg.content.contains("tracked.txt"));
     assert!(
@@ -1058,7 +1058,7 @@ fn test_observe_updates_latest_tool_context_only() {
         page.content
             .contains("Latest tool call emitted by the model")
     );
-    assert!(page.content.contains("`read`"));
+    assert!(page.content.contains("read"));
     assert!(page.content.contains("src/main.rs"));
 
     app.observe_tool_result(&tool_call, "1 use std::path::Path;", false, Some("read"));

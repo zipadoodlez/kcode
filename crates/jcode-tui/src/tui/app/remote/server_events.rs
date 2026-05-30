@@ -582,13 +582,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.update_terminal_title();
                 if title.is_some() {
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Renamed session to **{}**.",
+                        "Renamed session to {}.",
                         display_title
                     )));
                     app.set_status_notice("Session renamed");
                 } else {
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Cleared custom name. Session title is now **{}**.",
+                        "Cleared custom name. Session title is now {}.",
                         display_title
                     )));
                     app.set_status_notice("Session name cleared");
@@ -618,9 +618,12 @@ pub(in crate::tui::app) fn handle_server_event(
             if let Some(out) = output
                 && !out.is_empty()
             {
-                content.push_str("\n```\n");
-                content.push_str(&out);
-                content.push_str("\n```");
+                content.push('\n');
+                for line in out.lines() {
+                    content.push_str("  ");
+                    content.push_str(line);
+                    content.push('\n');
+                }
             }
 
             app.append_reload_message(&content);
@@ -882,7 +885,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.input.clear();
                     app.cursor_pos = 0;
                     app.pending_images.clear();
-                    app.set_status_notice("Reload complete — prompt preserved");
+                    app.set_status_notice("Reload complete - prompt preserved");
                 }
                 app.note_runtime_memory_event_force("history_loaded", "remote_history_applied");
                 if let Some(notice) = app.pending_remote_rewind_notice.take() {
@@ -959,7 +962,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     ));
                 } else {
                     app.push_display_message(DisplayMessage::system(
-                        "Reload complete — continuing because a recovery directive was pending."
+                        "Reload complete - continuing because a recovery directive was pending."
                             .to_string(),
                     ));
                     app.hidden_queued_system_messages.push(continuation_message);
@@ -967,13 +970,13 @@ pub(in crate::tui::app) fn handle_server_event(
             } else if pending_reload_reconnect_status.is_some() {
                 let message = match was_interrupted {
                     Some(false) => {
-                        "Reload complete — no continuation needed because the previous response had already finished."
+                        "Reload complete - no continuation needed because the previous response had already finished."
                     }
                     Some(true) => {
-                        "Reload complete — no continuation queued because no recovery directive was available for the interrupted turn."
+                        "Reload complete - no continuation queued because no recovery directive was available for the interrupted turn."
                     }
                     None => {
-                        "Reload complete — no continuation needed because the server did not report an interrupted turn."
+                        "Reload complete - no continuation needed because the server did not report an interrupted turn."
                     }
                 };
                 crate::logging::info(&format!(
@@ -1461,7 +1464,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.pending_split_provider_key_override = None;
                 app.pending_split_label = None;
                 app.push_display_message(DisplayMessage::system(format!(
-                    "Added **{}** to workspace.",
+                    "Added {} to workspace.",
                     new_session_name,
                 )));
                 app.set_status_notice(format!("Workspace + {}", new_session_name));
@@ -1504,13 +1507,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 Ok(true) => {
                     if let Some(label) = split_label.as_deref() {
                         app.push_display_message(DisplayMessage::system(format!(
-                            "🔍 {} launched in **{}**.",
+                            "🔍 {} launched in {}.",
                             label, new_session_name,
                         )));
                         app.set_status_notice(format!("{} launched", label));
                     } else {
                         app.push_display_message(DisplayMessage::system(format!(
-                            "✂ Split → **{}** (opened in new window)",
+                            "✂ Split → {} (opened in new window)",
                             new_session_name,
                         )));
                         app.set_status_notice(format!("Split → {}", new_session_name));
@@ -1519,13 +1522,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 Ok(false) => {
                     if let Some(label) = split_label.as_deref() {
                         app.push_display_message(DisplayMessage::system(format!(
-                            "🔍 {} session **{}** created.\n\nNo terminal found. Resume manually:\n```\njcode --resume {}\n```",
+                            "🔍 {} session {} created.\n\nNo terminal found. Resume manually:\n  jcode --resume {}",
                             label, new_session_name, new_session_id,
                         )));
                         app.set_status_notice(format!("{} session created", label));
                     } else {
                         app.push_display_message(DisplayMessage::system(format!(
-                            "✂ Split → **{}**\n\nNo terminal found. Resume manually:\n```\njcode --resume {}\n```",
+                            "✂ Split → {}\n\nNo terminal found. Resume manually:\n  jcode --resume {}",
                             new_session_name, new_session_id,
                         )));
                     }
@@ -1533,13 +1536,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 Err(e) => {
                     if let Some(label) = split_label.as_deref() {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "{} session **{}** was created but failed to open a window: {}\n\nResume manually: `jcode --resume {}`",
+                            "{} session {} was created but failed to open a window: {}\n\nResume manually: jcode --resume {}",
                             label, new_session_name, e, new_session_id,
                         )));
                         app.set_status_notice(format!("{} open failed", label));
                     } else {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "Split created **{}** but failed to open window: {}\n\nResume manually: `jcode --resume {}`",
+                            "Split created {} but failed to open window: {}\n\nResume manually: jcode --resume {}",
                             new_session_name, e, new_session_id,
                         )));
                     }

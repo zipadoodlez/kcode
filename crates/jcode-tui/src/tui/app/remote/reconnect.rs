@@ -114,7 +114,7 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
     };
 
     format!(
-        "⚡ Connection lost — retrying (attempt {}, {}) — {}{}",
+        "⚡ Connection lost - retrying (attempt {}, {}) - {}{}",
         state.reconnect_attempts.max(1),
         elapsed_str,
         detail,
@@ -153,7 +153,7 @@ pub(super) fn reload_wait_status_message(
     };
 
     format!(
-        "⚡ Server reload in progress — waiting for handoff ({}) — {}{}",
+        "⚡ Server reload in progress - waiting for handoff ({}) - {}{}",
         elapsed_str, detail, resume_hint,
     )
 }
@@ -659,7 +659,7 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
             session_id: session_to_resume.map(str::to_string),
         });
         app.push_display_message(DisplayMessage::system(
-            "Reload complete — checking restored history to decide whether continuation is needed."
+            "Reload complete - checking restored history to decide whether continuation is needed."
                 .to_string(),
         ));
         ReloadContext::log_recovery_outcome(
@@ -828,7 +828,7 @@ pub(in crate::tui::app) fn finalize_reload_reconnect(
                 "queued initiator continuation after reconnect",
             );
             app.push_display_message(DisplayMessage::system(
-                "Reload complete — continuing because reload recovery was pending.",
+                "Reload complete - continuing because reload recovery was pending.",
             ));
             app.hidden_queued_system_messages
                 .push(directive.continuation_message);
@@ -856,7 +856,7 @@ pub(in crate::tui::app) fn finalize_reload_reconnect(
             app.push_display_message(DisplayMessage::system(app.reload_info.join("\n")));
         }
         app.push_display_message(DisplayMessage::system(
-            "Reload complete — no continuation queued because no recovery context was pending."
+            "Reload complete - no continuation queued because no recovery context was pending."
                 .to_string(),
         ));
         app.reload_info.clear();

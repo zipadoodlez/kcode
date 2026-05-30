@@ -177,12 +177,12 @@ fn test_handle_server_event_history_with_interruption_queues_continuation() {
     let system_msg = app
         .display_messages()
         .iter()
-        .find(|m| m.role == "system" && m.content.starts_with("Reload complete — continuing"))
+        .find(|m| m.role == "system" && m.content.starts_with("Reload complete - continuing"))
         .expect("should have a short reload continuation message");
     assert!(
         system_msg
             .content
-            .starts_with("Reload complete — continuing")
+            .starts_with("Reload complete - continuing")
     );
 
     assert!(app.queued_messages().is_empty());
@@ -191,7 +191,7 @@ fn test_handle_server_event_history_with_interruption_queues_continuation() {
     assert!(
         app.display_messages()
             .iter()
-            .any(|m| m.role == "system" && m.content.starts_with("Reload complete — continuing"))
+            .any(|m| m.role == "system" && m.content.starts_with("Reload complete - continuing"))
     );
 }
 
@@ -416,7 +416,7 @@ fn test_finalize_reload_reconnect_marker_only_does_not_queue_selfdev_continuatio
     assert!(
         !app.display_messages()
             .iter()
-            .any(|m| m.role == "system" && m.content.starts_with("Reload complete — continuing"))
+            .any(|m| m.role == "system" && m.content.starts_with("Reload complete - continuing"))
     );
 }
 

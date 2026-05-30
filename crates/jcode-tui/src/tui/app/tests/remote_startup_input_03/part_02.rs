@@ -190,7 +190,7 @@ fn test_initial_history_bootstrap_skips_resubmit_when_prompt_already_in_history(
             restored
                 .display_messages()
                 .iter()
-                .any(|message| message.content.starts_with("Reload complete — continuing")),
+                .any(|message| message.content.starts_with("Reload complete - continuing")),
             "server interruption recovery should continue using the restored server-side prompt"
         );
     });

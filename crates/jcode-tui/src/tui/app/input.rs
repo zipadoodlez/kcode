@@ -917,7 +917,7 @@ pub(super) fn clear_input_for_escape(app: &mut App) {
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
     if had_input {
-        app.set_status_notice("Input cleared — Ctrl+Z to restore");
+        app.set_status_notice("Input cleared - Ctrl+Z to restore");
     }
 }
 
@@ -1048,7 +1048,7 @@ impl App {
         }
 
         self.push_display_message(DisplayMessage::system(format!(
-            "👉 Auto-poking: {} incomplete todo{}. `/poke off` to stop.",
+            "👉 Auto-poking: {} incomplete todo{}. /poke off to stop.",
             incomplete.len(),
             if incomplete.len() == 1 { "" } else { "s" },
         )));
@@ -2417,7 +2417,7 @@ impl App {
 
             if command.is_empty() {
                 self.push_display_message(DisplayMessage::system(
-                    "Shell command cannot be empty after `!`.",
+                    "Shell command cannot be empty after !.",
                 ));
                 self.set_status_notice("Shell command is empty");
                 return;
@@ -2425,7 +2425,7 @@ impl App {
 
             if self.is_remote {
                 self.push_display_message(DisplayMessage::system(
-                    "Input-line `!` shell commands are only available in a local jcode TUI session.",
+                    "Input-line ! shell commands are only available in a local jcode TUI session.",
                 ));
                 self.set_status_notice("Local shell unavailable in remote mode");
                 return;

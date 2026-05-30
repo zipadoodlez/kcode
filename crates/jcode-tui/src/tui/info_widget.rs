@@ -1872,7 +1872,7 @@ fn render_sections(
 }
 
 // ---------------------------------------------------------------------------
-// Tips widget — rotating helpful tips and keyboard shortcuts
+// Tips widget - rotating helpful tips and keyboard shortcuts
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]

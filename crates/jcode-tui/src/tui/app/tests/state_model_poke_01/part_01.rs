@@ -70,7 +70,7 @@ fn test_rewind_undo_restores_truncated_messages() {
             .last()
             .expect("rewind notice")
             .content
-            .contains("Undo anytime with `/rewind undo`")
+            .contains("Undo anytime with /rewind undo")
     );
 
     app.input = "/rewind undo".to_string();
@@ -111,8 +111,8 @@ fn test_rewind_lists_visible_messages_when_initial_session_context_is_hidden() {
 
     let last = app.display_messages().last().expect("history message");
     assert!(last.content.contains("**Conversation history:**"));
-    assert!(last.content.contains("`1` 👤 User - msg-1"));
-    assert!(last.content.contains("`2` 👤 User - msg-2"));
+    assert!(last.content.contains("1 👤 User - msg-1"));
+    assert!(last.content.contains("2 👤 User - msg-2"));
     assert!(!last.content.contains("Session Context"));
     assert!(!last.content.contains("No messages in conversation"));
 }

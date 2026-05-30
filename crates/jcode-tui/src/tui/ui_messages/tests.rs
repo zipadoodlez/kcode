@@ -22,7 +22,7 @@ fn system_glyph_env_lock() -> std::sync::MutexGuard<'static, ()> {
 
 #[test]
 fn render_system_message_forces_system_color_on_all_spans() {
-    let msg = DisplayMessage::system("**Reload complete** — continuing.");
+    let msg = DisplayMessage::system("**Reload complete** - continuing.");
 
     let lines = render_system_message(&msg, 80, crate::config::DiffDisplayMode::Off);
 
@@ -100,7 +100,7 @@ fn render_plaintext_lines_hang_indents_wrapped_continuations() {
 fn render_system_message_centered_mode_left_aligns_with_padding() {
     let saved = crate::tui::markdown::center_code_blocks();
     crate::tui::markdown::set_center_code_blocks(true);
-    let msg = DisplayMessage::system("Reload complete — continuing.");
+    let msg = DisplayMessage::system("Reload complete - continuing.");
 
     let lines = render_system_message(&msg, 80, crate::config::DiffDisplayMode::Off);
 
@@ -130,7 +130,7 @@ fn render_system_message_uses_width_stable_titles_on_kitty() {
     crate::env::set_var("TERM", "xterm-kitty");
 
     let msg = DisplayMessage::system(
-        "⚡ Connection lost — retrying (attempt 2, 7s) — connection reset by server",
+        "⚡ Connection lost - retrying (attempt 2, 7s) - connection reset by server",
     )
     .with_title("Connection");
 
@@ -590,7 +590,7 @@ fn render_system_message_uses_reload_card_for_reload_title() {
 #[test]
 fn render_system_message_uses_connection_card_for_reconnect_status() {
     let msg = DisplayMessage::system(
-        "⚡ Connection lost — retrying (attempt 2, 7s) — connection reset by server · resume: jcode --resume koala",
+        "⚡ Connection lost - retrying (attempt 2, 7s) - connection reset by server · resume: jcode --resume koala",
     )
     .with_title("Connection");
 
@@ -616,7 +616,7 @@ fn render_swarm_message_centered_mode_caps_wrap_width_for_long_notifications() {
     crate::tui::markdown::set_center_code_blocks(true);
     let msg = DisplayMessage::swarm(
         "File activity",
-        "/home/jeremy/jcode/src/tui/ui_messages.rs — moss just edited this file while you were working nearby, so the notification should still read as centered in wide layouts.",
+        "/home/jeremy/jcode/src/tui/ui_messages.rs - moss just edited this file while you were working nearby, so the notification should still read as centered in wide layouts.",
     );
 
     let lines = render_swarm_message(&msg, 120, crate::config::DiffDisplayMode::Off);

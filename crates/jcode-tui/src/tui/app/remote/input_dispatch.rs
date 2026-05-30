@@ -304,7 +304,7 @@ async fn submit_remote_input_shell(
 
     if command.trim().is_empty() {
         app.push_display_message(DisplayMessage::system(
-            "Shell command cannot be empty after `!`.",
+            "Shell command cannot be empty after !.",
         ));
         app.set_status_notice("Shell command is empty");
         return Ok(());

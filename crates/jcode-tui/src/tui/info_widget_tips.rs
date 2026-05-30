@@ -13,14 +13,14 @@ fn all_tips() -> Vec<Tip> {
     [
         "Ctrl+J / Ctrl+K to scroll chat up and down (Cmd+J / Cmd+K on macOS terminals that forward Command)",
         "Ctrl+[ / Ctrl+] to jump between user prompts",
-        "Ctrl+G to bookmark your scroll position — press again to teleport back",
+        "Ctrl+G to bookmark your scroll position - press again to teleport back",
         "```mermaid code blocks render as diagrams",
-        "Swarms form automatically when multiple sessions share a repo — they coordinate plans, share context, and track file conflicts",
-        "Memories are stored in a graph with semantic embeddings — recall finds related facts even if you use different words",
-        "Ambient mode runs background cycles while you're away — maintaining memories, compacting context, and doing proactive work",
+        "Swarms form automatically when multiple sessions share a repo - they coordinate plans, share context, and track file conflicts",
+        "Memories are stored in a graph with semantic embeddings - recall finds related facts even if you use different words",
+        "Ambient mode runs background cycles while you're away - maintaining memories, compacting context, and doing proactive work",
         "Ambient cycles can email you a summary and you can reply with directives for the next run",
-        "Alt+B moves a long-running tool to the background — the agent continues and can check on it later with the `bg` tool",
-        "Most terminals can be configured to copy text on highlight — no Ctrl+C needed. Check your terminal's settings for 'copy on select'",
+        "Alt+B moves a long-running tool to the background - the agent continues and can check on it later with the `bg` tool",
+        "Most terminals can be configured to copy text on highlight - no Ctrl+C needed. Check your terminal's settings for 'copy on select'",
         "Shift+Tab cycles diff mode: Off, Inline, Pinned, File. Pinned shows all diffs in a side pane. File shows the full file with changes highlighted, synced to your scroll position",
     ]
     .iter()

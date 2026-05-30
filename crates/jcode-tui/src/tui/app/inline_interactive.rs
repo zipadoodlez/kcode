@@ -1651,13 +1651,13 @@ impl App {
 
             if names.len() == 1 {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Queued Catch Up for **{}**.",
+                    "Queued Catch Up for {}.",
                     names[0],
                 )));
                 self.set_status_notice(format!("Catch Up → {}", names[0]));
             } else {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Queued Catch Up for **{} sessions**: {}.",
+                    "Queued Catch Up for {} sessions: {}.",
                     names.len(),
                     names.join(", "),
                 )));
@@ -1728,13 +1728,13 @@ impl App {
         if spawned > 0 && failed.is_empty() {
             if names.len() == 1 {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Resumed **{}** in new window.",
+                    "Resumed {} in new window.",
                     names[0],
                 )));
                 self.set_status_notice(format!("Resumed {}", names[0]));
             } else {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Resumed **{} sessions** in new windows: {}.",
+                    "Resumed {} sessions in new windows: {}.",
                     names.len(),
                     names.join(", "),
                 )));
@@ -1747,7 +1747,7 @@ impl App {
 
         if spawned > 0 {
             self.push_display_message(DisplayMessage::system(format!(
-                "Resumed **{} session(s)** in new windows. {} failed:\n```\n{}\n```",
+                "Resumed {} session(s) in new windows. {} failed:\n{}",
                 spawned,
                 failed.len(),
                 manual.join("\n")
@@ -1755,7 +1755,7 @@ impl App {
             self.set_status_notice(format!("Resumed {} session(s)", spawned));
         } else {
             self.push_display_message(DisplayMessage::system(format!(
-                "No terminal found. Resume manually:\n```\n{}\n```",
+                "No terminal found. Resume manually:\n{}",
                 manual.join("\n")
             )));
         }
@@ -1812,7 +1812,7 @@ impl App {
 
         if targets.len() > 1 {
             self.push_display_message(DisplayMessage::system(format!(
-                "Selected {} sessions; resuming **{}** in this terminal.",
+                "Selected {} sessions; resuming {} in this terminal.",
                 targets.len(),
                 name
             )));
@@ -1882,7 +1882,7 @@ impl App {
                 .map(|id| format!("  jcode --resume {}", id))
                 .collect();
             self.push_display_message(DisplayMessage::system(format!(
-                "Restored {} session(s) in new windows. {} failed:\n```\n{}\n```",
+                "Restored {} session(s) in new windows. {} failed:\n{}",
                 spawned,
                 failed.len(),
                 manual.join("\n")
@@ -1893,7 +1893,7 @@ impl App {
                 .map(|id| format!("  jcode --resume {}", id))
                 .collect();
             self.push_display_message(DisplayMessage::system(format!(
-                "No terminal found. Resume manually:\n```\n{}\n```",
+                "No terminal found. Resume manually:\n{}",
                 manual.join("\n")
             )));
         }
@@ -2195,7 +2195,7 @@ impl App {
                                 }
                             }
                             self.push_display_message(DisplayMessage::system(format!(
-                                "Saved default model: **{}** via **{}**. This affects future sessions.",
+                                "Saved default model: {} via {}. This affects future sessions.",
                                 model_spec,
                                 provider_key.as_deref().unwrap_or("auto")
                             )));
@@ -2245,7 +2245,7 @@ impl App {
                         route.detail.clone()
                     };
                     self.inline_interactive_state = None;
-                    self.set_status_notice(format!("{} — {}", entry.name, detail));
+                    self.set_status_notice(format!("{} - {}", entry.name, detail));
                     return Ok(());
                 }
 
