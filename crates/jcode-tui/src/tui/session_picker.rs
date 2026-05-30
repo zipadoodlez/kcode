@@ -38,6 +38,7 @@ pub use loading::{
     invalidate_session_list_cache, load_cached_sessions_grouped, load_servers, load_sessions,
     load_sessions_grouped,
 };
+pub(crate) use loading::latest_external_cli_session_secs;
 
 const SEARCH_CONTENT_BUDGET_BYTES: usize = 12_000;
 const DEFAULT_SESSION_SCAN_LIMIT: usize = 100;

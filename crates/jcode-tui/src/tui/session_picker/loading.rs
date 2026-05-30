@@ -1659,6 +1659,32 @@ fn load_external_codex_sessions(scan_limit: usize) -> Vec<SessionInfo> {
         .collect()
 }
 
+/// Newest external-transcript modification time (Unix seconds) for the given
+/// external CLI, scanning the sandbox-aware session roots. Returns `None` when
+/// no transcript exists. Cheap: it only stats files, never parses them, so it
+/// is safe to call during onboarding to decide which CLI was most recently
+/// active.
+pub(crate) fn latest_external_cli_session_secs(
+    cli: crate::tui::app::onboarding_flow::ExternalCli,
+) -> Option<u64> {
+    use crate::tui::app::onboarding_flow::ExternalCli;
+    let rel_root = match cli {
+        ExternalCli::Codex => ".codex/sessions",
+        ExternalCli::ClaudeCode => ".claude/projects",
+    };
+    let root = crate::storage::user_home_path(rel_root).ok()?;
+    if !root.exists() {
+        return None;
+    }
+    // One file is enough to learn the newest mtime.
+    collect_recent_files_recursive(&root, "jsonl", 1)
+        .first()
+        .and_then(|path| path.metadata().ok())
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+}
+
 fn load_codex_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
     let file = File::open(path)?;
     let mut lines = BufReader::new(file).lines();

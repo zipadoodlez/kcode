@@ -4,9 +4,7 @@
 //! the driving methods off `App` so the rest of the TUI can advance the flow in
 //! response to login, model selection, key presses, and the auto-advance timer.
 
-use super::onboarding_flow::{
-    ExternalCli, ImportReview, OnboardingFlow, OnboardingPhase, detect_external_cli_oauth,
-};
+use super::onboarding_flow::{ExternalCli, ImportReview, OnboardingFlow, OnboardingPhase};
 use super::{App, DisplayMessage, SessionPickerMode};
 use crate::tui::session_picker::{self, SessionFilterMode, SessionPicker};
 use crossterm::event::KeyCode;
@@ -212,14 +210,38 @@ impl App {
 
     /// Advance out of the model-selection phase once a model has been chosen.
     /// Decides whether to offer "continue where you left off" based on detected
-    /// external Codex / Claude Code OAuth logins.
+    /// external Codex / Claude Code OAuth logins. When both CLIs are present we
+    /// offer whichever one has the most recent transcript, so the user resumes
+    /// where they actually last worked rather than always defaulting to Codex.
     pub(super) fn onboarding_after_model_select(&mut self) {
         if !matches!(self.onboarding_phase(), Some(OnboardingPhase::ModelSelect)) {
             return;
         }
-        match detect_external_cli_oauth() {
+        match self.onboarding_most_recent_external_cli() {
             Some(cli) => self.onboarding_enter_continue_prompt(cli),
             None => self.onboarding_show_suggestions(),
+        }
+    }
+
+    /// Among the external CLIs whose OAuth credentials are present, pick the one
+    /// with the most recent transcript. Ties (or a CLI with no transcripts yet)
+    /// fall back to detection order (Codex first). Returns `None` when no
+    /// external CLI login is present.
+    fn onboarding_most_recent_external_cli(&self) -> Option<ExternalCli> {
+        let present = crate::tui::app::onboarding_flow::detect_external_cli_oauths();
+        match present.as_slice() {
+            [] => None,
+            [only] => Some(*only),
+            _ => {
+                // Multiple logins: rank by newest transcript mtime.
+                present
+                    .iter()
+                    .max_by_key(|cli| {
+                        session_picker::latest_external_cli_session_secs(**cli).unwrap_or(0)
+                    })
+                    .copied()
+                    .or_else(|| present.first().copied())
+            }
         }
     }
 

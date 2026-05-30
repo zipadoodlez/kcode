@@ -269,17 +269,27 @@ impl OnboardingFlow {
 
 /// Detect whether an external Codex or Claude Code OAuth login is present.
 ///
-/// Prefers Codex when both exist (it's first in the prompt), but either being
-/// present is enough to offer the "continue where you left off" phase.
-pub(crate) fn detect_external_cli_oauth() -> Option<ExternalCli> {
-    let home = home_dir()?;
-    if external_oauth_present(&home.join(".codex/auth.json")) {
-        return Some(ExternalCli::Codex);
+/// Returns every detected CLI (sandbox-aware), so the caller can choose which
+/// one to offer (e.g. by most-recent activity). The order is Codex first,
+/// Claude second, but callers should not treat that as a preference.
+pub(crate) fn detect_external_cli_oauths() -> Vec<ExternalCli> {
+    let mut found = Vec::new();
+    if external_oauth_present(&external_home_path(".codex/auth.json")) {
+        found.push(ExternalCli::Codex);
     }
-    if external_oauth_present(&home.join(".claude/.credentials.json")) {
-        return Some(ExternalCli::ClaudeCode);
+    if external_oauth_present(&external_home_path(".claude/.credentials.json")) {
+        found.push(ExternalCli::ClaudeCode);
     }
-    None
+    found
+}
+
+/// Resolve a path under the (sandbox-aware) external home so onboarding honors
+/// `JCODE_HOME`/external isolation, matching the import detectors.
+fn external_home_path(rel: &str) -> PathBuf {
+    crate::storage::user_home_path(rel)
+        .ok()
+        .or_else(|| home_dir().map(|home| home.join(rel)))
+        .unwrap_or_else(|| PathBuf::from(rel))
 }
 
 fn home_dir() -> Option<PathBuf> {

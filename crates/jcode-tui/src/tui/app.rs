@@ -71,7 +71,7 @@ mod misc_ui;
 mod model_context;
 mod navigation;
 mod observe;
-mod onboarding_flow;
+pub(crate) mod onboarding_flow;
 mod onboarding_flow_control;
 mod remote;
 mod remote_notifications;

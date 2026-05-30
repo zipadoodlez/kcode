@@ -1,5 +1,5 @@
 pub mod account_picker;
-mod app;
+pub(crate) mod app;
 
 #[derive(Clone)]
 pub struct ContextSnapshot {
