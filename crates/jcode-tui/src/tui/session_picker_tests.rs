@@ -955,6 +955,58 @@ fn test_keyboard_scroll_uses_sessions_focus_for_paging() {
 }
 
 #[test]
+fn onboarding_external_filter_picks_latest_visible_transcript() {
+    let now = Utc::now();
+
+    let mut older = make_session("codex_older", "older", false, SessionStatus::Closed);
+    older.source = SessionSource::Codex;
+    older.model = Some("gpt-5-codex".to_string());
+    older.last_active_at = Some(now - ChronoDuration::minutes(30));
+    older.resume_target = ResumeTarget::CodexSession {
+        session_id: "codex_older".to_string(),
+        session_path: "/tmp/codex_older.jsonl".to_string(),
+    };
+
+    let mut newer = make_session("codex_newer", "newer", false, SessionStatus::Closed);
+    newer.source = SessionSource::Codex;
+    newer.model = Some("gpt-5-codex".to_string());
+    newer.last_active_at = Some(now - ChronoDuration::minutes(2));
+    newer.resume_target = ResumeTarget::CodexSession {
+        session_id: "codex_newer".to_string(),
+        session_path: "/tmp/codex_newer.jsonl".to_string(),
+    };
+
+    // A non-Codex session that must be filtered out.
+    let jcode = make_session("jcode_one", "jcode", false, SessionStatus::Closed);
+
+    let mut picker = SessionPicker::new(vec![older, jcode, newer]);
+    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+
+    assert_eq!(picker.visible_session_count(), 2);
+
+    let latest = picker
+        .latest_visible_resume_target()
+        .expect("latest visible target");
+    assert_eq!(
+        latest,
+        ResumeTarget::CodexSession {
+            session_id: "codex_newer".to_string(),
+            session_path: "/tmp/codex_newer.jsonl".to_string(),
+        }
+    );
+}
+
+#[test]
+fn onboarding_external_filter_with_no_matches_has_no_target() {
+    let jcode = make_session("jcode_only", "jcode", false, SessionStatus::Closed);
+    let mut picker = SessionPicker::new(vec![jcode]);
+    picker.activate_external_cli_filter(SessionFilterMode::ClaudeCode);
+
+    assert_eq!(picker.visible_session_count(), 0);
+    assert!(picker.latest_visible_resume_target().is_none());
+}
+
+#[test]
 fn test_keyboard_scroll_uses_preview_focus_for_paging() {
     let s1 = make_session("session_1", "one", false, SessionStatus::Closed);
     let s2 = make_session("session_2", "two", false, SessionStatus::Closed);
