@@ -18,6 +18,7 @@ sccache_status="disabled"
 selfdev_low_memory_status="disabled"
 feature_profile_status="default"
 build_jobs_status="cargo-default"
+git_meta_status="not-configured"
 
 append_rustflags() {
   local new_flag="$1"

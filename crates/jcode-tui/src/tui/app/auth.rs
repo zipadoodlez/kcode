@@ -235,6 +235,47 @@ impl App {
         }
     }
 
+    pub(super) fn start_logout_all(&mut self) {
+        let mut summary: Vec<String> = Vec::new();
+        let mut errors: Vec<String> = Vec::new();
+
+        match crate::auth::claude::clear_accounts() {
+            Ok(removed) if removed > 0 => {
+                summary.push(format!("{} Anthropic account(s)", removed))
+            }
+            Ok(_) => {}
+            Err(err) => errors.push(format!("Anthropic: {}", err)),
+        }
+        match crate::auth::codex::clear_accounts() {
+            Ok(removed) if removed > 0 => summary.push(format!("{} OpenAI account(s)", removed)),
+            Ok(_) => {}
+            Err(err) => errors.push(format!("OpenAI: {}", err)),
+        }
+        match crate::auth::gemini::clear_tokens() {
+            Ok(()) => summary.push("Gemini".to_string()),
+            Err(err) => errors.push(format!("Gemini: {}", err)),
+        }
+
+        crate::auth::AuthStatus::invalidate_cache();
+
+        let message = if summary.is_empty() {
+            "No automated logins to clear.".to_string()
+        } else {
+            format!("Logged out of: {}.", summary.join(", "))
+        };
+        self.push_display_message(DisplayMessage::system(message));
+
+        if errors.is_empty() {
+            self.set_status_notice("Logout: all providers");
+        } else {
+            self.push_display_message(DisplayMessage::error(format!(
+                "Some logouts failed: {}",
+                errors.join("; ")
+            )));
+            self.set_status_notice("Logout: completed with errors");
+        }
+    }
+
     pub(super) fn start_login_provider(
         &mut self,
         provider: crate::provider_catalog::LoginProviderDescriptor,

@@ -2315,6 +2315,10 @@ impl App {
                         self.inline_interactive_state = None;
                         self.start_logout_provider(provider);
                     }
+                    PickerAction::LogoutAll => {
+                        self.inline_interactive_state = None;
+                        self.start_logout_all();
+                    }
                     PickerAction::Usage {
                         title,
                         subtitle,

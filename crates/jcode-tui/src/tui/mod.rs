@@ -758,6 +758,7 @@ pub enum PickerAction {
     Account(AccountPickerAction),
     Login(crate::provider_catalog::LoginProviderDescriptor),
     Logout(crate::provider_catalog::LoginProviderDescriptor),
+    LogoutAll,
     Usage {
         id: String,
         title: String,
@@ -811,7 +812,8 @@ fn estimate_picker_action_bytes(action: &PickerAction) -> usize {
     match action {
         PickerAction::Model
         | PickerAction::AgentTarget(_)
-        | PickerAction::AgentModelChoice { .. } => 0,
+        | PickerAction::AgentModelChoice { .. }
+        | PickerAction::LogoutAll => 0,
         PickerAction::Account(AccountPickerAction::Switch { provider_id, label }) => {
             provider_id.capacity() + label.capacity()
         }

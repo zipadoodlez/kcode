@@ -49,6 +49,10 @@ pub(crate) fn handle_auth_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if let Some(provider) = trimmed.strip_prefix("/logout ") {
+        if matches!(provider.trim(), "all" | "*") {
+            app.start_logout_all();
+            return true;
+        }
         let providers = crate::provider_catalog::tui_login_providers();
         if let Some(provider) =
             crate::provider_catalog::resolve_login_selection(provider, &providers)

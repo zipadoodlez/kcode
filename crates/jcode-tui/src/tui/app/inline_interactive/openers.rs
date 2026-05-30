@@ -72,8 +72,17 @@ impl App {
     fn open_auth_provider_picker_inline(&mut self, logout: bool) {
         let status = crate::auth::AuthStatus::check_fast();
         let providers = crate::provider_catalog::tui_login_providers();
-        let models = providers
+        let mut models = providers
             .into_iter()
+            .filter(|provider| {
+                // Logging out of the auto-import descriptor is meaningless: there is
+                // no saved session for it, only detected external logins.
+                !(logout
+                    && matches!(
+                        provider.target,
+                        crate::provider_catalog::LoginProviderTarget::AutoImport
+                    ))
+            })
             .map(|provider| {
                 let assessment = status.assessment_for_provider(provider);
                 let auth_state = assessment.state;
@@ -118,6 +127,34 @@ impl App {
                 }
             })
             .collect::<Vec<_>>();
+
+        if logout {
+            // Prepend a synthetic "All providers" entry that logs out everywhere.
+            models.insert(
+                0,
+                PickerEntry {
+                    name: "All providers".to_string(),
+                    options: vec![PickerOption {
+                        provider: "all".to_string(),
+                        api_method: "logout".to_string(),
+                        available: true,
+                        detail: "Log out of every provider with a saved session".to_string(),
+                        estimated_reference_cost_micros: None,
+                    }],
+                    action: PickerAction::LogoutAll,
+                    selected_option: 0,
+                    is_current: false,
+                    is_default: false,
+                    is_favorite: false,
+                    recommended: false,
+                    recommendation_rank: usize::MAX,
+                    usage_score: 0,
+                    old: false,
+                    created_date: None,
+                    effort: None,
+                },
+            );
+        }
 
         self.inline_view_state = None;
         self.inline_interactive_state = Some(InlineInteractiveState {
