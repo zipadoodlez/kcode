@@ -71,6 +71,8 @@ mod misc_ui;
 mod model_context;
 mod navigation;
 mod observe;
+mod onboarding_flow;
+mod onboarding_flow_control;
 mod remote;
 mod remote_notifications;
 mod replay;
@@ -284,6 +286,10 @@ pub(super) enum SessionPickerMode {
     #[default]
     Resume,
     CatchUp,
+    /// First-run onboarding "continue where you left off" single-select picker.
+    Onboarding {
+        cli: onboarding_flow::ExternalCli,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -706,6 +712,9 @@ pub struct App {
     submit_input_on_startup: bool,
     /// One-shot/session-local preview of the first-run onboarding empty state.
     onboarding_preview_mode: bool,
+    /// Active guided first-run onboarding flow (model select -> continue ->
+    /// transcript pick -> suggestions). `None` when not onboarding.
+    onboarding_flow: Option<onboarding_flow::OnboardingFlow>,
     // Inline UI state for copy badges ([Alt] [⇧] [S])
     copy_badge_ui: CopyBadgeUiState,
     // Modal in-app selection/copy state for the chat viewport.

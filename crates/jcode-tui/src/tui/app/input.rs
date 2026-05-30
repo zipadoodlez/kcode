@@ -689,7 +689,14 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
         return false;
     }
 
-    if app.input.is_empty() && !app.is_processing && app.display_messages.is_empty() {
+    let onboarding_suggestions = matches!(
+        app.onboarding_phase(),
+        Some(crate::tui::app::onboarding_flow::OnboardingPhase::Suggestions)
+    );
+    if app.input.is_empty()
+        && !app.is_processing
+        && (app.display_messages.is_empty() || onboarding_suggestions)
+    {
         let mut chars = text.chars();
         if let (Some(c), None) = (chars.next(), chars.next())
             && let Some(digit) = c.to_digit(10)
@@ -1976,6 +1983,10 @@ impl App {
         ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
         if handle_modal_key(self, code, modifiers)? {
+            return Ok(());
+        }
+
+        if self.handle_onboarding_continue_prompt_key(code) {
             return Ok(());
         }
 

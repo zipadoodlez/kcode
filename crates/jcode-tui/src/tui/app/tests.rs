@@ -30,6 +30,7 @@ include!("tests/scroll_copy_01/part_02.rs");
 include!("tests/scroll_copy_02/part_01.rs");
 include!("tests/scroll_copy_02/part_02.rs");
 include!("tests/scroll_copy_03.rs");
+include!("tests/onboarding_flow.rs");
 
 #[test]
 fn kv_cache_signature_prefix_match_allows_appended_messages() {
