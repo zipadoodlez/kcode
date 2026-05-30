@@ -174,18 +174,24 @@ impl WebSearchTool {
         query: &str,
         num_results: usize,
     ) -> Result<Vec<SearchResult>> {
-        let url = format!(
-            "https://html.duckduckgo.com/html/?q={}",
-            urlencoding::encode(query)
-        );
-
+        // DuckDuckGo's HTML endpoint now serves an anti-bot "anomaly" challenge
+        // (HTTP 202, no results) for plain GET requests. Submitting the query as
+        // a POST form, the same way the real HTML page does, still returns the
+        // standard results markup with a 200.
         let response = self
             .client
-            .get(&url)
+            .post("https://html.duckduckgo.com/html/")
             .header(
                 reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+                 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             )
+            .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .form(&[("q", query), ("kl", "us-en")])
             .send()
             .await?;
 
@@ -322,11 +328,11 @@ mod search_regex {
 
     static_regex!(
         result_link,
-        r#"<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>"#
+        r#"(?s)<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#
     );
     static_regex!(
         result_snippet,
-        r#"<a[^>]*class="result__snippet"[^>]*>([^<]*(?:<[^>]*>[^<]*)*)</a>"#
+        r#"(?s)<a[^>]*class="result__snippet"[^>]*>(.*?)</a>"#
     );
     static_regex!(tag, r"<[^>]+>");
     static_regex!(
@@ -437,7 +443,7 @@ fn parse_ddg_results(html: &str, max_results: usize) -> Vec<SearchResult> {
         }
 
         let url = decode_ddg_url(&link_cap[1]);
-        let title = html_decode(&link_cap[2]);
+        let title = html_decode(&tag.replace_all(&link_cap[2], ""));
 
         if !url.starts_with("http") || url.contains("duckduckgo.com") {
             continue;
@@ -532,6 +538,30 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].title, "One");
         assert_eq!(results[0].url, "https://one.test");
+    }
+
+    #[test]
+    fn parses_ddg_html_results() {
+        // Mirrors the markup html.duckduckgo.com returns for the POST form,
+        // where titles and snippets contain inline <b> highlight tags.
+        let html = r#"
+            <div class="result results_links results_links_deep web-result">
+              <a class="result__a" href="https://rust-lang.org/"><b>Rust</b> Language</a>
+              <a class="result__snippet" href="https://rust-lang.org/">A <b>systems</b> programming language.</a>
+            </div>
+            <div class="result results_links results_links_deep web-result">
+              <a class="result__a" href="https://en.wikipedia.org/wiki/Rust">Rust on Wikipedia</a>
+              <a class="result__snippet" href="https://en.wikipedia.org/wiki/Rust">Encyclopedia <b>entry</b>.</a>
+            </div>
+        "#;
+
+        let results = parse_ddg_results(html, 10);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].title, "Rust Language");
+        assert_eq!(results[0].url, "https://rust-lang.org/");
+        assert_eq!(results[0].snippet, "A systems programming language.");
+        assert_eq!(results[1].url, "https://en.wikipedia.org/wiki/Rust");
+        assert_eq!(results[1].snippet, "Encyclopedia entry.");
     }
 
     #[test]
