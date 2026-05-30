@@ -1182,6 +1182,19 @@ pub(crate) fn clear_test_render_state_for_tests() {
     });
 }
 
+/// Test-only: render just the onboarding welcome screen into `area`, using the
+/// exact same code path the live UI uses. Lets onboarding golden/snapshot tests
+/// capture the rendered copy without reaching into the private `onboarding`
+/// submodule.
+#[cfg(test)]
+pub(crate) fn draw_onboarding_welcome_for_tests(
+    frame: &mut ratatui::Frame,
+    app: &dyn crate::tui::TuiState,
+    area: ratatui::layout::Rect,
+) {
+    onboarding::draw_onboarding_welcome(frame, app, area);
+}
+
 #[derive(Clone)]
 enum CopyViewportData {
     Dense {
