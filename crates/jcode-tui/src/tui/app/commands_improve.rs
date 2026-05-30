@@ -5,7 +5,7 @@ use crate::message::{ContentBlock, Message, Role};
 use std::time::Instant;
 
 pub(super) fn improve_usage() -> &'static str {
-    "Usage: `/improve [focus]`, `/improve plan [focus]`, `/improve resume`, `/improve status`, or `/improve stop`"
+    "Usage: /improve [focus], /improve plan [focus], /improve resume, /improve status, or /improve stop"
 }
 
 pub(super) fn parse_improve_command(trimmed: &str) -> Option<Result<ImproveCommand, String>> {
@@ -59,7 +59,7 @@ pub(super) fn parse_improve_command(trimmed: &str) -> Option<Result<ImproveComma
 }
 
 pub(super) fn refactor_usage() -> &'static str {
-    "Usage: `/refactor [focus]`, `/refactor plan [focus]`, `/refactor resume`, `/refactor status`, or `/refactor stop`"
+    "Usage: /refactor [focus], /refactor plan [focus], /refactor resume, /refactor status, or /refactor stop"
 }
 
 pub(super) fn parse_refactor_command(trimmed: &str) -> Option<Result<RefactorCommand, String>> {
@@ -242,7 +242,7 @@ pub(super) fn improve_launch_notice(
         "🚀 Starting"
     };
     match focus.map(str::trim).filter(|focus| !focus.is_empty()) {
-        Some(focus) => format!("{} {} focused on **{}**...", prefix, action, focus),
+        Some(focus) => format!("{} {} focused on {}...", prefix, action, focus),
         None => format!("{} {}...", prefix, action),
     }
 }
@@ -275,7 +275,7 @@ pub(super) fn refactor_launch_notice(
         "🚀 Starting"
     };
     match focus.map(str::trim).filter(|focus| !focus.is_empty()) {
-        Some(focus) => format!("{} {} focused on **{}**...", prefix, action, focus),
+        Some(focus) => format!("{} {} focused on {}...", prefix, action, focus),
         None => format!("{} {}...", prefix, action),
     }
 }
@@ -481,8 +481,8 @@ pub(super) fn format_improve_status(app: &App) -> String {
         .unwrap_or("not yet started in this session");
 
     let mut lines = vec![
-        format!("Improve status: **{}**", phase),
-        format!("Last requested mode: **{}**", mode),
+        format!("Improve status: {}", phase),
+        format!("Last requested mode: {}", mode),
         format!(
             "Todos: {} incomplete · {} completed · {} cancelled",
             incomplete.len(),
@@ -517,7 +517,7 @@ pub(super) fn format_improve_status(app: &App) -> String {
     }
 
     lines.push(String::new());
-    lines.push("Use `/improve` to start/continue, `/improve resume` to continue the last saved mode, `/improve plan` for plan-only mode, or `/improve stop` to halt after a safe point.".to_string());
+    lines.push("Use /improve to start/continue, /improve resume to continue the last saved mode, /improve plan for plan-only mode, or /improve stop to halt after a safe point.".to_string());
     lines.join("\n")
 }
 
@@ -550,8 +550,8 @@ pub(super) fn format_refactor_status(app: &App) -> String {
         .unwrap_or("not yet started in this session");
 
     let mut lines = vec![
-        format!("Refactor status: **{}**", phase),
-        format!("Last requested mode: **{}**", mode),
+        format!("Refactor status: {}", phase),
+        format!("Last requested mode: {}", mode),
         format!(
             "Todos: {} incomplete · {} completed · {} cancelled",
             incomplete.len(),
@@ -586,7 +586,7 @@ pub(super) fn format_refactor_status(app: &App) -> String {
     }
 
     lines.push(String::new());
-    lines.push("Use `/refactor` to start/continue, `/refactor resume` to continue the last saved mode, `/refactor plan` for plan-only mode, or `/refactor stop` to halt after a safe point.".to_string());
+    lines.push("Use /refactor to start/continue, /refactor resume to continue the last saved mode, /refactor plan for plan-only mode, or /refactor stop to halt after a safe point.".to_string());
     lines.join("\n")
 }
 
@@ -610,7 +610,7 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
             let mode = current_mode_for(app, ImproveMode::is_improve);
             let Some(mode) = mode else {
                 app.push_display_message(DisplayMessage::system(
-                    "No saved improve run found for this session. Use `/improve` or `/improve plan` to start one."
+                    "No saved improve run found for this session. Use /improve or /improve plan to start one."
                         .to_string(),
                 ));
                 return;
@@ -648,7 +648,7 @@ pub(super) fn handle_improve_command_local(app: &mut App, command: ImproveComman
                 && !has_incomplete
             {
                 app.push_display_message(DisplayMessage::system(
-                    "No active improve loop to stop. Use `/improve` to start one.".to_string(),
+                    "No active improve loop to stop. Use /improve to start one.".to_string(),
                 ));
                 return;
             }
@@ -707,7 +707,7 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
             let mode = current_mode_for(app, ImproveMode::is_refactor);
             let Some(mode) = mode else {
                 app.push_display_message(DisplayMessage::system(
-                    "No saved refactor run found for this session. Use `/refactor` or `/refactor plan` to start one."
+                    "No saved refactor run found for this session. Use /refactor or /refactor plan to start one."
                         .to_string(),
                 ));
                 return;
@@ -745,7 +745,7 @@ pub(super) fn handle_refactor_command_local(app: &mut App, command: RefactorComm
                 && !has_incomplete
             {
                 app.push_display_message(DisplayMessage::system(
-                    "No active refactor loop to stop. Use `/refactor` to start one.".to_string(),
+                    "No active refactor loop to stop. Use /refactor to start one.".to_string(),
                 ));
                 return;
             }

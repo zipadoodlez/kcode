@@ -229,7 +229,7 @@ fn build_judge_visible_transcript_messages(parent_session: &Session) -> Vec<Stor
                         "completed"
                     };
                     let summary = judge_visible_tool_summary(tool)
-                        .map(|summary| format!(" — {}", summary))
+                        .map(|summary| format!(" - {}", summary))
                         .unwrap_or_default();
                     format!(
                         "Visible tool call: `{}`{} ({}). Detailed tool output is intentionally omitted from this judge transcript.",
@@ -293,7 +293,7 @@ pub(super) fn reset_current_session(app: &mut App) {
 
 fn observe_status_message(app: &App) -> String {
     format!(
-        "Observe mode: **{}**\n\nWhen enabled, the side panel shows a transient `Observe` page with only the latest useful tool call or tool result added to context. UI/bookkeeping tools like `side_panel`, `goal`, and todo reads/writes are skipped so the view stays readable. It is not persisted to disk.",
+        "Observe mode: {}\n\nWhen enabled, the side panel shows a transient Observe page with only the latest useful tool call or tool result added to context. UI/bookkeeping tools like side_panel, goal, and todo reads/writes are skipped so the view stays readable. It is not persisted to disk.",
         if app.observe_mode_enabled() {
             "enabled"
         } else {
@@ -315,7 +315,7 @@ pub(super) fn handle_observe_command(app: &mut App, trimmed: &str) -> bool {
             if enabled {
                 app.set_status_notice("Observe: ON");
                 app.push_display_message(DisplayMessage::system(
-                    "Observe mode enabled — the side panel now tracks the latest useful tool call/result added to context."
+                    "Observe mode enabled - the side panel now tracks the latest useful tool call/result added to context."
                         .to_string(),
                 ));
             } else {
@@ -329,7 +329,7 @@ pub(super) fn handle_observe_command(app: &mut App, trimmed: &str) -> bool {
             app.set_observe_mode_enabled(true, true);
             app.set_status_notice("Observe: ON");
             app.push_display_message(DisplayMessage::system(
-                "Observe mode enabled — the side panel now tracks the latest useful tool call/result added to context."
+                "Observe mode enabled - the side panel now tracks the latest useful tool call/result added to context."
                     .to_string(),
             ));
         }
@@ -343,7 +343,7 @@ pub(super) fn handle_observe_command(app: &mut App, trimmed: &str) -> bool {
         }
         _ => {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/observe [on|off|status]`".to_string(),
+                "Usage: /observe [on|off|status]".to_string(),
             ));
         }
     }
@@ -381,14 +381,14 @@ pub(super) fn autoreview_status_message(app: &App) -> String {
     let default_enabled = crate::config::config().autoreview.enabled;
     let config_model = crate::config::config().autoreview.model.as_deref();
     let model_line = match config_model {
-        Some(model) => format!("Reviewer model override: `{}`", model),
+        Some(model) => format!("Reviewer model override: {}", model),
         None => format!(
-            "Reviewer model: inherit current session (`{}`)",
+            "Reviewer model: inherit current session ({})",
             current_autoreview_model_summary(app)
         ),
     };
     format!(
-        "Autoreview: **{}** (config default: {})\n{}",
+        "Autoreview: {} (config default: {})\n{}",
         if app.autoreview_enabled {
             "enabled"
         } else {
@@ -407,14 +407,14 @@ pub(super) fn autojudge_status_message(app: &App) -> String {
     let default_enabled = crate::config::config().autojudge.enabled;
     let config_model = crate::config::config().autojudge.model.as_deref();
     let model_line = match config_model {
-        Some(model) => format!("Judge model override: `{}`", model),
+        Some(model) => format!("Judge model override: {}", model),
         None => format!(
-            "Judge model: inherit current session (`{}`)",
+            "Judge model: inherit current session ({})",
             current_autojudge_model_summary(app)
         ),
     };
     format!(
-        "Autojudge: **{}** (config default: {})\n{}",
+        "Autojudge: {} (config default: {})\n{}",
         if app.autojudge_enabled {
             "enabled"
         } else {
@@ -683,13 +683,13 @@ pub(super) fn launch_prompt_in_new_session_local(
     let opened = super::spawn_in_new_terminal(&exe, &session_id, &cwd, socket.as_deref())?;
     if opened {
         app.push_display_message(DisplayMessage::system(format!(
-            "↗ Next prompt launched in **{}**.",
+            "↗ Next prompt launched in {}.",
             session_name
         )));
         app.set_status_notice("Prompt launched in new session");
     } else {
         app.push_display_message(DisplayMessage::system(format!(
-            "↗ New session **{}** created for the next prompt.\n\nNo terminal was opened automatically. Resume manually:\n```\njcode --resume {}\n```",
+            "↗ New session {} created for the next prompt.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
             session_name, session_id
         )));
         app.set_status_notice("Prompt session created");
@@ -731,13 +731,13 @@ fn launch_review_window_local(
     let opened = super::spawn_in_new_terminal(&exe, &session_id, &cwd, socket.as_deref())?;
     if opened {
         app.push_display_message(DisplayMessage::system(format!(
-            "🔍 {} launched in **{}**.",
+            "🔍 {} launched in {}.",
             label, session_name
         )));
         app.set_status_notice(format!("{} launched", label));
     } else {
         app.push_display_message(DisplayMessage::system(format!(
-            "🔍 {} session **{}** created.\n\nNo terminal was opened automatically. Resume manually:\n```\njcode --resume {}\n```",
+            "🔍 {} session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
             label, session_name, session_id
         )));
         app.set_status_notice(format!("{} session created", label));
@@ -876,7 +876,7 @@ pub(super) fn handle_review_command_local(app: &mut App, trimmed: &str) -> bool 
         return true;
     }
 
-    app.push_display_message(DisplayMessage::error("Usage: `/review`".to_string()));
+    app.push_display_message(DisplayMessage::error("Usage: /review".to_string()));
     true
 }
 
@@ -926,7 +926,7 @@ pub(super) fn handle_autoreview_command_local(app: &mut App, trimmed: &str) -> b
         }
         _ => {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/autoreview [on|off|status|now]`".to_string(),
+                "Usage: /autoreview [on|off|status|now]".to_string(),
             ));
             true
         }
@@ -951,7 +951,7 @@ pub(super) fn handle_judge_command_local(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    app.push_display_message(DisplayMessage::error("Usage: `/judge`".to_string()));
+    app.push_display_message(DisplayMessage::error("Usage: /judge".to_string()));
     true
 }
 
@@ -1001,7 +1001,7 @@ pub(super) fn handle_autojudge_command_local(app: &mut App, trimmed: &str) -> bo
         }
         _ => {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/autojudge [on|off|status|now]`".to_string(),
+                "Usage: /autojudge [on|off|status|now]".to_string(),
             ));
             true
         }

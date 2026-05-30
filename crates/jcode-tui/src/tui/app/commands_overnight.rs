@@ -117,7 +117,7 @@ fn start_visible_overnight_turn(app: &mut App, content: String) {
 
 fn show_overnight_help(app: &mut App) {
     app.push_display_message(DisplayMessage::system(
-        "`/overnight <hours>[h|m] [mission]`\nStart one visible overnight coordinator with guarded auto-poke follow-ups until the target wake/wrap time. The coordinator prioritizes verifiable, low-risk work, maintains logs, and updates a review HTML page.\n\n`/overnight status`\nShow the latest overnight run status.\n\n`/overnight log`\nShow recent overnight events.\n\n`/overnight review`\nOpen the generated review page.\n\n`/overnight cancel`\nRequest cancellation after the current coordinator turn and stop overnight auto-poke.".to_string(),
+        "/overnight <hours>[h|m] [mission]\n  Start one visible overnight coordinator with guarded auto-poke follow-ups until the target wake/wrap time. The coordinator prioritizes verifiable, low-risk work, maintains logs, and updates a review HTML page.\n\n/overnight status\n  Show the latest overnight run status.\n\n/overnight log\n  Show recent overnight events.\n\n/overnight review\n  Open the generated review page.\n\n/overnight cancel\n  Request cancellation after the current coordinator turn and stop overnight auto-poke.".to_string(),
     ));
 }
 
@@ -141,7 +141,7 @@ fn overnight_provider_for_app(app: &mut App) -> Arc<dyn Provider> {
         && let Err(error) = provider.set_model(model)
     {
         app.push_display_message(DisplayMessage::system(format!(
-            "Overnight could not restore remote model `{}` locally: {}. Using local default provider `{}` instead.",
+            "Overnight could not restore remote model {} locally: {}. Using local default provider {} instead.",
             model,
             error,
             provider.name()
@@ -201,13 +201,13 @@ fn open_overnight_review(app: &mut App) {
             match open::that_detached(&manifest.review_path) {
                 Ok(()) => {
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Opened overnight review page: `{}`",
+                        "Opened overnight review page: {}",
                         manifest.review_path.display()
                     )));
                     app.set_status_notice("Overnight review opened");
                 }
                 Err(error) => app.push_display_message(DisplayMessage::error(format!(
-                    "Failed to open overnight review page `{}`: {}",
+                    "Failed to open overnight review page {}: {}",
                     manifest.review_path.display(),
                     error
                 ))),
@@ -229,7 +229,7 @@ fn cancel_overnight(app: &mut App) {
             app.overnight_auto_poke = None;
             if !app.upsert_overnight_display_card(&manifest) {
                 app.push_display_message(DisplayMessage::system(format!(
-                    "Cancellation requested for overnight run `{}`. The coordinator will stop after the current turn reaches a safe boundary.",
+                    "Cancellation requested for overnight run {}. The coordinator will stop after the current turn reaches a safe boundary.",
                     manifest.run_id,
                 )));
             }
@@ -265,7 +265,7 @@ impl App {
             Ok(manifest) => {
                 let _ = self.upsert_overnight_display_card(&manifest);
                 self.push_display_message(DisplayMessage::system(format!(
-                    "🌙 Overnight run `{}` cancelled by interrupt.",
+                    "🌙 Overnight run {} cancelled by interrupt.",
                     manifest.run_id
                 )));
             }
@@ -304,7 +304,7 @@ impl App {
         }
         self.overnight_auto_poke = None;
         self.push_display_message(DisplayMessage::system(
-            "🛑 Overnight auto-poke stopped because the last request failed with a non-retryable error. Fix the request/session, then run `/overnight status` and continue manually if appropriate.".to_string(),
+            "🛑 Overnight auto-poke stopped because the last request failed with a non-retryable error. Fix the request/session, then run /overnight status and continue manually if appropriate.".to_string(),
         ));
         self.set_status_notice("Overnight poke stopped: non-retryable error");
         true
@@ -332,7 +332,7 @@ impl App {
             OvernightRunStatus::Running | OvernightRunStatus::CancelRequested
         ) {
             self.push_display_message(DisplayMessage::system(format!(
-                "✅ Overnight auto-poke finished: run `{}` is {}.",
+                "✅ Overnight auto-poke finished: run {} is {}.",
                 manifest.run_id,
                 overnight_status_label(&manifest.status)
             )));
@@ -358,7 +358,7 @@ impl App {
 
         if state.stalled_turns >= OVERNIGHT_STALL_LIMIT {
             self.push_display_message(DisplayMessage::system(format!(
-                "🛑 Overnight auto-poke stopped after {} consecutive no-progress turns. Review `{}` before continuing manually.",
+                "🛑 Overnight auto-poke stopped after {} consecutive no-progress turns. Review {} before continuing manually.",
                 state.stalled_turns,
                 manifest.review_path.display()
             )));
@@ -384,7 +384,7 @@ impl App {
         let phase = overnight_poke_phase(&manifest, &state);
         if matches!(phase, OvernightPokePhase::FinalDone) {
             self.push_display_message(DisplayMessage::system(format!(
-                "✅ Overnight auto-poke finished after final wrap request. Review `{}`.",
+                "✅ Overnight auto-poke finished after final wrap request. Review {}.",
                 manifest.review_path.display()
             )));
             self.set_status_notice("Overnight auto-poke complete");
@@ -404,7 +404,7 @@ impl App {
 
         let prompt = build_overnight_poke_message(&manifest, phase, state.stalled_turns);
         self.push_display_message(DisplayMessage::system(format!(
-            "🌙 Overnight auto-poking: {}. `/overnight cancel` to stop.",
+            "🌙 Overnight auto-poking: {}. /overnight cancel to stop.",
             overnight_phase_label(phase)
         )));
         self.queued_messages.push(prompt);
