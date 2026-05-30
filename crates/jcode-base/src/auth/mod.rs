@@ -12,11 +12,13 @@ pub mod gemini;
 pub mod google;
 pub mod integration;
 pub mod lifecycle;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) mod lifecycle_driver;
+pub(crate) mod live_provider_probes;
 pub mod login_diagnostics;
 pub mod login_flows;
 pub mod oauth;
+pub mod provider_e2e;
 pub mod refresh_state;
 mod status_types;
 #[cfg(any(test, feature = "test-support"))]

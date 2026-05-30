@@ -353,6 +353,19 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 print_provider_test_coverage_report(&report, colorize);
             }
         }
+        Some(Command::ProviderDoctor {
+            provider,
+            tier,
+            json,
+        }) => {
+            crate::cli::provider_doctor::run_provider_doctor_command(
+                &provider,
+                args.model.as_deref(),
+                &tier,
+                json,
+            )
+            .await?;
+        }
         Some(Command::AuthTest {
             login,
             all_configured,

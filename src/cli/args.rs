@@ -398,6 +398,24 @@ pub(crate) enum Command {
         coverage_limit: usize,
     },
 
+    /// Diagnose why a provider/model or the model picker is broken by walking the
+    /// strict end-to-end checkpoints (catalog, picker, model-switch, chat, streaming, tools).
+    #[command(name = "provider-doctor", alias = "provider-strict-e2e")]
+    ProviderDoctor {
+        /// OpenAI-compatible provider id to diagnose (e.g. cerebras, fpt, nvidia-nim)
+        #[arg(id = "doctor_provider", value_name = "PROVIDER")]
+        provider: String,
+
+        /// How much to exercise: offline (no key/no spend), catalog (key, ~no spend),
+        /// or full (key, spends balance: chat + streaming + tools).
+        #[arg(long, value_name = "TIER", default_value = "catalog")]
+        tier: String,
+
+        /// Emit the report as JSON for scripting
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Test authentication end-to-end: login (optional), credential probe, refresh, and provider smoke
     AuthTest {
         /// Run the provider login flow before validation (interactive/browser-based)

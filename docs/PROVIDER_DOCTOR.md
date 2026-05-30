@@ -1,0 +1,118 @@
+# Provider Doctor
+
+`jcode provider-doctor` is a user-facing diagnostic that answers one question:
+
+> Why isn't my provider/model (or the model picker) working?
+
+It walks the same strict end-to-end checkpoints that the live coverage ledger
+tracks (`jcode provider-test-coverage`), but as an interactive command you can run
+yourself, with clear pass/fail output and a "what to try next" hint on the first
+failure.
+
+It works with **OpenAI-compatible providers** (cerebras, fpt, nvidia-nim,
+comtegra, deepseek, groq, openrouter, and other `openai-compatible` profiles).
+
+## Quick start
+
+```bash
+# Validate jcode's own wiring for a provider, no API key, no spend:
+jcode provider-doctor cerebras --tier offline
+
+# Validate the key + live model catalog (needs a key, negligible spend):
+jcode provider-doctor cerebras --tier catalog
+
+# Full readiness, including real chat, streaming, and tool calls (spends balance):
+jcode provider-doctor cerebras --tier full
+
+# Pin a specific model and emit JSON for scripting/CI:
+jcode provider-doctor cerebras --model gpt-oss-120b --tier full --json
+```
+
+The model defaults to the provider's default model (or the first live catalog
+model). Use the global `--model` flag to pin a specific one.
+
+## Tiers
+
+Pick how much to exercise. Each tier validates as much as is possible given its
+constraints, so you can debug cheaply and escalate only when needed.
+
+| Tier | Needs key? | Spends balance? | What it adds | Catches |
+| --- | --- | --- | --- | --- |
+| `offline` | no | no | jcode-side wiring against a synthetic catalog | catalog reload, picker rendering, fallback labeling, and model-switch routing bugs for this provider |
+| `catalog` (default) | yes | ~none | live `GET /models` | bad/missing key, dead endpoint, model not in the live catalog |
+| `full` | yes | yes | non-streaming chat, streaming, tool-call loop | the model actually chats, streams, and supports tool-calling |
+
+Only the `full` tier can earn strict ("READY") coverage. The lighter tiers
+intentionally record the API-dependent checkpoints as skipped, so nothing is
+over-credited in the coverage ledger.
+
+## Checkpoints
+
+Every run reports these strict checkpoints in order. A pair is fully ready only
+when all of them pass on the `full` tier.
+
+1. `auth_credential_loaded` - a credential was found for the provider
+2. `model_catalog_live_endpoint` - the live `/models` endpoint returned models
+3. `catalog_hot_reload_current_session` - the catalog reloaded into the session
+4. `picker_live_models` - the picker shows the live models, including the selected one
+5. `picker_fallback_labeling` - routes are live-catalog backed, not static fallback
+6. `model_switch_route` - switching models produces a provider-explicit route
+7. `non_streaming_chat_completion` - a basic chat reply came back (full tier)
+8. `streaming_chat_completion` - a streamed reply came back (full tier)
+9. `tool_call_parse` - the model emitted a parseable tool call (full tier)
+10. `tool_execution_loop` - the tool-call loop ran (full tier)
+11. `tool_result_followup` - the tool result was fed back (full tier)
+12. `real_jcode_tool_smoke` - an end-to-end tool smoke passed (full tier)
+
+(Checkpoints 1-2 plus the auth-lifecycle stages are pre-flight; 7-12 are the
+API-dependent ones gated behind `--tier full`.)
+
+## Reading the output
+
+```
+Provider doctor: Cerebras / gpt-oss-120b
+Tier: catalog (API key, ~no spend: adds live catalog fetch)
+...
+  [ PASS] Credential loaded                      Loaded credential from CEREBRAS_API_KEY
+  [ PASS] Live model catalog endpoint            2 live model(s) returned
+  [ PASS] Catalog hot reload in current session  2 catalog route(s) reloaded
+  [ PASS] Picker shows live models               2 model(s) in picker, selected `gpt-oss-120b`
+  [ PASS] Picker fallback labeling               all routes backed by live catalog (no static fallback)
+  [ PASS] Model switch route                     switch request `cerebras:...` routed via `openai-compatible:cerebras`
+  [ skip] Non-streaming chat completion          catalog tier: requires --tier full (spends balance)
+  ...
+Verdict: tier `catalog` passed. Run `--tier full` to confirm full readiness (spends balance).
+```
+
+- `PASS` / `FAIL` - the checkpoint ran and passed/failed.
+- `skip` - the current tier does not run this checkpoint (use `--tier full`).
+- The verdict line tells you whether the tier passed, fully passed (`READY`), or
+  failed, and on failure points at the first failing checkpoint with a next step.
+
+The command exits non-zero when the chosen tier did not fully pass, so it can be
+used as a CI/scripting gate.
+
+## Typical debugging flow
+
+1. **"My picker is broken / shows the wrong models."**
+   Run `--tier offline`. If `picker_live_models`, `picker_fallback_labeling`, or
+   `model_switch_route` fail, it's a jcode-side routing bug for that provider:
+   capture the output and file an issue.
+
+2. **"It won't connect / says auth failed."**
+   Run `--tier catalog`. If `auth_credential_loaded` or
+   `model_catalog_live_endpoint` fail, the key/endpoint is the problem. Run
+   `jcode login --provider <provider>`.
+
+3. **"It connects but the model behaves badly."**
+   Run `--tier full`. If `non_streaming_chat_completion` /
+   `streaming_chat_completion` / the `tool_*` checkpoints fail, the model itself
+   is the issue; try another model from the live catalog.
+
+## Relationship to coverage
+
+Every doctor run records a live-verification event into the coverage ledger,
+tagged with the tier (`doctor_tier`). A `full`-tier pass that clears all 11
+strict checkpoints flips the pair to strict ("READY") in
+`jcode provider-test-coverage`. Lighter tiers record the API-dependent
+checkpoints as skipped, so they never over-credit a pair.
