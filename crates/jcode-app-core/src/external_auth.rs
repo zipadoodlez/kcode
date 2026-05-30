@@ -325,52 +325,72 @@ fn revoke_external_auth_review_candidate(candidate: &ExternalAuthReviewCandidate
     Ok(())
 }
 
+/// Render a human-friendly note about how soon a token-based credential
+/// expires, used to tell the user when a re-login is likely needed without
+/// failing the import.
+fn token_freshness_note(expires_at_ms: i64) -> String {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    if expires_at_ms <= now_ms {
+        " The access token is expired; jcode will refresh it on first use, or run /login if that fails.".to_string()
+    } else {
+        String::new()
+    }
+}
+
+// Import validation is intentionally *non-destructive*: it only checks that
+// reusable credentials are present after trusting the source. It must NOT
+// perform a live OAuth refresh, because OAuth refresh tokens are single-use --
+// refreshing here would rotate (and thus burn) the source's refresh token and
+// then discard the rotated result, breaking both jcode and the original tool.
+// Expired tokens are still imported: they get refreshed lazily (and persisted)
+// at request time, or the user is prompted to /login.
+
 async fn validate_claude_import() -> Result<String> {
     let creds = auth::claude::load_credentials()?;
-    let refreshed = crate::auth::oauth::refresh_claude_tokens(&creds.refresh_token).await?;
+    if creds.access_token.trim().is_empty() && creds.refresh_token.trim().is_empty() {
+        anyhow::bail!("Claude source did not expose a usable access or refresh token.");
+    }
     Ok(format!(
-        "Claude refresh probe succeeded (expires_at={}).",
-        refreshed.expires_at
+        "Loaded Claude credentials.{}",
+        token_freshness_note(creds.expires_at)
     ))
 }
 
 async fn validate_openai_import() -> Result<String> {
     let creds = auth::codex::load_credentials()?;
     if creds.refresh_token.trim().is_empty() {
-        Ok("Loaded OpenAI API key credentials.".to_string())
-    } else {
-        let refreshed = crate::auth::oauth::refresh_openai_tokens(&creds.refresh_token).await?;
-        Ok(format!(
-            "OpenAI refresh probe succeeded (expires_at={}).",
-            refreshed.expires_at
-        ))
+        if creds.access_token.trim().is_empty() {
+            anyhow::bail!("OpenAI source did not expose a usable token or API key.");
+        }
+        return Ok("Loaded OpenAI API key credentials.".to_string());
     }
+    Ok(format!(
+        "Loaded OpenAI OAuth credentials.{}",
+        creds.expires_at.map(token_freshness_note).unwrap_or_default()
+    ))
 }
 
 async fn validate_gemini_import() -> Result<String> {
-    let tokens = auth::gemini::load_or_refresh_tokens().await?;
+    let tokens = auth::gemini::load_tokens()?;
     Ok(format!(
-        "Gemini load/refresh probe succeeded (expires_at={}).",
-        tokens.expires_at
+        "Loaded Gemini credentials.{}",
+        token_freshness_note(tokens.expires_at)
     ))
 }
 
 async fn validate_antigravity_import() -> Result<String> {
-    let tokens = auth::antigravity::load_or_refresh_tokens().await?;
+    let tokens = auth::antigravity::load_tokens()?;
     Ok(format!(
-        "Antigravity load/refresh probe succeeded (expires_at={}).",
-        tokens.expires_at
+        "Loaded Antigravity credentials.{}",
+        token_freshness_note(tokens.expires_at)
     ))
 }
 
 async fn validate_copilot_import() -> Result<String> {
-    let github_token = auth::copilot::load_github_token()?;
-    let client = crate::provider::shared_http_client();
-    let api_token = auth::copilot::exchange_github_token(&client, &github_token).await?;
-    Ok(format!(
-        "Copilot exchange probe succeeded (expires_at={}).",
-        api_token.expires_at
-    ))
+    // Presence check only: confirm a GitHub token is readable. The
+    // GitHub->Copilot exchange happens lazily at request time.
+    let _github_token = auth::copilot::load_github_token()?;
+    Ok("Loaded GitHub Copilot credentials.".to_string())
 }
 
 async fn validate_cursor_import() -> Result<String> {
