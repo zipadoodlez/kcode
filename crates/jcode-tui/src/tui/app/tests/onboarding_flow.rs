@@ -280,6 +280,40 @@ fn login_phase_enter_opens_login_picker() {
 }
 
 #[test]
+fn import_failure_resets_login_to_manual_prompt() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        // Simulate the walkthrough having approved a candidate and kicked off an
+        // import (the per-candidate sub-state is cleared once the import spawns).
+        let review =
+            ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")])
+                .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login {
+                import: Some(review),
+            };
+        }
+        // The async import later fails -> handle_login_failed must reset the
+        // Login phase to the clean manual-login prompt so the welcome card stops
+        // fighting the error message / donut.
+        app.onboarding_handle_login_failed();
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { import: None })
+        ));
+        // Still in Login: Enter opens the manual login picker so the user can
+        // recover.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(app.inline_interactive_state.is_some());
+    });
+}
+
+#[test]
 fn import_review_decline_all_falls_back_to_manual_login() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::ImportReview;

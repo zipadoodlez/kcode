@@ -391,11 +391,32 @@ impl App {
         let hash = hasher.finalize();
         let challenge = URL_SAFE_NO_PAD.encode(hash);
 
-        let auth_url = crate::auth::oauth::claude_auth_url(
-            crate::auth::oauth::claude::REDIRECT_URI,
-            &challenge,
-            &verifier,
-        );
+        // Try a loopback callback first so the user never has to copy/paste the
+        // authorization code (mirrors the OpenAI/Gemini flows). Claude uses the
+        // PKCE verifier as the OAuth `state`, so we wait for that on the
+        // listener. If binding fails we fall back to manual paste with the
+        // hosted redirect page.
+        let callback_listener = crate::auth::oauth::bind_callback_listener(0).ok();
+        let callback_port = callback_listener
+            .as_ref()
+            .and_then(|l| l.local_addr().ok())
+            .map(|addr| addr.port());
+        let callback_available = callback_listener.is_some() && callback_port.is_some();
+
+        let (auth_url, redirect_uri) = match callback_port {
+            Some(port) if callback_available => {
+                let redirect_uri = format!("http://localhost:{}/callback", port);
+                let auth_url =
+                    crate::auth::oauth::claude_auth_url(&redirect_uri, &challenge, &verifier);
+                (auth_url, redirect_uri)
+            }
+            _ => {
+                let redirect_uri = crate::auth::oauth::claude::REDIRECT_URI.to_string();
+                let auth_url =
+                    crate::auth::oauth::claude_auth_url(&redirect_uri, &challenge, &verifier);
+                (auth_url, redirect_uri)
+            }
+        };
         let qr_section = crate::login_qr::markdown_section_for_tui(
             &auth_url,
             "Scan this on another device if this machine has no browser:",
@@ -404,30 +425,107 @@ impl App {
         .unwrap_or_default();
 
         let browser_opened = Self::open_auth_browser(&auth_url);
-        let preflight = Self::record_oauth_preflight("claude", browser_opened, None, None);
+        let preflight = Self::record_oauth_preflight(
+            "claude",
+            browser_opened,
+            callback_port.map(|p| format!("localhost:{}", p)).as_deref(),
+            Some(callback_available),
+        );
+
+        // Spawn the loopback waiter. On success it publishes LoginCompleted just
+        // like the manual paste path, so onboarding and account UI react
+        // identically.
+        if let (Some(listener), true) = (callback_listener, callback_available) {
+            let verifier_clone = verifier.clone();
+            let label_clone = label.to_string();
+            let redirect_clone = redirect_uri.clone();
+            tokio::spawn(async move {
+                match Self::claude_login_callback(
+                    verifier_clone,
+                    label_clone,
+                    redirect_clone,
+                    listener,
+                )
+                .await
+                {
+                    Ok(msg) => {
+                        crate::logging::info(&format!("Claude login: {}", msg));
+                        Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
+                            provider: "claude".to_string(),
+                            success: true,
+                            message: msg,
+                        }));
+                    }
+                    Err(e) => {
+                        crate::logging::info(&format!(
+                            "Claude automatic callback did not complete: {}",
+                            e
+                        ));
+                    }
+                }
+            });
+        }
+
+        let callback_line = if callback_available {
+            "Waiting for the browser callback... (this completes automatically)\n".to_string()
+        } else {
+            "After logging in, copy the callback URL or authorization code and paste it here.\n"
+                .to_string()
+        };
 
         self.push_display_message(DisplayMessage::system(format!(
             "Claude OAuth Login (account: {})\n\n\
              Opening browser for authentication...\n\n\
              If the browser didn't open, visit:\n{}\n\n\
-             {}{}{}After logging in, copy the callback URL or authorization code and paste it here. Type /cancel to abort.{}",
+             {}{}{}\
+             Or paste the full callback URL or authorization code here to finish from another device. Type /cancel to abort.{}",
             label,
             auth_url,
-            if preflight.is_empty() { "" } else { &preflight },
-            if preflight.is_empty() { "" } else { "\n\n" },
             if preflight.is_empty() {
-                ""
+                String::new()
             } else {
-                "Manual-safe fallback is already available here.\n\n"
+                format!("{}\n", preflight)
+            },
+            callback_line,
+            if preflight.is_empty() {
+                String::new()
+            } else {
+                "Manual-safe fallback is already active here.\n".to_string()
             },
             qr_section
         )));
-        self.set_status_notice(format!("Login [{}]: paste code...", label));
+        if callback_available {
+            self.set_status_notice(format!("Login [{}]: waiting...", label));
+        } else {
+            self.set_status_notice(format!("Login [{}]: paste code...", label));
+        }
         self.begin_pending_login(PendingLogin::ClaudeAccount {
             verifier,
             label: label.to_string(),
-            redirect_uri: None,
+            redirect_uri: if callback_available {
+                Some(redirect_uri)
+            } else {
+                None
+            },
         });
+    }
+
+    async fn claude_login_callback(
+        verifier: String,
+        label: String,
+        redirect_uri: String,
+        listener: tokio::net::TcpListener,
+    ) -> Result<String, String> {
+        // Claude uses the PKCE verifier as the OAuth `state` value.
+        let code = tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            crate::auth::oauth::wait_for_callback_async_on_listener(listener, &verifier),
+        )
+        .await
+        .map_err(|_| "Login timed out after 5 minutes. Please try again.".to_string())?
+        .map_err(|e| format!("Callback failed: {}", e))?;
+
+        Self::claude_token_exchange(verifier, code, &label, Some(redirect_uri)).await
     }
 
     pub(super) fn switch_account(&mut self, label: &str) {
@@ -2299,6 +2397,11 @@ impl App {
             );
             self.push_display_message(DisplayMessage::error(message));
             self.set_status_notice(format!("Login: {} failed", login.provider));
+            // If onboarding is driving the Login phase, a failed auto-import
+            // would otherwise leave the welcome card up forever (fighting the
+            // error message and the spinning donut). Clear the onboarding
+            // takeover so the normal chat view + manual login prompt take over.
+            self.onboarding_handle_login_failed();
         }
         if self.pending_login.is_some() {
             self.pending_login = None;

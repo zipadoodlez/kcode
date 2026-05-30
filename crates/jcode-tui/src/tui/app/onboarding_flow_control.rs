@@ -616,6 +616,30 @@ impl App {
         }
     }
 
+    /// A login/import attempt failed while onboarding was driving the Login
+    /// phase. Without this, the welcome card stays up (still spinning the donut)
+    /// while a red error message renders behind it, which looks broken. Reset
+    /// the Login phase to the clean manual-login prompt so the user can pick a
+    /// provider and try again; the pushed error message tells them what went
+    /// wrong.
+    pub(super) fn onboarding_handle_login_failed(&mut self) {
+        let in_login_phase = matches!(
+            self.onboarding_flow.as_ref().map(|f| &f.phase),
+            Some(OnboardingPhase::Login { .. })
+        );
+        if !in_login_phase {
+            return;
+        }
+        if let Some(flow) = self.onboarding_flow.as_mut()
+            && let OnboardingPhase::Login { ref mut import } = flow.phase
+        {
+            *import = None;
+        }
+        self.set_status_notice(
+            "Import failed. Press Enter to choose a provider and log in manually.",
+        );
+    }
+
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if
     /// the flow state changed (so the caller can request a redraw).
     pub(super) fn onboarding_tick(&mut self) -> bool {
