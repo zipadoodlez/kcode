@@ -151,3 +151,16 @@ READY, the exact `provider-doctor` command to push it past its first blocker.
 So the two commands are two views of one pipeline: the coverage report shows
 where every pair is stuck and hands you the doctor command to advance it.
 
+Each pair also shows a freshness line, e.g.:
+
+```
+  +++++++++++  cerebras / gpt-oss-120b
+      READY -- last tested 9 minutes ago (2026-05-30) by developer (dev build)
+```
+
+- **how long ago** the most recent run was, in plain English plus the absolute
+  date, so you can tell at a glance whether the evidence is stale.
+- **who ran it**: a clean release build is labeled `user (release build)` (real
+  user evidence), a dirty/dev build is `developer (dev build)`. This is derived
+  durably from the build flag recorded with each run, not guessed.
+

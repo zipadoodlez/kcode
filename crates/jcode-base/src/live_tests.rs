@@ -1070,7 +1070,11 @@ pub fn format_provider_test_coverage_report(
     };
 
     out.push_str(&format!("Status: {}\n", status));
-    out.push_str(&format!("Last tested: {}\n", entry.recorded_at));
+    out.push_str(&format!(
+        "Last tested: {} by {}\n",
+        humanize_time_ago(entry.recorded_at, Utc::now()),
+        coverage_actor_label(entry.jcode_git_dirty, &entry.jcode_version),
+    ));
     out.push_str(&format!("Evidence source: {}\n", path.display()));
     out.push_str(&format!("Matching evidence entries: {}\n", matches.len()));
     out.push_str(&format!("Test name: {}\n", entry.test_name));
@@ -1930,7 +1934,11 @@ pub fn colorize_provider_test_coverage_output(output: &str) -> String {
 
 fn colorize_provider_test_coverage_line(line: &str) -> String {
     let trimmed = line.trim_start();
-    let color = if trimmed == "READY"
+    let color = if trimmed.starts_with("last tested") {
+        // Metadata line: keep it subdued so the bar/verdict stay prominent.
+        Some("90")
+    } else if trimmed == "READY"
+        || trimmed.starts_with("READY -- ")
         || trimmed.starts_with('✓')
         || trimmed.contains("**Fully tested**")
         || trimmed.contains("all pairs READY")
