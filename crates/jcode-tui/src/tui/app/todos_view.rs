@@ -138,7 +138,7 @@ impl App {
 
 pub(super) fn todos_view_status_message(app: &App) -> String {
     format!(
-        "Todo screen: **{}**\n\nWhen enabled, the side panel shows a transient `Todos` page dedicated to the current session's todo list and refreshes as the list changes. It is not persisted to session side-panel storage.",
+        "Todo screen: {}\n\nWhen enabled, the side panel shows a transient Todos page dedicated to the current session's todo list and refreshes as the list changes. It is not persisted to session side-panel storage.",
         if app.todos_view_enabled() {
             "enabled"
         } else {
@@ -192,7 +192,7 @@ pub(super) fn handle_todos_view_command(app: &mut App, trimmed: &str) -> bool {
         }
         _ => {
             app.push_display_message(crate::tui::DisplayMessage::error(
-                "Usage: `/todos [on|off|status]`".to_string(),
+                "Usage: /todos [on|off|status]".to_string(),
             ));
         }
     }

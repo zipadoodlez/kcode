@@ -96,7 +96,7 @@ fn show_remote_rewind_history(app: &mut App) {
         return;
     }
 
-    let mut history = String::from("**Conversation history:**\n\n");
+    let mut history = String::from("Conversation history:\n\n");
     for (i, msg) in rewindable.iter().enumerate() {
         let role_str = match msg.role.as_str() {
             "user" => "👤 User",
@@ -104,10 +104,10 @@ fn show_remote_rewind_history(app: &mut App) {
             _ => "💬 Message",
         };
         let preview = crate::util::truncate_str(&msg.content, 80);
-        history.push_str(&format!("  `{}` {} - {}\n", i + 1, role_str, preview));
+        history.push_str(&format!("  {} {} - {}\n", i + 1, role_str, preview));
     }
-    history.push_str("\nUse `/rewind N` to rewind to message N (removes all messages after).");
-    history.push_str(" After rewinding, use `/rewind undo` to restore the removed messages.");
+    history.push_str("\nUse /rewind N to rewind to message N (removes all messages after).");
+    history.push_str(" After rewinding, use /rewind undo to restore the removed messages.");
     app.push_display_message(DisplayMessage::system(history));
 }
 
@@ -162,7 +162,7 @@ async fn handle_remote_rewind_command(
         }
         Err(_) => {
             app.push_display_message(DisplayMessage::error(format!(
-                "Usage: `/rewind N` where N is a message number (1-{})",
+                "Usage: /rewind N where N is a message number (1-{})",
                 message_count
             )));
         }
@@ -752,7 +752,7 @@ async fn handle_remote_key_internal(
                         app.push_display_message(DisplayMessage::system(help));
                     } else {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "Unknown command '{}'. Use `/help` to list commands.",
+                            "Unknown command '{}'. Use /help to list commands.",
                             topic.trim()
                         )));
                     }
@@ -865,7 +865,7 @@ async fn handle_remote_key_internal(
                             app.remote_session_id
                                 .clone()
                                 .or_else(|| Some(app.session.id.clone())),
-                            "**Model List Refresh Started**\n\nAsked the remote server to refresh the provider model catalog. Jcode will show the discovered model and route changes when the server responds.",
+                            "Model List Refresh Started\n\nAsked the remote server to refresh the provider model catalog. Jcode will show the discovered model and route changes when the server responds.",
                             Some("Refreshing model list..."),
                         ),
                     );
@@ -909,11 +909,11 @@ async fn handle_remote_key_internal(
                             .clone()
                             .unwrap_or_else(|| app.provider.model());
                         let summary = match app.session.subagent_model.as_deref() {
-                            Some(model) => format!("fixed `{}`", model),
-                            None => format!("inherit current (`{}`)", current_model),
+                            Some(model) => format!("fixed {}", model),
+                            None => format!("inherit current ({})", current_model),
                         };
                         app.push_display_message(DisplayMessage::system(format!(
-                            "Subagent model for this session: {}\n\nUse `/subagent-model <name>` to pin a model, or `/subagent-model inherit` to use the current model.",
+                            "Subagent model for this session: {}\n\nUse /subagent-model <name> to pin a model, or /subagent-model inherit to use the current model.",
                             summary
                         )));
                         return Ok(());
@@ -926,7 +926,7 @@ async fn handle_remote_key_internal(
                         remote.set_subagent_model(None).await?;
                         app.session.subagent_model = None;
                         app.push_display_message(DisplayMessage::system(format!(
-                            "Subagent model reset to inherit the current model (`{}`).",
+                            "Subagent model reset to inherit the current model ({}).",
                             current_model
                         )));
                         app.set_status_notice("Subagent model: inherit");
@@ -935,7 +935,7 @@ async fn handle_remote_key_internal(
                     remote.set_subagent_model(Some(rest.to_string())).await?;
                     app.session.subagent_model = Some(rest.to_string());
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Subagent model pinned to `{}` for this session.",
+                        "Subagent model pinned to {} for this session.",
                         rest
                     )));
                     app.set_status_notice(format!("Subagent model → {}", rest));
@@ -946,7 +946,7 @@ async fn handle_remote_key_internal(
                     let rest = trimmed.strip_prefix("/subagent").unwrap_or_default().trim();
                     if rest.is_empty() {
                         app.push_display_message(DisplayMessage::error(
-                            "Usage: `/subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>`",
+                            "Usage: /subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>",
                         ));
                         return Ok(());
                     }
@@ -965,7 +965,7 @@ async fn handle_remote_key_internal(
                         }
                         Err(error) => {
                             app.push_display_message(DisplayMessage::error(format!(
-                                "{}\nUsage: `/subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>`",
+                                "{}\nUsage: /subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>",
                                 error
                             )));
                         }
@@ -1004,14 +1004,14 @@ async fn handle_remote_key_internal(
                         .iter()
                         .map(|e| {
                             if Some(*e) == current {
-                                format!("**{}** ← current", app_mod::effort_display_label(e))
+                                format!("{} <- current", app_mod::effort_display_label(e))
                             } else {
                                 app_mod::effort_display_label(e).to_string()
                             }
                         })
                         .collect();
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Reasoning effort: {}\nAvailable: {}\nUse `/effort <level>` or Alt+←/→ to change.",
+                        "Reasoning effort: {}\nAvailable: {}\nUse /effort <level> or Alt+Left / Alt+Right to change.",
                         label,
                         list.join(" · ")
                     )));
@@ -1154,14 +1154,14 @@ async fn handle_remote_key_internal(
                         .iter()
                         .map(|t| {
                             if Some(*t) == app.remote_transport.as_deref() {
-                                format!("**{}** ← current", t)
+                                format!("{} <- current", t)
                             } else {
                                 t.to_string()
                             }
                         })
                         .collect();
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Transport: {}\nAvailable: {}\nUse `/transport <mode>` to change.",
+                        "Transport: {}\nAvailable: {}\nUse /transport <mode> to change.",
                         current,
                         list.join(" · ")
                     )));
@@ -1421,7 +1421,7 @@ async fn handle_remote_key_internal(
                 if trimmed == "/memory status" {
                     let default_enabled = crate::config::config().features.memory;
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Memory feature: **{}** (config default: {})",
+                        "Memory feature: {} (config default: {})",
                         if app.memory_enabled {
                             "enabled"
                         } else {
@@ -1532,7 +1532,7 @@ async fn handle_remote_key_internal(
                 if trimmed == "/swarm" || trimmed == "/swarm status" {
                     let default_enabled = crate::config::config().features.swarm;
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Swarm feature: **{}** (config default: {})",
+                        "Swarm feature: {} (config default: {})",
                         if app.swarm_enabled {
                             "enabled"
                         } else {
@@ -1611,12 +1611,12 @@ async fn handle_remote_key_internal(
                     let name = app.session.display_name().to_string();
                     let msg = if let Some(ref lbl) = app.session.save_label {
                         format!(
-                            "📌 Session **{}** saved as \"**{}**\". It will appear at the top of `/resume`.",
+                            "📌 Session {} saved as \"{}\". It will appear at the top of /resume.",
                             name, lbl,
                         )
                     } else {
                         format!(
-                            "📌 Session **{}** saved. It will appear at the top of `/resume`.",
+                            "📌 Session {} saved. It will appear at the top of /resume.",
                             name,
                         )
                     };
@@ -1638,7 +1638,7 @@ async fn handle_remote_key_internal(
                     crate::tui::session_picker::invalidate_session_list_cache();
                     let name = app.session.display_name().to_string();
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Removed bookmark from session **{}**.",
+                        "Removed bookmark from session {}.",
                         name,
                     )));
                     app.set_status_notice("Bookmark removed");
@@ -1649,7 +1649,7 @@ async fn handle_remote_key_internal(
                     let title = trimmed.strip_prefix("/rename").unwrap_or_default().trim();
                     if title.is_empty() {
                         app.push_display_message(DisplayMessage::error(
-                            "Usage: `/rename <session name>` or `/rename --clear`".to_string(),
+                            "Usage: /rename <session name> or /rename --clear".to_string(),
                         ));
                         return Ok(());
                     }
@@ -1691,7 +1691,7 @@ async fn handle_remote_key_internal(
                                 app.track_pending_soft_interrupt(request_id, pause_display);
                                 app.pending_transfer_request = true;
                                 app.push_display_message(DisplayMessage::system(
-                                    "Queued `/transfer`. The current session will be asked to pause, then the compacted handoff will open in a new window."
+                                    "Queued /transfer. The current session will be asked to pause, then the compacted handoff will open in a new window."
                                         .to_string(),
                                 ));
                                 app.set_status_notice("Transfer queued after current turn");
@@ -1779,7 +1779,7 @@ async fn handle_remote_key_internal(
                         .clone()
                         .unwrap_or(crate::config::CompactionMode::Reactive);
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Compaction mode: **{}**\nAvailable: reactive · proactive · semantic\nUse `/compact mode <mode>` to change it for this session.",
+                        "Compaction mode: {}\nAvailable: reactive, proactive, semantic\nUse /compact mode <mode> to change it for this session.",
                         mode.as_str()
                     )));
                     return Ok(());
@@ -1789,7 +1789,7 @@ async fn handle_remote_key_internal(
                     let mode_str = mode_str.trim();
                     let Some(mode) = crate::config::CompactionMode::parse(mode_str) else {
                         app.push_display_message(DisplayMessage::error(
-                            "Usage: `/compact mode <reactive|proactive|semantic>`".to_string(),
+                            "Usage: /compact mode <reactive|proactive|semantic>".to_string(),
                         ));
                         return Ok(());
                     };
@@ -1848,7 +1848,7 @@ async fn handle_remote_key_internal(
                         };
                         app.set_status_notice(format!("Premium: {}", label));
                         app.push_display_message(DisplayMessage::system(format!(
-                            "Premium mode: **{}**. Toggle off with `/z`. (saved to config)",
+                            "Premium mode: {}. Toggle off with /z. (saved to config)",
                             label,
                         )));
                     }
@@ -1939,7 +1939,7 @@ async fn handle_remote_key_internal(
                                 .filter(|mode| mode.is_improve());
                             let Some(mode) = mode else {
                                 app.push_display_message(DisplayMessage::system(
-                                    "No saved improve run found for this session. Use `/improve` or `/improve plan` to start one."
+                                    "No saved improve run found for this session. Use /improve or /improve plan to start one."
                                         .to_string(),
                                 ));
                                 return Ok(());
@@ -2008,7 +2008,7 @@ async fn handle_remote_key_internal(
                                 && !has_incomplete
                             {
                                 app.push_display_message(DisplayMessage::system(
-                                    "No active improve loop to stop. Use `/improve` to start one."
+                                    "No active improve loop to stop. Use /improve to start one."
                                         .to_string(),
                                 ));
                                 return Ok(());
@@ -2121,7 +2121,7 @@ async fn handle_remote_key_internal(
                                 .filter(|mode| mode.is_refactor());
                             let Some(mode) = mode else {
                                 app.push_display_message(DisplayMessage::system(
-                                    "No saved refactor run found for this session. Use `/refactor` or `/refactor plan` to start one."
+                                    "No saved refactor run found for this session. Use /refactor or /refactor plan to start one."
                                         .to_string(),
                                 ));
                                 return Ok(());
@@ -2190,7 +2190,7 @@ async fn handle_remote_key_internal(
                                 && !has_incomplete
                             {
                                 app.push_display_message(DisplayMessage::system(
-                                    "No active refactor loop to stop. Use `/refactor` to start one."
+                                    "No active refactor loop to stop. Use /refactor to start one."
                                         .to_string(),
                                 ));
                                 return Ok(());
