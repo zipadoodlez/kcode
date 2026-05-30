@@ -112,6 +112,9 @@ impl App {
             "transfer" => {
                 "/transfer\nCompact the current session into a summary-only handoff, copy the current todo list to a fresh session, and open that transferred session in a new window.\n\nIf a turn is currently running, jcode first soft-pauses the current session at the next safe point, then performs the transfer."
             }
+            "plan" => {
+                "/plan [goal]\nDraft a plan without implementing anything. The model inspects the repo, then writes a structured plan (Goal, Scope, Approach, Validation, Open questions) to the side panel for review.\n\nNothing is edited: it stops after writing the plan. Once you approve, it converts the plan into a todo list and starts the work.\n\n/plan with no goal plans the task currently in focus."
+            }
             "improve" => {
                 "/improve [focus]\nStart an autonomous repo-improvement loop. The model inspects the project, writes a ranked todo list, implements the highest-leverage safe improvements, validates them, then keeps going until further work has diminishing returns.\n\n/improve plan [focus]\nGenerate a ranked improve todo list only, without editing files.\n\n/improve resume\nResume the last saved improve mode for this session using the current improve todos.\n\n/improve status\nShow the inferred status of the current improve run and todo batch.\n\n/improve stop\nAsk the model to stop after the next safe point, update todos, and summarize remaining work."
             }

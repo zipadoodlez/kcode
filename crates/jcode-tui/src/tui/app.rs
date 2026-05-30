@@ -55,6 +55,7 @@ mod catchup;
 mod commands;
 mod commands_improve;
 mod commands_overnight;
+mod commands_plan;
 mod commands_review;
 mod conversation_state;
 mod copy_selection;

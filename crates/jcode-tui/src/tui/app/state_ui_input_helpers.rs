@@ -1389,6 +1389,7 @@ impl App {
                 | "/goals"
                 | "/goals show"
                 | "/swarm"
+                | "/plan"
                 | "/improve"
                 | "/refactor"
                 | "/rewind"

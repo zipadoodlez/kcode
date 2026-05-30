@@ -195,6 +195,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Poke model to resume with incomplete todos (on/off/status)",
     ));
     lines.push(help_entry(
+        "/plan [goal]",
+        "Draft a plan-only proposal in the side panel (no edits)",
+    ));
+    lines.push(help_entry(
         "/improve",
         "Autonomously improve the repo until returns diminish",
     ));

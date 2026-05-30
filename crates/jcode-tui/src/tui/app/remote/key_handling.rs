@@ -1913,6 +1913,26 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
+                if let Some(command) = app_mod::commands::parse_plan_command(trimmed) {
+                    let prompt = app_mod::commands::build_plan_prompt(command.goal.as_deref());
+                    if app.is_processing {
+                        remote.cancel_with_reason("slash_plan").await?;
+                        app.set_status_notice("Interrupting for /plan...");
+                        app.push_display_message(DisplayMessage::system(
+                            app_mod::commands::plan_launch_notice(command.goal.as_deref(), true),
+                        ));
+                        app.queued_messages.push(prompt);
+                    } else {
+                        app.push_display_message(DisplayMessage::system(
+                            app_mod::commands::plan_launch_notice(command.goal.as_deref(), false),
+                        ));
+                        let _ =
+                            begin_remote_send(app, remote, prompt, vec![], true, None, true, 0)
+                                .await;
+                    }
+                    return Ok(());
+                }
+
                 if let Some(command) = app_mod::commands::parse_improve_command(trimmed) {
                     match command {
                         Err(error) => app.push_display_message(DisplayMessage::error(error)),

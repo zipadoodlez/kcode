@@ -47,6 +47,52 @@ fn test_refactor_command_starts_refactor_loop() {
 }
 
 #[test]
+fn test_plan_command_is_plan_only_and_writes_to_side_panel() {
+    let mut app = create_test_app();
+    app.input = "/plan add a compact message mode".to_string();
+    app.submit_input();
+
+    // /plan is a one-shot, not a resumable improve/refactor loop.
+    assert_eq!(app.improve_mode, None);
+    assert!(app.is_processing());
+
+    let msg = app.session.messages.last().expect("missing plan prompt");
+    assert!(matches!(
+        &msg.content[0],
+        ContentBlock::Text { text, .. }
+            if text.contains("You are entering planning mode")
+                && text.contains("Do NOT implement anything yet")
+                && text.contains("`side_panel`")
+                && text.contains("`todo`")
+                && text.contains("Goal: add a compact message mode")
+    ));
+
+    let display = app
+        .display_messages()
+        .last()
+        .expect("missing plan launch notice");
+    assert!(display.content.contains("Planning add a compact message mode"));
+}
+
+#[test]
+fn test_plan_command_without_goal_plans_current_focus() {
+    let mut app = create_test_app();
+    app.input = "/plan".to_string();
+    app.submit_input();
+
+    assert_eq!(app.improve_mode, None);
+    assert!(app.is_processing());
+
+    let msg = app.session.messages.last().expect("missing plan prompt");
+    assert!(matches!(
+        &msg.content[0],
+        ContentBlock::Text { text, .. }
+            if text.contains("You are entering planning mode")
+                && text.contains("currently in focus in this session")
+    ));
+}
+
+#[test]
 fn test_refactor_plan_command_is_plan_only_and_accepts_focus() {
     let mut app = create_test_app();
     app.input = "/refactor plan command parsing".to_string();
