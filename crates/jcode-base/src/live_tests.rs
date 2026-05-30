@@ -1526,6 +1526,43 @@ pub fn format_strict_live_provider_model_coverage_summary(
 ) -> String {
     let mut out = String::new();
     out.push_str("Live provider/model E2E coverage\n");
+    out.push_str("===============================\n\n");
+
+    out.push_str("What this report tells you:\n");
+    out.push_str("  Which provider+model pairs we have actually exercised end-to-end in a\n");
+    out.push_str("  real Jcode runtime, and how far each one got. Numbers are read as\n");
+    out.push_str("  passed/observed, e.g. \"0/1\" means 1 model pair has been seen for that\n");
+    out.push_str("  provider and 0 of them passed every required step.\n\n");
+
+    out.push_str("Key terms:\n");
+    out.push_str(
+        "  Provider/model pair  One model under one provider (e.g. anthropic-api / claude-opus-4-8).\n",
+    );
+    out.push_str(
+        "  Observed             A pair we have recorded at least one live test result for.\n",
+    );
+    out.push_str(
+        "                       A provider is only \"out of N\" for the N distinct models we have seen.\n",
+    );
+    out.push_str(
+        "  Strict (full E2E)    The pair passed EVERY required checkpoint listed below. This is\n",
+    );
+    out.push_str(
+        "                       the real readiness bar. \"0%\" here usually does NOT mean broken;\n",
+    );
+    out.push_str(
+        "                       it means some strict-only steps (catalog, picker, model-switch,\n",
+    );
+    out.push_str(
+        "                       streaming) were never run for that pair, even if chat/tools work.\n",
+    );
+    out.push_str(
+        "  Smoke (quick check)  A lighter auth-test: did a basic chat reply, and did one tool\n",
+    );
+    out.push_str(
+        "                       call run. Smoke can pass while Strict is still 0%.\n\n",
+    );
+
     out.push_str(&format!("Source: {}\n", summary.coverage_source));
     out.push_str(&format!("Denominator: {}\n", summary.denominator));
     out.push_str(&format!(
@@ -1533,7 +1570,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
         summary.covered_definition
     ));
     out.push_str(&format!(
-        "Coverage: {}/{} provider/model pairs ({:.2}%)\n\n",
+        "Strict coverage (passed every required checkpoint): {}/{} provider/model pairs ({:.2}%)\n\n",
         summary.covered_provider_model_pairs,
         summary.total_provider_model_pairs,
         summary.coverage_percent
@@ -1572,13 +1609,17 @@ pub fn format_strict_live_provider_model_coverage_summary(
         out.push_str("Note: this is separate from strict E2E coverage, which also requires catalog, TUI picker, model-switch, and streaming checkpoints.\n\n");
     }
 
-    out.push_str("Required checkpoints:\n");
+    out.push_str("Required checkpoints (a pair must pass ALL of these to count as Strict-covered):\n");
     for checkpoint in &summary.required_checkpoints {
-        out.push_str(&format!("  - {} ({})\n", checkpoint.id, checkpoint.label));
+        out.push_str(&format!("  - {} ({})\n", checkpoint.label, checkpoint.id));
     }
 
-    out.push_str("\nProviders:\n");
-    out.push_str("  Strict = full E2E readiness. Smoke = auth-test chat/tool readiness.\n");
+    out.push_str("\nPer-provider coverage (numbers are passed/observed model pairs):\n");
+    out.push_str("  Strict      = pairs that passed ALL required checkpoints above (full readiness).\n");
+    out.push_str("  Smoke chat  = pairs where a basic chat reply worked.\n");
+    out.push_str("  Smoke tool  = pairs where a basic tool call worked.\n");
+    out.push_str("  A row at 0% Strict but >0 Smoke means it chats/tools fine but the\n");
+    out.push_str("  strict-only steps (catalog/picker/model-switch/streaming) were not verified.\n\n");
     out.push_str("  Provider              Strict        Smoke chat    Smoke tool\n");
     out.push_str("  -----------------------------------------------------------\n");
     if summary.providers.is_empty() {
@@ -1618,9 +1659,10 @@ pub fn format_strict_live_provider_model_coverage_summary(
     if !summary.uncovered_pairs.is_empty() {
         let shown = summary.uncovered_pairs.len().min(gap_limit);
         out.push_str(&format!(
-            "\nUncovered provider/model gaps (showing {shown} of {}):\n",
+            "\nWhat's missing per pair (the checkpoints each uncovered pair still needs; showing {shown} of {}):\n",
             summary.uncovered_pairs.len()
         ));
+        out.push_str("  (name alone = never run; name:Failed = ran but failed)\n");
         for pair in summary.uncovered_pairs.iter().take(gap_limit) {
             let mut gaps = pair.missing_checkpoints.clone();
             gaps.extend(
@@ -2065,7 +2107,7 @@ mod tests {
 
         let summary = strict_live_provider_model_coverage_summary(&coverage, "unit");
         let report = format_strict_live_provider_model_coverage_summary(&summary, 10);
-        assert!(report.contains("Coverage: 0/0 provider/model pairs"));
+        assert!(report.contains("0/0 provider/model pairs"));
         for checkpoint in [
             checkpoints::MODEL_CATALOG_LIVE_ENDPOINT,
             checkpoints::PICKER_LIVE_MODELS,
