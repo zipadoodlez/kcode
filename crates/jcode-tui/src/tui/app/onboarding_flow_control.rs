@@ -223,18 +223,31 @@ impl App {
         }
     }
 
-    /// Enter the "Continue where you left off?" phase with a 10s auto-Yes.
+    /// Enter the "Continue where you left off?" phase. Highlightable Yes/No
+    /// with a [`DECISION_TIMEOUT`] countdown; the default (and timeout choice)
+    /// is "Yes" so the resume menu opens unless the user declines.
     fn onboarding_enter_continue_prompt(&mut self, cli: ExternalCli) {
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ContinuePrompt {
                 cli,
+                yes_highlighted: true,
                 shown_at: Instant::now(),
             };
         }
         // The continue prompt is rendered by the onboarding welcome screen
         // (`onboarding_welcome_kind`) so it survives in remote mode.
+        self.update_onboarding_continue_prompt_status(cli);
+    }
+
+    /// Refresh the status notice with the continue-prompt countdown.
+    fn update_onboarding_continue_prompt_status(&mut self, cli: ExternalCli) {
+        let remaining = self
+            .onboarding_flow
+            .as_ref()
+            .and_then(OnboardingFlow::decision_seconds_remaining)
+            .unwrap_or(0);
         self.set_status_notice(format!(
-            "Continue a session where you left off in {}?",
+            "Continue a session where you left off in {}? Opens the resume menu in {remaining}s (Yes/No)",
             cli.label()
         ));
     }
@@ -297,17 +310,65 @@ impl App {
                 }
                 _ => false,
             },
-            Some(OnboardingPhase::ContinuePrompt { .. }) => match code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    self.onboarding_answer_continue(true);
-                    true
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                    self.onboarding_answer_continue(false);
-                    true
-                }
-                _ => false,
-            },
+            Some(OnboardingPhase::ContinuePrompt { .. }) => {
+                self.handle_onboarding_continue_choice_key(code)
+            }
+            _ => false,
+        }
+    }
+
+    /// Handle a key while the "continue where you left off?" prompt is up.
+    /// Yes/No sit side by side (default highlight is "Yes"), matching the
+    /// import and telemetry-consent prompts:
+    ///   - Left / h  -> highlight "Yes"
+    ///   - Right / l -> highlight "No"
+    ///   - Up / Down / k / j / Tab -> toggle
+    ///   - y / Y -> continue;  n / N / Esc -> decline (both commit)
+    ///   - Enter / Space -> commit the highlighted choice
+    fn handle_onboarding_continue_choice_key(&mut self, code: KeyCode) -> bool {
+        let cli = match self.onboarding_phase() {
+            Some(OnboardingPhase::ContinuePrompt { cli, .. }) => *cli,
+            _ => return false,
+        };
+        let Some(flow) = self.onboarding_flow.as_mut() else {
+            return false;
+        };
+        let OnboardingPhase::ContinuePrompt { yes_highlighted, .. } = &mut flow.phase else {
+            return false;
+        };
+        match code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                *yes_highlighted = true;
+                self.update_onboarding_continue_prompt_status(cli);
+                true
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                *yes_highlighted = false;
+                self.update_onboarding_continue_prompt_status(cli);
+                true
+            }
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Char('k')
+            | KeyCode::Char('j')
+            | KeyCode::Tab => {
+                *yes_highlighted = !*yes_highlighted;
+                self.update_onboarding_continue_prompt_status(cli);
+                true
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.onboarding_answer_continue(true);
+                true
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.onboarding_answer_continue(false);
+                true
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                let wants_continue = *yes_highlighted;
+                self.onboarding_answer_continue(wants_continue);
+                true
+            }
             _ => false,
         }
     }
@@ -704,6 +765,15 @@ impl App {
                 self.update_onboarding_telemetry_consent_status();
                 return true;
             }
+            Some(OnboardingPhase::ContinuePrompt { yes_highlighted, cli, .. }) => {
+                if decision_timed_out {
+                    // Timeout default is the highlighted option (Yes by default).
+                    self.onboarding_answer_continue(yes_highlighted);
+                    return true;
+                }
+                self.update_onboarding_continue_prompt_status(cli);
+                return true;
+            }
             _ => {}
         }
 
@@ -720,13 +790,6 @@ impl App {
                 .and_then(OnboardingFlow::auto_advance_remaining)
             {
                 match self.onboarding_phase() {
-                    Some(OnboardingPhase::ContinuePrompt { cli, .. }) => {
-                        let label = cli.label();
-                        self.set_status_notice(format!(
-                            "Continue a session where you left off in {label}? auto-opens the resume menu in {remaining}s ([Y]/[N])"
-                        ));
-                        return true;
-                    }
                     Some(OnboardingPhase::TranscriptPick { .. }) => {
                         self.set_status_notice(format!(
                             "Pick a session to continue (auto-selects latest in {remaining}s)"
@@ -739,11 +802,6 @@ impl App {
             return false;
         }
         match self.onboarding_phase().cloned() {
-            Some(OnboardingPhase::ContinuePrompt { cli, .. }) => {
-                // Default action on timeout is "yes, continue".
-                self.onboarding_open_transcript_picker(cli);
-                true
-            }
             Some(OnboardingPhase::TranscriptPick { cli, .. }) => {
                 self.onboarding_auto_select_latest_transcript(cli);
                 true

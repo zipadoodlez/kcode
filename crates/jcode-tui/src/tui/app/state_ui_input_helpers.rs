@@ -1156,13 +1156,16 @@ impl App {
                 }
             }
             Some(OnboardingPhase::ModelSelect) => OnboardingWelcomeKind::ModelSelect,
-            Some(OnboardingPhase::ContinuePrompt { cli, shown_at }) => {
-                let elapsed = shown_at.elapsed();
-                let total =
-                    crate::tui::app::onboarding_flow::AUTO_ADVANCE.as_secs();
-                let seconds_left = total.saturating_sub(elapsed.as_secs());
+            Some(OnboardingPhase::ContinuePrompt {
+                cli,
+                yes_highlighted,
+                shown_at,
+            }) => {
+                let total = crate::tui::app::onboarding_flow::DECISION_TIMEOUT.as_secs();
+                let seconds_left = total.saturating_sub(shown_at.elapsed().as_secs());
                 OnboardingWelcomeKind::ContinuePrompt {
                     cli_label: cli.label().to_string(),
+                    yes_highlighted: *yes_highlighted,
                     seconds_left,
                 }
             }

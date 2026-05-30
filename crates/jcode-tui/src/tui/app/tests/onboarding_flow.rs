@@ -353,6 +353,7 @@ fn answering_no_on_continue_prompt_shows_suggestions() {
         if let Some(flow) = app.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ContinuePrompt {
                 cli: ExternalCli::Codex,
+                yes_highlighted: true,
                 shown_at: std::time::Instant::now(),
             };
         }
@@ -373,6 +374,7 @@ fn continue_prompt_key_y_consumes_and_advances() {
         if let Some(flow) = app.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ContinuePrompt {
                 cli: ExternalCli::ClaudeCode,
+                yes_highlighted: true,
                 shown_at: std::time::Instant::now(),
             };
         }
@@ -402,6 +404,7 @@ fn no_external_transcripts_falls_back_to_session_search() {
         if let Some(flow) = app.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ContinuePrompt {
                 cli: ExternalCli::Codex,
+                yes_highlighted: true,
                 shown_at: std::time::Instant::now(),
             };
         }

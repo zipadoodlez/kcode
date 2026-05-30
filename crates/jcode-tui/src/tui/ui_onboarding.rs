@@ -277,6 +277,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
         }
         OnboardingWelcomeKind::ContinuePrompt {
             cli_label,
+            yes_highlighted,
             seconds_left,
         } => {
             lines.push(Line::from(""));
@@ -289,24 +290,43 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                 ))
                 .alignment(align),
             );
+            lines.push(Line::from(""));
+
+            // Yes / No options; the highlighted one is bold + accented.
+            let (yes_style, no_style) = if yes_highlighted {
+                (
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                    Style::default().fg(dim_color()),
+                )
+            } else {
+                (
+                    Style::default().fg(dim_color()),
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                )
+            };
             lines.push(
                 Line::from(vec![
-                    Span::styled(
-                        "[Y] ",
-                        Style::default().fg(welcome_accent()),
-                    ),
-                    Span::styled("yes   ", Style::default().fg(rgb(200, 200, 200))),
-                    Span::styled(
-                        "[N] ",
-                        Style::default().fg(welcome_accent()),
-                    ),
-                    Span::styled("no", Style::default().fg(rgb(200, 200, 200))),
+                    Span::styled("  Yes  ", yes_style),
+                    Span::raw("   "),
+                    Span::styled("  No  ", no_style),
                 ])
+                .alignment(align),
+            );
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    "Left/right or h/l to move, Enter or Space to choose (y / n also work).",
+                    Style::default().fg(dim_color()),
+                ))
                 .alignment(align),
             );
             lines.push(
                 Line::from(Span::styled(
-                    format!("Opening the resume menu automatically in {seconds_left}s…"),
+                    format!("Opens the resume menu automatically in {seconds_left}s…"),
                     Style::default().fg(dim_color()),
                 ))
                 .alignment(align),

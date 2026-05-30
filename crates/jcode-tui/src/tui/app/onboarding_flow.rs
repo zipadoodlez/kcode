@@ -166,10 +166,15 @@ pub(crate) enum OnboardingPhase {
     },
     /// Pick a model. Entered right after login/import.
     ModelSelect,
-    /// "Continue where you left off in <cli>?" Yes/No with a 10s auto-Yes.
+    /// "Continue where you left off in <cli>?" Yes/No with a
+    /// [`DECISION_TIMEOUT`] countdown. Highlightable Yes/No selector to match
+    /// the import and telemetry-consent prompts; the default (and timeout
+    /// choice) is "Yes" so the resume menu opens unless the user declines.
     ContinuePrompt {
         cli: ExternalCli,
-        /// When the prompt was shown (for the auto-advance countdown).
+        /// Which option is highlighted (true = "Yes, continue").
+        yes_highlighted: bool,
+        /// When the prompt was shown, for the countdown.
         shown_at: Instant,
     },
     /// Single-select transcript picker with a 10s auto-select of the latest.
@@ -211,7 +216,6 @@ impl OnboardingFlow {
     /// Seconds remaining before the current auto-advancing phase fires, if any.
     pub(crate) fn auto_advance_remaining(&self) -> Option<u64> {
         let shown_at = match &self.phase {
-            OnboardingPhase::ContinuePrompt { shown_at, .. } => *shown_at,
             OnboardingPhase::TranscriptPick { shown_at, .. } => *shown_at,
             _ => return None,
         };
@@ -222,7 +226,6 @@ impl OnboardingFlow {
     /// Whether the current auto-advancing phase has timed out.
     pub(crate) fn auto_advance_due(&self) -> bool {
         let shown_at = match &self.phase {
-            OnboardingPhase::ContinuePrompt { shown_at, .. } => *shown_at,
             OnboardingPhase::TranscriptPick { shown_at, .. } => *shown_at,
             _ => return false,
         };
@@ -239,6 +242,9 @@ impl OnboardingFlow {
             OnboardingPhase::TelemetryConsent { shown_at, .. } => {
                 Some(DECISION_TIMEOUT.saturating_sub(shown_at.elapsed()).as_secs())
             }
+            OnboardingPhase::ContinuePrompt { shown_at, .. } => {
+                Some(DECISION_TIMEOUT.saturating_sub(shown_at.elapsed()).as_secs())
+            }
             _ => None,
         }
     }
@@ -251,6 +257,9 @@ impl OnboardingFlow {
                 import: Some(review),
             } => review.timed_out(),
             OnboardingPhase::TelemetryConsent { shown_at, .. } => {
+                shown_at.elapsed() >= DECISION_TIMEOUT
+            }
+            OnboardingPhase::ContinuePrompt { shown_at, .. } => {
                 shown_at.elapsed() >= DECISION_TIMEOUT
             }
             _ => false,
@@ -312,15 +321,18 @@ mod tests {
 
     #[test]
     fn continue_prompt_counts_down_and_times_out() {
-        let past = Instant::now() - (AUTO_ADVANCE + Duration::from_secs(1));
+        let past = Instant::now() - (DECISION_TIMEOUT + Duration::from_secs(1));
         let flow = OnboardingFlow {
             phase: OnboardingPhase::ContinuePrompt {
                 cli: ExternalCli::Codex,
+                yes_highlighted: true,
                 shown_at: past,
             },
         };
-        assert_eq!(flow.auto_advance_remaining(), Some(0));
-        assert!(flow.auto_advance_due());
+        // The continue prompt now shares the longer DECISION_TIMEOUT with the
+        // import and telemetry prompts (not the short AUTO_ADVANCE).
+        assert_eq!(flow.decision_seconds_remaining(), Some(0));
+        assert!(flow.decision_timed_out());
     }
 
     #[test]
@@ -328,12 +340,13 @@ mod tests {
         let flow = OnboardingFlow {
             phase: OnboardingPhase::ContinuePrompt {
                 cli: ExternalCli::ClaudeCode,
+                yes_highlighted: true,
                 shown_at: Instant::now(),
             },
         };
-        let remaining = flow.auto_advance_remaining().unwrap();
-        assert!(remaining >= 8 && remaining <= 10);
-        assert!(!flow.auto_advance_due());
+        let remaining = flow.decision_seconds_remaining().unwrap();
+        assert!(remaining >= DECISION_TIMEOUT.as_secs() - 2 && remaining <= DECISION_TIMEOUT.as_secs());
+        assert!(!flow.decision_timed_out());
     }
 
     #[test]

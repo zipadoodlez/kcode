@@ -586,9 +586,13 @@ pub enum OnboardingWelcomeKind {
     },
     /// Ask the user to pick a model first (press Enter to open the picker).
     ModelSelect,
-    /// "Continue where you left off in <cli>?" with a live auto-advance
-    /// countdown (seconds remaining).
-    ContinuePrompt { cli_label: String, seconds_left: u64 },
+    /// "Continue where you left off in <cli>?" with a highlightable Yes/No
+    /// selector and a live decision countdown (seconds remaining).
+    ContinuePrompt {
+        cli_label: String,
+        yes_highlighted: bool,
+        seconds_left: u64,
+    },
     /// The starter prompt-suggestion cards (default).
     Suggestions,
 }

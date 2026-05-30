@@ -160,6 +160,7 @@ fn onboarding_golden_walks_every_phase() {
     {
         let app = app_in_phase(OnboardingPhase::ContinuePrompt {
             cli: ExternalCli::Codex,
+            yes_highlighted: true,
             shown_at: std::time::Instant::now(),
         });
         let text = render_onboarding_text(&app, width, height);
@@ -169,7 +170,15 @@ fn onboarding_golden_walks_every_phase() {
             "continue prompt: {text}"
         );
         assert!(
-            text.contains("Opening the resume menu automatically in"),
+            text.contains("Yes") && text.contains("No"),
+            "continue prompt Yes/No selector: {text}"
+        );
+        assert!(
+            text.contains("Left/right or h/l to move"),
+            "continue prompt movement hint: {text}"
+        );
+        assert!(
+            text.contains("Opens the resume menu automatically in"),
             "resume-menu hint: {text}"
         );
     }
