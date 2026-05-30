@@ -113,3 +113,49 @@ fn onboarding_picker_mode_carries_cli() {
     assert!(matches!(mode, SessionPickerMode::Onboarding { .. }));
     assert_ne!(mode, SessionPickerMode::Resume);
 }
+
+#[test]
+fn startup_check_skips_when_session_already_has_activity() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = false;
+        // Simulate a non-empty / resumed session.
+        app.push_display_message(DisplayMessage::system("existing".to_string()));
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        // Settled, non-empty state: guard is committed and no flow starts.
+        assert!(app.onboarding_startup_checked);
+        assert!(app.onboarding_flow.is_none());
+    });
+}
+
+#[test]
+fn startup_check_skips_when_input_is_present() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = false;
+        app.input = "restored draft".to_string();
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        assert!(app.onboarding_startup_checked);
+        assert!(app.onboarding_flow.is_none());
+    });
+}
+
+#[test]
+fn startup_check_is_noop_once_committed() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = true;
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        // Already committed: never touches the flow.
+        assert!(app.onboarding_flow.is_none());
+    });
+}

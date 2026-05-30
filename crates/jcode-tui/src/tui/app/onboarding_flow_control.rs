@@ -46,6 +46,44 @@ impl App {
         self.begin_onboarding_flow();
     }
 
+    /// One-shot startup check: the fresh-install path logs the user in at the CLI
+    /// *before* the TUI launches, so no in-TUI login event ever fires. If we boot
+    /// already authenticated as a brand-new user, kick the guided flow here.
+    ///
+    /// Returns without committing the one-shot guard until auth is actually
+    /// resolved (the server may still be bootstrapping on the first ticks), so a
+    /// momentary "not yet authenticated" reading doesn't permanently skip the
+    /// flow. Once we either start the flow or conclude it shouldn't run, the
+    /// guard is set and this becomes a no-op for the rest of the session.
+    pub(super) fn maybe_begin_onboarding_flow_on_startup(&mut self) {
+        if self.onboarding_startup_checked {
+            return;
+        }
+        if self.onboarding_flow.is_some() || self.is_remote {
+            self.onboarding_startup_checked = true;
+            return;
+        }
+        // Don't hijack a session that already has activity (resume, restored
+        // input, or anything already on screen). These are settled states, so we
+        // can commit the guard.
+        if !self.display_messages.is_empty() || self.is_processing || !self.input.is_empty() {
+            self.onboarding_startup_checked = true;
+            return;
+        }
+        if !self.is_new_user_for_onboarding() {
+            self.onboarding_startup_checked = true;
+            return;
+        }
+        // Only start once the user actually has working credentials. If auth
+        // isn't resolved yet (server still bootstrapping), leave the guard unset
+        // and retry on a later tick rather than permanently skipping the flow.
+        if !crate::auth::AuthStatus::check_fast().has_any_available() {
+            return;
+        }
+        self.onboarding_startup_checked = true;
+        self.begin_onboarding_flow();
+    }
+
     /// Whether this install looks like a brand-new user (few launches).
     fn is_new_user_for_onboarding(&self) -> bool {
         crate::storage::jcode_dir()
@@ -77,10 +115,7 @@ impl App {
     /// Decides whether to offer "continue where you left off" based on detected
     /// external Codex / Claude Code OAuth logins.
     pub(super) fn onboarding_after_model_select(&mut self) {
-        if !matches!(
-            self.onboarding_phase(),
-            Some(OnboardingPhase::ModelSelect)
-        ) {
+        if !matches!(self.onboarding_phase(), Some(OnboardingPhase::ModelSelect)) {
             return;
         }
         match detect_external_cli_oauth() {
@@ -257,8 +292,17 @@ impl App {
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if
     /// the flow state changed (so the caller can request a redraw).
     pub(super) fn onboarding_tick(&mut self) -> bool {
+        // Fresh-install bootstrap: if we were already logged in at the CLI before
+        // the TUI launched, no in-TUI login event fired, so evaluate (once)
+        // whether to begin the guided flow now that the TUI is up.
+        let mut changed = false;
+        if !self.onboarding_startup_checked {
+            self.maybe_begin_onboarding_flow_on_startup();
+            // If startup just kicked the flow on, request a redraw.
+            changed = self.onboarding_flow_active();
+        }
         if !self.onboarding_flow_active() {
-            return false;
+            return changed;
         }
         let due = self
             .onboarding_flow
