@@ -749,6 +749,7 @@ pub(super) fn prepare_body_incremental(
 
     let total_prompts = app.display_user_message_count();
     let pending_count = input_ui::pending_prompt_count(app);
+    let prompt_number_offset = app.compacted_hidden_user_prompts();
 
     let mut prompt_num = messages[..prev_msg_count]
         .iter()
@@ -781,15 +782,19 @@ pub(super) fn prepare_body_incremental(
                 new_user_prompt_texts.push(msg.content.clone());
                 let distance = total_prompts + pending_count + 1 - prompt_num;
                 let num_color = rainbow_prompt_color(distance);
+                let displayed_prompt_num = prompt_num + prompt_number_offset;
                 let raw_line = new_raw_plain_lines.len();
                 new_raw_plain_lines.push(msg.content.clone());
                 let prompt_width = unicode_width::UnicodeWidthStr::width(msg.content.as_str());
                 let prefix_width =
-                    unicode_width::UnicodeWidthStr::width(prompt_num.to_string().as_str())
+                    unicode_width::UnicodeWidthStr::width(displayed_prompt_num.to_string().as_str())
                         + unicode_width::UnicodeWidthStr::width("› ");
                 new_lines.push(
                     Line::from(vec![
-                        Span::styled(format!("{}", prompt_num), Style::default().fg(num_color)),
+                        Span::styled(
+                            format!("{}", displayed_prompt_num),
+                            Style::default().fg(num_color),
+                        ),
                         Span::styled("› ", Style::default().fg(user_color())),
                         Span::styled(msg.content.clone(), Style::default().fg(user_text())),
                     ])

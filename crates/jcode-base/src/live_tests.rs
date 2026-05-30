@@ -754,6 +754,13 @@ pub struct LiveProviderModelCoveragePair {
     pub source_provider_ids: Vec<String>,
     pub covered: bool,
     pub latest_recorded_at: DateTime<Utc>,
+    /// jcode version string that produced the most recent entry for this pair.
+    #[serde(default)]
+    pub latest_jcode_version: String,
+    /// Whether the most recent run came from a dirty (dev) build. Used to label
+    /// the run as developer-driven vs user-driven (clean release build).
+    #[serde(default)]
+    pub latest_jcode_dirty: bool,
     pub entries: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<String>,
@@ -1152,6 +1159,8 @@ struct ProviderModelCoverageBuilder {
     provider_label: String,
     model: String,
     latest_recorded_at: Option<DateTime<Utc>>,
+    latest_jcode_version: String,
+    latest_jcode_dirty: bool,
     entries: usize,
     capabilities: BTreeSet<String>,
     source_provider_ids: BTreeSet<String>,
@@ -1177,6 +1186,8 @@ impl ProviderModelCoverageBuilder {
             .unwrap_or(true)
         {
             self.latest_recorded_at = Some(entry.recorded_at);
+            self.latest_jcode_version = entry.jcode_version.clone();
+            self.latest_jcode_dirty = entry.jcode_git_dirty;
         }
         self.capabilities.extend(entry.capabilities.iter().cloned());
         for (checkpoint, status) in &entry.checkpoint_statuses {
@@ -1210,6 +1221,8 @@ impl ProviderModelCoverageBuilder {
             source_provider_ids: self.source_provider_ids.into_iter().collect(),
             covered,
             latest_recorded_at: self.latest_recorded_at.unwrap_or_else(Utc::now),
+            latest_jcode_version: self.latest_jcode_version,
+            latest_jcode_dirty: self.latest_jcode_dirty,
             entries: self.entries,
             capabilities: self.capabilities.into_iter().collect(),
             passed_checkpoints,
@@ -1640,7 +1653,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
 ) -> String {
     let mut out = String::new();
     let stage_count = STRICT_PIPELINE_STAGES.len();
-
+    let now = Utc::now();
     out.push_str("Live provider/model readiness\n");
     out.push_str("=============================\n\n");
 
@@ -1745,8 +1758,13 @@ pub fn format_strict_live_provider_model_coverage_summary(
                 .map(|(id, _)| pipeline_glyph(pair.checkpoint_status(id)))
                 .collect();
             let name = format!("{} / {}", pair.provider_id, pair.model);
+            let tested = format!(
+                "last tested {} by {}",
+                humanize_time_ago(pair.latest_recorded_at, now),
+                coverage_actor_label(pair.latest_jcode_dirty, &pair.latest_jcode_version),
+            );
             if pair.covered {
-                out.push_str(&format!("  {bar}  {name}\n      READY\n"));
+                out.push_str(&format!("  {bar}  {name}\n      READY -- {tested}\n"));
             } else {
                 let next = first_blocker(pair);
                 let detail = match next {
@@ -1757,7 +1775,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
                     }
                     None => "READY".to_string(),
                 };
-                out.push_str(&format!("  {bar}  {name}\n      {detail}\n"));
+                out.push_str(&format!("  {bar}  {name}\n      {detail}\n      {tested}\n"));
             }
         }
         out.push('\n');
@@ -1846,6 +1864,49 @@ fn stages_passed(pair: &LiveProviderModelCoveragePair) -> usize {
     passed
 }
 
+/// Render a UTC instant as a compact, human "how long ago" string plus the
+/// absolute date, e.g. "3 days ago (2026-05-27)". `now` is passed in so the
+/// output is deterministic in tests.
+fn humanize_time_ago(when: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let delta = now.signed_duration_since(when);
+    let date = when.format("%Y-%m-%d").to_string();
+    if delta.num_seconds() < 0 {
+        // Clock skew / future timestamp: don't claim a negative age.
+        return format!("just now ({date})");
+    }
+    let secs = delta.num_seconds();
+    let rel = if secs < 60 {
+        "just now".to_string()
+    } else if delta.num_minutes() < 60 {
+        let m = delta.num_minutes();
+        format!("{m} minute{} ago", if m == 1 { "" } else { "s" })
+    } else if delta.num_hours() < 24 {
+        let h = delta.num_hours();
+        format!("{h} hour{} ago", if h == 1 { "" } else { "s" })
+    } else if delta.num_days() < 30 {
+        let d = delta.num_days();
+        format!("{d} day{} ago", if d == 1 { "" } else { "s" })
+    } else if delta.num_days() < 365 {
+        let mo = delta.num_days() / 30;
+        format!("{mo} month{} ago", if mo == 1 { "" } else { "s" })
+    } else {
+        let y = delta.num_days() / 365;
+        format!("{y} year{} ago", if y == 1 { "" } else { "s" })
+    };
+    format!("{rel} ({date})")
+}
+
+/// Who last exercised this pair: a clean release build is treated as a real
+/// user's run, a dirty/dev build is a developer testing locally. This is a
+/// durable, evidence-based classification (the build flag is recorded per run).
+fn coverage_actor_label(dirty: bool, version: &str) -> &'static str {
+    let v = version.to_ascii_lowercase();
+    if dirty || v.contains("dirty") || v.contains("-dev") || v.contains("dev (") {
+        "developer (dev build)"
+    } else {
+        "user (release build)"
+    }
+}
 /// The exact command (or guidance) to push a specific pair past its first blocker.
 fn pair_fix_hint(provider_id: &str, model: &str, stage_id: &str) -> String {
     if doctor_supports_provider(provider_id) {
@@ -1999,6 +2060,42 @@ mod tests {
                 None => crate::env::remove_var(self.key),
             }
         }
+    }
+
+    #[test]
+    fn humanize_time_ago_buckets_and_labels_actor() {
+        use chrono::TimeZone;
+        let now = Utc.with_ymd_and_hms(2026, 5, 30, 12, 0, 0).unwrap();
+        assert!(humanize_time_ago(now - Duration::seconds(10), now).starts_with("just now"));
+        assert!(humanize_time_ago(now - Duration::minutes(1), now).starts_with("1 minute ago"));
+        assert!(humanize_time_ago(now - Duration::minutes(5), now).starts_with("5 minutes ago"));
+        assert!(humanize_time_ago(now - Duration::hours(1), now).starts_with("1 hour ago"));
+        assert!(humanize_time_ago(now - Duration::days(1), now).starts_with("1 day ago"));
+        assert!(humanize_time_ago(now - Duration::days(3), now).starts_with("3 days ago"));
+        assert!(humanize_time_ago(now - Duration::days(60), now).starts_with("2 months ago"));
+        assert!(humanize_time_ago(now - Duration::days(400), now).starts_with("1 year ago"));
+        // Absolute date is always appended.
+        assert!(humanize_time_ago(now - Duration::days(3), now).contains("(2026-05-27)"));
+        // Future timestamps don't go negative.
+        assert!(humanize_time_ago(now + Duration::hours(1), now).starts_with("just now"));
+
+        // Actor classification is evidence-based on the build flag/version.
+        assert_eq!(
+            coverage_actor_label(false, "v0.16.0"),
+            "user (release build)"
+        );
+        assert_eq!(
+            coverage_actor_label(true, "v0.16.0"),
+            "developer (dev build)"
+        );
+        assert_eq!(
+            coverage_actor_label(false, "v0.14.32-dev (f7149a4)"),
+            "developer (dev build)"
+        );
+        assert_eq!(
+            coverage_actor_label(false, "8d932fbd-dirty"),
+            "developer (dev build)"
+        );
     }
 
     #[test]

@@ -234,6 +234,66 @@ fn test_prepare_body_incremental_reuses_unique_prepared_arc() {
 }
 
 #[test]
+fn test_prepare_body_incremental_applies_compaction_prompt_offset() {
+    // When earlier prompts have been hidden by compaction, the prompt number
+    // gutter must include the hidden-prompt offset on BOTH the full-rebuild
+    // path (prepare_body) and the incremental fast path (prepare_body_incremental).
+    // Regression test: previously the incremental path forgot the offset, so
+    // newly appended prompts were rendered with small local numbers while the
+    // rest of the transcript kept the offset-adjusted numbers.
+    let width = 80;
+    let hidden = 70usize;
+
+    let base_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("first prompt"),
+            DisplayMessage::assistant("initial answer"),
+        ],
+        messages_version: 1,
+        compacted_hidden_user_prompts: hidden,
+        ..Default::default()
+    };
+    let grown_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("first prompt"),
+            DisplayMessage::assistant("initial answer"),
+            DisplayMessage::user("second prompt"),
+            DisplayMessage::assistant("follow-up answer"),
+        ],
+        messages_version: 2,
+        compacted_hidden_user_prompts: hidden,
+        ..Default::default()
+    };
+
+    let prepared = Arc::new(super::prepare::prepare_body(&base_state, width, false));
+    let incremented = super::prepare::prepare_body_incremental(&grown_state, width, prepared, 2);
+    let full = super::prepare::prepare_body(&grown_state, width, false);
+
+    let prompt_number_for = |prep: &PreparedMessages, content: &str| -> Option<usize> {
+        for line in &prep.wrapped_lines {
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            if let Some((prefix, rest)) = text.split_once("› ")
+                && rest.starts_with(content)
+            {
+                return prefix.trim().parse::<usize>().ok();
+            }
+        }
+        None
+    };
+
+    // first prompt is hidden+1, second prompt is hidden+2 on the full path.
+    assert_eq!(prompt_number_for(&full, "first prompt"), Some(hidden + 1));
+    assert_eq!(prompt_number_for(&full, "second prompt"), Some(hidden + 2));
+
+    // The incremental path must agree with the full rebuild for the appended prompt.
+    assert_eq!(
+        prompt_number_for(&incremented, "second prompt"),
+        Some(hidden + 2),
+        "incremental prep must apply the compaction prompt offset"
+    );
+}
+
+#[test]
 fn test_full_prep_cache_state_keeps_multiple_width_entries() {
     let key_a = FullPrepCacheKey {
         width: 40,
