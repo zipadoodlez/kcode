@@ -1979,6 +1979,13 @@ impl App {
             return Ok(());
         }
 
+        if modifiers.contains(KeyModifiers::ALT)
+            && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'f'))
+        {
+            self.cycle_model_favorite_hotkey();
+            return Ok(());
+        }
+
         if self.pending_provider_failover.is_some() && !self.is_processing {
             if code == KeyCode::Esc {
                 self.cancel_pending_provider_failover("Provider auto-switch canceled");

@@ -169,6 +169,18 @@ fn model_picker_is_favorite(
         .contains(&model_picker_usage_key(model_name, route, effort))
 }
 
+fn picker_is_runtime_model_picker(picker: &InlineInteractiveState) -> bool {
+    picker.kind == PickerKind::Model
+        && picker
+            .entries
+            .iter()
+            .any(|entry| matches!(entry.action, PickerAction::Model))
+}
+
+fn key_char_eq_ignore_ascii_case(code: KeyCode, expected: char) -> bool {
+    matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&expected))
+}
+
 fn remote_model_catalog_cache_path() -> Option<std::path::PathBuf> {
     crate::storage::app_config_dir()
         .ok()
@@ -1932,7 +1944,7 @@ impl App {
     fn toggle_selected_model_favorite(&mut self) {
         let Some((entry_name, is_favorite, store)) = (|| {
             let picker = self.inline_interactive_state.as_mut()?;
-            if picker.kind != PickerKind::Model || picker.filtered.is_empty() {
+            if !picker_is_runtime_model_picker(picker) || picker.filtered.is_empty() {
                 return None;
             }
             let idx = picker.filtered[picker.selected];
@@ -1970,7 +1982,7 @@ impl App {
     fn cycle_selected_model_favorite(&mut self) {
         let selected_name = (|| {
             let picker = self.inline_interactive_state.as_mut()?;
-            if picker.kind != PickerKind::Model || picker.filtered.is_empty() {
+            if !picker_is_runtime_model_picker(picker) || picker.filtered.is_empty() {
                 return None;
             }
             let total = picker.filtered.len();
@@ -1998,6 +2010,31 @@ impl App {
         } else {
             self.set_status_notice("No favorited models yet. Use Ctrl+F to favorite one.");
         }
+    }
+
+    pub(super) fn cycle_model_favorite_hotkey(&mut self) {
+        if self
+            .inline_interactive_state
+            .as_ref()
+            .map(picker_is_runtime_model_picker)
+            .unwrap_or(false)
+        {
+            self.cycle_selected_model_favorite();
+            return;
+        }
+
+        self.open_model_picker();
+        if !self
+            .inline_interactive_state
+            .as_ref()
+            .map(picker_is_runtime_model_picker)
+            .unwrap_or(false)
+        {
+            self.set_status_notice("Model favorites unavailable until model routes finish loading");
+            return;
+        }
+        self.cycle_selected_model_favorite();
+        let _ = self.handle_inline_interactive_key(KeyCode::Enter, KeyModifiers::NONE);
     }
 
     pub(super) fn handle_inline_interactive_key(
@@ -2106,9 +2143,11 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
+            code if modifiers.contains(KeyModifiers::CONTROL)
+                && key_char_eq_ignore_ascii_case(code, 'd') =>
+            {
                 if let Some(ref picker) = self.inline_interactive_state {
-                    if picker.uses_compact_navigation() {
+                    if !picker_is_runtime_model_picker(picker) {
                         return Ok(());
                     }
                     if picker.filtered.is_empty() {
@@ -2166,10 +2205,14 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('f') if modifiers.contains(KeyModifiers::CONTROL) => {
+            code if modifiers.contains(KeyModifiers::CONTROL)
+                && key_char_eq_ignore_ascii_case(code, 'f') =>
+            {
                 self.toggle_selected_model_favorite();
             }
-            KeyCode::Char('f') if modifiers.contains(KeyModifiers::ALT) => {
+            code if modifiers.contains(KeyModifiers::ALT)
+                && key_char_eq_ignore_ascii_case(code, 'f') =>
+            {
                 self.cycle_selected_model_favorite();
             }
             KeyCode::Enter => {
@@ -2505,12 +2548,15 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::{
-        RemoteModelCatalogCache, model_picker_route_is_current, model_picker_route_is_default,
-        model_picker_route_is_recommended,
+        RemoteModelCatalogCache, key_char_eq_ignore_ascii_case, model_picker_route_is_current,
+        model_picker_route_is_default, model_picker_route_is_recommended,
+        picker_is_runtime_model_picker,
     };
     use crate::tui::{
-        App, InlineInteractiveState, PickerAction, PickerEntry, PickerKind, PickerOption,
+        AgentModelTarget, App, InlineInteractiveState, PickerAction, PickerEntry, PickerKind,
+        PickerOption,
     };
+    use crossterm::event::KeyCode;
 
     fn picker_entry(name: &str, provider: &str, usage_score: u32) -> PickerEntry {
         PickerEntry {
@@ -2542,6 +2588,41 @@ mod tests {
 
     fn picker_option(provider: &str) -> PickerOption {
         picker_option_with_method(provider, "test")
+    }
+
+    #[test]
+    fn model_picker_hotkey_char_matching_is_case_insensitive() {
+        assert!(key_char_eq_ignore_ascii_case(KeyCode::Char('f'), 'f'));
+        assert!(key_char_eq_ignore_ascii_case(KeyCode::Char('F'), 'f'));
+        assert!(key_char_eq_ignore_ascii_case(KeyCode::Char('D'), 'd'));
+        assert!(!key_char_eq_ignore_ascii_case(KeyCode::Char('x'), 'f'));
+    }
+
+    #[test]
+    fn runtime_model_picker_scope_excludes_agent_model_picker() {
+        let runtime = InlineInteractiveState {
+            kind: PickerKind::Model,
+            filtered: vec![0],
+            entries: vec![picker_entry("gpt-5.5", "OpenAI", 0)],
+            selected: 0,
+            column: 0,
+            filter: String::new(),
+            preview: false,
+        };
+        let mut agent_entry = picker_entry("Swarm / subagent", "gpt-5 default", 0);
+        agent_entry.action = PickerAction::AgentTarget(AgentModelTarget::Swarm);
+        let agent = InlineInteractiveState {
+            kind: PickerKind::Model,
+            filtered: vec![0],
+            entries: vec![agent_entry],
+            selected: 0,
+            column: 0,
+            filter: String::new(),
+            preview: false,
+        };
+
+        assert!(picker_is_runtime_model_picker(&runtime));
+        assert!(!picker_is_runtime_model_picker(&agent));
     }
 
     #[test]
