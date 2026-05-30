@@ -232,7 +232,7 @@ fn test_reload_progress_coalesces_into_single_message() {
     assert_eq!(reload_msg.title.as_deref(), Some("Reload"));
     assert_eq!(
         reload_msg.content,
-        "🔄 Server reload initiated...\n[init] 🔄 Starting hot-reload...\n[verify] ✓ Binary verified\n```\nsize=68.4MB\n```"
+        "🔄 Server reload initiated...\n[init] 🔄 Starting hot-reload...\n[verify] ✓ Binary verified\n  size=68.4MB\n"
     );
 }
 

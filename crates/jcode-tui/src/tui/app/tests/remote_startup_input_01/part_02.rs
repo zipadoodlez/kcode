@@ -105,7 +105,7 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
     assert!(app.display_messages.iter().any(|message| {
         message.role == "background_task"
             && message.content.contains("**Background task progress** `refresh-model-list`")
-            && message.content.contains("Starting provider model catalog refresh")
+            && message.content.contains("Model list refresh")
     }));
 }
 

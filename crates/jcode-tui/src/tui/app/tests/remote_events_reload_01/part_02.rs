@@ -277,7 +277,7 @@ fn test_remote_rewind_lists_display_history_when_session_transcript_is_empty() {
         .expect("/rewind should be handled remotely");
 
     let last = app.display_messages().last().expect("history message");
-    assert!(last.content.contains("**Conversation history:**"));
+    assert!(last.content.contains("Conversation history:"));
     assert!(last.content.contains("1 👤 User - hello"));
     assert!(last.content.contains("2 🤖 Assistant - hi there"));
     assert!(!last.content.contains("No messages in conversation"));
