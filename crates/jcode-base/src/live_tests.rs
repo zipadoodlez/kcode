@@ -1520,213 +1520,270 @@ fn known_live_model_provider_ids() -> Vec<String> {
     ids.into_iter().collect()
 }
 
+/// Short, human label for each strict checkpoint, in pipeline order. Used to
+/// render the per-pair progress bar and to name the first blocker in English.
+const STRICT_PIPELINE_STAGES: &[(&str, &str)] = &[
+    (checkpoints::MODEL_CATALOG_LIVE_ENDPOINT, "live catalog"),
+    (checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION, "catalog reload"),
+    (checkpoints::PICKER_LIVE_MODELS, "picker shows model"),
+    (checkpoints::PICKER_FALLBACK_LABELING, "picker labeling"),
+    (checkpoints::MODEL_SWITCH_ROUTE, "model switch"),
+    (checkpoints::NON_STREAMING_CHAT_COMPLETION, "chat reply"),
+    (checkpoints::STREAMING_CHAT_COMPLETION, "streaming reply"),
+    (checkpoints::TOOL_CALL_PARSE, "tool-call parse"),
+    (checkpoints::TOOL_EXECUTION_LOOP, "tool execution"),
+    (checkpoints::TOOL_RESULT_FOLLOWUP, "tool-result followup"),
+    (checkpoints::REAL_JCODE_TOOL_SMOKE, "real tool smoke"),
+];
+
+/// One-glyph rendering of a checkpoint outcome for the per-pair pipeline bar.
+fn pipeline_glyph(status: Option<LiveVerificationStageStatus>) -> char {
+    match status {
+        Some(LiveVerificationStageStatus::Passed) => '+',
+        Some(LiveVerificationStageStatus::Failed) => 'x',
+        Some(LiveVerificationStageStatus::Blocked) => '!',
+        Some(LiveVerificationStageStatus::Skipped) => '~',
+        Some(LiveVerificationStageStatus::NotRun) | None => '.',
+    }
+}
+
+/// Plain-English description of the first thing standing between a pair and
+/// READY, plus whether it is a hard failure (ran and failed/blocked) or just
+/// "never run". Returns `None` when every stage passed.
+fn first_blocker(pair: &LiveProviderModelCoveragePair) -> Option<(&'static str, &'static str, bool)> {
+    for (id, label) in STRICT_PIPELINE_STAGES {
+        match pair.checkpoint_status(id) {
+            Some(LiveVerificationStageStatus::Passed) => continue,
+            Some(LiveVerificationStageStatus::Skipped) => continue,
+            Some(LiveVerificationStageStatus::Failed)
+            | Some(LiveVerificationStageStatus::Blocked) => return Some((id, label, true)),
+            Some(LiveVerificationStageStatus::NotRun) | None => return Some((id, label, false)),
+        }
+    }
+    None
+}
+
+/// Suggest the `provider-doctor` tier that would next exercise the given stage,
+/// so the reader knows exactly which command to run to make progress.
+fn doctor_tier_for_stage(stage_id: &str) -> &'static str {
+    match stage_id {
+        checkpoints::NON_STREAMING_CHAT_COMPLETION
+        | checkpoints::STREAMING_CHAT_COMPLETION
+        | checkpoints::TOOL_CALL_PARSE
+        | checkpoints::TOOL_EXECUTION_LOOP
+        | checkpoints::TOOL_RESULT_FOLLOWUP
+        | checkpoints::REAL_JCODE_TOOL_SMOKE => "full",
+        checkpoints::MODEL_CATALOG_LIVE_ENDPOINT => "catalog",
+        _ => "offline",
+    }
+}
+
+/// True when `jcode provider-doctor <provider>` can actually drive this provider
+/// (only OpenAI-compatible providers are supported today).
+fn doctor_supports_provider(provider_id: &str) -> bool {
+    crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some()
+}
+
 pub fn format_strict_live_provider_model_coverage_summary(
     summary: &LiveProviderModelCoverageSummary,
     gap_limit: usize,
 ) -> String {
     let mut out = String::new();
-    out.push_str("Live provider/model E2E coverage\n");
-    out.push_str("===============================\n\n");
+    let stage_count = STRICT_PIPELINE_STAGES.len();
 
-    out.push_str("What this report tells you:\n");
-    out.push_str("  Which provider+model pairs we have actually exercised end-to-end in a\n");
-    out.push_str("  real Jcode runtime, and how far each one got. Numbers are read as\n");
-    out.push_str("  passed/observed, e.g. \"0/1\" means 1 model pair has been seen for that\n");
-    out.push_str("  provider and 0 of them passed every required step.\n\n");
+    out.push_str("Live provider/model readiness\n");
+    out.push_str("=============================\n\n");
 
-    out.push_str("Key terms:\n");
-    out.push_str(
-        "  Provider/model pair  One model under one provider (e.g. anthropic-api / claude-opus-4-8).\n",
-    );
-    out.push_str(
-        "  Observed             A pair we have recorded at least one live test result for.\n",
-    );
-    out.push_str(
-        "                       A provider is only \"out of N\" for the N distinct models we have seen.\n",
-    );
-    out.push_str(
-        "  Strict (full E2E)    The pair passed EVERY required checkpoint listed below. This is\n",
-    );
-    out.push_str(
-        "                       the real readiness bar. \"0%\" here usually does NOT mean broken;\n",
-    );
-    out.push_str(
-        "                       it means some strict-only steps (catalog, picker, model-switch,\n",
-    );
-    out.push_str(
-        "                       streaming) were never run for that pair, even if chat/tools work.\n",
-    );
-    out.push_str(
-        "  Smoke (quick check)  A lighter auth-test: did a basic chat reply, and did one tool\n",
-    );
-    out.push_str(
-        "                       call run. Smoke can pass while Strict is still 0%.\n\n",
-    );
-
-    out.push_str(&format!("Source: {}\n", summary.coverage_source));
-    out.push_str(&format!("Denominator: {}\n", summary.denominator));
+    // -- Headline: the one number that matters. --------------------------------
     out.push_str(&format!(
-        "Covered definition: {}\n",
-        summary.covered_definition
-    ));
-    out.push_str(&format!(
-        "Strict coverage (passed every required checkpoint): {}/{} provider/model pairs ({:.2}%)\n\n",
+        "READY: {}/{} provider+model pairs ({:.0}%) passed the full {}-stage pipeline.\n",
         summary.covered_provider_model_pairs,
         summary.total_provider_model_pairs,
-        summary.coverage_percent
+        summary.coverage_percent,
+        stage_count,
     ));
+    out.push_str(
+        "A pair is READY only after every stage below passes in a real Jcode runtime.\n",
+    );
+    out.push_str(
+        "Anything short of READY is work-in-progress, not necessarily broken -- the\n",
+    );
+    out.push_str(
+        "bar below shows exactly how far each pair got and what to run next.\n\n",
+    );
 
-    let mut basic_chat_passed = 0usize;
-    let mut tool_smoke_passed = 0usize;
-    let mut tool_smoke_skipped = 0usize;
-    let all_pairs = summary
+    // -- The pipeline legend (the 11 stages, numbered, in order). --------------
+    out.push_str(&format!("The pipeline ({stage_count} stages, left to right):\n"));
+    for (index, (_, label)) in STRICT_PIPELINE_STAGES.iter().enumerate() {
+        out.push_str(&format!("  {:>2}. {}\n", index + 1, label));
+    }
+    out.push_str("\nIn each bar:  + passed   x failed   ! blocked   ~ skipped   . not run yet\n\n");
+
+    // -- Per-provider rollup. --------------------------------------------------
+    out.push_str("Per provider (READY = pairs that cleared all stages):\n");
+    out.push_str("  provider               READY    furthest non-ready pair reached\n");
+    out.push_str("  ----------------------------------------------------------------\n");
+    if summary.providers.is_empty() {
+        out.push_str("  (no provider has model-specific live evidence yet)\n");
+    } else {
+        let all_pairs = summary
+            .covered_pairs
+            .iter()
+            .chain(summary.uncovered_pairs.iter())
+            .collect::<Vec<_>>();
+        for provider in &summary.providers {
+            // How far did the best not-yet-ready pair climb?
+            let best_reached = all_pairs
+                .iter()
+                .filter(|pair| pair.provider_id == provider.provider_id && !pair.covered)
+                .map(|pair| stages_passed(pair))
+                .max();
+            let reached = match (provider.covered_model_pairs, best_reached) {
+                (n, _) if n == provider.total_model_pairs && provider.total_model_pairs > 0 => {
+                    "all pairs READY".to_string()
+                }
+                (_, Some(passed)) => format!(
+                    "{}/{} stages ({})",
+                    passed,
+                    stage_count,
+                    STRICT_PIPELINE_STAGES
+                        .get(passed.saturating_sub(1))
+                        .map(|(_, label)| *label)
+                        .filter(|_| passed > 0)
+                        .unwrap_or("nothing yet")
+                ),
+                (_, None) => "no evidence".to_string(),
+            };
+            out.push_str(&format!(
+                "  {:<22} {:>2}/{:<2}    {}\n",
+                provider.provider_id,
+                provider.covered_model_pairs,
+                provider.total_model_pairs,
+                reached,
+            ));
+        }
+    }
+    out.push('\n');
+
+    // -- Per-pair pipeline bars: the heart of the report. ----------------------
+    let mut all_pairs = summary
         .covered_pairs
         .iter()
         .chain(summary.uncovered_pairs.iter())
         .collect::<Vec<_>>();
-    for pair in &all_pairs {
-        if matches!(
-            pair.checkpoint_status(crate::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION),
-            Some(LiveVerificationStageStatus::Passed)
-        ) {
-            basic_chat_passed += 1;
-        }
-        match pair.checkpoint_status(crate::live_tests::checkpoints::REAL_JCODE_TOOL_SMOKE) {
-            Some(LiveVerificationStageStatus::Passed) => tool_smoke_passed += 1,
-            Some(LiveVerificationStageStatus::Skipped) => tool_smoke_skipped += 1,
-            _ => {}
-        }
-    }
-    if !all_pairs.is_empty() {
-        out.push_str(&format!(
-            "Auth-test smoke snapshot: basic chat passed {}/{} observed provider/model pairs; real tool smoke passed {}/{} and skipped {}.\n",
-            basic_chat_passed,
-            all_pairs.len(),
-            tool_smoke_passed,
-            all_pairs.len(),
-            tool_smoke_skipped
-        ));
-        out.push_str("Note: this is separate from strict E2E coverage, which also requires catalog, TUI picker, model-switch, and streaming checkpoints.\n\n");
-    }
+    // READY pairs first, then by furthest-reached descending, then name.
+    all_pairs.sort_by(|a, b| {
+        b.covered
+            .cmp(&a.covered)
+            .then_with(|| stages_passed(b).cmp(&stages_passed(a)))
+            .then_with(|| a.provider_id.cmp(&b.provider_id))
+            .then_with(|| a.model.cmp(&b.model))
+    });
 
-    out.push_str("Required checkpoints (a pair must pass ALL of these to count as Strict-covered):\n");
-    for checkpoint in &summary.required_checkpoints {
-        out.push_str(&format!("  - {} ({})\n", checkpoint.label, checkpoint.id));
-    }
-
-    out.push_str("\nPer-provider readiness:\n");
-    out.push_str("  READY (Strict) is the number that matters: model pairs that passed ALL\n");
-    out.push_str("  required checkpoints. The 'progress' columns just show how far the\n");
-    out.push_str("  not-yet-ready pairs climbed, so you can tell 'almost there' from 'dead'.\n\n");
-    out.push_str("                          READY            progress toward ready\n");
-    out.push_str("  Provider              Strict   %        chats   runs tools   status\n");
-    out.push_str("  ---------------------------------------------------------------------\n");
-    if summary.providers.is_empty() {
-        out.push_str("  none with model-specific live evidence\n");
+    if all_pairs.is_empty() {
+        out.push_str("No provider+model pairs have live evidence yet. Run\n");
+        out.push_str("`jcode provider-doctor <provider> --tier full` to record one.\n\n");
     } else {
-        for provider in &summary.providers {
-            let skipped = if provider.tool_smoke_skipped_model_pairs > 0 {
-                format!(" (+{} skipped)", provider.tool_smoke_skipped_model_pairs)
+        let shown = all_pairs.len().min(gap_limit);
+        out.push_str(&format!(
+            "Each pair, furthest first (showing {shown} of {}):\n",
+            all_pairs.len()
+        ));
+        for pair in all_pairs.iter().take(gap_limit) {
+            let bar: String = STRICT_PIPELINE_STAGES
+                .iter()
+                .map(|(id, _)| pipeline_glyph(pair.checkpoint_status(id)))
+                .collect();
+            let name = format!("{} / {}", pair.provider_id, pair.model);
+            if pair.covered {
+                out.push_str(&format!("  {bar}  {name}\n      READY\n"));
             } else {
-                String::new()
-            };
-            let status = if provider.total_model_pairs == 0 {
-                "no evidence"
-            } else if provider.covered_model_pairs == provider.total_model_pairs {
-                "READY"
-            } else if provider.covered_model_pairs > 0 {
-                "partly ready"
-            } else if provider.tool_smoke_passed_model_pairs > 0 {
-                "tools ok, not strict"
-            } else if provider.basic_chat_passed_model_pairs > 0 {
-                "chat-only"
-            } else {
-                "not working"
-            };
-            out.push_str(&format!(
-                "  {:<20} {:>2}/{:<2} {:>6.2}%     {:>2}/{:<2}   {:>2}/{:<2}        {}{}\n",
-                provider.provider_id,
-                provider.covered_model_pairs,
-                provider.total_model_pairs,
-                provider.coverage_percent,
-                provider.basic_chat_passed_model_pairs,
-                provider.total_model_pairs,
-                provider.tool_smoke_passed_model_pairs,
-                provider.total_model_pairs,
-                status,
-                skipped
-            ));
+                let next = first_blocker(pair);
+                let detail = match next {
+                    Some((stage_id, label, hard_fail)) => {
+                        let verb = if hard_fail { "FAILED at" } else { "stuck before" };
+                        let fix = pair_fix_hint(&pair.provider_id, &pair.model, stage_id);
+                        format!("{verb} `{label}` -> {fix}")
+                    }
+                    None => "READY".to_string(),
+                };
+                out.push_str(&format!("  {bar}  {name}\n      {detail}\n"));
+            }
         }
-        out.push_str("\n  Legend: Strict = passed every required checkpoint (true readiness).\n");
-        out.push_str("          chats = basic chat reply worked.  runs tools = a tool call worked.\n");
-        out.push_str("          A pair must clear both of those (and the catalog/picker/switch/\n");
-        out.push_str("          streaming steps) to count as READY.\n");
+        out.push('\n');
     }
 
+    // -- Providers we know about but have never exercised. ---------------------
     if !summary
         .known_provider_ids_without_live_model_coverage
         .is_empty()
     {
-        out.push_str("\nKnown providers with no model-specific live evidence:\n");
-        for provider_id in &summary.known_provider_ids_without_live_model_coverage {
-            out.push_str(&format!("  - {provider_id}\n"));
-        }
-    }
-
-    if !summary.uncovered_pairs.is_empty() {
-        let shown = summary.uncovered_pairs.len().min(gap_limit);
+        let ids = &summary.known_provider_ids_without_live_model_coverage;
         out.push_str(&format!(
-            "\nWhat's missing per pair (the checkpoints each uncovered pair still needs; showing {shown} of {}):\n",
-            summary.uncovered_pairs.len()
+            "Known providers with no live evidence yet ({}): ",
+            ids.len()
         ));
-        out.push_str("  (name alone = never run; name:Failed = ran but failed)\n");
-        for pair in summary.uncovered_pairs.iter().take(gap_limit) {
-            let mut gaps = pair.missing_checkpoints.clone();
-            gaps.extend(
-                pair.non_passing_checkpoints
-                    .iter()
-                    .map(|(checkpoint, status)| format!("{checkpoint}:{status:?}")),
-            );
-            out.push_str(&format!(
-                "  - {} / {}: {}\n",
-                pair.provider_id,
-                pair.model,
-                gaps.join(", ")
-            ));
-        }
+        out.push_str(&ids.join(", "));
+        out.push_str("\n\n");
     }
 
+    // -- Issue-driven targets (kept, but tightened to one line each). ----------
     if !summary.issue_driven_targets.is_empty() {
-        out.push_str("\nIssue-driven live provider targets:\n");
+        out.push_str("Issue-tracked targets:\n");
         for target in &summary.issue_driven_targets {
             let model = target.model.as_deref().unwrap_or("any live model");
             let issues = target.issue_refs.join(", ");
-            let observed = if target.observed_models.is_empty() {
-                "none".to_string()
-            } else {
-                target.observed_models.join(", ")
+            let plain = match target.status.as_str() {
+                "strict_covered" => "READY",
+                "observed_missing_strict_checkpoints" => "seen, not yet READY",
+                "no_model_specific_live_evidence" => "no evidence yet",
+                other => other,
             };
             out.push_str(&format!(
-                "  - {} / {} [{}]: {} (observed: {})\n",
-                target.provider_id, model, issues, target.status, observed
+                "  [{}] {} / {}: {}\n",
+                issues, target.provider_id, model, plain
             ));
-            if let Some((model, missing)) = target.missing_checkpoints_by_model.iter().next() {
-                let shown_missing = missing.iter().take(6).cloned().collect::<Vec<_>>();
-                let suffix = if missing.len() > shown_missing.len() {
-                    format!(", +{} more", missing.len() - shown_missing.len())
-                } else {
-                    String::new()
-                };
-                out.push_str(&format!(
-                    "    missing for {model}: {}{}\n",
-                    shown_missing.join(", "),
-                    suffix
-                ));
-            }
         }
+        out.push('\n');
     }
 
+    // -- Footer: how to act on this report. ------------------------------------
+    out.push_str("Next steps:\n");
+    out.push_str(
+        "  Drive any OpenAI-compatible pair through the pipeline (records evidence):\n",
+    );
+    out.push_str("    jcode provider-doctor <provider> --tier full   # spends balance\n");
+    out.push_str("    jcode provider-doctor <provider> --tier offline # wiring only, no key/spend\n");
+    out.push_str("  See docs/PROVIDER_DOCTOR.md for the full guide.\n");
+    out.push_str(&format!("\nLedger: {}\n", summary.coverage_source));
+
     out
+}
+
+/// Number of consecutive leading stages a pair has passed (its furthest point in
+/// the pipeline), counting passed-or-skipped as cleared.
+fn stages_passed(pair: &LiveProviderModelCoveragePair) -> usize {
+    let mut passed = 0usize;
+    for (id, _) in STRICT_PIPELINE_STAGES {
+        match pair.checkpoint_status(id) {
+            Some(LiveVerificationStageStatus::Passed)
+            | Some(LiveVerificationStageStatus::Skipped) => passed += 1,
+            _ => break,
+        }
+    }
+    passed
+}
+
+/// The exact command (or guidance) to push a specific pair past its first blocker.
+fn pair_fix_hint(provider_id: &str, model: &str, stage_id: &str) -> String {
+    if doctor_supports_provider(provider_id) {
+        let tier = doctor_tier_for_stage(stage_id);
+        format!("run `jcode provider-doctor {provider_id} --model {model} --tier {tier}`")
+    } else {
+        // opencode and other non-OpenAI-compatible providers are recorded by their
+        // own live suites, not provider-doctor.
+        format!("re-run the {provider_id} live suite (provider-doctor does not cover it yet)")
+    }
 }
 
 pub fn colorize_provider_test_coverage_output(output: &str) -> String {
@@ -1740,27 +1797,33 @@ pub fn colorize_provider_test_coverage_output(output: &str) -> String {
 
 fn colorize_provider_test_coverage_line(line: &str) -> String {
     let trimmed = line.trim_start();
-    let color = if trimmed.starts_with('✓')
+    let color = if trimmed == "READY"
+        || trimmed.starts_with('✓')
         || trimmed.contains("**Fully tested**")
-        || trimmed.contains("strict_covered")
+        || trimmed.contains("all pairs READY")
+        || trimmed.ends_with(": READY")
         || trimmed.contains("Passed")
     {
         Some("32")
-    } else if trimmed.starts_with('✗')
+    } else if trimmed.starts_with("FAILED at")
+        || trimmed.starts_with('✗')
         || trimmed.contains("Failed")
-        || trimmed.contains(" 0.00%")
-        || trimmed.contains("no_model_specific_live_evidence")
+        || trimmed.contains("no evidence")
     {
         Some("31")
-    } else if trimmed.starts_with('!')
-        || trimmed.starts_with('-')
+    } else if trimmed.starts_with("stuck before")
+        || trimmed.starts_with('!')
         || trimmed.contains("Skipped")
         || trimmed.contains("Blocked")
         || trimmed.contains("Partially tested")
-        || trimmed.contains("observed_missing_strict_checkpoints")
+        || trimmed.contains("not yet READY")
     {
         Some("33")
-    } else if trimmed.starts_with('#') || trimmed.ends_with(':') || trimmed.contains("Coverage:") {
+    } else if trimmed.starts_with('#')
+        || trimmed.starts_with('=')
+        || trimmed.ends_with(':')
+        || trimmed.starts_with("READY:")
+    {
         Some("1;36")
     } else {
         None
@@ -2124,18 +2187,19 @@ mod tests {
 
         let summary = strict_live_provider_model_coverage_summary(&coverage, "unit");
         let report = format_strict_live_provider_model_coverage_summary(&summary, 10);
-        assert!(report.contains("0/0 provider/model pairs"));
-        for checkpoint in [
-            checkpoints::MODEL_CATALOG_LIVE_ENDPOINT,
-            checkpoints::PICKER_LIVE_MODELS,
-            checkpoints::MODEL_SWITCH_ROUTE,
-            checkpoints::STREAMING_CHAT_COMPLETION,
-            checkpoints::TOOL_CALL_PARSE,
-            checkpoints::TOOL_EXECUTION_LOOP,
-            checkpoints::TOOL_RESULT_FOLLOWUP,
-            checkpoints::REAL_JCODE_TOOL_SMOKE,
+        assert!(report.contains("0/0 provider+model pairs"));
+        // The report names every required stage in the pipeline legend.
+        for label in [
+            "live catalog",
+            "picker shows model",
+            "model switch",
+            "streaming reply",
+            "tool-call parse",
+            "tool execution",
+            "tool-result followup",
+            "real tool smoke",
         ] {
-            assert!(report.contains(checkpoint), "report missing {checkpoint}");
+            assert!(report.contains(label), "report missing stage `{label}`");
         }
     }
 
@@ -2204,7 +2268,7 @@ mod tests {
         assert_eq!(nvidia.status, "no_model_specific_live_evidence");
 
         let report = format_strict_live_provider_model_coverage_summary(&summary, 10);
-        assert!(report.contains("Issue-driven live provider targets"));
-        assert!(report.contains("xiaomi-mimo / mimo-v2.5 [#223]: strict_covered"));
+        assert!(report.contains("Issue-tracked targets"));
+        assert!(report.contains("[#223] xiaomi-mimo / mimo-v2.5: READY"));
     }
 }

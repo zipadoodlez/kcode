@@ -116,3 +116,11 @@ tagged with the tier (`doctor_tier`). A `full`-tier pass that clears all 11
 strict checkpoints flips the pair to strict ("READY") in
 `jcode provider-test-coverage`. Lighter tiers record the API-dependent
 checkpoints as skipped, so they never over-credit a pair.
+
+`jcode provider-test-coverage` renders the same 11 checkpoints as an 11-stage
+pipeline. Each observed pair gets a one-line bar (`+` passed, `x` failed,
+`!` blocked, `~` skipped, `.` not run yet) plus, for any pair that is not yet
+READY, the exact `provider-doctor` command to push it past its first blocker.
+So the two commands are two views of one pipeline: the coverage report shows
+where every pair is stuck and hands you the doctor command to advance it.
+
