@@ -582,9 +582,16 @@ impl App {
             cli.label()
         )));
         self.onboarding_finish();
-        self.input = prompt;
-        self.cursor_pos = self.input.len();
-        self.submit_input();
+        // Dispatch through the queued-message path rather than `submit_input()`.
+        // `submit_input()` sets the local-only `pending_turn`/`is_processing`
+        // flags, which the remote run loop never consumes: the prompt would be
+        // persisted as a dangling user message and the UI would spin on
+        // "sending…" forever. `pending_queued_dispatch` is honored by both the
+        // local and remote loops, so the turn actually starts in either mode.
+        self.input.clear();
+        self.cursor_pos = 0;
+        self.queued_messages.push(prompt);
+        self.pending_queued_dispatch = true;
     }
 
     /// Drop into the suggestion-card state (the "No" / no-OAuth path). Prints
