@@ -226,10 +226,7 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
         stats.contains("- persisted_token_usage_source: remote_history"),
         "{stats}"
     );
-    assert!(
-        stats.contains("- messages_with_token_usage: 3"),
-        "{stats}"
-    );
+    assert!(stats.contains("- messages_with_token_usage: 3"), "{stats}");
 }
 
 #[test]

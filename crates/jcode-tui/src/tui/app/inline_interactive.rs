@@ -1926,7 +1926,10 @@ impl App {
                 }
             }
             OverlayAction::Selected(result)
-                if matches!(self.session_picker_mode, SessionPickerMode::Onboarding { .. }) =>
+                if matches!(
+                    self.session_picker_mode,
+                    SessionPickerMode::Onboarding { .. }
+                ) =>
             {
                 let cli = match self.session_picker_mode {
                     SessionPickerMode::Onboarding { cli } => cli,

@@ -1271,8 +1271,7 @@ fn test_compacted_history_truncates_only_when_long_and_many_turns() {
 
     // Request a small window: truncation kicks in because the prefix is long
     // and has many turns.
-    let (rendered, _images, info) =
-        render_messages_and_images_with_compacted_history(&session, 10);
+    let (rendered, _images, info) = render_messages_and_images_with_compacted_history(&session, 10);
     let info = info.expect("compacted info");
     assert_eq!(info.total_messages, total_renderable);
     assert!(info.visible_messages < total_renderable);
@@ -1338,8 +1337,7 @@ fn test_compacted_history_never_truncates_single_long_turn() {
     });
 
     // Even with a tiny requested window, a single long turn is never truncated.
-    let (_rendered, _images, info) =
-        render_messages_and_images_with_compacted_history(&session, 5);
+    let (_rendered, _images, info) = render_messages_and_images_with_compacted_history(&session, 5);
     let info = info.expect("compacted info");
     assert_eq!(info.total_messages, compacted_count);
     assert_eq!(info.visible_messages, compacted_count);

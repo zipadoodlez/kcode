@@ -254,14 +254,14 @@ fn format_account_table(headers: &[&str; 5], rows: &[[String; 5]]) -> Vec<String
     let render_row = |cells: &[String; 5]| -> String {
         let mut parts: Vec<String> = Vec::with_capacity(5);
         for (i, cell) in cells.iter().enumerate() {
-            let pad = widths[i].saturating_sub(unicode_width::UnicodeWidthStr::width(cell.as_str()));
+            let pad =
+                widths[i].saturating_sub(unicode_width::UnicodeWidthStr::width(cell.as_str()));
             parts.push(format!("{}{}", cell, " ".repeat(pad)));
         }
         format!("  {}", parts.join("  ").trim_end())
     };
 
-    let header_cells: [String; 5] =
-        std::array::from_fn(|i| headers[i].to_string());
+    let header_cells: [String; 5] = std::array::from_fn(|i| headers[i].to_string());
     let mut lines = vec![render_row(&header_cells)];
     for row in rows {
         lines.push(render_row(row));

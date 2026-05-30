@@ -1554,8 +1554,7 @@ impl App {
                 }
                 if key_name == "OPENROUTER_API_KEY" && !key.starts_with("sk-or-") {
                     self.push_display_message(DisplayMessage::system(
-                        "OpenRouter keys typically start with sk-or-. Saving anyway..."
-                            .to_string(),
+                        "OpenRouter keys typically start with sk-or-. Saving anyway...".to_string(),
                     ));
                 }
 

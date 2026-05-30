@@ -878,10 +878,7 @@ fn push_cache_signature(
             "- {}.message_count: {}",
             label, signature.message_count
         ));
-        lines.push(format!(
-            "- {}.tool_count: {}",
-            label, signature.tool_count
-        ));
+        lines.push(format!("- {}.tool_count: {}", label, signature.tool_count));
         lines.push(format!(
             "- {}.system_static_chars: {}",
             label,
@@ -1224,10 +1221,7 @@ fn format_cache_stats(app: &App) -> String {
         "- total_cache_optimal_input_tokens: {}",
         bold_count(optimal)
     ));
-    lines.push(format!(
-        "- cache_read_pct_of_reported_input: {}%",
-        read_pct
-    ));
+    lines.push(format!("- cache_read_pct_of_reported_input: {}%", read_pct));
     lines.push(format!(
         "- cache_write_pct_of_reported_input: {}%",
         write_pct
@@ -1349,10 +1343,7 @@ fn format_cache_stats(app: &App) -> String {
             "- pending_request.call_index: {}",
             request.call_index
         ));
-        lines.push(format!(
-            "- pending_request.provider: {}",
-            request.provider
-        ));
+        lines.push(format!("- pending_request.provider: {}", request.provider));
         lines.push(format!("- pending_request.model: {}", request.model));
         lines.push(format!(
             "- pending_request.upstream_provider: {}",

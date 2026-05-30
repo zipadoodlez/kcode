@@ -350,11 +350,7 @@ impl SessionPicker {
         self.visible_sessions
             .iter()
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
-            .max_by_key(|session| {
-                session
-                    .last_active_at
-                    .unwrap_or(session.last_message_time)
-            })
+            .max_by_key(|session| session.last_active_at.unwrap_or(session.last_message_time))
             .map(|session| session.resume_target.clone())
     }
 

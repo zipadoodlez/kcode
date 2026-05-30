@@ -67,10 +67,22 @@ fn render_system_message_preserves_indentation_and_newlines() {
 
     // Centered mode may add uniform left padding; compare relative structure.
     assert_eq!(rendered.len(), 4, "got: {rendered:?}");
-    assert!(rendered[0].trim_end().ends_with("Header line"), "got: {rendered:?}");
-    assert!(rendered[1].trim_end().ends_with("indented detail"), "got: {rendered:?}");
-    assert!(rendered[2].trim().is_empty(), "blank line preserved, got: {rendered:?}");
-    assert!(rendered[3].trim_end().ends_with("Next block"), "got: {rendered:?}");
+    assert!(
+        rendered[0].trim_end().ends_with("Header line"),
+        "got: {rendered:?}"
+    );
+    assert!(
+        rendered[1].trim_end().ends_with("indented detail"),
+        "got: {rendered:?}"
+    );
+    assert!(
+        rendered[2].trim().is_empty(),
+        "blank line preserved, got: {rendered:?}"
+    );
+    assert!(
+        rendered[3].trim_end().ends_with("Next block"),
+        "got: {rendered:?}"
+    );
 
     // The detail line keeps exactly two more leading spaces than the header.
     assert_eq!(
