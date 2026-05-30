@@ -233,7 +233,10 @@ impl App {
         }
         // The continue prompt is rendered by the onboarding welcome screen
         // (`onboarding_welcome_kind`) so it survives in remote mode.
-        self.set_status_notice(format!("Continue in {}?", cli.label()));
+        self.set_status_notice(format!(
+            "Continue a session where you left off in {}?",
+            cli.label()
+        ));
     }
 
     /// Answer the continue prompt. `true` -> open the transcript picker;
@@ -713,7 +716,7 @@ impl App {
                     Some(OnboardingPhase::ContinuePrompt { cli, .. }) => {
                         let label = cli.label();
                         self.set_status_notice(format!(
-                            "Continue in {label}? auto-continues in {remaining}s ([Y]/[N])"
+                            "Continue a session where you left off in {label}? auto-opens the resume menu in {remaining}s ([Y]/[N])"
                         ));
                         return true;
                     }

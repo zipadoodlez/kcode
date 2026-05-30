@@ -306,7 +306,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             lines.push(
                 Line::from(Span::styled(
-                    format!("Continuing automatically in {seconds_left}s…"),
+                    format!("Opening the resume menu automatically in {seconds_left}s…"),
                     Style::default().fg(dim_color()),
                 ))
                 .alignment(align),
