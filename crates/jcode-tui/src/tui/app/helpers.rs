@@ -13,15 +13,16 @@ type AmbientInfoCacheEntry = (std::time::Instant, bool, Option<AmbientWidgetData
 static AMBIENT_INFO_CACHE: Mutex<Option<AmbientInfoCacheEntry>> = Mutex::new(None);
 
 #[derive(Clone)]
-pub(super) struct CachedContextInfo {
+pub(super) struct CachedContextSnapshot {
     pub session_key: String,
     pub is_remote: bool,
     pub display_messages_version: u64,
+    pub context_revision: u64,
     pub message_count: usize,
     pub compaction_count: usize,
     pub compaction_summary_chars: usize,
     pub is_compacting: bool,
-    pub context_info: crate::prompt::ContextInfo,
+    pub snapshot: crate::tui::ContextSnapshot,
 }
 
 pub(super) fn extract_bracketed_system_message(message: &str) -> Option<String> {

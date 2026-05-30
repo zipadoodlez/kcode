@@ -888,6 +888,15 @@ pub(super) fn draw_pinned_content_cached(
             Style::default().fg(dim_color()),
         ));
     }
+    if total_diffs == 0
+        && total_images > 0
+        && let Some(remaining) = app.pinned_images_auto_hide_remaining_secs()
+    {
+        title_parts.push(Span::styled(
+            format!(" auto-hide {}s", remaining),
+            Style::default().fg(rgb(255, 193, 7)),
+        ));
+    }
     title_parts.push(Span::styled(
         if total_images > 0 {
             format!(

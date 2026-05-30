@@ -399,9 +399,7 @@ fn macos_terminal_applescript(command: &TerminalCommand, cwd: &Path) -> String {
     // AppleScript string literals are double-quoted, so backslashes and double
     // quotes from the shell script must be escaped (backslashes first).
     let escaped = inner.replace('\\', "\\\\").replace('"', "\\\"");
-    format!(
-        "tell application \"Terminal\"\n    activate\n    do script \"{escaped}\"\nend tell"
-    )
+    format!("tell application \"Terminal\"\n    activate\n    do script \"{escaped}\"\nend tell")
 }
 
 #[cfg(test)]
@@ -457,11 +455,9 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn macos_terminal_inner_script_injects_fresh_spawn() {
-        let command = TerminalCommand::new(
-            std::path::PathBuf::from("/usr/local/bin/jcode"),
-            vec![],
-        )
-        .fresh_spawn();
+        let command =
+            TerminalCommand::new(std::path::PathBuf::from("/usr/local/bin/jcode"), vec![])
+                .fresh_spawn();
         let script = macos_terminal_inner_script(&command, Path::new("/tmp"));
         assert_eq!(
             script,

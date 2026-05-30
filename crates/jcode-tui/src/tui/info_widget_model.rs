@@ -349,6 +349,7 @@ mod tests {
         InfoWidgetData {
             todos: Vec::new(),
             context_info: None,
+            context_info_stale: false,
             queue_mode: None,
             context_limit: None,
             model: Some("gpt-5-codex".to_string()),

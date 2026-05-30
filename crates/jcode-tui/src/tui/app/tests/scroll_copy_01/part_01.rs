@@ -727,6 +727,37 @@ fn test_local_alt_m_toggles_image_side_panel_visibility() {
 }
 
 #[test]
+fn test_pinned_image_side_panel_auto_hides_and_mentions_alt_m() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.side_panel = crate::side_panel::SidePanelSnapshot::default();
+    app.remote_side_pane_images.push(crate::session::RenderedImage {
+        media_type: "image/png".to_string(),
+        data: "image-data".to_string(),
+        label: Some("preview.png".to_string()),
+        source: crate::session::RenderedImageSource::UserInput,
+    });
+
+    assert!(app.update_pinned_images_auto_hide());
+    assert!(!app.side_panel_user_hidden);
+    assert!(app.pinned_images_auto_hide_deadline.is_some());
+
+    app.pinned_images_auto_hide_deadline =
+        Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+    assert!(app.update_pinned_images_auto_hide());
+
+    assert!(app.side_panel_user_hidden);
+    assert!(app.pinned_images_auto_hide_deadline.is_none());
+    let notice = app
+        .display_messages
+        .last()
+        .map(|message| message.content.clone())
+        .unwrap_or_default();
+    assert!(notice.contains("Pinned image side panel hidden automatically"));
+    assert!(notice.contains(crate::tui::keybind::side_panel_toggle_key_label()));
+}
+
+#[test]
 fn test_remote_alt_m_toggles_side_panel_visibility() {
     let mut app = create_test_app();
     app.side_panel = test_side_panel_snapshot("plan", "Plan");

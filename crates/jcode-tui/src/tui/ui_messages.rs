@@ -157,7 +157,9 @@ fn render_assistant_tool_call_lines(
 /// System messages are status/notice text and must render verbatim (no bold,
 /// headings, list bullets, code fences, etc.). This word-wraps on whitespace
 /// and hard-splits tokens that are wider than `wrap_width`, preserving the
-/// author's own line breaks.
+/// author's own line breaks and leading indentation. Wrapped continuation
+/// lines are hang-indented to match the original line's indentation so that
+/// authored plaintext layout (indented commands, aligned blocks) survives.
 fn render_plaintext_lines(content: &str, wrap_width: usize) -> Vec<Line<'static>> {
     let wrap_width = wrap_width.max(1);
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -169,40 +171,64 @@ fn render_plaintext_lines(content: &str, wrap_width: usize) -> Vec<Line<'static>
             continue;
         }
 
-        let mut current = String::new();
-        let mut current_width = 0usize;
+        // Preserve the line's leading indentation (tabs normalized to spaces).
+        // Wrapped continuation lines reuse this indent so authored plaintext
+        // layout (indented commands, aligned blocks) survives. If the indent
+        // leaves no room for content, fall back to no continuation indent.
+        let indent: String = raw_line
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .map(|c| if c == '\t' { ' ' } else { c })
+            .collect();
+        let indent_width = indent.width();
+        let cont_indent = if indent_width < wrap_width {
+            indent.as_str()
+        } else {
+            ""
+        };
+        let body = raw_line.trim_start_matches([' ', '\t']);
 
-        for word in raw_line.split_whitespace() {
+        // Width available to content on each wrapped line.
+        let avail = wrap_width.saturating_sub(cont_indent.width()).max(1);
+
+        // `current` always begins with the active indent; `content_width`
+        // tracks how much real content sits after that indent on this visual
+        // line (so we know whether to insert a separating space and when to
+        // wrap).
+        let mut current = indent.clone();
+        let mut content_width = 0usize;
+
+        for word in body.split_whitespace() {
             let word_width = word.width();
 
-            // Token longer than the wrap width: hard-split it on display width.
-            if word_width > wrap_width {
-                if !current.is_empty() {
+            // Hard-split a token wider than the available content width.
+            if word_width > avail {
+                if content_width > 0 {
                     lines.push(Line::from(std::mem::take(&mut current)));
-                    current_width = 0;
                 }
-                for chunk in split_by_display_width(word, wrap_width) {
-                    lines.push(Line::from(chunk));
+                for chunk in split_by_display_width(word, avail) {
+                    lines.push(Line::from(format!("{}{}", cont_indent, chunk)));
                 }
+                current = cont_indent.to_string();
+                content_width = 0;
                 continue;
             }
 
-            let sep_width = if current.is_empty() { 0 } else { 1 };
-            if current_width + sep_width + word_width > wrap_width && !current.is_empty() {
+            let sep = if content_width > 0 { 1 } else { 0 };
+            if content_width > 0 && content_width + sep + word_width > avail {
                 lines.push(Line::from(std::mem::take(&mut current)));
-                current_width = 0;
+                current = cont_indent.to_string();
+                content_width = 0;
             }
-            if !current.is_empty() {
+            if content_width > 0 {
                 current.push(' ');
-                current_width += 1;
+                content_width += 1;
             }
             current.push_str(word);
-            current_width += word_width;
+            content_width += word_width;
         }
 
-        if !current.is_empty() {
-            lines.push(Line::from(current));
-        }
+        lines.push(Line::from(current));
     }
 
     if lines.is_empty() {

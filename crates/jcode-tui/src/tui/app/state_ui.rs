@@ -86,7 +86,12 @@ impl App {
     pub(super) fn bump_display_messages_version(&mut self) {
         self.recompute_display_message_stats();
         self.display_messages_version = self.display_messages_version.wrapping_add(1);
+        self.bump_context_revision();
         self.refresh_split_view_if_needed();
+    }
+
+    pub(super) fn bump_context_revision(&mut self) {
+        self.context_revision = self.context_revision.wrapping_add(1);
     }
 
     pub(super) fn save_input_for_reload(&self, session_id: &str) {

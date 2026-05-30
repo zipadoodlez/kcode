@@ -1,6 +1,9 @@
 use super::*;
 use crate::tui::ui::input_ui;
 use ratatui::layout::Rect;
+use std::time::Duration;
+
+const PINNED_IMAGES_AUTO_HIDE_AFTER: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MouseScrollTraceState {
@@ -490,6 +493,53 @@ impl App {
         }
     }
 
+    pub(super) fn update_pinned_images_auto_hide(&mut self) -> bool {
+        if !self.pin_images || self.side_panel.focused_page().is_some() || self.diff_mode.is_file()
+        {
+            self.pinned_images_auto_hide_deadline = None;
+            self.pinned_images_seen_count = 0;
+            return false;
+        }
+
+        let image_count = if self.is_remote {
+            self.remote_side_pane_images.len()
+        } else {
+            crate::session::render_images(&self.session).len()
+        };
+        if image_count == 0 {
+            self.pinned_images_auto_hide_deadline = None;
+            self.pinned_images_seen_count = 0;
+            return false;
+        }
+
+        let now = Instant::now();
+        let mut needs_redraw = false;
+        if image_count > self.pinned_images_seen_count {
+            self.pinned_images_seen_count = image_count;
+            self.side_panel_user_hidden = false;
+            self.pinned_images_auto_hide_deadline = Some(now + PINNED_IMAGES_AUTO_HIDE_AFTER);
+            needs_redraw = true;
+        }
+
+        if let Some(deadline) = self.pinned_images_auto_hide_deadline
+            && now >= deadline
+        {
+            self.pinned_images_auto_hide_deadline = None;
+            if !self.side_panel_user_hidden && self.side_pane_has_visual_images() {
+                self.side_panel_user_hidden = true;
+                self.set_diff_pane_focus(false);
+                self.sync_diagram_fit_context();
+                self.push_display_message(DisplayMessage::system(format!(
+                    "Pinned image side panel hidden automatically. Press {} to show it again.",
+                    crate::tui::keybind::side_panel_toggle_key_label()
+                )));
+                needs_redraw = true;
+            }
+        }
+
+        needs_redraw
+    }
+
     fn side_pane_line_scroll_amount(&self) -> usize {
         if self.side_pane_has_visual_images() {
             1
@@ -773,6 +823,7 @@ impl App {
     pub(super) fn toggle_side_panel(&mut self) {
         if self.side_panel_user_hidden {
             self.side_panel_user_hidden = false;
+            self.pinned_images_auto_hide_deadline = None;
             if self.side_panel.pages.is_empty() {
                 if self.side_pane_has_visual_images_ignoring_user_hidden() {
                     self.sync_diagram_fit_context();
@@ -786,6 +837,7 @@ impl App {
 
         if self.side_pane_has_visual_images() {
             self.side_panel_user_hidden = true;
+            self.pinned_images_auto_hide_deadline = None;
             self.set_diff_pane_focus(false);
             self.sync_diagram_fit_context();
             self.set_status_notice("Image side panel: OFF");

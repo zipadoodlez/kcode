@@ -56,6 +56,7 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
     app.maybe_capture_runtime_memory_heartbeat();
     app.progress_mouse_scroll_animation();
+    needs_redraw |= app.update_pinned_images_auto_hide();
     if app.submit_input_on_startup && !app.is_processing {
         app.submit_input_on_startup = false;
         app.submit_input();

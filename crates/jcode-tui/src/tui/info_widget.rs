@@ -513,6 +513,8 @@ const PAGE_SWITCH_SECONDS: u64 = 30;
 pub struct InfoWidgetData {
     pub todos: Vec<TodoItem>,
     pub context_info: Option<ContextInfo>,
+    /// True when context state is being updated and no authoritative snapshot is available.
+    pub context_info_stale: bool,
     pub queue_mode: Option<bool>,
     pub context_limit: Option<usize>,
     pub model: Option<String>,
@@ -653,11 +655,14 @@ impl InfoWidgetData {
                 sections >= 2
             }
             WidgetKind::Todos => !self.todos.is_empty(),
-            WidgetKind::ContextUsage => self
-                .context_info
-                .as_ref()
-                .map(|c| c.total_chars > 0)
-                .unwrap_or(false),
+            WidgetKind::ContextUsage => {
+                self.context_info_stale
+                    || self
+                        .context_info
+                        .as_ref()
+                        .map(|c| c.total_chars > 0)
+                        .unwrap_or(false)
+            }
             WidgetKind::MemoryActivity => self
                 .memory_info
                 .as_ref()
@@ -1592,6 +1597,12 @@ fn compact_token_count(tokens: u64) -> String {
 
 /// Render context usage widget
 fn render_context_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
+    if data.context_info_stale {
+        return vec![Line::from(vec![
+            Span::styled("Context ", Style::default().fg(rgb(140, 140, 150))),
+            Span::styled("updating...", Style::default().fg(rgb(220, 180, 80))),
+        ])];
+    }
     let Some(info) = &data.context_info else {
         return Vec::new();
     };
@@ -1963,6 +1974,12 @@ fn format_event_for_expanded(
 }
 
 fn render_context_compact(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
+    if data.context_info_stale {
+        return vec![Line::from(vec![
+            Span::styled("Context ", Style::default().fg(rgb(140, 140, 150))),
+            Span::styled("updating...", Style::default().fg(rgb(220, 180, 80))),
+        ])];
+    }
     let Some(info) = &data.context_info else {
         return Vec::new();
     };

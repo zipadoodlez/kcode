@@ -52,7 +52,48 @@ fn render_system_message_renders_markdown_syntax_verbatim() {
     assert!(plain.contains("`code`"), "got: {plain:?}");
     assert!(plain.contains("# heading"), "got: {plain:?}");
     assert!(plain.contains("- bullet item"), "got: {plain:?}");
-    assert!(plain.contains("[link](http://example.com)"), "got: {plain:?}");
+    assert!(
+        plain.contains("[link](http://example.com)"),
+        "got: {plain:?}"
+    );
+}
+
+#[test]
+fn render_system_message_preserves_indentation_and_newlines() {
+    let msg = DisplayMessage::system("Header line\n  indented detail\n\nNext block");
+
+    let lines = render_system_message(&msg, 80, crate::config::DiffDisplayMode::Off);
+    let rendered = lines.iter().map(extract_line_text).collect::<Vec<_>>();
+
+    // Centered mode may add uniform left padding; compare relative structure.
+    assert_eq!(rendered.len(), 4, "got: {rendered:?}");
+    assert!(rendered[0].trim_end().ends_with("Header line"), "got: {rendered:?}");
+    assert!(rendered[1].trim_end().ends_with("indented detail"), "got: {rendered:?}");
+    assert!(rendered[2].trim().is_empty(), "blank line preserved, got: {rendered:?}");
+    assert!(rendered[3].trim_end().ends_with("Next block"), "got: {rendered:?}");
+
+    // The detail line keeps exactly two more leading spaces than the header.
+    assert_eq!(
+        leading_spaces(&rendered[1]),
+        leading_spaces(&rendered[0]) + 2,
+        "indentation should be preserved, got: {rendered:?}"
+    );
+}
+
+#[test]
+fn render_plaintext_lines_hang_indents_wrapped_continuations() {
+    // An indented line longer than the wrap width keeps its indent on the wrap.
+    let lines = render_plaintext_lines("  alpha beta gamma delta", 12);
+    let rendered = lines.iter().map(extract_line_text).collect::<Vec<_>>();
+
+    assert!(rendered.len() >= 2, "expected wrapping, got: {rendered:?}");
+    for line in &rendered {
+        assert!(
+            line.is_empty() || line.starts_with("  "),
+            "continuation lines should keep indent, got: {rendered:?}"
+        );
+        assert!(line.width() <= 12, "line too wide: {line:?}");
+    }
 }
 
 #[test]

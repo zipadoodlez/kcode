@@ -708,11 +708,11 @@ impl crate::tui::TuiState for App {
         self.stashed_input.is_some()
     }
 
-    fn context_info(&self) -> crate::prompt::ContextInfo {
+    fn context_snapshot(&self) -> crate::tui::ContextSnapshot {
         use crate::message::{ContentBlock, Role};
         use std::time::Instant;
 
-        static CACHE: Mutex<Option<(Instant, CachedContextInfo)>> = Mutex::new(None);
+        static CACHE: Mutex<Option<(Instant, CachedContextSnapshot)>> = Mutex::new(None);
         const TTL: Duration = Duration::from_millis(250);
 
         let session_key = if self.is_remote {
@@ -727,24 +727,30 @@ impl crate::tui::TuiState for App {
         } else {
             self.session.messages.len()
         };
-        let (compaction_count, compaction_summary_chars, is_compacting) = if self.is_remote {
-            (0, 0, false)
-        } else if self.provider.uses_jcode_compaction() {
-            self.registry
-                .compaction()
-                .try_read()
-                .ok()
-                .map(|manager| {
-                    (
+        let (compaction_count, compaction_summary_chars, is_compacting, compaction_fresh) =
+            if self.is_remote {
+                (0, 0, false, true)
+            } else if self.provider.uses_jcode_compaction() {
+                match self.registry.compaction().try_read() {
+                    Ok(manager) => (
                         manager.compacted_count(),
                         manager.summary_chars(),
                         manager.is_compacting(),
-                    )
-                })
-                .unwrap_or((0, 0, false))
-        } else {
-            (0, 0, false)
-        };
+                        true,
+                    ),
+                    Err(_) => (0, 0, false, false),
+                }
+            } else {
+                (0, 0, false, true)
+            };
+
+        if !compaction_fresh {
+            return crate::tui::ContextSnapshot {
+                info: None,
+                revision: self.context_revision,
+                fresh: false,
+            };
+        }
 
         if let Ok(cache) = CACHE.lock()
             && let Some((ts, cached)) = &*cache
@@ -752,12 +758,13 @@ impl crate::tui::TuiState for App {
             && cached.session_key == session_key
             && cached.is_remote == self.is_remote
             && cached.display_messages_version == self.display_messages_version
+            && cached.context_revision == self.context_revision
             && cached.message_count == message_count
             && cached.compaction_count == compaction_count
             && cached.compaction_summary_chars == compaction_summary_chars
             && cached.is_compacting == is_compacting
         {
-            return cached.context_info.clone();
+            return cached.snapshot.clone();
         }
 
         let mut info = self.context_info.clone();
@@ -918,20 +925,33 @@ impl crate::tui::TuiState for App {
         if let Ok(mut cache) = CACHE.lock() {
             *cache = Some((
                 Instant::now(),
-                CachedContextInfo {
+                CachedContextSnapshot {
                     session_key,
                     is_remote: self.is_remote,
                     display_messages_version: self.display_messages_version,
+                    context_revision: self.context_revision,
                     message_count,
                     compaction_count,
                     compaction_summary_chars,
                     is_compacting,
-                    context_info: info.clone(),
+                    snapshot: crate::tui::ContextSnapshot {
+                        info: Some(info.clone()),
+                        revision: self.context_revision,
+                        fresh: true,
+                    },
                 },
             ));
         }
 
-        info
+        crate::tui::ContextSnapshot {
+            info: Some(info),
+            revision: self.context_revision,
+            fresh: true,
+        }
+    }
+
+    fn context_info(&self) -> crate::prompt::ContextInfo {
+        self.context_snapshot().info.unwrap_or_default()
     }
 
     fn context_limit(&self) -> Option<usize> {
@@ -975,9 +995,9 @@ impl crate::tui::TuiState for App {
             gather_todos_for_session(session_id)
         };
 
-        let context_info = self.context_info();
-        let context_info = if context_info.total_chars > 0 {
-            Some(context_info)
+        let context_snapshot = self.context_snapshot();
+        let context_info = if let Some(context_info) = context_snapshot.info.clone() {
+            (context_info.total_chars > 0).then_some(context_info)
         } else {
             None
         };
@@ -1210,6 +1230,7 @@ impl crate::tui::TuiState for App {
         crate::tui::info_widget::InfoWidgetData {
             todos,
             context_info,
+            context_info_stale: !context_snapshot.fresh,
             queue_mode: Some(self.queue_mode),
             context_limit: Some(self.context_limit as usize),
             model,
@@ -1340,6 +1361,20 @@ impl crate::tui::TuiState for App {
     }
     fn pin_images(&self) -> bool {
         self.pin_images && !self.side_panel_user_hidden
+    }
+    fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
+        if self.side_panel_user_hidden
+            || self.side_panel.focused_page().is_some()
+            || self.diff_mode.is_file()
+        {
+            return None;
+        }
+        self.pinned_images_auto_hide_deadline.map(|deadline| {
+            deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .as_secs()
+                .saturating_add(1)
+        })
     }
     fn chat_native_scrollbar(&self) -> bool {
         self.chat_native_scrollbar

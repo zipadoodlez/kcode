@@ -1,5 +1,13 @@
 pub mod account_picker;
 mod app;
+
+#[derive(Clone)]
+pub struct ContextSnapshot {
+    pub info: Option<crate::prompt::ContextInfo>,
+    pub revision: u64,
+    pub fresh: bool,
+}
+
 pub mod backend;
 pub(crate) mod color_support;
 mod core;
@@ -207,6 +215,15 @@ pub trait TuiState {
     fn has_stashed_input(&self) -> bool;
     /// Context info (what's loaded in context window - static + dynamic)
     fn context_info(&self) -> crate::prompt::ContextInfo;
+    /// Authoritative, freshness-tagged context snapshot used by widgets.
+    fn context_snapshot(&self) -> ContextSnapshot {
+        let info = self.context_info();
+        ContextSnapshot {
+            info: (info.total_chars > 0).then_some(info),
+            revision: 0,
+            fresh: true,
+        }
+    }
     /// Context window limit in tokens (if known)
     fn context_limit(&self) -> Option<usize>;
     /// Whether a newer client binary is available
@@ -266,6 +283,10 @@ pub trait TuiState {
     fn side_panel(&self) -> &crate::side_panel::SidePanelSnapshot;
     /// Whether to pin read images to a side pane
     fn pin_images(&self) -> bool;
+    /// Remaining seconds before the pinned image side pane auto-hides.
+    fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
+        None
+    }
     /// Whether to show a native terminal scrollbar for the chat viewport
     fn chat_native_scrollbar(&self) -> bool;
     /// Whether to show a native terminal scrollbar for the side panel
