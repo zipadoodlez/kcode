@@ -11,14 +11,14 @@ impl App {
 
     fn format_failover_input_summary(prompt: &crate::provider::ProviderFailoverPrompt) -> String {
         format!(
-            "about **{} input tokens** (~{} chars)",
+            "about {} input tokens (~{} chars)",
             Self::format_failover_count(prompt.estimated_input_tokens),
             Self::format_failover_count(prompt.estimated_input_chars),
         )
     }
 
     fn failover_config_hint() -> &'static str {
-        "To turn this off, set `[provider].cross_provider_failover = \"manual\"` in `~/.jcode/config.toml` or export `JCODE_CROSS_PROVIDER_FAILOVER=manual`."
+        "To turn this off, set [provider].cross_provider_failover = \"manual\" in ~/.jcode/config.toml or export JCODE_CROSS_PROVIDER_FAILOVER=manual."
     }
 
     fn apply_provider_switch_for_failover(
@@ -43,7 +43,7 @@ impl App {
             return;
         };
         self.push_display_message(DisplayMessage::system(format!(
-            "⏸ **Canceled provider auto-switch** — kept **{}** active.\n\nYou can switch manually with `/model`, then resend. {}",
+            "⏸ Canceled provider auto-switch - kept {} active.\n\nYou can switch manually with /model, then resend. {}",
             pending.prompt.from_label,
             Self::failover_config_hint(),
         )));
@@ -71,7 +71,7 @@ impl App {
         match self.apply_provider_switch_for_failover(&pending.prompt) {
             Ok(active_model) => {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "⚡ **Auto-switched provider** after countdown: **{}** → **{}**.\n\nResending {} on model `{}`.\n\n{}",
+                    "⚡ Auto-switched provider after countdown: {} → {}.\n\nResending {} on model {}.\n\n{}",
                     pending.prompt.from_label,
                     pending.prompt.to_label,
                     Self::format_failover_input_summary(&pending.prompt),
@@ -99,7 +99,7 @@ impl App {
     fn handle_provider_failover_prompt(&mut self, prompt: crate::provider::ProviderFailoverPrompt) {
         let input_summary = Self::format_failover_input_summary(&prompt);
         let manual_message = format!(
-            "⚠ **{} became unavailable** — jcode did **not** resend your prompt to **{}** automatically.\n\nReason: {}\n\nRetrying elsewhere would send {}.\n\nTo switch manually now, use `/model` and pick a model from **{}**, then resend. {}",
+            "⚠ {} became unavailable - jcode did not resend your prompt to {} automatically.\n\nReason: {}\n\nRetrying elsewhere would send {}.\n\nTo switch manually now, use /model and pick a model from {}, then resend. {}",
             prompt.from_label,
             prompt.to_label,
             prompt.reason,
@@ -125,7 +125,7 @@ impl App {
                     deadline: Instant::now() + Duration::from_secs(3),
                 });
                 self.push_display_message(DisplayMessage::system(format!(
-                    "⚠ **{} became unavailable** — jcode will switch to **{}** in **3 seconds** unless you cancel.\n\nReason: {}\n\nRetrying would send {}. Press **Esc** to cancel.\n\n{}",
+                    "⚠ {} became unavailable - jcode will switch to {} in 3 seconds unless you cancel.\n\nReason: {}\n\nRetrying would send {}. Press Esc to cancel.\n\n{}",
                     prompt.from_label,
                     prompt.to_label,
                     prompt.reason,
@@ -139,7 +139,7 @@ impl App {
             }
             _ => {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "{}\n\n_Automatic countdown switching is only available in local sessions right now._",
+                    "{}\n\nAutomatic countdown switching is only available in local sessions right now.",
                     manual_message,
                 )));
                 self.set_status_notice(format!(
@@ -345,7 +345,7 @@ impl App {
             let should_stop_auto_poke = recovery.is_none();
             let hint = match recovery {
                 Some(msg) => format!(" {}", msg),
-                None => " Context limit exceeded but auto-recovery failed. Run `/fix` to try manual recovery.".to_string(),
+                None => " Context limit exceeded but auto-recovery failed. Run /fix to try manual recovery.".to_string(),
             };
             self.push_display_message(DisplayMessage::error(format!("Error: {}{}", error, hint)));
             if should_stop_auto_poke {
@@ -354,7 +354,7 @@ impl App {
             }
         } else {
             self.push_display_message(DisplayMessage::error(format!(
-                "Error: {} Run `/fix` to attempt recovery.",
+                "Error: {} Run /fix to attempt recovery.",
                 error
             )));
             super::commands::stop_auto_poke_for_non_retryable_error(self, &error);
@@ -390,7 +390,7 @@ impl App {
 
         match manager.force_compact_with(&provider_messages, self.provider.clone()) {
             Ok(()) => Some(
-                "⚡ Auto-compaction started — summarizing old messages in background. Retry in a moment."
+                "⚡ Auto-compaction started - summarizing old messages in background. Retry in a moment."
                     .to_string(),
             ),
             Err(reason) => {
@@ -484,7 +484,7 @@ impl App {
         }
 
         self.push_display_message(DisplayMessage::system(
-            "⚠️ Context limit exceeded — auto-compacting and retrying...".to_string(),
+            "⚠️ Context limit exceeded - auto-compacting and retrying...".to_string(),
         ));
 
         // Force the compaction manager to think we're at the limit
@@ -755,10 +755,10 @@ impl App {
 
     fn format_usage_provider_summary(provider: &crate::usage::ProviderUsage) -> String {
         if provider.error.is_some() {
-            return format!("! {} — error", provider.provider_name);
+            return format!("! {} - error", provider.provider_name);
         }
         if provider.hard_limit_reached {
-            return format!("! {} — hard limit", provider.provider_name);
+            return format!("! {} - hard limit", provider.provider_name);
         }
 
         let max_percent = provider
@@ -767,15 +767,15 @@ impl App {
             .map(|limit| limit.usage_percent)
             .fold(0.0_f32, f32::max);
         if max_percent >= 90.0 {
-            format!("! {} — {:.0}% used", provider.provider_name, max_percent)
+            format!("! {} - {:.0}% used", provider.provider_name, max_percent)
         } else if max_percent >= 70.0 {
-            format!("~ {} — {:.0}% used", provider.provider_name, max_percent)
+            format!("~ {} - {:.0}% used", provider.provider_name, max_percent)
         } else if provider.limits.is_empty() && provider.extra_info.is_empty() {
-            format!("{} — no data", provider.provider_name)
+            format!("{} - no data", provider.provider_name)
         } else if max_percent > 0.0 {
-            format!("+ {} — {:.0}% used", provider.provider_name, max_percent)
+            format!("+ {} - {:.0}% used", provider.provider_name, max_percent)
         } else {
-            format!("+ {} — available", provider.provider_name)
+            format!("+ {} - available", provider.provider_name)
         }
     }
 
@@ -873,7 +873,7 @@ impl App {
         self.last_stream_error = None;
         self.set_status_notice("Fix applied");
 
-        let mut content = String::from("**Fix Results:**\n");
+        let mut content = String::from("Fix Results:\n");
         if actions.is_empty() {
             content.push_str("• No structural issues detected.\n");
         } else {
@@ -886,7 +886,7 @@ impl App {
         }
         if let Some(last_error) = &last_error {
             content.push_str(&format!(
-                "\nLast error: `{}`",
+                "\nLast error: {}",
                 crate::util::truncate_str(last_error, 200)
             ));
         }
@@ -1001,14 +1001,14 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
                 .iter()
                 .map(|e| {
                     if Some(e.to_string()) == current {
-                        format!("**{}** ← current", effort_display_label(e))
+                        format!("{} <- current", effort_display_label(e))
                     } else {
                         effort_display_label(e).to_string()
                     }
                 })
                 .collect();
             app.push_display_message(DisplayMessage::system(format!(
-                "Reasoning effort: {}\nAvailable: {}\nUse `/effort <level>` or Alt+←/→ to change.",
+                "Reasoning effort: {}\nAvailable: {}\nUse /effort <level> or Alt+Left / Alt+Right to change.",
                 current_label,
                 list.join(" · ")
             )));
@@ -1186,14 +1186,14 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
                 .iter()
                 .map(|t| {
                     if Some(*t) == current.as_deref() {
-                        format!("**{}** ← current", t)
+                        format!("{} <- current", t)
                     } else {
                         t.to_string()
                     }
                 })
                 .collect();
             app.push_display_message(DisplayMessage::system(format!(
-                "Transport: {}\nAvailable: {}\nUse `/transport <mode>` to change.",
+                "Transport: {}\nAvailable: {}\nUse /transport <mode> to change.",
                 current_label,
                 list.join(" · ")
             )));
@@ -1313,7 +1313,7 @@ pub(super) fn format_model_refresh_summary(
     summary: &crate::provider::ModelCatalogRefreshSummary,
 ) -> String {
     let mut message = format!(
-        "**Model List Refresh Complete**\n\nModels: {} → {}  (+{} / -{})\nRoutes: {} → {}  (+{} / -{} / ~{})",
+        "Model List Refresh Complete\n\nModels: {} -> {}  (+{} / -{})\nRoutes: {} -> {}  (+{} / -{} / ~{})",
         summary.model_count_before,
         summary.model_count_after,
         summary.models_added,
@@ -1346,7 +1346,7 @@ pub(super) fn format_model_name_list(models: &[String], limit: usize) -> String 
     let shown = models
         .iter()
         .take(limit)
-        .map(|model| format!("`{}`", model))
+        .map(|model| model.to_string())
         .collect::<Vec<_>>()
         .join(", ");
     if models.len() > limit {
@@ -1361,14 +1361,14 @@ pub(super) fn no_models_available_message(is_remote: bool) -> String {
         "No models are available right now.".to_string(),
         String::new(),
         "Next steps:".to_string(),
-        "- Run `/login` to connect or refresh a provider".to_string(),
-        "- Run `/account` to inspect or switch credentials".to_string(),
-        "- If you just logged in, wait a moment and try `/model` again".to_string(),
+        "  - Run /login to connect or refresh a provider".to_string(),
+        "  - Run /account to inspect or switch credentials".to_string(),
+        "  - If you just logged in, wait a moment and try /model again".to_string(),
     ];
 
     if is_remote {
         lines.push(
-            "- If this is a remote session, reconnect if the server model list looks stale"
+            "  - If this is a remote session, reconnect if the server model list looks stale"
                 .to_string(),
         );
     }
@@ -1381,14 +1381,14 @@ pub(super) fn model_switch_failure_message(error: &str, is_remote: bool) -> Stri
         format!("Failed to switch model: {}", error),
         String::new(),
         "Next steps:".to_string(),
-        "- Use `/model` to choose another available route".to_string(),
-        "- Run `/login` to add or refresh credentials".to_string(),
-        "- Run `/account` to inspect or switch accounts".to_string(),
+        "  - Use /model to choose another available route".to_string(),
+        "  - Run /login to add or refresh credentials".to_string(),
+        "  - Run /account to inspect or switch accounts".to_string(),
     ];
 
     if is_remote {
         lines.push(
-            "- If this is a remote session and the list looks stale, reconnect and try again"
+            "  - If this is a remote session and the list looks stale, reconnect and try again"
                 .to_string(),
         );
     }
@@ -1409,19 +1409,19 @@ pub(super) fn unavailable_model_route_message(
     };
 
     let mut lines = vec![
-        format!("Cannot use `{}` via **{}** right now.", model, provider),
+        format!("Cannot use {} via {} right now.", model, provider),
         String::new(),
         reason,
         String::new(),
         "Next steps:".to_string(),
-        "- Pick another available row in `/model`".to_string(),
-        "- Run `/login` to add or refresh credentials".to_string(),
-        "- Run `/account` to inspect or switch accounts".to_string(),
+        "  - Pick another available row in /model".to_string(),
+        "  - Run /login to add or refresh credentials".to_string(),
+        "  - Run /account to inspect or switch accounts".to_string(),
     ];
 
     if is_remote {
         lines.push(
-            "- If this is a remote session, wait a moment or reconnect if the catalog looks stale"
+            "  - If this is a remote session, wait a moment or reconnect if the catalog looks stale"
                 .to_string(),
         );
     }
