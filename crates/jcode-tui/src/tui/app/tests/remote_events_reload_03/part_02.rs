@@ -292,6 +292,7 @@ fn test_compacted_history_event_applies_expanded_window() {
             compacted_total: 128,
             compacted_visible: 64,
             compacted_remaining: 64,
+            compacted_hidden_prompts: 0,
         },
         &mut remote,
     );

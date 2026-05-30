@@ -1242,10 +1242,9 @@ fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
         .push(build_btw_system_reminder(question));
     if app.is_processing {
         app.push_display_message(DisplayMessage::system(
-            "Queued /btw - answer will appear in the side panel after the current turn."
-                .to_string(),
+            "/btw noted - answer will appear in the side panel.".to_string(),
         ));
-        app.set_status_notice("Queued /btw");
+        app.set_status_notice("/btw noted");
     } else {
         app.push_display_message(DisplayMessage::system(
             "Running /btw - answer will appear in the side panel.".to_string(),
