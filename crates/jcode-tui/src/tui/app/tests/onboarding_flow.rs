@@ -36,7 +36,7 @@ fn onboarding_can_begin_at_login_phase() {
     app.begin_onboarding_flow_at_login();
     assert!(matches!(
         app.onboarding_phase(),
-        Some(OnboardingPhase::Login)
+        Some(OnboardingPhase::Login { .. })
     ));
     // begin_at_login is idempotent: a second call does not reset the phase.
     if let Some(flow) = app.onboarding_flow.as_mut() {
@@ -50,13 +50,33 @@ fn onboarding_can_begin_at_login_phase() {
 }
 
 #[test]
+fn login_welcome_kind_carries_detected_imports() {
+    use crate::tui::OnboardingWelcomeKind;
+    let mut app = create_test_app();
+    app.onboarding_flow = None;
+    app.begin_onboarding_flow_at_login();
+    // Inject detected imports as if external logins were found at startup.
+    if let Some(flow) = app.onboarding_flow.as_mut() {
+        flow.phase = OnboardingPhase::Login {
+            detected_imports: vec!["OpenAI/Codex".to_string(), "Claude".to_string()],
+        };
+    }
+    match app.onboarding_welcome_kind() {
+        OnboardingWelcomeKind::Login { detected_imports } => {
+            assert_eq!(detected_imports, vec!["OpenAI/Codex", "Claude"]);
+        }
+        other => panic!("expected Login welcome kind, got {other:?}"),
+    }
+}
+
+#[test]
 fn login_phase_advances_to_model_select_after_login() {
     let mut app = create_test_app();
     app.onboarding_flow = None;
     app.begin_onboarding_flow_at_login();
     assert!(matches!(
         app.onboarding_phase(),
-        Some(OnboardingPhase::Login)
+        Some(OnboardingPhase::Login { .. })
     ));
     app.onboarding_after_login();
     assert!(matches!(
@@ -214,7 +234,7 @@ fn startup_check_ignores_synthetic_scaffolding_messages() {
         assert!(app.onboarding_startup_checked);
         assert!(matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::Login)
+            Some(OnboardingPhase::Login { .. })
         ));
     });
 }

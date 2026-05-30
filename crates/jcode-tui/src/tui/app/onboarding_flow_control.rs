@@ -127,21 +127,49 @@ impl App {
     /// install that booted without working credentials (the CLI no longer logs
     /// in before the TUI launches).
     ///
+    /// If we detect importable external logins (Codex/Claude/Cursor/etc.), we
+    /// arm the auto-import review so the user can confirm which to import; the
+    /// welcome card lists what we found. Otherwise we prompt them to pick a
+    /// provider manually.
+    ///
     /// No-op if a flow is already running.
     pub(super) fn begin_onboarding_flow_at_login(&mut self) {
         if self.onboarding_flow.is_some() {
             return;
         }
-        self.onboarding_flow = Some(OnboardingFlow::begin_at_login());
+        // Detect importable external logins and, if any, arm the review prompt
+        // (the user types `a` / `1,3` into the input to import). This also gives
+        // us the summaries to display on the welcome card.
+        let detected_imports = if self.begin_external_auth_import_review(false) {
+            crate::external_auth::pending_external_auth_review_candidates()
+                .map(|candidates| {
+                    candidates
+                        .iter()
+                        .map(|c| c.provider_summary().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let had_imports = !detected_imports.is_empty();
+        self.onboarding_flow = Some(OnboardingFlow::begin_at_login(detected_imports));
         // The login prompt is rendered by the onboarding welcome screen
         // (`onboarding_welcome_kind`) so it survives in remote mode.
-        self.set_status_notice("Welcome to jcode: press Enter to log in");
+        if had_imports {
+            self.set_status_notice("Welcome to jcode: import an existing login or press Enter to choose a provider");
+        } else {
+            self.set_status_notice("Welcome to jcode: press Enter to log in");
+        }
     }
 
     /// Advance out of the `Login` phase once credentials are available, moving
     /// the user into model selection. No-op unless the flow is in `Login`.
     pub(super) fn onboarding_after_login(&mut self) {
-        if !matches!(self.onboarding_phase(), Some(OnboardingPhase::Login)) {
+        if !matches!(
+            self.onboarding_phase(),
+            Some(OnboardingPhase::Login { .. })
+        ) {
             return;
         }
         if let Some(flow) = self.onboarding_flow.as_mut() {
@@ -196,11 +224,16 @@ impl App {
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
         match self.onboarding_phase() {
-            Some(OnboardingPhase::Login) => match code {
+            Some(OnboardingPhase::Login { .. }) => match code {
                 // Enter opens the interactive login picker, but only from the
-                // welcome screen. If an overlay is already open, let it handle
-                // Enter so the selection can commit.
-                KeyCode::Enter if self.inline_interactive_state.is_none() => {
+                // welcome screen. If an overlay is already open, or an import
+                // review is armed (`pending_login`) and waiting for the user to
+                // type a selection, let Enter fall through so the picker/input
+                // can commit.
+                KeyCode::Enter
+                    if self.inline_interactive_state.is_none()
+                        && self.pending_login.is_none() =>
+                {
                     self.show_interactive_login();
                     true
                 }

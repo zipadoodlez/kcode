@@ -78,24 +78,69 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 
     use crate::tui::OnboardingWelcomeKind;
     match app.onboarding_welcome_kind() {
-        OnboardingWelcomeKind::Login => {
+        OnboardingWelcomeKind::Login { detected_imports } => {
             lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    "First, log in to get started.",
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .alignment(align),
-            );
-            lines.push(
-                Line::from(Span::styled(
-                    "Press Enter to choose a provider (or import an existing login).",
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
+            if detected_imports.is_empty() {
+                lines.push(
+                    Line::from(Span::styled(
+                        "First, log in to get started.",
+                        Style::default()
+                            .fg(welcome_accent())
+                            .add_modifier(Modifier::BOLD),
+                    ))
+                    .alignment(align),
+                );
+                lines.push(
+                    Line::from(Span::styled(
+                        "Press Enter to choose a provider.",
+                        Style::default().fg(dim_color()),
+                    ))
+                    .alignment(align),
+                );
+            } else {
+                lines.push(
+                    Line::from(Span::styled(
+                        "We found existing logins you can import:",
+                        Style::default()
+                            .fg(welcome_accent())
+                            .add_modifier(Modifier::BOLD),
+                    ))
+                    .alignment(align),
+                );
+                for (i, summary) in detected_imports.iter().enumerate() {
+                    lines.push(
+                        Line::from(vec![
+                            Span::styled(
+                                format!("  {}. ", i + 1),
+                                Style::default().fg(welcome_accent()),
+                            ),
+                            Span::styled(
+                                summary.clone(),
+                                Style::default().fg(rgb(200, 200, 200)),
+                            ),
+                        ])
+                        .alignment(align),
+                    );
+                }
+                lines.push(Line::from(""));
+                lines.push(
+                    Line::from(Span::styled(
+                        format!(
+                            "Type a to import all, or numbers (e.g. 1{}), then Enter.",
+                            if detected_imports.len() > 1 { ",3" } else { "" }
+                        ),
+                        Style::default().fg(rgb(200, 200, 200)),
+                    ))
+                    .alignment(align),
+                );
+                lines.push(
+                    Line::from(Span::styled(
+                        "Or press Enter to choose a different provider.",
+                        Style::default().fg(dim_color()),
+                    ))
+                    .alignment(align),
+                );
+            }
             return lines;
         }
         OnboardingWelcomeKind::ModelSelect => {

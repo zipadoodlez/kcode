@@ -51,8 +51,11 @@ impl ExternalCli {
 pub(crate) enum OnboardingPhase {
     /// Log in. Entered on a fresh install when no working credentials exist.
     /// The TUI now owns the entire first-run login experience instead of the
-    /// old blocking CLI provider prompt.
-    Login,
+    /// old blocking CLI provider prompt. `detected_imports` holds short
+    /// human-readable summaries of any importable external logins we found
+    /// (e.g. "OpenAI/Codex", "Claude") so the welcome card can guide the user
+    /// to import them; empty when nothing was detected.
+    Login { detected_imports: Vec<String> },
     /// Pick a model. Entered right after login/import.
     ModelSelect,
     /// "Continue where you left off in <cli>?" Yes/No with a 10s auto-Yes.
@@ -84,9 +87,10 @@ impl OnboardingFlow {
     }
 
     /// Start the flow at the login phase (no working credentials yet).
-    pub(crate) fn begin_at_login() -> Self {
+    /// `detected_imports` are short summaries of importable external logins.
+    pub(crate) fn begin_at_login(detected_imports: Vec<String>) -> Self {
         Self {
-            phase: OnboardingPhase::Login,
+            phase: OnboardingPhase::Login { detected_imports },
         }
     }
 

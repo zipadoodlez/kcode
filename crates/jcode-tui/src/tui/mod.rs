@@ -570,9 +570,12 @@ pub enum PickerKind {
 /// resting state (the starter prompt cards).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnboardingWelcomeKind {
-    /// Ask the user to log in first (press Enter to open the login picker).
-    /// Shown on a fresh install that booted without working credentials.
-    Login,
+    /// Ask the user to log in first. Shown on a fresh install that booted
+    /// without working credentials. `detected_imports` lists any importable
+    /// existing logins we found (e.g. "OpenAI/Codex", "Claude"); when non-empty
+    /// the card guides the user to import them, otherwise it points them at the
+    /// provider picker.
+    Login { detected_imports: Vec<String> },
     /// Ask the user to pick a model first (press Enter to open the picker).
     ModelSelect,
     /// "Continue where you left off in <cli>?" with a live auto-advance
