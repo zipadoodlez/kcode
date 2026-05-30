@@ -1614,14 +1614,13 @@ pub fn format_strict_live_provider_model_coverage_summary(
         out.push_str(&format!("  - {} ({})\n", checkpoint.label, checkpoint.id));
     }
 
-    out.push_str("\nPer-provider coverage (numbers are passed/observed model pairs):\n");
-    out.push_str("  Strict      = pairs that passed ALL required checkpoints above (full readiness).\n");
-    out.push_str("  Smoke chat  = pairs where a basic chat reply worked.\n");
-    out.push_str("  Smoke tool  = pairs where a basic tool call worked.\n");
-    out.push_str("  A row at 0% Strict but >0 Smoke means it chats/tools fine but the\n");
-    out.push_str("  strict-only steps (catalog/picker/model-switch/streaming) were not verified.\n\n");
-    out.push_str("  Provider              Strict        Smoke chat    Smoke tool\n");
-    out.push_str("  -----------------------------------------------------------\n");
+    out.push_str("\nPer-provider readiness:\n");
+    out.push_str("  READY (Strict) is the number that matters: model pairs that passed ALL\n");
+    out.push_str("  required checkpoints. The 'progress' columns just show how far the\n");
+    out.push_str("  not-yet-ready pairs climbed, so you can tell 'almost there' from 'dead'.\n\n");
+    out.push_str("                          READY            progress toward ready\n");
+    out.push_str("  Provider              Strict   %        chats   runs tools   status\n");
+    out.push_str("  ---------------------------------------------------------------------\n");
     if summary.providers.is_empty() {
         out.push_str("  none with model-specific live evidence\n");
     } else {
@@ -1631,8 +1630,21 @@ pub fn format_strict_live_provider_model_coverage_summary(
             } else {
                 String::new()
             };
+            let status = if provider.total_model_pairs == 0 {
+                "no evidence"
+            } else if provider.covered_model_pairs == provider.total_model_pairs {
+                "READY"
+            } else if provider.covered_model_pairs > 0 {
+                "partly ready"
+            } else if provider.tool_smoke_passed_model_pairs > 0 {
+                "tools ok, not strict"
+            } else if provider.basic_chat_passed_model_pairs > 0 {
+                "chat-only"
+            } else {
+                "not working"
+            };
             out.push_str(&format!(
-                "  {:<20} {:>2}/{:<2} {:>6.2}%     {:>2}/{:<2}         {:>2}/{:<2}{}\n",
+                "  {:<20} {:>2}/{:<2} {:>6.2}%     {:>2}/{:<2}   {:>2}/{:<2}        {}{}\n",
                 provider.provider_id,
                 provider.covered_model_pairs,
                 provider.total_model_pairs,
@@ -1641,9 +1653,14 @@ pub fn format_strict_live_provider_model_coverage_summary(
                 provider.total_model_pairs,
                 provider.tool_smoke_passed_model_pairs,
                 provider.total_model_pairs,
+                status,
                 skipped
             ));
         }
+        out.push_str("\n  Legend: Strict = passed every required checkpoint (true readiness).\n");
+        out.push_str("          chats = basic chat reply worked.  runs tools = a tool call worked.\n");
+        out.push_str("          A pair must clear both of those (and the catalog/picker/switch/\n");
+        out.push_str("          streaming steps) to count as READY.\n");
     }
 
     if !summary
