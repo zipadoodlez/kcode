@@ -28,7 +28,8 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
     const SUBSTRING_MARKERS: &[&str] = &[
         "embed", "embedding", "rerank", "reranker", "whisper", "speech", "tts",
         "stt", "transcribe", "voxtral", "moderation", "guard", "upscale",
-        "outpaint", "nemoretriever", "riva-translate",
+        "outpaint", "nemoretriever", "riva-translate", "gpt-audio",
+        "style-transfer", "video-detector",
     ];
     if SUBSTRING_MARKERS.iter().any(|m| lower.contains(m)) {
         return true;
@@ -39,6 +40,7 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
         "vits", "pegasus", "asr", "ocr", "kie", "vad", "diffusion", "image",
         "vision", "bge", "gte", "e5", "nvclip", "orpheus", "lyria", "deplot",
         "parse", "gliner", "fuyu", "kosmos", "neva", "vila", "nvembed",
+        "reward",
     ];
     if tokens.iter().any(|t| TOKEN_MARKERS.contains(t)) {
         // "vision" is sometimes part of a multimodal chat model, so only drop
@@ -261,6 +263,11 @@ mod listable_tests {
             "adept/fuyu-8b",
             "microsoft/kosmos-2",
             "nvidia/gliner-pii",
+            "openai/gpt-audio",
+            "openai/gpt-audio-mini",
+            "us.stability.stable-style-transfer-v1:0",
+            "nvidia/nemotron-4-340b-reward",
+            "nvidia/ai-synthetic-video-detector",
         ] {
             assert!(
                 model_name_is_likely_non_chat(model),
