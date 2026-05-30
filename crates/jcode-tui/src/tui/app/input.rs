@@ -2088,6 +2088,17 @@ impl App {
         }
 
         if code == KeyCode::Enter {
+            // During the onboarding model-selection phase, Enter on an empty
+            // prompt opens the model picker instead of submitting nothing.
+            if self.input.trim().is_empty()
+                && matches!(
+                    self.onboarding_phase(),
+                    Some(crate::tui::app::onboarding_flow::OnboardingPhase::ModelSelect)
+                )
+            {
+                self.open_model_picker();
+                return Ok(());
+            }
             handle_enter(self);
             return Ok(());
         }
