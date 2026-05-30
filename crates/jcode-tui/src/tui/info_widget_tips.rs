@@ -21,7 +21,7 @@ fn all_tips() -> Vec<Tip> {
         "Ambient cycles can email you a summary and you can reply with directives for the next run",
         "Alt+B moves a long-running tool to the background - the agent continues and can check on it later with the `bg` tool",
         "Most terminals can be configured to copy text on highlight - no Ctrl+C needed. Check your terminal's settings for 'copy on select'",
-        "Alt+I cycles diff mode: Off, Inline, Pinned, File. Shift+Tab cycles favorited models. Pinned shows all diffs in a side pane. File shows the full file with changes highlighted, synced to your scroll position",
+        "Alt+G (or /diff) cycles diff mode: Off, Inline, Pinned, File. Shift+Tab cycles favorited models. Pinned shows all diffs in a side pane. File shows the full file with changes highlighted, synced to your scroll position",
     ]
     .iter()
     .map(|t| Tip {

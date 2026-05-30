@@ -99,6 +99,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/config", "Show or edit configuration"),
     RegisteredCommand::public("/log", "Mark the current location in the jcode logs"),
     RegisteredCommand::public(
+        "/diff",
+        "Cycle or set diff display mode (off/inline/full/pinned/file)",
+    ),
+    RegisteredCommand::public(
         "/onboarding-preview",
         "Preview the first-run onboarding screen",
     ),

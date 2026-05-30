@@ -1373,7 +1373,7 @@ pub(super) fn handle_navigation_shortcuts(
     }
 
     if modifiers.contains(KeyModifiers::ALT)
-        && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'i'))
+        && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'g'))
     {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
@@ -1398,7 +1398,7 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
         || App::ctrl_prompt_rank(&code, modifiers).is_some()
         || app.scroll_keys.is_bookmark(code, modifiers)
         || (modifiers.contains(KeyModifiers::ALT)
-            && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'i')))
+            && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'g')))
     {
         return true;
     }
@@ -2420,6 +2420,7 @@ impl App {
             || commands::handle_dictation_command(self, trimmed)
             || commands::handle_config_command(self, trimmed)
             || commands::handle_log_command(self, trimmed)
+            || commands::handle_diff_command(self, trimmed)
             || commands::handle_model_status_command(self, trimmed)
             || super::debug::handle_debug_command(self, trimmed)
             || super::model_context::handle_model_command(self, trimmed)

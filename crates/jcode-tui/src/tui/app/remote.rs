@@ -1159,6 +1159,7 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
         || super::commands::handle_goals_command(app, trimmed)
         || super::commands::handle_config_command(app, trimmed)
         || super::commands::handle_log_command(app, trimmed)
+        || super::commands::handle_diff_command(app, trimmed)
         || super::commands::handle_debug_command(app, trimmed)
         || super::commands::handle_model_command(app, trimmed)
         || super::commands::handle_usage_command(app, trimmed)

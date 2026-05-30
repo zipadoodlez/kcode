@@ -506,7 +506,7 @@ fn test_is_scroll_only_key_detects_navigation_inputs() {
 
     assert!(super::input::is_scroll_only_key(
         &app,
-        KeyCode::Char('i'),
+        KeyCode::Char('g'),
         KeyModifiers::ALT
     ));
 
