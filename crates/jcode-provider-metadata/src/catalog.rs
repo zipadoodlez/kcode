@@ -80,6 +80,23 @@ pub const CORTECS_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     requires_api_key: true,
 };
 
+// OpenRouter also has a dedicated provider implementation elsewhere, but it
+// speaks the standard OpenAI-compatible /api/v1 endpoint, so it can be driven
+// by `provider-doctor` / `provider-test-coverage` like any other
+// OpenAI-compatible provider. `default_model` is None so the doctor selects the
+// live catalog's first model unless `--model` is passed.
+pub const OPENROUTER_OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile =
+    OpenAiCompatibleProfile {
+        id: "openrouter",
+        display_name: "OpenRouter",
+        api_base: "https://openrouter.ai/api/v1",
+        api_key_env: "OPENROUTER_API_KEY",
+        env_file: "openrouter.env",
+        setup_url: "https://openrouter.ai/keys",
+        default_model: None,
+        requires_api_key: true,
+    };
+
 pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "deepseek",
     display_name: "DeepSeek",
@@ -359,7 +376,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 32] = [
+pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 33] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -370,6 +387,7 @@ pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 32] = [
     AI302_PROFILE,
     BASETEN_PROFILE,
     CORTECS_PROFILE,
+    OPENROUTER_OPENAI_COMPAT_PROFILE,
     DEEPSEEK_PROFILE,
     COMTEGRA_PROFILE,
     FPT_PROFILE,
