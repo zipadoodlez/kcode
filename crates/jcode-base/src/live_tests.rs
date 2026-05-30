@@ -928,19 +928,19 @@ pub fn format_provider_test_coverage_report(
     let mut out = String::new();
     out.push_str("# Provider test coverage\n\n");
     out.push_str("Developer/live verification evidence recorded by jcode. This is evidence, not a guarantee of future provider availability.\n\n");
-    out.push_str(&format!("Provider: `{}`\n", provider_query));
-    out.push_str(&format!("Model: `{}`\n\n", model_query));
+    out.push_str(&format!("Provider: {}\n", provider_query));
+    out.push_str(&format!("Model: {}\n\n", model_query));
 
     let (coverage, path) = match load_coverage(coverage_path) {
         Ok(loaded) => loaded,
         Err(err) => {
-            out.push_str("Status: **No verification ledger found on this install**\n\n");
+            out.push_str("Status: No verification ledger found on this install\n\n");
             out.push_str("No local or bundled developer live-test coverage file could be loaded. ");
             out.push_str("Once jcode ships a curated developer coverage snapshot, this command should prefer that snapshot and separately show local evidence.\n\n");
-            out.push_str(&format!("Ledger error: `{}`\n\n", err));
+            out.push_str(&format!("Ledger error: {}\n\n", err));
             out.push_str("You can generate local evidence with:\n\n");
             out.push_str(&format!(
-                "```bash\njcode auth-test --provider {} --model {}\n```",
+                "  jcode auth-test --provider {} --model {}",
                 provider_query, model_query
             ));
             return out;
@@ -983,8 +983,8 @@ pub fn format_provider_test_coverage_report(
     matches.sort_by_key(|entry| entry.recorded_at);
 
     let Some(entry) = matches.last() else {
-        out.push_str("Status: **Not yet covered by this jcode verification ledger**\n\n");
-        out.push_str(&format!("Ledger: `{}`\n\n", path.display()));
+        out.push_str("Status: Not yet covered by this jcode verification ledger\n\n");
+        out.push_str(&format!("Ledger: {}\n\n", path.display()));
         out.push_str("This does not mean the provider/model is broken. It only means jcode has no recorded live verification evidence for this exact provider/model pair.\n");
         return out;
     };
@@ -1022,13 +1022,13 @@ pub fn format_provider_test_coverage_report(
         "Tested, but no passing checkpoints recorded"
     };
 
-    out.push_str(&format!("Status: **{}**\n", status));
-    out.push_str(&format!("Last tested: `{}`\n", entry.recorded_at));
-    out.push_str(&format!("Evidence source: `{}`\n", path.display()));
-    out.push_str(&format!("Matching evidence entries: `{}`\n", matches.len()));
-    out.push_str(&format!("Test name: `{}`\n", entry.test_name));
+    out.push_str(&format!("Status: {}\n", status));
+    out.push_str(&format!("Last tested: {}\n", entry.recorded_at));
+    out.push_str(&format!("Evidence source: {}\n", path.display()));
+    out.push_str(&format!("Matching evidence entries: {}\n", matches.len()));
+    out.push_str(&format!("Test name: {}\n", entry.test_name));
     out.push_str(&format!(
-        "Tested with: `jcode {}` ({}){}\n\n",
+        "Tested with: jcode {} ({}){}\n\n",
         entry.jcode_version,
         entry.jcode_git_hash,
         if entry.jcode_git_dirty { ", dirty" } else { "" }
@@ -1041,7 +1041,7 @@ pub fn format_provider_test_coverage_report(
             .cloned()
             .unwrap_or(LiveVerificationStageStatus::NotRun);
         out.push_str(&format!(
-            "{} {} - `{:?}`\n",
+            "{} {} - {:?}\n",
             provider_test_coverage_icon(&status),
             provider_test_coverage_checkpoint_label(checkpoint),
             status

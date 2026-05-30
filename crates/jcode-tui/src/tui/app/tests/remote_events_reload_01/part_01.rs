@@ -135,7 +135,7 @@ fn test_handle_server_event_session_renamed_updates_remote_title() {
     assert!(app.display_messages().iter().any(|message| {
         message
             .content
-            .contains("Renamed session to **Release planning**")
+            .contains("Renamed session to Release planning")
     }));
 }
 

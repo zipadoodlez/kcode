@@ -1066,10 +1066,8 @@ fn test_handle_input_shell_completed_renders_markdown_blocks() {
 
     let rendered = app.display_messages().last().expect("shell result message");
     assert_eq!(rendered.role, "system");
-    assert!(rendered.content.contains("**Shell command**"));
-    assert!(rendered.content.contains("bash"));
+    assert!(rendered.content.contains("Shell command"));
     assert!(rendered.content.contains("ls -la"));
-    assert!(rendered.content.contains("text"));
     assert!(rendered.content.contains("Cargo.toml"));
     assert_eq!(
         app.status_notice(),

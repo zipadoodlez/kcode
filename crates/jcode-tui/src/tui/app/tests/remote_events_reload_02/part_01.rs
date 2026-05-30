@@ -715,7 +715,7 @@ fn test_handle_server_event_soft_interrupt_injected_background_task_renders_card
         .last()
         .expect("missing injected background task message");
     assert_eq!(last.role, "background_task");
-    assert!(last.content.contains("**Background task** abc123"));
+    assert!(last.content.contains("**Background task** `abc123`"));
 }
 
 #[test]

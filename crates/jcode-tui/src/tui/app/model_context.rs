@@ -1313,7 +1313,7 @@ pub(super) fn format_model_refresh_summary(
     summary: &crate::provider::ModelCatalogRefreshSummary,
 ) -> String {
     let mut message = format!(
-        "Model List Refresh Complete\n\nModels: {} -> {}  (+{} / -{})\nRoutes: {} -> {}  (+{} / -{} / ~{})",
+        "Model List Refresh Complete\n\nModels: {} → {}  (+{} / -{})\nRoutes: {} → {}  (+{} / -{} / ~{})",
         summary.model_count_before,
         summary.model_count_after,
         summary.models_added,

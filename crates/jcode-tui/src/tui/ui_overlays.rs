@@ -526,7 +526,7 @@ pub(super) fn draw_model_status_overlay(
 fn model_status_line_style(raw: &str, default: Style) -> Style {
     let trimmed = raw.trim_start();
     if trimmed.starts_with('✓')
-        || trimmed.contains("**Fully tested**")
+        || trimmed.contains("Fully tested")
         || trimmed.contains("strict_covered")
         || trimmed.contains("Passed")
     {

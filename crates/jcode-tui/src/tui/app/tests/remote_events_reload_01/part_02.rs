@@ -238,7 +238,7 @@ fn test_remote_poke_status_and_off_update_state() {
             .expect("/poke status should succeed remotely");
         assert!(app.display_messages().iter().any(|msg| {
             msg.content
-                .contains("Auto-poke: **ON**. 1 incomplete todo.")
+                .contains("Auto-poke: ON. 1 incomplete todo.")
                 && msg.content.contains("A follow-up poke is queued.")
                 && msg.content.contains("A turn is currently running.")
         }));

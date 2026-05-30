@@ -437,7 +437,7 @@ fn test_handle_turn_error_failover_prompt_manual_mode_shows_system_notice() {
 
         let last = app.display_messages.last().expect("display message");
         assert_eq!(last.role, "system");
-        assert!(last.content.contains("did **not** resend your prompt"));
+        assert!(last.content.contains("did not resend your prompt"));
         assert!(last.content.contains("/model"));
         assert!(
             last.content

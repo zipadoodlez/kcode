@@ -18,7 +18,7 @@ fn test_fast_default_on_saves_config_and_updates_session() {
     assert_eq!(app.provider.service_tier().as_deref(), Some("priority"));
     assert_eq!(app.status_notice(), Some("Fast mode: on".to_string()));
     let last = app.display_messages().last().expect("missing response");
-    assert_eq!(last.content, "Saved OpenAI fast mode: **on**.");
+    assert_eq!(last.content, "Saved OpenAI fast mode: on.");
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
@@ -43,7 +43,7 @@ fn test_fast_status_shows_saved_default() {
     let last = app.display_messages().last().expect("missing response");
     assert_eq!(
         last.content,
-        "Fast mode is off.\nCurrent tier: Standard\nSaved default: on (Fast)\nUse `/fast on`, `/fast off`, or `/fast default on|off`."
+        "Fast mode is off.\nCurrent tier: Standard\nSaved default: on (Fast)\nUse /fast on, /fast off, or /fast default on|off."
     );
 
     if let Some(prev_home) = prev_home {
@@ -71,7 +71,7 @@ fn test_alignment_command_persists_and_applies_immediately() {
         assert_eq!(last.role, "system");
         assert!(
             last.content
-                .contains("Saved default alignment: **centered**")
+                .contains("Saved default alignment: centered")
         );
     });
 }
@@ -91,9 +91,9 @@ fn test_alignment_status_shows_current_and_saved_defaults() {
         assert_eq!(last.role, "system");
         assert!(
             last.content
-                .contains("Alignment is currently **centered**.")
+                .contains("Alignment is currently centered.")
         );
-        assert!(last.content.contains("Saved default: **left-aligned**."));
+        assert!(last.content.contains("Saved default: left-aligned."));
         assert!(last.content.contains("/alignment centered"));
         assert!(last.content.contains("Alt+C"));
     });

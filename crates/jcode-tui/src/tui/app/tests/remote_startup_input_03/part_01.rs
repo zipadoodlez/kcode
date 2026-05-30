@@ -502,9 +502,9 @@ fn test_background_rebuild_status_uses_compact_rebuild_card() {
     assert!(
         message
             .content
-            .contains("**Status:** Building release binary in the background...")
+            .contains("Status: Building release binary in the background...")
     );
-    assert!(message.content.contains("**Pipeline:**"));
+    assert!(message.content.contains("Pipeline:"));
 }
 
 #[test]
@@ -535,7 +535,7 @@ fn test_startup_update_checking_stays_quiet_until_update_work_starts() {
         .display_messages()
         .last()
         .expect("expected update display message");
-    assert!(message.content.contains("**Status:** downloading v1.2.3"));
+    assert!(message.content.contains("Status: downloading v1.2.3"));
     assert!(message.content.contains("restart automatically"));
     assert_eq!(
         app.status_notice(),
@@ -550,7 +550,7 @@ fn test_startup_update_checking_stays_quiet_until_update_work_starts() {
         .display_messages()
         .last()
         .expect("expected update display message");
-    assert!(message.content.contains("**Status:** updated to v1.2.3"));
+    assert!(message.content.contains("Status: updated to v1.2.3"));
     assert!(message.content.contains("Restarting now."));
     assert_eq!(
         app.status_notice(),
@@ -593,7 +593,7 @@ fn test_startup_update_error_replaces_checking_card() {
         .last()
         .expect("expected update display message");
     assert_eq!(message.title.as_deref(), Some("Update"));
-    assert!(message.content.contains("**Status:** failed"));
+    assert!(message.content.contains("Status: failed"));
     assert!(message.content.contains("Check failed: offline"));
     assert!(
         message

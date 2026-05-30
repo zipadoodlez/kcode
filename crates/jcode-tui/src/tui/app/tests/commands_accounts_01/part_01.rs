@@ -759,7 +759,7 @@ fn test_btw_command_prepares_side_panel_and_hidden_turn() {
 
     assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("btw"));
     let page = app.side_panel.focused_page().expect("missing btw page");
-    assert_eq!(page.title, "`/btw`");
+    assert_eq!(page.title, "/btw");
     assert!(page.content.contains("## Question"));
     assert!(page.content.contains("what did we decide about config?"));
     assert!(page.content.contains("Thinking…"));
@@ -825,8 +825,6 @@ fn test_git_command_shows_repo_status_for_working_directory() {
     let msg = app.display_messages().last().expect("missing git response");
     assert_eq!(msg.role, "system");
     assert!(msg.content.contains("/git"));
-    assert!(msg.content.contains("text"));
-    assert!(msg.content.contains("## "));
     assert!(msg.content.contains("tracked.txt"));
 }
 
@@ -844,8 +842,6 @@ fn test_git_command_works_in_remote_mode_with_accessible_working_directory() {
     let msg = app.display_messages().last().expect("missing git response");
     assert_eq!(msg.role, "system");
     assert!(msg.content.contains("/git"));
-    assert!(msg.content.contains("text"));
-    assert!(msg.content.contains("## "));
     assert!(msg.content.contains("tracked.txt"));
     assert!(
         !msg.content
@@ -1185,7 +1181,7 @@ fn test_compact_mode_status_shows_local_mode() {
     app.submit_input();
 
     let last = app.display_messages().last().expect("missing response");
-    assert!(last.content.contains("Compaction mode: **proactive**"));
+    assert!(last.content.contains("Compaction mode: proactive"));
 }
 
 #[test]
