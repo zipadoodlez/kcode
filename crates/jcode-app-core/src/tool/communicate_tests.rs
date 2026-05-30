@@ -1,8 +1,9 @@
 use super::{
-    CommunicateInput, CommunicateTool, cleanup_candidate_session_ids, coordination_in_flight_count,
-    default_await_target_statuses, default_cleanup_target_statuses, format_awaited_members,
-    format_awaited_members_with_reports, format_members, format_plan_status,
-    latest_assistant_report, resolve_optional_target_session, swarm_member_is_in_flight,
+    CommunicateInput, CommunicateTool, canonical_swarm_action, cleanup_candidate_session_ids,
+    coordination_in_flight_count, default_await_target_statuses, default_cleanup_target_statuses,
+    format_awaited_members, format_awaited_members_with_reports, format_members,
+    format_plan_status, latest_assistant_report, resolve_optional_target_session,
+    swarm_member_is_in_flight,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::{
@@ -26,6 +27,53 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[test]
 fn tool_is_named_swarm() {
     assert_eq!(CommunicateTool::new().name(), "swarm");
+}
+
+#[test]
+fn canonical_swarm_action_maps_common_synonyms() {
+    assert_eq!(canonical_swarm_action("inbox"), "read");
+    assert_eq!(canonical_swarm_action("read_messages"), "read");
+    assert_eq!(canonical_swarm_action("send"), "message");
+    assert_eq!(canonical_swarm_action("msg"), "message");
+    assert_eq!(canonical_swarm_action("direct_message"), "dm");
+    assert_eq!(canonical_swarm_action("announce"), "broadcast");
+    assert_eq!(canonical_swarm_action("agents"), "list");
+    assert_eq!(canonical_swarm_action("plan"), "plan_status");
+    assert_eq!(canonical_swarm_action("assign"), "assign_task");
+    assert_eq!(canonical_swarm_action("kill"), "stop");
+}
+
+#[test]
+fn canonical_swarm_action_is_case_insensitive_and_trims() {
+    assert_eq!(canonical_swarm_action("  Inbox  "), "read");
+    assert_eq!(canonical_swarm_action("SEND"), "message");
+}
+
+#[test]
+fn canonical_swarm_action_passes_through_known_and_unknown_actions() {
+    // Real actions are unchanged.
+    assert_eq!(canonical_swarm_action("spawn"), "spawn");
+    assert_eq!(canonical_swarm_action("dm"), "dm");
+    assert_eq!(canonical_swarm_action("assign_role"), "assign_role");
+    // Genuinely unknown actions are returned unchanged for normal validation.
+    assert_eq!(canonical_swarm_action("totally_made_up"), "totally_made_up");
+}
+
+#[test]
+fn communicate_input_aliases_to_session_and_target_session() {
+    // Either field name should be accepted; the execute() normalization mirrors them.
+    let from_target: CommunicateInput = serde_json::from_value(
+        json!({ "action": "dm", "message": "hi", "target_session": "worker-1" }),
+    )
+    .expect("parse target_session input");
+    assert_eq!(from_target.target_session.as_deref(), Some("worker-1"));
+    assert_eq!(from_target.to_session, None);
+
+    let from_to: CommunicateInput =
+        serde_json::from_value(json!({ "action": "summary", "to_session": "worker-2" }))
+            .expect("parse to_session input");
+    assert_eq!(from_to.to_session.as_deref(), Some("worker-2"));
+    assert_eq!(from_to.target_session, None);
 }
 
 #[test]
@@ -206,13 +254,19 @@ fn schema_advertises_supported_swarm_fields() {
     assert_eq!(
         props["to_session"]["description"],
         json!(
-            "DM target. Accepts an exact session ID or a unique friendly name within the swarm. If a friendly name is ambiguous, run swarm list and use the exact session ID."
+            "Target session for actions that address one agent (dm, and as an alias for target_session). Accepts an exact session ID or a unique friendly name within the swarm. Interchangeable with target_session. If a friendly name is ambiguous, run swarm list and use the exact session ID."
         )
     );
     assert!(props.contains_key("channel"));
     assert!(props.contains_key("proposer_session"));
     assert!(props.contains_key("reason"));
     assert!(props.contains_key("target_session"));
+    assert_eq!(
+        props["target_session"]["description"],
+        json!(
+            "Target session for management actions (assign_role, summary, status, stop, start, resume, wake, etc.). Accepts an exact session ID or a unique friendly name. Interchangeable with to_session."
+        )
+    );
     assert!(props.contains_key("role"));
     assert!(props.contains_key("prompt"));
     assert!(props.contains_key("working_dir"));

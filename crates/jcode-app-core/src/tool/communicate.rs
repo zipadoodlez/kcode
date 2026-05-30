@@ -568,6 +568,24 @@ impl CommunicateInput {
     }
 }
 
+/// Map common action synonyms/typos to the canonical swarm action name. Models
+/// frequently invent near-miss verbs (e.g. `inbox` for reading messages, `send`
+/// for `message`), which previously produced an "Unknown action" error. Unknown
+/// inputs are returned unchanged so the normal validation path still reports them.
+fn canonical_swarm_action(action: &str) -> &str {
+    match action.trim().to_ascii_lowercase().as_str() {
+        "inbox" | "messages" | "check_messages" | "read_messages" | "read_inbox" => "read",
+        "send" | "msg" | "send_message" => "message",
+        "dm_session" | "direct_message" | "whisper" => "dm",
+        "broadcast_all" | "announce" => "broadcast",
+        "agents" | "members" | "list_agents" | "list_members" | "roster" => "list",
+        "plan" | "status_plan" => "plan_status",
+        "assign" => "assign_task",
+        "kill" | "terminate" => "stop",
+        _ => action,
+    }
+}
+
 #[async_trait]
 impl Tool for CommunicateTool {
     fn name(&self) -> &str {
@@ -617,12 +635,15 @@ impl Tool for CommunicateTool {
                 },
                 "to_session": {
                     "type": "string",
-                    "description": "DM target. Accepts an exact session ID or a unique friendly name within the swarm. If a friendly name is ambiguous, run swarm list and use the exact session ID."
+                    "description": "Target session for actions that address one agent (dm, and as an alias for target_session). Accepts an exact session ID or a unique friendly name within the swarm. Interchangeable with target_session. If a friendly name is ambiguous, run swarm list and use the exact session ID."
                 },
                 "channel": { "type": "string" },
                 "proposer_session": { "type": "string" },
                 "reason": { "type": "string" },
-                "target_session": { "type": "string" },
+                "target_session": {
+                    "type": "string",
+                    "description": "Target session for management actions (assign_role, summary, status, stop, start, resume, wake, etc.). Accepts an exact session ID or a unique friendly name. Interchangeable with to_session."
+                },
                 "role": {
                     "type": "string",
                     "enum": ["agent", "coordinator", "worktree_manager"]
@@ -714,7 +735,23 @@ impl Tool for CommunicateTool {
     }
 
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
-        let params: CommunicateInput = serde_json::from_value(input)?;
+        let mut params: CommunicateInput = serde_json::from_value(input)?;
+
+        // `to_session` and `target_session` both name a single session id. Historically
+        // different actions required different field names (e.g. `dm` wanted `to_session`
+        // while `assign_role`/`summary`/`status`/`start`/`resume` wanted `target_session`),
+        // which models frequently confuse, producing repeated "'to_session' is required" /
+        // "'target_session' is required" errors. Treat the two fields as interchangeable
+        // aliases so either name works for any action that targets a session.
+        match (params.to_session.is_some(), params.target_session.is_some()) {
+            (true, false) => params.target_session = params.to_session.clone(),
+            (false, true) => params.to_session = params.target_session.clone(),
+            _ => {}
+        }
+
+        // Normalize common action synonyms that models invent (e.g. `inbox`, `send`,
+        // `msg`) so a near-miss verb maps to the real action instead of erroring out.
+        params.action = canonical_swarm_action(&params.action).to_string();
 
         match params.action.as_str() {
             "share" | "share_append" => {
@@ -797,9 +834,9 @@ impl Tool for CommunicateTool {
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for dm action"))?;
-                let to_session = params
-                    .to_session
-                    .ok_or_else(|| anyhow::anyhow!("'to_session' is required for dm action"))?;
+                let to_session = params.to_session.ok_or_else(|| {
+                    anyhow::anyhow!("'to_session' (or 'target_session') is required for dm action")
+                })?;
 
                 let request = Request::CommMessage {
                     id: REQUEST_ID,
@@ -1548,8 +1585,9 @@ impl Tool for CommunicateTool {
 
             _ => Err(anyhow::anyhow!(
                 "Unknown action '{}'. Valid actions: share, share_append, read, message, broadcast, dm, channel, list, list_channels, channel_members, \
-                 propose_plan, approve_plan, reject_plan, spawn, stop, assign_role, status, plan_status, summary, read_context, \
-                 resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, start, start_task, wake, resume, retry, reassign, replace, salvage, subscribe_channel, unsubscribe_channel, await_members",
+                 propose_plan, approve_plan, reject_plan, spawn, stop, assign_role, status, report, plan_status, summary, read_context, \
+                 resync_plan, assign_task, assign_next, fill_slots, run_plan, cleanup, start, start_task, wake, resume, retry, reassign, replace, salvage, subscribe_channel, unsubscribe_channel, await_members. \
+                 To read messages addressed to you, use action='read'.",
                 params.action
             )),
         }
