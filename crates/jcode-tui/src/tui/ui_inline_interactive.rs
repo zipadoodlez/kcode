@@ -162,7 +162,7 @@ fn selected_route_notice_text(
 
 fn model_picker_keybind_hint(picker: &crate::tui::InlineInteractiveState) -> Option<&'static str> {
     if picker.kind == crate::tui::PickerKind::Model && !picker.preview {
-        Some(" keys: Ctrl+D default · Ctrl+F favorite")
+        Some(" keys: Ctrl+D default · Ctrl+F favorite · Shift+Tab next favorite")
     } else {
         None
     }

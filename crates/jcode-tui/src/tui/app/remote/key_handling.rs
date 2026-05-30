@@ -456,6 +456,13 @@ async fn handle_remote_key_internal(
     }
 
     if code == KeyCode::BackTab {
+        app.cycle_model_favorite_hotkey();
+        return Ok(());
+    }
+
+    if modifiers.contains(KeyModifiers::ALT)
+        && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'i'))
+    {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;

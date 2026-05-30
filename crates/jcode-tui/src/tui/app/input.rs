@@ -1372,7 +1372,9 @@ pub(super) fn handle_navigation_shortcuts(
         return true;
     }
 
-    if code == KeyCode::BackTab {
+    if modifiers.contains(KeyModifiers::ALT)
+        && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'i'))
+    {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;
@@ -1395,7 +1397,8 @@ pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifie
         || App::ctrl_side_panel_ratio_preset(&code, modifiers).is_some()
         || App::ctrl_prompt_rank(&code, modifiers).is_some()
         || app.scroll_keys.is_bookmark(code, modifiers)
-        || code == KeyCode::BackTab
+        || (modifiers.contains(KeyModifiers::ALT)
+            && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'i')))
     {
         return true;
     }
@@ -1990,9 +1993,7 @@ impl App {
             return Ok(());
         }
 
-        if modifiers.contains(KeyModifiers::ALT)
-            && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'f'))
-        {
+        if code == KeyCode::BackTab {
             self.cycle_model_favorite_hotkey();
             return Ok(());
         }

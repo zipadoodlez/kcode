@@ -2149,7 +2149,26 @@ impl App {
                     }
                 }
             }
-            KeyCode::Left | KeyCode::BackTab => {
+            KeyCode::BackTab => {
+                if self
+                    .inline_interactive_state
+                    .as_ref()
+                    .map(picker_is_runtime_model_picker)
+                    .unwrap_or(false)
+                {
+                    self.cycle_selected_model_favorite();
+                    return Ok(());
+                }
+                if let Some(ref mut picker) = self.inline_interactive_state {
+                    if picker.uses_compact_navigation() {
+                        return Ok(());
+                    }
+                    if picker.column > 0 {
+                        picker.column -= 1;
+                    }
+                }
+            }
+            KeyCode::Left => {
                 if let Some(ref mut picker) = self.inline_interactive_state {
                     if picker.uses_compact_navigation() {
                         return Ok(());

@@ -362,10 +362,8 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(key_entry("h/j/k/l / arrows", "Pan diagram (when focused)"));
     lines.push(key_entry("[ / ]", "Zoom diagram (when focused)"));
     lines.push(key_entry("+ / -", "Resize diagram pane"));
-    lines.push(key_entry(
-        "Shift+Tab",
-        "Cycle diff mode (Off/Inline/Pinned)",
-    ));
+    lines.push(key_entry("Alt+I", "Cycle diff mode (Off/Inline/Pinned)"));
+    lines.push(key_entry("Shift+Tab", "Cycle favorited models"));
 
     lines.push(Line::from(""));
     lines.push(separator());
