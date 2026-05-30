@@ -186,9 +186,14 @@ impl App {
                     );
                 self.session.model = Some(self.provider.model());
                 let _ = self.session.save();
+                let auth_suffix = self
+                    .provider
+                    .active_auth_method_label()
+                    .map(|method| format!(" (via {})", method))
+                    .unwrap_or_default();
                 self.push_display_message(DisplayMessage::system(format!(
-                    "✓ Switched to model: {}",
-                    next_model
+                    "✓ Switched to model: {}{}",
+                    next_model, auth_suffix
                 )));
                 self.set_status_notice(format!("Model → {}", next_model));
             }
@@ -964,9 +969,14 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
                     );
                 app.session.model = Some(active_model.clone());
                 let _ = app.session.save();
+                let auth_suffix = app
+                    .provider
+                    .active_auth_method_label()
+                    .map(|method| format!(" (via {})", method))
+                    .unwrap_or_default();
                 app.push_display_message(DisplayMessage {
                     role: "system".to_string(),
-                    content: format!("✓ Switched to model: {}", active_model),
+                    content: format!("✓ Switched to model: {}{}", active_model, auth_suffix),
                     tool_calls: vec![],
                     duration_secs: None,
                     title: None,

@@ -636,6 +636,18 @@ impl OpenAIProvider {
             }
         }
         self.clear_persistent_ws_try("OpenAI credential mode changed");
+        // Keep the runtime provider identity in sync with the explicit credential
+        // choice so UI surfaces report the auth method requests will actually use.
+        // `Auto` leaves the existing identity untouched.
+        match mode {
+            OpenAICredentialMode::OAuth => {
+                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai");
+            }
+            OpenAICredentialMode::ApiKey => {
+                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-api");
+            }
+            OpenAICredentialMode::Auto => {}
+        }
         Ok(())
     }
 

@@ -2376,9 +2376,12 @@ impl App {
 
                         let effort = entry.effort.clone();
                         record_model_picker_selection(&bare_name, route, effort.as_deref());
+                        let method_label =
+                            crate::provider::ModelRouteApiMethod::parse(&route.api_method)
+                                .display_label();
                         let notice = format!(
                             "Model → {} via {} ({})",
-                            entry.name, route.provider, route.api_method
+                            entry.name, route.provider, method_label
                         );
                         let route_detail = route.detail.trim().to_string();
 

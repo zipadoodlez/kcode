@@ -79,6 +79,15 @@ pub trait Provider: Send + Sync {
         "unknown".to_string()
     }
 
+    /// Human-readable description of the auth method the active provider will
+    /// actually use for the next request (e.g. "OAuth" or "API key"), or `None`
+    /// when there is no meaningful OAuth-vs-API-key distinction. UI surfaces use
+    /// this to report the auth method accurately instead of inferring it from
+    /// which credentials happen to be configured.
+    fn active_auth_method_label(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Whether this provider path can safely receive `ContentBlock::Image` inputs.
     fn supports_image_input(&self) -> bool {
         false

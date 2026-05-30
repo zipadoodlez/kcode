@@ -756,6 +756,19 @@ impl AnthropicProvider {
         if let Ok(mut cached) = self.credentials.try_write() {
             *cached = None;
         }
+        // Keep the runtime provider identity in sync with the explicit credential
+        // choice so UI surfaces (model picker, header widget) report the auth
+        // method that requests will actually use, instead of inferring it from
+        // credential presence. `Auto` leaves the existing identity untouched.
+        match mode {
+            AnthropicCredentialMode::OAuth => {
+                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "claude");
+            }
+            AnthropicCredentialMode::ApiKey => {
+                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "claude-api");
+            }
+            AnthropicCredentialMode::Auto => {}
+        }
         Ok(())
     }
 
