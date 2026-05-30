@@ -550,6 +550,12 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
         ));
     }
 
+    // Drop obviously non-chat models (embeddings, speech, rerankers, etc.) that
+    // some providers (Bedrock, OpenAI-compatible profiles like NVIDIA NIM / FPT
+    // / Chutes) dump wholesale into their catalogs. Without this the picker is
+    // flooded with hundreds of unusable entries.
+    routes.retain(|route| is_listable_model_name(&route.model));
+
     dedupe_model_routes(routes)
 }
 
