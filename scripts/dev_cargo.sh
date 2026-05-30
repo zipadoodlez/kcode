@@ -322,6 +322,51 @@ select_build_jobs() {
   fi
 }
 
+# Keep `jcode-build-meta`'s embedded git metadata in lockstep with HEAD without
+# making it watch `.git` mtimes.
+#
+# `jcode-build-meta/build.rs` deliberately does NOT declare `.git/HEAD`/`.git/index`
+# as `rerun-if-changed` inputs, because their mtimes change on every `git add`,
+# `git status`, commit, and concurrent-agent git op -- which would force a
+# full-tree recompile (base -> app-core -> tui -> cli) on every incremental
+# build. The trade-off was that after a commit the binary kept embedding the
+# previous short hash, so the self-dev publish guard rejected it with
+# "binary was built from git hash X, but source state is Y" until someone
+# manually touched Cargo.toml.
+#
+# Instead, export the *value* of the current git hash/date. build.rs declares
+# `cargo:rerun-if-env-changed=JCODE_BUILD_GIT_HASH` (and _DATE), so cargo reruns
+# the build script ONLY when these values change -- i.e. exactly when HEAD moves
+# -- and never on a bare `git add`/`status` or repeated builds on the same
+# commit. This keeps the embedded hash correct after every commit while keeping
+# same-commit incremental builds fully incremental. We intentionally do NOT
+# export JCODE_BUILD_GIT_DIRTY here: the dirty flag flips on every edit and would
+# reintroduce per-build churn; the publish guard validates dirty builds via the
+# source fingerprint / mtime path instead of the embedded flag.
+export_git_build_metadata() {
+  # Respect any value the caller already set (e.g. release/CI pipelines).
+  if [[ -n "${JCODE_BUILD_GIT_HASH:-}" ]]; then
+    git_meta_status="external:${JCODE_BUILD_GIT_HASH}"
+    return
+  fi
+  if ! command -v git >/dev/null 2>&1; then
+    git_meta_status="git-not-found"
+    return
+  fi
+  local hash date
+  hash="$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || true)"
+  if [[ -z "$hash" ]]; then
+    git_meta_status="no-head"
+    return
+  fi
+  export JCODE_BUILD_GIT_HASH="$hash"
+  date="$(git -C "$repo_root" log -1 --format=%ci 2>/dev/null || true)"
+  if [[ -n "$date" ]]; then
+    export JCODE_BUILD_GIT_DATE="$date"
+  fi
+  git_meta_status="hash=${hash}"
+}
+
 maybe_configure_low_memory_selfdev() {
   if ! uses_selfdev_profile "$@"; then
     selfdev_low_memory_status="not-selfdev"
@@ -420,6 +465,8 @@ selfdev_low_memory_status=$selfdev_low_memory_status
 build_jobs_status=$build_jobs_status
 cargo_build_jobs=${CARGO_BUILD_JOBS:-<unset>}
 feature_profile_status=$feature_profile_status
+git_meta_status=$git_meta_status
+build_git_hash=${JCODE_BUILD_GIT_HASH:-<unset>}
 rustc_wrapper=${RUSTC_WRAPPER:-<unset>}
 linker_mode=$selected_linker_mode
 linker_desc=${selected_linker_desc:-<none>}
@@ -674,6 +721,7 @@ run_local_cargo() {
 }
 
 validate_feature_profile
+export_git_build_metadata
 maybe_configure_low_memory_selfdev "$@"
 maybe_enable_sccache "$@"
 select_build_jobs
