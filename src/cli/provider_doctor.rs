@@ -117,6 +117,9 @@ fn format_report(report: &DoctorReport, colorize: bool) -> String {
     }
 
     out.push('\n');
+    if report.tier.spends_balance() {
+        out.push_str(&format!("Spend this run: {}\n", report.spend.human_summary()));
+    }
     if report.strict_passed {
         out.push_str("Verdict: READY. Every strict checkpoint passed for this provider/model.\n");
     } else if report.tier_passed {
@@ -190,6 +193,7 @@ fn report_to_json(report: &DoctorReport) -> String {
         "tier": report.tier.as_str(),
         "tier_passed": report.tier_passed,
         "strict_passed": report.strict_passed,
+        "spend": report.spend.to_json(),
         "checks": checks,
     }))
     .unwrap_or_else(|_| "{}".to_string())

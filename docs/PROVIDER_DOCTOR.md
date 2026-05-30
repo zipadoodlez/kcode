@@ -92,6 +92,33 @@ Verdict: tier `catalog` passed. Run `--tier full` to confirm full readiness (spe
 The command exits non-zero when the chosen tier did not fully pass, so it can be
 used as a CI/scripting gate.
 
+## Spend tracking (how much does a run cost?)
+
+Balance-spending tiers (`catalog` makes a catalog call, `full` makes several
+chat/stream/tool calls) report exactly what they consumed so you can budget:
+
+```
+Spend this run: 3 billable API calls, 554 tokens (289 in + 265 out), cost not reported by provider
+```
+
+- **billable API calls** - how many requests actually hit the provider.
+- **tokens** - prompt + completion totals summed across those calls, when the
+  provider returns a `usage` block. Streaming probes request
+  `stream_options.include_usage` so streamed calls are counted too.
+- **cost** - shown as a USD figure only when the provider reports a `cost`
+  field; many providers (e.g. cerebras) only return tokens, so you'll see
+  "cost not reported by provider" and can multiply tokens by your plan's rate.
+  A full cerebras run is roughly 550-620 tokens (about $0.0003).
+
+`--json` includes the same data under a `spend` object
+(`billable_calls`, `prompt_tokens`, `completion_tokens`, `total_tokens`,
+`has_token_data`, `reported_cost_usd`).
+
+This spend is **persisted** into the coverage ledger alongside the run, so
+`jcode provider-test-coverage` shows a cumulative "Recorded spend" footer
+summing the latest run per pair. That gives you a durable, at-a-glance answer to
+"how much has exercising this coverage cost me so far?"
+
 ## Typical debugging flow
 
 1. **"My picker is broken / shows the wrong models."**

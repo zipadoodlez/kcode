@@ -732,6 +732,10 @@ pub struct LiveVerificationCoverageEntry {
     pub checkpoint_statuses: BTreeMap<String, LiveVerificationStageStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stage_statuses: Vec<String>,
+    /// Token/cost spend recorded for this run (from the producing command's
+    /// `spend` metadata). Present for billable runs (e.g. provider-doctor full).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spend: Option<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -839,6 +843,41 @@ pub struct LiveProviderModelCoverageSummary {
     pub known_provider_ids_without_live_model_coverage: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub issue_driven_targets: Vec<IssueDrivenLiveProviderTargetSummary>,
+    /// Cumulative token/cost spend recorded across all billable runs in the
+    /// ledger (e.g. provider-doctor full-tier runs).
+    #[serde(default)]
+    pub recorded_spend: LiveCoverageRecordedSpend,
+}
+
+/// Cumulative spend aggregated from per-run `spend` metadata in the ledger.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LiveCoverageRecordedSpend {
+    /// Number of ledger entries that carried spend data.
+    pub runs_with_spend: usize,
+    pub billable_calls: u64,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    /// Sum of provider-reported costs (USD), when any run reported one.
+    pub reported_cost_usd: Option<f64>,
+}
+
+impl LiveCoverageRecordedSpend {
+    fn accumulate(&mut self, spend: &Value) {
+        self.runs_with_spend += 1;
+        let read = |key: &str| spend.get(key).and_then(Value::as_u64).unwrap_or(0);
+        self.billable_calls += read("billable_calls");
+        self.prompt_tokens += read("prompt_tokens");
+        self.completion_tokens += read("completion_tokens");
+        self.total_tokens += read("total_tokens");
+        if let Some(cost) = spend.get("reported_cost_usd").and_then(Value::as_f64) {
+            *self.reported_cost_usd.get_or_insert(0.0) += cost;
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.runs_with_spend == 0
+    }
 }
 
 fn update_coverage(event: &LiveVerificationEvent, path: &Path) -> Result<()> {
@@ -898,6 +937,7 @@ fn update_coverage(event: &LiveVerificationEvent, path: &Path) -> Result<()> {
                 .iter()
                 .map(|stage| format!("{}:{:?}", stage.name, stage.status))
                 .collect(),
+            spend: event.metadata.get("spend").cloned(),
         },
     );
     let serialized = serde_json::to_string_pretty(&coverage)
@@ -1319,6 +1359,15 @@ pub fn strict_live_provider_model_coverage_summary(
     let total_provider_model_pairs = covered_pairs.len() + uncovered_pairs.len();
     let covered_provider_model_pairs = covered_pairs.len();
     let issue_driven_targets = issue_driven_target_summaries(&covered_pairs, &uncovered_pairs);
+
+    // Aggregate recorded spend across the current (deduped) ledger entries.
+    let mut recorded_spend = LiveCoverageRecordedSpend::default();
+    for entry in latest_coverage_entries_by_provider_model_test(coverage).values() {
+        if let Some(spend) = &entry.spend {
+            recorded_spend.accumulate(spend);
+        }
+    }
+
     LiveProviderModelCoverageSummary {
         schema_version: SCHEMA_VERSION,
         generated_at: Utc::now(),
@@ -1336,6 +1385,7 @@ pub fn strict_live_provider_model_coverage_summary(
         provider_only_entries: provider_only_entries.into_iter().collect(),
         known_provider_ids_without_live_model_coverage,
         issue_driven_targets,
+        recorded_spend,
     }
 }
 
@@ -1747,6 +1797,28 @@ pub fn format_strict_live_provider_model_coverage_summary(
         out.push('\n');
     }
 
+    // -- Recorded spend so far. ------------------------------------------------
+    if !summary.recorded_spend.is_empty() {
+        let spend = &summary.recorded_spend;
+        out.push_str("Recorded spend (from billable full-tier runs in this ledger):\n");
+        out.push_str(&format!(
+            "  {} run(s), {} billable API call(s), {} tokens ({} in + {} out)\n",
+            spend.runs_with_spend,
+            spend.billable_calls,
+            spend.total_tokens,
+            spend.prompt_tokens,
+            spend.completion_tokens,
+        ));
+        match spend.reported_cost_usd {
+            Some(cost) => out.push_str(&format!(
+                "  provider-reported cost: ${cost:.6} (only some providers report cost)\n\n"
+            )),
+            None => out.push_str(
+                "  no provider reported a dollar cost; estimate from each provider's token pricing\n\n",
+            ),
+        }
+    }
+
     // -- Footer: how to act on this report. ------------------------------------
     out.push_str("Next steps:\n");
     out.push_str(
@@ -2083,6 +2155,7 @@ mod tests {
             readiness_gaps: Vec::new(),
             checkpoint_statuses,
             stage_statuses: Vec::new(),
+            spend: None,
         }
     }
 
