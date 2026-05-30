@@ -560,3 +560,57 @@ pub async fn run_external_auth_auto_import_candidates(
     auth::AuthStatus::invalidate_cache();
     Ok(outcome)
 }
+
+#[cfg(test)]
+mod render_markdown_tests {
+    use super::ExternalAuthAutoImportOutcome;
+
+    #[test]
+    fn empty_outcome_reports_nothing_imported() {
+        let outcome = ExternalAuthAutoImportOutcome {
+            imported: 0,
+            messages: Vec::new(),
+        };
+        assert_eq!(
+            outcome.render_markdown(),
+            "No external logins were imported."
+        );
+    }
+
+    #[test]
+    fn groups_imported_and_skipped_with_counts() {
+        let outcome = ExternalAuthAutoImportOutcome {
+            imported: 2,
+            messages: vec![
+                "✓ OpenAI/Codex (from Codex auth.json): Loaded OpenAI OAuth credentials.".to_string(),
+                "✓ Claude (from Claude Code): Loaded Claude credentials.".to_string(),
+                "✕ Cursor (from Cursor native): no usable auth token.".to_string(),
+            ],
+        };
+        let md = outcome.render_markdown();
+        assert!(md.starts_with("**Logins imported**"), "got: {md}");
+        assert!(md.contains("Reusing 2 existing logins:"), "got: {md}");
+        assert!(
+            md.contains("- OpenAI/Codex (from Codex auth.json): Loaded OpenAI OAuth credentials."),
+            "got: {md}"
+        );
+        assert!(md.contains("Skipped 1 source:"), "got: {md}");
+        assert!(
+            md.contains("- Cursor (from Cursor native): no usable auth token."),
+            "got: {md}"
+        );
+        // Markers themselves should be stripped from the rendered list.
+        assert!(!md.contains('✓'), "got: {md}");
+        assert!(!md.contains('✕'), "got: {md}");
+    }
+
+    #[test]
+    fn singular_wording_for_one_login() {
+        let outcome = ExternalAuthAutoImportOutcome {
+            imported: 1,
+            messages: vec!["✓ Gemini (from Gemini CLI): Loaded Gemini credentials.".to_string()],
+        };
+        let md = outcome.render_markdown();
+        assert!(md.contains("Reusing 1 existing login:"), "got: {md}");
+    }
+}
