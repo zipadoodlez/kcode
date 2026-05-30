@@ -86,6 +86,19 @@ impl ExternalAuthReviewCandidate {
     pub fn source_name(&self) -> &str {
         &self.source_name
     }
+
+    /// Build a synthetic candidate for tests / UI fixtures. The resulting
+    /// candidate points at the legacy Codex action so it can be summarized and
+    /// rendered, but is not expected to actually import successfully.
+    #[doc(hidden)]
+    pub fn fixture(provider_summary: impl Into<String>, source_name: impl Into<String>) -> Self {
+        Self {
+            provider_summary: provider_summary.into(),
+            source_name: source_name.into(),
+            path: std::path::PathBuf::from("/dev/null"),
+            action: ExternalAuthReviewAction::CodexLegacy,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

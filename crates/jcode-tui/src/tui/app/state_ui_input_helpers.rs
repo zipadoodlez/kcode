@@ -1129,10 +1129,19 @@ impl App {
         use crate::tui::OnboardingWelcomeKind;
         use crate::tui::app::onboarding_flow::OnboardingPhase;
         match self.onboarding_phase() {
-            Some(OnboardingPhase::Login { detected_imports }) => {
-                OnboardingWelcomeKind::Login {
-                    detected_imports: detected_imports.clone(),
-                }
+            Some(OnboardingPhase::Login { import }) => {
+                let prompt = import.as_ref().and_then(|review| {
+                    review.current().map(|candidate| {
+                        crate::tui::LoginImportPrompt {
+                            provider_summary: candidate.provider_summary().to_string(),
+                            source_name: candidate.source_name().to_string(),
+                            position: review.position(),
+                            total: review.total(),
+                            yes_highlighted: review.yes_highlighted,
+                        }
+                    })
+                });
+                OnboardingWelcomeKind::Login { import: prompt }
             }
             Some(OnboardingPhase::ModelSelect) => OnboardingWelcomeKind::ModelSelect,
             Some(OnboardingPhase::ContinuePrompt { cli, shown_at }) => {

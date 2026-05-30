@@ -50,23 +50,76 @@ fn onboarding_can_begin_at_login_phase() {
 }
 
 #[test]
-fn login_welcome_kind_carries_detected_imports() {
+fn login_welcome_kind_shows_first_import_candidate() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::OnboardingWelcomeKind;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
     let mut app = create_test_app();
     app.onboarding_flow = None;
     app.begin_onboarding_flow_at_login();
-    // Inject detected imports as if external logins were found at startup.
+    // Inject a per-candidate import walkthrough as if external logins were
+    // detected at startup.
+    let review = ImportReview::new(vec![
+        ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+        ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+    ])
+    .unwrap();
     if let Some(flow) = app.onboarding_flow.as_mut() {
         flow.phase = OnboardingPhase::Login {
-            detected_imports: vec!["OpenAI/Codex".to_string(), "Claude".to_string()],
+            import: Some(review),
         };
     }
     match app.onboarding_welcome_kind() {
-        OnboardingWelcomeKind::Login { detected_imports } => {
-            assert_eq!(detected_imports, vec!["OpenAI/Codex", "Claude"]);
+        OnboardingWelcomeKind::Login { import: Some(prompt) } => {
+            assert_eq!(prompt.provider_summary, "OpenAI/Codex");
+            assert_eq!(prompt.source_name, "Codex auth.json");
+            assert_eq!(prompt.position, 1);
+            assert_eq!(prompt.total, 2);
+            assert!(prompt.yes_highlighted);
         }
-        other => panic!("expected Login welcome kind, got {other:?}"),
+        other => panic!("expected Login welcome with import prompt, got {other:?}"),
     }
+}
+
+#[test]
+fn import_review_walks_candidates_and_collects_approvals() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    let mut review = ImportReview::new(vec![
+        ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+        ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+        ExternalAuthReviewCandidate::fixture("Gemini", "Gemini CLI"),
+    ])
+    .unwrap();
+    assert_eq!(review.position(), 1);
+    assert_eq!(review.total(), 3);
+
+    // Candidate 1: approve (Yes is default).
+    assert!(!review.commit_current());
+    // Candidate 2: decline.
+    review.set_yes(false);
+    assert!(!review.commit_current());
+    // Candidate 3: approve. Now finished.
+    review.set_yes(true);
+    assert!(review.commit_current());
+
+    assert_eq!(review.approved, vec![0, 2]);
+}
+
+#[test]
+fn import_review_highlight_navigation() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    let mut review =
+        ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")]).unwrap();
+    assert!(review.yes_highlighted);
+    review.toggle();
+    assert!(!review.yes_highlighted);
+    review.set_yes(true);
+    assert!(review.yes_highlighted);
 }
 
 #[test]
@@ -97,6 +150,12 @@ fn login_phase_enter_opens_login_picker() {
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow_at_login();
+        // Force the no-detected-imports case so this test exercises the manual
+        // login fallback regardless of any external logins on the host. (The
+        // import walkthrough has its own dedicated tests.)
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
         assert!(app.inline_interactive_state.is_none());
         // Enter from the welcome screen opens the interactive login picker.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
@@ -104,6 +163,39 @@ fn login_phase_enter_opens_login_picker() {
         // With a picker already open, Enter is no longer consumed by onboarding
         // so the picker can commit the selection.
         assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+    });
+}
+
+#[test]
+fn import_review_decline_all_falls_back_to_manual_login() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        let review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
+            "OpenAI/Codex",
+            "Codex auth.json",
+        )])
+        .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login {
+                import: Some(review),
+            };
+        }
+        // Decline the only candidate ("No" then Enter). With nothing approved we
+        // don't spawn an import, the walkthrough clears, and the card falls back
+        // to the manual-login prompt.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { import: None })
+        ));
+        // Still in Login: Enter now opens the manual login picker.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(app.inline_interactive_state.is_some());
     });
 }
 

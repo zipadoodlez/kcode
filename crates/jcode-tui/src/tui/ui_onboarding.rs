@@ -78,68 +78,103 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 
     use crate::tui::OnboardingWelcomeKind;
     match app.onboarding_welcome_kind() {
-        OnboardingWelcomeKind::Login { detected_imports } => {
+        OnboardingWelcomeKind::Login { import } => {
             lines.push(Line::from(""));
-            if detected_imports.is_empty() {
-                lines.push(
-                    Line::from(Span::styled(
-                        "First, log in to get started.",
-                        Style::default()
-                            .fg(welcome_accent())
-                            .add_modifier(Modifier::BOLD),
-                    ))
-                    .alignment(align),
-                );
-                lines.push(
-                    Line::from(Span::styled(
-                        "Press Enter to choose a provider.",
-                        Style::default().fg(dim_color()),
-                    ))
-                    .alignment(align),
-                );
-            } else {
-                lines.push(
-                    Line::from(Span::styled(
-                        "We found existing logins you can import:",
-                        Style::default()
-                            .fg(welcome_accent())
-                            .add_modifier(Modifier::BOLD),
-                    ))
-                    .alignment(align),
-                );
-                for (i, summary) in detected_imports.iter().enumerate() {
+            match import {
+                None => {
+                    lines.push(
+                        Line::from(Span::styled(
+                            "First, log in to get started.",
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Press Enter to choose a provider.",
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
+                }
+                Some(prompt) => {
+                    lines.push(
+                        Line::from(Span::styled(
+                            format!(
+                                "We found {} existing login{}.",
+                                prompt.total,
+                                if prompt.total == 1 { "" } else { "s" },
+                            ),
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(Line::from(""));
+                    lines.push(
+                        Line::from(Span::styled(
+                            format!("Login {} of {}", prompt.position, prompt.total),
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
                     lines.push(
                         Line::from(vec![
                             Span::styled(
-                                format!("  {}. ", i + 1),
-                                Style::default().fg(welcome_accent()),
+                                "Import ",
+                                Style::default().fg(rgb(200, 200, 200)),
                             ),
                             Span::styled(
-                                summary.clone(),
-                                Style::default().fg(rgb(200, 200, 200)),
+                                prompt.provider_summary.clone(),
+                                Style::default()
+                                    .fg(welcome_accent())
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(
+                                format!(" ({})?", prompt.source_name),
+                                Style::default().fg(dim_color()),
                             ),
                         ])
                         .alignment(align),
                     );
+                    lines.push(Line::from(""));
+
+                    // Yes / No options; the highlighted one is bold + accented.
+                    let (yes_style, no_style) = if prompt.yes_highlighted {
+                        (
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                            Style::default().fg(dim_color()),
+                        )
+                    } else {
+                        (
+                            Style::default().fg(dim_color()),
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                        )
+                    };
+                    lines.push(
+                        Line::from(vec![
+                            Span::styled("  Yes  ", yes_style),
+                            Span::raw("   "),
+                            Span::styled("  No  ", no_style),
+                        ])
+                        .alignment(align),
+                    );
+                    lines.push(Line::from(""));
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Arrows / jk to move, Enter or Space to choose (y / n also work).",
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
                 }
-                lines.push(Line::from(""));
-                lines.push(
-                    Line::from(Span::styled(
-                        format!(
-                            "Type a to import all, or numbers (e.g. 1{}), then Enter.",
-                            if detected_imports.len() > 1 { ",3" } else { "" }
-                        ),
-                        Style::default().fg(rgb(200, 200, 200)),
-                    ))
-                    .alignment(align),
-                );
-                lines.push(
-                    Line::from(Span::styled(
-                        "Or press Enter to choose a different provider.",
-                        Style::default().fg(dim_color()),
-                    ))
-                    .alignment(align),
-                );
             }
             return lines;
         }

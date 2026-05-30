@@ -571,11 +571,13 @@ pub enum PickerKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnboardingWelcomeKind {
     /// Ask the user to log in first. Shown on a fresh install that booted
-    /// without working credentials. `detected_imports` lists any importable
-    /// existing logins we found (e.g. "OpenAI/Codex", "Claude"); when non-empty
-    /// the card guides the user to import them, otherwise it points them at the
-    /// provider picker.
-    Login { detected_imports: Vec<String> },
+    /// without working credentials.
+    ///
+    /// When `import` is `Some`, we detected importable external logins and are
+    /// walking the user through them one at a time (a yes/no prompt per login).
+    /// When `None`, there was nothing to import and the card points the user at
+    /// the provider picker.
+    Login { import: Option<LoginImportPrompt> },
     /// Ask the user to pick a model first (press Enter to open the picker).
     ModelSelect,
     /// "Continue where you left off in <cli>?" with a live auto-advance
@@ -583,6 +585,23 @@ pub enum OnboardingWelcomeKind {
     ContinuePrompt { cli_label: String, seconds_left: u64 },
     /// The starter prompt-suggestion cards (default).
     Suggestions,
+}
+
+/// Render-friendly snapshot of the current step in the per-candidate login
+/// import walkthrough. Describes which detected login is being reviewed and
+/// which Yes/No option is currently highlighted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoginImportPrompt {
+    /// Human-readable provider summary (e.g. "OpenAI/Codex").
+    pub provider_summary: String,
+    /// Where the credentials came from (e.g. "Codex auth.json").
+    pub source_name: String,
+    /// 1-based position of this candidate.
+    pub position: usize,
+    /// Total number of detected candidates.
+    pub total: usize,
+    /// Whether the "Yes" option is currently highlighted (vs. "No").
+    pub yes_highlighted: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

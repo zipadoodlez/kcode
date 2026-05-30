@@ -189,41 +189,6 @@ impl App {
         self.set_status_notice("Login: choose a provider");
     }
 
-    /// Detect importable external logins (Codex/Claude/Cursor/Copilot/Gemini/
-    /// shared sources) and, if any are found, arm the `AutoImportSelection`
-    /// prompt so the user can type `a` / `1,3` to import.
-    ///
-    /// When `announce` is true the review list is also pushed as a transcript
-    /// message; onboarding passes `false` because it renders the detected
-    /// sources in the welcome card instead (and the welcome screen hides the
-    /// transcript anyway).
-    ///
-    /// Returns `true` when importable logins were found (and the review prompt
-    /// is now active), `false` otherwise.
-    pub(super) fn begin_external_auth_import_review(&mut self, announce: bool) -> bool {
-        match crate::external_auth::pending_external_auth_review_candidates() {
-            Ok(candidates) if candidates.is_empty() => false,
-            Ok(candidates) => {
-                if announce {
-                    self.push_display_message(DisplayMessage::system(
-                        crate::external_auth::format_external_auth_review_candidates_markdown(
-                            &candidates,
-                        ),
-                    ));
-                }
-                self.set_status_notice("Login: type a to import all, or numbers (e.g. 1,3)");
-                self.pending_login = Some(PendingLogin::AutoImportSelection { candidates });
-                true
-            }
-            Err(err) => {
-                crate::logging::error(&format!(
-                    "onboarding: failed to inspect external login sources: {err}"
-                ));
-                false
-            }
-        }
-    }
-
     pub(super) fn show_interactive_logout(&mut self) {
         self.open_logout_picker_inline();
         self.set_status_notice("Logout: choose a provider");

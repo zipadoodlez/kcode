@@ -46,16 +46,91 @@ impl ExternalCli {
     }
 }
 
+/// Per-candidate yes/no walkthrough for importing detected external logins.
+///
+/// On a fresh install we may detect logins left behind by other tools (Codex,
+/// Claude Code, Copilot, ...). Instead of a single "type 1,3" prompt, we walk
+/// the user through each detected login one at a time and ask whether to import
+/// it. The highlighted Yes/No option moves with the arrow / vim keys and is
+/// committed with Enter or Space.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ImportReview {
+    /// All detected importable logins, in display order.
+    pub(crate) candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
+    /// Index of the candidate currently being reviewed.
+    pub(crate) index: usize,
+    /// Which option (Yes/No) is highlighted for the current candidate.
+    pub(crate) yes_highlighted: bool,
+    /// Zero-based indices of candidates the user chose to import so far.
+    pub(crate) approved: Vec<usize>,
+}
+
+impl ImportReview {
+    /// Create a review for the given candidates, starting on the first with
+    /// "Yes" highlighted by default. Returns `None` if there are no candidates.
+    pub(crate) fn new(
+        candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
+    ) -> Option<Self> {
+        if candidates.is_empty() {
+            return None;
+        }
+        Some(Self {
+            candidates,
+            index: 0,
+            yes_highlighted: true,
+            approved: Vec::new(),
+        })
+    }
+
+    /// The candidate currently under review, if any.
+    pub(crate) fn current(&self) -> Option<&crate::external_auth::ExternalAuthReviewCandidate> {
+        self.candidates.get(self.index)
+    }
+
+    /// 1-based position of the current candidate (for "1 of 3" display).
+    pub(crate) fn position(&self) -> usize {
+        self.index + 1
+    }
+
+    /// Total number of candidates being reviewed.
+    pub(crate) fn total(&self) -> usize {
+        self.candidates.len()
+    }
+
+    /// Move the Yes/No highlight (true = highlight Yes, false = highlight No).
+    pub(crate) fn set_yes(&mut self, yes: bool) {
+        self.yes_highlighted = yes;
+    }
+
+    /// Toggle the Yes/No highlight (used by left/right or tab-style keys).
+    pub(crate) fn toggle(&mut self) {
+        self.yes_highlighted = !self.yes_highlighted;
+    }
+
+    /// Record the current decision and advance to the next candidate.
+    /// Returns `true` if the walkthrough is now complete (no more candidates).
+    pub(crate) fn commit_current(&mut self) -> bool {
+        if self.yes_highlighted && !self.approved.contains(&self.index) {
+            self.approved.push(self.index);
+        }
+        self.index += 1;
+        self.yes_highlighted = true;
+        self.index >= self.candidates.len()
+    }
+}
+
 /// The current phase of the onboarding flow.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OnboardingPhase {
     /// Log in. Entered on a fresh install when no working credentials exist.
     /// The TUI now owns the entire first-run login experience instead of the
-    /// old blocking CLI provider prompt. `detected_imports` holds short
-    /// human-readable summaries of any importable external logins we found
-    /// (e.g. "OpenAI/Codex", "Claude") so the welcome card can guide the user
-    /// to import them; empty when nothing was detected.
-    Login { detected_imports: Vec<String> },
+    /// old blocking CLI provider prompt.
+    ///
+    /// When we detect importable external logins, `import` holds a per-candidate
+    /// yes/no walkthrough so the user can step through and choose what to import.
+    /// When `None`, there was nothing to import and we prompt the user to pick a
+    /// provider manually (Enter opens the login picker).
+    Login { import: Option<ImportReview> },
     /// Pick a model. Entered right after login/import.
     ModelSelect,
     /// "Continue where you left off in <cli>?" Yes/No with a 10s auto-Yes.
@@ -87,10 +162,11 @@ impl OnboardingFlow {
     }
 
     /// Start the flow at the login phase (no working credentials yet).
-    /// `detected_imports` are short summaries of importable external logins.
-    pub(crate) fn begin_at_login(detected_imports: Vec<String>) -> Self {
+    /// `import` is the per-candidate import walkthrough when external logins
+    /// were detected, or `None` to prompt for a manual provider login.
+    pub(crate) fn begin_at_login(import: Option<ImportReview>) -> Self {
         Self {
-            phase: OnboardingPhase::Login { detected_imports },
+            phase: OnboardingPhase::Login { import },
         }
     }
 

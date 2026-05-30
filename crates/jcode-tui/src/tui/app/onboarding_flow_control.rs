@@ -5,7 +5,7 @@
 //! response to login, model selection, key presses, and the auto-advance timer.
 
 use super::onboarding_flow::{
-    ExternalCli, OnboardingFlow, OnboardingPhase, detect_external_cli_oauth,
+    ExternalCli, ImportReview, OnboardingFlow, OnboardingPhase, detect_external_cli_oauth,
 };
 use super::{App, DisplayMessage, SessionPickerMode};
 use crate::tui::session_picker::{self, SessionFilterMode, SessionPicker};
@@ -128,36 +128,34 @@ impl App {
     /// in before the TUI launches).
     ///
     /// If we detect importable external logins (Codex/Claude/Cursor/etc.), we
-    /// arm the auto-import review so the user can confirm which to import; the
-    /// welcome card lists what we found. Otherwise we prompt them to pick a
-    /// provider manually.
+    /// arm a per-candidate yes/no walkthrough so the user can step through each
+    /// detected login and choose whether to import it. Otherwise we prompt them
+    /// to pick a provider manually.
     ///
     /// No-op if a flow is already running.
     pub(super) fn begin_onboarding_flow_at_login(&mut self) {
         if self.onboarding_flow.is_some() {
             return;
         }
-        // Detect importable external logins and, if any, arm the review prompt
-        // (the user types `a` / `1,3` into the input to import). This also gives
-        // us the summaries to display on the welcome card.
-        let detected_imports = if self.begin_external_auth_import_review(false) {
-            crate::external_auth::pending_external_auth_review_candidates()
-                .map(|candidates| {
-                    candidates
-                        .iter()
-                        .map(|c| c.provider_summary().to_string())
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
+        // Detect importable external logins and, if any, build a per-candidate
+        // yes/no walkthrough rendered by the onboarding welcome screen.
+        let import = match crate::external_auth::pending_external_auth_review_candidates() {
+            Ok(candidates) => ImportReview::new(candidates),
+            Err(err) => {
+                crate::logging::error(&format!(
+                    "onboarding: failed to inspect external login sources: {err}"
+                ));
+                None
+            }
         };
-        let had_imports = !detected_imports.is_empty();
-        self.onboarding_flow = Some(OnboardingFlow::begin_at_login(detected_imports));
+        let had_imports = import.is_some();
+        self.onboarding_flow = Some(OnboardingFlow::begin_at_login(import));
         // The login prompt is rendered by the onboarding welcome screen
         // (`onboarding_welcome_kind`) so it survives in remote mode.
         if had_imports {
-            self.set_status_notice("Welcome to jcode: import an existing login or press Enter to choose a provider");
+            self.set_status_notice(
+                "Welcome to jcode: review detected logins (arrows/jk to move, Enter to choose)",
+            );
         } else {
             self.set_status_notice("Welcome to jcode: press Enter to log in");
         }
@@ -224,21 +222,27 @@ impl App {
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
         match self.onboarding_phase() {
-            Some(OnboardingPhase::Login { .. }) => match code {
-                // Enter opens the interactive login picker, but only from the
-                // welcome screen. If an overlay is already open, or an import
-                // review is armed (`pending_login`) and waiting for the user to
-                // type a selection, let Enter fall through so the picker/input
-                // can commit.
-                KeyCode::Enter
-                    if self.inline_interactive_state.is_none()
-                        && self.pending_login.is_none() =>
-                {
-                    self.show_interactive_login();
-                    true
+            Some(OnboardingPhase::Login { import }) => {
+                // No detected imports: fall back to "press Enter to choose a
+                // provider". Only intercept Enter from the welcome screen; if an
+                // overlay is already open let it commit.
+                if import.is_none() {
+                    return match code {
+                        KeyCode::Enter if self.inline_interactive_state.is_none() => {
+                            self.show_interactive_login();
+                            true
+                        }
+                        _ => false,
+                    };
                 }
-                _ => false,
-            },
+                // A per-candidate import walkthrough is active. Drive it with the
+                // arrow / vim keys; Enter or Space commits the highlighted Yes/No
+                // and advances. Don't intercept once an inline overlay is open.
+                if self.inline_interactive_state.is_some() {
+                    return false;
+                }
+                self.handle_onboarding_import_review_key(code)
+            }
             Some(OnboardingPhase::ModelSelect) => match code {
                 // Enter opens the model picker, but only from the welcome
                 // screen. If a picker (or any inline overlay) is already open,
@@ -262,6 +266,133 @@ impl App {
             },
             _ => false,
         }
+    }
+
+    /// Handle a key while the per-candidate import walkthrough is active.
+    /// Returns true if the key was consumed.
+    ///
+    /// Navigation:
+    ///   - Up / k / Left / h  -> highlight "Yes"
+    ///   - Down / j / Right / l -> highlight "No"
+    ///   - Tab                -> toggle Yes/No
+    ///   - y / Y              -> highlight "Yes" and commit
+    ///   - n / N              -> highlight "No" and commit
+    ///   - Enter / Space      -> commit the highlighted choice, advance
+    fn handle_onboarding_import_review_key(&mut self, code: KeyCode) -> bool {
+        // Mutate the live review in place, and report whether the walkthrough
+        // finished so we can kick off the import outside the borrow.
+        let mut finished = false;
+        {
+            let Some(review) = self.onboarding_import_review_mut() else {
+                return false;
+            };
+            match code {
+                KeyCode::Up | KeyCode::Char('k') | KeyCode::Left | KeyCode::Char('h') => {
+                    review.set_yes(true);
+                }
+                KeyCode::Down | KeyCode::Char('j') | KeyCode::Right | KeyCode::Char('l') => {
+                    review.set_yes(false);
+                }
+                KeyCode::Tab => review.toggle(),
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    review.set_yes(true);
+                    finished = review.commit_current();
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') => {
+                    review.set_yes(false);
+                    finished = review.commit_current();
+                }
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    finished = review.commit_current();
+                }
+                _ => return false,
+            }
+        }
+        if finished {
+            self.onboarding_finish_import_review();
+        } else {
+            self.update_onboarding_import_review_status();
+        }
+        true
+    }
+
+    /// Mutable access to the active import walkthrough, if any.
+    fn onboarding_import_review_mut(&mut self) -> Option<&mut ImportReview> {
+        match self.onboarding_flow.as_mut()?.phase {
+            OnboardingPhase::Login {
+                import: Some(ref mut review),
+            } => Some(review),
+            _ => None,
+        }
+    }
+
+    /// Refresh the status notice to reflect the current import-review position.
+    fn update_onboarding_import_review_status(&mut self) {
+        if let Some(review) = self.onboarding_import_review_mut()
+            && let Some(candidate) = review.current()
+        {
+            let notice = format!(
+                "Import {} ({} of {})? Yes/No - arrows/jk to move, Enter to choose",
+                candidate.provider_summary(),
+                review.position(),
+                review.total(),
+            );
+            self.set_status_notice(notice);
+        }
+    }
+
+    /// The walkthrough is complete: run the import for the approved candidates
+    /// (if any), then either advance the flow or wait for the import result.
+    fn onboarding_finish_import_review(&mut self) {
+        // Take the candidates and approved indices out of the phase, then clear
+        // the import sub-state so the welcome card stops rendering the prompt.
+        let (candidates, approved) = match self.onboarding_import_review_mut() {
+            Some(review) => (review.candidates.clone(), review.approved.clone()),
+            None => return,
+        };
+        if let Some(flow) = self.onboarding_flow.as_mut()
+            && let OnboardingPhase::Login { ref mut import } = flow.phase
+        {
+            *import = None;
+        }
+
+        if approved.is_empty() {
+            // The user declined every detected login. Fall back to manual login
+            // so they can still authenticate.
+            self.set_status_notice("No logins imported. Press Enter to choose a provider.");
+            return;
+        }
+
+        // Kick off the import on the runtime; the LoginCompleted event advances
+        // onboarding (Login -> ModelSelect) and activates the provider.
+        self.set_status_notice("Login: importing selected logins...");
+        tokio::spawn(async move {
+            let outcome = match crate::external_auth::run_external_auth_auto_import_candidates(
+                &candidates,
+                &approved,
+            )
+            .await
+            {
+                Ok(outcome) => outcome,
+                Err(err) => {
+                    crate::bus::Bus::global().publish(crate::bus::BusEvent::LoginCompleted(
+                        crate::bus::LoginCompleted {
+                            provider: "auto-import".to_string(),
+                            success: false,
+                            message: format!("Auto import failed: {}", err),
+                        },
+                    ));
+                    return;
+                }
+            };
+            crate::bus::Bus::global().publish(crate::bus::BusEvent::LoginCompleted(
+                crate::bus::LoginCompleted {
+                    provider: "auto-import".to_string(),
+                    success: outcome.imported > 0,
+                    message: outcome.render_markdown(),
+                },
+            ));
+        });
     }
 
     /// Open a single-select resume-style picker filtered to the external CLI's
