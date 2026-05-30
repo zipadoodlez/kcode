@@ -318,6 +318,38 @@ fn process_remote_followups_respects_disabled_auto_server_reload() {
 }
 
 #[test]
+fn process_remote_followups_pauses_auto_reload_after_repeated_attempts() {
+    // Regression guard for issue #277: a false-positive "server has update" must
+    // not auto-reload forever. After the breaker threshold we stop reloading and
+    // surface a message instead.
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut app = create_test_app();
+    app.auto_server_reload = true;
+
+    // Simulate the server repeatedly reporting an update on every history event.
+    let mut paused = false;
+    for _ in 0..10 {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        remote.mark_history_loaded();
+        app.pending_server_reload = true;
+        rt.block_on(process_remote_followups(&mut app, &mut remote));
+        assert!(!app.pending_server_reload);
+        if let Some(last) = app.display_messages().last() {
+            if last.content.contains("auto-reload paused") {
+                paused = true;
+                break;
+            }
+        }
+    }
+
+    assert!(
+        paused,
+        "auto-reload should eventually pause to avoid an infinite reload loop"
+    );
+}
+
+#[test]
 fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks_busy() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("create temp home");

@@ -754,6 +754,12 @@ pub struct App {
     remote_server_has_update: Option<bool>,
     // Auto-reload server when stale (set on first connect if server_has_update)
     pending_server_reload: bool,
+    // Defense-in-depth circuit breaker for issue #277: count how many times this
+    // client has auto-reloaded the server. A healthy reload happens at most once
+    // (afterwards the server is up to date), so repeated auto-reloads indicate a
+    // false-positive "update available" loop. Past a small threshold we stop
+    // auto-reloading and surface a message instead of flickering forever.
+    server_auto_reload_attempts: u32,
     // Remote server short name (e.g., "running", "blazing")
     remote_server_short_name: Option<String>,
     // Remote server icon (e.g., "🔥", "🌫️")

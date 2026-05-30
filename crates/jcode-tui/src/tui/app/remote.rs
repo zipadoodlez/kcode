@@ -821,13 +821,30 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     if app.pending_server_reload && !app.is_processing {
         app.pending_server_reload = false;
         if app.auto_server_reload {
-            app.append_reload_message("Reloading server with newer binary...");
-            if let Err(err) = remote.reload().await {
-                app.push_display_message(DisplayMessage::error(format!(
-                    "Failed to auto-reload server: {}. Use `/reload` to retry.",
-                    err
-                )));
-                app.set_status_notice("Server update available - auto reload failed");
+            // Defense-in-depth for issue #277: a correct reload only needs to
+            // happen once. If we keep being told a newer binary is available
+            // after several auto-reloads, treat it as a false-positive loop and
+            // stop hammering the server (which would otherwise flicker the UI).
+            const MAX_AUTO_SERVER_RELOADS: u32 = 3;
+            if app.server_auto_reload_attempts >= MAX_AUTO_SERVER_RELOADS {
+                crate::logging::warn(&format!(
+                    "Suppressing server auto-reload after {} attempts; server keeps reporting an update (possible reload loop, issue #277)",
+                    app.server_auto_reload_attempts
+                ));
+                app.push_display_message(DisplayMessage::system(
+                    "ℹ Server keeps reporting a newer binary after repeated reloads; auto-reload paused to avoid a loop. Use `/reload` manually if needed.".to_string(),
+                ));
+                app.set_status_notice("Server auto-reload paused (possible loop)");
+            } else {
+                app.server_auto_reload_attempts += 1;
+                app.append_reload_message("Reloading server with newer binary...");
+                if let Err(err) = remote.reload().await {
+                    app.push_display_message(DisplayMessage::error(format!(
+                        "Failed to auto-reload server: {}. Use `/reload` to retry.",
+                        err
+                    )));
+                    app.set_status_notice("Server update available - auto reload failed");
+                }
             }
         } else {
             app.push_display_message(DisplayMessage::system(

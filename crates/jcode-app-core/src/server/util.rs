@@ -105,6 +105,51 @@ pub(crate) fn swarm_id_for_dir(dir: Option<PathBuf>) -> Option<String> {
     Some(dir.to_string_lossy().to_string())
 }
 
+/// Decide whether any reload candidate is *provably* newer than the running
+/// server binary.
+///
+/// This is intentionally conservative. An earlier version reported "update
+/// available" whenever the mtime comparison was inconclusive (e.g. a metadata
+/// read failed) as long as the candidate path differed from the running exe.
+/// On some systems that fallback fired permanently, so the client would
+/// auto-reload the server, the server would exec into the candidate, and the
+/// freshly-exec'd server would again report an update -> an infinite reload
+/// loop that flickers the terminal (see issue #277).
+///
+/// We now only report an update when we can read both mtimes and the candidate
+/// is strictly newer than the running binary. Any uncertainty suppresses the
+/// auto-reload signal so it can never wedge the client into a loop.
+fn newer_binary_available(
+    current_mtime: Option<std::time::SystemTime>,
+    current_canonical: Option<&Path>,
+    candidates: impl IntoIterator<Item = (PathBuf, Option<std::time::SystemTime>)>,
+) -> bool {
+    let Some(current_time) = current_mtime else {
+        crate::logging::warn(
+            "server_has_newer_binary: current executable mtime unavailable; suppressing auto-reload update signal",
+        );
+        return false;
+    };
+
+    candidates.into_iter().any(|(candidate, candidate_mtime)| {
+        // Reloading into ourselves is never an "update".
+        if current_canonical == Some(candidate.as_path()) {
+            return false;
+        }
+
+        match candidate_mtime {
+            Some(candidate_time) => candidate_time > current_time,
+            None => {
+                crate::logging::warn(&format!(
+                    "server_has_newer_binary: candidate mtime unavailable for {}; suppressing auto-reload update signal",
+                    candidate.display()
+                ));
+                false
+            }
+        }
+    })
+}
+
 pub(crate) fn server_has_newer_binary() -> bool {
     let current_exe = std::env::current_exe().ok();
     let current_mtime = current_exe
@@ -122,19 +167,18 @@ pub(crate) fn server_has_newer_binary() -> bool {
         }
     }
 
-    candidates.into_iter().any(|candidate| {
+    let candidates_with_mtimes = candidates.into_iter().map(|candidate| {
         let candidate_mtime = std::fs::metadata(&candidate)
             .ok()
             .and_then(|m| m.modified().ok());
+        (candidate, candidate_mtime)
+    });
 
-        match (current_mtime, candidate_mtime) {
-            (Some(current), Some(candidate_time)) => candidate_time > current,
-            _ => current_canonical
-                .as_ref()
-                .map(|current| current != &candidate)
-                .unwrap_or(false),
-        }
-    })
+    newer_binary_available(
+        current_mtime,
+        current_canonical.as_deref(),
+        candidates_with_mtimes,
+    )
 }
 
 /// Server identity for multi-server support
@@ -163,4 +207,83 @@ pub(crate) fn startup_headless_recovery_test_delay() -> Option<std::time::Durati
     let raw = std::env::var("JCODE_TEST_HEADLESS_STARTUP_RECOVERY_DELAY_MS").ok()?;
     let delay_ms = raw.trim().parse::<u64>().ok()?;
     (delay_ms > 0).then(|| std::time::Duration::from_millis(delay_ms))
+}
+
+#[cfg(test)]
+mod newer_binary_tests {
+    use super::newer_binary_available;
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime};
+
+    fn t(secs: u64) -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
+    }
+
+    #[test]
+    fn reports_update_when_candidate_is_strictly_newer() {
+        let candidates = vec![(PathBuf::from("/x/stable/jcode"), Some(t(200)))];
+        assert!(newer_binary_available(
+            Some(t(100)),
+            Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn ignores_candidate_that_is_not_newer() {
+        let candidates = vec![(PathBuf::from("/x/stable/jcode"), Some(t(100)))];
+        assert!(!newer_binary_available(
+            Some(t(100)),
+            Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn never_reloads_into_self_even_if_paths_were_equal() {
+        // Same canonical path must never count as an update, regardless of mtime.
+        let candidates = vec![(PathBuf::from("/x/current/jcode"), Some(t(999)))];
+        assert!(!newer_binary_available(
+            Some(t(100)),
+            Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn suppresses_update_when_current_mtime_unavailable() {
+        // Regression for issue #277: an unreadable current mtime previously fell
+        // through to a path-difference heuristic that could loop forever.
+        let candidates = vec![(PathBuf::from("/x/stable/jcode"), Some(t(200)))];
+        assert!(!newer_binary_available(
+            None,
+            Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn suppresses_update_when_candidate_mtime_unavailable() {
+        // The dangerous case from issue #277: candidate path differs but its
+        // mtime cannot be read. Must NOT report an update.
+        let candidates = vec![(PathBuf::from("/x/stable/jcode"), None)];
+        assert!(!newer_binary_available(
+            Some(t(100)),
+            Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn reports_update_if_any_candidate_is_newer() {
+        let candidates = vec![
+            (PathBuf::from("/x/stable/jcode"), None),
+            (PathBuf::from("/x/shared/jcode"), Some(t(300))),
+        ];
+        assert!(newer_binary_available(
+            Some(t(100)),
+            Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
 }
