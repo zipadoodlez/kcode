@@ -11,7 +11,14 @@ pub(super) fn inline_ui_height(app: &dyn TuiState) -> u16 {
         Some(crate::tui::InlineUiStateRef::Interactive(picker)) => {
             let visible_rows = picker.filtered.len() as u16;
             let rows_needed = visible_rows + 1 + 2; // header + rounded border
-            rows_needed.min(20)
+            // Reserve one extra row for the model-picker hotkey hint that is
+            // rendered ABOVE the box (outside its border).
+            let hint_rows: u16 = if picker.kind == crate::tui::PickerKind::Model && !picker.preview {
+                1
+            } else {
+                0
+            };
+            rows_needed.min(20) + hint_rows
         }
         Some(crate::tui::InlineUiStateRef::View(view)) => {
             let visible_rows = view.lines.len().max(1) as u16;
