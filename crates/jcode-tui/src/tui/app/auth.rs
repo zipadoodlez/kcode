@@ -42,7 +42,7 @@ impl App {
             );
             if let Some(target) = callback_target {
                 notices.push(format!(
-                    "Local callback target `{}` is unavailable, so jcode is using manual-safe paste completion instead.",
+                    "Local callback target {} is unavailable, so jcode is using manual-safe paste completion instead.",
                     target
                 ));
             } else {
@@ -54,7 +54,7 @@ impl App {
         }
         if !notices.is_empty() {
             notices.push(format!(
-                "If login still fails, run `jcode auth doctor {}` for a guided diagnosis.",
+                "If login still fails, run jcode auth doctor {} for a guided diagnosis.",
                 provider_id
             ));
         }
@@ -67,26 +67,26 @@ impl App {
             .unwrap_or_else(|| crate::subscription_catalog::DEFAULT_JCODE_API_BASE.to_string());
         let runtime_mode = crate::subscription_catalog::is_runtime_mode_enabled();
 
-        let mut message = String::from("**Jcode Subscription Status**\n\n");
+        let mut message = String::from("Jcode Subscription Status\n\n");
         message.push_str(&format!(
-            "- Credentials: {}\n",
+            "  - Credentials: {}\n",
             if configured_key {
                 "configured"
             } else {
-                "not configured (`/login jcode`)"
+                "not configured (/login jcode)"
             }
         ));
         message.push_str(&format!(
-            "- Router base: `{}`{}\n",
+            "  - Router base: {}{}\n",
             configured_base,
             if crate::subscription_catalog::has_router_base() {
                 ""
             } else {
-                " _(default placeholder)_"
+                " (default placeholder)"
             }
         ));
         message.push_str(&format!(
-            "- Runtime mode: {}\n\n",
+            "  - Runtime mode: {}\n\n",
             if runtime_mode {
                 "active for this session"
             } else {
@@ -94,15 +94,15 @@ impl App {
             }
         ));
 
-        message.push_str("**Catalog**\n\n");
+        message.push_str("Catalog\n\n");
         for model in crate::subscription_catalog::curated_models() {
             let default_suffix = if model.default_enabled {
-                " _(default)_"
+                " (default)"
             } else {
                 ""
             };
             message.push_str(&format!(
-                "- **{}** — `{}`{}\n  - {}\n  - {}\n",
+                "  - {} - {}{}\n      - {}\n      - {}\n",
                 model.display_name,
                 model.id,
                 default_suffix,
@@ -111,13 +111,13 @@ impl App {
             ));
         }
 
-        message.push_str("\n**Planned tiers**\n\n");
+        message.push_str("\nPlanned tiers\n\n");
         for tier in [
             crate::subscription_catalog::JcodeTier::Starter20,
             crate::subscription_catalog::JcodeTier::Pro100,
         ] {
             message.push_str(&format!(
-                "- {} — ${}/mo retail, about ${:.2} usable inference budget\n",
+                "  - {} - ${}/mo retail, about ${:.2} usable inference budget\n",
                 tier.display_name(),
                 tier.retail_price_usd(),
                 tier.usable_budget_usd()
@@ -140,25 +140,45 @@ impl App {
             crate::auth::AuthState::NotConfigured => "not configured",
         };
         let providers = crate::provider_catalog::auth_status_login_providers();
-        let mut message = String::from(
-            "**Authentication Status:**\n\n| Provider | Status | Method | Health | Validation |\n|----------|--------|--------|--------|------------|\n",
-        );
+        let mut rows: Vec<[String; 5]> = vec![[
+            "Provider".to_string(),
+            "Status".to_string(),
+            "Method".to_string(),
+            "Health".to_string(),
+            "Validation".to_string(),
+        ]];
         for provider in providers {
             let assessment = status.assessment_for_provider(provider);
-            message.push_str(&format!(
-                "| {} | {} | {} | {} | {} |\n",
-                provider.display_name,
-                icon(assessment.state),
-                assessment.method_detail,
+            rows.push([
+                provider.display_name.to_string(),
+                icon(assessment.state).to_string(),
+                assessment.method_detail.to_string(),
                 assessment.health_summary(),
                 validation
                     .get(provider.id)
                     .map(crate::auth::validation::format_record_label)
                     .unwrap_or_else(|| "not validated".to_string()),
-            ));
+            ]);
+        }
+        let mut widths = [0usize; 5];
+        for row in &rows {
+            for (i, cell) in row.iter().enumerate() {
+                widths[i] = widths[i].max(cell.chars().count());
+            }
+        }
+        let mut message = String::from("Authentication Status:\n\n");
+        for row in &rows {
+            let line = row
+                .iter()
+                .enumerate()
+                .map(|(i, cell)| format!("{:width$}", cell, width = widths[i]))
+                .collect::<Vec<_>>()
+                .join("  ");
+            message.push_str(line.trim_end());
+            message.push('\n');
         }
         message.push_str(
-            "\nUse `/login <provider>` to authenticate. `/login jcode` is for curated jcode subscription access; `/account` opens the provider/account management center, `/account <provider> settings` shows provider-specific controls, and `/auth doctor` or `/account <provider> doctor` shows recovery steps.",
+            "\nUse /login <provider> to authenticate. /login jcode is for curated jcode subscription access; /account opens the provider/account management center, /account <provider> settings shows provider-specific controls, and /auth doctor or /account <provider> doctor shows recovery steps.",
         );
         self.push_display_message(DisplayMessage::system(message));
     }
@@ -194,7 +214,7 @@ impl App {
                 Ok("Logged out of Gemini.".to_string())
             }
             _ => Ok(format!(
-                "Logout for {} is not automated yet. Remove its saved API key or external CLI session from `/account {} settings`.",
+                "Logout for {} is not automated yet. Remove its saved API key or external CLI session from /account {} settings.",
                 provider.display_name, provider.id
             )),
         })();
@@ -276,7 +296,7 @@ impl App {
                     provider.auth_kind.label(),
                 );
                 self.push_display_message(DisplayMessage::error(
-                    "Google/Gmail login is only available from the CLI right now. Run `jcode login --provider google`."
+                    "Google/Gmail login is only available from the CLI right now. Run jcode login --provider google."
                         .to_string(),
                 ));
             }
@@ -298,7 +318,7 @@ impl App {
 
     fn start_jcode_login(&mut self) {
         self.push_display_message(DisplayMessage::system(
-            "**Jcode Subscription Login**\n\n\
+            "Jcode Subscription Login\n\n\
              This doesn't exist yet.\n\n\
              This would be a jcode subscription for a curated list of models chosen for good compatibility with jcode. It would work similarly to OpenRouter, but jcode would pick the best model/provider routes by balancing price, performance, KV cache support, latency, and throughput. Right now, the model of choice would be DeepSeek V4 Pro.\n\n\
              The goal would be to maximize the amount of token usage you get for your subscription. The plan is to stay around zero profit until jcode can beat raw API prices while providing some level of competitive subsidization. This subscription would be required for the mobile app version.\n\n\
@@ -346,10 +366,10 @@ impl App {
         let preflight = Self::record_oauth_preflight("claude", browser_opened, None, None);
 
         self.push_display_message(DisplayMessage::system(format!(
-            "**Claude OAuth Login** (account: `{}`)\n\n\
+            "Claude OAuth Login (account: {})\n\n\
              Opening browser for authentication...\n\n\
              If the browser didn't open, visit:\n{}\n\n\
-             {}{}{}After logging in, copy the callback URL or authorization code and **paste it here**. Type `/cancel` to abort.{}",
+             {}{}{}After logging in, copy the callback URL or authorization code and paste it here. Type /cancel to abort.{}",
             label,
             auth_url,
             if preflight.is_empty() { "" } else { &preflight },
@@ -384,7 +404,7 @@ impl App {
                     });
                 }
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Switched to Anthropic account `{}`.",
+                    "Switched to Anthropic account {}.",
                     label
                 )));
                 // Keep account-sensitive UI state in sync immediately.
@@ -415,11 +435,11 @@ impl App {
             (true, false) => self.switch_account(label),
             (false, true) => self.switch_openai_account(label),
             (true, true) => self.push_display_message(DisplayMessage::error(format!(
-                "Account label `{}` exists for both Anthropic and OpenAI. Use `/account switch {}` or `/account openai switch {}` explicitly.",
+                "Account label {} exists for both Anthropic and OpenAI. Use /account switch {} or /account openai switch {} explicitly.",
                 label, label, label
             ))),
             (false, false) => self.push_display_message(DisplayMessage::error(format!(
-                "No Anthropic or OpenAI account with label `{}` found.",
+                "No Anthropic or OpenAI account with label {} found.",
                 label
             ))),
         }
@@ -429,7 +449,7 @@ impl App {
         match crate::auth::claude::remove_account(label) {
             Ok(()) => {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Removed Anthropic account `{}`.",
+                    "Removed Anthropic account {}.",
                     label
                 )));
             }
@@ -457,7 +477,7 @@ impl App {
                     });
                 }
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Switched to OpenAI account `{}`.",
+                    "Switched to OpenAI account {}.",
                     label
                 )));
                 crate::auth::AuthStatus::invalidate_cache();
@@ -477,7 +497,7 @@ impl App {
         match crate::auth::codex::remove_account(label) {
             Ok(()) => {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Removed OpenAI account `{}`.",
+                    "Removed OpenAI account {}.",
                     label
                 )));
             }
@@ -576,12 +596,12 @@ impl App {
 
         let callback_line = if callback_available {
             format!(
-                "Waiting for callback on `localhost:{}`... (this will complete automatically)\n",
+                "Waiting for callback on localhost:{}... (this will complete automatically)\n",
                 port
             )
         } else {
             format!(
-                "Local callback port `localhost:{}` is unavailable, so finish in any browser and paste the full callback URL here.\n",
+                "Local callback port localhost:{} is unavailable, so finish in any browser and paste the full callback URL here.\n",
                 port
             )
         };
@@ -593,13 +613,13 @@ impl App {
         );
 
         self.push_display_message(DisplayMessage::system(format!(
-            "**OpenAI OAuth Login** (account: `{}`)\n\n\
+            "OpenAI OAuth Login (account: {})\n\n\
              Opening browser for authentication...\n\n\
              If the browser didn't open, visit:\n{}\n\n\
-             **Note:** Wait a few seconds for the page to fully load before clicking Continue. \
+             Note: Wait a few seconds for the page to fully load before clicking Continue. \
              OpenAI's verification system may briefly disable the button.\n\n\
              {}{}{}\
-             Or paste the full callback URL or query string here to finish from another device. Type `/cancel` to abort.{}",
+             Or paste the full callback URL or query string here to finish from another device. Type /cancel to abort.{}",
             label,
             auth_url,
             if preflight.is_empty() {
@@ -796,7 +816,7 @@ impl App {
 
         let callback_line = if callback_available {
             format!(
-                "Waiting for callback on `{}`... (this will complete automatically)\n",
+                "Waiting for callback on {}... (this will complete automatically)\n",
                 redirect_uri
             )
         } else {
@@ -811,11 +831,11 @@ impl App {
         );
 
         self.push_display_message(DisplayMessage::system(format!(
-            "**Gemini OAuth Login**\n\n\
+            "Gemini OAuth Login\n\n\
              Opening browser for authentication...\n\n\
              If the browser didn't open, visit:\n{}\n\n\
              {}{}{}\
-             Or paste the full callback URL, query string, or authorization code here to finish. Type `/cancel` to abort.{}",
+             Or paste the full callback URL, query string, or authorization code here to finish. Type /cancel to abort.{}",
             auth_url,
             if preflight.is_empty() {
                 String::new()
@@ -899,10 +919,10 @@ impl App {
         if profile.id == crate::provider_catalog::OPENAI_COMPAT_PROFILE.id {
             let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
             self.push_display_message(DisplayMessage::system(format!(
-                "**{} Endpoint**\n\n\
+                "{} Endpoint\n\n\
                  Setup docs: {}\n\
-                 Current API base: `{}`\n\n\
-                 **Paste the API base below**. Press Enter to keep the current value, or type `/cancel` to abort.",
+                 Current API base: {}\n\n\
+                 Paste the API base below. Press Enter to keep the current value, or type /cancel to abort.",
                 resolved.display_name, resolved.setup_url, resolved.api_base
             )));
             self.set_status_notice("Login: API base...");
@@ -946,20 +966,20 @@ impl App {
         openai_compatible_profile: Option<crate::provider_catalog::OpenAiCompatibleProfile>,
     ) {
         let model_hint = default_model
-            .map(|m| format!("Suggested default model: `{}`\n\n", m))
+            .map(|m| format!("Suggested default model: {}\n\n", m))
             .unwrap_or_default();
         let endpoint_hint = endpoint
-            .map(|endpoint| format!("Endpoint: `{}`\n", endpoint))
+            .map(|endpoint| format!("Endpoint: {}\n", endpoint))
             .unwrap_or_default();
         let prompt = if api_key_optional {
-            "**Paste your API key below** if your endpoint requires one. Press Enter to skip, or type `/cancel` to abort."
+            "Paste your API key below if your endpoint requires one. Press Enter to skip, or type /cancel to abort."
         } else {
-            "**Paste your API key below** (it will be saved securely), or type `/cancel` to abort."
+            "Paste your API key below (it will be saved securely), or type /cancel to abort."
         };
         self.push_display_message(DisplayMessage::system(format!(
-            "**{} {}**\n\n\
+            "{} {}\n\n\
              Setup docs: {}\n\
-             Stored variable: `{}`\n\
+             Stored variable: {}\n\
              {}\
              {}\n\
              {}",
@@ -1008,9 +1028,9 @@ impl App {
 
     fn start_azure_login(&mut self) {
         self.push_display_message(DisplayMessage::system(
-            "**Azure OpenAI Login**\n\n\
-             jcode uses Azure OpenAI's `/openai/v1` API with either Microsoft Entra ID or an API key.\n\n\
-             Enter your Azure OpenAI endpoint, for example `https://your-resource.openai.azure.com`, or type `/cancel` to abort."
+            "Azure OpenAI Login\n\n\
+             jcode uses Azure OpenAI's /openai/v1 API with either Microsoft Entra ID or an API key.\n\n\
+             Enter your Azure OpenAI endpoint, for example https://your-resource.openai.azure.com, or type /cancel to abort."
                 .to_string(),
         ));
         self.set_status_notice("Login: Azure endpoint...");
@@ -1021,11 +1041,11 @@ impl App {
         crate::telemetry::record_auth_started("cursor", "api_key");
 
         self.push_display_message(DisplayMessage::system(
-            "**Cursor API Key**\n\n\
+            "Cursor API Key\n\n\
              Get your API key from: https://cursor.com/settings\n\
              (Dashboard > Integrations > User API Keys)\n\n\
              jcode will save it securely and use the native Cursor HTTPS transport.\n\n\
-             **Paste your API key below**, or type `/cancel` to abort."
+             Paste your API key below, or type /cancel to abort."
                 .to_string(),
         ));
         self.set_status_notice("Login: paste cursor key...");
@@ -1072,11 +1092,11 @@ impl App {
                     .map(|section| format!("\n\n{section}"))
                     .unwrap_or_default();
                     format!(
-                        "**GitHub Copilot Login**\n\n\
-                         Your code: **{}**{}\n\n\
+                        "GitHub Copilot Login\n\n\
+                         Your code: {}{}\n\n\
                          Opening browser to {} ...\n\
                          Paste the code there and authorize.{}\n\n\
-                         Waiting for authorization... (type `/cancel` to abort)",
+                         Waiting for authorization... (type /cancel to abort)",
                         user_code, clipboard_msg, verification_uri, qr_section
                     )
                 },
@@ -1113,8 +1133,8 @@ impl App {
                         provider: "copilot".to_string(),
                         success: true,
                         message: format!(
-                            "Authenticated as **{}** via GitHub Copilot.\n\n\
-                             Copilot models are now available in `/model`.",
+                            "Authenticated as {} via GitHub Copilot.\n\n\
+                             Copilot models are now available in /model.",
                             username
                         ),
                     }));
@@ -1130,8 +1150,8 @@ impl App {
         });
 
         self.push_display_message(DisplayMessage::system(
-            "**GitHub Copilot Login**\n\n\
-             Starting device flow... please wait. Type `/cancel` to abort."
+            "GitHub Copilot Login\n\n\
+             Starting device flow... please wait. Type /cancel to abort."
                 .to_string(),
         ));
     }
@@ -1223,12 +1243,12 @@ impl App {
 
         let callback_line = if callback_available {
             format!(
-                "Waiting for callback on `{}`... (this will complete automatically)\n",
+                "Waiting for callback on {}... (this will complete automatically)\n",
                 redirect_uri
             )
         } else {
             format!(
-                "Local callback port `{}` is unavailable, so finish in any browser and paste the full callback URL or query string here.\n",
+                "Local callback port {} is unavailable, so finish in any browser and paste the full callback URL or query string here.\n",
                 redirect_uri
             )
         };
@@ -1241,11 +1261,11 @@ impl App {
         let manual_hint = "If the browser ends on a loopback/callback error page, copy the full URL from the address bar and paste it here immediately.\n";
 
         self.push_display_message(DisplayMessage::system(format!(
-            "**Antigravity OAuth Login**\n\n\
+            "Antigravity OAuth Login\n\n\
              Opening browser for authentication...\n\n\
              If the browser didn't open, visit:\n{}\n\n\
              {}{}{}{}\
-             Or paste the full callback URL or query string here to finish. Type `/cancel` to abort.{}",
+             Or paste the full callback URL or query string here to finish. Type /cancel to abort.{}",
             auth_url,
             if preflight.is_empty() {
                 String::new()
@@ -1318,9 +1338,9 @@ impl App {
         if trimmed.is_empty() {
             let help = match &pending {
                 PendingLogin::AutoImportSelection { .. } => {
-                    "Auto import is waiting for your selection. Reply with `a` to approve all, `1,3` to approve specific sources, or `/cancel` to abort.".to_string()
+                    "Auto import is waiting for your selection. Reply with a to approve all, 1,3 to approve specific sources, or /cancel to abort.".to_string()
                 }
-                _ => "Login still in progress. Complete it in your browser, or paste the callback URL / authorization code here. Type `/cancel` to abort.".to_string(),
+                _ => "Login still in progress. Complete it in your browser, or paste the callback URL / authorization code here. Type /cancel to abort.".to_string(),
             };
             self.push_display_message(DisplayMessage::system(help));
             self.pending_login = Some(pending);
@@ -1380,7 +1400,7 @@ impl App {
                     }
                 });
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Exchanging authorization code for account `{}`...",
+                    "Exchanging authorization code for account {}...",
                     label
                 )));
             }
@@ -1420,7 +1440,7 @@ impl App {
                     }
                 });
                 self.push_display_message(DisplayMessage::system(format!(
-                    "Exchanging OpenAI callback for account `{}`...",
+                    "Exchanging OpenAI callback for account {}...",
                     label
                 )));
             }
@@ -1534,7 +1554,7 @@ impl App {
                 }
                 if key_name == "OPENROUTER_API_KEY" && !key.starts_with("sk-or-") {
                     self.push_display_message(DisplayMessage::system(
-                        "OpenRouter keys typically start with `sk-or-`. Saving anyway..."
+                        "OpenRouter keys typically start with sk-or-. Saving anyway..."
                             .to_string(),
                     ));
                 }
@@ -1632,29 +1652,29 @@ impl App {
                             .and_then(|resolved| resolved.default_model.as_deref())
                             .or(default_model.as_deref());
                         let model_hint = effective_default_model
-                            .map(|m| format!("\nSuggested default model: `{}`", m))
+                            .map(|m| format!("\nSuggested default model: {}", m))
                             .unwrap_or_default();
                         let guidance = if key_name == crate::subscription_catalog::JCODE_API_KEY_ENV
                         {
                             format!(
-                                "Use `/login jcode` to access curated models via your router. If the model list looks stale, run `/refresh-model-list`.\nDocs: {}",
+                                "Use /login jcode to access curated models via your router. If the model list looks stale, run /refresh-model-list.\nDocs: {}",
                                 docs_url
                             )
                         } else if let Some(resolved) = resolved_openai_compatible.as_ref() {
                             if resolved.requires_api_key {
-                                "Fetching models now. Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run `/refresh-model-list`.".to_string()
+                                "Fetching models now. Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.".to_string()
                             } else {
                                 format!(
-                                    "Local endpoint configured at `{}`. Fetching models now; Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run `/refresh-model-list`.",
+                                    "Local endpoint configured at {}. Fetching models now; Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.",
                                     endpoint.as_deref().unwrap_or(resolved.api_base.as_str()),
                                 )
                             }
                         } else if key_name == crate::provider::bedrock::API_KEY_ENV {
-                            "You can now use `/model` to switch to Bedrock models. TUI onboarding saved region `us-east-2`; for a different region, run `jcode login --provider bedrock` from a terminal.".to_string()
+                            "You can now use /model to switch to Bedrock models. TUI onboarding saved region us-east-2; for a different region, run jcode login --provider bedrock from a terminal.".to_string()
                         } else if key_name == "OPENROUTER_API_KEY" {
-                            "You can now use `/model` to switch to OpenRouter models. If the model list looks stale, run `/refresh-model-list`.".to_string()
+                            "You can now use /model to switch to OpenRouter models. If the model list looks stale, run /refresh-model-list.".to_string()
                         } else {
-                            "API key saved. Run `/refresh-model-list` to refresh model discovery, then use `/model` to pick an accessible model.".to_string()
+                            "API key saved. Run /refresh-model-list to refresh model discovery, then use /model to pick an accessible model.".to_string()
                         };
                         let saved_label = if let Some(resolved) =
                             resolved_openai_compatible.as_ref()
@@ -1673,8 +1693,8 @@ impl App {
                             provider: provider.clone(),
                             success: true,
                             message: format!(
-                                "**{}.**\n\n\
-                                 Stored at `~/.config/jcode/{}`.\n\
+                                "{}.\n\n\
+                                 Stored at ~/.config/jcode/{}.\n\
                                  {}{}",
                                 saved_label, env_file, guidance, model_hint
                             ),
@@ -1743,14 +1763,14 @@ impl App {
                 let endpoint_raw = input.trim();
                 let Some(endpoint) = crate::auth::azure::normalize_endpoint(endpoint_raw) else {
                     self.push_display_message(DisplayMessage::error(
-                        "Invalid Azure OpenAI endpoint. Use `https://<resource>.openai.azure.com` or the full `/openai/v1` URL."
+                        "Invalid Azure OpenAI endpoint. Use https://<resource>.openai.azure.com or the full /openai/v1 URL."
                             .to_string(),
                     ));
                     self.pending_login = Some(PendingLogin::AzureEndpoint);
                     return;
                 };
                 self.push_display_message(DisplayMessage::system(
-                    "Azure endpoint accepted. Now enter the Azure deployment/model name, for example `gpt-4.1-nano`."
+                    "Azure endpoint accepted. Now enter the Azure deployment/model name, for example gpt-4.1-nano."
                         .to_string(),
                 ));
                 self.set_status_notice("Login: Azure model...");
@@ -1767,9 +1787,9 @@ impl App {
                 }
                 self.push_display_message(DisplayMessage::system(
                     "Authentication method:\n\n\
-                     `1` Microsoft Entra ID via DefaultAzureCredential, for example `az login`\n\
-                     `2` Azure OpenAI API key\n\n\
-                     Enter `1` or `2` [1]."
+                     1 Microsoft Entra ID via DefaultAzureCredential, for example az login\n\
+                     2 Azure OpenAI API key\n\n\
+                     Enter 1 or 2 [1]."
                         .to_string(),
                 ));
                 self.set_status_notice("Login: Azure auth method...");
@@ -1794,7 +1814,7 @@ impl App {
                     }
                     _ => {
                         self.push_display_message(DisplayMessage::error(
-                            "Invalid auth choice. Enter `1` for Entra ID or `2` for API key."
+                            "Invalid auth choice. Enter 1 for Entra ID or 2 for API key."
                                 .to_string(),
                         ));
                         self.pending_login =
@@ -1816,7 +1836,7 @@ impl App {
                     }
                 } else {
                     self.push_display_message(DisplayMessage::system(
-                        "Paste your Azure OpenAI API key, or type `/cancel` to abort.".to_string(),
+                        "Paste your Azure OpenAI API key, or type /cancel to abort.".to_string(),
                     ));
                     self.set_status_notice("Login: Azure API key...");
                     self.pending_login = Some(PendingLogin::AzureApiKey { endpoint, model });
@@ -1858,8 +1878,8 @@ impl App {
                         Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
                             provider: "cursor".to_string(),
                             success: true,
-                            message: "**Cursor API key saved.**\n\n\
-                             Stored at `~/.config/jcode/cursor.env`.\n\
+                            message: "Cursor API key saved.\n\n\
+                             Stored at ~/.config/jcode/cursor.env.\n\
                              jcode will use it with the native Cursor HTTPS transport."
                                 .to_string(),
                         }));
@@ -1884,7 +1904,7 @@ impl App {
             PendingLogin::Copilot => {
                 self.push_display_message(DisplayMessage::system(
                     "Copilot login is waiting for browser authorization.\n\
-                     Complete the login in your browser, or type `/cancel` to abort."
+                     Complete the login in your browser, or type /cancel to abort."
                         .to_string(),
                 ));
                 self.pending_login = Some(PendingLogin::Copilot);
@@ -1939,7 +1959,7 @@ impl App {
         crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
             crate::bus::UiActivity::auth(
                 Some(self.session.id.clone()),
-                "**Auth State Changed**\n\nRefreshing provider credentials and model route availability for this session.",
+                "Auth State Changed\n\nRefreshing provider credentials and model route availability for this session.",
                 Some("Auth: refreshing model routes..."),
             ),
         ));
@@ -2040,7 +2060,7 @@ impl App {
             crate::bus::UiActivity::catalog(
                 Some(self.session.id.clone()),
                 format!(
-                    "**{} Model Discovery Started**\n\nSaved credentials are active. Jcode is fetching the live model catalog, will only switch to a model returned by that catalog, and will show what changed when discovery finishes.",
+                    "{} Model Discovery Started\n\nSaved credentials are active. Jcode is fetching the live model catalog, will only switch to a model returned by that catalog, and will show what changed when discovery finishes.",
                     provider_label
                 ),
                 Some(format!("{}: fetching models...", provider_label)),
@@ -2125,7 +2145,7 @@ impl App {
                                             model: model.clone(),
                                             provider_key,
                                             message: format!(
-                                                "**{} is ready.**\n\nFetched model catalog: +{} models, +{} routes, ~{} changed.{}\n\nSwitched to `{}`. Use `/model` if you want to choose a different accessible model.\n\nIf the model list ever looks stale, run `/refresh-model-list`.",
+                                                "{} is ready.\n\nFetched model catalog: +{} models, +{} routes, ~{} changed.{}\n\nSwitched to {}. Use /model if you want to choose a different accessible model.\n\nIf the model list ever looks stale, run /refresh-model-list.",
                                                 provider_label,
                                                 summary.models_added,
                                                 summary.routes_added,
@@ -2148,7 +2168,7 @@ impl App {
                                                 provider: provider_label,
                                                 success: false,
                                                 message: format!(
-                                                    "Fetched models, but failed to switch to `{}`: {}\n\nYou can run `/refresh-model-list` to retry model discovery.",
+                                                    "Fetched models, but failed to switch to {}: {}\n\nYou can run /refresh-model-list to retry model discovery.",
                                                     model, error
                                                 ),
                                             },
@@ -2161,7 +2181,7 @@ impl App {
                                 crate::bus::UiActivity::catalog(
                                     Some(session_id),
                                     format!(
-                                        "**{} Model Discovery Still Updating**\n\nSaved credentials are active, but this local refresh pass did not find a selectable {} route yet. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run `/refresh-model-list`.",
+                                        "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass did not find a selectable {} route yet. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.",
                                         provider_label, provider_label
                                     ),
                                     Some(format!(
@@ -2177,7 +2197,7 @@ impl App {
                             crate::bus::UiActivity::catalog(
                                 Some(session_id),
                                 format!(
-                                    "**{} Model Discovery Still Updating**\n\nSaved credentials are active, but this local refresh pass failed before the server auth-change catalog refresh finished. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run `/refresh-model-list`.\n\nLocal refresh error: {}",
+                                    "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass failed before the server auth-change catalog refresh finished. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.\n\nLocal refresh error: {}",
                                     provider_label, error
                                 ),
                                 Some(format!(
@@ -2197,9 +2217,9 @@ impl App {
             self.push_display_message(DisplayMessage::system(login.message.clone()));
             if let Some(code) = login
                 .message
-                .split("Enter code: **")
+                .split("Your code: ")
                 .nth(1)
-                .and_then(|s| s.split("**").next())
+                .and_then(|s| s.split_whitespace().next())
             {
                 self.set_status_notice(format!("Login: enter {} at GitHub", code));
             }
@@ -2346,7 +2366,7 @@ impl App {
             if use_entra { "entra_id" } else { "api_key" },
         );
         let auth_note = if use_entra {
-            "Using Microsoft Entra ID through Azure DefaultAzureCredential. If you use Azure CLI auth, run `az login` and make sure the identity has the Cognitive Services OpenAI User role."
+            "Using Microsoft Entra ID through Azure DefaultAzureCredential. If you use Azure CLI auth, run az login and make sure the identity has the Cognitive Services OpenAI User role."
         } else {
             "Using the saved Azure OpenAI API key."
         };
@@ -2354,10 +2374,10 @@ impl App {
             provider: "Azure OpenAI".to_string(),
             success: true,
             message: format!(
-                "**Azure OpenAI configuration saved.**\n\n\
-                 Stored at `~/.config/jcode/{}`.\n\
+                "Azure OpenAI configuration saved.\n\n\
+                 Stored at ~/.config/jcode/{}.\n\
                  {}\n\n\
-                 Use `/model` after your Azure deployment exists. If the model list looks stale, run `/refresh-model-list`.",
+                 Use /model after your Azure deployment exists. If the model list looks stale, run /refresh-model-list.",
                 crate::auth::azure::ENV_FILE,
                 auth_note,
             ),
