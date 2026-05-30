@@ -1677,23 +1677,37 @@ async fn init_provider_with_options(
                 Arc::new(multi)
             } else {
                 let non_interactive = std::env::var("JCODE_NON_INTERACTIVE").is_ok();
-                if non_interactive {
+                // Deferred-auth bootstrap: the interactive TUI server is spawned
+                // headless (JCODE_NON_INTERACTIVE) but the user logs in *inside*
+                // the TUI on a fresh install. Rather than bail, boot an empty
+                // MultiProvider with no configured credentials yet. The TUI's
+                // `/login` flow then activates a provider via the normal
+                // auth-changed path (MultiProvider::on_auth_changed hot-inits the
+                // newly logged-in provider). Only the actual TUI server opts in
+                // via JCODE_DEFERRED_AUTH_BOOTSTRAP, so `jcode run` and other
+                // genuinely headless callers still fail loudly.
+                if std::env::var_os("JCODE_DEFERRED_AUTH_BOOTSTRAP").is_some() {
+                    crate::logging::info(
+                        "No credentials configured; booting deferred-auth MultiProvider for in-TUI onboarding login",
+                    );
+                    let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
+                    crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
+                    Arc::new(multi)
+                } else if non_interactive {
                     anyhow::bail!(
                         "No credentials configured. Run 'jcode login' or set ANTHROPIC_API_KEY to authenticate."
                     );
-                }
-
-                if !allow_login_bootstrap {
+                } else if !allow_login_bootstrap {
                     anyhow::bail!(
                         "No credentials configured for provider auto-detection; automatic login/bootstrap is disabled during validation."
                     );
+                } else {
+                    let provider_desc = prompt_login_provider_selection(
+                        &crate::provider_catalog::auto_init_login_providers(),
+                        "No credentials found. Let's log in!\n\nChoose a provider:",
+                    )?;
+                    Box::pin(login_and_bootstrap_provider(provider_desc, None)).await?
                 }
-
-                let provider_desc = prompt_login_provider_selection(
-                    &crate::provider_catalog::auto_init_login_providers(),
-                    "No credentials found. Let's log in!\n\nChoose a provider:",
-                )?;
-                Box::pin(login_and_bootstrap_provider(provider_desc, None)).await?
             }
         }
     };

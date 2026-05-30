@@ -1017,6 +1017,11 @@ pub(crate) async fn spawn_server(
         cmd.env("JCODE_DEBUG_CONTROL", "1");
     }
     cmd.arg("--provider").arg(provider_choice.as_arg_value());
+    // The interactive TUI owns first-run onboarding/login. Let the spawned
+    // server boot with a deferred (credential-less) provider when nothing is
+    // configured yet, instead of bailing; the TUI activates a provider via the
+    // in-TUI `/login` flow. See init_provider_with_options.
+    cmd.env("JCODE_DEFERRED_AUTH_BOOTSTRAP", "1");
     if let Some(provider_profile) = provider_profile {
         cmd.arg("--provider-profile").arg(provider_profile);
     }
