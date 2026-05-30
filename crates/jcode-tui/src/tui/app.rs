@@ -715,6 +715,11 @@ pub struct App {
     /// Active guided first-run onboarding flow (model select -> continue ->
     /// transcript pick -> suggestions). `None` when not onboarding.
     onboarding_flow: Option<onboarding_flow::OnboardingFlow>,
+    /// One-shot guard: have we evaluated whether to auto-start the onboarding
+    /// flow on startup yet? The fresh-install path logs in at the CLI before the
+    /// TUI launches, so no in-TUI login event fires; this lets us still begin the
+    /// flow once the TUI is ready and already authenticated.
+    onboarding_startup_checked: bool,
     // Inline UI state for copy badges ([Alt] [⇧] [S])
     copy_badge_ui: CopyBadgeUiState,
     // Modal in-app selection/copy state for the chat viewport.
