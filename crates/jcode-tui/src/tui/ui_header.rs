@@ -221,8 +221,19 @@ pub(super) fn build_auth_status_line(auth: &AuthStatus, max_width: usize) -> Lin
 }
 
 fn header_provider_auth_tag(name: &str, auth: &AuthStatus) -> &'static str {
+    let runtime_provider = std::env::var("JCODE_RUNTIME_PROVIDER")
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase());
     match name {
         "anthropic" => {
+            // Honor an explicit OAuth-vs-API-key selection first so the tag
+            // matches the credentials requests will actually use.
+            match runtime_provider.as_deref() {
+                Some("claude-api" | "anthropic-api") => return "api-key",
+                Some("claude" | "anthropic") => return "oauth",
+                _ => {}
+            }
+            // Auto: prefer OAuth (Claude subscription), else the direct API key.
             if auth.anthropic.has_oauth {
                 "oauth"
             } else if std::env::var("ANTHROPIC_API_KEY").is_ok() || auth.anthropic.has_api_key {
@@ -231,12 +242,19 @@ fn header_provider_auth_tag(name: &str, auth: &AuthStatus) -> &'static str {
                 ""
             }
         }
-        "openai" => match (auth.openai_has_oauth, auth.openai_has_api_key) {
-            (true, true) => "oauth+key",
-            (true, false) => "oauth",
-            (false, true) => "api-key",
-            (false, false) => "",
-        },
+        "openai" => {
+            match runtime_provider.as_deref() {
+                Some("openai-api") => return "api-key",
+                Some("openai") => return "oauth",
+                _ => {}
+            }
+            match (auth.openai_has_oauth, auth.openai_has_api_key) {
+                (true, true) => "oauth+key",
+                (true, false) => "oauth",
+                (false, true) => "api-key",
+                (false, false) => "",
+            }
+        }
         "copilot" => {
             if auth.copilot_has_api_token {
                 "oauth"
@@ -833,6 +851,9 @@ mod tests {
 
     #[test]
     fn header_provider_auth_tag_reports_openai_oauth_and_api_key() {
+        let _guard = crate::storage::lock_test_env();
+        let prev = std::env::var_os("JCODE_RUNTIME_PROVIDER");
+        crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
         let auth = AuthStatus {
             openai: AuthState::Available,
             openai_has_oauth: true,
@@ -841,6 +862,53 @@ mod tests {
         };
 
         assert_eq!(header_provider_auth_tag("openai", &auth), "oauth+key");
+        if let Some(value) = prev {
+            crate::env::set_var("JCODE_RUNTIME_PROVIDER", value);
+        }
+    }
+
+    #[test]
+    fn header_provider_auth_tag_honors_runtime_selection_and_oauth_first() {
+        let _guard = crate::storage::lock_test_env();
+        let prev = std::env::var_os("JCODE_RUNTIME_PROVIDER");
+
+        let both = AuthStatus {
+            anthropic: ProviderAuth {
+                has_oauth: true,
+                has_api_key: true,
+                ..Default::default()
+            },
+            ..AuthStatus::default()
+        };
+
+        // Explicit API-key selection wins even when OAuth is available.
+        crate::env::set_var("JCODE_RUNTIME_PROVIDER", "claude-api");
+        assert_eq!(header_provider_auth_tag("anthropic", &both), "api-key");
+
+        // Explicit OAuth selection.
+        crate::env::set_var("JCODE_RUNTIME_PROVIDER", "claude");
+        assert_eq!(header_provider_auth_tag("anthropic", &both), "oauth");
+
+        // Auto (unset) prefers OAuth when both credentials are present.
+        crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
+        assert_eq!(header_provider_auth_tag("anthropic", &both), "oauth");
+
+        // Auto falls back to the API key when no OAuth credential exists.
+        let api_only = AuthStatus {
+            anthropic: ProviderAuth {
+                has_oauth: false,
+                has_api_key: true,
+                ..Default::default()
+            },
+            ..AuthStatus::default()
+        };
+        assert_eq!(header_provider_auth_tag("anthropic", &api_only), "api-key");
+
+        if let Some(value) = prev {
+            crate::env::set_var("JCODE_RUNTIME_PROVIDER", value);
+        } else {
+            crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
+        }
     }
 
     #[test]

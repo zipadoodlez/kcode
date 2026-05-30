@@ -1041,13 +1041,13 @@ impl Provider for MultiProvider {
                 Some(match anthropic.credential_mode_snapshot() {
                     anthropic::AnthropicCredentialMode::OAuth => "OAuth",
                     anthropic::AnthropicCredentialMode::ApiKey => "API key",
-                    // Auto resolves to API key first when one is configured,
-                    // otherwise OAuth. Mirror that resolution exactly.
+                    // Auto prefers OAuth (Claude subscription) when available,
+                    // otherwise falls back to the API key. Mirror that exactly.
                     anthropic::AnthropicCredentialMode::Auto => {
-                        if anthropic::has_anthropic_api_key() {
-                            "API key"
-                        } else {
+                        if crate::auth::claude::load_credentials().is_ok() {
                             "OAuth"
+                        } else {
+                            "API key"
                         }
                     }
                 })

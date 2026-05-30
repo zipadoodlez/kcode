@@ -94,8 +94,13 @@ impl App {
             )
             .accrues_user_api_key_cost()
         } else if provider_name.contains("anthropic") || provider_name.contains("claude") {
+            // Anthropic Auto prefers OAuth (Claude subscription, no per-token
+            // user cost) when OAuth credentials exist, so only accrue API-key
+            // cost when the API key is the credential that will actually be used.
             is_explicit_anthropic_api
-                || (!is_explicit_anthropic_oauth && auth_status.anthropic.has_api_key)
+                || (!is_explicit_anthropic_oauth
+                    && auth_status.anthropic.has_api_key
+                    && !auth_status.anthropic.has_oauth)
         } else if provider_name.contains("openai") {
             is_explicit_openai_api
                 || (!is_explicit_openai_oauth
