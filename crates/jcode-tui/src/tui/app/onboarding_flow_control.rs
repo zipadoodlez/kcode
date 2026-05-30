@@ -660,8 +660,8 @@ impl App {
             cli.label()
         );
         self.push_display_message(DisplayMessage::system(format!(
-            "Couldn't open your {} transcripts directly. Asking the agent to find and continue \
-             your latest session instead.",
+            "No {0} transcripts were found locally, so I'll search for your most recent \
+             {0} session and pick up where you left off.",
             cli.label()
         )));
         self.onboarding_finish();

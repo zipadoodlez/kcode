@@ -110,13 +110,49 @@ pub struct ExternalAuthAutoImportOutcome {
 impl ExternalAuthAutoImportOutcome {
     pub fn render_markdown(&self) -> String {
         if self.messages.is_empty() {
-            return "No external auth sources were imported.".to_string();
+            return "No external logins were imported.".to_string();
         }
-        let mut out = format!("**Auto Import**\n\nImported {} source(s).", self.imported);
-        for line in &self.messages {
+
+        // Messages are tagged with a leading "✓"/"✕" marker by the importer.
+        let imported: Vec<&String> = self
+            .messages
+            .iter()
+            .filter(|m| m.starts_with('✓'))
+            .collect();
+        let skipped: Vec<&String> = self
+            .messages
+            .iter()
+            .filter(|m| m.starts_with('✕'))
+            .collect();
+
+        let mut out = String::from("**Logins imported**\n");
+        out.push('\n');
+        if imported.is_empty() {
+            out.push_str("No logins could be imported.");
+        } else {
+            out.push_str(&format!(
+                "Reusing {} existing login{}:",
+                imported.len(),
+                if imported.len() == 1 { "" } else { "s" }
+            ));
+        }
+        for line in &imported {
             out.push_str("\n- ");
-            out.push_str(line);
+            out.push_str(line.trim_start_matches('✓').trim());
         }
+
+        if !skipped.is_empty() {
+            out.push_str(&format!(
+                "\n\nSkipped {} source{}:",
+                skipped.len(),
+                if skipped.len() == 1 { "" } else { "s" }
+            ));
+            for line in &skipped {
+                out.push_str("\n- ");
+                out.push_str(line.trim_start_matches('✕').trim());
+            }
+        }
+
         out
     }
 }
@@ -507,14 +543,14 @@ pub async fn run_external_auth_auto_import_candidates(
             Ok(detail) => {
                 outcome.imported += 1;
                 outcome.messages.push(format!(
-                    "✓ Imported {} from {}. {}",
+                    "✓ {} (from {}): {}",
                     candidate.provider_summary, candidate.source_name, detail
                 ));
             }
             Err(err) => {
                 let _ = revoke_external_auth_review_candidate(candidate);
                 outcome.messages.push(format!(
-                    "✕ Skipped {} from {}: {}",
+                    "✕ {} (from {}): {}",
                     candidate.provider_summary, candidate.source_name, err
                 ));
             }
