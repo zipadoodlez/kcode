@@ -34,6 +34,22 @@ fn stored_message_renders_visible_message(msg: &super::StoredMessage) -> bool {
     })
 }
 
+/// A compacted prefix is only truncated when it is genuinely large. Below this
+/// many renderable messages we always show the whole prefix, even if the
+/// `requested_visible` window is smaller, so short histories stay intact.
+const COMPACTED_HISTORY_MIN_RENDERABLE_TO_TRUNCATE: usize = 80;
+
+/// We never truncate a compacted prefix that contains this many user turns or
+/// fewer. This guarantees a single very long turn (1 turn, possibly hundreds of
+/// tool messages) is never cut off, and short multi-turn histories stay whole.
+const COMPACTED_HISTORY_MIN_TURNS_TO_TRUNCATE: usize = 5;
+
+fn stored_message_is_user_turn(msg: &super::StoredMessage) -> bool {
+    matches!(msg.role, Role::User)
+        && msg.display_role.is_none()
+        && stored_message_renders_visible_message(msg)
+}
+
 fn compacted_history_render_window(
     messages: &[super::StoredMessage],
     compacted_count: usize,
@@ -45,10 +61,25 @@ fn compacted_history_render_window(
         .iter()
         .filter(|msg| stored_message_renders_visible_message(msg))
         .count();
-    let visible_renderable = requested_visible.min(total_renderable);
+    let total_turns = compacted_prefix
+        .iter()
+        .filter(|msg| stored_message_is_user_turn(msg))
+        .count();
+
+    // Guardrails: only truncate when the prefix is BOTH very long AND has more
+    // than a handful of turns. Otherwise show everything. This avoids cutting a
+    // single long turn or a short multi-turn history.
+    let must_show_all = total_renderable < COMPACTED_HISTORY_MIN_RENDERABLE_TO_TRUNCATE
+        || total_turns <= COMPACTED_HISTORY_MIN_TURNS_TO_TRUNCATE;
+
+    let visible_renderable = if must_show_all {
+        total_renderable
+    } else {
+        requested_visible.min(total_renderable)
+    };
     let remaining_renderable = total_renderable.saturating_sub(visible_renderable);
 
-    let render_start_idx = if visible_renderable == 0 {
+    let mut render_start_idx = if visible_renderable == 0 {
         compacted_count
     } else if remaining_renderable == 0 {
         0
@@ -67,12 +98,38 @@ fn compacted_history_render_window(
         start_idx
     };
 
+    // Snap the start back to a user-turn boundary so the visible window begins
+    // at the start of a prompt. This keeps prompt numbering and turn grouping
+    // coherent (we never render a half turn at the top).
+    if render_start_idx > 0 && render_start_idx < compacted_count {
+        let mut boundary = render_start_idx;
+        while boundary > 0 && !stored_message_is_user_turn(&compacted_prefix[boundary]) {
+            boundary -= 1;
+        }
+        if stored_message_is_user_turn(&compacted_prefix[boundary]) {
+            render_start_idx = boundary;
+        }
+    }
+
+    // Recompute visible/remaining/hidden after snapping so the reported counts
+    // match what is actually rendered.
+    let visible_renderable = compacted_prefix[render_start_idx..]
+        .iter()
+        .filter(|msg| stored_message_renders_visible_message(msg))
+        .count();
+    let remaining_renderable = total_renderable.saturating_sub(visible_renderable);
+    let hidden_user_prompts = compacted_prefix[..render_start_idx]
+        .iter()
+        .filter(|msg| stored_message_is_user_turn(msg))
+        .count();
+
     (
         render_start_idx,
         RenderedCompactedHistoryInfo {
             total_messages: total_renderable,
             visible_messages: visible_renderable,
             remaining_messages: remaining_renderable,
+            hidden_user_prompts,
         },
     )
 }

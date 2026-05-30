@@ -115,6 +115,11 @@ pub fn disable_keyboard_enhancement() {
 pub trait TuiState {
     fn display_messages(&self) -> &[DisplayMessage];
     fn display_user_message_count(&self) -> usize;
+    /// Number of user prompts hidden before the first visible message because of
+    /// compacted-history truncation. Used to keep prompt numbers absolute.
+    fn compacted_hidden_user_prompts(&self) -> usize {
+        0
+    }
     fn has_display_edit_tool_messages(&self) -> bool;
     fn side_pane_images(&self) -> Vec<crate::session::RenderedImage>;
     /// Version counter for display_messages (monotonic, increments on mutation)

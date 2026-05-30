@@ -312,6 +312,7 @@ pub(super) async fn handle_get_compacted_history(
         total_messages: 0,
         visible_messages: 0,
         remaining_messages: 0,
+        hidden_user_prompts: 0,
     });
     crate::logging::info(&format!(
         "[TIMING] get_compacted_history: session={}, source={}, requested={}, visible={}, remaining={}, messages={}, total={}ms",
@@ -334,6 +335,7 @@ pub(super) async fn handle_get_compacted_history(
             compacted_total: compacted_info.total_messages,
             compacted_visible: compacted_info.visible_messages,
             compacted_remaining: compacted_info.remaining_messages,
+            compacted_hidden_prompts: compacted_info.hidden_user_prompts,
         },
     )
     .await

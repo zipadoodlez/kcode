@@ -492,6 +492,9 @@ pub(super) struct CompactedHistoryLazyState {
     pub total_messages: usize,
     pub visible_messages: usize,
     pub remaining_messages: usize,
+    /// Number of user prompts hidden before the first visible message. Used to
+    /// keep prompt numbers absolute when older history is truncated.
+    pub hidden_user_prompts: usize,
     pub pending_request_visible: Option<usize>,
 }
 

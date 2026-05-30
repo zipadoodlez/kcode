@@ -1191,26 +1191,160 @@ fn test_render_messages_can_expand_compacted_history_window() {
         compacted_count: 2,
     });
 
+    // A small compacted prefix (few renderable messages, a single turn) must
+    // never be truncated, even when a tiny visible window is requested. A single
+    // long turn in particular must always render in full.
     let (rendered, _images, info) = render_messages_and_images_with_compacted_history(&session, 1);
-    assert_eq!(info.unwrap().total_messages, 2);
-    assert_eq!(info.unwrap().visible_messages, 1);
-    assert_eq!(info.unwrap().remaining_messages, 1);
-    assert_eq!(rendered.len(), 3);
-    assert!(rendered[0].content.contains("Showing 1 of 2"));
-    assert_eq!(rendered[1].role, "assistant");
-    assert_eq!(rendered[1].content, "old response");
-    assert_eq!(rendered[2].content, "current prompt");
+    let info = info.expect("compacted info");
+    assert_eq!(info.total_messages, 2);
+    assert_eq!(info.visible_messages, 2);
+    assert_eq!(info.remaining_messages, 0);
+    assert_eq!(info.hidden_user_prompts, 0);
+    assert_eq!(rendered.len(), 4);
+    assert!(rendered[0].content.contains("showing all 2"));
+    assert_eq!(rendered[1].content, "old prompt");
+    assert_eq!(rendered[2].content, "old response");
+    assert_eq!(rendered[3].content, "current prompt");
 
     let (rendered_all, _images, info_all) =
         render_messages_and_images_with_compacted_history(&session, usize::MAX);
     let info_all = info_all.expect("compacted info");
     assert_eq!(info_all.visible_messages, 2);
     assert_eq!(info_all.remaining_messages, 0);
+    assert_eq!(info_all.hidden_user_prompts, 0);
     assert_eq!(rendered_all.len(), 4);
     assert!(rendered_all[0].content.contains("showing all 2"));
     assert_eq!(rendered_all[1].content, "old prompt");
     assert_eq!(rendered_all[2].content, "old response");
     assert_eq!(rendered_all[3].content, "current prompt");
+}
+
+#[test]
+fn test_compacted_history_truncates_only_when_long_and_many_turns() {
+    let mut session = Session::create_with_id(
+        "session_render_compacted_history_truncate_test".to_string(),
+        None,
+        Some("render compacted history truncate test".to_string()),
+    );
+
+    // Build a large compacted prefix: many turns, each with several visible
+    // messages, well past both guardrails (>80 renderable, >5 turns).
+    let prefix_turns = 20usize;
+    for t in 0..prefix_turns {
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: format!("prompt {t}"),
+                cache_control: None,
+            }],
+        );
+        // 4 assistant messages per turn -> 5 renderable per turn.
+        for r in 0..4 {
+            session.add_message(
+                Role::Assistant,
+                vec![ContentBlock::Text {
+                    text: format!("response {t}.{r}"),
+                    cache_control: None,
+                }],
+            );
+        }
+    }
+    // Current (uncompacted) prompt after the compacted prefix.
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "current prompt".to_string(),
+            cache_control: None,
+        }],
+    );
+
+    let compacted_count = prefix_turns * 5; // every prefix message is compacted
+    session.compaction = Some(StoredCompactionState {
+        summary_text: "older compacted context".to_string(),
+        openai_encrypted_content: None,
+        covers_up_to_turn: prefix_turns,
+        original_turn_count: prefix_turns,
+        compacted_count,
+    });
+
+    let total_renderable = prefix_turns * 5; // 100
+
+    // Request a small window: truncation kicks in because the prefix is long
+    // and has many turns.
+    let (rendered, _images, info) =
+        render_messages_and_images_with_compacted_history(&session, 10);
+    let info = info.expect("compacted info");
+    assert_eq!(info.total_messages, total_renderable);
+    assert!(info.visible_messages < total_renderable);
+    assert!(info.remaining_messages > 0);
+    assert_eq!(
+        info.visible_messages + info.remaining_messages,
+        total_renderable
+    );
+    assert!(info.hidden_user_prompts > 0);
+    // The first rendered body message (after the marker) must be a user prompt
+    // because we snap the window to a turn boundary.
+    assert_eq!(rendered[1].role, "user");
+
+    // Requesting everything shows the whole prefix with no hidden prompts.
+    let (_rendered_all, _images, info_all) =
+        render_messages_and_images_with_compacted_history(&session, usize::MAX);
+    let info_all = info_all.expect("compacted info");
+    assert_eq!(info_all.visible_messages, total_renderable);
+    assert_eq!(info_all.remaining_messages, 0);
+    assert_eq!(info_all.hidden_user_prompts, 0);
+}
+
+#[test]
+fn test_compacted_history_never_truncates_single_long_turn() {
+    let mut session = Session::create_with_id(
+        "session_render_compacted_history_single_turn_test".to_string(),
+        None,
+        Some("render compacted history single turn test".to_string()),
+    );
+
+    // A single turn with a huge number of visible messages (well over 80).
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "the one long prompt".to_string(),
+            cache_control: None,
+        }],
+    );
+    for r in 0..150 {
+        session.add_message(
+            Role::Assistant,
+            vec![ContentBlock::Text {
+                text: format!("long response chunk {r}"),
+                cache_control: None,
+            }],
+        );
+    }
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "current prompt".to_string(),
+            cache_control: None,
+        }],
+    );
+
+    let compacted_count = 151; // prompt + 150 responses
+    session.compaction = Some(StoredCompactionState {
+        summary_text: "older compacted context".to_string(),
+        openai_encrypted_content: None,
+        covers_up_to_turn: 1,
+        original_turn_count: 1,
+        compacted_count,
+    });
+
+    // Even with a tiny requested window, a single long turn is never truncated.
+    let (_rendered, _images, info) =
+        render_messages_and_images_with_compacted_history(&session, 5);
+    let info = info.expect("compacted info");
+    assert_eq!(info.total_messages, compacted_count);
+    assert_eq!(info.visible_messages, compacted_count);
+    assert_eq!(info.remaining_messages, 0);
+    assert_eq!(info.hidden_user_prompts, 0);
 }
 
 #[test]
@@ -1267,14 +1401,19 @@ fn test_compacted_history_window_counts_renderable_messages_not_hidden_reminders
     let (rendered, _images, info) = render_messages_and_images_with_compacted_history(&session, 1);
     let info = info.expect("compacted info");
 
+    // Hidden system reminders are never counted as renderable messages, so the
+    // small prefix (2 renderable, 1 turn) is shown in full rather than truncated.
     assert_eq!(info.total_messages, 2);
-    assert_eq!(info.visible_messages, 1);
-    assert_eq!(info.remaining_messages, 1);
-    assert_eq!(rendered.len(), 3);
-    assert!(rendered[0].content.contains("Showing 1 of 2"));
-    assert_eq!(rendered[1].role, "assistant");
-    assert_eq!(rendered[1].content, "previous visible assistant response");
-    assert_eq!(rendered[2].content, "current prompt");
+    assert_eq!(info.visible_messages, 2);
+    assert_eq!(info.remaining_messages, 0);
+    assert_eq!(info.hidden_user_prompts, 0);
+    assert_eq!(rendered.len(), 4);
+    assert!(rendered[0].content.contains("showing all 2"));
+    assert_eq!(rendered[1].role, "user");
+    assert_eq!(rendered[1].content, "older visible prompt");
+    assert_eq!(rendered[2].role, "assistant");
+    assert_eq!(rendered[2].content, "previous visible assistant response");
+    assert_eq!(rendered[3].content, "current prompt");
     assert!(
         rendered
             .iter()

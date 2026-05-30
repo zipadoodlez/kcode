@@ -1210,6 +1210,7 @@ pub(super) fn prepare_body(
     markdown::set_center_code_blocks(centered);
     let display_width = width.saturating_sub(4) as usize;
     let mut prompt_num = 0usize;
+    let prompt_number_offset = app.compacted_hidden_user_prompts();
     let total_prompts = app.display_user_message_count();
     let pending_count = input_ui::pending_prompt_count(app);
 
@@ -1228,13 +1229,14 @@ pub(super) fn prepare_body(
                 user_prompt_texts.push(msg.content.clone());
                 let distance = total_prompts + pending_count + 1 - prompt_num;
                 let num_color = rainbow_prompt_color(distance);
+                let displayed_prompt_num = prompt_num + prompt_number_offset;
                 push_user_prompt_lines(
                     &mut lines,
                     &mut raw_plain_lines,
                     &mut line_raw_overrides,
                     &mut line_copy_offsets,
                     &mut user_line_indices,
-                    prompt_num,
+                    displayed_prompt_num,
                     num_color,
                     &msg.content,
                     align,

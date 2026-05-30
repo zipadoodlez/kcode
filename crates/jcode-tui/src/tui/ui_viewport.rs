@@ -788,7 +788,7 @@ pub(super) fn draw_messages(
         {
             let prompt_text = prompt_text.trim();
             if !prompt_text.is_empty() {
-                let prompt_num = prompt_order + 1;
+                let prompt_num = prompt_order + 1 + app.compacted_hidden_user_prompts();
                 let num_str = format!("{}", prompt_num);
                 let prefix_len = num_str.len() + 2;
                 let content_width =

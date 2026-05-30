@@ -370,6 +370,10 @@ impl crate::tui::TuiState for App {
         self.display_user_message_count
     }
 
+    fn compacted_hidden_user_prompts(&self) -> usize {
+        self.compacted_history_lazy.hidden_user_prompts
+    }
+
     fn has_display_edit_tool_messages(&self) -> bool {
         self.display_edit_tool_message_count > 0
     }
