@@ -1093,14 +1093,6 @@ impl AnthropicProvider {
                     cache_control: None,
                 },
                 ApiTool {
-                    name: "ToolSearch".to_string(),
-                    description:
-                        "Fetches full schema definitions for deferred tools so they can be called."
-                            .to_string(),
-                    input_schema: json!({"type":"object","properties":{"query":{"type":"string"},"max_results":{"type":"number","default":5}},"required":["query","max_results"],"additionalProperties":false}),
-                    cache_control: None,
-                },
-                ApiTool {
                     name: "Write".to_string(),
                     description: "Writes a file to the local filesystem.".to_string(),
                     input_schema: json!({"type":"object","properties":{"file_path":{"type":"string"},"content":{"type":"string"}},"required":["file_path","content"],"additionalProperties":false}),
