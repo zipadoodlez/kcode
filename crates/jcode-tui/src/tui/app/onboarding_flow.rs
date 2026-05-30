@@ -30,6 +30,12 @@ use std::time::{Duration, Instant};
 /// How long we wait on an auto-advancing phase before choosing the default.
 pub(crate) const AUTO_ADVANCE: Duration = Duration::from_secs(10);
 
+/// How long we wait on a yes/no decision phase (login import, telemetry
+/// consent) before auto-selecting the highlighted default. We keep this short
+/// enough that the user doesn't get stuck deliberating, but long enough to
+/// read the prompt.
+pub(crate) const DECISION_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Which external CLI an OAuth login was detected for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ExternalCli {
@@ -63,6 +69,8 @@ pub(crate) struct ImportReview {
     pub(crate) yes_highlighted: bool,
     /// Zero-based indices of candidates the user chose to import so far.
     pub(crate) approved: Vec<usize>,
+    /// When the current candidate was first shown, for the decision countdown.
+    pub(crate) shown_at: Instant,
 }
 
 impl ImportReview {
@@ -79,6 +87,7 @@ impl ImportReview {
             index: 0,
             yes_highlighted: true,
             approved: Vec::new(),
+            shown_at: Instant::now(),
         })
     }
 
@@ -115,7 +124,21 @@ impl ImportReview {
         }
         self.index += 1;
         self.yes_highlighted = true;
+        // Restart the decision countdown for the next candidate.
+        self.shown_at = Instant::now();
         self.index >= self.candidates.len()
+    }
+
+    /// Seconds left before the current candidate auto-commits its default.
+    pub(crate) fn seconds_remaining(&self) -> u64 {
+        DECISION_TIMEOUT
+            .saturating_sub(self.shown_at.elapsed())
+            .as_secs()
+    }
+
+    /// Whether the current candidate's decision countdown has elapsed.
+    pub(crate) fn timed_out(&self) -> bool {
+        self.shown_at.elapsed() >= DECISION_TIMEOUT
     }
 }
 
@@ -131,6 +154,16 @@ pub(crate) enum OnboardingPhase {
     /// When `None`, there was nothing to import and we prompt the user to pick a
     /// provider manually (Enter opens the login picker).
     Login { import: Option<ImportReview> },
+    /// Ask whether to share prompt/transcript content with telemetry. Shown
+    /// right after a successful login/import. Yes/No with a [`DECISION_TIMEOUT`]
+    /// countdown; the default (and timeout choice) is "No" since sharing
+    /// content is sensitive and opt-in.
+    TelemetryConsent {
+        /// Which option is highlighted (true = "Yes, share").
+        yes_highlighted: bool,
+        /// When the prompt was shown, for the countdown.
+        shown_at: Instant,
+    },
     /// Pick a model. Entered right after login/import.
     ModelSelect,
     /// "Continue where you left off in <cli>?" Yes/No with a 10s auto-Yes.
@@ -194,6 +227,34 @@ impl OnboardingFlow {
             _ => return false,
         };
         shown_at.elapsed() >= AUTO_ADVANCE
+    }
+
+    /// Seconds remaining on the longer [`DECISION_TIMEOUT`] yes/no phases
+    /// (login import walkthrough, telemetry consent), if one is active.
+    pub(crate) fn decision_seconds_remaining(&self) -> Option<u64> {
+        match &self.phase {
+            OnboardingPhase::Login {
+                import: Some(review),
+            } => Some(review.seconds_remaining()),
+            OnboardingPhase::TelemetryConsent { shown_at, .. } => {
+                Some(DECISION_TIMEOUT.saturating_sub(shown_at.elapsed()).as_secs())
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a [`DECISION_TIMEOUT`] yes/no phase has elapsed and should
+    /// auto-select its default.
+    pub(crate) fn decision_timed_out(&self) -> bool {
+        match &self.phase {
+            OnboardingPhase::Login {
+                import: Some(review),
+            } => review.timed_out(),
+            OnboardingPhase::TelemetryConsent { shown_at, .. } => {
+                shown_at.elapsed() >= DECISION_TIMEOUT
+            }
+            _ => false,
+        }
     }
 }
 

@@ -1138,10 +1138,22 @@ impl App {
                             position: review.position(),
                             total: review.total(),
                             yes_highlighted: review.yes_highlighted,
+                            seconds_left: review.seconds_remaining(),
                         }
                     })
                 });
                 OnboardingWelcomeKind::Login { import: prompt }
+            }
+            Some(OnboardingPhase::TelemetryConsent {
+                yes_highlighted,
+                shown_at,
+            }) => {
+                let total = crate::tui::app::onboarding_flow::DECISION_TIMEOUT.as_secs();
+                let seconds_left = total.saturating_sub(shown_at.elapsed().as_secs());
+                OnboardingWelcomeKind::TelemetryConsent {
+                    yes_highlighted: *yes_highlighted,
+                    seconds_left,
+                }
             }
             Some(OnboardingPhase::ModelSelect) => OnboardingWelcomeKind::ModelSelect,
             Some(OnboardingPhase::ContinuePrompt { cli, shown_at }) => {
@@ -1167,6 +1179,7 @@ impl App {
         matches!(
             self.onboarding_phase(),
             Some(OnboardingPhase::Login { .. })
+                | Some(OnboardingPhase::TelemetryConsent { .. })
                 | Some(OnboardingPhase::ModelSelect)
                 | Some(OnboardingPhase::ContinuePrompt { .. })
         )

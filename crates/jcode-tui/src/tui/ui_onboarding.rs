@@ -174,8 +174,87 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         ))
                         .alignment(align),
                     );
+                    lines.push(
+                        Line::from(Span::styled(
+                            format!("Auto-selects in {}s.", prompt.seconds_left),
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
                 }
             }
+            return lines;
+        }
+        OnboardingWelcomeKind::TelemetryConsent {
+            yes_highlighted,
+            seconds_left,
+        } => {
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    "Help improve jcode?",
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .alignment(align),
+            );
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    "Share your prompts and transcripts so we can improve the product.",
+                    Style::default().fg(rgb(200, 200, 200)),
+                ))
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(Span::styled(
+                    "This is optional and off by default. You can change it later.",
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
+            lines.push(Line::from(""));
+
+            // Yes / No options; the highlighted one is bold + accented.
+            let (yes_style, no_style) = if yes_highlighted {
+                (
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                    Style::default().fg(dim_color()),
+                )
+            } else {
+                (
+                    Style::default().fg(dim_color()),
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                )
+            };
+            lines.push(
+                Line::from(vec![
+                    Span::styled("  Yes  ", yes_style),
+                    Span::raw("   "),
+                    Span::styled("  No  ", no_style),
+                ])
+                .alignment(align),
+            );
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    "Left/right or h/l to move, Enter or Space to choose (y / n also work).",
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(Span::styled(
+                    format!("Declines automatically in {seconds_left}s."),
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
             return lines;
         }
         OnboardingWelcomeKind::ModelSelect => {
@@ -189,14 +268,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             lines.push(
                 Line::from(Span::styled(
-                    "The model list opens automatically. Browse the options and choose one;",
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
-            lines.push(
-                Line::from(Span::styled(
-                    "no need to press Enter right away. You can reopen it anytime with /model.",
+                    "Type /model to browse the available models and choose one.",
                     Style::default().fg(dim_color()),
                 ))
                 .alignment(align),

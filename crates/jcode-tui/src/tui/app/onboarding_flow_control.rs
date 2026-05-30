@@ -161,8 +161,9 @@ impl App {
         }
     }
 
-    /// Advance out of the `Login` phase once credentials are available, moving
-    /// the user into model selection. No-op unless the flow is in `Login`.
+    /// Advance out of the `Login` phase once credentials are available. We then
+    /// ask the user whether to share prompt/transcript content with telemetry
+    /// before moving on to model selection. No-op unless the flow is in `Login`.
     pub(super) fn onboarding_after_login(&mut self) {
         if !matches!(
             self.onboarding_phase(),
@@ -170,17 +171,43 @@ impl App {
         ) {
             return;
         }
+        self.onboarding_enter_telemetry_consent();
+    }
+
+    /// Enter the telemetry content-sharing consent phase. Default highlight is
+    /// "No" (privacy-safe), and the prompt auto-declines after the decision
+    /// countdown so the user is never stuck on it.
+    fn onboarding_enter_telemetry_consent(&mut self) {
+        if let Some(flow) = self.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::TelemetryConsent {
+                yes_highlighted: false,
+                shown_at: Instant::now(),
+            };
+        }
+        self.set_status_notice(
+            "Share prompts & transcripts to improve jcode? No/Yes - auto-declines in 60s",
+        );
+    }
+
+    /// Answer the telemetry consent prompt: persist the choice and advance to
+    /// model selection.
+    pub(super) fn onboarding_answer_telemetry_consent(&mut self, opt_in: bool) {
+        if !matches!(
+            self.onboarding_phase(),
+            Some(OnboardingPhase::TelemetryConsent { .. })
+        ) {
+            return;
+        }
+        crate::telemetry::set_content_sharing_enabled(opt_in);
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ModelSelect;
         }
-        // Auto-render the model picker so the user immediately sees the
-        // available options instead of an empty "press Enter" prompt.  We do
-        // not want them to blindly hit Enter on the default; the welcome copy
-        // guides them to look at the list and pick (or just run `/model`).
-        self.open_model_picker();
-        self.set_status_notice(
-            "Onboarding: review the models below and pick one (or run /model anytime)",
-        );
+        let notice = if opt_in {
+            "Thanks! Sharing enabled. Onboarding: run /model to pick a model"
+        } else {
+            "No content shared. Onboarding: run /model to pick a model"
+        };
+        self.set_status_notice(notice);
     }
 
     /// Advance out of the model-selection phase once a model has been chosen.
@@ -224,9 +251,12 @@ impl App {
     }
 
     /// Intercept keys for the guided onboarding welcome phases:
-    ///   - `ModelSelect`: the picker auto-opens, so Enter normally commits
-    ///     inside it. Enter from the bare welcome screen reopens the picker.
+    ///   - `ModelSelect`: we tell the user to run /model; Enter is also a
+    ///     shortcut that opens the model picker from the welcome screen.
     ///   - `ContinuePrompt`: Y/Enter continues, N/Esc declines.
+    ///   - `TelemetryConsent`: Left/h -> No, Right/l -> Yes, toggle with
+    ///     Up/Down/k/j/Tab; y/n commit directly, Enter/Space commit the
+    ///     highlighted default.
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
         match self.onboarding_phase() {
@@ -250,6 +280,9 @@ impl App {
                     return false;
                 }
                 self.handle_onboarding_import_review_key(code)
+            }
+            Some(OnboardingPhase::TelemetryConsent { .. }) => {
+                self.handle_onboarding_telemetry_consent_key(code)
             }
             Some(OnboardingPhase::ModelSelect) => match code {
                 // Enter opens the model picker, but only from the welcome
@@ -325,6 +358,70 @@ impl App {
         true
     }
 
+    /// Handle a key while the telemetry content-sharing consent prompt is up.
+    /// Yes/No sit side by side (default highlight is "No"):
+    ///   - Left / h  -> highlight "No"
+    ///   - Right / l -> highlight "Yes"
+    ///   - Up / Down / k / j / Tab -> toggle
+    ///   - y / Y -> opt in;  n / N -> opt out (both commit)
+    ///   - Enter / Space -> commit the highlighted choice
+    fn handle_onboarding_telemetry_consent_key(&mut self, code: KeyCode) -> bool {
+        let Some(flow) = self.onboarding_flow.as_mut() else {
+            return false;
+        };
+        let OnboardingPhase::TelemetryConsent { yes_highlighted, .. } = &mut flow.phase else {
+            return false;
+        };
+        match code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                *yes_highlighted = false;
+                self.update_onboarding_telemetry_consent_status();
+                true
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                *yes_highlighted = true;
+                self.update_onboarding_telemetry_consent_status();
+                true
+            }
+            KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Char('k')
+            | KeyCode::Char('j')
+            | KeyCode::Tab => {
+                *yes_highlighted = !*yes_highlighted;
+                self.update_onboarding_telemetry_consent_status();
+                true
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.onboarding_answer_telemetry_consent(true);
+                true
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.onboarding_answer_telemetry_consent(false);
+                true
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                let opt_in = *yes_highlighted;
+                self.onboarding_answer_telemetry_consent(opt_in);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Refresh the status notice with the telemetry consent countdown.
+    fn update_onboarding_telemetry_consent_status(&mut self) {
+        let remaining = self
+            .onboarding_flow
+            .as_ref()
+            .and_then(OnboardingFlow::decision_seconds_remaining);
+        if let Some(remaining) = remaining {
+            self.set_status_notice(format!(
+                "Share prompts & transcripts to improve jcode? No/Yes - auto-declines in {remaining}s"
+            ));
+        }
+    }
+
     /// Mutable access to the active import walkthrough, if any.
     fn onboarding_import_review_mut(&mut self) -> Option<&mut ImportReview> {
         match self.onboarding_flow.as_mut()?.phase {
@@ -341,10 +438,11 @@ impl App {
             && let Some(candidate) = review.current()
         {
             let notice = format!(
-                "Import {} ({} of {})? Yes/No - arrows or hl to move, Enter to choose",
+                "Import {} ({} of {})? Yes/No - hl to move, Enter to choose, auto in {}s",
                 candidate.provider_summary(),
                 review.position(),
                 review.total(),
+                review.seconds_remaining(),
             );
             self.set_status_notice(notice);
         }
@@ -533,6 +631,48 @@ impl App {
         if !self.onboarding_flow_active() {
             return changed;
         }
+
+        // Drive the longer (60s) yes/no decision phases: the login-import
+        // walkthrough and the telemetry consent prompt. On timeout we pick the
+        // highlighted default; otherwise we keep the countdown notice fresh.
+        let decision_timed_out = self
+            .onboarding_flow
+            .as_ref()
+            .map(OnboardingFlow::decision_timed_out)
+            .unwrap_or(false);
+        match self.onboarding_phase().cloned() {
+            Some(OnboardingPhase::Login {
+                import: Some(_), ..
+            }) => {
+                if decision_timed_out {
+                    // Auto-commit the currently highlighted choice and advance.
+                    let mut finished = false;
+                    if let Some(review) = self.onboarding_import_review_mut() {
+                        finished = review.commit_current();
+                    }
+                    if finished {
+                        self.onboarding_finish_import_review();
+                    } else {
+                        self.update_onboarding_import_review_status();
+                    }
+                    return true;
+                }
+                // Keep the per-candidate countdown notice fresh.
+                self.update_onboarding_import_review_status();
+                return true;
+            }
+            Some(OnboardingPhase::TelemetryConsent { yes_highlighted, .. }) => {
+                if decision_timed_out {
+                    // Timeout default is the highlighted option (No by default).
+                    self.onboarding_answer_telemetry_consent(yes_highlighted);
+                    return true;
+                }
+                self.update_onboarding_telemetry_consent_status();
+                return true;
+            }
+            _ => {}
+        }
+
         let due = self
             .onboarding_flow
             .as_ref()

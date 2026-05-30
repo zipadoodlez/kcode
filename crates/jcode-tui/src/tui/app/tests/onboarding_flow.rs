@@ -123,25 +123,138 @@ fn import_review_highlight_navigation() {
 }
 
 #[test]
-fn login_phase_advances_to_model_select_after_login() {
-    let mut app = create_test_app();
-    app.onboarding_flow = None;
-    app.begin_onboarding_flow_at_login();
-    assert!(matches!(
-        app.onboarding_phase(),
-        Some(OnboardingPhase::Login { .. })
-    ));
-    app.onboarding_after_login();
-    assert!(matches!(
-        app.onboarding_phase(),
-        Some(OnboardingPhase::ModelSelect)
-    ));
-    // onboarding_after_login is a no-op once we're past the Login phase.
-    app.onboarding_after_login();
-    assert!(matches!(
-        app.onboarding_phase(),
-        Some(OnboardingPhase::ModelSelect)
-    ));
+fn login_phase_advances_to_telemetry_consent_then_model_select() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { .. })
+        ));
+        // After login we ask for telemetry consent first.
+        app.onboarding_after_login();
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::TelemetryConsent {
+                yes_highlighted: false,
+                ..
+            })
+        ));
+        // onboarding_after_login is a no-op once we're past the Login phase.
+        app.onboarding_after_login();
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::TelemetryConsent { .. })
+        ));
+        // Declining advances to model select and does not opt in.
+        app.onboarding_answer_telemetry_consent(false);
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::ModelSelect)
+        ));
+        assert!(!crate::telemetry::content_sharing_enabled());
+    });
+}
+
+#[test]
+fn telemetry_consent_opt_in_persists_and_advances() {
+    with_temp_jcode_home(|| {
+        // Ensure base telemetry isn't globally disabled in the test env, so the
+        // content-sharing opt-in is observable.
+        let saved = (
+            std::env::var_os("JCODE_NO_TELEMETRY"),
+            std::env::var_os("DO_NOT_TRACK"),
+        );
+        crate::env::remove_var("JCODE_NO_TELEMETRY");
+        crate::env::remove_var("DO_NOT_TRACK");
+
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::TelemetryConsent {
+                yes_highlighted: false,
+                shown_at: std::time::Instant::now(),
+            };
+        }
+        // Right highlights Yes, Enter commits -> opt in.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Right));
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::ModelSelect)
+        ));
+        assert!(crate::telemetry::content_sharing_enabled());
+        // Re-running the flow and declining clears the opt-in.
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::TelemetryConsent {
+                yes_highlighted: true,
+                shown_at: std::time::Instant::now(),
+            };
+        }
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
+        assert!(!crate::telemetry::content_sharing_enabled());
+
+        if let Some(v) = saved.0 {
+            crate::env::set_var("JCODE_NO_TELEMETRY", v);
+        }
+        if let Some(v) = saved.1 {
+            crate::env::set_var("DO_NOT_TRACK", v);
+        }
+    });
+}
+
+#[test]
+fn telemetry_consent_y_key_opts_in() {
+    with_temp_jcode_home(|| {
+        let saved = (
+            std::env::var_os("JCODE_NO_TELEMETRY"),
+            std::env::var_os("DO_NOT_TRACK"),
+        );
+        crate::env::remove_var("JCODE_NO_TELEMETRY");
+        crate::env::remove_var("DO_NOT_TRACK");
+
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::TelemetryConsent {
+                yes_highlighted: false,
+                shown_at: std::time::Instant::now(),
+            };
+        }
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('y')));
+        assert!(crate::telemetry::content_sharing_enabled());
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::ModelSelect)
+        ));
+
+        if let Some(v) = saved.0 {
+            crate::env::set_var("JCODE_NO_TELEMETRY", v);
+        }
+        if let Some(v) = saved.1 {
+            crate::env::set_var("DO_NOT_TRACK", v);
+        }
+    });
+}
+
+#[test]
+fn import_review_decision_timer_counts_down_and_times_out() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::{DECISION_TIMEOUT, ImportReview};
+
+    let mut review =
+        ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")]).unwrap();
+    // Fresh review: a full timeout's worth of seconds remain and it hasn't
+    // timed out yet.
+    assert!(review.seconds_remaining() <= DECISION_TIMEOUT.as_secs());
+    assert!(!review.timed_out());
+    // Force the clock past the timeout.
+    review.shown_at = std::time::Instant::now() - (DECISION_TIMEOUT + std::time::Duration::from_secs(1));
+    assert_eq!(review.seconds_remaining(), 0);
+    assert!(review.timed_out());
 }
 
 #[test]

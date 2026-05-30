@@ -578,6 +578,12 @@ pub enum OnboardingWelcomeKind {
     /// When `None`, there was nothing to import and the card points the user at
     /// the provider picker.
     Login { import: Option<LoginImportPrompt> },
+    /// Ask whether to share prompt/transcript content with telemetry, with a
+    /// live decision countdown. `yes_highlighted` reflects the current choice.
+    TelemetryConsent {
+        yes_highlighted: bool,
+        seconds_left: u64,
+    },
     /// Ask the user to pick a model first (press Enter to open the picker).
     ModelSelect,
     /// "Continue where you left off in <cli>?" with a live auto-advance
@@ -602,6 +608,8 @@ pub struct LoginImportPrompt {
     pub total: usize,
     /// Whether the "Yes" option is currently highlighted (vs. "No").
     pub yes_highlighted: bool,
+    /// Seconds left before this candidate auto-commits its default.
+    pub seconds_left: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
