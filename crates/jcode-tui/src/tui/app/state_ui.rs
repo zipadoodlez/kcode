@@ -440,15 +440,15 @@ impl App {
     /// or restore stashed position if already at bottom.
     pub(super) fn toggle_scroll_bookmark(&mut self) {
         if let Some(saved) = self.scroll_bookmark.take() {
-            // We have a bookmark — teleport back to it
+            // We have a bookmark - teleport back to it
             self.scroll_offset = saved;
             self.auto_scroll_paused = saved > 0;
             self.set_status_notice("📌 Returned to bookmark");
         } else if self.auto_scroll_paused && self.scroll_offset > 0 {
-            // We're scrolled up — save position and jump to bottom
+            // We're scrolled up - save position and jump to bottom
             self.scroll_bookmark = Some(self.scroll_offset);
             self.follow_chat_bottom();
-            self.set_status_notice("📌 Bookmark set — press again to return");
+            self.set_status_notice("📌 Bookmark set - press again to return");
         }
         // If already at bottom with no bookmark, do nothing
     }
@@ -577,9 +577,9 @@ impl App {
     pub(super) fn toggle_typing_scroll_lock(&mut self) {
         self.typing_scroll_lock = !self.typing_scroll_lock;
         let status = if self.typing_scroll_lock {
-            "Typing scroll lock: ON — typing stays at current chat position"
+            "Typing scroll lock: ON - typing stays at current chat position"
         } else {
-            "Typing scroll lock: OFF — typing follows chat bottom"
+            "Typing scroll lock: OFF - typing follows chat bottom"
         };
         self.set_status_notice(status);
     }
@@ -828,7 +828,7 @@ fn human_count(value: u64) -> String {
 }
 
 fn bold_count(value: u64) -> String {
-    format!("**{}**", human_count(value))
+    format!("{}", human_count(value))
 }
 
 fn bold_count_usize(value: usize) -> String {
@@ -847,7 +847,7 @@ fn opt_usize(value: Option<usize>) -> String {
 
 fn opt_string(value: Option<&str>) -> String {
     value
-        .map(|value| format!("`{}`", value))
+        .map(|value| format!("{}", value))
         .unwrap_or_else(|| "None".to_string())
 }
 
@@ -858,28 +858,28 @@ fn push_cache_signature(
 ) {
     if let Some(signature) = signature {
         lines.push(format!(
-            "- {}.system_static_hash: `{:016x}`",
+            "- {}.system_static_hash: {:016x}",
             label, signature.system_static_hash
         ));
         lines.push(format!(
-            "- {}.tools_hash: `{:016x}`",
+            "- {}.tools_hash: {:016x}",
             label, signature.tools_hash
         ));
         lines.push(format!(
-            "- {}.messages_hash: `{:016x}`",
+            "- {}.messages_hash: {:016x}",
             label, signature.messages_hash
         ));
         lines.push(format!(
-            "- {}.message_hashes_len: **{}**",
+            "- {}.message_hashes_len: {}",
             label,
             signature.message_hashes.len()
         ));
         lines.push(format!(
-            "- {}.message_count: **{}**",
+            "- {}.message_count: {}",
             label, signature.message_count
         ));
         lines.push(format!(
-            "- {}.tool_count: **{}**",
+            "- {}.tool_count: {}",
             label, signature.tool_count
         ));
         lines.push(format!(
@@ -902,7 +902,7 @@ fn push_cache_signature(
             label,
             signature
                 .ephemeral_hash
-                .map(|hash| format!("`{:016x}`", hash))
+                .map(|hash| format!("{:016x}", hash))
                 .unwrap_or_else(|| "None".to_string())
         ));
         lines.push(format!(
@@ -911,7 +911,7 @@ fn push_cache_signature(
             bold_count(signature.ephemeral_chars as u64)
         ));
         lines.push(format!(
-            "- {}.ephemeral_message_count: **{}**",
+            "- {}.ephemeral_message_count: {}",
             label, signature.ephemeral_message_count
         ));
     } else {
@@ -927,12 +927,12 @@ fn push_cache_baseline(lines: &mut Vec<String>, label: &str, baseline: Option<&K
             bold_count(baseline.input_tokens)
         ));
         lines.push(format!(
-            "- {}.age_secs: **{}**",
+            "- {}.age_secs: {}",
             label,
             baseline.completed_at.elapsed().as_secs()
         ));
-        lines.push(format!("- {}.provider: `{}`", label, baseline.provider));
-        lines.push(format!("- {}.model: `{}`", label, baseline.model));
+        lines.push(format!("- {}.provider: {}", label, baseline.provider));
+        lines.push(format!("- {}.model: {}", label, baseline.model));
         lines.push(format!(
             "- {}.upstream_provider: {}",
             label,
@@ -1121,17 +1121,17 @@ fn format_cache_stats(app: &App) -> String {
         };
 
     let mut lines = Vec::new();
-    lines.push("**KV cache stats**".to_string());
+    lines.push("KV cache stats".to_string());
     lines.push(String::new());
     lines.push("Raw session/cache diagnostic state for this client. Cache telemetry is provider-reported when available.".to_string());
     lines.push(String::new());
 
-    lines.push("**Current route / settings**".to_string());
-    lines.push(format!("- cache_ttl_setting: **{}**", ttl));
-    lines.push(format!("- is_remote: **{}**", app.is_remote));
-    lines.push(format!("- is_replay: **{}**", app.is_replay));
-    lines.push(format!("- current_provider: `{}`", current_provider));
-    lines.push(format!("- current_model: `{}`", current_model));
+    lines.push("Current route / settings".to_string());
+    lines.push(format!("- cache_ttl_setting: {}", ttl));
+    lines.push(format!("- is_remote: {}", app.is_remote));
+    lines.push(format!("- is_replay: {}", app.is_replay));
+    lines.push(format!("- current_provider: {}", current_provider));
+    lines.push(format!("- current_model: {}", current_model));
     lines.push(format!(
         "- upstream_provider: {}",
         opt_string(app.upstream_provider.as_deref())
@@ -1146,8 +1146,8 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(String::new());
 
-    lines.push("**Session token totals**".to_string());
-    lines.push(format!("- total_tokens_source: `{}`", totals_source));
+    lines.push("Session token totals".to_string());
+    lines.push(format!("- total_tokens_source: {}", totals_source));
     lines.push(format!(
         "- total_input_tokens: {}",
         bold_count(history_input_tokens)
@@ -1172,7 +1172,7 @@ fn format_cache_stats(app: &App) -> String {
         "- client_observed_completed_output_tokens: {}",
         bold_count(app.total_output_tokens)
     ));
-    lines.push(format!("- total_cost_usd: **{:.6}**", app.total_cost));
+    lines.push(format!("- total_cost_usd: {:.6}", app.total_cost));
     lines.push(format!(
         "- cached_prompt_price_per_1m: {}",
         app.cached_prompt_price
@@ -1209,8 +1209,8 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(String::new());
 
-    lines.push("**Provider cache telemetry totals**".to_string());
-    lines.push(format!("- cache_totals_source: `{}`", cache_totals_source));
+    lines.push("Provider cache telemetry totals".to_string());
+    lines.push(format!("- cache_totals_source: {}", cache_totals_source));
     lines.push(format!(
         "- total_cache_reported_input_tokens: {}",
         bold_count(reported)
@@ -1225,11 +1225,11 @@ fn format_cache_stats(app: &App) -> String {
         bold_count(optimal)
     ));
     lines.push(format!(
-        "- cache_read_pct_of_reported_input: **{}%**",
+        "- cache_read_pct_of_reported_input: {}%",
         read_pct
     ));
     lines.push(format!(
-        "- cache_write_pct_of_reported_input: **{}%**",
+        "- cache_write_pct_of_reported_input: {}%",
         write_pct
     ));
     lines.push(format!(
@@ -1245,11 +1245,11 @@ fn format_cache_stats(app: &App) -> String {
         bold_count(write_including_live)
     ));
     lines.push(format!(
-        "- cache_read_pct_of_reported_input_including_unrecorded_live: **{}%**",
+        "- cache_read_pct_of_reported_input_including_unrecorded_live: {}%",
         read_pct_including_live
     ));
     lines.push(format!(
-        "- cache_write_pct_of_reported_input_including_unrecorded_live: **{}%**",
+        "- cache_write_pct_of_reported_input_including_unrecorded_live: {}%",
         write_pct_including_live
     ));
     lines.push(format!(
@@ -1276,7 +1276,7 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(String::new());
 
-    lines.push("**Current / live stream counters**".to_string());
+    lines.push("Current / live stream counters".to_string());
     lines.push(format!(
         "- streaming_input_tokens: {}",
         bold_count(app.streaming_input_tokens)
@@ -1298,11 +1298,11 @@ fn format_cache_stats(app: &App) -> String {
         opt_u64(app.streaming_cache_creation_tokens)
     ));
     lines.push(format!(
-        "- current_api_usage_recorded: **{}**",
+        "- current_api_usage_recorded: {}",
         app.current_api_usage_recorded
     ));
-    lines.push(format!("- status: `{:?}`", app.status));
-    lines.push(format!("- is_processing: **{}**", app.is_processing));
+    lines.push(format!("- status: {:?}", app.status));
+    lines.push(format!("- is_processing: {}", app.is_processing));
     lines.push(format!(
         "- processing_started_age_secs: {}",
         app.processing_started
@@ -1316,50 +1316,50 @@ fn format_cache_stats(app: &App) -> String {
             .unwrap_or_else(|| "None".to_string())
     ));
     lines.push(format!(
-        "- stream_message_ended: **{}**",
+        "- stream_message_ended: {}",
         app.stream_message_ended
     ));
     lines.push(format!(
-        "- streaming_tool_calls_len: **{}**",
+        "- streaming_tool_calls_len: {}",
         app.streaming_tool_calls.len()
     ));
     lines.push(String::new());
 
-    lines.push("**KV cache tracker state**".to_string());
+    lines.push("KV cache tracker state".to_string());
     lines.push(format!(
         "- kv_cache_turn_number: {}",
         opt_usize(app.kv_cache_turn_number)
     ));
     lines.push(format!(
-        "- kv_cache_turn_call_index: **{}**",
+        "- kv_cache_turn_call_index: {}",
         app.kv_cache_turn_call_index
     ));
     lines.push(format!(
-        "- kv_cache_miss_samples_len: **{}**",
+        "- kv_cache_miss_samples_len: {}",
         app.kv_cache_miss_samples.len()
     ));
     push_cache_baseline(&mut lines, "baseline", app.kv_cache_baseline.as_ref());
     if let Some(request) = app.pending_kv_cache_request.as_ref() {
         lines.push("- pending_request: present".to_string());
         lines.push(format!(
-            "- pending_request.turn_number: **{}**",
+            "- pending_request.turn_number: {}",
             request.turn_number
         ));
         lines.push(format!(
-            "- pending_request.call_index: **{}**",
+            "- pending_request.call_index: {}",
             request.call_index
         ));
         lines.push(format!(
-            "- pending_request.provider: `{}`",
+            "- pending_request.provider: {}",
             request.provider
         ));
-        lines.push(format!("- pending_request.model: `{}`", request.model));
+        lines.push(format!("- pending_request.model: {}", request.model));
         lines.push(format!(
             "- pending_request.upstream_provider: {}",
             opt_string(request.upstream_provider.as_deref())
         ));
         lines.push(format!(
-            "- pending_request.baseline_messages_prefix_matches: **{:?}**",
+            "- pending_request.baseline_messages_prefix_matches: {:?}",
             request.baseline_messages_prefix_matches
         ));
         push_cache_signature(
@@ -1377,9 +1377,9 @@ fn format_cache_stats(app: &App) -> String {
     }
     lines.push(String::new());
 
-    lines.push("**Persisted transcript token usage**".to_string());
+    lines.push("Persisted transcript token usage".to_string());
     lines.push(format!(
-        "- persisted_token_usage_source: `{}`",
+        "- persisted_token_usage_source: {}",
         persisted_source
     ));
     lines.push(format!(
@@ -1393,7 +1393,7 @@ fn format_cache_stats(app: &App) -> String {
             .unwrap_or_else(|| "None".to_string())
     ));
     lines.push(format!(
-        "- messages_with_token_usage: **{}**",
+        "- messages_with_token_usage: {}",
         persisted_messages_with_usage
     ));
     lines.push(format!(
@@ -1418,13 +1418,13 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(String::new());
 
-    lines.push("**Recent miss attributions**".to_string());
+    lines.push("Recent miss attributions".to_string());
     if app.kv_cache_miss_samples.is_empty() {
         lines.push("- none attributed".to_string());
     } else {
         for sample in app.kv_cache_miss_samples.iter().rev() {
             lines.push(format!(
-                "- turn={} call={} missed_tokens={} reason=`{}`",
+                "- turn={} call={} missed_tokens={} reason={}",
                 sample.turn_number,
                 sample.call_index,
                 human_count(sample.missed_tokens),
@@ -1492,15 +1492,15 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
                 let new_state = !current;
                 crate::provider::anthropic::set_cache_ttl_1h(new_state);
                 let msg = if new_state {
-                    "Cache TTL toggled to 1 hour. Cache writes cost 2x base input tokens.\nUse `/cache 5m` to revert."
+                    "Cache TTL toggled to 1 hour. Cache writes cost 2x base input tokens.\nUse /cache 5m to revert."
                 } else {
-                    "Cache TTL toggled to 5 minutes.\nUse `/cache 1h` to extend."
+                    "Cache TTL toggled to 5 minutes.\nUse /cache 1h to extend."
                 };
                 app.push_display_message(DisplayMessage::system(msg.to_string()));
             }
             _ => {
                 app.push_display_message(DisplayMessage::error(
-                    "Usage: `/cache` (toggle), `/cache stats`, `/cache 1h` (1 hour), `/cache 5m` (default)"
+                    "Usage: /cache (toggle), /cache stats, /cache 1h (1 hour), /cache 5m (default)"
                         .to_string(),
                 ));
             }
@@ -1537,49 +1537,49 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         };
 
         let mut info = String::new();
-        info.push_str(&format!("**Version:** {}\n", version));
+        info.push_str(&format!("Version: {}\n", version));
         info.push_str(&format!(
-            "**Session:** {} ({})\n",
+            "Session: {} ({})\n",
             app.session.short_name.as_deref().unwrap_or("unnamed"),
             &app.session.id[..8]
         ));
         info.push_str(&format!(
-            "**Duration:** {} ({} turns)\n",
+            "Duration: {} ({} turns)\n",
             duration_str, turn_count
         ));
         info.push_str(&format!(
-            "**Tokens:** ↑{} ↓{}\n",
+            "Tokens: ↑{} ↓{}\n",
             app.total_input_tokens, app.total_output_tokens
         ));
-        info.push_str(&format!("**Terminal:** {}\n", terminal_size));
-        info.push_str(&format!("**CWD:** {}\n", cwd));
+        info.push_str(&format!("Terminal: {}\n", terminal_size));
+        info.push_str(&format!("CWD: {}\n", cwd));
         info.push_str(&format!(
-            "**Features:** memory={}, swarm={}\n",
+            "Features: memory={}, swarm={}\n",
             if app.memory_enabled { "on" } else { "off" },
             if app.swarm_enabled { "on" } else { "off" }
         ));
 
         if let Some(ref model) = app.remote_provider_model {
-            info.push_str(&format!("**Model:** {}\n", model));
+            info.push_str(&format!("Model: {}\n", model));
         }
         if let Some(ref provider_id) = app.provider_session_id {
             info.push_str(&format!(
-                "**Provider Session:** {}...\n",
+                "Provider Session: {}...\n",
                 &provider_id[..provider_id.len().min(16)]
             ));
         }
 
         if app.session.is_canary {
-            info.push_str("\n**Self-Dev Mode:** enabled\n");
+            info.push_str("\nSelf-Dev Mode: enabled\n");
             if let Some(ref build) = app.session.testing_build {
-                info.push_str(&format!("**Testing Build:** {}\n", build));
+                info.push_str(&format!("Testing Build: {}\n", build));
             }
         }
 
         if app.is_remote {
-            info.push_str("\n**Remote Mode:** connected\n");
+            info.push_str("\nRemote Mode: connected\n");
             if let Some(count) = app.remote_client_count {
-                info.push_str(&format!("**Connected Clients:** {}\n", count));
+                info.push_str(&format!("Connected Clients: {}\n", count));
             }
         }
 
@@ -1713,9 +1713,9 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         }
 
         let mut context_report = String::new();
-        context_report.push_str("# Session Context\n\n");
-        context_report.push_str("## Runtime\n");
-        context_report.push_str(&format!("- session id: `{}`\n", active_session_id));
+        context_report.push_str("Session Context\n\n");
+        context_report.push_str("Runtime\n");
+        context_report.push_str(&format!("- session id: {}\n", active_session_id));
         context_report.push_str(&format!("- session name: {}\n", app.session.display_name()));
         context_report.push_str(&format!(
             "- mode: {}{}{}\n",
@@ -1764,7 +1764,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         if let Some((input, output)) = total_tokens {
             context_report.push_str(&format!("- session tokens: ↑{} ↓{}\n", input, output));
         }
-        context_report.push_str("\n## Prompt / Context Composition\n");
+        context_report.push_str("\nPrompt / Context Composition\n");
         context_report.push_str(&format!(
             "- total chars: {} (~{} tokens)\n",
             context.total_chars,
@@ -1801,9 +1801,9 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             context.tool_results_chars,
             context.tool_results_count,
         ));
-        context_report.push_str("\n## Compaction\n");
+        context_report.push_str("\nCompaction\n");
         context_report.push_str(&compaction_summary);
-        context_report.push_str("\n\n## Session State\n");
+        context_report.push_str("\n\nSession State\n");
         context_report.push_str(&format!(
             "- queue mode: {}\n- queued messages: {}\n- interleave pending: {}\n- soft interrupts pending: {}\n- pasted snippets buffered: {}\n- pending images: {}\n- active skill: {}\n- autonomy mode: {}\n- subagent status: {}\n- provider session id: {}\n- status notice: {}\n- last stream error: {}\n- stashed input: {}\n",
             if app.queue_mode { "on" } else { "off" },
@@ -1824,9 +1824,9 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             app.last_stream_error.as_deref().unwrap_or("none"),
             if app.stashed_input.is_some() { "yes" } else { "no" },
         ));
-        context_report.push_str("\n## Todos\n");
+        context_report.push_str("\nTodos\n");
         context_report.push_str(&todo_lines);
-        context_report.push_str("\n## Side Panel\n");
+        context_report.push_str("\nSide Panel\n");
         context_report.push_str(&format!(
             "- pages: {}\n- focused page: {}\n",
             side_panel_pages, focused_side_panel
@@ -1843,7 +1843,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         }
 
         if app.swarm_enabled {
-            context_report.push_str("\n## Swarm\n");
+            context_report.push_str("\nSwarm\n");
             context_report.push_str(&format!(
                 "- plan items: {}\n- remote members: {}\n- connected clients: {}\n",
                 app.swarm_plan_items.len(),
