@@ -361,6 +361,17 @@ pub fn cursor_auth_file_path() -> Result<PathBuf> {
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
+        // Honor JCODE_HOME isolation (used by the onboarding sandbox and tests)
+        // the same way every other external-CLI auth detector does. Without this,
+        // Cursor would leak the real `~/.config/cursor/auth.json` into a sandbox
+        // while Codex/Claude/Gemini/Copilot correctly look under
+        // `$JCODE_HOME/external/...`, so a fresh-install sandbox would show only
+        // Cursor as importable.
+        if std::env::var_os("JCODE_HOME").is_some() {
+            return crate::storage::user_home_path(".config/cursor/auth.json")
+                .context("No home directory found for Cursor auth.json");
+        }
+
         let config_dir =
             dirs::config_dir().ok_or_else(|| anyhow::anyhow!("No config directory found"))?;
         Ok(config_dir.join("cursor").join("auth.json"))

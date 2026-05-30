@@ -107,6 +107,32 @@ fn has_cursor_api_key_from_env() {
 }
 
 #[test]
+fn cursor_auth_file_path_respects_jcode_home() {
+    // Regression: on Linux the auth.json path previously used
+    // `dirs::config_dir()` directly, ignoring JCODE_HOME. That leaked the real
+    // `~/.config/cursor/auth.json` into the onboarding sandbox, so a
+    // fresh-install sandbox showed only Cursor as importable while every other
+    // provider correctly looked under `$JCODE_HOME/external/...`.
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("JCODE_HOME");
+    let temp = TempDir::new().unwrap();
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    let path = cursor_auth_file_path().expect("cursor auth path");
+    assert!(
+        path.starts_with(temp.path().join("external")),
+        "cursor auth path should be under JCODE_HOME/external, got {}",
+        path.display()
+    );
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
 fn cursor_vscdb_paths_respect_jcode_home() {
     let _guard = crate::storage::lock_test_env();
     let prev_home = std::env::var_os("JCODE_HOME");
