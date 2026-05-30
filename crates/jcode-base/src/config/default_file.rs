@@ -46,8 +46,9 @@ scroll_prompt_down = "ctrl+]"
 scroll_bookmark = "ctrl+g"
 
 # Optional fallback scroll bindings (useful on macOS terminals that forward Command)
-scroll_up_fallback = "cmd+k"
-scroll_down_fallback = "cmd+j"
+# Leave unset by default; on macOS Cmd+K / Cmd+J move up / down by prompt instead.
+scroll_up_fallback = ""
+scroll_down_fallback = ""
 
 # Workspace navigation (Niri-style)
 # Comma-separate multiple bindings to add aliases.
@@ -55,6 +56,14 @@ workspace_left = "alt+h"
 workspace_down = "alt+j"
 workspace_up = "alt+k"
 workspace_right = "alt+l"
+
+# Pane / mode toggles
+side_panel_toggle = "alt+m"
+copy_selection_toggle = "alt+y"
+diagram_pane_toggle = "alt+t"
+typing_scroll_lock_toggle = "alt+s"
+diff_mode_cycle = "alt+g"
+info_widget_toggle = "alt+i"
 
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.

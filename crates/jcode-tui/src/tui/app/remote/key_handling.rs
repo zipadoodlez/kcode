@@ -298,15 +298,13 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if crate::tui::keybind::matches_side_panel_toggle_key(code, modifiers) {
+    if app.toggle_keys.side_panel.matches(code, modifiers) {
         app.toggle_side_panel();
         return Ok(());
     }
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
-    if (modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('t')))
-        || macos_option_shortcut == Some('t')
-    {
+    if app.toggle_keys.diagram_pane.matches(code, modifiers) {
         app.toggle_diagram_pane_position();
         return Ok(());
     }
@@ -327,9 +325,7 @@ async fn handle_remote_key_internal(
         apply_remote_effort_direction(app, remote, direction).await?;
         return Ok(());
     }
-    if (modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('s')))
-        || macos_option_shortcut == Some('s')
-    {
+    if app.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
         app.toggle_typing_scroll_lock();
         return Ok(());
     }
@@ -385,7 +381,7 @@ async fn handle_remote_key_internal(
     if modifiers.contains(KeyModifiers::SUPER) {
         match code {
             KeyCode::Backspace | KeyCode::Delete | KeyCode::Char('\u{7f}') => {
-                input::delete_input_to_start(app);
+                input::delete_input_word_back(app);
                 return Ok(());
             }
             KeyCode::Left | KeyCode::Home | KeyCode::Char('a') => {
@@ -449,11 +445,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('s')) {
-        app.toggle_typing_scroll_lock();
-        return Ok(());
-    }
-
     if app.scroll_keys.is_bookmark(code, modifiers) {
         app.toggle_scroll_bookmark();
         return Ok(());
@@ -464,9 +455,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if modifiers.contains(KeyModifiers::ALT)
-        && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'g'))
-    {
+    if app.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;

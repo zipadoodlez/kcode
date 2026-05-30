@@ -334,6 +334,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(key_entry("PageUp / PageDown", "Scroll history"));
     lines.push(key_entry("Up / Down", "Scroll history (when input empty)"));
     lines.push(key_entry("Ctrl+[ / Ctrl+]", "Jump between user prompts"));
+    lines.push(key_entry(
+        "Cmd/Super+K / J",
+        "Jump to previous / next user prompt (macOS)",
+    ));
     lines.push(key_entry("Ctrl+1..4", "Resize side panel to 25/50/75/100%"));
     lines.push(key_entry(
         "Ctrl+5..9",
@@ -392,7 +396,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(key_entry(
         "Cmd/Super+Backspace / Delete",
-        "Delete to start of input",
+        "Delete previous word in input",
     ));
     lines.push(key_entry(
         "Cmd/Super+Left / Right",

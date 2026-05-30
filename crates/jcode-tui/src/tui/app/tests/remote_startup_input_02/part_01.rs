@@ -348,7 +348,7 @@ fn test_handle_key_ctrl_backspace_csi_u_char_fallback_deletes_word() {
 }
 
 #[test]
-fn test_handle_key_super_backspace_deletes_to_start() {
+fn test_handle_key_super_backspace_deletes_previous_word() {
     let mut app = create_test_app();
     app.set_input_for_test("hello world again");
 
@@ -357,12 +357,13 @@ fn test_handle_key_super_backspace_deletes_to_start() {
     app.handle_key(KeyCode::Backspace, KeyModifiers::SUPER)
         .unwrap();
 
-    assert_eq!(app.input(), "again");
-    assert_eq!(app.cursor_pos(), 0);
+    // Cmd+Backspace deletes the previous word, leaving the cursor at the new boundary.
+    assert_eq!(app.input(), "hello again");
+    assert_eq!(app.cursor_pos(), "hello ".len());
 }
 
 #[test]
-fn test_handle_key_super_delete_aliases_delete_to_start() {
+fn test_handle_key_super_delete_aliases_delete_previous_word() {
     for code in [KeyCode::Delete, KeyCode::Char('\u{7f}')] {
         let mut app = create_test_app();
         app.set_input_for_test("hello world again");
@@ -371,8 +372,8 @@ fn test_handle_key_super_delete_aliases_delete_to_start() {
             .unwrap();
         app.handle_key(code, KeyModifiers::SUPER).unwrap();
 
-        assert_eq!(app.input(), "again");
-        assert_eq!(app.cursor_pos(), 0);
+        assert_eq!(app.input(), "hello again");
+        assert_eq!(app.cursor_pos(), "hello ".len());
     }
 }
 
@@ -392,7 +393,7 @@ fn test_handle_key_alt_delete_aliases_delete_previous_word() {
 }
 
 #[test]
-fn test_remote_super_backspace_deletes_to_start() {
+fn test_remote_super_backspace_deletes_previous_word() {
     let mut app = create_test_app();
     app.set_input_for_test("hello world again");
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -404,8 +405,8 @@ fn test_remote_super_backspace_deletes_to_start() {
     rt.block_on(app.handle_remote_key(KeyCode::Backspace, KeyModifiers::SUPER, &mut remote))
         .unwrap();
 
-    assert_eq!(app.input(), "again");
-    assert_eq!(app.cursor_pos(), 0);
+    assert_eq!(app.input(), "hello again");
+    assert_eq!(app.cursor_pos(), "hello ".len());
 }
 
 #[test]

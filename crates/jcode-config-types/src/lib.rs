@@ -437,9 +437,9 @@ pub struct KeybindingsConfig {
     pub scroll_prompt_down: String,
     /// Scroll bookmark toggle key (default: "ctrl+g")
     pub scroll_bookmark: String,
-    /// Scroll up fallback key (default: "cmd+k")
+    /// Scroll up fallback key (default: unset; Cmd+K moves up by prompt on macOS)
     pub scroll_up_fallback: String,
-    /// Scroll down fallback key (default: "cmd+j")
+    /// Scroll down fallback key (default: unset; Cmd+J moves down by prompt on macOS)
     pub scroll_down_fallback: String,
     /// Workspace navigation left key (default: "alt+h")
     pub workspace_left: String,
@@ -449,6 +449,18 @@ pub struct KeybindingsConfig {
     pub workspace_up: String,
     /// Workspace navigation right key (default: "alt+l")
     pub workspace_right: String,
+    /// Toggle the side panel (default: "alt+m")
+    pub side_panel_toggle: String,
+    /// Toggle copy/selection mode (default: "alt+y")
+    pub copy_selection_toggle: String,
+    /// Toggle the diagram pane position (default: "alt+t")
+    pub diagram_pane_toggle: String,
+    /// Toggle typing scroll lock (default: "alt+s")
+    pub typing_scroll_lock_toggle: String,
+    /// Cycle inline diff display mode (default: "alt+g")
+    pub diff_mode_cycle: String,
+    /// Toggle the info widget (default: "alt+i")
+    pub info_widget_toggle: String,
     /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
     /// Ctrl+Enter performs the alternate action.
     pub session_picker_enter: SessionPickerResumeAction,
@@ -469,12 +481,18 @@ impl Default for KeybindingsConfig {
             scroll_prompt_up: "ctrl+[".to_string(),
             scroll_prompt_down: "ctrl+]".to_string(),
             scroll_bookmark: "ctrl+g".to_string(),
-            scroll_up_fallback: "cmd+k".to_string(),
-            scroll_down_fallback: "cmd+j".to_string(),
+            scroll_up_fallback: String::new(),
+            scroll_down_fallback: String::new(),
             workspace_left: "alt+h".to_string(),
             workspace_down: "alt+j".to_string(),
             workspace_up: "alt+k".to_string(),
             workspace_right: "alt+l".to_string(),
+            side_panel_toggle: "alt+m".to_string(),
+            copy_selection_toggle: "alt+y".to_string(),
+            diagram_pane_toggle: "alt+t".to_string(),
+            typing_scroll_lock_toggle: "alt+s".to_string(),
+            diff_mode_cycle: "alt+g".to_string(),
+            info_widget_toggle: "alt+i".to_string(),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }

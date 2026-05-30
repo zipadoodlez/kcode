@@ -62,6 +62,24 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_WORKSPACE_RIGHT_KEY") {
             self.keybindings.workspace_right = v;
         }
+        if let Ok(v) = std::env::var("JCODE_SIDE_PANEL_TOGGLE_KEY") {
+            self.keybindings.side_panel_toggle = v;
+        }
+        if let Ok(v) = std::env::var("JCODE_COPY_SELECTION_TOGGLE_KEY") {
+            self.keybindings.copy_selection_toggle = v;
+        }
+        if let Ok(v) = std::env::var("JCODE_DIAGRAM_PANE_TOGGLE_KEY") {
+            self.keybindings.diagram_pane_toggle = v;
+        }
+        if let Ok(v) = std::env::var("JCODE_TYPING_SCROLL_LOCK_TOGGLE_KEY") {
+            self.keybindings.typing_scroll_lock_toggle = v;
+        }
+        if let Ok(v) = std::env::var("JCODE_DIFF_MODE_CYCLE_KEY") {
+            self.keybindings.diff_mode_cycle = v;
+        }
+        if let Ok(v) = std::env::var("JCODE_INFO_WIDGET_TOGGLE_KEY") {
+            self.keybindings.info_widget_toggle = v;
+        }
 
         // Dictation
         if let Ok(v) = std::env::var("JCODE_DICTATION_COMMAND") {

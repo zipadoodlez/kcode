@@ -196,6 +196,75 @@ pub fn load_centered_toggle_key() -> CenteredToggleKeys {
     CenteredToggleKeys { toggle }
 }
 
+/// A single configurable toggle binding plus, when the binding is `alt+<letter>`,
+/// the letter used to match macOS terminals that insert Option+letter as a Unicode
+/// character (e.g. Option+M -> `µ`).
+#[derive(Clone, Debug)]
+pub struct ToggleBinding {
+    binding: Option<KeyBinding>,
+    macos_option_letter: Option<char>,
+}
+
+impl ToggleBinding {
+    fn load(raw: &str, default_letter: char) -> Self {
+        let default = KeyBinding {
+            code: KeyCode::Char(default_letter),
+            modifiers: KeyModifiers::ALT,
+        };
+        let default_label = format_binding(&default);
+        let (binding, _) = parse_optional(raw, default, &default_label);
+        let macos_option_letter = binding.as_ref().and_then(|b| {
+            if b.modifiers == KeyModifiers::ALT {
+                if let KeyCode::Char(c) = b.code {
+                    return Some(c.to_ascii_lowercase());
+                }
+            }
+            None
+        });
+        Self {
+            binding,
+            macos_option_letter,
+        }
+    }
+
+    pub fn matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        if let Some(binding) = &self.binding
+            && binding.matches(code, modifiers)
+        {
+            return true;
+        }
+        if let Some(letter) = self.macos_option_letter
+            && shortcut_char_for_macos_option_key(code, modifiers) == Some(letter)
+        {
+            return true;
+        }
+        false
+    }
+}
+
+/// All configurable pane / mode toggle keybindings.
+#[derive(Clone, Debug)]
+pub struct ToggleKeys {
+    pub side_panel: ToggleBinding,
+    pub copy_selection: ToggleBinding,
+    pub diagram_pane: ToggleBinding,
+    pub typing_scroll_lock: ToggleBinding,
+    pub diff_mode_cycle: ToggleBinding,
+    pub info_widget: ToggleBinding,
+}
+
+pub fn load_toggle_keys() -> ToggleKeys {
+    let cfg = config();
+    ToggleKeys {
+        side_panel: ToggleBinding::load(&cfg.keybindings.side_panel_toggle, 'm'),
+        copy_selection: ToggleBinding::load(&cfg.keybindings.copy_selection_toggle, 'y'),
+        diagram_pane: ToggleBinding::load(&cfg.keybindings.diagram_pane_toggle, 't'),
+        typing_scroll_lock: ToggleBinding::load(&cfg.keybindings.typing_scroll_lock_toggle, 's'),
+        diff_mode_cycle: ToggleBinding::load(&cfg.keybindings.diff_mode_cycle, 'g'),
+        info_widget: ToggleBinding::load(&cfg.keybindings.info_widget_toggle, 'i'),
+    }
+}
+
 pub(crate) fn side_panel_toggle_key_label() -> &'static str {
     #[cfg(target_os = "macos")]
     {
@@ -205,10 +274,6 @@ pub(crate) fn side_panel_toggle_key_label() -> &'static str {
     {
         "Alt+M"
     }
-}
-
-pub(crate) fn matches_side_panel_toggle_key(code: KeyCode, modifiers: KeyModifiers) -> bool {
-    matches_side_panel_toggle_key_for_platform(code, modifiers, cfg!(target_os = "macos"))
 }
 
 pub(crate) fn shortcut_char_for_macos_option_key(
@@ -281,6 +346,7 @@ fn macos_option_shift_char_to_ascii_key(code: KeyCode) -> Option<char> {
     }
 }
 
+#[cfg(test)]
 fn matches_side_panel_toggle_key_for_platform(
     code: KeyCode,
     modifiers: KeyModifiers,

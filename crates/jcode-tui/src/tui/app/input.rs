@@ -1247,10 +1247,10 @@ pub(super) fn delete_input_to_end(app: &mut App) {
 pub(super) fn handle_super_key(app: &mut App, code: KeyCode) -> bool {
     match code {
         // macOS terminals that forward Command may report Command+Delete as Super+Backspace,
-        // Super+Delete, or Super+DEL. Treat all of them as delete-to-start, matching native
-        // macOS text fields and avoiding overlap with Option/Alt word-delete shortcuts.
+        // Super+Delete, or Super+DEL. Treat all of them as delete-the-previous-word, matching
+        // the requested Cmd+Backspace = delete-by-word behavior.
         KeyCode::Backspace | KeyCode::Delete | KeyCode::Char('\u{7f}') => {
-            delete_input_to_start(app);
+            delete_input_word_back(app);
             true
         }
         KeyCode::Left | KeyCode::Home | KeyCode::Char('a') => {
@@ -1312,16 +1312,6 @@ pub(super) fn handle_alt_key(app: &mut App, code: KeyCode) -> bool {
             delete_input_word_back(app);
             true
         }
-        KeyCode::Char('i') => {
-            crate::tui::info_widget::toggle_enabled();
-            let status = if crate::tui::info_widget::is_enabled() {
-                "Info widget: ON"
-            } else {
-                "Info widget: OFF"
-            };
-            app.set_status_notice(status);
-            true
-        }
         KeyCode::Char('v') => {
             paste_from_clipboard(app);
             true
@@ -1372,9 +1362,7 @@ pub(super) fn handle_navigation_shortcuts(
         return true;
     }
 
-    if modifiers.contains(KeyModifiers::ALT)
-        && matches!(code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&'g'))
-    {
+    if app.toggle_keys.diff_mode_cycle.matches(code, modifiers) {
         app.diff_mode = app.diff_mode.cycle();
         if !app.diff_pane_visible() {
             app.diff_pane_focus = false;
@@ -1489,9 +1477,7 @@ pub(super) fn handle_pre_control_shortcuts(
 
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
-    if (modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('y')))
-        || macos_option_shortcut == Some('y')
-    {
+    if app.toggle_keys.copy_selection.matches(code, modifiers) {
         app.toggle_copy_selection_mode();
         return true;
     }
@@ -1500,20 +1486,26 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
 
-    if crate::tui::keybind::matches_side_panel_toggle_key(code, modifiers) {
+    if app.toggle_keys.side_panel.matches(code, modifiers) {
         app.toggle_side_panel();
         return true;
     }
-    if (modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('t')))
-        || macos_option_shortcut == Some('t')
-    {
+    if app.toggle_keys.diagram_pane.matches(code, modifiers) {
         app.toggle_diagram_pane_position();
         return true;
     }
-    if (modifiers.contains(KeyModifiers::ALT) && matches!(code, KeyCode::Char('s')))
-        || macos_option_shortcut == Some('s')
-    {
+    if app.toggle_keys.typing_scroll_lock.matches(code, modifiers) {
         app.toggle_typing_scroll_lock();
+        return true;
+    }
+    if app.toggle_keys.info_widget.matches(code, modifiers) {
+        crate::tui::info_widget::toggle_enabled();
+        let status = if crate::tui::info_widget::is_enabled() {
+            "Info widget: ON"
+        } else {
+            "Info widget: OFF"
+        };
+        app.set_status_notice(status);
         return true;
     }
     if app.dictation_key_matches(code, modifiers) {
