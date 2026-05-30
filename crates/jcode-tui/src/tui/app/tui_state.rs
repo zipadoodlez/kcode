@@ -1481,6 +1481,10 @@ impl crate::tui::TuiState for App {
         App::onboarding_welcome_active(self)
     }
 
+    fn onboarding_welcome_kind(&self) -> crate::tui::OnboardingWelcomeKind {
+        App::onboarding_welcome_kind(self)
+    }
+
     fn suggestion_prompts(&self) -> Vec<(String, String)> {
         App::suggestion_prompts(self)
     }

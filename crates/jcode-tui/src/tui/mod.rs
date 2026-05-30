@@ -349,6 +349,12 @@ pub trait TuiState {
     fn onboarding_welcome_active(&self) -> bool {
         self.onboarding_preview_mode()
     }
+    /// What the onboarding welcome screen should render in its body. Returns
+    /// `Suggestions` by default (the starter cards); the guided flow overrides
+    /// this to drive the model-select and continue-prompt phases.
+    fn onboarding_welcome_kind(&self) -> OnboardingWelcomeKind {
+        OnboardingWelcomeKind::Suggestions
+    }
     /// Suggestion prompts for new users (shown in initial empty state).
     /// Returns (label, prompt_text) pairs. Empty if user is experienced or not authenticated.
     fn suggestion_prompts(&self) -> Vec<(String, String)>;
@@ -557,6 +563,20 @@ pub enum PickerKind {
     Account,
     Login,
     Usage,
+}
+
+/// What the first-run onboarding welcome screen should render in its body,
+/// driven by the active onboarding flow phase. `Suggestions` is the default
+/// resting state (the starter prompt cards).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OnboardingWelcomeKind {
+    /// Ask the user to pick a model first (press Enter to open the picker).
+    ModelSelect,
+    /// "Continue where you left off in <cli>?" with a live auto-advance
+    /// countdown (seconds remaining).
+    ContinuePrompt { cli_label: String, seconds_left: u64 },
+    /// The starter prompt-suggestion cards (default).
+    Suggestions,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

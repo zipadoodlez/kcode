@@ -54,10 +54,7 @@ pub(crate) enum OnboardingPhase {
         shown_at: Instant,
     },
     /// Single-select transcript picker with a 10s auto-select of the latest.
-    TranscriptPick {
-        cli: ExternalCli,
-        shown_at: Instant,
-    },
+    TranscriptPick { cli: ExternalCli, shown_at: Instant },
     /// Existing prompt-suggestion cards (resting / "No" state).
     Suggestions,
     /// Flow finished; nothing onboarding-specific to render.

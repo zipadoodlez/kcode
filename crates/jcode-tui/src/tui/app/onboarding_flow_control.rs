@@ -37,9 +37,6 @@ impl App {
         if self.onboarding_flow.is_some() {
             return;
         }
-        if self.is_remote {
-            return;
-        }
         if !self.onboarding_preview_mode && !self.is_new_user_for_onboarding() {
             return;
         }
@@ -59,14 +56,26 @@ impl App {
         if self.onboarding_startup_checked {
             return;
         }
-        if self.onboarding_flow.is_some() || self.is_remote {
+        if self.onboarding_flow.is_some() {
             self.onboarding_startup_checked = true;
             return;
         }
-        // Don't hijack a session that already has activity (resume, restored
-        // input, or anything already on screen). These are settled states, so we
-        // can commit the guard.
-        if !self.display_messages.is_empty() || self.is_processing || !self.input.is_empty() {
+        // Don't hijack a session that already has real activity (resume,
+        // restored input, or a genuine conversation already on screen). These
+        // are settled states, so we can commit the guard.
+        //
+        // A brand-new session still carries one synthetic `<system-reminder>`
+        // "Session Context" message (role=user) plus assorted system scaffolding.
+        // Those are not real activity, so we ignore them when deciding whether
+        // the session is already in use.
+        let has_real_conversation = self.display_messages.iter().any(|m| {
+            let role = m.role.as_str();
+            let is_system_reminder =
+                role == "user" && m.content.trim_start().starts_with("<system-reminder>");
+            let is_scaffolding = matches!(role, "system" | "usage" | "overnight" | "background_task");
+            !is_system_reminder && !is_scaffolding
+        });
+        if has_real_conversation || self.is_processing || !self.input.is_empty() {
             self.onboarding_startup_checked = true;
             return;
         }
@@ -104,11 +113,10 @@ impl App {
             return;
         }
         self.onboarding_flow = Some(OnboardingFlow::begin());
-        self.push_display_message(DisplayMessage::system(
-            "You're set up. Pick a model to get started (Enter to open the model picker)."
-                .to_string(),
-        ));
-        self.set_status_notice("Onboarding: choose a model");
+        // The model-select prompt is rendered by the onboarding welcome screen
+        // (`onboarding_welcome_kind`), not as a transcript message: in remote
+        // mode the server owns the transcript and would wipe any pushed message.
+        self.set_status_notice("Onboarding: press Enter to choose a model");
     }
 
     /// Advance out of the model-selection phase once a model has been chosen.
@@ -132,10 +140,8 @@ impl App {
                 shown_at: Instant::now(),
             };
         }
-        self.push_display_message(DisplayMessage::system(format!(
-            "Continue where you left off in {}? [Y] yes  [N] no  (auto-continues in 10s)",
-            cli.label()
-        )));
+        // The continue prompt is rendered by the onboarding welcome screen
+        // (`onboarding_welcome_kind`) so it survives in remote mode.
         self.set_status_notice(format!("Continue in {}?", cli.label()));
     }
 
@@ -153,24 +159,33 @@ impl App {
         }
     }
 
-    /// Intercept Y/N/Enter/Esc while the "continue where you left off?" prompt
-    /// is showing. Returns true if the key was consumed.
+    /// Intercept keys for the guided onboarding welcome phases:
+    ///   - `ModelSelect`: Enter opens the model picker.
+    ///   - `ContinuePrompt`: Y/Enter continues, N/Esc declines.
+    /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
-        if !matches!(
-            self.onboarding_phase(),
-            Some(OnboardingPhase::ContinuePrompt { .. })
-        ) {
-            return false;
-        }
-        match code {
-            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                self.onboarding_answer_continue(true);
-                true
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.onboarding_answer_continue(false);
-                true
-            }
+        match self.onboarding_phase() {
+            Some(OnboardingPhase::ModelSelect) => match code {
+                // Enter opens the model picker, but only from the welcome
+                // screen. If a picker (or any inline overlay) is already open,
+                // let it handle Enter so the selection can commit.
+                KeyCode::Enter if self.inline_interactive_state.is_none() => {
+                    self.open_model_picker();
+                    true
+                }
+                _ => false,
+            },
+            Some(OnboardingPhase::ContinuePrompt { .. }) => match code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    self.onboarding_answer_continue(true);
+                    true
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.onboarding_answer_continue(false);
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         }
     }

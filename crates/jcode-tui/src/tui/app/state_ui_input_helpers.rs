@@ -1110,10 +1110,50 @@ impl App {
         if self.onboarding_preview_mode {
             return true;
         }
+        // While the guided onboarding flow is driving the pre-suggestion phases
+        // (model select / continue prompt), keep the welcome screen up even
+        // though the server may have pushed scaffolding messages. The flow
+        // renders its own body via `onboarding_welcome_kind()`.
+        if self.onboarding_flow_drives_welcome() {
+            return true;
+        }
         if !self.display_messages.is_empty() || self.is_processing {
             return false;
         }
         !self.suggestion_prompts().is_empty()
+    }
+
+    /// What the onboarding welcome screen should render in its body, driven by
+    /// the active guided flow phase. Defaults to the starter suggestion cards.
+    pub fn onboarding_welcome_kind(&self) -> crate::tui::OnboardingWelcomeKind {
+        use crate::tui::OnboardingWelcomeKind;
+        use crate::tui::app::onboarding_flow::OnboardingPhase;
+        match self.onboarding_phase() {
+            Some(OnboardingPhase::ModelSelect) => OnboardingWelcomeKind::ModelSelect,
+            Some(OnboardingPhase::ContinuePrompt { cli, shown_at }) => {
+                let elapsed = shown_at.elapsed();
+                let total =
+                    crate::tui::app::onboarding_flow::AUTO_ADVANCE.as_secs();
+                let seconds_left = total.saturating_sub(elapsed.as_secs());
+                OnboardingWelcomeKind::ContinuePrompt {
+                    cli_label: cli.label().to_string(),
+                    seconds_left,
+                }
+            }
+            _ => OnboardingWelcomeKind::Suggestions,
+        }
+    }
+
+    /// Whether the guided onboarding flow is in a phase that should take over
+    /// the welcome screen body (model select or continue prompt). The
+    /// transcript-pick phase uses the session-picker overlay instead, and the
+    /// suggestions phase is the default welcome body.
+    fn onboarding_flow_drives_welcome(&self) -> bool {
+        use crate::tui::app::onboarding_flow::OnboardingPhase;
+        matches!(
+            self.onboarding_phase(),
+            Some(OnboardingPhase::ModelSelect) | Some(OnboardingPhase::ContinuePrompt { .. })
+        )
     }
 
     /// Get suggestion prompts for new users on the initial empty screen.

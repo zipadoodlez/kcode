@@ -76,6 +76,67 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
         .alignment(align),
     );
 
+    use crate::tui::OnboardingWelcomeKind;
+    match app.onboarding_welcome_kind() {
+        OnboardingWelcomeKind::ModelSelect => {
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    "First, pick a model.",
+                    Style::default().fg(rgb(200, 200, 200)),
+                ))
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(Span::styled(
+                    "Press Enter to open the model picker.",
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
+            return lines;
+        }
+        OnboardingWelcomeKind::ContinuePrompt {
+            cli_label,
+            seconds_left,
+        } => {
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    format!("Continue where you left off in {cli_label}?"),
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(vec![
+                    Span::styled(
+                        "[Y] ",
+                        Style::default().fg(welcome_accent()),
+                    ),
+                    Span::styled("yes   ", Style::default().fg(rgb(200, 200, 200))),
+                    Span::styled(
+                        "[N] ",
+                        Style::default().fg(welcome_accent()),
+                    ),
+                    Span::styled("no", Style::default().fg(rgb(200, 200, 200))),
+                ])
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(Span::styled(
+                    format!("Continuing automatically in {seconds_left}s…"),
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
+            return lines;
+        }
+        OnboardingWelcomeKind::Suggestions => {}
+    }
+
     let suggestions = app.suggestion_prompts();
     if !suggestions.is_empty() {
         lines.push(Line::from(""));

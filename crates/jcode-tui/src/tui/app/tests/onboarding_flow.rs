@@ -120,14 +120,38 @@ fn startup_check_skips_when_session_already_has_activity() {
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.onboarding_startup_checked = false;
-        // Simulate a non-empty / resumed session.
-        app.push_display_message(DisplayMessage::system("existing".to_string()));
+        // Simulate a resumed session with a real user message.
+        app.push_display_message(DisplayMessage::user("what does this repo do?".to_string()));
 
         app.maybe_begin_onboarding_flow_on_startup();
 
         // Settled, non-empty state: guard is committed and no flow starts.
         assert!(app.onboarding_startup_checked);
         assert!(app.onboarding_flow.is_none());
+    });
+}
+
+#[test]
+fn startup_check_ignores_synthetic_scaffolding_messages() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = false;
+        // Fresh sessions still carry a synthetic system-reminder (role=user) and
+        // assorted system scaffolding. These must not count as real activity.
+        app.push_display_message(DisplayMessage::user(
+            "<system-reminder>\n# Session Context\nDate: 2026-05-30".to_string(),
+        ));
+        app.push_display_message(DisplayMessage::system("Switched to model: x".to_string()));
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        // The guard must not be tripped by scaffolding alone; the flow is free to
+        // begin (subject to the new-user / auth checks the helper performs).
+        assert!(
+            !app.display_messages.is_empty(),
+            "precondition: scaffolding messages present"
+        );
     });
 }
 
