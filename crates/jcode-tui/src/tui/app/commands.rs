@@ -29,7 +29,7 @@ use std::time::Instant;
 
 const BTW_PAGE_ID: &str = "btw";
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
-const POKE_OFF_UI_HINT: &str = "`/poke off` to stop.";
+const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 const TODO_CONFIDENCE_THRESHOLD: u8 = 90;
 const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
@@ -63,7 +63,7 @@ pub(super) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, St
         "/poke off" => Some(Ok(PokeCommand::Off)),
         "/poke status" => Some(Ok(PokeCommand::Status)),
         _ if trimmed.starts_with("/poke ") => {
-            Some(Err("Usage: `/poke [on|off|status]`".to_string()))
+            Some(Err("Usage: /poke [on|off|status]".to_string()))
         }
         _ => None,
     }
@@ -186,7 +186,7 @@ pub(super) fn stop_auto_poke_for_non_retryable_error(app: &mut App, error: &str)
     app.rate_limit_pending_message = None;
     app.rate_limit_reset = None;
     app.push_display_message(DisplayMessage::system(format!(
-        "🛑 Auto-poke stopped because the last request failed with a non-retryable error.{} Fix the request/session, then run `/poke` again if you want to resume.",
+        "🛑 Auto-poke stopped because the last request failed with a non-retryable error.{} Fix the request/session, then run /poke again if you want to resume.",
         if cleared == 0 {
             String::new()
         } else {
@@ -434,21 +434,21 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
                     ) {
                         Ok(true) => {
                             app.push_display_message(DisplayMessage::system(format!(
-                                "↗ Transfer launched in **{}**.",
+                                "↗ Transfer launched in {}.",
                                 prepared.session_name
                             )));
                             app.set_status_notice("Transfer launched");
                         }
                         Ok(false) => {
                             app.push_display_message(DisplayMessage::system(format!(
-                                "↗ Transfer session **{}** created.\n\nNo terminal was opened automatically. Resume manually:\n```\njcode --resume {}\n```",
+                                "↗ Transfer session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
                                 prepared.session_name, prepared.session_id
                             )));
                             app.set_status_notice("Transfer session created");
                         }
                         Err(error) => {
                             app.push_display_message(DisplayMessage::error(format!(
-                                "Transfer session **{}** was created but failed to open a window: {}\n\nResume manually: `jcode --resume {}`",
+                                "Transfer session {} was created but failed to open a window: {}\n\nResume manually: jcode --resume {}",
                                 prepared.session_name, error, prepared.session_id
                             )));
                             app.set_status_notice("Transfer open failed");
@@ -518,7 +518,7 @@ pub(super) fn handle_transfer_command_local(app: &mut App) {
     if app.is_processing {
         app.interleave_message = Some(transfer_pause_message());
         app.push_display_message(DisplayMessage::system(
-            "Queued `/transfer`. The current session will be asked to pause, then the compacted handoff will open in a new window."
+            "Queued /transfer. The current session will be asked to pause, then the compacted handoff will open in a new window."
                 .to_string(),
         ));
         app.set_status_notice("Transfer queued after current turn");
@@ -538,7 +538,7 @@ pub(super) fn poke_status_message(app: &App) -> String {
             .iter()
             .any(|message| is_todo_confidence_summary_message(message));
     let mut message = format!(
-        "Auto-poke: **{}**. {} incomplete todo{}.",
+        "Auto-poke: {}. {} incomplete todo{}.",
         if app.auto_poke_incomplete_todos {
             "ON"
         } else {
@@ -558,8 +558,8 @@ pub(super) fn poke_status_message(app: &App) -> String {
 
 pub(super) fn current_subagent_model_summary(app: &App) -> String {
     match app.session.subagent_model.as_deref() {
-        Some(model) => format!("fixed `{}`", model),
-        None => format!("inherit current (`{}`)", app.provider.model()),
+        Some(model) => format!("fixed {}", model),
+        None => format!("inherit current ({})", app.provider.model()),
     }
 }
 
@@ -584,23 +584,23 @@ pub(super) fn parse_manual_subagent_spec(rest: &str) -> Result<ManualSubagentSpe
             "--type" => {
                 let value = iter
                     .next()
-                    .ok_or_else(|| "Missing value for `--type`.".to_string())?;
+                    .ok_or_else(|| "Missing value for --type.".to_string())?;
                 subagent_type = value.to_string();
             }
             "--model" => {
                 let value = iter
                     .next()
-                    .ok_or_else(|| "Missing value for `--model`.".to_string())?;
+                    .ok_or_else(|| "Missing value for --model.".to_string())?;
                 model = Some(value.to_string());
             }
             "--continue" => {
                 let value = iter
                     .next()
-                    .ok_or_else(|| "Missing value for `--continue`.".to_string())?;
+                    .ok_or_else(|| "Missing value for --continue.".to_string())?;
                 session_id = Some(value.to_string());
             }
             flag if flag.starts_with("--") => {
-                return Err(format!("Unknown flag `{}`.", flag));
+                return Err(format!("Unknown flag {}.", flag));
             }
             prompt_start => {
                 prompt_tokens.push(prompt_start.to_string());
@@ -612,7 +612,7 @@ pub(super) fn parse_manual_subagent_spec(rest: &str) -> Result<ManualSubagentSpe
 
     let prompt = prompt_tokens.join(" ").trim().to_string();
     if prompt.is_empty() {
-        return Err("Missing prompt. Add text after `/subagent`.".to_string());
+        return Err("Missing prompt. Add text after /subagent.".to_string());
     }
 
     Ok(ManualSubagentSpec {
@@ -736,7 +736,7 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
 
     if app.is_remote {
         app.push_display_message(DisplayMessage::error(
-            "`/subagent-model` requires a live jcode server connection in remote mode.".to_string(),
+            "/subagent-model requires a live jcode server connection in remote mode.".to_string(),
         ));
         return true;
     }
@@ -748,7 +748,7 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
 
     if rest.is_empty() || matches!(rest, "show" | "status") {
         app.push_display_message(DisplayMessage::system(format!(
-            "Subagent model for this session: {}\n\nUse `/subagent-model <name>` to pin a model, or `/subagent-model inherit` to use the current model.",
+            "Subagent model for this session: {}\n\nUse /subagent-model <name> to pin a model, or /subagent-model inherit to use the current model.",
             current_subagent_model_summary(app)
         )));
         return true;
@@ -758,7 +758,7 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
         app.session.subagent_model = None;
         let _ = app.session.save();
         app.push_display_message(DisplayMessage::system(format!(
-            "Subagent model reset to inherit the current model (`{}`).",
+            "Subagent model reset to inherit the current model ({}).",
             app.provider.model()
         )));
         app.set_status_notice("Subagent model: inherit");
@@ -768,7 +768,7 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
     app.session.subagent_model = Some(rest.to_string());
     let _ = app.session.save();
     app.push_display_message(DisplayMessage::system(format!(
-        "Subagent model pinned to `{}` for this session.",
+        "Subagent model pinned to {} for this session.",
         rest
     )));
     app.set_status_notice(format!("Subagent model → {}", rest));
@@ -782,7 +782,7 @@ fn handle_subagent_command(app: &mut App, trimmed: &str) -> bool {
 
     if app.is_remote {
         app.push_display_message(DisplayMessage::error(
-            "`/subagent` requires a live jcode server connection in remote mode.".to_string(),
+            "/subagent requires a live jcode server connection in remote mode.".to_string(),
         ));
         return true;
     }
@@ -790,7 +790,7 @@ fn handle_subagent_command(app: &mut App, trimmed: &str) -> bool {
     let rest = trimmed.strip_prefix("/subagent").unwrap_or_default().trim();
     if rest.is_empty() {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>`"
+            "Usage: /subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>"
                 .to_string(),
         ));
         return true;
@@ -800,7 +800,7 @@ fn handle_subagent_command(app: &mut App, trimmed: &str) -> bool {
         Ok(spec) => launch_manual_subagent(app, spec),
         Err(error) => {
             app.push_display_message(DisplayMessage::error(format!(
-                "{}\nUsage: `/subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>`",
+                "{}\nUsage: /subagent [--type <kind>] [--model <name>] [--continue <session_id>] <prompt>",
                 error
             )));
         }
@@ -817,7 +817,7 @@ pub(super) fn handle_help_command(app: &mut App, trimmed: &str) -> bool {
             app.push_display_message(DisplayMessage::system(help));
         } else {
             app.push_display_message(DisplayMessage::error(format!(
-                "Unknown command '{}'. Use `/help` to list commands.",
+                "Unknown command '{}'. Use /help to list commands.",
                 topic.trim()
             )));
         }
@@ -873,7 +873,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
 
     if subcommand != "mark" {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/log mark [note]`".to_string(),
+            "Usage: /log mark [note]".to_string(),
         ));
         return true;
     }
@@ -898,7 +898,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
     ));
 
     let mut message = format!(
-        "Log mark written: `{}`\n\nAgents can search `~/.jcode/logs/` for `JCODE_LOG_MARK` or this marker id.",
+        "Log mark written: {}\n\nAgents can search ~/.jcode/logs/ for JCODE_LOG_MARK or this marker id.",
         marker_id
     );
     if !note.is_empty() {
@@ -960,7 +960,7 @@ pub(super) fn handle_ssh_command(app: &mut App, trimmed: &str) -> bool {
                 disconnect_ssh_remote(app, name);
             } else {
                 app.push_display_message(DisplayMessage::error(
-                    "Usage: `/ssh disconnect <name>`".to_string(),
+                    "Usage: /ssh disconnect <name>".to_string(),
                 ));
             }
         }
@@ -970,7 +970,7 @@ pub(super) fn handle_ssh_command(app: &mut App, trimmed: &str) -> bool {
                 match crate::ssh_remote::upsert_profile(name, target) {
                     Ok(profile) => connect_ssh_remote(app, profile),
                     Err(error) => app.push_display_message(DisplayMessage::error(format!(
-                        "Failed to save SSH remote `{}`: {}",
+                        "Failed to save SSH remote {}: {}",
                         name, error
                     ))),
                 }
@@ -1001,7 +1001,7 @@ pub(super) fn handle_pending_ssh_remote_target(app: &mut App, name: String, inpu
     match crate::ssh_remote::upsert_profile(&name, target) {
         Ok(profile) => connect_ssh_remote(app, profile),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to save SSH remote `{}`: {}",
+            "Failed to save SSH remote {}: {}",
             name, error
         ))),
     }
@@ -1010,24 +1010,22 @@ pub(super) fn handle_pending_ssh_remote_target(app: &mut App, name: String, inpu
 fn begin_ssh_target_prompt(app: &mut App, name: &str) {
     app.pending_ssh_remote_name = Some(name.to_string());
     app.push_display_message(DisplayMessage::system(format!(
-        "## SSH setup: `{}`
+        "SSH setup: {}
 
-**Step 1/4: Tell Jcode where to connect.**
+Step 1/4: Tell Jcode where to connect.
 
-Enter only the SSH target, meaning the part after `ssh`:
+Enter only the SSH target, meaning the part after ssh:
 
-```text
-alice@login.school.edu
-```
+  alice@login.school.edu
 
-You can also enter an SSH config alias like `school`.
+You can also enter an SSH config alias like school.
 
-**Security model**
-- Jcode stores this host/user target so you can run `/ssh {}` later.
-- Jcode does **not** ask for or store your SSH password.
-- If a password is needed, it will be typed into your system `ssh` prompt, not into Jcode.
+Security model
+  - Jcode stores this host/user target so you can run /ssh {} later.
+  - Jcode does not ask for or store your SSH password.
+  - If a password is needed, it will be typed into your system ssh prompt, not into Jcode.
 
-Type `cancel` to stop setup.",
+Type cancel to stop setup.",
         name, name
     )));
     app.set_status_notice("SSH setup 1/4: enter target");
@@ -1037,22 +1035,20 @@ fn show_ssh_remotes(app: &mut App) {
     match crate::ssh_remote::load_config() {
         Ok(config) if config.hosts.is_empty() => {
             app.push_display_message(DisplayMessage::system(
-                "## SSH remotes
+                "SSH remotes
 
 No SSH remotes are configured yet.
 
 Start with:
 
-```text
-/ssh school
-```
+  /ssh school
 
 Jcode will ask for the SSH target, then use your system SSH client for authentication. Jcode never stores SSH passwords."
                     .to_string(),
             ));
         }
         Ok(config) => {
-            let mut lines = vec!["## SSH remotes".to_string(), "".to_string()];
+            let mut lines = vec!["SSH remotes".to_string(), "".to_string()];
             for profile in config.hosts {
                 let alive = if crate::ssh_remote::is_control_master_alive(&profile) {
                     "✓ connected"
@@ -1060,13 +1056,13 @@ Jcode will ask for the SSH target, then use your system SSH client for authentic
                     "not connected"
                 };
                 lines.push(format!(
-                    "- `{}` → `{}` ({})",
+                    "  - {} -> {} ({})",
                     profile.name, profile.ssh_target, alive
                 ));
             }
             lines.push("".to_string());
             lines.push(
-                "Use `/ssh <name>` to connect, `/ssh status` to check, or `/ssh disconnect <name>` to disconnect."
+                "Use /ssh <name> to connect, /ssh status to check, or /ssh disconnect <name> to disconnect."
                     .to_string(),
             );
             lines.push("".to_string());
@@ -1089,16 +1085,16 @@ fn connect_ssh_remote(app: &mut App, profile: crate::ssh_remote::SshRemoteProfil
         || crate::ssh_remote::can_connect_batch_mode(&profile)
     {
         app.push_display_message(DisplayMessage::system(format!(
-            "## SSH remote `{}`
+            "SSH remote {}
 
-**Step 4/4: Connected.**
+Step 4/4: Connected.
 
-Jcode verified that `{}` is reachable through your system SSH client.
+Jcode verified that {} is reachable through your system SSH client.
 
 What this means:
-- Authentication is handled by OpenSSH / your SSH agent.
-- Jcode did not see or store your password.
-- The SSH connection setup is ready for remote Jcode tools.
+  - Authentication is handled by OpenSSH / your SSH agent.
+  - Jcode did not see or store your password.
+  - The SSH connection setup is ready for remote Jcode tools.
 
 Next implementation step: start the remote Jcode server over this verified SSH connection.",
             profile.name, profile.ssh_target
@@ -1110,36 +1106,34 @@ Next implementation step: start the remote Jcode server over this verified SSH c
     match crate::ssh_remote::spawn_control_master_terminal(&profile) {
         Ok(true) => {
             app.push_display_message(DisplayMessage::system(format!(
-                "## SSH remote `{}`
+                "SSH remote {}
 
-**Step 2/4: Opening secure SSH login terminal.**
+Step 2/4: Opening secure SSH login terminal.
 
-Jcode could not connect without an interactive login, so it opened a separate terminal running your system `ssh` command.
+Jcode could not connect without an interactive login, so it opened a separate terminal running your system ssh command.
 
-**What to expect in that terminal**
-1. OpenSSH may ask for your password or two-factor prompt.
-2. You type credentials into OpenSSH, not into Jcode.
-3. After login, SSH creates a temporary background control socket.
-4. The terminal verifies that socket before closing.
+What to expect in that terminal
+  1. OpenSSH may ask for your password or two-factor prompt.
+  2. You type credentials into OpenSSH, not into Jcode.
+  3. After login, SSH creates a temporary background control socket.
+  4. The terminal verifies that socket before closing.
 
-**Security model**
-- Jcode cannot read what you type in the SSH terminal.
-- Jcode stores only the target `{}`.
-- Close or disconnect later with `/ssh disconnect {}`.",
+Security model
+  - Jcode cannot read what you type in the SSH terminal.
+  - Jcode stores only the target {}.
+  - Close or disconnect later with /ssh disconnect {}.",
                 profile.name, profile.ssh_target, profile.name
             )));
             app.set_status_notice("SSH setup 2/4: login terminal opened");
         }
         Ok(false) => app.push_display_message(DisplayMessage::system(format!(
-            "## SSH remote `{}`
+            "SSH remote {}
 
-**Step 2/4: Manual login needed.**
+Step 2/4: Manual login needed.
 
 Jcode could not open a terminal automatically. Run this command yourself:
 
-```bash
-ssh -f -M -S {} -N {}
-```
+  ssh -f -M -S {} -N {}
 
 Type your password into that SSH prompt if asked. Jcode will not see or store it.",
             profile.name,
@@ -1160,26 +1154,26 @@ fn disconnect_ssh_remote(app: &mut App, name: &str) {
         Ok(Some(profile)) => match crate::ssh_remote::disconnect(&profile) {
             Ok(true) => {
                 app.push_display_message(DisplayMessage::system(format!(
-                    "Disconnected SSH remote **{}**.",
+                    "Disconnected SSH remote {}.",
                     name
                 )));
                 app.set_status_notice("SSH disconnected");
             }
             Ok(false) => app.push_display_message(DisplayMessage::system(format!(
-                "SSH remote **{}** did not have an active ControlMaster connection.",
+                "SSH remote {} did not have an active ControlMaster connection.",
                 name
             ))),
             Err(error) => app.push_display_message(DisplayMessage::error(format!(
-                "Failed to disconnect SSH remote `{}`: {}",
+                "Failed to disconnect SSH remote {}: {}",
                 name, error
             ))),
         },
         Ok(None) => app.push_display_message(DisplayMessage::error(format!(
-            "Unknown SSH remote `{}`. Use `/ssh` to list remotes.",
+            "Unknown SSH remote {}. Use /ssh to list remotes.",
             name
         ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to load SSH remote `{}`: {}",
+            "Failed to load SSH remote {}: {}",
             name, error
         ))),
     }
@@ -1222,7 +1216,7 @@ fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
     let question = trimmed.strip_prefix("/btw").unwrap_or_default().trim();
     if question.is_empty() {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/btw <question>`".to_string(),
+            "Usage: /btw <question>".to_string(),
         ));
         return true;
     }
@@ -1230,14 +1224,14 @@ fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
     match crate::side_panel::write_markdown_page(
         active_session_id(app).as_str(),
         BTW_PAGE_ID,
-        Some("`/btw`"),
+        Some("/btw"),
         &build_btw_loading_markdown(question),
         true,
     ) {
         Ok(snapshot) => app.set_side_panel_snapshot(snapshot),
         Err(error) => {
             app.push_display_message(DisplayMessage::error(format!(
-                "Failed to prepare `/btw` side panel: {}",
+                "Failed to prepare /btw side panel: {}",
                 error
             )));
             return true;
@@ -1248,13 +1242,13 @@ fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
         .push(build_btw_system_reminder(question));
     if app.is_processing {
         app.push_display_message(DisplayMessage::system(
-            "Queued `/btw` — answer will appear in the side panel after the current turn."
+            "Queued /btw - answer will appear in the side panel after the current turn."
                 .to_string(),
         ));
         app.set_status_notice("Queued /btw");
     } else {
         app.push_display_message(DisplayMessage::system(
-            "Running `/btw` — answer will appear in the side panel.".to_string(),
+            "Running /btw - answer will appear in the side panel.".to_string(),
         ));
         app.pending_queued_dispatch = true;
         app.set_status_notice("Running /btw");
@@ -1278,7 +1272,7 @@ fn handle_catchup_command(app: &mut App, trimmed: &str) -> bool {
     }
     if !app.is_remote {
         app.push_display_message(DisplayMessage::error(
-            "`/catchup` currently requires a connected shared server session.".to_string(),
+            "/catchup currently requires a connected shared server session.".to_string(),
         ));
         return true;
     }
@@ -1315,7 +1309,7 @@ fn handle_catchup_command(app: &mut App, trimmed: &str) -> bool {
                 true,
             );
             app.push_display_message(DisplayMessage::system(format!(
-                "Queued Catch Up for **{}**.",
+                "Queued Catch Up for {}.",
                 target_name,
             )));
             app.set_status_notice(format!("Catch Up → {}", target_name));
@@ -1323,7 +1317,7 @@ fn handle_catchup_command(app: &mut App, trimmed: &str) -> bool {
         }
         _ => {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/catchup [next|list]`".to_string(),
+                "Usage: /catchup [next|list]".to_string(),
             ));
             true
         }
@@ -1336,7 +1330,7 @@ fn handle_back_command(app: &mut App, trimmed: &str) -> bool {
     }
     if !app.is_remote {
         app.push_display_message(DisplayMessage::error(
-            "`/back` currently requires a connected shared server session.".to_string(),
+            "/back currently requires a connected shared server session.".to_string(),
         ));
         return true;
     }
@@ -1357,7 +1351,7 @@ fn handle_back_command(app: &mut App, trimmed: &str) -> bool {
         .unwrap_or_else(|| target.clone());
     app.queue_catchup_resume(target, None, None, false);
     app.push_display_message(DisplayMessage::system(format!(
-        "Queued return to **{}**.",
+        "Queued return to {}.",
         target_name,
     )));
     app.set_status_notice(format!("Back → {}", target_name));
@@ -1371,20 +1365,20 @@ fn git_command_repo_dir(app: &App) -> Result<PathBuf, String> {
         }
 
         return Err(format!(
-            "Unable to run `/git`: session working directory `{}` is not accessible from this jcode client.",
+            "Unable to run /git: session working directory {} is not accessible from this jcode client.",
             path.display()
         ));
     }
 
     if app.is_remote {
         return Err(
-            "Unable to run `/git`: the remote session does not have a working directory."
+            "Unable to run /git: the remote session does not have a working directory."
                 .to_string(),
         );
     }
 
     std::env::current_dir()
-        .map_err(|_| "Unable to determine a working directory for `/git`.".to_string())
+        .map_err(|_| "Unable to determine a working directory for /git.".to_string())
 }
 
 fn run_git_command(repo_dir: &std::path::Path, args: &[&str]) -> Result<String, String> {
@@ -1392,13 +1386,13 @@ fn run_git_command(repo_dir: &std::path::Path, args: &[&str]) -> Result<String, 
         .args(args)
         .current_dir(repo_dir)
         .output()
-        .map_err(|error| format!("Failed to run `git {}`: {}", args.join(" "), error))?;
+        .map_err(|error| format!("Failed to run git {}: {}", args.join(" "), error))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let failure = if stderr.is_empty() {
             format!(
-                "`git {}` exited with status {}",
+                "git {} exited with status {}",
                 args.join(" "),
                 output.status
             )
@@ -1417,7 +1411,7 @@ fn build_git_status_message_for_dir(repo_dir: PathBuf) -> Result<String, String>
     let repo_root =
         run_git_command(&repo_dir, &["rev-parse", "--show-toplevel"]).map_err(|error| {
             format!(
-                "No git repository found for `{}`: {}",
+                "No git repository found for {}: {}",
                 repo_dir.display(),
                 error
             )
@@ -1438,19 +1432,24 @@ fn build_git_status_message_for_dir(repo_dir: PathBuf) -> Result<String, String>
         .unwrap_or_else(|| ".".to_string());
 
     let heading = if relative_dir == "." {
-        format!("`/git` in `{}`", repo_root)
+        format!("/git in {}", repo_root)
     } else {
-        format!("`/git` in `{}` (`{}`)", repo_root, relative_dir)
+        format!("/git in {} ({})", repo_root, relative_dir)
     };
 
-    Ok(format!("{heading}\n\n```text\n{status}\n```"))
+    let status_block = status
+        .lines()
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok(format!("{heading}\n\n{status_block}"))
 }
 
 fn handle_git_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed != "/git" && trimmed != "/git status" {
         if trimmed.starts_with("/git ") {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/git` or `/git status`".to_string(),
+                "Usage: /git or /git status".to_string(),
             ));
             return true;
         }
@@ -1476,20 +1475,20 @@ fn handle_git_command(app: &mut App, trimmed: &str) -> bool {
 
 fn transcript_opened_message(path: &std::path::Path) -> String {
     format!(
-        "Opened transcript file:\n\n```text\n{}\n```",
+        "Opened transcript file:\n\n  {}",
         path.display()
     )
 }
 
 fn transcript_path_message(path: &std::path::Path) -> String {
-    format!("Transcript file:\n\n```text\n{}\n```", path.display())
+    format!("Transcript file:\n\n  {}", path.display())
 }
 
 fn handle_transcript_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed != "/transcript" && trimmed != "/transcript path" {
         if trimmed.starts_with("/transcript ") {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/transcript` or `/transcript path`".to_string(),
+                "Usage: /transcript or /transcript path".to_string(),
             ));
             return true;
         }
@@ -1524,7 +1523,7 @@ fn handle_transcript_command(app: &mut App, trimmed: &str) -> bool {
             app.set_status_notice("Transcript opened");
         }
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to open transcript file `{}`: {}",
+            "Failed to open transcript file {}: {}",
             path.display(),
             error
         ))),
@@ -1619,12 +1618,12 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         let name = app.session.display_name().to_string();
         let msg = if let Some(ref lbl) = app.session.save_label {
             format!(
-                "📌 Session **{}** saved as \"**{}**\". It will appear at the top of `/resume`.",
+                "📌 Session {} saved as \"{}\". It will appear at the top of /resume.",
                 name, lbl,
             )
         } else {
             format!(
-                "📌 Session **{}** saved. It will appear at the top of `/resume`.",
+                "📌 Session {} saved. It will appear at the top of /resume.",
                 name,
             )
         };
@@ -1645,7 +1644,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         crate::tui::session_picker::invalidate_session_list_cache();
         let name = app.session.display_name().to_string();
         app.push_display_message(DisplayMessage::system(format!(
-            "Removed bookmark from session **{}**.",
+            "Removed bookmark from session {}.",
             name,
         )));
         app.set_status_notice("Bookmark removed");
@@ -1656,7 +1655,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         let title = trimmed.strip_prefix("/rename").unwrap_or_default().trim();
         if title.is_empty() {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/rename <session name>` or `/rename --clear`".to_string(),
+                "Usage: /rename <session name> or /rename --clear".to_string(),
             ));
             return true;
         }
@@ -1674,7 +1673,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             app.update_terminal_title();
             let name = app.session.display_title_or_name().to_string();
             app.push_display_message(DisplayMessage::system(format!(
-                "Cleared custom name. Session title is now **{}**.",
+                "Cleared custom name. Session title is now {}.",
                 name,
             )));
             app.set_status_notice("Session name cleared");
@@ -1692,7 +1691,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         crate::tui::session_picker::invalidate_session_list_cache();
         app.update_terminal_title();
         app.push_display_message(DisplayMessage::system(format!(
-            "Renamed session to **{}**.",
+            "Renamed session to {}.",
             title,
         )));
         app.set_status_notice("Session renamed");
@@ -1702,7 +1701,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed == "/memory status" {
         let default_enabled = crate::config::config().features.memory;
         app.push_display_message(DisplayMessage::system(format!(
-            "Memory feature: **{}** (config default: {})",
+            "Memory feature: {} (config default: {})",
             if app.memory_enabled {
                 "enabled"
             } else {
@@ -1749,7 +1748,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/memory ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/memory [on|off|status]`".to_string(),
+            "Usage: /memory [on|off|status]".to_string(),
         ));
         return true;
     }
@@ -1769,7 +1768,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed == "/swarm" || trimmed == "/swarm status" {
         let default_enabled = crate::config::config().features.swarm;
         app.push_display_message(DisplayMessage::system(format!(
-            "Swarm feature: **{}** (config default: {})",
+            "Swarm feature: {} (config default: {})",
             if app.swarm_enabled {
                 "enabled"
             } else {
@@ -1804,7 +1803,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/swarm ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/swarm [on|off|status]`".to_string(),
+            "Usage: /swarm [on|off|status]".to_string(),
         ));
         return true;
     }
@@ -1854,7 +1853,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             return true;
         }
 
-        let mut history = String::from("**Conversation history:**\n\n");
+        let mut history = String::from("Conversation history:\n\n");
         for (i, msg) in visible_messages.iter().enumerate() {
             let role_str = match msg.role {
                 Role::User => "👤 User",
@@ -1862,9 +1861,9 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             };
             let content = msg.content_preview();
             let preview = crate::util::truncate_str(&content, 80);
-            history.push_str(&format!("  `{}` {} - {}\n", i + 1, role_str, preview));
+            history.push_str(&format!("  {} {} - {}\n", i + 1, role_str, preview));
         }
-        history.push_str("\nUse `/rewind N` to rewind to message N (removes all messages after). After rewinding, use `/rewind undo` to restore the removed messages.");
+        history.push_str("\nUse /rewind N to rewind to message N (removes all messages after). After rewinding, use /rewind undo to restore the removed messages.");
 
         app.push_display_message(DisplayMessage::system(history));
         return true;
@@ -1907,7 +1906,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
                 let _ = app.session.save();
 
                 app.push_display_message(DisplayMessage::system(format!(
-                    "✓ Rewound to message {}. Removed {} message{}. Undo anytime with `/rewind undo`.",
+                    "✓ Rewound to message {}. Removed {} message{}. Undo anytime with /rewind undo.",
                     n,
                     removed,
                     if removed == 1 { "" } else { "s" }
@@ -1921,7 +1920,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             }
             Err(_) => {
                 app.push_display_message(DisplayMessage::error(format!(
-                    "Usage: `/rewind N` where N is a message number (1-{})",
+                    "Usage: /rewind N where N is a message number (1-{})",
                     visible_count
                 )));
             }
@@ -1951,7 +1950,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed == "/transfer" {
         if app.is_remote {
             app.push_display_message(DisplayMessage::error(
-                "`/transfer` requires an active connected session in remote mode.".to_string(),
+                "/transfer requires an active connected session in remote mode.".to_string(),
             ));
         } else {
             handle_transfer_command_local(app);
@@ -1960,7 +1959,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed.starts_with("/transfer ") {
-        app.push_display_message(DisplayMessage::error("Usage: `/transfer`".to_string()));
+        app.push_display_message(DisplayMessage::error("Usage: /transfer".to_string()));
         return true;
     }
 
@@ -2016,7 +2015,7 @@ fn handle_selfdev_command(app: &mut App, trimmed: &str) -> bool {
 
     if rest == "help" {
         app.push_display_message(DisplayMessage::system(
-            "`/selfdev`\nSpawn a new self-dev jcode session in a separate terminal.\n\n`/selfdev <prompt>`\nSpawn a new self-dev session and auto-deliver the prompt to it.\n\n`/selfdev status`\nShow current self-dev/build status."
+            "/selfdev\nSpawn a new self-dev jcode session in a separate terminal.\n\n/selfdev <prompt>\nSpawn a new self-dev session and auto-deliver the prompt to it.\n\n/selfdev status\nShow current self-dev/build status."
                 .to_string(),
         ));
         return true;
@@ -2038,19 +2037,19 @@ fn handle_selfdev_command(app: &mut App, trimmed: &str) -> bool {
         Ok(launch) => {
             let mut message = if launch.test_mode {
                 format!(
-                    "Created self-dev session `{}` in `{}`.\n\nTest mode skipped launching a new terminal.",
+                    "Created self-dev session {} in {}.\n\nTest mode skipped launching a new terminal.",
                     launch.session_id,
                     launch.repo_dir.display()
                 )
             } else if launch.launched {
                 format!(
-                    "Spawned self-dev session `{}` in a new terminal.\n\nRepo: `{}`",
+                    "Spawned self-dev session {} in a new terminal.\n\nRepo: {}",
                     launch.session_id,
                     launch.repo_dir.display()
                 )
             } else {
                 format!(
-                    "Created self-dev session `{}` but could not auto-open a supported terminal.\n\nRun manually:\n`{}`",
+                    "Created self-dev session {} but could not auto-open a supported terminal.\n\nRun manually:\n{}",
                     launch.session_id,
                     launch.command_preview().unwrap_or_else(|| format!(
                         "jcode --resume {} self-dev",
@@ -2132,7 +2131,7 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
         ) {
             Ok(Some(result)) => {
                 app.set_side_panel_snapshot(result.snapshot);
-                let mut msg = format!("Resumed initiative **{}**.", result.goal.title);
+                let mut msg = format!("Resumed initiative {}.", result.goal.title);
                 if let Some(next_step) = result.goal.next_steps.first() {
                     msg.push_str(&format!(" Next step: {}", next_step));
                 }
@@ -2154,7 +2153,7 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
         let id = id.trim();
         if id.is_empty() {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/initiatives show <id>`".to_string(),
+                "Usage: /initiatives show <id>".to_string(),
             ));
             return true;
         }
@@ -2167,7 +2166,7 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
             Ok(Some(result)) => {
                 app.set_side_panel_snapshot(result.snapshot);
                 app.push_display_message(DisplayMessage::system(format!(
-                    "Opened initiative **{}** in the side panel.",
+                    "Opened initiative {} in the side panel.",
                     result.goal.title
                 )));
                 app.set_status_notice(format!("Initiative: {}", result.goal.title));
@@ -2186,7 +2185,7 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/initiatives ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/initiatives`, `/initiatives resume`, or `/initiatives show <id>`".to_string(),
+            "Usage: /initiatives, /initiatives resume, or /initiatives show <id>".to_string(),
         ));
         return true;
     }
@@ -2221,13 +2220,13 @@ pub(super) fn handle_test_command(app: &mut App, trimmed: &str) -> bool {
     app.queued_messages.push(prompt);
     if app.is_processing {
         app.push_display_message(DisplayMessage::system(
-            "Queued `/test`; verification will run after the current turn.".to_string(),
+            "Queued /test; verification will run after the current turn.".to_string(),
         ));
         app.set_status_notice("Queued /test");
     } else {
         app.pending_queued_dispatch = true;
         app.push_display_message(DisplayMessage::system(
-            "Running `/test` verification orchestrator.".to_string(),
+            "Running /test verification orchestrator.".to_string(),
         ));
         app.set_status_notice("Running /test");
     }
@@ -2243,7 +2242,7 @@ fn slash_command_rest<'a>(trimmed: &'a str, command: &str) -> Option<&'a str> {
 }
 
 fn test_usage() -> String {
-    "Usage: `/test [claim|feature|current changes]`\n\nRuns a layered verification pass and returns evidence, confidence, and gaps."
+    "Usage: /test [claim|feature|current changes]\n\nRuns a layered verification pass and returns evidence, confidence, and gaps."
         .to_string()
 }
 
@@ -2504,7 +2503,7 @@ pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/dictate ") || trimmed.starts_with("/dictation ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/dictate`\nConfigure `[dictation]` in `~/.jcode/config.toml` to customize command, mode, hotkey, and timeout."
+            "Usage: /dictate\nConfigure [dictation] in ~/.jcode/config.toml to customize command, mode, hotkey, and timeout."
                 .to_string(),
         ));
         return true;
@@ -2563,7 +2562,7 @@ pub(super) fn handle_agents_command(app: &mut App, trimmed: &str) -> bool {
 
     let Some(target) = parse_agents_target(rest) else {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/agents` or `/agents <swarm|review|judge|memory|ambient>`".to_string(),
+            "Usage: /agents or /agents <swarm|review|judge|memory|ambient>".to_string(),
         ));
         return true;
     };
@@ -2585,7 +2584,7 @@ fn handle_alignment_command(app: &mut App, trimmed: &str) -> bool {
     if rest.is_empty() || matches!(rest, "show" | "status") {
         let saved = crate::config::Config::load().display.centered;
         app.push_display_message(DisplayMessage::system(format!(
-            "Alignment is currently **{}**.\nSaved default: **{}**.\n\nUse `/alignment centered` or `/alignment left` to change it permanently, or press `Alt+C` to toggle it for the current session.",
+            "Alignment is currently {}.\nSaved default: {}.\n\nUse /alignment centered or /alignment left to change it permanently, or press Alt+C to toggle it for the current session.",
             alignment_label(app.centered),
             alignment_label(saved)
         )));
@@ -2594,7 +2593,7 @@ fn handle_alignment_command(app: &mut App, trimmed: &str) -> bool {
 
     let Some(centered) = parse_alignment_value(rest) else {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/alignment` (show), `/alignment centered`, or `/alignment left`".to_string(),
+            "Usage: /alignment (show), /alignment centered, or /alignment left".to_string(),
         ));
         return true;
     };
@@ -2604,11 +2603,11 @@ fn handle_alignment_command(app: &mut App, trimmed: &str) -> bool {
 
     match crate::config::Config::set_display_centered(centered) {
         Ok(()) => app.push_display_message(DisplayMessage::system(format!(
-            "Saved default alignment: **{}**. Applied to this session immediately.",
+            "Saved default alignment: {}. Applied to this session immediately.",
             alignment_label(centered)
         ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
-            "Applied **{}** alignment for this session, but failed to save it as the default: {}",
+            "Applied {} alignment for this session, but failed to save it as the default: {}",
             alignment_label(centered),
             error
         ))),
@@ -2634,7 +2633,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
             .map(|manager| manager.mode())
             .unwrap_or_default();
         app.push_display_message(DisplayMessage::system(format!(
-            "Compaction mode: **{}**\nAvailable: reactive · proactive · semantic\nUse `/compact mode <mode>` to change it for this session.",
+            "Compaction mode: {}\nAvailable: reactive, proactive, semantic\nUse /compact mode <mode> to change it for this session.",
             mode.as_str()
         )));
         return true;
@@ -2644,7 +2643,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
         let mode_str = mode_str.trim();
         let Some(mode) = crate::config::CompactionMode::parse(mode_str) else {
             app.push_display_message(DisplayMessage::error(
-                "Usage: `/compact mode <reactive|proactive|semantic>`".to_string(),
+                "Usage: /compact mode <reactive|proactive|semantic>".to_string(),
             ));
             return true;
         };
@@ -2681,7 +2680,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
                 let provider_messages = app.materialized_provider_messages();
                 let stats = manager.stats_with(&provider_messages);
                 let status_msg = format!(
-                    "**Context Status:**\n\
+                    "Context Status:\n\
                     • Messages: {} (active), {} (total history)\n\
                     • Token usage: ~{}k (estimate ~{}k) / {}k ({:.1}%)\n\
                     • Has summary: {}\n\
@@ -2710,7 +2709,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
                             content: format!(
                                 "{}\n\n{}\n\
                                 The summary will be applied automatically when ready.\n\
-                                Use `/help compact` for details.",
+                                Use /help compact for details.",
                                 status_msg,
                                 App::format_compaction_started_message("manual")
                             ),
@@ -2724,8 +2723,8 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
                         app.push_display_message(DisplayMessage {
                             role: "system".to_string(),
                             content: format!(
-                                "{}\n\n⚠ **Cannot compact:** {}\n\
-                                Try `/fix` for emergency recovery.",
+                                "{}\n\n⚠ Cannot compact: {}\n\
+                                Try /fix for emergency recovery.",
                                 status_msg, reason
                             ),
                             tool_calls: vec![],
@@ -2784,7 +2783,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
                 app.push_display_message(DisplayMessage {
                     role: "system".to_string(),
                     content: format!(
-                        "Created default config file at:\n`{}`\n\nEdit this file to customize your keybindings and settings.",
+                        "Created default config file at:\n{}\n\nEdit this file to customize your keybindings and settings.",
                         path.display()
                     ),
                     tool_calls: vec![],
@@ -2828,7 +2827,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
             app.push_display_message(DisplayMessage {
                 role: "system".to_string(),
                 content: format!(
-                    "Opening config in editor...\n`{} {}`\n\n*Restart jcode after editing for changes to take effect.*",
+                    "Opening config in editor...\n{} {}\n\n*Restart jcode after editing for changes to take effect.*",
                     editor,
                     path.display()
                 ),
@@ -2845,7 +2844,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/config ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/config` (show), `/config init` (create), `/config edit` (open in editor)"
+            "Usage: /config (show), /config init (create), /config edit (open in editor)"
                 .to_string(),
         ));
         return true;
@@ -2890,7 +2889,7 @@ pub(super) fn handle_feedback_command(app: &mut App, trimmed: &str) -> bool {
     let feedback = rest.trim();
     if feedback.is_empty() {
         app.push_display_message(DisplayMessage::error(
-            "Usage: `/feedback <your feedback>`".to_string(),
+            "Usage: /feedback <your feedback>".to_string(),
         ));
         return true;
     }
