@@ -169,7 +169,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     lines.push(Line::from(""));
                     lines.push(
                         Line::from(Span::styled(
-                            "Arrows / jk to move, Enter or Space to choose (y / n also work).",
+                            "Left/right or h/l to move, Enter or Space to choose (y / n also work).",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),
@@ -189,7 +189,14 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             lines.push(
                 Line::from(Span::styled(
-                    "Press Enter to open the model picker.",
+                    "The model list opens automatically. Browse the options and choose one;",
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(Span::styled(
+                    "no need to press Enter right away. You can reopen it anytime with /model.",
                     Style::default().fg(dim_color()),
                 ))
                 .alignment(align),

@@ -154,7 +154,7 @@ impl App {
         // (`onboarding_welcome_kind`) so it survives in remote mode.
         if had_imports {
             self.set_status_notice(
-                "Welcome to jcode: review detected logins (arrows/jk to move, Enter to choose)",
+                "Welcome to jcode: review detected logins (arrows/hl to move, Enter to choose)",
             );
         } else {
             self.set_status_notice("Welcome to jcode: press Enter to log in");
@@ -173,7 +173,14 @@ impl App {
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ModelSelect;
         }
-        self.set_status_notice("Onboarding: press Enter to choose a model");
+        // Auto-render the model picker so the user immediately sees the
+        // available options instead of an empty "press Enter" prompt.  We do
+        // not want them to blindly hit Enter on the default; the welcome copy
+        // guides them to look at the list and pick (or just run `/model`).
+        self.open_model_picker();
+        self.set_status_notice(
+            "Onboarding: review the models below and pick one (or run /model anytime)",
+        );
     }
 
     /// Advance out of the model-selection phase once a model has been chosen.
@@ -217,7 +224,8 @@ impl App {
     }
 
     /// Intercept keys for the guided onboarding welcome phases:
-    ///   - `ModelSelect`: Enter opens the model picker.
+    ///   - `ModelSelect`: the picker auto-opens, so Enter normally commits
+    ///     inside it. Enter from the bare welcome screen reopens the picker.
     ///   - `ContinuePrompt`: Y/Enter continues, N/Esc declines.
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
@@ -271,13 +279,14 @@ impl App {
     /// Handle a key while the per-candidate import walkthrough is active.
     /// Returns true if the key was consumed.
     ///
-    /// Navigation:
-    ///   - Up / k / Left / h  -> highlight "Yes"
-    ///   - Down / j / Right / l -> highlight "No"
-    ///   - Tab                -> toggle Yes/No
-    ///   - y / Y              -> highlight "Yes" and commit
-    ///   - n / N              -> highlight "No" and commit
-    ///   - Enter / Space      -> commit the highlighted choice, advance
+    /// The Yes / No options sit side by side, so any movement key simply moves
+    /// the highlight between them:
+    ///   - Left / h  -> highlight "Yes"
+    ///   - Right / l -> highlight "No"
+    ///   - Up / Down / k / j / Tab -> toggle between Yes and No
+    ///   - y / Y     -> choose "Yes" and commit
+    ///   - n / N     -> choose "No" and commit
+    ///   - Enter / Space -> commit the highlighted choice, advance
     fn handle_onboarding_import_review_key(&mut self, code: KeyCode) -> bool {
         // Mutate the live review in place, and report whether the walkthrough
         // finished so we can kick off the import outside the borrow.
@@ -287,13 +296,13 @@ impl App {
                 return false;
             };
             match code {
-                KeyCode::Up | KeyCode::Char('k') | KeyCode::Left | KeyCode::Char('h') => {
-                    review.set_yes(true);
-                }
-                KeyCode::Down | KeyCode::Char('j') | KeyCode::Right | KeyCode::Char('l') => {
-                    review.set_yes(false);
-                }
-                KeyCode::Tab => review.toggle(),
+                KeyCode::Left | KeyCode::Char('h') => review.set_yes(true),
+                KeyCode::Right | KeyCode::Char('l') => review.set_yes(false),
+                KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Char('k')
+                | KeyCode::Char('j')
+                | KeyCode::Tab => review.toggle(),
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
                     review.set_yes(true);
                     finished = review.commit_current();
@@ -332,7 +341,7 @@ impl App {
             && let Some(candidate) = review.current()
         {
             let notice = format!(
-                "Import {} ({} of {})? Yes/No - arrows/jk to move, Enter to choose",
+                "Import {} ({} of {})? Yes/No - arrows or hl to move, Enter to choose",
                 candidate.provider_summary(),
                 review.position(),
                 review.total(),
