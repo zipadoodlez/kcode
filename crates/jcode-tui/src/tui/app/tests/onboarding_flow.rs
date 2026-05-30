@@ -30,6 +30,64 @@ fn onboarding_begins_at_model_select() {
 }
 
 #[test]
+fn onboarding_can_begin_at_login_phase() {
+    let mut app = create_test_app();
+    app.onboarding_flow = None;
+    app.begin_onboarding_flow_at_login();
+    assert!(matches!(
+        app.onboarding_phase(),
+        Some(OnboardingPhase::Login)
+    ));
+    // begin_at_login is idempotent: a second call does not reset the phase.
+    if let Some(flow) = app.onboarding_flow.as_mut() {
+        flow.phase = OnboardingPhase::Suggestions;
+    }
+    app.begin_onboarding_flow_at_login();
+    assert!(matches!(
+        app.onboarding_phase(),
+        Some(OnboardingPhase::Suggestions)
+    ));
+}
+
+#[test]
+fn login_phase_advances_to_model_select_after_login() {
+    let mut app = create_test_app();
+    app.onboarding_flow = None;
+    app.begin_onboarding_flow_at_login();
+    assert!(matches!(
+        app.onboarding_phase(),
+        Some(OnboardingPhase::Login)
+    ));
+    app.onboarding_after_login();
+    assert!(matches!(
+        app.onboarding_phase(),
+        Some(OnboardingPhase::ModelSelect)
+    ));
+    // onboarding_after_login is a no-op once we're past the Login phase.
+    app.onboarding_after_login();
+    assert!(matches!(
+        app.onboarding_phase(),
+        Some(OnboardingPhase::ModelSelect)
+    ));
+}
+
+#[test]
+fn login_phase_enter_opens_login_picker() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        assert!(app.inline_interactive_state.is_none());
+        // Enter from the welcome screen opens the interactive login picker.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(app.inline_interactive_state.is_some());
+        // With a picker already open, Enter is no longer consumed by onboarding
+        // so the picker can commit the selection.
+        assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+    });
+}
+
+#[test]
 fn answering_no_on_continue_prompt_shows_suggestions() {
     with_temp_jcode_home(|| {
         let mut app = onboarding_test_app();
@@ -146,12 +204,18 @@ fn startup_check_ignores_synthetic_scaffolding_messages() {
 
         app.maybe_begin_onboarding_flow_on_startup();
 
-        // The guard must not be tripped by scaffolding alone; the flow is free to
-        // begin (subject to the new-user / auth checks the helper performs).
+        // The guard must not be tripped by scaffolding alone. In a temp home with
+        // no working credentials the flow begins at the in-TUI Login phase (the
+        // fresh-install path no longer logs in at the CLI before the TUI).
         assert!(
             !app.display_messages.is_empty(),
             "precondition: scaffolding messages present"
         );
+        assert!(app.onboarding_startup_checked);
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login)
+        ));
     });
 }
 

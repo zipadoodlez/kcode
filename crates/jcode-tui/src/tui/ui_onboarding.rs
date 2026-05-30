@@ -78,6 +78,26 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 
     use crate::tui::OnboardingWelcomeKind;
     match app.onboarding_welcome_kind() {
+        OnboardingWelcomeKind::Login => {
+            lines.push(Line::from(""));
+            lines.push(
+                Line::from(Span::styled(
+                    "First, log in to get started.",
+                    Style::default()
+                        .fg(welcome_accent())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .alignment(align),
+            );
+            lines.push(
+                Line::from(Span::styled(
+                    "Press Enter to choose a provider (or import an existing login).",
+                    Style::default().fg(dim_color()),
+                ))
+                .alignment(align),
+            );
+            return lines;
+        }
         OnboardingWelcomeKind::ModelSelect => {
             lines.push(Line::from(""));
             lines.push(

@@ -570,6 +570,9 @@ pub enum PickerKind {
 /// resting state (the starter prompt cards).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OnboardingWelcomeKind {
+    /// Ask the user to log in first (press Enter to open the login picker).
+    /// Shown on a fresh install that booted without working credentials.
+    Login,
     /// Ask the user to pick a model first (press Enter to open the picker).
     ModelSelect,
     /// "Continue where you left off in <cli>?" with a live auto-advance

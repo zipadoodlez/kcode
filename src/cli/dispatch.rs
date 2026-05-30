@@ -916,26 +916,41 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
     provider_choice: &ProviderChoice,
 ) -> Result<()> {
     startup_profile::mark("cred_check_start");
-    let mut cred_state = detect_bootstrap_credentials().await;
+    let cred_state = detect_bootstrap_credentials().await;
     startup_profile::mark("cred_check_done");
 
-    if !cred_state.has_any
-        && auth::AuthStatus::has_any_untrusted_external_auth()
-        && *provider_choice == ProviderChoice::Auto
-    {
-        let _ = provider_init::maybe_run_external_auth_auto_import_flow().await?;
-        cred_state = detect_bootstrap_credentials().await;
+    // Onboarding now happens entirely inside the TUI. We deliberately do *not*
+    // run the blocking CLI "Approve sources" import prompt or the
+    // "Choose a provider" selection menu here: a brand-new user launches
+    // straight into the TUI, which detects the missing credentials and walks
+    // them through login / external-auth import / model selection in the guided
+    // first-run flow. The server is happy to spawn unauthenticated and the TUI
+    // drives `/login` from there.
+    //
+    // The only thing left to honor at the CLI layer is an explicit headless
+    // bootstrap (e.g. CI / non-interactive provisioning), which opts in via the
+    // `JCODE_CLI_BOOTSTRAP_LOGIN` env var.
+    if cred_state.has_any || *provider_choice != ProviderChoice::Auto {
+        return Ok(());
+    }
+    if std::env::var_os("JCODE_CLI_BOOTSTRAP_LOGIN").is_none() {
+        return Ok(());
     }
 
-    if !cred_state.has_any && *provider_choice == ProviderChoice::Auto {
-        let provider = provider_init::prompt_login_provider_selection(
-            &provider_catalog::server_bootstrap_login_providers(),
-            "No credentials found. Let's log in!\n\nChoose a provider:",
-        )?;
-        login::run_login_provider(provider, None, login::LoginOptions::default()).await?;
-        provider_init::apply_login_provider_profile_env(provider);
-        output::stderr_blank_line();
+    if auth::AuthStatus::has_any_untrusted_external_auth() {
+        let _ = provider_init::maybe_run_external_auth_auto_import_flow().await?;
+        if detect_bootstrap_credentials().await.has_any {
+            return Ok(());
+        }
     }
+
+    let provider = provider_init::prompt_login_provider_selection(
+        &provider_catalog::server_bootstrap_login_providers(),
+        "No credentials found. Let's log in!\n\nChoose a provider:",
+    )?;
+    login::run_login_provider(provider, None, login::LoginOptions::default()).await?;
+    provider_init::apply_login_provider_profile_env(provider);
+    output::stderr_blank_line();
 
     Ok(())
 }

@@ -3,15 +3,19 @@
 //! After the user logs in / imports credentials on a fresh install, we walk
 //! them through a short guided flow:
 //!
-//!   1. `ModelSelect`     - let them pick a model.
-//!   2. `ContinuePrompt`  - if we detect an external Codex or Claude Code
+//!   1. `Login`           - if we boot without working credentials, ask the
+//!                          user to log in right inside the TUI (the fresh
+//!                          install no longer runs a blocking CLI login).
+//!                          Skipped entirely when credentials already exist.
+//!   2. `ModelSelect`     - let them pick a model.
+//!   3. `ContinuePrompt`  - if we detect an external Codex or Claude Code
 //!                          OAuth login, ask whether they want to continue
 //!                          where they last left off. Auto-selects "Yes" after
 //!                          [`AUTO_ADVANCE`] if they don't choose.
-//!   3. `TranscriptPick`  - render their recent external transcripts in a
+//!   4. `TranscriptPick`  - render their recent external transcripts in a
 //!                          resume-style picker (single select). Auto-selects
 //!                          the most recent after [`AUTO_ADVANCE`].
-//!   4. `Suggestions`     - the existing prompt-suggestion cards. Reached when
+//!   5. `Suggestions`     - the existing prompt-suggestion cards. Reached when
 //!                          they answer "No", when there is no external OAuth,
 //!                          or as the terminal resting state.
 //!
@@ -45,6 +49,10 @@ impl ExternalCli {
 /// The current phase of the onboarding flow.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum OnboardingPhase {
+    /// Log in. Entered on a fresh install when no working credentials exist.
+    /// The TUI now owns the entire first-run login experience instead of the
+    /// old blocking CLI provider prompt.
+    Login,
     /// Pick a model. Entered right after login/import.
     ModelSelect,
     /// "Continue where you left off in <cli>?" Yes/No with a 10s auto-Yes.
@@ -68,10 +76,17 @@ pub(crate) struct OnboardingFlow {
 }
 
 impl OnboardingFlow {
-    /// Start the flow at the model-selection phase.
+    /// Start the flow at the model-selection phase (credentials already exist).
     pub(crate) fn begin() -> Self {
         Self {
             phase: OnboardingPhase::ModelSelect,
+        }
+    }
+
+    /// Start the flow at the login phase (no working credentials yet).
+    pub(crate) fn begin_at_login() -> Self {
+        Self {
+            phase: OnboardingPhase::Login,
         }
     }
 

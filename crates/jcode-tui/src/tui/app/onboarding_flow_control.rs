@@ -34,7 +34,10 @@ impl App {
     /// users (no prior onboarding flow this session) so returning users who
     /// re-auth aren't dragged through onboarding.
     pub(super) fn maybe_begin_onboarding_flow_after_login(&mut self) {
+        // If the flow is already running, a successful login means we should
+        // leave the in-TUI `Login` phase and continue into model selection.
         if self.onboarding_flow.is_some() {
+            self.onboarding_after_login();
             return;
         }
         if !self.onboarding_preview_mode && !self.is_new_user_for_onboarding() {
@@ -83,14 +86,15 @@ impl App {
             self.onboarding_startup_checked = true;
             return;
         }
-        // Only start once the user actually has working credentials. If auth
-        // isn't resolved yet (server still bootstrapping), leave the guard unset
-        // and retry on a later tick rather than permanently skipping the flow.
-        if !crate::auth::AuthStatus::check_fast().has_any_available() {
-            return;
-        }
+        // Fresh installs no longer log in at the CLI before the TUI launches.
+        // If we boot without working credentials, start the flow at the in-TUI
+        // `Login` phase. If credentials already exist, start at model select.
         self.onboarding_startup_checked = true;
-        self.begin_onboarding_flow();
+        if crate::auth::AuthStatus::check_fast().has_any_available() {
+            self.begin_onboarding_flow();
+        } else {
+            self.begin_onboarding_flow_at_login();
+        }
     }
 
     /// Whether this install looks like a brand-new user (few launches).
@@ -116,6 +120,33 @@ impl App {
         // The model-select prompt is rendered by the onboarding welcome screen
         // (`onboarding_welcome_kind`), not as a transcript message: in remote
         // mode the server owns the transcript and would wipe any pushed message.
+        self.set_status_notice("Onboarding: press Enter to choose a model");
+    }
+
+    /// Begin the guided flow at the in-TUI `Login` phase. Used on a fresh
+    /// install that booted without working credentials (the CLI no longer logs
+    /// in before the TUI launches).
+    ///
+    /// No-op if a flow is already running.
+    pub(super) fn begin_onboarding_flow_at_login(&mut self) {
+        if self.onboarding_flow.is_some() {
+            return;
+        }
+        self.onboarding_flow = Some(OnboardingFlow::begin_at_login());
+        // The login prompt is rendered by the onboarding welcome screen
+        // (`onboarding_welcome_kind`) so it survives in remote mode.
+        self.set_status_notice("Welcome to jcode: press Enter to log in");
+    }
+
+    /// Advance out of the `Login` phase once credentials are available, moving
+    /// the user into model selection. No-op unless the flow is in `Login`.
+    pub(super) fn onboarding_after_login(&mut self) {
+        if !matches!(self.onboarding_phase(), Some(OnboardingPhase::Login)) {
+            return;
+        }
+        if let Some(flow) = self.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::ModelSelect;
+        }
         self.set_status_notice("Onboarding: press Enter to choose a model");
     }
 
@@ -165,6 +196,16 @@ impl App {
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
         match self.onboarding_phase() {
+            Some(OnboardingPhase::Login) => match code {
+                // Enter opens the interactive login picker, but only from the
+                // welcome screen. If an overlay is already open, let it handle
+                // Enter so the selection can commit.
+                KeyCode::Enter if self.inline_interactive_state.is_none() => {
+                    self.show_interactive_login();
+                    true
+                }
+                _ => false,
+            },
             Some(OnboardingPhase::ModelSelect) => match code {
                 // Enter opens the model picker, but only from the welcome
                 // screen. If a picker (or any inline overlay) is already open,
