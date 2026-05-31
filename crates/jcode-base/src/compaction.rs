@@ -29,13 +29,17 @@ use tokio::task::JoinHandle;
 pub use jcode_compaction_core::{
     CHARS_PER_TOKEN, COMPACTION_THRESHOLD, CRITICAL_THRESHOLD, CompactionAction, CompactionEvent,
     CompactionStats, DEFAULT_TOKEN_BUDGET, EMBED_MAX_CHARS_PER_MSG, EMBEDDING_HISTORY_WINDOW,
-    EMERGENCY_TOOL_RESULT_MAX_CHARS, MANUAL_COMPACT_MIN_THRESHOLD, MIN_TURNS_TO_KEEP,
-    RECENT_TURNS_TO_KEEP, SEMANTIC_EMBED_CACHE_CAPACITY, SUMMARY_PROMPT, SYSTEM_OVERHEAD_TOKENS,
-    Summary, TOKEN_HISTORY_WINDOW, build_compaction_prompt, build_emergency_summary_text,
-    compacted_summary_text_block, content_char_count, emergency_truncate_tool_results,
-    estimate_compaction_tokens, mean_embedding, message_char_count, safe_compaction_cutoff,
-    semantic_cache_key, semantic_goal_text, semantic_message_text, summary_payload_char_count,
+    EMERGENCY_IMAGE_MAX_CHARS, EMERGENCY_TOOL_RESULT_MAX_CHARS, MANUAL_COMPACT_MIN_THRESHOLD,
+    MIN_TURNS_TO_KEEP, RECENT_TURNS_TO_KEEP, SEMANTIC_EMBED_CACHE_CAPACITY, SUMMARY_PROMPT,
+    SYSTEM_OVERHEAD_TOKENS, Summary, TOKEN_HISTORY_WINDOW, build_compaction_prompt,
+    build_emergency_summary_text, compacted_summary_text_block, content_char_count,
+    emergency_truncate_large_payloads, estimate_compaction_tokens, mean_embedding,
+    message_char_count, safe_compaction_cutoff, semantic_cache_key, semantic_goal_text,
+    semantic_message_text, summary_payload_char_count,
 };
+
+const HARD_THRESHOLD_PENDING_WAIT_MS: u64 = 15_000;
+const HARD_THRESHOLD_PENDING_POLL_MS: u64 = 50;
 
 /// Result from background compaction task
 struct CompactionResult {
@@ -54,6 +58,12 @@ struct CompactionOutcomeLog<'a> {
     messages_dropped: Option<usize>,
     duration_ms: u64,
     all_messages: &'a [Message],
+}
+
+struct HardThresholdWait {
+    waited_ms: u64,
+    applied: bool,
+    timed_out: bool,
 }
 
 /// Rolling character-count estimate for the active (non-compacted) message
@@ -929,26 +939,71 @@ impl CompactionManager {
         // risk of a stale `pending_cutoff` being applied later.
         let usage = self.context_usage_with(all_messages);
         if usage >= CRITICAL_THRESHOLD {
-            crate::logging::warn(&format!(
-                "[compaction] Context at {:.1}% (critical threshold {:.0}%) — performing synchronous hard compact",
-                usage * 100.0,
-                CRITICAL_THRESHOLD * 100.0,
-            ));
-            match self.hard_compact_with(all_messages) {
-                Ok(dropped) => {
-                    let post_usage = self.context_usage_with(all_messages);
-                    crate::logging::info(&format!(
-                        "[compaction] Hard compact dropped {} messages, context now at {:.1}%",
-                        dropped,
-                        post_usage * 100.0,
+            if self.pending_task.is_some() {
+                crate::logging::warn(&format!(
+                    "[compaction] Context at {:.1}% with background compaction in flight — waiting up to {}ms before hard compact",
+                    usage * 100.0,
+                    HARD_THRESHOLD_PENDING_WAIT_MS,
+                ));
+                let waited = self.wait_for_pending_compaction_at_hard_threshold(all_messages);
+                let post_wait_usage = self.context_usage_with(all_messages);
+                crate::logging::info(&format!(
+                    "[compaction] Hard-threshold wait complete: waited_ms={}, applied={}, timed_out={}, usage_now={:.1}%",
+                    waited.waited_ms,
+                    waited.applied,
+                    waited.timed_out,
+                    post_wait_usage * 100.0,
+                ));
+                if post_wait_usage < CRITICAL_THRESHOLD {
+                    // We may still be above the soft threshold. Let the normal
+                    // path below decide whether another async compaction should
+                    // start, but avoid dropping context now that the hard
+                    // threshold has been cleared.
+                } else {
+                    crate::logging::warn(&format!(
+                        "[compaction] Context still at {:.1}% after waiting for in-flight compaction; escalating to hard compact",
+                        post_wait_usage * 100.0,
                     ));
-                    return CompactionAction::HardCompacted(dropped);
+                    match self.hard_compact_with(all_messages) {
+                        Ok(dropped) => {
+                            let post_usage = self.context_usage_with(all_messages);
+                            crate::logging::info(&format!(
+                                "[compaction] Hard compact dropped {} messages, context now at {:.1}%",
+                                dropped,
+                                post_usage * 100.0,
+                            ));
+                            return CompactionAction::HardCompacted(dropped);
+                        }
+                        Err(reason) => {
+                            crate::logging::error(&format!(
+                                "[compaction] Hard compact failed at critical threshold: {}",
+                                reason
+                            ));
+                        }
+                    }
                 }
-                Err(reason) => {
-                    crate::logging::error(&format!(
-                        "[compaction] Hard compact failed at critical threshold: {}",
-                        reason
-                    ));
+            } else {
+                crate::logging::warn(&format!(
+                    "[compaction] Context at {:.1}% (critical threshold {:.0}%) — performing synchronous hard compact",
+                    usage * 100.0,
+                    CRITICAL_THRESHOLD * 100.0,
+                ));
+                match self.hard_compact_with(all_messages) {
+                    Ok(dropped) => {
+                        let post_usage = self.context_usage_with(all_messages);
+                        crate::logging::info(&format!(
+                            "[compaction] Hard compact dropped {} messages, context now at {:.1}%",
+                            dropped,
+                            post_usage * 100.0,
+                        ));
+                        return CompactionAction::HardCompacted(dropped);
+                    }
+                    Err(reason) => {
+                        crate::logging::error(&format!(
+                            "[compaction] Hard compact failed at critical threshold: {}",
+                            reason
+                        ));
+                    }
                 }
             }
         }
@@ -966,6 +1021,52 @@ impl CompactionManager {
             }
         } else {
             CompactionAction::None
+        }
+    }
+
+    fn wait_for_pending_compaction_at_hard_threshold(
+        &mut self,
+        all_messages: &[Message],
+    ) -> HardThresholdWait {
+        let start = Instant::now();
+        let timeout = std::time::Duration::from_millis(HARD_THRESHOLD_PENDING_WAIT_MS);
+        let poll = std::time::Duration::from_millis(HARD_THRESHOLD_PENDING_POLL_MS);
+
+        while start.elapsed() < timeout {
+            if self
+                .pending_task
+                .as_ref()
+                .map(|task| task.is_finished())
+                .unwrap_or(false)
+            {
+                self.check_and_apply_compaction_with(all_messages);
+                return HardThresholdWait {
+                    waited_ms: start.elapsed().as_millis() as u64,
+                    applied: self.last_compaction.is_some(),
+                    timed_out: false,
+                };
+            }
+            std::thread::sleep(poll);
+        }
+
+        if self
+            .pending_task
+            .as_ref()
+            .map(|task| task.is_finished())
+            .unwrap_or(false)
+        {
+            self.check_and_apply_compaction_with(all_messages);
+            return HardThresholdWait {
+                waited_ms: start.elapsed().as_millis() as u64,
+                applied: self.last_compaction.is_some(),
+                timed_out: false,
+            };
+        }
+
+        HardThresholdWait {
+            waited_ms: start.elapsed().as_millis() as u64,
+            applied: false,
+            timed_out: true,
         }
     }
 
@@ -1468,10 +1569,15 @@ impl CompactionManager {
     pub fn emergency_truncate_with(&mut self, all_messages: &mut [Message]) -> usize {
         let start = self.compacted_count.min(all_messages.len());
         let active = &mut all_messages[start..];
-        let truncated = emergency_truncate_tool_results(active, EMERGENCY_TOOL_RESULT_MAX_CHARS);
+        let truncated = emergency_truncate_large_payloads(
+            active,
+            EMERGENCY_TOOL_RESULT_MAX_CHARS,
+            EMERGENCY_IMAGE_MAX_CHARS,
+        );
 
         if truncated > 0 {
             self.observed_input_tokens = None;
+            self.active_chars.invalidate();
         }
         truncated
     }
