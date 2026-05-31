@@ -151,18 +151,24 @@ fn newer_binary_available(
 }
 
 pub(crate) fn server_has_newer_binary() -> bool {
-    if !build::version_matches_installed_channel(
-        jcode_build_meta::VERSION,
-        jcode_build_meta::GIT_HASH,
-    ) {
-        crate::logging::warn(&format!(
-            "server_has_newer_binary: running server version {} ({}) does not match installed stable/current channel markers",
-            jcode_build_meta::VERSION,
-            jcode_build_meta::GIT_HASH,
-        ));
-        return true;
-    }
-
+    // Directional check only: report an update solely when a reload *candidate*
+    // binary is strictly newer than the binary we are running.
+    //
+    // We deliberately do NOT treat "my version differs from the installed
+    // channel markers" as "I am outdated". That conflated *different* with
+    // *older* and caused a real regression (issue #291): a newer self-dev /
+    // shared-server daemon (e.g. v0.17.23-dev) running alongside an older
+    // release client would be told to "reload" and downgrade itself, because
+    // its git hash no longer matched the `current`/`stable` channel markers
+    // after a release build moved them. It also fed the reload-loop family from
+    // issue #277, since a server that merely "differs" can never make the
+    // difference go away by reloading.
+    //
+    // `UPDATE_SEMVER` is the base Cargo version for every dev build, so it
+    // cannot order two dev builds; binary mtime is the only robust, directional
+    // signal we have. `newer_binary_available` compares candidate mtimes against
+    // the running binary, excludes reloading into ourselves, and treats any
+    // uncertainty (unreadable mtime) as "no update".
     let current_exe = std::env::current_exe().ok();
     let current_mtime = current_exe
         .as_ref()
@@ -295,6 +301,33 @@ mod newer_binary_tests {
         assert!(newer_binary_available(
             Some(t(100)),
             Some(std::path::Path::new("/x/current/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn newer_server_is_not_outdated_by_older_channel_binary() {
+        // Issue #291: a newer self-dev / shared-server daemon must NOT report an
+        // update just because an *older* channel binary exists. Here the running
+        // server (t=300) is newer than the only candidate (stable at t=100), so
+        // there is no update. Previously a channel-version *mismatch* short-circuit
+        // reported `true` here and told the newer server to downgrade itself.
+        let candidates = vec![(PathBuf::from("/x/stable/jcode"), Some(t(100)))];
+        assert!(!newer_binary_available(
+            Some(t(300)),
+            Some(std::path::Path::new("/x/builds/versions/dev/jcode")),
+            candidates,
+        ));
+    }
+
+    #[test]
+    fn equal_mtime_channel_binary_is_not_an_update() {
+        // A candidate with the same mtime is not strictly newer, so it must not
+        // trigger a reload (avoids the differ-but-not-newer reload loop, #277).
+        let candidates = vec![(PathBuf::from("/x/stable/jcode"), Some(t(100)))];
+        assert!(!newer_binary_available(
+            Some(t(100)),
+            Some(std::path::Path::new("/x/builds/versions/dev/jcode")),
             candidates,
         ));
     }
