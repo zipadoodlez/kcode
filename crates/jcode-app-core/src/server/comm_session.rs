@@ -148,6 +148,18 @@ fn resolve_swarm_spawn_model_and_provider(
     coordinator_model: Option<String>,
     coordinator_provider_key: Option<String>,
 ) -> (Option<String>, Option<String>) {
+    // Treat empty strings and the explicit "inherit"/"coordinator" sentinels as
+    // "no override": spawned swarm agents should inherit the coordinator's model
+    // unless `agents.swarm_model` is deliberately set to a concrete model. This
+    // avoids the surprising case where a stale `swarm_model` config pins every
+    // spawned agent to an unrelated model/provider.
+    let configured_swarm_model = configured_swarm_model.filter(|model| {
+        let trimmed = model.trim();
+        !trimmed.is_empty()
+            && !trimmed.eq_ignore_ascii_case("inherit")
+            && !trimmed.eq_ignore_ascii_case("coordinator")
+    });
+
     match configured_swarm_model {
         Some(model) => {
             let provider_key = if coordinator_model.as_deref() == Some(model.as_str()) {
@@ -354,10 +366,14 @@ pub(super) async fn spawn_swarm_agent(
     let configured_swarm_model = agents_config.swarm_model.clone();
     let resolved_spawn_mode = spawn_mode.unwrap_or(agents_config.swarm_spawn_mode);
     let (spawn_model, spawn_provider_key) = resolve_swarm_spawn_model_and_provider(
-        configured_swarm_model,
-        coordinator_model,
-        coordinator_provider_key,
+        configured_swarm_model.clone(),
+        coordinator_model.clone(),
+        coordinator_provider_key.clone(),
     );
+    crate::logging::info(&format!(
+        "Swarm spawn model resolution: configured_swarm_model={:?} coordinator_model={:?} -> spawn_model={:?} spawn_provider_key={:?}",
+        configured_swarm_model, coordinator_model, spawn_model, spawn_provider_key,
+    ));
 
     let startup_message = initial_message
         .as_deref()

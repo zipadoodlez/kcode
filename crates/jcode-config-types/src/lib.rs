@@ -356,6 +356,11 @@ pub struct AuthConfig {
 #[serde(default)]
 pub struct AgentsConfig {
     /// Optional default model override for spawned swarm/subagent sessions.
+    ///
+    /// Leave unset (or use `"inherit"` / `"coordinator"`) to have spawned swarm
+    /// agents inherit the spawning coordinator's model. Set to a concrete model
+    /// string only when you deliberately want every swarm worker pinned to a
+    /// specific model regardless of which model spawned them.
     pub swarm_model: Option<String>,
     /// Default terminal mode for swarm-created agents.
     pub swarm_spawn_mode: SwarmSpawnMode,

@@ -441,6 +441,28 @@ fn resolve_swarm_spawn_model_keeps_provider_key_when_config_matches_coordinator(
     assert_eq!(provider_key.as_deref(), Some("custom-provider"));
 }
 
+#[test]
+fn resolve_swarm_spawn_model_inherit_sentinel_uses_coordinator_model() {
+    for sentinel in ["inherit", "INHERIT", "coordinator", " inherit ", ""] {
+        let (model, provider_key) = resolve_swarm_spawn_model_and_provider(
+            Some(sentinel.to_string()),
+            Some("nvidia/llama-3.3-nemotron-super-49b-v1".to_string()),
+            Some("nvidia".to_string()),
+        );
+
+        assert_eq!(
+            model.as_deref(),
+            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
+            "sentinel {sentinel:?} should inherit coordinator model",
+        );
+        assert_eq!(
+            provider_key.as_deref(),
+            Some("nvidia"),
+            "sentinel {sentinel:?} should inherit coordinator provider key",
+        );
+    }
+}
+
 #[tokio::test]
 async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
