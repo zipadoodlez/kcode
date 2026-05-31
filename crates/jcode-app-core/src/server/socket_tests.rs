@@ -8,7 +8,8 @@ use super::socket::{
 use super::{
     ReloadPhase, ReloadState, ReloadWaitStatus, await_reload_handoff, cleanup_socket_pair,
     clear_reload_marker, connect_socket, inspect_reload_wait_status, publish_reload_socket_ready,
-    reload_marker_active, reload_marker_path, reload_process_alive, write_reload_state,
+    reap_stale_socket_if_dead, reload_marker_active, reload_marker_path, reload_process_alive,
+    write_reload_state,
 };
 use crate::transport::Listener;
 use std::time::Duration;
@@ -94,6 +95,91 @@ fn daemon_lock_serializes_server_processes() {
         .expect("third daemon lock should succeed after release");
     drop(third);
 
+    if let Some(prev_runtime) = prev_runtime {
+        crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+    } else {
+        crate::env::remove_var("JCODE_RUNTIME_DIR");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn reap_stale_socket_removes_dead_socket_pair_and_lock() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+    crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+
+    let socket = temp.path().join("jcode.sock");
+    let debug = temp.path().join("jcode-debug.sock");
+    let lock = daemon_lock_path();
+
+    // Simulate the post-upgrade/crash state: socket + debug + lock files left
+    // behind, but no process is listening on the socket.
+    std::fs::write(&socket, b"").expect("write stale socket");
+    std::fs::write(&debug, b"").expect("write stale debug socket");
+    std::fs::write(&lock, b"").expect("write stale lock");
+
+    let reaped = reap_stale_socket_if_dead(&socket).await;
+    assert!(reaped, "a dead socket with no listener should be reaped");
+    assert!(!socket.exists(), "stale socket should be removed");
+    assert!(!debug.exists(), "stale debug socket should be removed");
+    assert!(!lock.exists(), "stale daemon lock should be removed");
+
+    if let Some(prev_runtime) = prev_runtime {
+        crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+    } else {
+        crate::env::remove_var("JCODE_RUNTIME_DIR");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn reap_stale_socket_spares_live_listener() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+    crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+
+    let socket = temp.path().join("jcode.sock");
+    // A live listener means a daemon is bound; reaping must be a no-op.
+    let listener = Listener::bind(&socket).expect("bind listener");
+
+    let reaped = reap_stale_socket_if_dead(&socket).await;
+    assert!(!reaped, "a live listener must never be reaped");
+    assert!(socket.exists(), "live socket must be left intact");
+
+    drop(listener);
+    if let Some(prev_runtime) = prev_runtime {
+        crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+    } else {
+        crate::env::remove_var("JCODE_RUNTIME_DIR");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn reap_stale_socket_spares_socket_when_lock_is_held() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+    crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+
+    let socket = temp.path().join("jcode.sock");
+    std::fs::write(&socket, b"").expect("write stale-looking socket");
+
+    // Hold the daemon lock, emulating a live daemon whose socket probe happens
+    // to be momentarily unanswerable. The reaper must not unlink the socket.
+    let lock_path = daemon_lock_path();
+    let held = try_acquire_daemon_lock(&lock_path)
+        .expect("acquire lock")
+        .expect("lock should be free");
+
+    let reaped = reap_stale_socket_if_dead(&socket).await;
+    assert!(!reaped, "socket must be spared while the daemon lock is held");
+    assert!(socket.exists(), "socket must be left intact while lock is held");
+
+    drop(held);
     if let Some(prev_runtime) = prev_runtime {
         crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
     } else {

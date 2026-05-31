@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use super::args::{
     AmbientCommand, Args, AuthCommand, CloudCommand, CloudSessionsCommand, Command, MemoryCommand,
-    ModelCommand, ProviderCommand, RestartCommand, SessionCommand, TranscriptModeArg,
+    ModelCommand, ProviderCommand, RestartCommand, ServerCommand, SessionCommand, TranscriptModeArg,
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
@@ -92,6 +92,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Connect) => {
             tui_launch::run_client().await?;
         }
+        Some(Command::Server { action }) => match action {
+            ServerCommand::Stop { json } => {
+                commands::run_server_stop_command(json).await?;
+            }
+        },
         Some(Command::Run {
             message,
             json,
@@ -731,6 +736,16 @@ async fn run_default_command(args: Args) -> Result<()> {
     }
 
     if !server_running {
+        // No live server and no in-flight reload/resume. If a dead socket was
+        // left behind by a crashed or upgraded daemon, reap it now so the spawn
+        // below binds cleanly instead of wedging the client in a connect-retry
+        // loop against a stale socket (issues #277/#291). This only removes a
+        // socket that has no live listener AND whose daemon lock is free, so it
+        // can never disturb a running server.
+        if server::reap_stale_socket_if_dead(&server::socket_path()).await {
+            output::stderr_info("Removed a stale jcode socket from a previous server.");
+        }
+
         maybe_prompt_server_bootstrap_login(&args.provider).await?;
         spawn_server(
             &args.provider,

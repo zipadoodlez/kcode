@@ -2090,6 +2090,148 @@ pub async fn run_usage_command(emit_json: bool) -> Result<()> {
     report_info::run_usage_command(emit_json).await
 }
 
+/// Stop the running background server gracefully and clear its socket.
+///
+/// Intended for use after an upgrade so the next launch starts the freshly
+/// installed binary instead of a surviving daemon running old code (issue #291).
+///
+/// Steps:
+/// 1. Look up the daemon owning the active socket in the server registry and
+///    send it SIGTERM (the daemon has a graceful SIGTERM handler).
+/// 2. Wait for the listener to go away (bounded), escalating to SIGKILL only if
+///    the process refuses to exit.
+/// 3. Reap any leftover stale socket so a later launch binds cleanly.
+pub async fn run_server_stop_command(emit_json: bool) -> Result<()> {
+    use std::time::{Duration, Instant};
+
+    let socket = crate::server::socket_path();
+    let had_listener = crate::server::has_live_listener(&socket).await;
+    let server_info = crate::registry::find_server_by_socket_sync(&socket);
+
+    #[derive(Serialize)]
+    struct ServerStopReport {
+        socket: String,
+        had_listener: bool,
+        signaled_pid: Option<u32>,
+        stopped: bool,
+        reaped_socket: bool,
+        detail: String,
+    }
+
+    let mut signaled_pid: Option<u32> = None;
+    let mut stopped = false;
+    let detail: String;
+
+    if let Some(info) = server_info.as_ref() {
+        let pid = info.pid;
+        if crate::platform::is_process_running(pid) {
+            #[cfg(unix)]
+            {
+                // The daemon spawns detached with setsid(), so it leads its own
+                // process group. Signal the group so any helper children exit too.
+                match crate::platform::signal_detached_process_group(pid, libc::SIGTERM) {
+                    Ok(()) => {
+                        signaled_pid = Some(pid);
+                        detail = format!("Sent SIGTERM to jcode server (pid {pid}).");
+                    }
+                    Err(e) => {
+                        detail = format!("Failed to signal jcode server (pid {pid}): {e}");
+                    }
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                match crate::platform::signal_detached_process_group(pid, 0) {
+                    Ok(()) => {
+                        signaled_pid = Some(pid);
+                        detail = format!("Terminated jcode server (pid {pid}).");
+                    }
+                    Err(e) => {
+                        detail = format!("Failed to terminate jcode server (pid {pid}): {e}");
+                    }
+                }
+            }
+        } else {
+            detail = format!("Registered jcode server (pid {pid}) is not running.");
+        }
+    } else if had_listener {
+        // A listener answers but no registry entry maps to it. We deliberately
+        // do not guess a pid; just reap the socket below once the listener is
+        // gone. (This is rare: a daemon that bound the socket but never wrote a
+        // registry entry.)
+        detail = "Found a live server socket with no registry entry.".to_string();
+    } else {
+        detail = "No running jcode server found.".to_string();
+    }
+
+    // Wait for the listener to disappear after signalling. Escalate to SIGKILL
+    // once if the daemon does not exit within the graceful window.
+    if signaled_pid.is_some() || had_listener {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        #[cfg(unix)]
+        let mut escalated = false;
+        loop {
+            let listener_gone = !crate::server::has_live_listener(&socket).await;
+            let process_gone = signaled_pid
+                .map(|pid| !crate::platform::is_process_running(pid))
+                .unwrap_or(true);
+            if listener_gone && process_gone {
+                stopped = true;
+                break;
+            }
+            if Instant::now() >= deadline {
+                break;
+            }
+            #[cfg(unix)]
+            if !escalated
+                && Instant::now() + Duration::from_secs(2) >= deadline
+                && let Some(pid) = signaled_pid
+                && crate::platform::is_process_running(pid)
+            {
+                let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
+                escalated = true;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    } else {
+        stopped = true;
+    }
+
+    // Reap any stale socket the (now-dead) daemon left behind so the next launch
+    // binds cleanly instead of wedging in a connect-retry loop.
+    let reaped = crate::server::reap_stale_socket_if_dead(&socket).await;
+
+    if emit_json {
+        let report = ServerStopReport {
+            socket: socket.display().to_string(),
+            had_listener,
+            signaled_pid,
+            stopped,
+            reaped_socket: reaped,
+            detail: detail.clone(),
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        if !detail.is_empty() {
+            println!("{detail}");
+        }
+        if stopped && signaled_pid.is_some() {
+            println!("jcode server stopped.");
+        } else if stopped && !had_listener && signaled_pid.is_none() {
+            // Nothing was running; this is still a success for an installer.
+        } else if !stopped {
+            println!(
+                "jcode server did not exit cleanly; it may still be shutting down. Re-run if needed."
+            );
+        }
+        if reaped {
+            println!("Cleared a stale jcode socket.");
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn run_single_message_command(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,

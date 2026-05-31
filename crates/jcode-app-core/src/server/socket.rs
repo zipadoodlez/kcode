@@ -73,6 +73,74 @@ pub(super) async fn socket_has_live_listener(path: &std::path::Path) -> bool {
     crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok()
 }
 
+/// Reap a provably-stale socket left behind by a dead daemon.
+///
+/// Background: after an upgrade or crash, the runtime socket file can survive
+/// even though the daemon that owned it is gone. A client that finds the socket
+/// path present but cannot connect/handshake gets wedged into a connect-retry
+/// loop and never recovers on its own (see issues #277 and #291).
+///
+/// Safety: a live daemon holds an exclusive `flock` on `jcode-daemon.lock` for
+/// its entire lifetime. So if (a) the socket has no live listener AND (b) we can
+/// acquire that exclusive lock, then no daemon is running and the socket is
+/// provably stale. Only then do we unlink the socket pair (main + debug) and the
+/// lock file. This can never strand a live daemon, because a live daemon would
+/// either still be answering on the socket or still be holding the lock.
+///
+/// Returns true if a stale socket was reaped.
+#[cfg(unix)]
+pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
+    // Nothing to reap if the path isn't even present.
+    if !crate::transport::is_socket_path(path) {
+        return false;
+    }
+
+    // If a listener answers, the daemon is alive; never touch it.
+    if socket_has_live_listener(path).await {
+        return false;
+    }
+
+    // Try to grab the daemon lock. If a live daemon holds it, this fails and we
+    // leave everything alone (the daemon may just be slow to answer).
+    let lock_path = daemon_lock_path();
+    let Ok(Some(_lock)) = try_acquire_daemon_lock(&lock_path) else {
+        return false;
+    };
+
+    // Re-check the listener now that we hold the lock, to close the race where a
+    // daemon bound the socket between our probe and acquiring the lock. (A real
+    // daemon could not have given us the lock, but a brand-new daemon spawned in
+    // the gap might be mid-startup before it acquired the lock itself.)
+    if socket_has_live_listener(path).await {
+        return false;
+    }
+
+    crate::logging::warn(&format!(
+        "Reaping stale jcode socket with no live listener at {}",
+        path.display()
+    ));
+    cleanup_socket_pair(path);
+    // `_lock` (a DaemonLockGuard) removes the lock file when it drops at the end
+    // of this scope, so the leftover lock is cleaned up too.
+    true
+}
+
+#[cfg(not(unix))]
+pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
+    if !crate::transport::is_socket_path(path) {
+        return false;
+    }
+    if socket_has_live_listener(path).await {
+        return false;
+    }
+    crate::logging::warn(&format!(
+        "Reaping stale jcode socket with no live listener at {}",
+        path.display()
+    ));
+    cleanup_socket_pair(path);
+    true
+}
+
 /// Return true if a live server process is listening on the socket path.
 ///
 /// This is intentionally weaker than [`is_server_ready`]: a live listener may

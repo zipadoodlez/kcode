@@ -124,6 +124,12 @@ pub(crate) enum Command {
     /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
     Acp,
 
+    /// Manage the background server daemon (e.g. `jcode server stop`).
+    Server {
+        #[command(subcommand)]
+        action: ServerCommand,
+    },
+
     /// Connect to a running server
     Connect,
 
@@ -467,6 +473,19 @@ pub(crate) enum Command {
     Restart {
         #[command(subcommand)]
         action: RestartCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub(crate) enum ServerCommand {
+    /// Stop the running background server (graceful) and clear its socket.
+    ///
+    /// Useful after an upgrade so the next launch starts the freshly installed
+    /// binary instead of a surviving daemon running old code.
+    Stop {
+        /// Emit JSON instead of human-readable text
+        #[arg(long)]
+        json: bool,
     },
 }
 
