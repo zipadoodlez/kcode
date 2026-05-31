@@ -337,6 +337,16 @@ pub fn save_api_key(key: &str) -> Result<()> {
     Ok(())
 }
 
+/// Remove the saved Cursor API key from `~/.config/jcode/cursor.env` and the
+/// current process environment.
+pub fn clear_api_key() -> Result<()> {
+    let file_path = config_file_path()?;
+    crate::storage::upsert_env_file_value(&file_path, "CURSOR_API_KEY", None)?;
+
+    crate::env::remove_var("CURSOR_API_KEY");
+    Ok(())
+}
+
 fn config_file_path() -> Result<PathBuf> {
     let config_dir = crate::storage::app_config_dir()?;
     Ok(config_dir.join("cursor.env"))

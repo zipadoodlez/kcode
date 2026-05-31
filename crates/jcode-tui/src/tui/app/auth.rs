@@ -201,13 +201,70 @@ impl App {
         use crate::provider_catalog::LoginProviderTarget;
 
         let result: anyhow::Result<String> = (|| match provider.target {
-            LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => {
+            LoginProviderTarget::Jcode => {
+                Self::clear_api_key_login(
+                    crate::subscription_catalog::JCODE_API_KEY_ENV,
+                    crate::subscription_catalog::JCODE_ENV_FILE,
+                )?;
+                crate::provider_catalog::save_env_value_to_env_file(
+                    crate::subscription_catalog::JCODE_API_BASE_ENV,
+                    crate::subscription_catalog::JCODE_ENV_FILE,
+                    None,
+                )?;
+                Ok("Logged out of jcode subscription API key.".to_string())
+            }
+            LoginProviderTarget::Claude => {
                 let removed = crate::auth::claude::clear_accounts()?;
                 Ok(format!("Logged out of {} Anthropic account(s).", removed))
             }
-            LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => {
+            LoginProviderTarget::ClaudeApiKey => {
+                Self::clear_api_key_login("ANTHROPIC_API_KEY", "anthropic.env")?;
+                Ok("Logged out of Anthropic API key.".to_string())
+            }
+            LoginProviderTarget::OpenAi => {
                 let removed = crate::auth::codex::clear_accounts()?;
                 Ok(format!("Logged out of {} OpenAI account(s).", removed))
+            }
+            LoginProviderTarget::OpenAiApiKey => {
+                Self::clear_api_key_login("OPENAI_API_KEY", "openai.env")?;
+                Ok("Logged out of OpenAI API key.".to_string())
+            }
+            LoginProviderTarget::OpenRouter => {
+                Self::clear_api_key_login("OPENROUTER_API_KEY", "openrouter.env")?;
+                Ok("Logged out of OpenRouter API key.".to_string())
+            }
+            LoginProviderTarget::Bedrock => {
+                Self::clear_api_key_login(
+                    crate::provider::bedrock::API_KEY_ENV,
+                    crate::provider::bedrock::ENV_FILE,
+                )?;
+                Ok("Logged out of Bedrock API key.".to_string())
+            }
+            LoginProviderTarget::Azure => {
+                Self::clear_api_key_login(
+                    crate::auth::azure::API_KEY_ENV,
+                    crate::auth::azure::ENV_FILE,
+                )?;
+                crate::provider_catalog::save_env_value_to_env_file(
+                    crate::auth::azure::USE_ENTRA_ENV,
+                    crate::auth::azure::ENV_FILE,
+                    None,
+                )?;
+                Ok("Logged out of Azure OpenAI API key / Entra configuration.".to_string())
+            }
+            LoginProviderTarget::OpenAiCompatible(profile) => {
+                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+                Self::clear_api_key_login(&resolved.api_key_env, &resolved.env_file)?;
+                crate::provider_catalog::save_env_value_to_env_file(
+                    crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
+                    &resolved.env_file,
+                    None,
+                )?;
+                Ok(format!("Logged out of {} API key.", resolved.display_name))
+            }
+            LoginProviderTarget::Cursor => {
+                crate::auth::cursor::clear_api_key()?;
+                Ok("Logged out of Cursor API key.".to_string())
             }
             LoginProviderTarget::Gemini => {
                 crate::auth::gemini::clear_tokens()?;
@@ -240,9 +297,7 @@ impl App {
         let mut errors: Vec<String> = Vec::new();
 
         match crate::auth::claude::clear_accounts() {
-            Ok(removed) if removed > 0 => {
-                summary.push(format!("{} Anthropic account(s)", removed))
-            }
+            Ok(removed) if removed > 0 => summary.push(format!("{} Anthropic account(s)", removed)),
             Ok(_) => {}
             Err(err) => errors.push(format!("Anthropic: {}", err)),
         }
@@ -250,6 +305,90 @@ impl App {
             Ok(removed) if removed > 0 => summary.push(format!("{} OpenAI account(s)", removed)),
             Ok(_) => {}
             Err(err) => errors.push(format!("OpenAI: {}", err)),
+        }
+
+        Self::clear_api_key_logout_summary(
+            &mut summary,
+            &mut errors,
+            "jcode subscription API key",
+            crate::subscription_catalog::JCODE_API_KEY_ENV,
+            crate::subscription_catalog::JCODE_ENV_FILE,
+        );
+        if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
+            crate::subscription_catalog::JCODE_API_BASE_ENV,
+            crate::subscription_catalog::JCODE_ENV_FILE,
+            None,
+        ) {
+            errors.push(format!("jcode subscription API base: {}", err));
+        }
+
+        Self::clear_api_key_logout_summary(
+            &mut summary,
+            &mut errors,
+            "Anthropic API key",
+            "ANTHROPIC_API_KEY",
+            "anthropic.env",
+        );
+        Self::clear_api_key_logout_summary(
+            &mut summary,
+            &mut errors,
+            "OpenAI API key",
+            "OPENAI_API_KEY",
+            "openai.env",
+        );
+        Self::clear_api_key_logout_summary(
+            &mut summary,
+            &mut errors,
+            "OpenRouter API key",
+            "OPENROUTER_API_KEY",
+            "openrouter.env",
+        );
+        Self::clear_api_key_logout_summary(
+            &mut summary,
+            &mut errors,
+            "Bedrock API key",
+            crate::provider::bedrock::API_KEY_ENV,
+            crate::provider::bedrock::ENV_FILE,
+        );
+        Self::clear_api_key_logout_summary(
+            &mut summary,
+            &mut errors,
+            "Azure OpenAI API key",
+            crate::auth::azure::API_KEY_ENV,
+            crate::auth::azure::ENV_FILE,
+        );
+        if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
+            crate::auth::azure::USE_ENTRA_ENV,
+            crate::auth::azure::ENV_FILE,
+            None,
+        ) {
+            errors.push(format!("Azure OpenAI Entra config: {}", err));
+        }
+        for profile in crate::provider_catalog::openai_compatible_profiles() {
+            let resolved = crate::provider_catalog::resolve_openai_compatible_profile(*profile);
+            Self::clear_api_key_logout_summary(
+                &mut summary,
+                &mut errors,
+                &format!("{} API key", resolved.display_name),
+                &resolved.api_key_env,
+                &resolved.env_file,
+            );
+            if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
+                crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
+                &resolved.env_file,
+                None,
+            ) {
+                errors.push(format!(
+                    "{} local endpoint config: {}",
+                    resolved.display_name, err
+                ));
+            }
+        }
+        let cursor_configured = crate::auth::cursor::load_api_key().is_ok();
+        match crate::auth::cursor::clear_api_key() {
+            Ok(()) if cursor_configured => summary.push("Cursor API key".to_string()),
+            Ok(()) => {}
+            Err(err) => errors.push(format!("Cursor API key: {}", err)),
         }
         match crate::auth::gemini::clear_tokens() {
             Ok(()) => summary.push("Gemini".to_string()),
@@ -273,6 +412,26 @@ impl App {
                 errors.join("; ")
             )));
             self.set_status_notice("Logout: completed with errors");
+        }
+    }
+
+    fn clear_api_key_login(env_key: &str, env_file: &str) -> anyhow::Result<()> {
+        crate::provider_catalog::save_env_value_to_env_file(env_key, env_file, None)
+    }
+
+    fn clear_api_key_logout_summary(
+        summary: &mut Vec<String>,
+        errors: &mut Vec<String>,
+        label: &str,
+        env_key: &str,
+        env_file: &str,
+    ) {
+        let configured =
+            crate::provider_catalog::load_env_value_from_env_or_config(env_key, env_file).is_some();
+        match Self::clear_api_key_login(env_key, env_file) {
+            Ok(()) if configured => summary.push(label.to_string()),
+            Ok(()) => {}
+            Err(err) => errors.push(format!("{}: {}", label, err)),
         }
     }
 
