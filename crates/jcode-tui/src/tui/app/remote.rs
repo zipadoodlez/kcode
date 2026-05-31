@@ -771,14 +771,36 @@ pub(super) fn handle_disconnect(
     state.reconnect_attempts = 1;
 }
 
+/// Record (once per distinct reason) why the restored startup auto-submit is
+/// being deferred. This makes "headed-spawn prompt seen but never sent" cases
+/// debuggable without spamming a log line on every event-loop tick.
+fn note_startup_submit_deferred(app: &mut App, reason: &'static str) {
+    if !app.submit_input_on_startup {
+        // Nothing pending; clear any stale reason so the next deferral logs.
+        app.startup_submit_deferred_reason = None;
+        return;
+    }
+    if app.startup_submit_deferred_reason == Some(reason) {
+        return;
+    }
+    app.startup_submit_deferred_reason = Some(reason);
+    crate::logging::info(&format!(
+        "Startup auto-submit deferred: {reason} (input_chars={}, pending_images={})",
+        app.input.chars().count(),
+        app.pending_images.len(),
+    ));
+}
+
 pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteConnection) {
     if !remote.has_loaded_history() {
+        note_startup_submit_deferred(app, "remote history not loaded yet");
         return;
     }
 
     let _ = recover_stranded_soft_interrupts(app, remote).await;
 
     if app.pending_queued_dispatch {
+        note_startup_submit_deferred(app, "pending_queued_dispatch in progress");
         return;
     }
 
@@ -817,9 +839,16 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
 
     if app.submit_input_on_startup && !app.is_processing {
         app.submit_input_on_startup = false;
+        app.startup_submit_deferred_reason = None;
         if !app.input.is_empty() || !app.pending_images.is_empty() {
+            crate::logging::info(&format!(
+                "Startup auto-submit firing: input_chars={} pending_images={}",
+                app.input.chars().count(),
+                app.pending_images.len(),
+            ));
             let prepared = input::take_prepared_input(app);
             if let Err(error) = submit_prepared_remote_input(app, remote, prepared).await {
+                crate::logging::warn(&format!("Startup auto-submit failed: {error}"));
                 app.push_display_message(DisplayMessage::error(format!(
                     "Failed to submit startup prompt: {}",
                     error
@@ -827,7 +856,13 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
                 app.set_status_notice("Startup prompt failed");
             }
             return;
+        } else {
+            crate::logging::warn(
+                "Startup auto-submit skipped: submit flag was set but input and pending images are both empty",
+            );
         }
+    } else if app.submit_input_on_startup && app.is_processing {
+        note_startup_submit_deferred(app, "session still processing (is_processing=true)");
     }
 
     if app.pending_background_client_reload.is_some() && !app.is_processing {

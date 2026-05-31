@@ -711,6 +711,11 @@ pub struct App {
     route_next_prompt_to_new_session: bool,
     // Restore-time flag: auto-submit restored input after startup.
     submit_input_on_startup: bool,
+    /// Debug guard: tracks the last reason the startup auto-submit was deferred
+    /// so `process_remote_followups` logs each distinct blocker exactly once
+    /// instead of spamming every tick. Used to debug headed-spawn prompts that
+    /// appear "seen but never sent".
+    startup_submit_deferred_reason: Option<&'static str>,
     /// One-shot/session-local preview of the first-run onboarding empty state.
     onboarding_preview_mode: bool,
     /// Active guided first-run onboarding flow (model select -> continue ->
