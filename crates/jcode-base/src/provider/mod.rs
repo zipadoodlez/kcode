@@ -476,6 +476,9 @@ impl MultiProvider {
         model: &str,
     ) -> Option<(crate::provider_catalog::OpenAiCompatibleProfile, &str)> {
         let (prefix, rest) = model.split_once(':')?;
+        if explicit_model_provider_prefix(model).is_some() {
+            return None;
+        }
         let rest = rest.trim();
         if rest.is_empty() {
             return None;

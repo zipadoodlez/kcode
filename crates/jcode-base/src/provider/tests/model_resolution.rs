@@ -479,6 +479,165 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
 }
 
 #[test]
+fn test_session_route_restore_request_matrix_preserves_runtime_identity() {
+    let cases = [
+        (
+            "claude-sonnet-4-6",
+            Some("claude"),
+            Some("claude-oauth"),
+            "claude-oauth:claude-sonnet-4-6",
+        ),
+        (
+            "claude-sonnet-4-6",
+            Some("claude"),
+            Some("anthropic-api-key"),
+            "claude-api:claude-sonnet-4-6",
+        ),
+        (
+            "gpt-5.4",
+            Some("openai"),
+            Some("openai-oauth"),
+            "openai-oauth:gpt-5.4",
+        ),
+        (
+            "gpt-5.4",
+            Some("openai"),
+            Some("openai-api-key"),
+            "openai-api:gpt-5.4",
+        ),
+        (
+            "openrouter/owl-alpha",
+            Some("openrouter"),
+            Some("openrouter"),
+            "openrouter:openrouter/owl-alpha",
+        ),
+        (
+            "nvidia/example",
+            Some("openai-compatible:nvidia-nim"),
+            Some("openai-compatible:nvidia-nim"),
+            "nvidia-nim:nvidia/example",
+        ),
+        (
+            "claude-sonnet-4",
+            Some("copilot"),
+            Some("copilot"),
+            "copilot:claude-sonnet-4",
+        ),
+        (
+            "composer-1.5",
+            Some("cursor"),
+            Some("cursor"),
+            "cursor:composer-1.5",
+        ),
+        (
+            "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            Some("bedrock"),
+            Some("bedrock"),
+            "bedrock:anthropic.claude-3-5-sonnet-20241022-v2:0",
+        ),
+        (
+            "default",
+            Some("antigravity"),
+            Some("antigravity-https"),
+            "antigravity:default",
+        ),
+    ];
+
+    for (model, provider_key, api_method, expected) in cases {
+        assert_eq!(
+            MultiProvider::model_switch_request_for_session_route(model, provider_key, api_method),
+            expected,
+            "restore request should preserve route identity for {provider_key:?}/{api_method:?}"
+        );
+    }
+}
+
+#[test]
+fn test_openrouter_and_compatible_profile_transition_invariants() {
+    with_clean_provider_test_env(|| {
+        let nvidia = crate::provider_catalog::openai_compatible_profile_by_id("nvidia-nim")
+            .expect("NVIDIA NIM profile exists");
+
+        save_test_openrouter_model_cache(
+            "openrouter",
+            "https://openrouter.ai/api/v1",
+            &["openrouter/owl-alpha"],
+        );
+
+        crate::env::set_var("OPENROUTER_API_KEY", "test-openrouter-key");
+        crate::env::set_var(nvidia.api_key_env, "test-nvidia-key");
+        crate::provider_catalog::force_apply_openai_compatible_profile_env(None);
+        let openrouter = Arc::new(
+            openrouter::OpenRouterProvider::new().expect("OpenRouter provider should initialize"),
+        );
+        openrouter
+            .set_model("openrouter/owl-alpha")
+            .expect("OpenRouter default model should be selectable");
+
+        let provider = MultiProvider {
+            claude: RwLock::new(None),
+            anthropic: RwLock::new(None),
+            openai: RwLock::new(None),
+            copilot_api: RwLock::new(None),
+            antigravity: RwLock::new(None),
+            gemini: RwLock::new(None),
+            cursor: RwLock::new(None),
+            bedrock: RwLock::new(None),
+            openrouter: RwLock::new(Some(openrouter.clone())),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
+            active: RwLock::new(ActiveProvider::OpenRouter),
+            use_claude_cli: false,
+            startup_notices: RwLock::new(Vec::new()),
+            forced_provider: None,
+        };
+
+        provider
+            .set_model("nvidia-nim:nvidia/llama-3.1-nemotron-ultra-253b-v1")
+            .expect("NVIDIA NIM model should be selectable");
+        assert_eq!(provider.model(), "nvidia/llama-3.1-nemotron-ultra-253b-v1");
+        assert!(Arc::ptr_eq(
+            &provider.openrouter_provider().expect("real OpenRouter remains"),
+            &openrouter
+        ));
+        assert_eq!(
+            provider
+                .active_openrouter_execution_provider()
+                .expect("active compatible runtime")
+                .direct_openai_compatible_route_parts()
+                .map(|(_provider, api_method, _detail)| api_method),
+            Some("openai-compatible:nvidia-nim".to_string())
+        );
+
+        provider
+            .set_model("openrouter:openrouter/owl-alpha")
+            .expect("OpenRouter switch should select real OpenRouter slot");
+        assert_eq!(provider.model(), "openrouter/owl-alpha");
+        assert!(
+            provider
+                .active_openrouter_execution_provider()
+                .expect("active OpenRouter runtime")
+                .direct_openai_compatible_route_parts()
+                .is_none(),
+            "real OpenRouter route must not inherit compatible profile state"
+        );
+
+        provider
+            .set_model("nvidia-nim:nvidia/llama-3.1-nemotron-ultra-253b-v1")
+            .expect("cached compatible runtime should be selectable again");
+        assert_eq!(provider.model(), "nvidia/llama-3.1-nemotron-ultra-253b-v1");
+        assert!(
+            provider
+                .openrouter_provider()
+                .expect("real OpenRouter remains")
+                .direct_openai_compatible_route_parts()
+                .is_none(),
+            "compatible profile route must never overwrite the real OpenRouter runtime"
+        );
+    });
+}
+
+#[test]
 fn test_set_model_accepts_bare_openai_openrouter_pin_when_openrouter_available() {
     with_clean_provider_test_env(|| {
         with_env_var("OPENROUTER_API_KEY", "test-openrouter-key", || {
