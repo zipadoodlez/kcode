@@ -521,6 +521,53 @@ fn configured_openai_compatible_profile_routes_use_live_cache_when_not_active_pr
     });
 }
 
+#[test]
+fn standard_openrouter_catalog_refresh_is_noop_when_cache_fresh() {
+    with_clean_provider_test_env(|| {
+        let runtime = enter_test_runtime();
+        runtime.block_on(async {
+            crate::provider_catalog::save_env_value_to_env_file(
+                "OPENROUTER_API_KEY",
+                "openrouter.env",
+                Some("sk-test-openrouter"),
+            )
+            .expect("save openrouter key");
+            // A fresh, non-empty standard OpenRouter cache should suppress the
+            // background refresh entirely so we never fire a needless network
+            // request on every picker render.
+            save_test_openrouter_model_cache(
+                "openrouter",
+                "https://openrouter.ai/api/v1",
+                &["openrouter/owl-alpha"],
+            );
+
+            assert!(
+                !openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
+                    "unit test fresh cache"
+                ),
+                "a fresh non-empty standard OpenRouter cache must not trigger a refresh"
+            );
+        });
+    });
+}
+
+#[test]
+fn standard_openrouter_catalog_refresh_skips_without_key() {
+    with_clean_provider_test_env(|| {
+        let runtime = enter_test_runtime();
+        runtime.block_on(async {
+            // No OPENROUTER_API_KEY configured: the refresh must not be
+            // scheduled regardless of cache state.
+            assert!(
+                !openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
+                    "unit test missing key"
+                ),
+                "standard OpenRouter refresh must be skipped when no key is configured"
+            );
+        });
+    });
+}
+
 fn test_multi_provider_with_cursor() -> MultiProvider {
     MultiProvider {
         claude: RwLock::new(None),

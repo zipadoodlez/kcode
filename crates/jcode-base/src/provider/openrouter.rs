@@ -73,6 +73,9 @@ const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4";
 const MODEL_CATALOG_SOFT_REFRESH_SECS: u64 = 15 * 60;
 /// Minimum delay between background refresh attempts.
 const MODEL_CATALOG_REFRESH_RETRY_SECS: u64 = 60;
+/// Standard OpenRouter catalog freshness window for the inactive-slot refresh
+/// path. Matches the shared on-disk model-catalog TTL (24h).
+const STANDARD_OPENROUTER_CATALOG_TTL_SECS: u64 = 24 * 60 * 60;
 /// Pin provider to preserve cache for this long after a cache hit
 const CACHE_PIN_TTL_SECS: u64 = 60 * 60;
 
@@ -810,6 +813,109 @@ pub(crate) fn maybe_schedule_openai_compatible_profile_catalog_refresh(
             )),
         }
         finish_profile_catalog_refresh(&profile_id);
+    });
+
+    true
+}
+
+/// Schedule a background refresh of the *standard* OpenRouter model catalog
+/// (the `openrouter` cache namespace), even when standard OpenRouter is not the
+/// active provider occupying the shared OpenRouter/OpenAI-compatible runtime
+/// slot.
+///
+/// This matters when a direct OpenAI-compatible profile (e.g. NVIDIA NIM, Groq)
+/// is the startup default: that profile owns the single shared slot, so the
+/// standard OpenRouter catalog would otherwise never be fetched and its models
+/// (e.g. `openrouter/owl-alpha`) would never appear in `/model`. The model
+/// picker reads the standard catalog from the `openrouter` disk-cache namespace
+/// via `configured_standard_openrouter_profile_routes`; this populates it.
+pub(crate) fn maybe_schedule_standard_openrouter_catalog_refresh(context: &'static str) -> bool {
+    // Only standard OpenRouter (key present and pointing at openrouter.ai) is
+    // relevant here. If an explicit custom runtime/base is configured, the
+    // shared-slot provider already handles its own catalog refresh.
+    if explicit_openrouter_runtime_configured() {
+        return false;
+    }
+    let Some(api_key) = load_api_key_from_env_or_config(DEFAULT_API_KEY_NAME, DEFAULT_ENV_FILE)
+    else {
+        return false;
+    };
+
+    let namespace = "openrouter";
+
+    // Only refresh when the cached standard catalog is missing or stale. A
+    // present-but-stale cache is the common upgrade case: a user who first ran
+    // an older build (before a model like `openrouter/owl-alpha` existed) has a
+    // non-empty `openrouter` namespace cache that would otherwise never update
+    // while a direct profile owns the shared slot. Reuse the shared 24h catalog
+    // TTL so we self-heal on the next picker render after an upgrade.
+    let cache_is_fresh = current_unix_secs()
+        .zip(jcode_provider_openrouter::load_disk_cache_entry_for_namespace(namespace))
+        .map(|(now, cache)| {
+            !cache.models.is_empty()
+                && now.saturating_sub(cache.cached_at) < STANDARD_OPENROUTER_CATALOG_TTL_SECS
+        })
+        .unwrap_or(false);
+    if cache_is_fresh {
+        return false;
+    }
+
+    if !begin_profile_catalog_refresh(namespace) {
+        return false;
+    }
+
+    let Some(api_base) = normalize_api_base(DEFAULT_API_BASE) else {
+        finish_profile_catalog_refresh(namespace);
+        return false;
+    };
+
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        finish_profile_catalog_refresh(namespace);
+        return false;
+    };
+
+    let auth = ProviderAuth::AuthorizationBearer {
+        token: api_key,
+        label: DEFAULT_API_KEY_NAME.to_string(),
+    };
+    let previous_fingerprint =
+        jcode_provider_openrouter::load_disk_cache_entry_for_namespace(namespace)
+            .map(|cache| models_fingerprint(&cache.models))
+            .unwrap_or_default();
+    handle.spawn(async move {
+        let models_cache = Arc::new(RwLock::new(ModelsCache::default()));
+        match fetch_models_from_api(
+            crate::provider::shared_http_client(),
+            api_base,
+            auth,
+            models_cache,
+            Some(namespace.to_string()),
+        )
+        .await
+        {
+            Ok(models) => {
+                let updated = models_fingerprint(&models) != previous_fingerprint;
+                if updated {
+                    crate::logging::info(&format!(
+                        "Refreshed standard OpenRouter model catalog in background ({}): {} models",
+                        context,
+                        models.len()
+                    ));
+                    crate::bus::Bus::global().publish_models_updated();
+                } else {
+                    crate::logging::info(&format!(
+                        "Standard OpenRouter model catalog refresh produced no material change ({}): {} models",
+                        context,
+                        models.len()
+                    ));
+                }
+            }
+            Err(error) => crate::logging::info(&format!(
+                "Failed to refresh standard OpenRouter model catalog in background ({}): {}",
+                context, error
+            )),
+        }
+        finish_profile_catalog_refresh(namespace);
     });
 
     true
