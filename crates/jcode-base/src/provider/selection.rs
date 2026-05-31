@@ -366,6 +366,43 @@ impl MultiProvider {
         }
     }
 
+    pub fn model_switch_request_for_session_route(
+        model: &str,
+        provider_key: Option<&str>,
+        route_api_method: Option<&str>,
+    ) -> String {
+        let model = model.trim();
+        if model.is_empty() {
+            return String::new();
+        }
+        if let Some(api_method) = route_api_method
+            .map(str::trim)
+            .filter(|api_method| !api_method.is_empty())
+        {
+            match ModelRouteApiMethod::parse(api_method) {
+                ModelRouteApiMethod::ClaudeOAuth => return format!("claude-oauth:{model}"),
+                ModelRouteApiMethod::AnthropicApiKey => return format!("claude-api:{model}"),
+                ModelRouteApiMethod::OpenAIOAuth => return format!("openai-oauth:{model}"),
+                ModelRouteApiMethod::OpenAIApiKey => return format!("openai-api:{model}"),
+                ModelRouteApiMethod::OpenRouter => return format!("openrouter:{model}"),
+                ModelRouteApiMethod::OpenAiCompatible {
+                    profile_id: Some(profile_id),
+                } => return format!("{profile_id}:{model}"),
+                ModelRouteApiMethod::Copilot => return format!("copilot:{model}"),
+                ModelRouteApiMethod::Cursor => return format!("cursor:{model}"),
+                ModelRouteApiMethod::Bedrock => return format!("bedrock:{model}"),
+                ModelRouteApiMethod::AntigravityHttps => return format!("antigravity:{model}"),
+                ModelRouteApiMethod::OpenAiCompatible { profile_id: None }
+                | ModelRouteApiMethod::CodeAssistOAuth
+                | ModelRouteApiMethod::RemoteCatalog
+                | ModelRouteApiMethod::Current
+                | ModelRouteApiMethod::Other(_) => {}
+            }
+        }
+
+        Self::model_switch_request_for_session_model(model, provider_key)
+    }
+
     pub(super) fn resolve_config_provider_selection(
         value: &str,
         cfg: &crate::config::Config,
@@ -559,6 +596,23 @@ mod tests {
                 "restore {model:?} with {provider_key:?}"
             );
         }
+
+        assert_eq!(
+            MultiProvider::model_switch_request_for_session_route(
+                "openrouter/owl-alpha",
+                Some("openrouter"),
+                Some("openrouter"),
+            ),
+            "openrouter:openrouter/owl-alpha"
+        );
+        assert_eq!(
+            MultiProvider::model_switch_request_for_session_route(
+                "nvidia/example",
+                Some("openai-compatible:nvidia-nim"),
+                Some("openai-compatible:nvidia-nim"),
+            ),
+            "nvidia-nim:nvidia/example"
+        );
     }
 
     #[test]

@@ -355,9 +355,10 @@ impl Agent {
         }
         if let Some(model) = agent.session.model.clone() {
             let model_request =
-                crate::provider::MultiProvider::model_switch_request_for_session_model(
+                crate::provider::MultiProvider::model_switch_request_for_session_route(
                     &model,
                     agent.session.provider_key.as_deref(),
+                    agent.session.route_api_method.as_deref(),
                 );
             if let Err(e) = crate::provider::set_model_with_auth_refresh(
                 agent.provider.as_ref(),
