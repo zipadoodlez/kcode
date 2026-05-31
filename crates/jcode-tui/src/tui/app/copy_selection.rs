@@ -490,6 +490,13 @@ impl App {
                     point.filter(|point| Some(point.pane) == self.current_copy_selection_pane())
                 {
                     self.update_selection_with_point(point, true);
+                } else if let Some(pane) = self.current_copy_selection_pane() {
+                    if let Some((point, upward)) =
+                        crate::tui::ui::copy_pane_vertical_edge_point(pane, mouse.column, mouse.row)
+                    {
+                        self.update_selection_with_point(point, true);
+                        self.scroll_copy_selection_pane(pane, upward);
+                    }
                 }
                 Some(false)
             }

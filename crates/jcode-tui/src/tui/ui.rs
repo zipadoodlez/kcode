@@ -1578,6 +1578,28 @@ pub(crate) fn copy_point_from_screen(
     }
 }
 
+pub(crate) fn copy_pane_vertical_edge_point(
+    pane: crate::tui::CopySelectionPane,
+    column: u16,
+    row: u16,
+) -> Option<(crate::tui::CopySelectionPoint, bool)> {
+    let snapshot = copy_snapshot_for_pane(pane)?;
+    let area = snapshot.content_area;
+    if column < area.x || column >= area.x.saturating_add(area.width) || area.height == 0 {
+        return None;
+    }
+
+    let (edge_row, upward) = if row < area.y {
+        (area.y, true)
+    } else if row >= area.y.saturating_add(area.height) {
+        (area.y.saturating_add(area.height).saturating_sub(1), false)
+    } else {
+        return None;
+    };
+
+    copy_point_from_snapshot(&snapshot, column, edge_row).map(|point| (point, upward))
+}
+
 #[cfg(test)]
 pub(crate) fn copy_viewport_point_from_screen(
     column: u16,
