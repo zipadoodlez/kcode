@@ -162,11 +162,7 @@ impl MultiProvider {
                 }
             }
             ActiveProvider::OpenRouter => {
-                let openrouter = self
-                    .openrouter
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .clone();
+                let openrouter = self.active_openrouter_execution_provider();
                 if let Some(openrouter) = openrouter {
                     openrouter
                         .complete(messages, tools, system, resume_session_id)
@@ -337,11 +333,7 @@ impl MultiProvider {
                 }
             }
             ActiveProvider::OpenRouter => {
-                let openrouter = self
-                    .openrouter
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .clone();
+                let openrouter = self.active_openrouter_execution_provider();
                 if let Some(openrouter) = openrouter {
                     openrouter
                         .complete_split(

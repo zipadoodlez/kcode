@@ -89,6 +89,8 @@ fn test_available_models_display_uses_route_models_and_filters_placeholder_rows(
         cursor: RwLock::new(None),
         bedrock: RwLock::new(None),
         openrouter: RwLock::new(None),
+        openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+        active_openai_compatible_profile: RwLock::new(None),
         active: RwLock::new(ActiveProvider::OpenAI),
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
@@ -135,6 +137,8 @@ fn test_cerebras_model_routes_are_profile_scoped_and_unique() {
                 cursor: RwLock::new(None),
                 bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
                 active: RwLock::new(ActiveProvider::OpenRouter),
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
@@ -220,6 +224,8 @@ fn test_direct_chutes_ignores_legacy_openrouter_catalog_cache() {
                     cursor: RwLock::new(None),
                     bedrock: RwLock::new(None),
                     openrouter: RwLock::new(Some(openrouter)),
+                    openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                    active_openai_compatible_profile: RwLock::new(None),
                     active: RwLock::new(ActiveProvider::OpenRouter),
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
@@ -277,6 +283,8 @@ fn test_auth_changed_preserves_existing_direct_profile_session() {
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter)),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::OpenRouter),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -336,6 +344,8 @@ fn test_auth_changed_replaces_template_direct_profile_for_new_logins() {
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter)),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::OpenRouter),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -387,6 +397,8 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter)),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::OpenRouter),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -405,12 +417,20 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
         assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
         assert_eq!(provider.model(), "nvidia/llama-3.1-nemotron-ultra-253b-v1");
         let active_direct_route = provider
-            .openrouter_provider()
-            .expect("NVIDIA direct provider remains installed")
+            .active_openrouter_execution_provider()
+            .expect("NVIDIA direct provider is active")
             .direct_openai_compatible_route_parts()
             .expect("NVIDIA NIM is hosted through OpenAI-compatible runtime");
         assert_eq!(active_direct_route.0, "NVIDIA NIM");
         assert_eq!(active_direct_route.1, "openai-compatible:nvidia-nim");
+        assert!(
+            provider
+                .openrouter_provider()
+                .expect("real OpenRouter provider remains installed")
+                .direct_openai_compatible_route_parts()
+                .is_none(),
+            "compatible profile must not replace the real OpenRouter slot"
+        );
 
         let routes = provider.model_routes();
         assert!(
@@ -476,6 +496,8 @@ fn test_set_model_accepts_bare_openai_openrouter_pin_when_openrouter_available()
                 cursor: RwLock::new(None),
                 bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
                 active: RwLock::new(ActiveProvider::OpenAI),
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
@@ -515,6 +537,8 @@ fn test_forced_openrouter_treats_claude_like_model_as_provider_local() {
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
+                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
@@ -557,6 +581,8 @@ fn test_forced_openrouter_preserves_custom_at_sign_model_ids() {
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
+                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
@@ -602,6 +628,8 @@ fn test_config_default_provider_openai_compatible_keeps_gpt_model_provider_local
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
+                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
@@ -650,6 +678,8 @@ fn test_custom_compatible_model_routes_do_not_request_openrouter_rewrite() {
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
+                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
@@ -693,6 +723,8 @@ fn test_configured_direct_compatible_profiles_are_listed_without_openrouter_key(
                     cursor: RwLock::new(None),
                     bedrock: RwLock::new(None),
                     openrouter: RwLock::new(None),
+                    openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                    active_openai_compatible_profile: RwLock::new(None),
                     active: RwLock::new(ActiveProvider::OpenAI),
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
@@ -743,6 +775,8 @@ fn test_profile_prefixed_model_switch_reinitializes_direct_compatible_runtime() 
                     cursor: RwLock::new(None),
                     bedrock: RwLock::new(None),
                     openrouter: RwLock::new(None),
+                    openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                    active_openai_compatible_profile: RwLock::new(None),
                     active: RwLock::new(ActiveProvider::OpenAI),
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
@@ -801,6 +835,8 @@ fn test_openai_auth_mode_prefixed_model_switch_changes_credentials() {
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::OpenAI),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -865,6 +901,8 @@ fn test_anthropic_auth_mode_prefixed_model_switch_changes_credentials() {
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::Claude),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -927,6 +965,8 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::OpenAI),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -974,6 +1014,8 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::Claude),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -1010,6 +1052,8 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::OpenAI),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -1042,6 +1086,8 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
                 cursor: RwLock::new(None),
                 bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
                 active: RwLock::new(ActiveProvider::OpenRouter),
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
@@ -1073,6 +1119,8 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
                 cursor: RwLock::new(None),
                 bedrock: RwLock::new(None),
                 openrouter: RwLock::new(None),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
                 active: RwLock::new(ActiveProvider::OpenAI),
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
@@ -1111,6 +1159,8 @@ fn test_forced_copilot_treats_claude_like_model_as_provider_local() {
             cursor: RwLock::new(None),
             bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(ActiveProvider::Copilot),
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
@@ -1144,6 +1194,8 @@ fn test_provider_specific_model_prefix_cannot_bypass_provider_lock() {
                 cursor: RwLock::new(Some(Arc::new(cursor::CursorCliProvider::new()))),
                 bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
                 active: RwLock::new(ActiveProvider::OpenRouter),
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
