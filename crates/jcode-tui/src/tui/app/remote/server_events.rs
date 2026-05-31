@@ -719,11 +719,6 @@ pub(in crate::tui::app) fn handle_server_event(
             let history_message_count = messages.len();
             let history_mcp_count = mcp_servers.len();
             let history_model = provider_model.clone();
-            remote.set_session_id(session_id.clone());
-            app.remote_session_id = Some(session_id.clone());
-            crate::set_current_session(&session_id);
-            app.note_client_focus(true);
-            let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
 
             if should_defer_history_for_runtime_identity(server_has_update) {
                 app.remote_server_version = server_version;
@@ -742,6 +737,12 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.update_terminal_title();
                 return false;
             }
+
+            remote.set_session_id(session_id.clone());
+            app.remote_session_id = Some(session_id.clone());
+            crate::set_current_session(&session_id);
+            app.note_client_focus(true);
+            let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
 
             if session_changed {
                 app.rate_limit_pending_message = None;
