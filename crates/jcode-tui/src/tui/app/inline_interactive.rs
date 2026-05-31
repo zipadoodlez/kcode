@@ -2436,6 +2436,8 @@ impl App {
                                         self.session.provider_key.as_deref(),
                                     );
                                     self.session.model = Some(active_model);
+                                    self.session.route_api_method =
+                                        Some(route_selection.api_method.clone());
                                     let _ = self.session.save();
                                 }
                                 Err(error) => {

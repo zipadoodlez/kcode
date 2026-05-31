@@ -75,6 +75,7 @@ impl Agent {
         self.provider.set_route_selection(selection)?;
         let resolved_model = self.provider.model();
         self.session.provider_key = Some(selection.runtime_key.stable_id());
+        self.session.route_api_method = Some(selection.api_method.clone());
         self.session.model = Some(resolved_model.clone());
         let event = crate::provider::ProviderStateEvent::selected_model(
             crate::provider::ProviderModelSelectionSource::User,

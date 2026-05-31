@@ -82,6 +82,10 @@ pub struct Session {
     /// Model identifier for this session (e.g., "gpt-5.2-codex")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// API method/runtime route used to select this model (e.g. "openrouter",
+    /// "openai-compatible:nvidia-nim", "openai-api").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_api_method: Option<String>,
     /// Provider reasoning/thinking effort for this session (e.g., OpenAI low|medium|high|xhigh).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
@@ -673,6 +677,7 @@ impl Session {
             provider_session_id: None,
             provider_key: None,
             model: None,
+            route_api_method: None,
             reasoning_effort: None,
             subagent_model: None,
             improve_mode: None,
@@ -719,6 +724,7 @@ impl Session {
             provider_session_id: None,
             provider_key: None,
             model: None,
+            route_api_method: None,
             reasoning_effort: None,
             subagent_model: None,
             improve_mode: None,
