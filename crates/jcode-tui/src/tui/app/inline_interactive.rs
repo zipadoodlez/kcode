@@ -19,7 +19,8 @@ mod preview_request;
 use helpers::{
     agent_model_default_summary, agent_model_target_label, catchup_candidates,
     catchup_queue_position, model_entry_base_name, model_entry_saved_spec,
-    openrouter_route_model_id, picker_route_model_spec, save_agent_model_override,
+    openrouter_route_model_id, picker_route_model_spec, picker_route_selection,
+    save_agent_model_override,
 };
 
 const REMOTE_MODEL_CATALOG_CACHE_FILE: &str = "remote_model_catalog_cache.json";
@@ -2399,6 +2400,7 @@ impl App {
                         } else {
                             picker_route_model_spec(&entry, route)
                         };
+                        let route_selection = picker_route_selection(&entry, route);
 
                         let effort = entry.effort.clone();
                         record_model_picker_selection(&bare_name, route, effort.as_deref());
@@ -2417,7 +2419,7 @@ impl App {
                             self.status_detail = None;
                             self.pending_model_switch = Some(spec);
                         } else {
-                            match self.provider.set_model(&spec) {
+                            match self.provider.set_route_selection(&route_selection) {
                                 Ok(()) => {
                                     self.inline_interactive_state = None;
                                     self.provider_session_id = None;

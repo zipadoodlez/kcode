@@ -153,6 +153,20 @@ pub(super) fn picker_route_model_spec(entry: &PickerEntry, route: &PickerOption)
     }
 }
 
+pub(super) fn picker_route_selection(
+    entry: &PickerEntry,
+    route: &PickerOption,
+) -> crate::provider::RouteSelection {
+    crate::provider::RouteSelection::from_model_route(&crate::provider::ModelRoute {
+        model: model_entry_base_name(entry),
+        provider: route.provider.clone(),
+        api_method: route.api_method.clone(),
+        available: route.available,
+        detail: route.detail.clone(),
+        cheapness: None,
+    })
+}
+
 pub(super) fn openai_compatible_profile_id_for_route(route: &PickerOption) -> Option<String> {
     match crate::provider::ModelRouteApiMethod::parse(&route.api_method) {
         crate::provider::ModelRouteApiMethod::OpenAiCompatible {
@@ -296,5 +310,21 @@ mod tests {
             let entry = entry(model, route.clone());
             assert_eq!(picker_route_model_spec(&entry, &route), expected);
         }
+    }
+
+    #[test]
+    fn model_picker_route_selection_preserves_runtime_key() {
+        let route = route("NVIDIA NIM", "openai-compatible:nvidia-nim");
+        let entry = entry("nvidia/example", route.clone());
+        let selection = picker_route_selection(&entry, &route);
+        assert_eq!(selection.model, "nvidia/example");
+        assert_eq!(selection.provider_label, "NVIDIA NIM");
+        assert_eq!(selection.api_method, "openai-compatible:nvidia-nim");
+        assert_eq!(
+            selection.runtime_key,
+            crate::provider::RuntimeKey::OpenAiCompatible {
+                profile_id: Some("nvidia-nim".to_string())
+            }
+        );
     }
 }

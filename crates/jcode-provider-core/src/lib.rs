@@ -100,6 +100,15 @@ pub trait Provider: Send + Sync {
         ))
     }
 
+    /// Select a structured model route.
+    ///
+    /// Most single-runtime providers can treat this as `set_model(model)`. Provider
+    /// orchestrators should override this to activate the exact runtime identified
+    /// by [`RouteSelection::runtime_key`] instead of reparsing a lossy model string.
+    fn set_route_selection(&self, selection: &RouteSelection) -> Result<()> {
+        self.set_model(&selection.model)
+    }
+
     /// List available models for this provider.
     fn available_models(&self) -> Vec<&'static str> {
         vec![]
@@ -437,6 +446,110 @@ pub struct ModelRoute {
     pub detail: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cheapness: Option<RouteCheapnessEstimate>,
+}
+
+/// Exact runtime identity for a selected model route.
+///
+/// A runtime key identifies the concrete endpoint/auth/account slot that will
+/// send requests. It is intentionally more precise than a display provider
+/// label: for example, OpenRouter and NVIDIA NIM both speak an OpenAI-compatible
+/// protocol, but they must have different runtime keys because they use
+/// different endpoints, auth, catalogs, and routing semantics.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum RuntimeKey {
+    ClaudeOAuth,
+    AnthropicApiKey,
+    OpenAIOAuth,
+    OpenAIApiKey,
+    OpenRouter,
+    OpenAiCompatible {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        profile_id: Option<String>,
+    },
+    Copilot,
+    Gemini,
+    Cursor,
+    Bedrock,
+    Antigravity,
+    CodeAssistOAuth,
+    RemoteCatalog,
+    Current,
+    Other(String),
+}
+
+impl RuntimeKey {
+    pub fn from_api_method(api_method: &ModelRouteApiMethod, _provider_label: &str) -> Self {
+        match api_method {
+            ModelRouteApiMethod::ClaudeOAuth => Self::ClaudeOAuth,
+            ModelRouteApiMethod::AnthropicApiKey => Self::AnthropicApiKey,
+            ModelRouteApiMethod::OpenAIOAuth => Self::OpenAIOAuth,
+            ModelRouteApiMethod::OpenAIApiKey => Self::OpenAIApiKey,
+            ModelRouteApiMethod::OpenRouter => Self::OpenRouter,
+            ModelRouteApiMethod::OpenAiCompatible { profile_id } => Self::OpenAiCompatible {
+                profile_id: profile_id.clone(),
+            },
+            ModelRouteApiMethod::Copilot => Self::Copilot,
+            ModelRouteApiMethod::Cursor => Self::Cursor,
+            ModelRouteApiMethod::Bedrock => Self::Bedrock,
+            ModelRouteApiMethod::CodeAssistOAuth => Self::CodeAssistOAuth,
+            ModelRouteApiMethod::AntigravityHttps => Self::Antigravity,
+            ModelRouteApiMethod::RemoteCatalog => Self::RemoteCatalog,
+            ModelRouteApiMethod::Current => Self::Current,
+            ModelRouteApiMethod::Other(method) => Self::Other(method.clone()),
+        }
+    }
+
+    pub fn stable_id(&self) -> String {
+        match self {
+            Self::ClaudeOAuth => "claude-oauth".to_string(),
+            Self::AnthropicApiKey => "anthropic-api-key".to_string(),
+            Self::OpenAIOAuth => "openai-oauth".to_string(),
+            Self::OpenAIApiKey => "openai-api-key".to_string(),
+            Self::OpenRouter => "openrouter".to_string(),
+            Self::OpenAiCompatible { profile_id } => profile_id
+                .as_deref()
+                .map(|profile_id| format!("openai-compatible:{profile_id}"))
+                .unwrap_or_else(|| "openai-compatible".to_string()),
+            Self::Copilot => "copilot".to_string(),
+            Self::Gemini => "gemini".to_string(),
+            Self::Cursor => "cursor".to_string(),
+            Self::Bedrock => "bedrock".to_string(),
+            Self::Antigravity => "antigravity".to_string(),
+            Self::CodeAssistOAuth => "code-assist-oauth".to_string(),
+            Self::RemoteCatalog => "remote-catalog".to_string(),
+            Self::Current => "current".to_string(),
+            Self::Other(value) => value.clone(),
+        }
+    }
+}
+
+/// Structured model route selection.
+///
+/// This is the internal source of truth for picker/RPC driven model selection.
+/// Human string specs such as `openai-api:gpt-5` should be parsed into this type
+/// at the command boundary instead of being used as the runtime identity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RouteSelection {
+    pub model: String,
+    pub runtime_key: RuntimeKey,
+    pub api_method: String,
+    pub provider_label: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
+}
+
+impl RouteSelection {
+    pub fn from_model_route(route: &ModelRoute) -> Self {
+        let api_method = route.api_method_kind();
+        Self {
+            model: route.model.clone(),
+            runtime_key: RuntimeKey::from_api_method(&api_method, &route.provider),
+            api_method: route.api_method.clone(),
+            provider_label: route.provider.clone(),
+            detail: route.detail.clone(),
+        }
+    }
 }
 
 /// Typed view of [`ModelRoute::api_method`].
@@ -1032,5 +1145,53 @@ mod tests {
         assert_eq!(snapshot.available_models, ["snapshot-model"]);
         assert!(snapshot.has_routes());
         assert_eq!(snapshot.model_routes[0].api_method, "snapshot-api");
+    }
+
+    #[test]
+    fn runtime_key_distinguishes_openrouter_from_direct_compatible_profile() {
+        assert_eq!(
+            RuntimeKey::from_api_method(&ModelRouteApiMethod::parse("openrouter"), "auto"),
+            RuntimeKey::OpenRouter
+        );
+        assert_eq!(
+            RuntimeKey::from_api_method(
+                &ModelRouteApiMethod::parse("openai-compatible:nvidia-nim"),
+                "NVIDIA NIM",
+            ),
+            RuntimeKey::OpenAiCompatible {
+                profile_id: Some("nvidia-nim".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn route_selection_preserves_runtime_identity_from_model_route() {
+        let selection = RouteSelection::from_model_route(&ModelRoute {
+            model: "openrouter/owl-alpha".to_string(),
+            provider: "OpenRouter".to_string(),
+            api_method: "openrouter".to_string(),
+            available: true,
+            detail: "https://openrouter.ai/api/v1".to_string(),
+            cheapness: None,
+        });
+        assert_eq!(selection.model, "openrouter/owl-alpha");
+        assert_eq!(selection.runtime_key, RuntimeKey::OpenRouter);
+        assert_eq!(selection.api_method, "openrouter");
+
+        let selection = RouteSelection::from_model_route(&ModelRoute {
+            model: "nvidia/example".to_string(),
+            provider: "NVIDIA NIM".to_string(),
+            api_method: "openai-compatible:nvidia-nim".to_string(),
+            available: true,
+            detail: "https://integrate.api.nvidia.com/v1".to_string(),
+            cheapness: None,
+        });
+        assert_eq!(
+            selection.runtime_key,
+            RuntimeKey::OpenAiCompatible {
+                profile_id: Some("nvidia-nim".to_string())
+            }
+        );
+        assert_eq!(selection.provider_label, "NVIDIA NIM");
     }
 }

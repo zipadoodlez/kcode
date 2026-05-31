@@ -49,8 +49,8 @@ pub use jcode_provider_core::{
     CHEAPNESS_REFERENCE_OUTPUT_TOKENS, DEFAULT_CONTEXT_LIMIT, EventStream, JCODE_USER_AGENT,
     ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute, ModelRouteApiMethod,
     NativeCompactionResult, NativeToolResult, NativeToolResultSender, PremiumMode, Provider,
-    RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource,
-    dedupe_model_routes, explicit_model_provider_prefix, model_name_for_provider,
+    RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource, RouteSelection,
+    RuntimeKey, dedupe_model_routes, explicit_model_provider_prefix, model_name_for_provider,
     normalize_copilot_model_name, provider_from_model_key, shared_http_client,
     summarize_model_catalog_refresh,
 };
@@ -1206,6 +1206,50 @@ impl Provider for MultiProvider {
             // Unknown model - try current provider.
             self.set_model_on_provider(self.active_provider(), model)
         }
+    }
+
+    fn set_route_selection(&self, selection: &RouteSelection) -> Result<()> {
+        let model = selection.model.trim();
+        if model.is_empty() {
+            anyhow::bail!("Model cannot be empty");
+        }
+
+        let routed_model = match &selection.runtime_key {
+            RuntimeKey::ClaudeOAuth => format!("claude-oauth:{model}"),
+            RuntimeKey::AnthropicApiKey => format!("claude-api:{model}"),
+            RuntimeKey::OpenAIOAuth => format!("openai-oauth:{model}"),
+            RuntimeKey::OpenAIApiKey => format!("openai-api:{model}"),
+            RuntimeKey::OpenAiCompatible {
+                profile_id: Some(profile_id),
+            } => format!("{}:{model}", profile_id.trim()),
+            RuntimeKey::OpenAiCompatible { profile_id: None } => model.to_string(),
+            RuntimeKey::OpenRouter => {
+                let provider = selection.provider_label.trim();
+                if provider.is_empty()
+                    || provider.eq_ignore_ascii_case("auto")
+                    || model.contains('@')
+                {
+                    openrouter_catalog_model_id(model).unwrap_or_else(|| model.to_string())
+                } else {
+                    format!(
+                        "{}@{}",
+                        openrouter_catalog_model_id(model).unwrap_or_else(|| model.to_string()),
+                        provider
+                    )
+                }
+            }
+            RuntimeKey::Copilot => format!("copilot:{model}"),
+            RuntimeKey::Cursor => format!("cursor:{model}"),
+            RuntimeKey::Bedrock => format!("bedrock:{model}"),
+            RuntimeKey::Antigravity => format!("antigravity:{model}"),
+            RuntimeKey::Gemini
+            | RuntimeKey::CodeAssistOAuth
+            | RuntimeKey::RemoteCatalog
+            | RuntimeKey::Current
+            | RuntimeKey::Other(_) => model.to_string(),
+        };
+
+        self.set_model(&routed_model)
     }
 
     fn available_models(&self) -> Vec<&'static str> {

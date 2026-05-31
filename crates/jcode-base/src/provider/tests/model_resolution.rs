@@ -433,9 +433,14 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
             "OpenRouter model must not be relabeled as NVIDIA NIM: {routes:?}"
         );
 
+        let openrouter_route = routes
+            .iter()
+            .find(|route| route.model == "openrouter/owl-alpha" && route.api_method == "openrouter")
+            .expect("OpenRouter route should be present after switching to NVIDIA NIM");
+        let selection = crate::provider::RouteSelection::from_model_route(openrouter_route);
         provider
-            .set_model("openrouter/owl-alpha")
-            .expect("OpenRouter model should switch runtime back to OpenRouter");
+            .set_route_selection(&selection)
+            .expect("OpenRouter route should switch runtime back to OpenRouter");
         assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
         assert_eq!(provider.model(), "openrouter/owl-alpha");
         let active_direct_route = provider
