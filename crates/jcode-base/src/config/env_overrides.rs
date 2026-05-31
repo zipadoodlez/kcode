@@ -548,6 +548,13 @@ impl Config {
                 self.provider.same_provider_account_failover = enabled;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_STREAM_IDLE_TIMEOUT_SECS") {
+            if let Ok(parsed) = v.trim().parse::<u64>() {
+                if parsed > 0 {
+                    self.provider.stream_idle_timeout_secs = parsed;
+                }
+            }
+        }
 
         // Copilot premium mode: env var overrides config
         // If set in config but not in env, propagate config -> env

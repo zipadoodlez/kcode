@@ -230,6 +230,11 @@ cross_provider_failover = "countdown"
 # Copilot premium mode: "normal" (default), "one" (first msg only), "zero" (all free)
 # Set to "zero" if you have premium Copilot and want free requests
 # copilot_premium = "zero"
+# Max seconds to wait for streaming data before timing out a request with no
+# data received. Raise this for slow reasoning models (e.g. DeepSeek) that think
+# silently for minutes before emitting tokens. Default: 180.
+# Also overridable per-launch via JCODE_STREAM_IDLE_TIMEOUT_SECS.
+# stream_idle_timeout_secs = 600
 
 [ambient]
 # Ambient mode: background agent that maintains your codebase

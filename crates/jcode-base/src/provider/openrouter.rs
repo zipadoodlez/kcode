@@ -1185,6 +1185,20 @@ impl OpenRouterProvider {
         }
     }
 
+    /// Detect providers that strictly enforce the OpenAI-compatible schema and
+    /// reject the non-standard `reasoning_content` message field and top-level
+    /// `thinking` request field. Mistral's API returns 422 "Extra inputs are
+    /// not permitted" when either is present (issue #261).
+    fn strict_openai_schema_endpoint(profile_id: Option<&str>, api_base: &str) -> bool {
+        if profile_id
+            .map(|id| id.eq_ignore_ascii_case("mistral"))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        api_base.to_ascii_lowercase().contains("mistral.ai")
+    }
+
     pub fn new() -> Result<Self> {
         let autodetected_profile = autodetected_openai_compatible_profile();
         let api_base = configured_api_base();
