@@ -126,7 +126,6 @@ pub const OPENAI_NATIVE_OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiC
     requires_api_key: true,
 };
 
-
 pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "deepseek",
     display_name: "DeepSeek",

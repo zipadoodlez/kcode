@@ -6,13 +6,19 @@ fn parse_diff_mode_name_maps_known_aliases() {
     use crate::config::DiffDisplayMode;
     assert_eq!(parse_diff_mode_name("off"), Some(DiffDisplayMode::Off));
     assert_eq!(parse_diff_mode_name("none"), Some(DiffDisplayMode::Off));
-    assert_eq!(parse_diff_mode_name("inline"), Some(DiffDisplayMode::Inline));
+    assert_eq!(
+        parse_diff_mode_name("inline"),
+        Some(DiffDisplayMode::Inline)
+    );
     assert_eq!(parse_diff_mode_name("on"), Some(DiffDisplayMode::Inline));
     assert_eq!(
         parse_diff_mode_name("full"),
         Some(DiffDisplayMode::FullInline)
     );
-    assert_eq!(parse_diff_mode_name("pinned"), Some(DiffDisplayMode::Pinned));
+    assert_eq!(
+        parse_diff_mode_name("pinned"),
+        Some(DiffDisplayMode::Pinned)
+    );
     assert_eq!(parse_diff_mode_name("file"), Some(DiffDisplayMode::File));
 }
 

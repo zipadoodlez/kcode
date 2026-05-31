@@ -239,12 +239,16 @@ impl OnboardingFlow {
             OnboardingPhase::Login {
                 import: Some(review),
             } => Some(review.seconds_remaining()),
-            OnboardingPhase::TelemetryConsent { shown_at, .. } => {
-                Some(DECISION_TIMEOUT.saturating_sub(shown_at.elapsed()).as_secs())
-            }
-            OnboardingPhase::ContinuePrompt { shown_at, .. } => {
-                Some(DECISION_TIMEOUT.saturating_sub(shown_at.elapsed()).as_secs())
-            }
+            OnboardingPhase::TelemetryConsent { shown_at, .. } => Some(
+                DECISION_TIMEOUT
+                    .saturating_sub(shown_at.elapsed())
+                    .as_secs(),
+            ),
+            OnboardingPhase::ContinuePrompt { shown_at, .. } => Some(
+                DECISION_TIMEOUT
+                    .saturating_sub(shown_at.elapsed())
+                    .as_secs(),
+            ),
             _ => None,
         }
     }
@@ -355,7 +359,9 @@ mod tests {
             },
         };
         let remaining = flow.decision_seconds_remaining().unwrap();
-        assert!(remaining >= DECISION_TIMEOUT.as_secs() - 2 && remaining <= DECISION_TIMEOUT.as_secs());
+        assert!(
+            remaining >= DECISION_TIMEOUT.as_secs() - 2 && remaining <= DECISION_TIMEOUT.as_secs()
+        );
         assert!(!flow.decision_timed_out());
     }
 

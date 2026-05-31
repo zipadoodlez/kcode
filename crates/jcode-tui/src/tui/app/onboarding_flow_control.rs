@@ -73,7 +73,8 @@ impl App {
             let role = m.role.as_str();
             let is_system_reminder =
                 role == "user" && m.content.trim_start().starts_with("<system-reminder>");
-            let is_scaffolding = matches!(role, "system" | "usage" | "overnight" | "background_task");
+            let is_scaffolding =
+                matches!(role, "system" | "usage" | "overnight" | "background_task");
             !is_system_reminder && !is_scaffolding
         });
         if has_real_conversation || self.is_processing || !self.input.is_empty() {
@@ -163,10 +164,7 @@ impl App {
     /// ask the user whether to share prompt/transcript content with telemetry
     /// before moving on to model selection. No-op unless the flow is in `Login`.
     pub(super) fn onboarding_after_login(&mut self) {
-        if !matches!(
-            self.onboarding_phase(),
-            Some(OnboardingPhase::Login { .. })
-        ) {
+        if !matches!(self.onboarding_phase(), Some(OnboardingPhase::Login { .. })) {
             return;
         }
         self.onboarding_enter_telemetry_consent();
@@ -355,7 +353,10 @@ impl App {
         let Some(flow) = self.onboarding_flow.as_mut() else {
             return false;
         };
-        let OnboardingPhase::ContinuePrompt { yes_highlighted, .. } = &mut flow.phase else {
+        let OnboardingPhase::ContinuePrompt {
+            yes_highlighted, ..
+        } = &mut flow.phase
+        else {
             return false;
         };
         match code {
@@ -455,7 +456,10 @@ impl App {
         let Some(flow) = self.onboarding_flow.as_mut() else {
             return false;
         };
-        let OnboardingPhase::TelemetryConsent { yes_highlighted, .. } = &mut flow.phase else {
+        let OnboardingPhase::TelemetryConsent {
+            yes_highlighted, ..
+        } = &mut flow.phase
+        else {
             return false;
         };
         match code {
@@ -778,7 +782,9 @@ impl App {
                 self.update_onboarding_import_review_status();
                 return true;
             }
-            Some(OnboardingPhase::TelemetryConsent { yes_highlighted, .. }) => {
+            Some(OnboardingPhase::TelemetryConsent {
+                yes_highlighted, ..
+            }) => {
                 if decision_timed_out {
                     // Timeout default is the highlighted option (No by default).
                     self.onboarding_answer_telemetry_consent(yes_highlighted);
@@ -787,7 +793,11 @@ impl App {
                 self.update_onboarding_telemetry_consent_status();
                 return true;
             }
-            Some(OnboardingPhase::ContinuePrompt { yes_highlighted, cli, .. }) => {
+            Some(OnboardingPhase::ContinuePrompt {
+                yes_highlighted,
+                cli,
+                ..
+            }) => {
                 if decision_timed_out {
                     // Timeout default is the highlighted option (Yes by default).
                     self.onboarding_answer_continue(yes_highlighted);

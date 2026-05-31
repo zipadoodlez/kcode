@@ -52,7 +52,10 @@ pub(super) fn plan_launch_notice(goal: Option<&str>, interrupted: bool) -> Strin
         "🧭 Planning"
     };
     match goal.map(str::trim).filter(|goal| !goal.is_empty()) {
-        Some(goal) => format!("{} {}... (plan-only; results go to the side panel)", prefix, goal),
+        Some(goal) => format!(
+            "{} {}... (plan-only; results go to the side panel)",
+            prefix, goal
+        ),
         None => format!("{}... (plan-only; results go to the side panel)", prefix),
     }
 }
@@ -81,7 +84,10 @@ mod tests {
 
     #[test]
     fn parse_plan_accepts_bare_and_goal_forms() {
-        assert_eq!(parse_plan_command("/plan"), Some(PlanCommand { goal: None }));
+        assert_eq!(
+            parse_plan_command("/plan"),
+            Some(PlanCommand { goal: None })
+        );
         assert_eq!(
             parse_plan_command("/plan   "),
             Some(PlanCommand { goal: None })

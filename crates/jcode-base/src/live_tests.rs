@@ -1705,9 +1705,11 @@ fn provider_has_credential(provider_id: &str) -> bool {
         "gemini" | "google" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
         _ => &[],
     };
-    env_candidates
-        .iter()
-        .any(|key| std::env::var(key).map(|v| !v.trim().is_empty()).unwrap_or(false))
+    env_candidates.iter().any(|key| {
+        std::env::var(key)
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false)
+    })
 }
 
 /// Build the full provider-monitoring roster: union of every OpenAI-compatible
@@ -1715,9 +1717,7 @@ fn provider_has_credential(provider_id: &str) -> bool {
 /// credential presence, and the READY/observed pair tallies already computed for
 /// the report. Lets `provider-test-coverage` enumerate *every* provider jcode
 /// knows about, not just ones that already have ledger evidence.
-fn build_provider_roster(
-    providers: &[LiveProviderCoverageSummary],
-) -> Vec<ProviderMonitorEntry> {
+fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<ProviderMonitorEntry> {
     use std::collections::BTreeMap;
 
     // Tally ledger evidence per provider id.
@@ -1956,7 +1956,11 @@ pub fn format_strict_live_provider_model_coverage_summary(
             .max(8);
         out.push_str(&format!(
             "  {:<id_width$}  {:<18}  {:<7}  {:<4}  {}\n",
-            "provider", "status", "doctor", "key", "READY/seen",
+            "provider",
+            "status",
+            "doctor",
+            "key",
+            "READY/seen",
             id_width = id_width
         ));
         for entry in rows {

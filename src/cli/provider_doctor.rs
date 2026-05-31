@@ -2,9 +2,9 @@
 
 use std::io::IsTerminal;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 
-use crate::auth::provider_e2e::{run_provider_e2e, DoctorReport, DoctorTier};
+use crate::auth::provider_e2e::{DoctorReport, DoctorTier, run_provider_e2e};
 use crate::live_tests::LiveVerificationStageStatus;
 
 pub async fn run_provider_doctor_command(
@@ -17,8 +17,8 @@ pub async fn run_provider_doctor_command(
         .parse()
         .map_err(|message: String| anyhow!("{message}"))?;
 
-    let profile = crate::provider_catalog::openai_compatible_profile_by_id(provider)
-        .with_context(|| {
+    let profile =
+        crate::provider_catalog::openai_compatible_profile_by_id(provider).with_context(|| {
             format!(
                 "`{provider}` is not a known OpenAI-compatible provider. \
                  Run `jcode provider-test-coverage` to see provider ids, or check your spelling."
@@ -75,10 +75,9 @@ fn status_symbol(status: LiveVerificationStageStatus) -> &'static str {
 
 fn status_color(status: LiveVerificationStageStatus) -> &'static str {
     match status {
-        LiveVerificationStageStatus::Passed => "32",        // green
-        LiveVerificationStageStatus::Failed
-        | LiveVerificationStageStatus::Blocked => "31",     // red
-        LiveVerificationStageStatus::Skipped => "90",       // dim
+        LiveVerificationStageStatus::Passed => "32", // green
+        LiveVerificationStageStatus::Failed | LiveVerificationStageStatus::Blocked => "31", // red
+        LiveVerificationStageStatus::Skipped => "90", // dim
         LiveVerificationStageStatus::NotRun => "90",
     }
 }
@@ -118,7 +117,10 @@ fn format_report(report: &DoctorReport, colorize: bool) -> String {
 
     out.push('\n');
     if report.tier.spends_balance() {
-        out.push_str(&format!("Spend this run: {}\n", report.spend.human_summary()));
+        out.push_str(&format!(
+            "Spend this run: {}\n",
+            report.spend.human_summary()
+        ));
     }
     if report.strict_passed {
         out.push_str("Verdict: READY. Every strict checkpoint passed for this provider/model.\n");

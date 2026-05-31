@@ -26,10 +26,25 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
 
     // Substring markers that are unambiguous regardless of token boundaries.
     const SUBSTRING_MARKERS: &[&str] = &[
-        "embed", "embedding", "rerank", "reranker", "whisper", "speech", "tts",
-        "stt", "transcribe", "voxtral", "moderation", "guard", "upscale",
-        "outpaint", "nemoretriever", "riva-translate", "gpt-audio",
-        "style-transfer", "video-detector",
+        "embed",
+        "embedding",
+        "rerank",
+        "reranker",
+        "whisper",
+        "speech",
+        "tts",
+        "stt",
+        "transcribe",
+        "voxtral",
+        "moderation",
+        "guard",
+        "upscale",
+        "outpaint",
+        "nemoretriever",
+        "riva-translate",
+        "gpt-audio",
+        "style-transfer",
+        "video-detector",
     ];
     if SUBSTRING_MARKERS.iter().any(|m| lower.contains(m)) {
         return true;
@@ -37,9 +52,29 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
 
     // Whole-token markers (avoid false positives like "vits" inside a word).
     const TOKEN_MARKERS: &[&str] = &[
-        "vits", "pegasus", "asr", "ocr", "kie", "vad", "diffusion", "image",
-        "vision", "bge", "gte", "e5", "nvclip", "orpheus", "lyria", "deplot",
-        "parse", "gliner", "fuyu", "kosmos", "neva", "vila", "nvembed",
+        "vits",
+        "pegasus",
+        "asr",
+        "ocr",
+        "kie",
+        "vad",
+        "diffusion",
+        "image",
+        "vision",
+        "bge",
+        "gte",
+        "e5",
+        "nvclip",
+        "orpheus",
+        "lyria",
+        "deplot",
+        "parse",
+        "gliner",
+        "fuyu",
+        "kosmos",
+        "neva",
+        "vila",
+        "nvembed",
         "reward",
     ];
     if tokens.iter().any(|t| TOKEN_MARKERS.contains(t)) {
@@ -47,9 +82,7 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
         // it when paired with another non-chat signal. Vision-language chat
         // models keep words like "instruct"/"chat" which we treat as a keep.
         if tokens.contains(&"vision")
-            && (tokens.contains(&"instruct")
-                || tokens.contains(&"chat")
-                || tokens.contains(&"vl"))
+            && (tokens.contains(&"instruct") || tokens.contains(&"chat") || tokens.contains(&"vl"))
         {
             // multimodal chat: keep
         } else {

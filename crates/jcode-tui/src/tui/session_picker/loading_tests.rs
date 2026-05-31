@@ -456,7 +456,10 @@ fn load_sessions_preserves_snapshot_saved_when_journal_meta_omits_saved() {
         .iter()
         .find(|session| session.id == "session_saved_legacy_journal")
         .expect("legacy saved session visible");
-    assert!(loaded.saved, "missing journal saved field must not clear snapshot saved state");
+    assert!(
+        loaded.saved,
+        "missing journal saved field must not clear snapshot saved state"
+    );
 }
 
 #[test]

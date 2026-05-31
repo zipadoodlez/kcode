@@ -123,10 +123,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(
                         Line::from(vec![
-                            Span::styled(
-                                "Import ",
-                                Style::default().fg(rgb(200, 200, 200)),
-                            ),
+                            Span::styled("Import ", Style::default().fg(rgb(200, 200, 200))),
                             Span::styled(
                                 prompt.provider_summary.clone(),
                                 Style::default()

@@ -402,7 +402,10 @@ async fn validate_openai_import() -> Result<String> {
     }
     Ok(format!(
         "Loaded OpenAI OAuth credentials.{}",
-        creds.expires_at.map(token_freshness_note).unwrap_or_default()
+        creds
+            .expires_at
+            .map(token_freshness_note)
+            .unwrap_or_default()
     ))
 }
 
@@ -582,7 +585,8 @@ mod render_markdown_tests {
         let outcome = ExternalAuthAutoImportOutcome {
             imported: 2,
             messages: vec![
-                "✓ OpenAI/Codex (from Codex auth.json): Loaded OpenAI OAuth credentials.".to_string(),
+                "✓ OpenAI/Codex (from Codex auth.json): Loaded OpenAI OAuth credentials."
+                    .to_string(),
                 "✓ Claude (from Claude Code): Loaded Claude credentials.".to_string(),
                 "✕ Cursor (from Cursor native): no usable auth token.".to_string(),
             ],

@@ -1132,16 +1132,16 @@ impl App {
         match self.onboarding_phase() {
             Some(OnboardingPhase::Login { import }) => {
                 let prompt = import.as_ref().and_then(|review| {
-                    review.current().map(|candidate| {
-                        crate::tui::LoginImportPrompt {
+                    review
+                        .current()
+                        .map(|candidate| crate::tui::LoginImportPrompt {
                             provider_summary: candidate.provider_summary().to_string(),
                             source_name: candidate.source_name().to_string(),
                             position: review.position(),
                             total: review.total(),
                             yes_highlighted: review.yes_highlighted,
                             seconds_left: review.seconds_remaining(),
-                        }
-                    })
+                        })
                 });
                 OnboardingWelcomeKind::Login { import: prompt }
             }

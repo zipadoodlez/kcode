@@ -786,9 +786,9 @@ pub(super) fn prepare_body_incremental(
                 let raw_line = new_raw_plain_lines.len();
                 new_raw_plain_lines.push(msg.content.clone());
                 let prompt_width = unicode_width::UnicodeWidthStr::width(msg.content.as_str());
-                let prefix_width =
-                    unicode_width::UnicodeWidthStr::width(displayed_prompt_num.to_string().as_str())
-                        + unicode_width::UnicodeWidthStr::width("› ");
+                let prefix_width = unicode_width::UnicodeWidthStr::width(
+                    displayed_prompt_num.to_string().as_str(),
+                ) + unicode_width::UnicodeWidthStr::width("› ");
                 new_lines.push(
                     Line::from(vec![
                         Span::styled(

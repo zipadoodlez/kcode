@@ -1926,9 +1926,8 @@ async fn handle_remote_key_internal(
                         app.push_display_message(DisplayMessage::system(
                             app_mod::commands::plan_launch_notice(command.goal.as_deref(), false),
                         ));
-                        let _ =
-                            begin_remote_send(app, remote, prompt, vec![], true, None, true, 0)
-                                .await;
+                        let _ = begin_remote_send(app, remote, prompt, vec![], true, None, true, 0)
+                            .await;
                     }
                     return Ok(());
                 }
