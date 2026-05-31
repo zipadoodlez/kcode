@@ -58,46 +58,17 @@ impl MultiProvider {
     }
 
     pub(super) fn openrouter_provider(&self) -> Option<Arc<openrouter::OpenRouterProvider>> {
-        self.openrouter
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-    }
-
-    pub(super) fn openai_compatible_profile_provider(
-        &self,
-        profile_id: &str,
-    ) -> Option<Arc<openrouter::OpenRouterProvider>> {
-        self.openai_compatible_profiles
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(profile_id)
-            .cloned()
-    }
-
-    pub(super) fn active_openai_compatible_profile_provider(
-        &self,
-    ) -> Option<Arc<openrouter::OpenRouterProvider>> {
-        let profile_id = self
-            .active_openai_compatible_profile
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()?;
-        self.openai_compatible_profile_provider(&profile_id)
+        ProviderRegistry::new(self).real_openrouter()
     }
 
     pub(super) fn active_openrouter_execution_provider(
         &self,
     ) -> Option<Arc<openrouter::OpenRouterProvider>> {
-        self.active_openai_compatible_profile_provider()
-            .or_else(|| self.openrouter_provider())
+        ProviderRegistry::new(self).active_openrouter_execution()
     }
 
     pub(super) fn clear_active_openai_compatible_profile(&self) {
-        *self
-            .active_openai_compatible_profile
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        ProviderRegistry::new(self).clear_active_compatible_profile();
     }
 
     pub(super) fn has_claude_runtime(&self) -> bool {

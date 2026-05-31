@@ -19,6 +19,7 @@ pub mod openai;
 pub mod openai_request;
 pub mod openrouter;
 pub mod pricing;
+mod registry;
 mod route_builders;
 mod routing;
 mod selection;
@@ -36,6 +37,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 #[cfg(test)]
 use jcode_provider_core::FailoverDecision;
+use registry::ProviderRegistry;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -671,38 +673,31 @@ impl MultiProvider {
         }
 
         let profile_id = resolved.id.clone();
+        let registry = ProviderRegistry::new(self);
         let provider = {
-            let existing =
-                self.openai_compatible_profile_provider(&profile_id)
-                    .filter(|provider| {
-                        provider
-                            .direct_openai_compatible_route_parts()
-                            .and_then(|(_provider, api_method, _detail)| {
-                                api_method
-                                    .strip_prefix("openai-compatible:")
-                                    .map(|profile| profile.trim().to_string())
-                            })
-                            .as_deref()
-                            == Some(profile_id.as_str())
-                    });
+            let existing = registry.compatible_profile(&profile_id).filter(|provider| {
+                provider
+                    .direct_openai_compatible_route_parts()
+                    .and_then(|(_provider, api_method, _detail)| {
+                        api_method
+                            .strip_prefix("openai-compatible:")
+                            .map(|profile| profile.trim().to_string())
+                    })
+                    .as_deref()
+                    == Some(profile_id.as_str())
+            });
             if let Some(provider) = existing {
                 provider
             } else {
                 let provider = Arc::new(
                     openrouter::OpenRouterProvider::new_openai_compatible_profile_runtime(profile)?,
                 );
-                self.openai_compatible_profiles
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .insert(profile_id.clone(), provider.clone());
+                registry.install_compatible_profile(profile_id.clone(), provider.clone());
                 provider
             }
         };
         provider.set_model(model)?;
-        *self
-            .active_openai_compatible_profile
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(profile_id);
+        registry.set_active_compatible_profile(profile_id);
         self.set_active_provider(ActiveProvider::OpenRouter);
         Ok(())
     }
