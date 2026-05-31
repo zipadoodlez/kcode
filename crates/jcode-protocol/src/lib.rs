@@ -387,7 +387,7 @@ impl Request {
             Request::GetHistory { id } => *id,
             Request::GetModelCatalog { id } => *id,
             Request::GetCompactedHistory { id, .. } => *id,
-            Request::Reload { id } => *id,
+            Request::Reload { id, .. } => *id,
             Request::ResumeSession { id, .. } => *id,
             Request::NotifySession { id, .. } => *id,
             Request::Transcript { id, .. } => *id,

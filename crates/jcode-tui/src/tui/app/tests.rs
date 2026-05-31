@@ -284,7 +284,7 @@ fn update_command_reloads_stale_remote_server_before_client_update_check() {
     assert!(matches!(
         serde_json::from_str::<crate::protocol::Request>(&line)
             .expect("reload request should deserialize"),
-        crate::protocol::Request::Reload { id: 1 }
+        crate::protocol::Request::Reload { id: 1, force: true }
     ));
     let content = app.display_messages().last().unwrap().content.clone();
     assert!(content.contains("Reloading stale server"), "{content}");

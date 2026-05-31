@@ -525,6 +525,7 @@ impl RemoteConnection {
     pub async fn reload(&mut self) -> Result<()> {
         let request = Request::Reload {
             id: self.next_request_id,
+            force: true,
         };
         self.next_request_id += 1;
         self.send_request(request).await

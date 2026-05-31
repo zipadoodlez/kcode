@@ -478,11 +478,34 @@ pub(crate) enum Command {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum ServerCommand {
-    /// Stop the running background server (graceful) and clear its socket.
+    /// Gracefully reload the running background server onto the newest binary.
     ///
-    /// Useful after an upgrade so the next launch starts the freshly installed
-    /// binary instead of a surviving daemon running old code.
+    /// This is the preferred way to pick up an upgrade: the daemon hands its
+    /// live sessions off to a freshly exec'd server (the same path `/reload`
+    /// uses), so headless/swarm work is preserved instead of being killed. If
+    /// no server is running, this is a no-op. Use `server stop --force` only
+    /// when you need to hard-retire a wedged daemon.
+    Reload {
+        /// Reload even if the running server is already on the newest binary.
+        #[arg(long)]
+        force: bool,
+
+        /// Emit JSON instead of human-readable text
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Stop the running background server and clear its socket.
+    ///
+    /// Prefer `server reload` after an upgrade; it preserves live sessions.
+    /// `stop` terminates the daemon (SIGTERM, escalating to SIGKILL), which
+    /// drops any in-flight headless/swarm sessions, so it requires `--force`
+    /// as a deliberate acknowledgement.
     Stop {
+        /// Confirm that terminating the daemon (and dropping live sessions) is intended.
+        #[arg(long)]
+        force: bool,
+
         /// Emit JSON instead of human-readable text
         #[arg(long)]
         json: bool,

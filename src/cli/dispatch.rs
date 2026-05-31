@@ -93,8 +93,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             tui_launch::run_client().await?;
         }
         Some(Command::Server { action }) => match action {
-            ServerCommand::Stop { json } => {
-                commands::run_server_stop_command(json).await?;
+            ServerCommand::Reload { force, json } => {
+                commands::run_server_reload_command(force, json).await?;
+            }
+            ServerCommand::Stop { force, json } => {
+                commands::run_server_stop_command(force, json).await?;
             }
         },
         Some(Command::Run {

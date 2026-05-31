@@ -1,5 +1,12 @@
 use super::*;
 
+/// Serde default for boolean fields that should default to `true` when absent,
+/// so older clients that omit the field keep their previous (unconditional)
+/// behavior.
+fn default_true() -> bool {
+    true
+}
+
 /// Client request to server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -110,7 +117,16 @@ pub enum Request {
 
     /// Trigger server hot reload (build new version, restart)
     #[serde(rename = "reload")]
-    Reload { id: u64 },
+    Reload {
+        id: u64,
+        /// When `true` (the default for backward compatibility), the server
+        /// reloads unconditionally. When `false`, the server only reloads if it
+        /// detects a strictly-newer reload candidate binary, so callers like
+        /// `jcode server reload` can request a graceful upgrade without risking
+        /// a downgrade (e.g. a newer self-dev daemon next to an older release).
+        #[serde(default = "default_true")]
+        force: bool,
+    },
 
     /// Resume a specific session by ID
     #[serde(rename = "resume_session")]

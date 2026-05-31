@@ -247,13 +247,22 @@ impl Client {
     }
 
     pub async fn reload(&mut self) -> Result<()> {
+        self.reload_with_force(true).await?;
+        Ok(())
+    }
+
+    /// Request a graceful, conditional reload: when `force` is false the server
+    /// only reloads if it has a strictly-newer reload candidate binary. Used by
+    /// `jcode server reload` so an upgrade is picked up without risking a
+    /// downgrade. Returns the request id so callers can correlate events.
+    pub async fn reload_with_force(&mut self, force: bool) -> Result<u64> {
         let id = self.next_id;
         self.next_id += 1;
 
-        let request = Request::Reload { id };
+        let request = Request::Reload { id, force };
         let json = serde_json::to_string(&request)? + "\n";
         self.writer.write_all(json.as_bytes()).await?;
-        Ok(())
+        Ok(id)
     }
 
     pub async fn cycle_model(&mut self, direction: i8) -> Result<u64> {

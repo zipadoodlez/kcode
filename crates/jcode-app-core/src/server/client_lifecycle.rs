@@ -1468,9 +1468,10 @@ pub(super) async fn handle_client(
                 });
             }
 
-            Request::Reload { id } => {
+            Request::Reload { id, force } => {
                 handle_reload(
                     id,
+                    force,
                     &client_session_id,
                     &agent,
                     &swarm_members,
