@@ -435,6 +435,33 @@ impl Config {
                 self.safety.discord_reply_enabled = parsed;
             }
         }
+        // Jade cloud relay channel
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_API_BASE") {
+            self.safety.jade_relay_api_base = Some(v);
+        }
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_TOKEN") {
+            self.safety.jade_relay_token = Some(v);
+            self.safety.jade_relay_enabled = true;
+        }
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_TOKEN_ID") {
+            self.safety.jade_relay_token_id = Some(v);
+        }
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_USER_ID") {
+            self.safety.jade_relay_user_id = Some(v);
+        }
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_SESSION_ID") {
+            self.safety.jade_relay_session_id = Some(v);
+        }
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_ENABLED") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.safety.jade_relay_enabled = parsed;
+            }
+        }
+        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_REPLY_ENABLED") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.safety.jade_relay_reply_enabled = parsed;
+            }
+        }
         if let Ok(v) = std::env::var("JCODE_AMBIENT_VISIBLE") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.ambient.visible = parsed;
