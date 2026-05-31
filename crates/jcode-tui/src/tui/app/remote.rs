@@ -26,6 +26,8 @@ mod session_persistence;
 mod swarm_plan_core;
 mod workspace;
 
+#[cfg(test)]
+pub(super) use key_handling::reload_stale_remote_server_before_update;
 use queue_recovery::{recover_local_interleave_to_queue, recover_stranded_soft_interrupts};
 // Re-export for sibling modules and tests that access reconnect state and helpers
 // through `super::remote::*` without reaching into private submodules directly.

@@ -1006,6 +1006,11 @@ impl RemoteConnection {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn take_dummy_peer(&mut self) -> Option<Stream> {
+        self._dummy_peer.take()
+    }
+
     /// Set session ID
     pub fn set_session_id(&mut self, id: String) {
         self.session_id = Some(id);

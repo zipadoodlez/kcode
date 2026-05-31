@@ -31,6 +31,33 @@ pub(in crate::tui::app) async fn send_interleave_now(
     }
 }
 
+pub(in crate::tui::app) async fn handle_remote_update_command(
+    app: &mut App,
+    remote: &mut RemoteConnection,
+) -> Result<()> {
+    reload_stale_remote_server_before_update(app, remote).await?;
+
+    let session_id = app
+        .remote_session_id
+        .clone()
+        .unwrap_or_else(|| crate::id::new_id("ses"));
+    app.start_background_client_update(session_id);
+    Ok(())
+}
+
+pub(in crate::tui::app) async fn reload_stale_remote_server_before_update(
+    app: &mut App,
+    remote: &mut RemoteConnection,
+) -> Result<bool> {
+    if app.remote_server_has_update != Some(true) {
+        return Ok(false);
+    }
+
+    app.append_reload_message("Reloading stale server before checking for client updates...");
+    remote.reload().await?;
+    Ok(true)
+}
+
 async fn apply_remote_effort_direction(
     app: &mut App,
     remote: &mut RemoteConnection,
@@ -834,11 +861,7 @@ async fn handle_remote_key_internal(
                 }
 
                 if trimmed == "/update" {
-                    let session_id = app
-                        .remote_session_id
-                        .clone()
-                        .unwrap_or_else(|| crate::id::new_id("ses"));
-                    app.start_background_client_update(session_id);
+                    handle_remote_update_command(app, remote).await?;
                     return Ok(());
                 }
 
