@@ -613,6 +613,20 @@ impl MultiProvider {
                 Ok(())
             }
             ActiveProvider::OpenRouter => {
+                if self
+                    .openrouter_provider()
+                    .as_deref()
+                    .map(|provider| !provider.supports_provider_routing_features())
+                    .unwrap_or(true)
+                {
+                    let provider =
+                        Arc::new(openrouter::OpenRouterProvider::new_openrouter_api_key_runtime()?);
+                    *self
+                        .openrouter
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
+                }
+
                 let Some(openrouter) = self.openrouter_provider() else {
                     anyhow::bail!(
                         "OpenRouter/OpenAI-compatible credentials not available. Set the configured API key or run `jcode login --provider openrouter` first."

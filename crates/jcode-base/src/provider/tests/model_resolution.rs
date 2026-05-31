@@ -432,6 +432,20 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
             }),
             "OpenRouter model must not be relabeled as NVIDIA NIM: {routes:?}"
         );
+
+        provider
+            .set_model("openrouter/owl-alpha")
+            .expect("OpenRouter model should switch runtime back to OpenRouter");
+        assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
+        assert_eq!(provider.model(), "openrouter/owl-alpha");
+        let active_direct_route = provider
+            .openrouter_provider()
+            .expect("OpenRouter provider remains installed")
+            .direct_openai_compatible_route_parts();
+        assert!(
+            active_direct_route.is_none(),
+            "OpenRouter model should not remain bound to NVIDIA NIM runtime: {active_direct_route:?}"
+        );
     });
 }
 

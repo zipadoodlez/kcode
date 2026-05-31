@@ -1166,6 +1166,44 @@ impl OpenRouterProvider {
         })
     }
 
+    pub(crate) fn new_openrouter_api_key_runtime() -> Result<Self> {
+        let api_key = load_api_key_from_env_or_config(DEFAULT_API_KEY_NAME, DEFAULT_ENV_FILE)
+            .ok_or_else(|| {
+                let path = crate::storage::app_config_dir()
+                    .map(|dir| dir.join(DEFAULT_ENV_FILE).display().to_string())
+                    .unwrap_or_else(|_| DEFAULT_ENV_FILE.to_string());
+                anyhow::anyhow!(
+                    "{} not found in environment or {}",
+                    DEFAULT_API_KEY_NAME,
+                    path
+                )
+            })?;
+
+        Ok(Self {
+            client: crate::provider::shared_http_client(),
+            model: Arc::new(RwLock::new(DEFAULT_MODEL.to_string())),
+            reasoning_effort: Arc::new(RwLock::new(None)),
+            api_base: DEFAULT_API_BASE.to_string(),
+            auth: ProviderAuth::AuthorizationBearer {
+                token: api_key,
+                label: DEFAULT_API_KEY_NAME.to_string(),
+            },
+            supports_provider_features: true,
+            supports_model_catalog: true,
+            profile_id: None,
+            max_tokens: Self::configured_max_tokens(None),
+            static_models: Vec::new(),
+            static_context_limits: HashMap::new(),
+            send_openrouter_headers: true,
+            models_cache: Arc::new(RwLock::new(ModelsCache::default())),
+            model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
+            provider_routing: Arc::new(RwLock::new(Self::parse_provider_routing())),
+            provider_pin: Arc::new(Mutex::new(None)),
+            endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
+            endpoint_refresh: Arc::new(Mutex::new(EndpointRefreshTracker::default())),
+        })
+    }
+
     fn should_background_refresh_model_catalog(&self, cache_age_secs: u64) -> bool {
         if cache_age_secs < MODEL_CATALOG_SOFT_REFRESH_SECS {
             return false;
