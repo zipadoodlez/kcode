@@ -415,7 +415,9 @@ fn apply_auth_provider_runtime(provider_id: Option<&str>) -> Option<String> {
             }
         },
         Some(profile_id)
-            if crate::provider_catalog::openai_compatible_profile_by_id(profile_id).is_some() =>
+            if direct_provider_activation(profile_id).is_none()
+                && crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
+                    .is_some() =>
         {
             let Some(profile) =
                 crate::provider_catalog::openai_compatible_profile_by_id(profile_id)

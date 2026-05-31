@@ -854,6 +854,30 @@ pub struct LiveProviderModelCoverageSummary {
     /// ledger (e.g. provider-doctor full-tier runs).
     #[serde(default)]
     pub recorded_spend: LiveCoverageRecordedSpend,
+    /// Full monitoring roster: every provider jcode knows about (OpenAI-compatible
+    /// profiles + login providers), whether `provider-doctor` can drive it, whether
+    /// a credential is present, and how much live READY evidence exists. Lets the
+    /// report enumerate *every* provider, not just ones with ledger evidence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provider_roster: Vec<ProviderMonitorEntry>,
+}
+
+/// One row in the full provider-monitoring roster.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProviderMonitorEntry {
+    pub provider_id: String,
+    pub display_name: String,
+    /// True when `jcode provider-doctor <id>` can drive this provider today
+    /// (OpenAI-compatible profile exists for the id).
+    pub doctor_drivable: bool,
+    /// True when an API key is present in env or the provider's `.env` file.
+    pub has_credential: bool,
+    /// Number of provider/model pairs that reached READY (strict-covered).
+    pub ready_pairs: usize,
+    /// Number of provider/model pairs observed in the ledger (any evidence).
+    pub observed_pairs: usize,
+    /// Coarse status string for at-a-glance scanning.
+    pub status: String,
 }
 
 /// Cumulative spend aggregated from per-run `spend` metadata in the ledger.
@@ -1376,6 +1400,7 @@ pub fn strict_live_provider_model_coverage_summary(
     let total_provider_model_pairs = covered_pairs.len() + uncovered_pairs.len();
     let covered_provider_model_pairs = covered_pairs.len();
     let issue_driven_targets = issue_driven_target_summaries(&covered_pairs, &uncovered_pairs);
+    let provider_roster = build_provider_roster(&providers);
 
     // Aggregate recorded spend across the current (deduped) ledger entries.
     let mut recorded_spend = LiveCoverageRecordedSpend::default();
@@ -1403,6 +1428,7 @@ pub fn strict_live_provider_model_coverage_summary(
         known_provider_ids_without_live_model_coverage,
         issue_driven_targets,
         recorded_spend,
+        provider_roster,
     }
 }
 
@@ -1591,7 +1617,10 @@ fn known_live_model_provider_ids() -> Vec<String> {
 /// render the per-pair progress bar and to name the first blocker in English.
 const STRICT_PIPELINE_STAGES: &[(&str, &str)] = &[
     (checkpoints::MODEL_CATALOG_LIVE_ENDPOINT, "live catalog"),
-    (checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION, "catalog reload"),
+    (
+        checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION,
+        "catalog reload",
+    ),
     (checkpoints::PICKER_LIVE_MODELS, "picker shows model"),
     (checkpoints::PICKER_FALLBACK_LABELING, "picker labeling"),
     (checkpoints::MODEL_SWITCH_ROUTE, "model switch"),
@@ -1617,7 +1646,9 @@ fn pipeline_glyph(status: Option<LiveVerificationStageStatus>) -> char {
 /// Plain-English description of the first thing standing between a pair and
 /// READY, plus whether it is a hard failure (ran and failed/blocked) or just
 /// "never run". Returns `None` when every stage passed.
-fn first_blocker(pair: &LiveProviderModelCoveragePair) -> Option<(&'static str, &'static str, bool)> {
+fn first_blocker(
+    pair: &LiveProviderModelCoveragePair,
+) -> Option<(&'static str, &'static str, bool)> {
     for (id, label) in STRICT_PIPELINE_STAGES {
         match pair.checkpoint_status(id) {
             Some(LiveVerificationStageStatus::Passed) => continue,
@@ -1651,6 +1682,109 @@ fn doctor_supports_provider(provider_id: &str) -> bool {
     crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some()
 }
 
+/// True when a credential for `provider_id` is reachable, either via an
+/// OpenAI-compatible profile's env var/`.env` file or (for native login
+/// providers) a best-effort env-var probe. Used only to annotate the monitoring
+/// roster; never logs or surfaces the key itself.
+fn provider_has_credential(provider_id: &str) -> bool {
+    if let Some(profile) = crate::provider_catalog::openai_compatible_profile_by_id(provider_id) {
+        let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+        return crate::provider_catalog::load_api_key_from_env_or_config(
+            &resolved.api_key_env,
+            &resolved.env_file,
+        )
+        .is_some();
+    }
+    // Native login providers: probe their conventional env var names.
+    let env_candidates: &[&str] = match provider_id {
+        "claude" | "anthropic" | "anthropic-api" | "claude-api" => {
+            &["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"]
+        }
+        "openai" | "openai-api" => &["OPENAI_API_KEY"],
+        "openrouter" => &["OPENROUTER_API_KEY"],
+        "gemini" | "google" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        _ => &[],
+    };
+    env_candidates
+        .iter()
+        .any(|key| std::env::var(key).map(|v| !v.trim().is_empty()).unwrap_or(false))
+}
+
+/// Build the full provider-monitoring roster: union of every OpenAI-compatible
+/// profile id and every login-provider id, annotated with doctor-drivability,
+/// credential presence, and the READY/observed pair tallies already computed for
+/// the report. Lets `provider-test-coverage` enumerate *every* provider jcode
+/// knows about, not just ones that already have ledger evidence.
+fn build_provider_roster(
+    providers: &[LiveProviderCoverageSummary],
+) -> Vec<ProviderMonitorEntry> {
+    use std::collections::BTreeMap;
+
+    // Tally ledger evidence per provider id.
+    let mut ready: BTreeMap<String, usize> = BTreeMap::new();
+    let mut observed: BTreeMap<String, usize> = BTreeMap::new();
+    for provider in providers {
+        ready.insert(provider.provider_id.clone(), provider.covered_model_pairs);
+        observed.insert(provider.provider_id.clone(), provider.total_model_pairs);
+    }
+
+    // Union of provider ids and display labels.
+    let mut labels: BTreeMap<String, String> = BTreeMap::new();
+    for profile in crate::provider_catalog::openai_compatible_profiles() {
+        labels
+            .entry(profile.id.to_string())
+            .or_insert_with(|| profile.display_name.to_string());
+    }
+    for provider in crate::provider_catalog::login_providers() {
+        if matches!(
+            provider.target,
+            crate::provider_catalog::LoginProviderTarget::AutoImport
+        ) {
+            continue;
+        }
+        labels
+            .entry(provider.id.to_string())
+            .or_insert_with(|| provider.display_name.to_string());
+    }
+    // Include any ledger-observed provider ids not in either static catalog.
+    for provider in providers {
+        labels
+            .entry(provider.provider_id.clone())
+            .or_insert_with(|| provider.provider_label.clone());
+    }
+
+    labels
+        .into_iter()
+        .map(|(provider_id, display_name)| {
+            let doctor_drivable = doctor_supports_provider(&provider_id);
+            let has_credential = provider_has_credential(&provider_id);
+            let ready_pairs = ready.get(&provider_id).copied().unwrap_or(0);
+            let observed_pairs = observed.get(&provider_id).copied().unwrap_or(0);
+            let status = if ready_pairs > 0 {
+                "READY"
+            } else if observed_pairs > 0 {
+                "in progress"
+            } else if !doctor_drivable {
+                "needs native suite"
+            } else if !has_credential {
+                "no key"
+            } else {
+                "untested"
+            }
+            .to_string();
+            ProviderMonitorEntry {
+                provider_id,
+                display_name,
+                doctor_drivable,
+                has_credential,
+                ready_pairs,
+                observed_pairs,
+                status,
+            }
+        })
+        .collect()
+}
+
 pub fn format_strict_live_provider_model_coverage_summary(
     summary: &LiveProviderModelCoverageSummary,
     gap_limit: usize,
@@ -1669,18 +1803,14 @@ pub fn format_strict_live_provider_model_coverage_summary(
         summary.coverage_percent,
         stage_count,
     ));
-    out.push_str(
-        "A pair is READY only after every stage below passes in a real Jcode runtime.\n",
-    );
-    out.push_str(
-        "Anything short of READY is work-in-progress, not necessarily broken -- the\n",
-    );
-    out.push_str(
-        "bar below shows exactly how far each pair got and what to run next.\n\n",
-    );
+    out.push_str("A pair is READY only after every stage below passes in a real Jcode runtime.\n");
+    out.push_str("Anything short of READY is work-in-progress, not necessarily broken -- the\n");
+    out.push_str("bar below shows exactly how far each pair got and what to run next.\n\n");
 
     // -- The pipeline legend (the 11 stages, numbered, in order). --------------
-    out.push_str(&format!("The pipeline ({stage_count} stages, left to right):\n"));
+    out.push_str(&format!(
+        "The pipeline ({stage_count} stages, left to right):\n"
+    ));
     for (index, (_, label)) in STRICT_PIPELINE_STAGES.iter().enumerate() {
         out.push_str(&format!("  {:>2}. {}\n", index + 1, label));
     }
@@ -1773,30 +1903,80 @@ pub fn format_strict_live_provider_model_coverage_summary(
                 let next = first_blocker(pair);
                 let detail = match next {
                     Some((stage_id, label, hard_fail)) => {
-                        let verb = if hard_fail { "FAILED at" } else { "stuck before" };
+                        let verb = if hard_fail {
+                            "FAILED at"
+                        } else {
+                            "stuck before"
+                        };
                         let fix = pair_fix_hint(&pair.provider_id, &pair.model, stage_id);
                         format!("{verb} `{label}` -> {fix}")
                     }
                     None => "READY".to_string(),
                 };
-                out.push_str(&format!("  {bar}  {name}\n      {detail}\n      {tested}\n"));
+                out.push_str(&format!(
+                    "  {bar}  {name}\n      {detail}\n      {tested}\n"
+                ));
             }
         }
         out.push('\n');
     }
 
-    // -- Providers we know about but have never exercised. ---------------------
-    if !summary
-        .known_provider_ids_without_live_model_coverage
-        .is_empty()
-    {
-        let ids = &summary.known_provider_ids_without_live_model_coverage;
+    // -- Full provider monitoring roster: EVERY provider jcode knows about. ----
+    if !summary.provider_roster.is_empty() {
+        let roster = &summary.provider_roster;
+        let ready = roster.iter().filter(|e| e.status == "READY").count();
         out.push_str(&format!(
-            "Known providers with no live evidence yet ({}): ",
-            ids.len()
+            "Provider monitor ({} providers; {} READY):\n",
+            roster.len(),
+            ready
         ));
-        out.push_str(&ids.join(", "));
-        out.push_str("\n\n");
+        // Stable, scannable order: READY first, then in progress, then the rest;
+        // alphabetical within each bucket.
+        fn status_rank(status: &str) -> u8 {
+            match status {
+                "READY" => 0,
+                "in progress" => 1,
+                "untested" => 2,
+                "no key" => 3,
+                "needs native suite" => 4,
+                _ => 5,
+            }
+        }
+        let mut rows: Vec<&ProviderMonitorEntry> = roster.iter().collect();
+        rows.sort_by(|a, b| {
+            status_rank(&a.status)
+                .cmp(&status_rank(&b.status))
+                .then_with(|| a.provider_id.cmp(&b.provider_id))
+        });
+        let id_width = rows
+            .iter()
+            .map(|e| e.provider_id.len())
+            .max()
+            .unwrap_or(8)
+            .max(8);
+        out.push_str(&format!(
+            "  {:<id_width$}  {:<18}  {:<7}  {:<4}  {}\n",
+            "provider", "status", "doctor", "key", "READY/seen",
+            id_width = id_width
+        ));
+        for entry in rows {
+            let doctor = if entry.doctor_drivable { "yes" } else { "no" };
+            let key = if entry.has_credential { "yes" } else { "-" };
+            out.push_str(&format!(
+                "  {:<id_width$}  {:<18}  {:<7}  {:<4}  {}/{}\n",
+                entry.provider_id,
+                entry.status,
+                doctor,
+                key,
+                entry.ready_pairs,
+                entry.observed_pairs,
+                id_width = id_width
+            ));
+        }
+        out.push_str(
+            "  Legend: doctor=`provider-doctor` can drive it; key=credential present;\n  \
+             READY/seen = strict-covered pairs / pairs observed in the ledger.\n\n",
+        );
     }
 
     // -- Issue-driven targets (kept, but tightened to one line each). ----------
@@ -1843,11 +2023,11 @@ pub fn format_strict_live_provider_model_coverage_summary(
 
     // -- Footer: how to act on this report. ------------------------------------
     out.push_str("Next steps:\n");
-    out.push_str(
-        "  Drive any OpenAI-compatible pair through the pipeline (records evidence):\n",
-    );
+    out.push_str("  Drive any OpenAI-compatible pair through the pipeline (records evidence):\n");
     out.push_str("    jcode provider-doctor <provider> --tier full   # spends balance\n");
-    out.push_str("    jcode provider-doctor <provider> --tier offline # wiring only, no key/spend\n");
+    out.push_str(
+        "    jcode provider-doctor <provider> --tier offline # wiring only, no key/spend\n",
+    );
     out.push_str("  See docs/PROVIDER_DOCTOR.md for the full guide.\n");
     out.push_str(&format!("\nLedger: {}\n", summary.coverage_source));
 
