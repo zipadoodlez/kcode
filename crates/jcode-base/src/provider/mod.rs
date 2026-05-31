@@ -657,8 +657,9 @@ impl MultiProvider {
             );
         }
 
-        crate::provider_catalog::force_apply_openai_compatible_profile_env(Some(profile));
-        let provider = Arc::new(openrouter::OpenRouterProvider::new()?);
+        let provider = Arc::new(
+            openrouter::OpenRouterProvider::new_openai_compatible_profile_runtime(profile)?,
+        );
         provider.set_model(model)?;
         *self
             .openrouter

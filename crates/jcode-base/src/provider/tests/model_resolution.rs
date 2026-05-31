@@ -397,6 +397,10 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
         provider
             .set_model("nvidia-nim:nvidia/llama-3.1-nemotron-ultra-253b-v1")
             .expect("NVIDIA NIM model should be selectable after OpenRouter default");
+        assert!(
+            std::env::var_os("JCODE_OPENROUTER_API_BASE").is_none(),
+            "profile route selection should not mutate global OpenRouter API base env"
+        );
 
         assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
         assert_eq!(provider.model(), "nvidia/llama-3.1-nemotron-ultra-253b-v1");

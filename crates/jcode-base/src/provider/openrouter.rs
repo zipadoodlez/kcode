@@ -1204,6 +1204,69 @@ impl OpenRouterProvider {
         })
     }
 
+    pub(crate) fn new_openai_compatible_profile_runtime(
+        profile: crate::provider_catalog::OpenAiCompatibleProfile,
+    ) -> Result<Self> {
+        let resolved = resolve_openai_compatible_profile(profile);
+        let api_base = normalize_api_base(&resolved.api_base).ok_or_else(|| {
+            anyhow::anyhow!(
+                "OpenAI-compatible profile '{}' has invalid API base '{}'",
+                resolved.id,
+                resolved.api_base
+            )
+        })?;
+        let auth = match load_api_key_from_env_or_config(&resolved.api_key_env, &resolved.env_file)
+        {
+            Some(token) => ProviderAuth::AuthorizationBearer {
+                token,
+                label: resolved.api_key_env.clone(),
+            },
+            None if !resolved.requires_api_key => ProviderAuth::None {
+                label: "local endpoint (no auth)".to_string(),
+            },
+            None => {
+                let path = crate::storage::app_config_dir()
+                    .map(|dir| dir.join(&resolved.env_file).display().to_string())
+                    .unwrap_or_else(|_| resolved.env_file.clone());
+                anyhow::bail!(
+                    "{} credentials not available. {} not found in environment or {}. Run `jcode login --provider {}` first.",
+                    resolved.display_name,
+                    resolved.api_key_env,
+                    path,
+                    resolved.id,
+                );
+            }
+        };
+
+        let static_context_limits = openai_compatible_profile_static_context_limits(profile);
+        let static_models = openai_compatible_profile_static_models(profile);
+        let model = resolved
+            .default_model
+            .clone()
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+
+        Ok(Self {
+            client: crate::provider::shared_http_client(),
+            model: Arc::new(RwLock::new(model)),
+            reasoning_effort: Arc::new(RwLock::new(None)),
+            api_base,
+            auth,
+            supports_provider_features: false,
+            supports_model_catalog: true,
+            profile_id: Some(resolved.id.clone()),
+            max_tokens: Self::configured_max_tokens(Some(&resolved.id)),
+            static_models,
+            static_context_limits,
+            send_openrouter_headers: false,
+            models_cache: Arc::new(RwLock::new(ModelsCache::default())),
+            model_catalog_refresh: Arc::new(Mutex::new(ModelCatalogRefreshState::default())),
+            provider_routing: Arc::new(RwLock::new(ProviderRouting::default())),
+            provider_pin: Arc::new(Mutex::new(None)),
+            endpoints_cache: Arc::new(RwLock::new(HashMap::new())),
+            endpoint_refresh: Arc::new(Mutex::new(EndpointRefreshTracker::default())),
+        })
+    }
+
     fn should_background_refresh_model_catalog(&self, cache_age_secs: u64) -> bool {
         if cache_age_secs < MODEL_CATALOG_SOFT_REFRESH_SECS {
             return false;
