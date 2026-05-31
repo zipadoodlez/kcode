@@ -151,6 +151,18 @@ fn newer_binary_available(
 }
 
 pub(crate) fn server_has_newer_binary() -> bool {
+    if !build::version_matches_installed_channel(
+        jcode_build_meta::VERSION,
+        jcode_build_meta::GIT_HASH,
+    ) {
+        crate::logging::warn(&format!(
+            "server_has_newer_binary: running server version {} ({}) does not match installed stable/current channel markers",
+            jcode_build_meta::VERSION,
+            jcode_build_meta::GIT_HASH,
+        ));
+        return true;
+    }
+
     let current_exe = std::env::current_exe().ok();
     let current_mtime = current_exe
         .as_ref()

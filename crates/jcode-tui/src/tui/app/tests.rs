@@ -231,6 +231,27 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
 }
 
 #[test]
+fn version_command_shows_remote_server_identity_and_update_status() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_server_short_name = Some("blazing".to_string());
+    app.remote_server_icon = Some("🔥".to_string());
+    app.remote_server_version = Some("v0.14.2-dev (old)".to_string());
+    app.remote_server_has_update = Some(true);
+
+    assert!(super::state_ui::handle_info_command(&mut app, "/version"));
+    let content = app.display_messages().last().unwrap().content.clone();
+    assert!(content.contains("jcode client:"), "{content}");
+    assert!(content.contains("mode: remote/shared-server"), "{content}");
+    assert!(content.contains("server: 🔥 blazing"), "{content}");
+    assert!(
+        content.contains("server version: v0.14.2-dev (old)"),
+        "{content}"
+    );
+    assert!(content.contains("reload recommended"), "{content}");
+}
+
+#[test]
 fn remote_done_finalizes_resumed_activity_without_current_message_id() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();

@@ -769,6 +769,8 @@ pub(in crate::tui::app) fn handle_server_event(
             app.remote_client_count = client_count;
             app.remote_is_canary = is_canary;
             app.remote_server_version = server_version;
+            app.remote_server_short_name = server_name.clone();
+            app.remote_server_icon = server_icon.clone();
             app.remote_server_has_update = server_has_update;
             let history_total_tokens = total_tokens.or_else(|| {
                 token_usage_totals.map(|totals| (totals.input_tokens, totals.output_tokens))
