@@ -1248,7 +1248,7 @@ struct SessionJournalSummaryMeta {
     #[serde(default)]
     is_debug: bool,
     #[serde(default)]
-    saved: bool,
+    saved: Option<bool>,
     #[serde(default)]
     save_label: Option<String>,
     #[serde(default)]
@@ -1292,7 +1292,9 @@ fn load_session_summary(path: &Path) -> Result<SessionSummary> {
                     summary.model = entry.meta.model;
                     summary.is_canary = entry.meta.is_canary;
                     summary.is_debug = entry.meta.is_debug;
-                    summary.saved = entry.meta.saved;
+                    if let Some(saved) = entry.meta.saved {
+                        summary.saved = saved;
+                    }
                     summary.save_label = entry.meta.save_label;
                     summary.status = entry.meta.status;
                     summary.messages.merge(entry.append_messages);
