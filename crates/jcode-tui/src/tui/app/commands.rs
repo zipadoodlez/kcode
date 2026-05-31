@@ -145,8 +145,14 @@ pub(super) fn is_non_retryable_auto_poke_error(error: &str) -> bool {
         "401 unauthorized",
         "403 forbidden",
         "insufficient_quota",
+        "402 payment required",
+        "payment required",
+        "requires more credits",
+        "add more credits",
+        "more credits",
         "billing",
         "credit balance",
+        "out of credits",
     ];
 
     deterministic_markers
