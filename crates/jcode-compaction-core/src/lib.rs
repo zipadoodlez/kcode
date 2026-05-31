@@ -33,6 +33,21 @@ pub const EMERGENCY_IMAGE_MAX_CHARS: usize = 1024;
 /// Approximate chars per token for estimation
 pub const CHARS_PER_TOKEN: usize = 4;
 
+/// Approximate token cost charged for a single inline image.
+///
+/// Image content blocks carry base64-encoded payloads that are often hundreds
+/// of kilobytes. Counting that raw base64 length as message text (len / 4)
+/// massively overestimates the real context cost: providers tokenize images by
+/// resolution, not by transport-encoded byte length, and a typical screenshot
+/// costs on the order of ~1-2k tokens regardless of base64 size. Using the raw
+/// length caused the token estimate to balloon far above the real
+/// provider-observed input, spuriously tripping the compaction threshold and
+/// driving repeated back-to-back ("triple") compactions that could not bring
+/// the estimate down because the images stayed in the recent kept turns.
+///
+/// We charge a flat, slightly conservative per-image token budget instead.
+pub const IMAGE_TOKEN_COST: usize = 1_600;
+
 /// Fixed token overhead for system prompt + tool definitions.
 /// These are not counted in message content but do count toward the context limit.
 /// Estimated conservatively: ~8k tokens for system prompt + ~10k for 50+ tools.
@@ -292,7 +307,11 @@ pub fn content_char_count(content: &[ContentBlock]) -> usize {
             }
             ContentBlock::ToolUse { input, .. } => input.to_string().len() + 50,
             ContentBlock::ToolResult { content, .. } => content.len() + 20,
-            ContentBlock::Image { data, .. } => data.len(),
+            // Charge a flat token cost for images instead of the raw base64
+            // payload length. See IMAGE_TOKEN_COST: counting base64 length here
+            // overestimates context by ~100x and triggers spurious repeated
+            // compactions.
+            ContentBlock::Image { .. } => IMAGE_TOKEN_COST * CHARS_PER_TOKEN,
             ContentBlock::OpenAICompaction { encrypted_content } => encrypted_content.len(),
         })
         .sum()
@@ -626,6 +645,36 @@ mod tests {
         assert_eq!(
             estimate_compaction_tokens(Some(&summary), 0, DEFAULT_TOKEN_BUDGET),
             100 + SYSTEM_OVERHEAD_TOKENS
+        );
+    }
+
+    #[test]
+    fn image_token_cost_is_bounded_not_base64_length() {
+        // Regression: a large base64 image payload must not be counted as ~len/4
+        // tokens. Doing so inflated the estimate ~100x and caused repeated
+        // back-to-back compactions.
+        let huge_base64 = "A".repeat(1_400_000);
+        let mut image_msg = Message::user("");
+        image_msg.content = vec![ContentBlock::Image {
+            media_type: "image/png".to_string(),
+            data: huge_base64.clone(),
+        }];
+
+        let chars = message_char_count(&image_msg);
+        // Flat per-image cost in char-equivalents, far below the raw payload.
+        assert_eq!(chars, IMAGE_TOKEN_COST * CHARS_PER_TOKEN);
+        assert!(
+            chars < huge_base64.len() / 10,
+            "image should not be charged anywhere near its base64 length"
+        );
+
+        // The token estimate for four such images stays small.
+        let tokens = estimate_compaction_tokens_from_chars(chars * 4, DEFAULT_TOKEN_BUDGET);
+        assert!(
+            tokens < SYSTEM_OVERHEAD_TOKENS + 4 * IMAGE_TOKEN_COST + 10,
+            "four images should cost ~{} tokens, got {}",
+            SYSTEM_OVERHEAD_TOKENS + 4 * IMAGE_TOKEN_COST,
+            tokens
         );
     }
 
