@@ -4,6 +4,52 @@ use crate::tui::TuiState;
 use crate::tui::app as app_mod;
 use crate::tui::app::remote::swarm_plan_core::RemoteSwarmPlanSnapshot;
 
+fn allow_runtime_identity_mismatch() -> bool {
+    std::env::var_os("JCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
+}
+
+fn should_defer_history_for_runtime_identity_with_allow(
+    server_has_update: Option<bool>,
+    allow_mismatch: bool,
+) -> bool {
+    server_has_update == Some(true) && !allow_mismatch
+}
+
+fn should_defer_history_for_runtime_identity(server_has_update: Option<bool>) -> bool {
+    should_defer_history_for_runtime_identity_with_allow(
+        server_has_update,
+        allow_runtime_identity_mismatch(),
+    )
+}
+
+#[cfg(test)]
+mod runtime_identity_tests {
+    use super::should_defer_history_for_runtime_identity_with_allow;
+
+    #[test]
+    fn runtime_identity_gate_defers_stale_server_history_by_default() {
+        assert!(should_defer_history_for_runtime_identity_with_allow(
+            Some(true),
+            false
+        ));
+        assert!(!should_defer_history_for_runtime_identity_with_allow(
+            Some(false),
+            false
+        ));
+        assert!(!should_defer_history_for_runtime_identity_with_allow(
+            None, false
+        ));
+    }
+
+    #[test]
+    fn runtime_identity_gate_allows_explicit_mismatch_escape_hatch() {
+        assert!(!should_defer_history_for_runtime_identity_with_allow(
+            Some(true),
+            true
+        ));
+    }
+}
+
 pub(in crate::tui::app) fn handle_server_event(
     app: &mut App,
     event: ServerEvent,
@@ -678,6 +724,24 @@ pub(in crate::tui::app) fn handle_server_event(
             crate::set_current_session(&session_id);
             app.note_client_focus(true);
             let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
+
+            if should_defer_history_for_runtime_identity(server_has_update) {
+                app.remote_server_version = server_version;
+                app.remote_server_short_name = server_name.clone();
+                app.remote_server_icon = server_icon.clone();
+                app.remote_server_has_update = server_has_update;
+                app.pending_server_reload = true;
+                app.clear_remote_startup_phase();
+                app.set_status_notice(
+                    "Server/runtime mismatch detected; reloading server before attach",
+                );
+                app.push_display_message(DisplayMessage::system(
+                    "ℹ Connected server binary differs from the installed client channel. Reloading the server before applying remote session state. Set JCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing."
+                        .to_string(),
+                ));
+                app.update_terminal_title();
+                return false;
+            }
 
             if session_changed {
                 app.rate_limit_pending_message = None;
