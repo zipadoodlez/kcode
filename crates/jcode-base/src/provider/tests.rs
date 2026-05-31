@@ -568,6 +568,38 @@ fn standard_openrouter_catalog_refresh_skips_without_key() {
     });
 }
 
+#[test]
+fn standard_openrouter_catalog_refresh_fires_when_named_profile_owns_slot() {
+    with_clean_provider_test_env(|| {
+        let runtime = enter_test_runtime();
+        runtime.block_on(async {
+            crate::provider_catalog::save_env_value_to_env_file(
+                "OPENROUTER_API_KEY",
+                "openrouter.env",
+                Some("sk-test-openrouter"),
+            )
+            .expect("save openrouter key");
+            // Simulate an active named profile (e.g. NVIDIA NIM) occupying the
+            // shared OpenRouter/OpenAI-compatible slot: it sets the runtime env
+            // vars to point at a non-openrouter.ai endpoint. The standard
+            // OpenRouter catalog refresh must STILL fire so `/model` can list
+            // openrouter.ai models (issue #292). Cache is missing -> not fresh.
+            crate::env::set_var(
+                "JCODE_OPENROUTER_API_BASE",
+                "https://integrate.api.nvidia.com/v1",
+            );
+            crate::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", "mynvidia");
+
+            assert!(
+                openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
+                    "unit test named profile owns slot"
+                ),
+                "standard OpenRouter refresh must fire even when a named profile sets JCODE_OPENROUTER_* env"
+            );
+        });
+    });
+}
+
 fn test_multi_provider_with_cursor() -> MultiProvider {
     MultiProvider {
         claude: RwLock::new(None),

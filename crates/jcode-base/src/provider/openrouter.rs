@@ -830,12 +830,14 @@ pub(crate) fn maybe_schedule_openai_compatible_profile_catalog_refresh(
 /// picker reads the standard catalog from the `openrouter` disk-cache namespace
 /// via `configured_standard_openrouter_profile_routes`; this populates it.
 pub(crate) fn maybe_schedule_standard_openrouter_catalog_refresh(context: &'static str) -> bool {
-    // Only standard OpenRouter (key present and pointing at openrouter.ai) is
-    // relevant here. If an explicit custom runtime/base is configured, the
-    // shared-slot provider already handles its own catalog refresh.
-    if explicit_openrouter_runtime_configured() {
-        return false;
-    }
+    // This always targets canonical openrouter.ai with OPENROUTER_API_KEY and
+    // writes to the dedicated `openrouter` cache namespace. It must run even
+    // when JCODE_OPENROUTER_* env vars are set by an active named profile
+    // (e.g. NVIDIA NIM via `[providers.mynvidia]`, which sets
+    // JCODE_OPENROUTER_API_BASE to the NVIDIA endpoint): that profile owns the
+    // shared slot and points the live runtime elsewhere, but standard
+    // OpenRouter's catalog still needs its own refresh so `/model` can list it
+    // (issue #292). Hence we deliberately ignore the shared-slot runtime env.
     let Some(api_key) = load_api_key_from_env_or_config(DEFAULT_API_KEY_NAME, DEFAULT_ENV_FILE)
     else {
         return false;
