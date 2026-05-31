@@ -277,6 +277,83 @@ fn reload_wait_status_message_uses_waiting_language() {
 }
 
 #[test]
+fn process_remote_followups_auto_submits_staged_startup_prompt() {
+    // Regression for issues #267/#268/#76: a headed swarm spawn stages its
+    // initial prompt into `app.input` with `submit_input_on_startup = true`
+    // (not `queued_messages`). The post-connect dispatcher must still submit it;
+    // otherwise the spawned agent shows its prompt but never sends it.
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+    app.input = "Classify the issues in /tmp/batch.txt".to_string();
+    app.cursor_pos = app.input.len();
+    app.submit_input_on_startup = true;
+
+    // The gate predicate is the actual fix site: a staged startup prompt counts
+    // as pending work even though no message was queued via `queued_messages`.
+    assert!(
+        !app.has_queued_followups(),
+        "a staged startup prompt is not a queued follow-up"
+    );
+    assert!(
+        app.has_pending_startup_submission(),
+        "staged startup prompt should be recognized as pending work so the \
+         post-connect dispatcher invokes process_remote_followups"
+    );
+
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    rt.block_on(process_remote_followups(&mut app, &mut remote));
+
+    assert!(
+        !app.submit_input_on_startup,
+        "startup submission flag should be consumed after dispatch"
+    );
+    assert!(
+        app.input.is_empty(),
+        "input should be cleared once the startup prompt is submitted"
+    );
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|message| message.role == "user"
+                && message.content == "Classify the issues in /tmp/batch.txt"),
+        "submitting the startup prompt should record it as a user message"
+    );
+}
+
+#[test]
+fn has_pending_startup_submission_requires_input_and_flag() {
+    // Guards the predicate that gates post-connect startup dispatch.
+    let mut app = create_test_app();
+    assert!(!app.has_pending_startup_submission());
+
+    app.submit_input_on_startup = true;
+    assert!(
+        !app.has_pending_startup_submission(),
+        "flag alone with empty input is not a pending submission"
+    );
+
+    app.input = "   ".to_string();
+    assert!(
+        !app.has_pending_startup_submission(),
+        "whitespace-only input is not a pending submission"
+    );
+
+    app.input = "do the work".to_string();
+    assert!(app.has_pending_startup_submission());
+
+    app.submit_input_on_startup = false;
+    assert!(
+        !app.has_pending_startup_submission(),
+        "input without the auto-submit flag is just editor state, not pending"
+    );
+}
+
+#[test]
 fn process_remote_followups_auto_reloads_server_by_default() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().expect("runtime");

@@ -701,9 +701,19 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
         app.clear_remote_startup_phase();
     }
 
-    if remote.has_loaded_history() && !app.is_processing && app.has_queued_followups() {
+    // Dispatch restored work once the server history is in place. This must
+    // also cover a pending startup submission (e.g. a headed swarm spawn whose
+    // initial prompt was staged into `app.input` with `submit_input_on_startup`),
+    // not just queued follow-ups. Without this, a freshly spawned visible agent
+    // would show its prompt in the input box but never actually submit it,
+    // because `process_remote_followups` (the only production dispatcher) was
+    // never invoked post-connect. See issues #267/#268/#76.
+    if remote.has_loaded_history()
+        && !app.is_processing
+        && (app.has_queued_followups() || app.has_pending_startup_submission())
+    {
         crate::logging::info(
-            "Post-connect history restored with queued followups; dispatching immediately",
+            "Post-connect history restored with queued followups or startup submission; dispatching immediately",
         );
         if app.pending_queued_dispatch {
             crate::logging::info(
