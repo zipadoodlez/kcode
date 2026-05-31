@@ -908,6 +908,7 @@ pub struct App {
     model_picker_load_request_id: u64,
     // Pending model switch from picker (for remote mode async processing)
     pending_model_switch: Option<String>,
+    pending_route_selection: Option<crate::provider::RouteSelection>,
     // Remote SetModel has been sent but ModelChanged has not arrived yet. User
     // prompts submitted in this window are held so the first request cannot race
     // the model switch and use stale provider/model state.

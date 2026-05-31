@@ -163,6 +163,13 @@ pub enum Request {
     #[serde(rename = "set_model")]
     SetModel { id: u64, model: String },
 
+    /// Set the active model by structured route identity.
+    #[serde(rename = "set_route")]
+    SetRoute {
+        id: u64,
+        selection: jcode_provider_core::RouteSelection,
+    },
+
     /// Set or clear the session-scoped subagent model preference.
     #[serde(rename = "set_subagent_model")]
     SetSubagentModel {

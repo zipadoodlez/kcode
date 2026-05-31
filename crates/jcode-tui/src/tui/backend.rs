@@ -612,6 +612,17 @@ impl RemoteConnection {
         Ok(id)
     }
 
+    pub async fn set_route_selection(
+        &mut self,
+        selection: crate::provider::RouteSelection,
+    ) -> Result<u64> {
+        let id = self.next_request_id;
+        let request = Request::SetRoute { id, selection };
+        self.next_request_id += 1;
+        self.send_request(request).await?;
+        Ok(id)
+    }
+
     /// Set or clear the session-scoped subagent model on the server.
     pub async fn set_subagent_model(&mut self, model: Option<String>) -> Result<()> {
         let request = Request::SetSubagentModel {

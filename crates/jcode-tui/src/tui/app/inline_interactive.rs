@@ -2417,6 +2417,7 @@ impl App {
                             self.inline_interactive_state = None;
                             self.upstream_provider = None;
                             self.status_detail = None;
+                            self.pending_route_selection = Some(route_selection);
                             self.pending_model_switch = Some(spec);
                         } else {
                             match self.provider.set_route_selection(&route_selection) {

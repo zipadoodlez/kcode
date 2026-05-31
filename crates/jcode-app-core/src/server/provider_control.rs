@@ -456,6 +456,33 @@ fn apply_set_model(
     send_model_changed_result(id, result, current, client_event_tx);
 }
 
+fn apply_set_route(
+    id: u64,
+    selection: crate::provider::RouteSelection,
+    agent: &mut Agent,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    if let Some(current) = model_switching_unavailable_current(agent) {
+        let _ = client_event_tx.send(ServerEvent::ModelChanged {
+            id,
+            model: current,
+            provider_name: None,
+            error: Some("Model switching is not available for this provider.".to_string()),
+        });
+        return;
+    }
+
+    let current = agent.provider_model();
+    let result = {
+        let result = agent.set_route_selection(&selection);
+        if result.is_ok() {
+            agent.reset_provider_session();
+        }
+        result.map(|_| (agent.provider_model(), agent.provider_name()))
+    };
+    send_model_changed_result(id, result, current, client_event_tx);
+}
+
 pub(super) async fn handle_set_model(
     id: u64,
     model: String,
@@ -472,6 +499,27 @@ pub(super) async fn handle_set_model(
             client_event_tx.clone(),
             move |agent_guard, client_event_tx| {
                 apply_set_model(id, model, agent_guard, client_event_tx);
+            },
+        );
+    }
+}
+
+pub(super) async fn handle_set_route(
+    id: u64,
+    selection: crate::provider::RouteSelection,
+    agent: &Arc<Mutex<Agent>>,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    if let Ok(mut agent_guard) = agent.try_lock() {
+        apply_set_route(id, selection, &mut agent_guard, client_event_tx);
+    } else {
+        spawn_deferred_agent_mutation(
+            "set_route",
+            id,
+            Arc::clone(agent),
+            client_event_tx.clone(),
+            move |agent_guard, client_event_tx| {
+                apply_set_route(id, selection, agent_guard, client_event_tx);
             },
         );
     }
