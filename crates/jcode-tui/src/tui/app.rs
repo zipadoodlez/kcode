@@ -891,6 +891,11 @@ pub struct App {
     // User explicitly hid the side panel with the side-panel toggle key. While set, incoming snapshots may update
     // pages but must not reopen the panel by restoring focused_page_id.
     side_panel_user_hidden: bool,
+    // True when the user explicitly hid the side panel (e.g. Alt+M) rather than
+    // it being auto-hidden. This makes the hide "sticky" so transient image
+    // repopulation (such as after a server reload/reconnect) does not re-reveal
+    // a panel the user deliberately closed.
+    side_panel_explicit_hidden: bool,
     // Pin read images to side pane
     pin_images: bool,
     // Auto-hide deadline for the pinned image side pane only.
