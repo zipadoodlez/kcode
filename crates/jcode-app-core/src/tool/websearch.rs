@@ -651,4 +651,30 @@ mod tests {
         assert_eq!(detect_anti_bot_page(html), None);
         assert_eq!(parse_ddg_results(html, 10).len(), 1);
     }
+
+    // Captured from a live DuckDuckGo request that was flagged on Linux (GH #270):
+    // the HTML endpoint returns HTTP 202 with an "anomaly" challenge page and no
+    // results. These fixtures pin the real-world shapes so the fix stays honest.
+    #[test]
+    fn real_captured_ddg_anomaly_fixture_is_detected() {
+        let html = include_str!("testdata/ddg_anomaly.html");
+        // The bug: this page parses to zero real results...
+        assert!(
+            parse_ddg_results(html, 10).is_empty(),
+            "anomaly page should yield no results"
+        );
+        // ...but the fix now recognizes it as a challenge instead of a silent
+        // "no results found".
+        assert_eq!(detect_anti_bot_page(html), Some("anomaly challenge"));
+    }
+
+    #[test]
+    fn real_captured_ddg_results_fixture_parses() {
+        let html = include_str!("testdata/ddg_results.html");
+        assert_eq!(detect_anti_bot_page(html), None);
+        assert!(
+            !parse_ddg_results(html, 10).is_empty(),
+            "real results page should yield results"
+        );
+    }
 }
