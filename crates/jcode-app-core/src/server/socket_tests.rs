@@ -176,8 +176,14 @@ async fn reap_stale_socket_spares_socket_when_lock_is_held() {
         .expect("lock should be free");
 
     let reaped = reap_stale_socket_if_dead(&socket).await;
-    assert!(!reaped, "socket must be spared while the daemon lock is held");
-    assert!(socket.exists(), "socket must be left intact while lock is held");
+    assert!(
+        !reaped,
+        "socket must be spared while the daemon lock is held"
+    );
+    assert!(
+        socket.exists(),
+        "socket must be left intact while lock is held"
+    );
 
     drop(held);
     if let Some(prev_runtime) = prev_runtime {

@@ -417,7 +417,14 @@ async fn handle_reload_does_not_wait_for_busy_agent_lock() -> Result<()> {
 
     tokio::time::timeout(
         std::time::Duration::from_millis(100),
-        handle_reload(11, true, "session_fallback_reload", &agent, &swarm_members, &tx),
+        handle_reload(
+            11,
+            true,
+            "session_fallback_reload",
+            &agent,
+            &swarm_members,
+            &tx,
+        ),
     )
     .await
     .map_err(|_| anyhow!("handle_reload waited for a busy agent lock"))?;
