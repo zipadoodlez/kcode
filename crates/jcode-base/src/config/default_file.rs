@@ -164,7 +164,7 @@ persist_memory_injections = false
 update_channel = "stable"
 
 [websearch]
-# Preferred websearch engine: "duckduckgo" or "bing".
+# Preferred websearch engine: "duckduckgo", "bing", or "searxng".
 engine = "duckduckgo"
 # Keyless HTML engines to try if the preferred engine fails. Default falls back to Bing HTML.
 fallback_engines = ["bing"]
@@ -174,6 +174,13 @@ fallback_engines = ["bing"]
 # bing_api_key = ""
 # Bing market/region, for example "en-US" or "zh-CN".
 bing_market = "en-US"
+# SearXNG instance for the "searxng" engine. On some hosts (commonly Linux),
+# DuckDuckGo and Bing block scraped requests via TLS fingerprinting / IP
+# reputation and return an anti-bot page with no results. Pointing at a SearXNG
+# instance (self-hosted or trusted public) with the JSON format enabled avoids
+# this. Configure here or via the JCODE_SEARXNG_URL environment variable, then
+# set engine = "searxng" or add it to fallback_engines.
+# searxng_url = "https://searx.example.org"
 
 [tools]
 # Controls which built-in tools are sent to the model.

@@ -69,8 +69,8 @@ impl Tool for WebSearchTool {
                 },
                 "engine": {
                     "type": "string",
-                    "enum": ["duckduckgo", "bing"],
-                    "description": "Search engine. Defaults to duckduckgo. Bing uses JCODE_BING_API_KEY when set, otherwise Bing HTML scraping."
+                    "enum": ["duckduckgo", "bing", "searxng"],
+                    "description": "Search engine. Defaults to duckduckgo. Bing uses JCODE_BING_API_KEY when set, otherwise Bing HTML scraping. searxng queries a configured SearXNG instance (JCODE_SEARXNG_URL)."
                 },
                 "bing_market": {
                     "type": "string",
@@ -130,7 +130,13 @@ impl Tool for WebSearchTool {
 
         if results.is_empty() {
             return Ok(ToolOutput::new(format!(
-                "No results found for: {}",
+                "No results found for: {}\n\n\
+                 If results are consistently empty on this machine, the default \
+                 DuckDuckGo/Bing engines may be blocked here by TLS fingerprinting \
+                 or IP reputation (common on Linux/servers). Workarounds:\n\
+                 - Point at a SearXNG instance: set `websearch.searxng_url` (or \
+                 JCODE_SEARXNG_URL) and use engine \"searxng\".\n\
+                 - Or provide a Bing Search API key via JCODE_BING_API_KEY.",
                 params.query
             )));
         }
@@ -166,6 +172,7 @@ impl WebSearchTool {
                 self.search_bing(query, num_results, bing, allow_bing_api)
                     .await
             }
+            WebSearchEngine::Searxng => self.search_searxng(query, num_results).await,
         }
     }
 
@@ -316,6 +323,88 @@ impl WebSearchTool {
 
         Ok(results)
     }
+
+    /// Query a user-configured SearXNG instance via its JSON API. SearXNG is a
+    /// self-hostable metasearch engine; because the request goes to an instance
+    /// the user controls (or a public one they trust), it sidesteps the TLS
+    /// fingerprinting / IP-reputation blocks that DuckDuckGo and Bing apply to
+    /// scraped requests on some hosts (see issue #270).
+    async fn search_searxng(
+        &self,
+        query: &str,
+        num_results: usize,
+    ) -> Result<Vec<SearchResult>> {
+        let config = crate::config::config();
+        let base = config
+            .websearch
+            .searxng_url
+            .as_deref()
+            .filter(|u| !u.trim().is_empty())
+            .map(|u| u.to_string())
+            .or_else(|| {
+                std::env::var(&config.websearch.searxng_url_env)
+                    .ok()
+                    .filter(|u| !u.trim().is_empty())
+            })
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "SearXNG engine selected but no instance URL configured. Set \
+                     `websearch.searxng_url` in your config or the {} environment \
+                     variable to a SearXNG base URL (e.g. https://searx.example.org).",
+                    config.websearch.searxng_url_env
+                )
+            })?;
+
+        let endpoint = format!("{}/search", base.trim_end_matches('/'));
+        let response = self
+            .client
+            .get(&endpoint)
+            .query(&[("q", query), ("format", "json")])
+            .header(
+                reqwest::header::USER_AGENT,
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            )
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "SearXNG search failed with status {} (endpoint: {endpoint}). \
+                 Ensure the instance has the JSON format enabled in its settings.",
+                response.status()
+            ));
+        }
+
+        let parsed: SearxngResponse = response.json().await.map_err(|err| {
+            anyhow::anyhow!(
+                "SearXNG returned a non-JSON response ({err}). The instance may have \
+                 the JSON format disabled; enable `formats: [html, json]` in its settings."
+            )
+        })?;
+
+        Ok(parse_searxng_results(parsed, num_results))
+    }
+}
+
+/// Map a parsed SearXNG JSON response to `SearchResult`s, dropping entries with
+/// empty URLs and capping to `num_results`.
+fn parse_searxng_results(response: SearxngResponse, num_results: usize) -> Vec<SearchResult> {
+    response
+        .results
+        .into_iter()
+        .filter(|r| !r.url.trim().is_empty())
+        .take(num_results)
+        .map(|r| SearchResult {
+            title: if r.title.trim().is_empty() {
+                r.url.clone()
+            } else {
+                r.title
+            },
+            url: r.url,
+            snippet: r.content.unwrap_or_default(),
+        })
+        .collect()
 }
 
 mod search_regex {
@@ -366,6 +455,22 @@ mod search_regex {
         bing_caption,
         r#"(?s)<div[^>]*class="[^"]*\bb_caption\b[^"]*"[^>]*>.*?<p[^>]*>(.*?)</p>"#
     );
+}
+
+#[derive(Deserialize)]
+struct SearxngResponse {
+    #[serde(default)]
+    results: Vec<SearxngResult>,
+}
+
+#[derive(Deserialize)]
+struct SearxngResult {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -676,5 +781,61 @@ mod tests {
             !parse_ddg_results(html, 10).is_empty(),
             "real results page should yield results"
         );
+    }
+
+    #[test]
+    fn parses_searxng_json_results() {
+        // Shape of a real SearXNG /search?format=json response (#270).
+        let body = serde_json::json!({
+            "query": "rust",
+            "results": [
+                {
+                    "url": "https://www.rust-lang.org/",
+                    "title": "Rust Programming Language",
+                    "content": "A language empowering everyone."
+                },
+                {
+                    "url": "https://doc.rust-lang.org/book/",
+                    "title": "The Rust Book",
+                    "content": "Learn Rust."
+                },
+                // Entry with empty url is dropped; missing content tolerated.
+                { "url": "", "title": "junk" },
+                { "url": "https://crates.io", "title": "" }
+            ]
+        });
+        let parsed: SearxngResponse = serde_json::from_value(body).unwrap();
+        let results = parse_searxng_results(parsed, 10);
+        assert_eq!(results.len(), 3, "empty-url entry should be dropped");
+        assert_eq!(results[0].url, "https://www.rust-lang.org/");
+        assert_eq!(results[0].title, "Rust Programming Language");
+        assert_eq!(results[0].snippet, "A language empowering everyone.");
+        // Missing title falls back to the URL.
+        assert_eq!(results[2].title, "https://crates.io");
+        assert_eq!(results[2].snippet, "");
+    }
+
+    #[test]
+    fn searxng_results_respect_limit() {
+        let body = serde_json::json!({
+            "results": (0..10)
+                .map(|i| serde_json::json!({"url": format!("https://x/{i}"), "title": "t"}))
+                .collect::<Vec<_>>()
+        });
+        let parsed: SearxngResponse = serde_json::from_value(body).unwrap();
+        assert_eq!(parse_searxng_results(parsed, 3).len(), 3);
+    }
+
+    #[test]
+    fn websearch_engine_parses_searxng_aliases() {
+        assert_eq!(
+            WebSearchEngine::parse("searxng"),
+            Some(WebSearchEngine::Searxng)
+        );
+        assert_eq!(
+            WebSearchEngine::parse("searx"),
+            Some(WebSearchEngine::Searxng)
+        );
+        assert_eq!(WebSearchEngine::Searxng.as_str(), "searxng");
     }
 }

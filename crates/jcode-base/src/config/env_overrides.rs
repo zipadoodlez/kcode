@@ -309,6 +309,11 @@ impl Config {
         {
             self.websearch.bing_market = v;
         }
+        if let Ok(v) = std::env::var("JCODE_SEARXNG_URL")
+            && !v.trim().is_empty()
+        {
+            self.websearch.searxng_url = Some(v);
+        }
 
         if let Ok(v) = std::env::var("JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES") {
             let mut source_ids = Vec::new();
