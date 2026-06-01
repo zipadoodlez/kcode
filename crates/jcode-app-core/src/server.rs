@@ -1078,6 +1078,7 @@ impl Server {
             &crate::config::config().safety,
             Arc::clone(&self.sessions),
             Arc::clone(&self.soft_interrupt_queues),
+            Arc::clone(&self.shutdown_signals),
             Arc::clone(&self.swarm_state.members),
         );
 
