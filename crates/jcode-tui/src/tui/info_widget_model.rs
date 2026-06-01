@@ -51,6 +51,23 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         }
     }
 
+    // Current working directory.
+    if let Some(dir) = data
+        .working_dir
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let display = home_relative_dir(dir);
+        lines.push(Line::from(vec![
+            Span::styled(" ", Style::default().fg(rgb(140, 180, 255))),
+            Span::styled(
+                truncate_smart(&display, max_len.saturating_sub(2)),
+                Style::default().fg(rgb(140, 140, 150)),
+            ),
+        ]));
+    }
+
     if let Some(provider) = data
         .provider_name
         .as_deref()
@@ -338,6 +355,21 @@ fn short_service_tier(service_tier: &str) -> Option<&str> {
         "flex" => "flex",
         other => other,
     })
+}
+
+/// Render a directory path home-relative (e.g. `/home/me/x` -> `~/x`).
+fn home_relative_dir(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = home.to_string_lossy();
+        if !home.is_empty() && (trimmed == home || trimmed.starts_with(&format!("{home}/"))) {
+            return format!("~{}", &trimmed[home.len()..]);
+        }
+    }
+    trimmed.to_string()
 }
 
 #[cfg(test)]

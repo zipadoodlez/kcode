@@ -1492,7 +1492,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         .clone()
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| app.provider_name());
-    if !provider.is_empty() {
+    if !provider.is_empty() && !overscroll_is_runtime_placeholder(&provider) {
         if !spans.is_empty() {
             spans.push(sep());
         }
@@ -1588,6 +1588,15 @@ fn overscroll_is_placeholder(model: &str) -> bool {
         || m.starts_with("loading")
         || m == "connected"
         || m.contains("connecting to server")
+}
+
+/// Inert runtime provider labels (remote/replay/test-harness) shown before the
+/// real provider name is known; not real provider names.
+fn overscroll_is_runtime_placeholder(provider: &str) -> bool {
+    matches!(
+        provider.trim().to_ascii_lowercase().as_str(),
+        "remote" | "replay" | "test-harness"
+    )
 }
 
 fn overscroll_provider_display(provider: &str) -> String {

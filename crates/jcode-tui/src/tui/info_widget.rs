@@ -524,6 +524,8 @@ pub struct InfoWidgetData {
     pub native_compaction_threshold_tokens: Option<usize>,
     pub session_count: Option<usize>,
     pub session_name: Option<String>,
+    /// Current working directory for this session.
+    pub working_dir: Option<String>,
     pub client_count: Option<usize>,
     /// Memory system statistics
     pub memory_info: Option<MemoryInfo>,
