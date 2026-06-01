@@ -499,7 +499,7 @@ fn credentials_from_account(account: &OpenAiAccount) -> CodexCredentials {
             .account_id
             .clone()
             .or_else(|| account.id_token.as_deref().and_then(extract_account_id)),
-        expires_at: account.expires_at,
+        expires_at: resolve_expires_at(account.expires_at, &account.access_token),
     }
 }
 
@@ -512,7 +512,7 @@ fn credentials_from_legacy_tokens(tokens: &LegacyTokens) -> CodexCredentials {
             .account_id
             .clone()
             .or_else(|| tokens.id_token.as_deref().and_then(extract_account_id)),
-        expires_at: tokens.expires_at,
+        expires_at: resolve_expires_at(tokens.expires_at, &tokens.access_token),
     }
 }
 
@@ -565,6 +565,28 @@ fn decode_jwt_payload(token: &str) -> Option<Value> {
     let payload_b64 = token.split('.').nth(1)?;
     let decoded = URL_SAFE_NO_PAD.decode(payload_b64.as_bytes()).ok()?;
     serde_json::from_slice::<Value>(&decoded).ok()
+}
+
+/// Derive an access-token expiry (epoch millis) from the JWT `exp` claim.
+///
+/// The Codex CLI's `auth.json` does not persist an `expires_at`; it only stores
+/// the raw tokens plus a `last_refresh` timestamp. Without an expiry, jcode
+/// would never *proactively* refresh an imported token and would send a stale
+/// (often already-expired) access token on the first request, triggering a 401
+/// and an unnecessary "token refresh needed" / re-login. The OpenAI access
+/// token is a JWT whose `exp` claim tells us exactly when it dies, so we read
+/// it to recover the expiry.
+pub(crate) fn expires_at_from_access_token(access_token: &str) -> Option<i64> {
+    let payload = decode_jwt_payload(access_token)?;
+    let exp = payload.get("exp")?.as_i64()?;
+    // `exp` is in seconds since epoch; the rest of jcode tracks expiry in millis.
+    exp.checked_mul(1000)
+}
+
+/// Best-effort expiry for credentials: prefer an explicit `expires_at`, then
+/// fall back to the access token's JWT `exp` claim.
+fn resolve_expires_at(explicit: Option<i64>, access_token: &str) -> Option<i64> {
+    explicit.or_else(|| expires_at_from_access_token(access_token))
 }
 
 #[cfg(test)]

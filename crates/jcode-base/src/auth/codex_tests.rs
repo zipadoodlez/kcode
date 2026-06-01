@@ -94,6 +94,64 @@ fn decode_jwt_payload_valid() {
     assert_eq!(decoded["sub"], "user123");
 }
 
+fn jwt_with_exp(exp_secs: i64) -> String {
+    let payload = serde_json::json!({ "exp": exp_secs });
+    let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+    format!("header.{}.signature", payload_b64)
+}
+
+#[test]
+fn expires_at_from_access_token_reads_exp_claim_as_millis() {
+    // The Codex `auth.json` stores no `expires_at`; we recover it from the
+    // access-token JWT `exp` (seconds) and report it in millis.
+    let token = jwt_with_exp(1_780_000_000);
+    assert_eq!(
+        expires_at_from_access_token(&token),
+        Some(1_780_000_000_000)
+    );
+}
+
+#[test]
+fn expires_at_from_access_token_handles_missing_exp_and_garbage() {
+    let no_exp = {
+        let payload = serde_json::json!({ "sub": "u" });
+        let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+        format!("header.{}.signature", payload_b64)
+    };
+    assert_eq!(expires_at_from_access_token(&no_exp), None);
+    assert_eq!(expires_at_from_access_token("not-a-jwt"), None);
+    assert_eq!(expires_at_from_access_token(""), None);
+}
+
+#[test]
+fn legacy_tokens_without_expiry_recover_expires_at_from_jwt() {
+    // Reproduces the onboarding bug: the imported Codex token carries no
+    // explicit `expires_at`, so we must derive it from the JWT so jcode can
+    // refresh proactively instead of sending a dead token and forcing /login.
+    let tokens = LegacyTokens {
+        access_token: jwt_with_exp(1_780_000_000),
+        refresh_token: "rt_example".to_string(),
+        id_token: None,
+        account_id: Some("acct".to_string()),
+        expires_at: None,
+    };
+    let creds = credentials_from_legacy_tokens(&tokens);
+    assert_eq!(creds.expires_at, Some(1_780_000_000_000));
+}
+
+#[test]
+fn explicit_expires_at_takes_precedence_over_jwt() {
+    let tokens = LegacyTokens {
+        access_token: jwt_with_exp(1_780_000_000),
+        refresh_token: "rt_example".to_string(),
+        id_token: None,
+        account_id: None,
+        expires_at: Some(9_999_999_999_000),
+    };
+    let creds = credentials_from_legacy_tokens(&tokens);
+    assert_eq!(creds.expires_at, Some(9_999_999_999_000));
+}
+
 #[test]
 fn extract_account_id_from_jwt() {
     let payload = serde_json::json!({
