@@ -29,6 +29,45 @@ pub(super) fn cap_sdk_tool_content_for_history(tool_name: &str, content: String)
     )
 }
 
+/// Build rendered side-pane images from a tool output's attached images.
+///
+/// This mirrors how `render_messages_and_images` derives images from persisted
+/// session history (source = ToolResult), so live-streamed images match what a
+/// later History reload would produce. `tool_name` and `tool_input` provide the
+/// label fallback (e.g. the `read` tool's `file_path`).
+pub(super) fn tool_output_side_pane_images(
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+    output: &ToolOutput,
+) -> Vec<jcode_session_types::RenderedImage> {
+    if output.images.is_empty() {
+        return Vec::new();
+    }
+    let fallback_label = tool_input
+        .get("file_path")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    output
+        .images
+        .iter()
+        .map(|img| jcode_session_types::RenderedImage {
+            media_type: img.media_type.clone(),
+            data: img.data.clone(),
+            label: img
+                .label
+                .as_ref()
+                .map(|label| label.trim().to_string())
+                .filter(|label| !label.is_empty())
+                .or_else(|| fallback_label.clone()),
+            source: jcode_session_types::RenderedImageSource::ToolResult {
+                tool_name: tool_name.to_string(),
+            },
+        })
+        .collect()
+}
+
 pub(super) fn tool_output_to_content_blocks(
     tool_use_id: String,
     output: ToolOutput,

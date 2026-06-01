@@ -70,6 +70,7 @@ pub(in crate::tui::app) fn handle_server_event(
             | ServerEvent::ToolInput { .. }
             | ServerEvent::ToolExec { .. }
             | ServerEvent::ToolDone { .. }
+            | ServerEvent::SidePaneImages { .. }
             | ServerEvent::GeneratedImage { .. }
             | ServerEvent::BatchProgress { .. }
             | ServerEvent::TokenUsage { .. }
@@ -1091,6 +1092,37 @@ pub(in crate::tui::app) fn handle_server_event(
                 compacted_remaining,
                 compacted_hidden_prompts,
             );
+            true
+        }
+        ServerEvent::SidePaneImages { session_id, images } => {
+            if app.remote_session_id.as_deref() != Some(session_id.as_str()) {
+                crate::logging::info(&format!(
+                    "SidePaneImages: ignoring {} live image(s) for inactive session {}",
+                    images.len(),
+                    session_id
+                ));
+                return false;
+            }
+            if images.is_empty() {
+                return false;
+            }
+            // Append the freshly-read tool images so the pinned-image side pane
+            // updates immediately, without waiting for the next full History
+            // reload. A later History payload replaces this list wholesale, so
+            // duplicates are not a long-term concern.
+            let added = images.len();
+            app.remote_side_pane_images.extend(images);
+            crate::logging::info(&format!(
+                "SidePaneImages: appended {} live image(s) (total={}, user_hidden={}, explicit_hidden={}) session={}",
+                added,
+                app.remote_side_pane_images.len(),
+                app.side_panel_user_hidden,
+                app.side_panel_explicit_hidden,
+                session_id
+            ));
+            // Re-run the auto-hide bookkeeping so the pane reveals (unless the
+            // user explicitly hid it with Alt+M) and re-arms its auto-hide timer.
+            app.update_pinned_images_auto_hide();
             true
         }
         ServerEvent::SidePanelState { snapshot } => {

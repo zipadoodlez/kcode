@@ -1088,6 +1088,21 @@ impl Agent {
                                 error: None,
                             });
 
+                            let side_pane_images =
+                                tool_output_side_pane_images(&tc.name, &tc.input, &output);
+                            if !side_pane_images.is_empty() {
+                                logging::info(&format!(
+                                    "SidePaneImages: emitting {} image(s) from tool '{}' (session={})",
+                                    side_pane_images.len(),
+                                    tc.name,
+                                    self.session.id
+                                ));
+                                let _ = event_tx.send(ServerEvent::SidePaneImages {
+                                    session_id: self.session.id.clone(),
+                                    images: side_pane_images,
+                                });
+                            }
+
                             let blocks = tool_output_to_content_blocks(tc.id.clone(), output);
                             self.add_message_with_duration(
                                 Role::User,

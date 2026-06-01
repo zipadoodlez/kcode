@@ -21,7 +21,7 @@ use self::streaming::{
 };
 use self::tools::{
     cap_sdk_tool_content_for_history, cap_tool_output_for_history, print_tool_summary,
-    tool_output_to_content_blocks,
+    tool_output_side_pane_images, tool_output_to_content_blocks,
 };
 use self::utils::trace_enabled;
 use crate::build;
