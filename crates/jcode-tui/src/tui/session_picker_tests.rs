@@ -1023,14 +1023,15 @@ fn codex_session(id: &str) -> SessionInfo {
 }
 
 #[test]
-fn onboarding_banner_defaults_to_session_list_when_transcripts_exist() {
+fn onboarding_banner_defaults_to_start_new_when_transcripts_exist() {
     let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
     picker.activate_external_cli_filter(SessionFilterMode::Codex);
     picker.activate_onboarding_banner(vec![Line::from("welcome")]);
 
     assert!(picker.onboarding_banner_active());
-    // With transcripts present, Enter should resume (start-new is one Up away).
-    assert!(!picker.onboarding_start_new_highlighted());
+    // First-run onboarding highlights "Start a new session" by default so the
+    // common "just start" case is one Enter away; resuming is one Down away.
+    assert!(picker.onboarding_start_new_highlighted());
 }
 
 #[test]
@@ -1046,14 +1047,12 @@ fn onboarding_banner_defaults_to_start_new_when_no_transcripts() {
 }
 
 #[test]
-fn onboarding_banner_up_from_list_highlights_start_new_and_enter_returns_start_new() {
+fn onboarding_banner_enter_returns_start_new_and_arrows_toggle_list() {
     let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
     picker.activate_external_cli_filter(SessionFilterMode::Codex);
     picker.activate_onboarding_banner(vec![Line::from("welcome")]);
 
-    // Start on the session list; Up moves to the start-new row.
-    assert!(!picker.onboarding_start_new_highlighted());
-    picker.previous();
+    // Start-new is highlighted by default on first run.
     assert!(picker.onboarding_start_new_highlighted());
 
     // Enter while start-new is highlighted returns StartNewSession.
@@ -1065,9 +1064,11 @@ fn onboarding_banner_up_from_list_highlights_start_new_and_enter_returns_start_n
         OverlayAction::Selected(PickerResult::StartNewSession)
     ));
 
-    // Down moves back into the session list.
+    // Down moves into the session list; Up returns to the start-new row.
     picker.next();
     assert!(!picker.onboarding_start_new_highlighted());
+    picker.previous();
+    assert!(picker.onboarding_start_new_highlighted());
 }
 
 #[test]

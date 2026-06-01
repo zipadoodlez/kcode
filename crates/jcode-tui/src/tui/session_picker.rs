@@ -357,13 +357,15 @@ impl SessionPicker {
     /// Turn this picker into the first-run onboarding "resume or start new"
     /// experience: a formatted onboarding prompt is reserved at the top, a
     /// selectable "Start a new session" row sits above the session list, and the
-    /// session list itself starts highlighted (so Enter resumes the most recent
-    /// transcript while the start-new row stays one keystroke away).
+    /// start-new row starts highlighted so a first-run user who just wants to
+    /// dive in can press Enter to land on the clean new-session screen; the
+    /// resumable transcripts are one ↓ keystroke away.
     pub fn activate_onboarding_banner(&mut self, banner_lines: Vec<Line<'static>>) {
         self.onboarding_banner = Some(banner_lines);
-        // Default the highlight to the session list when transcripts exist so
-        // pressing Enter resumes; otherwise highlight the start-new row.
-        self.onboarding_start_new_highlighted = self.visible_session_count() == 0;
+        // Default the highlight to the "Start a new session" row. First-run
+        // onboarding optimizes for the common "just start" case; resuming an
+        // existing transcript is a deliberate down-arrow away.
+        self.onboarding_start_new_highlighted = true;
     }
 
     /// Whether the onboarding banner experience is active.
