@@ -1459,15 +1459,8 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     }
     let data = app.info_widget_data();
 
-    let label_style = Style::default().fg(rgb(95, 100, 120));
     let sep = || Span::styled(" · ", Style::default().fg(rgb(60, 62, 78)));
     let mut spans: Vec<Span> = Vec::new();
-
-    // Working directory (basename, with ~ for home)
-    if let Some(dir) = app.working_dir().and_then(|d| overscroll_dir_label(&d)) {
-        spans.push(Span::styled("▸ ", Style::default().fg(rgb(120, 150, 190))));
-        spans.push(Span::styled(dir, Style::default().fg(rgb(175, 190, 215))));
-    }
 
     // Model
     let model = data
@@ -1476,14 +1469,21 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         .filter(|m| !m.is_empty())
         .unwrap_or_else(|| app.provider_model());
     if !model.is_empty() && !overscroll_is_placeholder(&model) {
-        if !spans.is_empty() {
-            spans.push(sep());
-        }
-        spans.push(Span::styled("◆ ", Style::default().fg(rgb(150, 200, 255))));
         spans.push(Span::styled(
             model,
             Style::default().fg(rgb(225, 230, 245)).bold(),
         ));
+        // Reasoning level shown inline next to the model, e.g. " high".
+        if let Some(effort) = data
+            .reasoning_effort
+            .as_deref()
+            .and_then(overscroll_short_reasoning)
+        {
+            spans.push(Span::styled(
+                format!(" {}", effort),
+                Style::default().fg(rgb(200, 165, 235)),
+            ));
+        }
     }
 
     // Provider
@@ -1510,28 +1510,12 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         spans.push(Span::styled(label.to_string(), Style::default().fg(color)));
     }
 
-    // Reasoning level
-    if let Some(effort) = data
-        .reasoning_effort
-        .as_deref()
-        .and_then(overscroll_short_reasoning)
-    {
-        if !spans.is_empty() {
-            spans.push(sep());
-        }
-        spans.push(Span::styled("reasoning ", label_style));
-        spans.push(Span::styled(
-            effort.to_string(),
-            Style::default().fg(rgb(200, 165, 235)).bold(),
-        ));
-    }
 
     // Context usage as a rounded bar
     if let Some((used, limit)) = overscroll_context_usage(&data) {
         if !spans.is_empty() {
             spans.push(sep());
         }
-        spans.push(Span::styled("ctx ", label_style));
         spans.push(Span::styled(
             format!(
                 "{}/{} ",
@@ -1541,6 +1525,15 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
             Style::default().fg(rgb(165, 170, 190)),
         ));
         spans.extend(overscroll_context_bar(used, limit, 10));
+    }
+
+    // Working directory last (right side), shown as a home-relative path.
+    if let Some(dir) = app.working_dir().and_then(|d| overscroll_dir_label(&d)) {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
+        spans.push(Span::styled(" ", Style::default().fg(rgb(120, 150, 190))));
+        spans.push(Span::styled(dir, Style::default().fg(rgb(150, 170, 200))));
     }
 
     if spans.is_empty() {
@@ -1556,17 +1549,36 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     frame.render_widget(Paragraph::new(aligned_line), area);
 }
 
+/// Format a working dir path home-relative (~/foo/bar), keeping the last 2 segments.
 fn overscroll_dir_label(path: &str) -> Option<String> {
     let trimmed = path.trim_end_matches('/');
     if trimmed.is_empty() {
         return None;
     }
-    let basename = trimmed.rsplit('/').next().unwrap_or(trimmed);
-    if basename.is_empty() {
-        Some("/".to_string())
+    let display = if let Some(home) = std::env::var_os("HOME") {
+        let home = home.to_string_lossy();
+        if !home.is_empty() && (trimmed == home || trimmed.starts_with(&format!("{home}/"))) {
+            format!("~{}", &trimmed[home.len()..])
+        } else {
+            trimmed.to_string()
+        }
     } else {
-        Some(basename.to_string())
-    }
+        trimmed.to_string()
+    };
+    // Keep it short: show at most the last two path segments.
+    let segs: Vec<&str> = display.split('/').filter(|s| !s.is_empty()).collect();
+    let short = if display.starts_with('~') {
+        if segs.len() <= 2 {
+            display.clone()
+        } else {
+            format!("~/…/{}", segs[segs.len() - 1])
+        }
+    } else if segs.len() <= 2 {
+        format!("/{}", segs.join("/"))
+    } else {
+        format!("…/{}/{}", segs[segs.len() - 2], segs[segs.len() - 1])
+    };
+    Some(short)
 }
 
 /// Placeholder header strings used during remote startup; not real model names.
