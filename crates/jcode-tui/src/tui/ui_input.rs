@@ -720,26 +720,29 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
             }
             ProcessingStatus::RunningTool(ref name) => {
                 let half_width = 3;
-                let (left_bar, right_bar) =
-                    if crate::perf::tui_policy().enable_decorative_animations {
-                        let progress = elapsed * 2.0 % 1.0;
-                        let filled_pos = ((progress * half_width as f32) as usize) % half_width;
-                        let left_bar: String = (0..half_width)
-                            .map(|i| if i == filled_pos { '●' } else { '·' })
-                            .collect();
-                        let right_bar: String = (0..half_width)
-                            .map(|i| {
-                                if i == (half_width - 1 - filled_pos) {
-                                    '●'
-                                } else {
-                                    '·'
-                                }
-                            })
-                            .collect();
-                        (left_bar, right_bar)
-                    } else {
-                        ("···".to_string(), "···".to_string())
-                    };
+                let decorative = crate::perf::tui_policy().enable_decorative_animations;
+                // When decorative animations are disabled we still nudge the bar
+                // forward at a slow "liveness" rate so a long-running tool (e.g.
+                // bash) reads as alive instead of frozen.
+                let bar_speed = if decorative {
+                    2.0
+                } else {
+                    jcode_tui_style::theme::LIVENESS_INDICATOR_FPS / half_width as f32
+                };
+                let progress = elapsed * bar_speed % 1.0;
+                let filled_pos = ((progress * half_width as f32) as usize) % half_width;
+                let left_bar: String = (0..half_width)
+                    .map(|i| if i == filled_pos { '●' } else { '·' })
+                    .collect();
+                let right_bar: String = (0..half_width)
+                    .map(|i| {
+                        if i == (half_width - 1 - filled_pos) {
+                            '●'
+                        } else {
+                            '·'
+                        }
+                    })
+                    .collect();
 
                 let anim_color = animated_tool_color(elapsed);
                 let batch_prog = app.batch_progress();
