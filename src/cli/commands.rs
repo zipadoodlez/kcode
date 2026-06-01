@@ -10,7 +10,7 @@ use std::process::{Command as ProcessCommand, Stdio};
 
 use crate::{browser, gateway, memory, session, storage, tui};
 
-use super::terminal::{cleanup_tui_runtime, init_tui_runtime};
+use super::terminal::init_tui_runtime;
 
 mod provider_setup;
 mod report_info;
@@ -1546,7 +1546,7 @@ async fn run_ambient_visible() -> Result<()> {
 
     let result = app.run(terminal).await;
 
-    cleanup_tui_runtime(&tui_runtime, true);
+    tui_runtime.finish(true);
 
     if let Some(cycle_result) = crate::tool::ambient::take_cycle_result() {
         let result_path = VisibleCycleContext::result_path()?;
