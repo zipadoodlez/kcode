@@ -867,3 +867,127 @@ async fn env_snapshot_detail_is_minimal_for_empty_sessions_and_full_after_histor
 
     assert_eq!(agent.env_snapshot_detail(), EnvSnapshotDetail::Full);
 }
+
+/// A trivial tool used to simulate an MCP tool registering on the registry
+/// after the agent has already locked its tool snapshot.
+struct FakeMcpTool {
+    name: String,
+}
+
+#[async_trait]
+impl crate::tool::Tool for FakeMcpTool {
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn description(&self) -> &str {
+        "fake mcp tool"
+    }
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object"})
+    }
+    async fn execute(
+        &self,
+        _input: serde_json::Value,
+        _ctx: crate::tool::ToolContext,
+    ) -> anyhow::Result<ToolOutput> {
+        Ok(ToolOutput::new("ok"))
+    }
+}
+
+/// Reproduction for #206: MCP tools that register on the registry *after* the
+/// first turn locks the tool snapshot never reach the provider, because
+/// `tool_definitions()` returns the frozen `locked_tools` snapshot and the only
+/// unlock path (`unlock_tools_if_needed`) fires solely when the LLM invokes the
+/// `"mcp"` management tool — which it never does, since it cannot see the
+/// `mcp__*` tools it would need to trigger that unlock.
+#[tokio::test]
+async fn mcp_tools_registered_after_lock_are_visible_to_agent() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+
+    // First turn locks the snapshot (this is what happens before the async MCP
+    // registration spawn completes).
+    let before = agent.tool_definitions().await;
+    let before_len = before.len();
+    assert!(
+        !before.iter().any(|t| t.name.starts_with("mcp__")),
+        "precondition: no mcp tools before async registration completes"
+    );
+
+    // Simulate the spawned MCP registration task finishing: a new mcp__* tool
+    // lands on the shared registry.
+    agent
+        .registry
+        .register(
+            "mcp__test__write_memory".to_string(),
+            Arc::new(FakeMcpTool {
+                name: "mcp__test__write_memory".to_string(),
+            }) as Arc<dyn crate::tool::Tool>,
+        )
+        .await;
+
+    // The next turn should now advertise the MCP tool to the provider.
+    let after = agent.tool_definitions().await;
+    assert!(
+        after.iter().any(|t| t.name == "mcp__test__write_memory"),
+        "regression #206: MCP tool registered after the first turn never reaches \
+         the agent's tool surface (locked snapshot of {} tools is reused forever)",
+        before_len
+    );
+
+    // Once MCP tools are present in the locked snapshot, subsequent turns must
+    // return the *same* stable snapshot so provider prompt-cache hits stay warm
+    // (the whole point of locked_tools). The #206 fix must not flap.
+    let names = |defs: &[ToolDefinition]| -> Vec<String> {
+        defs.iter().map(|t| t.name.clone()).collect()
+    };
+    let stable_a = agent.tool_definitions().await;
+    let stable_b = agent.tool_definitions().await;
+    assert_eq!(
+        names(&stable_a),
+        names(&stable_b),
+        "tool snapshot must be stable across turns once MCP tools are present"
+    );
+    assert_eq!(
+        names(&stable_a),
+        names(&after),
+        "snapshot must not change after MCP tools are already included"
+    );
+}
+
+/// Without any newly-registered MCP tools, the locked snapshot must be returned
+/// verbatim on every turn (no rebuild, no cache invalidation). Guards the #206
+/// fix against re-snapshotting on turns where nothing changed.
+#[tokio::test]
+async fn tool_snapshot_is_stable_without_new_mcp_tools() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+
+    let first = agent.tool_definitions().await;
+    // Register a NON-mcp tool after locking — this should NOT trigger a rebuild,
+    // because the cache-stability optimization only yields to MCP arrival.
+    agent
+        .registry
+        .register(
+            "not_an_mcp_tool".to_string(),
+            Arc::new(FakeMcpTool {
+                name: "not_an_mcp_tool".to_string(),
+            }) as Arc<dyn crate::tool::Tool>,
+        )
+        .await;
+    let second = agent.tool_definitions().await;
+    let first_names: Vec<String> = first.iter().map(|t| t.name.clone()).collect();
+    let second_names: Vec<String> = second.iter().map(|t| t.name.clone()).collect();
+    assert_eq!(
+        first_names, second_names,
+        "non-MCP registry changes must not invalidate the locked tool snapshot"
+    );
+    assert!(
+        !second_names.iter().any(|n| n == "not_an_mcp_tool"),
+        "non-MCP tool registered after lock must not leak into the snapshot"
+    );
+}

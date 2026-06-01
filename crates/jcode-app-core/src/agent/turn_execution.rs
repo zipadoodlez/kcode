@@ -280,11 +280,43 @@ impl Agent {
         }
 
         // Return locked tools if available (prevents cache invalidation from
-        // MCP tools arriving asynchronously after the first API request)
+        // tools arriving asynchronously after the first API request).
+        //
+        // Exception: MCP servers connect on a background task and register
+        // `mcp__*` tools seconds after the session starts — typically *after*
+        // the first turn has already locked the snapshot. If we returned the
+        // stale snapshot forever, the model would never see MCP tools (#206).
+        // The only other unlock path fires when the model calls the `mcp`
+        // management tool, which it cannot do without first seeing MCP tools.
+        //
+        // So if the locked snapshot is missing MCP tools that are now present
+        // in the registry, rebuild it once. This costs exactly one provider
+        // prompt-cache miss per session (the turn MCP tools first appear) and
+        // is stable thereafter.
         if let Some(ref locked) = self.locked_tools {
-            return locked.clone();
+            if self.registry_has_new_mcp_tools(locked).await {
+                logging::info("MCP tools registered after lock — rebuilding tool snapshot (#206)");
+                self.unlock_tools();
+            } else {
+                return locked.clone();
+            }
         }
 
+        let tools = self.build_filtered_tool_definitions().await;
+
+        // Lock the tool list to prevent cache invalidation when more tools
+        // arrive asynchronously mid-session.
+        logging::info(&format!(
+            "Locking tool list at {} tools for cache stability",
+            tools.len()
+        ));
+        self.locked_tools = Some(tools.clone());
+        tools
+    }
+
+    /// Build the agent's tool definitions from the registry, applying the
+    /// session's `allowed_tools`, `disabled_tools`, and self-dev filters.
+    async fn build_filtered_tool_definitions(&self) -> Vec<ToolDefinition> {
         let mut tools = self.registry.definitions(self.allowed_tools.as_ref()).await;
         if !self.disabled_tools.is_empty() {
             tools.retain(|tool| !self.disabled_tools.contains(&tool.name));
@@ -292,15 +324,21 @@ impl Agent {
         if !self.session.is_canary {
             tools.retain(|tool| tool.name != "selfdev");
         }
-
-        // Lock the tool list on first call to prevent cache invalidation
-        // when MCP tools arrive asynchronously mid-session
-        logging::info(&format!(
-            "Locking tool list at {} tools for cache stability",
-            tools.len()
-        ));
-        self.locked_tools = Some(tools.clone());
         tools
+    }
+
+    /// Returns true if the registry contains `mcp__*` tools (subject to the
+    /// session's `allowed_tools` filter) that are not present in the currently
+    /// locked snapshot. Used to detect the async MCP-registration race (#206).
+    async fn registry_has_new_mcp_tools(&self, locked: &[ToolDefinition]) -> bool {
+        let registry_names = self.registry.tool_names().await;
+        let allowed = self.allowed_tools.as_ref();
+        registry_names.iter().any(|name| {
+            name.starts_with("mcp__")
+                && allowed.map(|set| set.contains(name)).unwrap_or(true)
+                && !self.disabled_tools.contains(name)
+                && !locked.iter().any(|t| &t.name == name)
+        })
     }
 
     pub async fn tool_names(&self) -> Vec<String> {
