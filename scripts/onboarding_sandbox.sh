@@ -22,7 +22,12 @@ run_in_sandbox() {
   ensure_dirs
   (
     cd "$repo_root"
-    env \
+    # Strip any inherited self-dev markers so the sandbox behaves like a real
+    # first-run install. `--no-selfdev` only prevents *setting*
+    # JCODE_CLIENT_SELFDEV_MODE; it cannot unset one inherited from a parent
+    # self-dev shell, which would otherwise force every sandbox session canary
+    # (suppressing the new-session suggestion cards we are trying to verify).
+    env -u JCODE_CLIENT_SELFDEV_MODE -u JCODE_SELFDEV -u JCODE_CANARY \
       JCODE_HOME="$jcode_home" \
       JCODE_RUNTIME_DIR="$runtime_dir" \
       "$@"
@@ -126,11 +131,33 @@ open_shell() {
 }
 
 run_jcode() {
+  # The sandbox should behave like a real standalone install, not a self-dev
+  # client. Because we launch from inside the repo, jcode would otherwise
+  # auto-detect the repository and join the shared self-dev server (remote
+  # mode), which both breaks isolation and skips local-only first-run behavior
+  # like the new-session model validation. `--no-selfdev` keeps it standalone,
+  # spawning its own server under the sandbox's JCODE_RUNTIME_DIR. Set
+  # JCODE_SANDBOX_SELFDEV=1 to opt back into the shared-server behavior.
+  local prefix=()
+  if [[ "${JCODE_SANDBOX_SELFDEV:-0}" != "1" ]]; then
+    prefix=(--no-selfdev)
+  fi
+  # Allow pointing the sandbox at an already-built binary (e.g. the selfdev
+  # profile output) without rebuilding the debug binary. Falls back to the
+  # debug binary, then to `cargo run`.
+  if [[ -n "${JCODE_SANDBOX_BIN:-}" ]]; then
+    if [[ -x "$JCODE_SANDBOX_BIN" ]]; then
+      run_in_sandbox "$JCODE_SANDBOX_BIN" "${prefix[@]}" "$@"
+      return
+    fi
+    echo "JCODE_SANDBOX_BIN=$JCODE_SANDBOX_BIN is not executable" >&2
+    return 1
+  fi
   local binary_path="$repo_root/target/debug/jcode"
   if [[ -x "$binary_path" ]]; then
-    run_in_sandbox "$binary_path" "$@"
+    run_in_sandbox "$binary_path" "${prefix[@]}" "$@"
   else
-    run_in_sandbox cargo run --bin jcode -- "$@"
+    run_in_sandbox cargo run --bin jcode -- "${prefix[@]}" "$@"
   fi
 }
 
