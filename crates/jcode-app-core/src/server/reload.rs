@@ -136,7 +136,7 @@ pub(super) async fn await_reload_signal(
 
         let prefers_selfdev = signal.prefer_selfdev_binary;
 
-        if let Some((binary, label)) = super::server_update_candidate(prefers_selfdev) {
+        if let Some((binary, label)) = super::reload_exec_target(prefers_selfdev) {
             if binary.exists() {
                 let socket = super::socket_path();
                 crate::logging::info(&format!(

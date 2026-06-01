@@ -353,8 +353,8 @@ use self::socket::{signal_ready_fd, socket_has_live_listener};
 
 pub use self::util::ServerIdentity;
 use self::util::{
-    debug_control_allowed, embedding_idle_unload_secs, git_common_dir_for, server_has_newer_binary,
-    server_update_candidate, startup_headless_recovery_test_delay, swarm_id_for_dir,
+    debug_control_allowed, embedding_idle_unload_secs, git_common_dir_for, reload_exec_target,
+    server_has_newer_binary, startup_headless_recovery_test_delay, swarm_id_for_dir,
 };
 
 mod file_activity;
