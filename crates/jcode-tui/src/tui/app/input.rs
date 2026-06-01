@@ -710,6 +710,7 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
                     app.input = prompt.clone();
                     app.cursor_pos = app.input.len();
                     app.follow_chat_bottom_for_typing();
+                    app.submit_input();
                     return true;
                 }
             }
