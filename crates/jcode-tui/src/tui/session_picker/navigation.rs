@@ -15,6 +15,16 @@ impl SessionPicker {
     }
 
     pub fn next(&mut self) {
+        // Onboarding: from the "Start a new session" row, Down moves into the
+        // session list (the first selectable session).
+        if self.onboarding_start_new_highlighted() {
+            self.onboarding_start_new_highlighted = false;
+            if self.visible_sessions.is_empty() {
+                // Nothing to move to; stay on the start-new row.
+                self.onboarding_start_new_highlighted = true;
+            }
+            return;
+        }
         if self.visible_sessions.is_empty() {
             return;
         }
@@ -27,7 +37,16 @@ impl SessionPicker {
     }
 
     pub fn previous(&mut self) {
+        // Onboarding: already on the start-new row -> nothing above it.
+        if self.onboarding_start_new_highlighted() {
+            return;
+        }
         if self.visible_sessions.is_empty() {
+            // Onboarding picker with no transcripts: Up lands on the start-new
+            // row (it's the only selectable thing).
+            if self.onboarding_banner.is_some() {
+                self.onboarding_start_new_highlighted = true;
+            }
             return;
         }
         let current = self.list_state.selected().unwrap_or(0);
@@ -35,6 +54,10 @@ impl SessionPicker {
             self.list_state.select(Some(prev));
             self.scroll_offset = 0;
             self.auto_scroll_preview = true;
+        } else if self.onboarding_banner.is_some() {
+            // At the top of the session list in onboarding mode -> move up to
+            // the "Start a new session" row.
+            self.onboarding_start_new_highlighted = true;
         }
     }
 

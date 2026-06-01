@@ -14,7 +14,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Padding, Paragraph},
 };
 use std::collections::HashSet;
 use std::io::IsTerminal;
@@ -51,6 +51,8 @@ pub enum PickerResult {
     SelectedInCurrentTerminal(Vec<ResumeTarget>),
     SelectedInNewTerminal(Vec<ResumeTarget>),
     RestoreCrashedGroup(Vec<String>),
+    /// The onboarding "Start a new session" row was chosen.
+    StartNewSession,
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +180,15 @@ pub struct SessionPicker {
     loading_message: Option<String>,
     pending_preview_load: Option<PendingSessionPreviewLoad>,
     preview_load_failures: HashSet<String>,
+    /// Onboarding banner shown at the top of the picker (first-run "resume or
+    /// start new" experience). When set, the picker reserves space at the top
+    /// for the formatted onboarding prompt and shows a selectable
+    /// "Start a new session" row above the session list.
+    onboarding_banner: Option<Vec<Line<'static>>>,
+    /// Whether the "Start a new session" row is currently highlighted (only
+    /// meaningful while `onboarding_banner` is set). Selecting it returns
+    /// [`PickerResult::StartNewSession`].
+    onboarding_start_new_highlighted: bool,
 }
 
 impl SessionPicker {
@@ -217,6 +228,8 @@ impl SessionPicker {
             loading_message: None,
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
+            onboarding_banner: None,
+            onboarding_start_new_highlighted: false,
         };
         picker.rebuild_items();
         picker
@@ -252,6 +265,8 @@ impl SessionPicker {
             loading_message: Some("Loading sessions…".to_string()),
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
+            onboarding_banner: None,
+            onboarding_start_new_highlighted: false,
         }
     }
 
@@ -320,6 +335,8 @@ impl SessionPicker {
             loading_message: None,
             pending_preview_load: None,
             preview_load_failures: HashSet::new(),
+            onboarding_banner: None,
+            onboarding_start_new_highlighted: false,
         };
         picker.rebuild_items();
         picker
@@ -335,6 +352,28 @@ impl SessionPicker {
     pub fn activate_external_cli_filter(&mut self, mode: SessionFilterMode) {
         self.filter_mode = mode;
         self.rebuild_items();
+    }
+
+    /// Turn this picker into the first-run onboarding "resume or start new"
+    /// experience: a formatted onboarding prompt is reserved at the top, a
+    /// selectable "Start a new session" row sits above the session list, and the
+    /// session list itself starts highlighted (so Enter resumes the most recent
+    /// transcript while the start-new row stays one keystroke away).
+    pub fn activate_onboarding_banner(&mut self, banner_lines: Vec<Line<'static>>) {
+        self.onboarding_banner = Some(banner_lines);
+        // Default the highlight to the session list when transcripts exist so
+        // pressing Enter resumes; otherwise highlight the start-new row.
+        self.onboarding_start_new_highlighted = self.visible_session_count() == 0;
+    }
+
+    /// Whether the onboarding banner experience is active.
+    pub fn onboarding_banner_active(&self) -> bool {
+        self.onboarding_banner.is_some()
+    }
+
+    /// Whether the onboarding "Start a new session" row is currently highlighted.
+    pub fn onboarding_start_new_highlighted(&self) -> bool {
+        self.onboarding_banner.is_some() && self.onboarding_start_new_highlighted
     }
 
     /// Number of sessions currently visible under the active filter.
@@ -708,6 +747,9 @@ impl SessionPicker {
                 self.toggle_selected_session();
             }
             KeyCode::Enter => {
+                if self.onboarding_start_new_highlighted() {
+                    return Ok(OverlayAction::Selected(PickerResult::StartNewSession));
+                }
                 let targets = self.selection_or_current_targets();
                 if !targets.is_empty() {
                     return Ok(OverlayAction::Selected(
@@ -1196,19 +1238,92 @@ impl SessionPicker {
         frame.render_widget(paragraph, area);
     }
 
+    /// Render the reserved top band for the first-run onboarding experience:
+    /// the formatted onboarding prompt followed by a selectable
+    /// "Start a new session" row.
+    fn render_onboarding_band(&self, frame: &mut Frame, area: Rect) {
+        if area.height == 0 {
+            return;
+        }
+        let accent = rgb(186, 139, 255);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(accent))
+            .padding(Padding::horizontal(1));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.height == 0 {
+            return;
+        }
+
+        // Reserve the last line of the band for the "Start a new session" row.
+        let prompt_height = inner.height.saturating_sub(1);
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(prompt_height), Constraint::Length(1)])
+            .split(inner);
+
+        let prompt_lines = self.onboarding_banner.clone().unwrap_or_default();
+        if prompt_height > 0 {
+            let prompt = Paragraph::new(prompt_lines)
+                .alignment(Alignment::Left)
+                .wrap(ratatui::widgets::Wrap { trim: false });
+            frame.render_widget(prompt, chunks[0]);
+        }
+
+        let selected = self.onboarding_start_new_highlighted;
+        let (marker, marker_style, label_style) = if selected {
+            (
+                "▸ ",
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            (
+                "  ",
+                Style::default().fg(rgb(120, 120, 130)),
+                Style::default().fg(rgb(180, 180, 190)),
+            )
+        };
+        let start_new = Line::from(vec![
+            Span::styled(marker, marker_style),
+            Span::styled("Start a new session", label_style),
+            Span::styled(
+                "  (or pick a session below to resume)",
+                Style::default().fg(rgb(90, 90, 100)),
+            ),
+        ]);
+        let row = Paragraph::new(start_new).style(if selected {
+            Style::default().bg(rgb(40, 32, 60))
+        } else {
+            Style::default()
+        });
+        frame.render_widget(row, chunks[1]);
+    }
+
     pub fn render(&mut self, frame: &mut Frame) {
         let has_banner = self.crashed_sessions.is_some();
         let has_search = self.search_active || !self.search_query.is_empty();
-
+        let has_onboarding = self.onboarding_banner.is_some();
         // Build vertical constraints
         let mut v_constraints = Vec::new();
+        if has_onboarding {
+            // Reserve ~20% of the height for the onboarding prompt + the
+            // "Start a new session" row, clamped to a sensible band.
+            let total = frame.area().height;
+            let reserved = ((total as u32 * 20 / 100) as u16).clamp(6, total.saturating_sub(6));
+            v_constraints.push(Constraint::Length(reserved.max(6)));
+        }
         if has_banner {
             v_constraints.push(Constraint::Length(1));
         }
         if has_search {
             v_constraints.push(Constraint::Length(1));
         }
-        v_constraints.push(Constraint::Min(10));
+        v_constraints.push(Constraint::Min(8));
 
         let v_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1216,6 +1331,12 @@ impl SessionPicker {
             .split(frame.area());
 
         let mut chunk_idx = 0;
+
+        // Render the onboarding band (prompt + start-new row) if present.
+        if has_onboarding {
+            self.render_onboarding_band(frame, v_chunks[chunk_idx]);
+            chunk_idx += 1;
+        }
 
         // Render banner if present
         if has_banner {

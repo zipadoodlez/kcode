@@ -2003,6 +2003,15 @@ impl App {
                     | PickerResult::SelectedInNewTerminal(ids)
                     | PickerResult::SelectedInCurrentTerminal(ids) => ids,
                     PickerResult::RestoreCrashedGroup(_) => Vec::new(),
+                    PickerResult::StartNewSession => {
+                        // User explicitly chose to start fresh; close the picker
+                        // and show the onboarding suggestion cards.
+                        self.session_picker_overlay = None;
+                        self.session_picker_mode = SessionPickerMode::Resume;
+                        let _ = cli;
+                        self.onboarding_show_suggestions();
+                        return Ok(());
+                    }
                 };
                 self.session_picker_overlay = None;
                 self.session_picker_mode = SessionPickerMode::Resume;
@@ -2033,6 +2042,13 @@ impl App {
             }
             OverlayAction::Selected(PickerResult::RestoreCrashedGroup(session_ids)) => {
                 self.handle_batch_crash_restore(&session_ids);
+            }
+            OverlayAction::Selected(PickerResult::StartNewSession) => {
+                // Only the onboarding picker emits this, and that case is
+                // handled by the onboarding arm above. Outside onboarding,
+                // treat it as a no-op close.
+                self.session_picker_overlay = None;
+                self.session_picker_mode = SessionPickerMode::Resume;
             }
         }
         Ok(())

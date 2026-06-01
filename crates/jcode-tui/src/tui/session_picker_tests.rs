@@ -1010,6 +1010,66 @@ fn onboarding_external_filter_with_no_matches_has_no_target() {
     assert!(picker.latest_visible_resume_target().is_none());
 }
 
+fn codex_session(id: &str) -> SessionInfo {
+    let mut s = make_session(id, id, false, SessionStatus::Closed);
+    s.source = SessionSource::Codex;
+    s.model = Some("gpt-5-codex".to_string());
+    s.last_active_at = Some(Utc::now());
+    s.resume_target = ResumeTarget::CodexSession {
+        session_id: id.to_string(),
+        session_path: format!("/tmp/{id}.jsonl"),
+    };
+    s
+}
+
+#[test]
+fn onboarding_banner_defaults_to_session_list_when_transcripts_exist() {
+    let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
+    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+    picker.activate_onboarding_banner(vec![Line::from("welcome")]);
+
+    assert!(picker.onboarding_banner_active());
+    // With transcripts present, Enter should resume (start-new is one Up away).
+    assert!(!picker.onboarding_start_new_highlighted());
+}
+
+#[test]
+fn onboarding_banner_defaults_to_start_new_when_no_transcripts() {
+    // No Codex transcripts -> the only selectable affordance is "Start new".
+    let jcode = make_session("jcode_only", "jcode", false, SessionStatus::Closed);
+    let mut picker = SessionPicker::new(vec![jcode]);
+    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+    picker.activate_onboarding_banner(vec![Line::from("welcome")]);
+
+    assert_eq!(picker.visible_session_count(), 0);
+    assert!(picker.onboarding_start_new_highlighted());
+}
+
+#[test]
+fn onboarding_banner_up_from_list_highlights_start_new_and_enter_returns_start_new() {
+    let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
+    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+    picker.activate_onboarding_banner(vec![Line::from("welcome")]);
+
+    // Start on the session list; Up moves to the start-new row.
+    assert!(!picker.onboarding_start_new_highlighted());
+    picker.previous();
+    assert!(picker.onboarding_start_new_highlighted());
+
+    // Enter while start-new is highlighted returns StartNewSession.
+    let action = picker
+        .handle_overlay_key(KeyCode::Enter, KeyModifiers::empty())
+        .expect("overlay key");
+    assert!(matches!(
+        action,
+        OverlayAction::Selected(PickerResult::StartNewSession)
+    ));
+
+    // Down moves back into the session list.
+    picker.next();
+    assert!(!picker.onboarding_start_new_highlighted());
+}
+
 #[test]
 fn test_keyboard_scroll_uses_preview_focus_for_paging() {
     let s1 = make_session("session_1", "one", false, SessionStatus::Closed);

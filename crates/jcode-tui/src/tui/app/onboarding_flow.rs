@@ -7,16 +7,19 @@
 //!                          user to log in right inside the TUI (the fresh
 //!                          install no longer runs a blocking CLI login).
 //!                          Skipped entirely when credentials already exist.
-//!   2. `ContinuePrompt`  - if we detect an external Codex or Claude Code
-//!                          OAuth login, ask whether they want to continue
-//!                          where they last left off. Auto-selects "Yes" after
-//!                          [`AUTO_ADVANCE`] if they don't choose.
-//!   3. `TranscriptPick`  - render their recent external transcripts in a
-//!                          resume-style picker (single select). Auto-selects
-//!                          the most recent after [`AUTO_ADVANCE`].
-//!   4. `Suggestions`     - the existing prompt-suggestion cards. Reached when
-//!                          they answer "No", when there is no external OAuth,
-//!                          or as the terminal resting state.
+//!   2. `TranscriptPick`  - if we detect external Codex / Claude Code
+//!                          transcripts, drop the user straight into a
+//!                          resume-style picker. The picker reserves a top band
+//!                          for an onboarding prompt and offers a selectable
+//!                          "Start a new session" row alongside the resumable
+//!                          sessions. Nothing auto-selects; the user resumes a
+//!                          session or starts fresh explicitly.
+//!   3. `Suggestions`     - the existing prompt-suggestion cards. Reached when
+//!                          they choose "Start a new session", when there is no
+//!                          external OAuth, or as the terminal resting state.
+//!
+//!   (`ContinuePrompt` is retained as a legacy phase for replay/test fixtures
+//!   but is no longer entered by the live flow.)
 //!
 //! If anything fails along the continue path (no transcripts, load error,
 //! resume failure) we fall back to seeding the input with a prompt that asks
@@ -25,9 +28,6 @@
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-
-/// How long we wait on an auto-advancing phase before choosing the default.
-pub(crate) const AUTO_ADVANCE: Duration = Duration::from_secs(10);
 
 /// How long we wait on a yes/no decision phase (login import, telemetry
 /// consent) before auto-selecting the highlighted default. We keep this short
@@ -216,25 +216,6 @@ impl OnboardingFlow {
         !matches!(self.phase, OnboardingPhase::Done)
     }
 
-    /// Seconds remaining before the current auto-advancing phase fires, if any.
-    pub(crate) fn auto_advance_remaining(&self) -> Option<u64> {
-        let shown_at = match &self.phase {
-            OnboardingPhase::TranscriptPick { shown_at, .. } => *shown_at,
-            _ => return None,
-        };
-        let elapsed = shown_at.elapsed();
-        Some(AUTO_ADVANCE.saturating_sub(elapsed).as_secs())
-    }
-
-    /// Whether the current auto-advancing phase has timed out.
-    pub(crate) fn auto_advance_due(&self) -> bool {
-        let shown_at = match &self.phase {
-            OnboardingPhase::TranscriptPick { shown_at, .. } => *shown_at,
-            _ => return false,
-        };
-        shown_at.elapsed() >= AUTO_ADVANCE
-    }
-
     /// Seconds remaining on the longer [`DECISION_TIMEOUT`] yes/no phases
     /// (login import walkthrough, telemetry consent), if one is active.
     pub(crate) fn decision_seconds_remaining(&self) -> Option<u64> {
@@ -327,13 +308,6 @@ mod tests {
             phase: OnboardingPhase::Done,
         };
         assert!(!flow.is_active());
-    }
-
-    #[test]
-    fn auto_advance_none_outside_timed_phases() {
-        let flow = OnboardingFlow::begin();
-        assert_eq!(flow.auto_advance_remaining(), None);
-        assert!(!flow.auto_advance_due());
     }
 
     #[test]

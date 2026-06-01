@@ -686,7 +686,7 @@ pub fn list_sessions() -> Result<()> {
 
             Ok(())
         }
-        None => {
+        None | Some(tui::session_picker::PickerResult::StartNewSession) => {
             eprintln!("No session selected.");
             Ok(())
         }

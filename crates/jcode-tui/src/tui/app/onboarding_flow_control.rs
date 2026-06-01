@@ -202,16 +202,17 @@ impl App {
     }
 
     /// Advance out of the model-selection phase once a model has been chosen.
-    /// Decides whether to offer "continue where you left off" based on detected
-    /// external Codex / Claude Code OAuth logins. When both CLIs are present we
-    /// offer whichever one has the most recent transcript, so the user resumes
-    /// where they actually last worked rather than always defaulting to Codex.
+    /// When we detect external Codex / Claude Code transcripts, drop the user
+    /// straight into the resume picker (with an onboarding banner + a
+    /// "Start a new session" option) instead of asking a separate Yes/No
+    /// "continue where you left off" question. When both CLIs are present we
+    /// surface whichever one has the most recent transcript.
     pub(super) fn onboarding_after_model_select(&mut self) {
         if !matches!(self.onboarding_phase(), Some(OnboardingPhase::ModelSelect)) {
             return;
         }
         match self.onboarding_most_recent_external_cli() {
-            Some(cli) => self.onboarding_enter_continue_prompt(cli),
+            Some(cli) => self.onboarding_open_transcript_picker(cli),
             None => self.onboarding_show_suggestions(),
         }
     }
@@ -241,6 +242,11 @@ impl App {
     /// Enter the "Continue where you left off?" phase. Highlightable Yes/No
     /// with a [`DECISION_TIMEOUT`] countdown; the default (and timeout choice)
     /// is "Yes" so the resume menu opens unless the user declines.
+    ///
+    /// Retained for compatibility with replay/test fixtures and the
+    /// `ContinuePrompt` rendering/key/tick paths. The live onboarding flow now
+    /// opens the resume picker directly instead of asking this Yes/No question.
+    #[allow(dead_code)]
     fn onboarding_enter_continue_prompt(&mut self, cli: ExternalCli) {
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ContinuePrompt {
@@ -615,6 +621,8 @@ impl App {
             return;
         }
 
+        picker.activate_onboarding_banner(Self::onboarding_resume_banner_lines(cli));
+
         self.session_picker_overlay = Some(RefCell::new(picker));
         self.session_picker_mode = SessionPickerMode::Onboarding { cli };
         if let Some(flow) = self.onboarding_flow.as_mut() {
@@ -624,30 +632,34 @@ impl App {
             };
         }
         self.set_status_notice(format!(
-            "Pick a {} session to continue (auto-selects latest in 10s)",
+            "Resume a {} session (↑↓ to choose, Enter to resume) or pick \"Start a new session\"",
             cli.label()
         ));
     }
 
-    /// Auto-select the most recent transcript in the onboarding picker (called
-    /// on the 10s timeout). Falls back to session-search if nothing resolves.
-    pub(super) fn onboarding_auto_select_latest_transcript(&mut self, cli: ExternalCli) {
-        let target = self
-            .session_picker_overlay
-            .as_ref()
-            .and_then(|cell| cell.borrow().latest_visible_resume_target());
-
-        match target {
-            Some(target) => {
-                self.session_picker_overlay = None;
-                self.handle_session_picker_current_terminal_selection(&[target]);
-                self.onboarding_finish();
-            }
-            None => {
-                self.session_picker_overlay = None;
-                self.onboarding_fallback_to_session_search(cli);
-            }
-        }
+    /// Formatted onboarding prompt shown in the reserved top band of the
+    /// resume picker on first run.
+    fn onboarding_resume_banner_lines(cli: ExternalCli) -> Vec<ratatui::text::Line<'static>> {
+        use ratatui::style::{Color, Modifier, Style};
+        use ratatui::text::{Line, Span};
+        let accent = crate::tui::color_support::rgb(186, 139, 255);
+        vec![
+            Line::from(vec![Span::styled(
+                "Welcome to jcode 🎉",
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            )]),
+            Line::from(vec![Span::styled(
+                format!(
+                    "We found your {} sessions. Pick one below to pick up right where you left off,",
+                    cli.label()
+                ),
+                Style::default().fg(Color::White),
+            )]),
+            Line::from(vec![Span::styled(
+                "or start fresh with a brand-new session.",
+                Style::default().fg(Color::White),
+            )]),
+        ]
     }
 
     /// Fallback: seed the input with a prompt asking the agent to session-search
@@ -804,36 +816,8 @@ impl App {
             _ => {}
         }
 
-        let due = self
-            .onboarding_flow
-            .as_ref()
-            .map(OnboardingFlow::auto_advance_due)
-            .unwrap_or(false);
-        if !due {
-            // Keep the countdown visible on the timed phases.
-            if let Some(remaining) = self
-                .onboarding_flow
-                .as_ref()
-                .and_then(OnboardingFlow::auto_advance_remaining)
-            {
-                match self.onboarding_phase() {
-                    Some(OnboardingPhase::TranscriptPick { .. }) => {
-                        self.set_status_notice(format!(
-                            "Pick a session to continue (auto-selects latest in {remaining}s)"
-                        ));
-                        return true;
-                    }
-                    _ => {}
-                }
-            }
-            return false;
-        }
-        match self.onboarding_phase().cloned() {
-            Some(OnboardingPhase::TranscriptPick { cli, .. }) => {
-                self.onboarding_auto_select_latest_transcript(cli);
-                true
-            }
-            _ => false,
-        }
+        // The transcript/resume picker no longer auto-selects: the user either
+        // resumes a session or chooses "Start a new session" explicitly.
+        false
     }
 }

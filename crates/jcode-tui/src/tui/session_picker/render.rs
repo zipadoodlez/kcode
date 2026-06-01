@@ -458,11 +458,15 @@ impl SessionPicker {
                     )))
                     .border_style(Style::default().fg(border_color)),
             )
-            .highlight_style(
+            .highlight_style(if self.onboarding_start_new_highlighted() {
+                // Focus is on the onboarding "Start a new session" row; dim the
+                // list selection so only one row reads as active.
+                Style::default().fg(rgb(150, 150, 160))
+            } else {
                 Style::default()
                     .bg(rgb(40, 44, 52))
-                    .add_modifier(Modifier::BOLD),
-            );
+                    .add_modifier(Modifier::BOLD)
+            });
 
         frame.render_stateful_widget(list, area, &mut self.list_state);
     }
