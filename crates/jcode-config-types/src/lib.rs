@@ -860,6 +860,10 @@ pub struct SafetyConfig {
     pub jade_relay_session_id: Option<String>,
     /// Enable Jade relay prompt → agent directive feature (default: false)
     pub jade_relay_reply_enabled: bool,
+    /// Enable Jade relay device launch commands that open headed local sessions (default: false)
+    pub jade_relay_launch_enabled: bool,
+    /// Default working directory for remotely launched headed sessions
+    pub jade_relay_launch_working_dir: Option<String>,
 }
 
 impl Default for SafetyConfig {
@@ -893,6 +897,8 @@ impl Default for SafetyConfig {
             jade_relay_user_id: None,
             jade_relay_session_id: None,
             jade_relay_reply_enabled: false,
+            jade_relay_launch_enabled: false,
+            jade_relay_launch_working_dir: None,
         }
     }
 }

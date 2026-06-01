@@ -305,7 +305,16 @@ desktop_notifications = true
 # discord_channel_id = ""    # Channel ID to post in
 # discord_bot_user_id = ""   # Bot's user ID (for filtering own messages)
 # discord_reply_enabled = false  # Messages in channel become agent directives
-"#;
+
+# Jade cloud relay (outbound-only long polling, disabled by default).
+# Prefer environment variables for secrets:
+# JCODE_JADE_RELAY_API_BASE, JCODE_JADE_RELAY_TOKEN, JCODE_JADE_RELAY_TOKEN_ID,
+# JCODE_JADE_RELAY_USER_ID, JCODE_JADE_RELAY_SESSION_ID.
+# jade_relay_enabled = false
+# jade_relay_reply_enabled = false   # Deliver cloud prompts to one configured live session.
+# jade_relay_launch_enabled = false  # Allow cloud device commands to open headed local sessions.
+# jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
+	"#;
 
         std::fs::write(&path, default_content)?;
         Ok(path)
