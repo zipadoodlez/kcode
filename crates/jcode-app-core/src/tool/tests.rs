@@ -462,3 +462,56 @@ async fn test_request_permission_is_ambient_only() {
         "request_permission should be available after ambient tool registration"
     );
 }
+
+#[test]
+fn closest_tool_names_suggests_near_misses() {
+    let available = ["todo", "end_ambient_cycle", "bash", "read", "write", "edit"];
+    // Exact-ish prefix/typo cases the ambient agent hit (#104).
+    let s = Registry::closest_tool_names("todos", &available);
+    assert_eq!(s.first().map(String::as_str), Some("todo"));
+
+    let s = Registry::closest_tool_names("end_ambient_cyle", &available);
+    assert!(
+        s.iter().any(|n| n == "end_ambient_cycle"),
+        "got {s:?}"
+    );
+
+    // Case-insensitive containment.
+    let s = Registry::closest_tool_names("Bash", &available);
+    assert_eq!(s.first().map(String::as_str), Some("bash"));
+
+    // A wildly unrelated name should yield no confident suggestion.
+    let s = Registry::closest_tool_names("xyzzy_quux", &available);
+    assert!(s.is_empty(), "got {s:?}");
+}
+
+#[tokio::test]
+async fn unknown_tool_error_lists_available_tools_and_suggestions() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider).await;
+    registry.register_ambient_tools().await;
+
+    let ctx = ToolContext {
+        session_id: "test-unknown-tool".to_string(),
+        message_id: "test".to_string(),
+        tool_call_id: "test".to_string(),
+        working_dir: None,
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: ToolExecutionMode::Direct,
+    };
+    let err = registry
+        .execute("ToolSearch", serde_json::json!({}), ctx)
+        .await
+        .expect_err("ToolSearch is not a real tool");
+    let msg = err.to_string();
+    assert!(msg.contains("Unknown tool: ToolSearch"), "got: {msg}");
+    assert!(
+        msg.contains("Available tools:"),
+        "error must list available tools so the model can recover (#104): {msg}"
+    );
+    assert!(
+        msg.contains("end_ambient_cycle"),
+        "available list should include registered ambient tools: {msg}"
+    );
+}
