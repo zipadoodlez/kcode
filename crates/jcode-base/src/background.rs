@@ -462,6 +462,24 @@ impl BackgroundTaskManager {
         session_id: &str,
         handle: JoinHandle<Result<jcode_tool_types::ToolOutput>>,
     ) -> BackgroundTaskInfo {
+        self.adopt_with_options(tool_name, None, session_id, true, false, handle)
+            .await
+    }
+
+    /// Adopt an already-spawned task as a background task, with explicit display
+    /// name and delivery flags. Used both for user-initiated handoff (Alt+B) and
+    /// for promoting a foreground command that exceeded its timeout but is still
+    /// running, so it keeps running and surfaces as a background-task card.
+    pub async fn adopt_with_options(
+        &self,
+        tool_name: &str,
+        display_name: Option<String>,
+        session_id: &str,
+        notify: bool,
+        wake: bool,
+        handle: JoinHandle<Result<jcode_tool_types::ToolOutput>>,
+    ) -> BackgroundTaskInfo {
+        let (notify, wake) = normalize_delivery(notify, wake);
         let task_id = Self::generate_task_id();
         let output_path = self.output_dir.join(format!("{}.output", task_id));
         let status_path = self.output_dir.join(format!("{}.status.json", task_id));
@@ -469,7 +487,7 @@ impl BackgroundTaskManager {
         let initial_status = TaskStatusFile {
             task_id: task_id.clone(),
             tool_name: tool_name.to_string(),
-            display_name: None,
+            display_name: display_name.clone(),
             session_id: session_id.to_string(),
             status: BackgroundTaskStatus::Running,
             exit_code: None,
@@ -479,15 +497,21 @@ impl BackgroundTaskManager {
             duration_secs: None,
             pid: None,
             detached: false,
-            notify: true,
-            wake: false,
+            notify,
+            wake,
             progress: None,
             event_history: Vec::new(),
         };
         if let Ok(json) = serde_json::to_string_pretty(&initial_status) {
             let _ = std::fs::write(&status_path, json);
         }
-        Self::publish_task_started_activity(&task_id, tool_name, None, session_id, true);
+        Self::publish_task_started_activity(
+            &task_id,
+            tool_name,
+            display_name.as_deref(),
+            session_id,
+            notify,
+        );
 
         let output_path_clone = output_path.clone();
         let status_path_clone = status_path.clone();
@@ -497,7 +521,7 @@ impl BackgroundTaskManager {
         let started_at = Instant::now();
         let started_at_rfc3339 = initial_status.started_at.clone();
         let display_name_owned = initial_status.display_name.clone();
-        let (delivery_flags_tx, delivery_flags_rx) = watch::channel((true, false));
+        let (delivery_flags_tx, delivery_flags_rx) = watch::channel((notify, wake));
 
         let wrapper_handle = tokio::spawn(async move {
             let tool_result = handle.await;

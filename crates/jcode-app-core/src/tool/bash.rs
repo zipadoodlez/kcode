@@ -17,7 +17,6 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
-use tokio::time::timeout;
 
 const MAX_OUTPUT_LEN: usize = 30000;
 const DEFAULT_TIMEOUT_MS: u64 = 120000;
@@ -665,28 +664,39 @@ impl BashTool {
         let stdout_handle = child.stdout.take();
         let stderr_handle = child.stderr.take();
 
-        let result = timeout(timeout_duration, async {
-            let stdout_task = tokio::spawn(async move {
-                let mut buf = String::new();
-                if let Some(mut out) = stdout_handle {
-                    let _ = out.read_to_string(&mut buf).await;
-                }
-                buf
-            });
+        // Owned copies so the work can outlive this call if it is promoted to a
+        // background task on timeout.
+        let title = params
+            .intent
+            .clone()
+            .unwrap_or_else(|| params.command.clone());
+        let stdin_tx = ctx.stdin_request_tx.clone();
+        let tool_call_id = ctx.tool_call_id.clone();
+        let title_for_work = title.clone();
 
-            let stderr_task = tokio::spawn(async move {
-                let mut buf = String::new();
-                if let Some(mut err) = stderr_handle {
-                    let _ = err.read_to_string(&mut buf).await;
-                }
-                buf
-            });
+        // Run the command (read stdout/stderr, service stdin, wait for exit) in a
+        // dedicated task so that, if it exceeds the foreground timeout, we can hand
+        // the still-running task off to the background manager instead of killing it.
+        let mut work_handle: tokio::task::JoinHandle<Result<ToolOutput>> =
+            tokio::spawn(async move {
+                let stdout_task = tokio::spawn(async move {
+                    let mut buf = String::new();
+                    if let Some(mut out) = stdout_handle {
+                        let _ = out.read_to_string(&mut buf).await;
+                    }
+                    buf
+                });
 
-            let stdin_task = if has_stdin_channel {
-                Some(tokio::spawn({
-                    let stdin_tx = ctx.stdin_request_tx.clone();
-                    let tool_call_id = ctx.tool_call_id.clone();
-                    async move {
+                let stderr_task = tokio::spawn(async move {
+                    let mut buf = String::new();
+                    if let Some(mut err) = stderr_handle {
+                        let _ = err.read_to_string(&mut buf).await;
+                    }
+                    buf
+                });
+
+                let stdin_task = if has_stdin_channel {
+                    Some(tokio::spawn(async move {
                         if let (Some(mut stdin_pipe), Some(stdin_tx)) = (stdin_handle, stdin_tx) {
                             tokio::time::sleep(Duration::from_millis(STDIN_INITIAL_DELAY_MS)).await;
 
@@ -722,8 +732,7 @@ impl BashTool {
                                             } else {
                                                 format!("{}\n", input)
                                             };
-                                            if stdin_pipe.write_all(line.as_bytes()).await.is_err()
-                                            {
+                                            if stdin_pipe.write_all(line.as_bytes()).await.is_err() {
                                                 break;
                                             }
                                             if stdin_pipe.flush().await.is_err() {
@@ -735,37 +744,27 @@ impl BashTool {
 
                                     tokio::time::sleep(Duration::from_millis(100)).await;
                                 } else {
-                                    tokio::time::sleep(Duration::from_millis(
-                                        STDIN_POLL_INTERVAL_MS,
-                                    ))
-                                    .await;
+                                    tokio::time::sleep(Duration::from_millis(STDIN_POLL_INTERVAL_MS))
+                                        .await;
                                 }
                             }
                         }
-                    }
-                }))
-            } else {
-                drop(stdin_handle);
-                None
-            };
+                    }))
+                } else {
+                    drop(stdin_handle);
+                    None
+                };
 
-            let status = child.wait().await?;
+                let status = child.wait().await?;
 
-            if let Some(task) = stdin_task {
-                task.abort();
-            }
+                if let Some(task) = stdin_task {
+                    task.abort();
+                }
 
-            let stdout = stdout_task.await.unwrap_or_default();
-            let stderr = stderr_task.await.unwrap_or_default();
+                let stdout = stdout_task.await.unwrap_or_default();
+                let stderr = stderr_task.await.unwrap_or_default();
 
-            Ok::<_, anyhow::Error>((status, stdout, stderr))
-        })
-        .await;
-
-        match result {
-            Ok(Ok((status, stdout, stderr))) => {
                 let mut output = String::new();
-
                 if !stdout.is_empty() {
                     output.push_str(&stdout);
                 }
@@ -776,18 +775,62 @@ impl BashTool {
                     output.push_str(&stderr);
                 }
                 let output = format_command_output(output, status.code());
-                Ok(ToolOutput::new(output).with_title(
-                    params
-                        .intent
-                        .clone()
-                        .unwrap_or_else(|| params.command.clone()),
-                ))
-            }
-            Ok(Err(e)) => Err(anyhow::anyhow!("Command failed: {}", e)),
+                Ok(ToolOutput::new(output).with_title(title_for_work))
+            });
+
+        match tokio::time::timeout(timeout_duration, &mut work_handle).await {
+            Ok(join_result) => match join_result {
+                Ok(Ok(output)) => Ok(output),
+                Ok(Err(e)) => Err(anyhow::anyhow!("Command failed: {}", e)),
+                Err(join_err) => Err(anyhow::anyhow!("Command task panicked: {}", join_err)),
+            },
             Err(_) => {
-                // Timeout - try to kill the process
-                let _ = child.kill().await;
-                Err(anyhow::anyhow!("{}", timeout_message(timeout_ms)))
+                // Timed out, but the command is still running. Instead of killing
+                // it, promote it to a background task so it keeps running, renders
+                // as a background-task card, and the agent is told where to find it.
+                let display_name =
+                    summarize_background_command(params.intent.as_deref(), &params.command);
+                let info = crate::background::global()
+                    .adopt_with_options(
+                        "bash",
+                        Some(display_name.clone()),
+                        &ctx.session_id,
+                        params.notify,
+                        params.wake,
+                        work_handle,
+                    )
+                    .await;
+
+                let output = format!(
+                    "Command exceeded the foreground timeout after {:.1}s and is continuing in background (not killed).\n\n\
+                     Task ID: {}\n\
+                     Name: {}\n\
+                     Output file: {}\n\
+                     Status file: {}\n\n\
+                     The command is still running; do not rerun it unless you intentionally want a second copy.\n\
+                     Use `bg` with action=\"wait\" and task_id=\"{}\" to wait for completion or the next progress checkpoint.\n\
+                     Use `bg` with action=\"output\" and task_id=\"{}\" to inspect output.\n\
+                     If you expected it to finish quickly and it did not, the `timeout` parameter is in MILLISECONDS; pass a larger value or omit it.",
+                    timeout_ms as f64 / 1000.0,
+                    info.task_id,
+                    display_name,
+                    info.output_file.display(),
+                    info.status_file.display(),
+                    info.task_id,
+                    info.task_id,
+                );
+
+                Ok(ToolOutput::new(output)
+                    .with_title(title)
+                    .with_metadata(json!({
+                        "background": true,
+                        "task_id": info.task_id,
+                        "display_name": display_name,
+                        "output_file": info.output_file.to_string_lossy(),
+                        "status_file": info.status_file.to_string_lossy(),
+                        "timeout_promoted": true,
+                        "foreground_timeout_ms": timeout_ms,
+                    })))
             }
         }
     }

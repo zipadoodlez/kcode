@@ -163,18 +163,80 @@ async fn test_command_timeout_with_stdin_channel() {
     let (tx, _rx) = mpsc::unbounded_channel::<StdinInputRequest>();
     let tool = BashTool::new();
 
-    // cat will block forever on stdin, but we set a short timeout
-    // and never respond to the stdin request
-    let input = json!({"command": "cat", "timeout": 2000});
+    // `cat` blocks forever on stdin. With a short timeout and no stdin response,
+    // the command should be promoted to the background (kept running), not killed
+    // with an error.
+    let input = json!({"command": "cat", "timeout": 1000});
     let ctx = make_ctx(Some(tx));
 
-    let result = tool.execute(input, ctx).await;
-    assert!(result.is_err(), "should timeout");
-    let err_msg = result.unwrap_err().to_string();
+    let result = tool
+        .execute(input, ctx)
+        .await
+        .expect("timeout should promote to background, not error");
     assert!(
-        err_msg.contains("timed out"),
-        "error should mention timeout: {}",
-        err_msg
+        result.output.contains("continuing in background"),
+        "output should explain background promotion: {}",
+        result.output
+    );
+    let metadata = result.metadata.expect("expected background metadata");
+    assert_eq!(metadata["background"], true);
+    assert_eq!(metadata["timeout_promoted"], true);
+    assert_eq!(metadata["foreground_timeout_ms"], 1000);
+
+    // Clean up the still-running background task so it does not linger.
+    let task_id = metadata["task_id"]
+        .as_str()
+        .expect("task_id should be present");
+    let _ = crate::background::global().cancel(task_id).await;
+}
+
+#[tokio::test]
+async fn test_foreground_timeout_promotes_and_command_keeps_running() {
+    let tool = BashTool::new();
+    // No stdin channel and Direct mode -> plain foreground path. The command runs
+    // longer than the timeout, so it should be promoted to background and keep
+    // running to completion rather than being killed at the timeout.
+    let input = json!({"command": "sleep 0.5; echo fg_promote_ok", "timeout": 100});
+    let ctx = make_ctx(None);
+
+    let result = tool
+        .execute(input, ctx)
+        .await
+        .expect("timeout should promote the still-running command to background");
+    assert!(
+        result.output.contains("continuing in background"),
+        "output should explain background promotion: {}",
+        result.output
+    );
+    let metadata = result.metadata.expect("expected background metadata");
+    assert_eq!(metadata["background"], true);
+    assert_eq!(metadata["timeout_promoted"], true);
+    let task_id = metadata["task_id"]
+        .as_str()
+        .expect("task_id should be present")
+        .to_string();
+
+    // Wait for the promoted command to finish on its own.
+    let mut final_status = None;
+    for _ in 0..40 {
+        if let Some(status) = crate::background::global().status(&task_id).await
+            && status.status != BackgroundTaskStatus::Running
+        {
+            final_status = Some(status);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let status = final_status.expect("promoted background task should finish");
+    assert_eq!(status.status, BackgroundTaskStatus::Completed);
+
+    let output = crate::background::global()
+        .output(&task_id)
+        .await
+        .expect("output should exist");
+    assert!(
+        output.contains("fg_promote_ok"),
+        "command should have continued after foreground timeout: {output}"
     );
 }
 
