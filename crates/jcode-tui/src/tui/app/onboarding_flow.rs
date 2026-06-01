@@ -7,15 +7,14 @@
 //!                          user to log in right inside the TUI (the fresh
 //!                          install no longer runs a blocking CLI login).
 //!                          Skipped entirely when credentials already exist.
-//!   2. `ModelSelect`     - let them pick a model.
-//!   3. `ContinuePrompt`  - if we detect an external Codex or Claude Code
+//!   2. `ContinuePrompt`  - if we detect an external Codex or Claude Code
 //!                          OAuth login, ask whether they want to continue
 //!                          where they last left off. Auto-selects "Yes" after
 //!                          [`AUTO_ADVANCE`] if they don't choose.
-//!   4. `TranscriptPick`  - render their recent external transcripts in a
+//!   3. `TranscriptPick`  - render their recent external transcripts in a
 //!                          resume-style picker (single select). Auto-selects
 //!                          the most recent after [`AUTO_ADVANCE`].
-//!   5. `Suggestions`     - the existing prompt-suggestion cards. Reached when
+//!   4. `Suggestions`     - the existing prompt-suggestion cards. Reached when
 //!                          they answer "No", when there is no external OAuth,
 //!                          or as the terminal resting state.
 //!
@@ -164,7 +163,9 @@ pub(crate) enum OnboardingPhase {
         /// When the prompt was shown, for the countdown.
         shown_at: Instant,
     },
-    /// Pick a model. Entered right after login/import.
+    /// Legacy phase kept for compatibility with older replay/test fixtures.
+    /// New onboarding skips explicit model selection and uses the default route;
+    /// users can still run `/model` later.
     ModelSelect,
     /// "Continue where you left off in <cli>?" Yes/No with a
     /// [`DECISION_TIMEOUT`] countdown. Highlightable Yes/No selector to match
@@ -192,7 +193,9 @@ pub(crate) struct OnboardingFlow {
 }
 
 impl OnboardingFlow {
-    /// Start the flow at the model-selection phase (credentials already exist).
+    /// Start the post-login flow. The app immediately advances this legacy
+    /// phase to continue/suggestions so first-run onboarding no longer blocks on
+    /// choosing a model.
     pub(crate) fn begin() -> Self {
         Self {
             phase: OnboardingPhase::ModelSelect,

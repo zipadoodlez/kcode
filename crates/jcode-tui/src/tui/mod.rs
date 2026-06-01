@@ -589,8 +589,6 @@ pub enum OnboardingWelcomeKind {
         yes_highlighted: bool,
         seconds_left: u64,
     },
-    /// Ask the user to pick a model first (press Enter to open the picker).
-    ModelSelect,
     /// "Continue where you left off in <cli>?" with a highlightable Yes/No
     /// selector and a live decision countdown (seconds remaining).
     ContinuePrompt {

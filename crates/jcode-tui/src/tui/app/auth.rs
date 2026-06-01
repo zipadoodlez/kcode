@@ -2539,7 +2539,11 @@ impl App {
         if login.success {
             self.recent_authenticated_provider = Some((login.provider.clone(), Instant::now()));
             self.invalidate_model_picker_cache();
-            self.push_display_message(DisplayMessage::system(login.message));
+            let suppress_first_run_login_noise =
+                self.onboarding_flow_active() && !matches!(login.provider.as_str(), "copilot_code");
+            if !suppress_first_run_login_noise {
+                self.push_display_message(DisplayMessage::system(login.message));
+            }
             self.set_status_notice(format!("Login: {} ready", login.provider));
             if Self::login_provider_is_azure(&login.provider) {
                 self.activate_azure_runtime_model_after_login();

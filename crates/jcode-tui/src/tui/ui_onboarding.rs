@@ -254,24 +254,6 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             return lines;
         }
-        OnboardingWelcomeKind::ModelSelect => {
-            lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    "First, pick a model.",
-                    Style::default().fg(rgb(200, 200, 200)),
-                ))
-                .alignment(align),
-            );
-            lines.push(
-                Line::from(Span::styled(
-                    "Type /model to browse the available models and choose one.",
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
-            return lines;
-        }
         OnboardingWelcomeKind::ContinuePrompt {
             cli_label,
             yes_highlighted,

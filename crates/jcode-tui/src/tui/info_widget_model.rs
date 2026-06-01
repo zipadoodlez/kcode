@@ -391,6 +391,7 @@ mod tests {
             native_compaction_threshold_tokens: None,
             session_count: None,
             session_name: None,
+            working_dir: None,
             client_count: None,
             memory_info: None,
             swarm_info: None,

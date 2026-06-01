@@ -71,21 +71,7 @@ fn onboarding_golden_walks_every_phase() {
     let width = 80u16;
     let height = 30u16;
 
-    // 1. Model select.
-    {
-        let app = app_in_phase(OnboardingPhase::ModelSelect);
-        let text = render_onboarding_text(&app, width, height);
-        dump("ModelSelect", &text);
-        assert!(text.contains("Welcome to jcode onboarding"), "title: {text}");
-        assert!(text.contains("Let's get you set up."), "subtitle: {text}");
-        assert!(text.contains("First, pick a model."), "model prompt: {text}");
-        assert!(
-            text.contains("Type /model to browse the available models and choose one."),
-            "model hint: {text}"
-        );
-    }
-
-    // 2. Login with no detected imports.
+    // 1. Login with no detected imports.
     {
         let app = app_in_phase(OnboardingPhase::Login { import: None });
         let text = render_onboarding_text(&app, width, height);
@@ -94,7 +80,7 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Press Enter to choose a provider."), "{text}");
     }
 
-    // 3. Login with detected imports (per-candidate review).
+    // 2. Login with detected imports (per-candidate review).
     {
         let review = ImportReview::new(vec![
             ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
@@ -119,7 +105,7 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Auto-selects in"), "countdown: {text}");
     }
 
-    // 3b. Singular phrasing for a single detected login.
+    // 2b. Singular phrasing for a single detected login.
     {
         let review =
             ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")])
@@ -136,7 +122,7 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Login 1 of 1"), "{text}");
     }
 
-    // 4. Telemetry consent.
+    // 3. Telemetry consent.
     {
         let app = app_in_phase(OnboardingPhase::TelemetryConsent {
             shown_at: std::time::Instant::now(),
@@ -156,7 +142,7 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Declines automatically in"), "countdown: {text}");
     }
 
-    // 5. Continue prompt (resume an external session).
+    // 4. Continue prompt (resume an external session).
     {
         let app = app_in_phase(OnboardingPhase::ContinuePrompt {
             cli: ExternalCli::Codex,
@@ -183,7 +169,7 @@ fn onboarding_golden_walks_every_phase() {
         );
     }
 
-    // 6. Suggestions (resting state).
+    // 5. Suggestions (resting state).
     {
         let app = app_in_phase(OnboardingPhase::Suggestions);
         let text = render_onboarding_text(&app, width, height);

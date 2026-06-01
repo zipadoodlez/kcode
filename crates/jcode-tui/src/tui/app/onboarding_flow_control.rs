@@ -87,7 +87,9 @@ impl App {
         }
         // Fresh installs no longer log in at the CLI before the TUI launches.
         // If we boot without working credentials, start the flow at the in-TUI
-        // `Login` phase. If credentials already exist, start at model select.
+        // `Login` phase. If credentials already exist, start the post-login
+        // onboarding path directly; we no longer ask first-run users to choose a
+        // model before they can get started.
         self.onboarding_startup_checked = true;
         if crate::auth::AuthStatus::check_fast().has_any_available() {
             self.begin_onboarding_flow();
@@ -107,8 +109,9 @@ impl App {
             .unwrap_or(true)
     }
 
-    /// Begin the guided flow at the model-selection phase. Called once auth
-    /// becomes available on a fresh install (login/import completes).
+    /// Begin the guided post-login flow. Called once auth becomes available on a
+    /// fresh install (login/import completes). New users are not forced through a
+    /// model picker; the default route is used and `/model` remains available.
     ///
     /// No-op if a flow is already running or the user is experienced.
     pub(super) fn begin_onboarding_flow(&mut self) {
@@ -116,10 +119,7 @@ impl App {
             return;
         }
         self.onboarding_flow = Some(OnboardingFlow::begin());
-        // The model-select prompt is rendered by the onboarding welcome screen
-        // (`onboarding_welcome_kind`), not as a transcript message: in remote
-        // mode the server owns the transcript and would wipe any pushed message.
-        self.set_status_notice("Onboarding: press Enter to choose a model");
+        self.onboarding_after_model_select();
     }
 
     /// Begin the guided flow at the in-TUI `Login` phase. Used on a fresh
@@ -186,7 +186,7 @@ impl App {
     }
 
     /// Answer the telemetry consent prompt: persist the choice and advance to
-    /// model selection.
+    /// the next onboarding step.
     pub(super) fn onboarding_answer_telemetry_consent(&mut self, opt_in: bool) {
         if !matches!(
             self.onboarding_phase(),
@@ -198,12 +198,7 @@ impl App {
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::ModelSelect;
         }
-        let notice = if opt_in {
-            "Thanks! Sharing enabled. Onboarding: run /model to pick a model"
-        } else {
-            "No content shared. Onboarding: run /model to pick a model"
-        };
-        self.set_status_notice(notice);
+        self.onboarding_after_model_select();
     }
 
     /// Advance out of the model-selection phase once a model has been chosen.
@@ -561,7 +556,7 @@ impl App {
         }
 
         // Kick off the import on the runtime; the LoginCompleted event advances
-        // onboarding (Login -> ModelSelect) and activates the provider.
+        // onboarding and activates the provider.
         self.set_status_notice("Login: importing selected logins...");
         tokio::spawn(async move {
             let outcome = match crate::external_auth::run_external_auth_auto_import_candidates(
