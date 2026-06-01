@@ -368,6 +368,157 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
 }
 
 #[test]
+fn ancient_server_history_is_deferred_via_client_side_release_check() {
+    // Issue #295: a server old enough to predate the self-reported staleness
+    // machinery sends `server_has_update: None`, so it can never tell the client
+    // it is stale. The client must independently compare release versions and
+    // defer + reload anyway, instead of attaching to the ancient daemon (which
+    // would then reject newer protocol requests like `set_route`).
+    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    // The test binary's own version is dev/dirty (unorderable), so use the
+    // test-only override to give the client a clean release version newer than
+    // the simulated ancient server.
+    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.17.0 (d741696f)");
+
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_session_id = Some("session_existing".to_string());
+    app.connection_type = Some("websocket".to_string());
+
+    let redraw = app.handle_server_event(
+        crate::protocol::ServerEvent::History {
+            id: 1,
+            session_id: "session_from_ancient_server".to_string(),
+            messages: vec![crate::protocol::HistoryMessage {
+                role: "assistant".to_string(),
+                content: "ancient answer".to_string(),
+                tool_calls: None,
+                tool_data: None,
+            }],
+            images: vec![],
+            provider_name: Some("ancient-provider".to_string()),
+            provider_model: Some("ancient-model".to_string()),
+            subagent_model: Some("ancient-subagent".to_string()),
+            autoreview_enabled: Some(true),
+            autojudge_enabled: Some(true),
+            available_models: vec!["ancient-model".to_string()],
+            available_model_routes: vec![],
+            mcp_servers: vec!["ancient-mcp:1".to_string()],
+            skills: vec!["ancient-skill".to_string()],
+            total_tokens: Some((99, 100)),
+            token_usage_totals: None,
+            all_sessions: vec!["session_from_ancient_server".to_string()],
+            client_count: Some(42),
+            is_canary: Some(false),
+            reload_recovery: None,
+            // Clean older release, and crucially server_has_update is None: the
+            // ancient daemon does not know how to self-assess.
+            server_version: Some("v0.14.2 (38452185)".to_string()),
+            server_name: Some("ancient-server".to_string()),
+            server_icon: Some("🦖".to_string()),
+            server_has_update: None,
+            was_interrupted: None,
+            connection_type: Some("ancient-connection".to_string()),
+            status_detail: Some("ancient-status".to_string()),
+            upstream_provider: Some("ancient-upstream".to_string()),
+            reasoning_effort: Some("high".to_string()),
+            service_tier: Some("ancient-tier".to_string()),
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+        },
+        &mut remote,
+    );
+
+    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+
+    assert!(!redraw);
+    assert!(app.pending_server_reload);
+    // Remote session state must NOT have been applied from the ancient server.
+    assert_eq!(app.remote_session_id.as_deref(), Some("session_existing"));
+    assert_eq!(remote.session_id(), None);
+    assert!(app.remote_skills.is_empty());
+    assert!(app.remote_sessions.is_empty());
+    assert_ne!(
+        app.session.subagent_model.as_deref(),
+        Some("ancient-subagent")
+    );
+    let content = app.display_messages().last().unwrap().content.clone();
+    assert!(
+        content.contains("older release") && content.contains("jcode server stop"),
+        "{content}"
+    );
+}
+
+#[test]
+fn current_release_server_history_is_not_deferred_by_client_check() {
+    // A server on the SAME or NEWER clean release as the client, with
+    // server_has_update: None, must be trusted and attached normally. This
+    // guards against the client-side check over-firing and looping reloads.
+    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.17.0 (d741696f)");
+
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_session_id = Some("session_existing".to_string());
+
+    let redraw = app.handle_server_event(
+        crate::protocol::ServerEvent::History {
+            id: 1,
+            session_id: "session_current".to_string(),
+            messages: vec![],
+            images: vec![],
+            provider_name: Some("p".to_string()),
+            provider_model: Some("m".to_string()),
+            subagent_model: None,
+            autoreview_enabled: None,
+            autojudge_enabled: None,
+            available_models: vec!["m".to_string()],
+            available_model_routes: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            total_tokens: None,
+            token_usage_totals: None,
+            all_sessions: vec!["session_current".to_string()],
+            client_count: Some(1),
+            is_canary: Some(false),
+            reload_recovery: None,
+            server_version: Some("v0.17.0 (d741696f)".to_string()),
+            server_name: Some("current-server".to_string()),
+            server_icon: Some("🟢".to_string()),
+            server_has_update: None,
+            was_interrupted: None,
+            connection_type: Some("websocket".to_string()),
+            status_detail: None,
+            upstream_provider: None,
+            reasoning_effort: None,
+            service_tier: None,
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+        },
+        &mut remote,
+    );
+
+    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+
+    // Attached normally: session id applied, no pending reload triggered by the
+    // client-side staleness check. (The History arm always returns false for
+    // redraw; the meaningful signal is that state was actually applied.)
+    let _ = redraw;
+    assert!(!app.pending_server_reload);
+    assert_eq!(app.remote_session_id.as_deref(), Some("session_current"));
+}
+
+#[test]
 fn remote_done_finalizes_resumed_activity_without_current_message_id() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
