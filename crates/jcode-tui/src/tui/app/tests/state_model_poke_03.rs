@@ -480,6 +480,35 @@ fn test_model_picker_reuses_cached_entries_until_invalidated() {
 }
 
 #[test]
+fn test_shift_tab_model_favorite_hotkey_preserves_input_line() {
+    ensure_test_jcode_home_if_unset();
+    clear_persisted_test_ui_state();
+    crate::tui::ui::clear_test_render_state_for_tests();
+
+    let calls = StdArc::new(AtomicUsize::new(0));
+    let provider: Arc<dyn Provider> = Arc::new(CountingModelRoutesProvider {
+        calls: StdArc::clone(&calls),
+        route_count: 2,
+        delay: Duration::ZERO,
+    });
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
+    let mut app = App::new_for_test_harness(provider, registry);
+    app.queue_mode = false;
+    app.diff_mode = crate::config::DiffDisplayMode::Inline;
+
+    app.set_input_for_test("do not drop this draft");
+    let cursor = app.cursor_pos();
+
+    app.handle_key(KeyCode::BackTab, KeyModifiers::SHIFT)
+        .unwrap();
+    wait_for_model_picker_load(&mut app);
+
+    assert_eq!(app.input(), "do not drop this draft");
+    assert_eq!(app.cursor_pos(), cursor);
+}
+
+#[test]
 fn test_tui_api_key_auth_refreshes_catalog_shows_diff_without_opening_picker() {
     ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
@@ -1875,10 +1904,11 @@ fn test_poke_status_reports_current_state() {
             &mut app,
             "/poke status"
         ));
-        assert!(app.display_messages().iter().any(|msg| {
-            msg.content
-                .contains("Auto-poke: ON. 1 incomplete todo.")
-        }));
+        assert!(
+            app.display_messages()
+                .iter()
+                .any(|msg| { msg.content.contains("Auto-poke: ON. 1 incomplete todo.") })
+        );
 
         app.auto_poke_incomplete_todos = true;
         app.is_processing = true;
@@ -1896,8 +1926,7 @@ fn test_poke_status_reports_current_state() {
             "/poke status"
         ));
         assert!(app.display_messages().iter().any(|msg| {
-            msg.content
-                .contains("Auto-poke: ON. 1 incomplete todo.")
+            msg.content.contains("Auto-poke: ON. 1 incomplete todo.")
                 && msg.content.contains("A follow-up poke is queued.")
                 && msg.content.contains("A turn is currently running.")
         }));
@@ -2044,9 +2073,11 @@ fn test_btw_does_not_present_as_queued_when_turn_is_in_progress() {
             msg.content
                 .contains("/btw noted - answer will appear in the side panel.")
         }));
-        assert!(!app.display_messages().iter().any(|msg| {
-            msg.content.to_ascii_lowercase().contains("queued /btw")
-        }));
+        assert!(
+            !app.display_messages()
+                .iter()
+                .any(|msg| { msg.content.to_ascii_lowercase().contains("queued /btw") })
+        );
     });
 }
 

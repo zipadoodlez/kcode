@@ -485,6 +485,7 @@ impl App {
         &mut self,
         signature: &ModelPickerCacheSignature,
         picker_started: std::time::Instant,
+        preserve_input: bool,
     ) -> bool {
         let Some(cache) = self.model_picker_cache.as_ref() else {
             return false;
@@ -507,8 +508,10 @@ impl App {
             filter: String::new(),
             preview: false,
         });
-        self.input.clear();
-        self.cursor_pos = 0;
+        if !preserve_input {
+            self.input.clear();
+            self.cursor_pos = 0;
+        }
 
         if std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
             crate::logging::info(&format!(
@@ -543,6 +546,14 @@ impl App {
     }
 
     pub(super) fn open_model_picker(&mut self) {
+        self.open_model_picker_inner(false);
+    }
+
+    fn open_model_picker_preserving_input(&mut self) {
+        self.open_model_picker_inner(true);
+    }
+
+    fn open_model_picker_inner(&mut self, preserve_input: bool) {
         let picker_started = std::time::Instant::now();
         const RECENT_AUTH_BOOST_TTL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
         if self
@@ -592,7 +603,8 @@ impl App {
             current_effort.clone(),
             &available_efforts,
         );
-        if self.open_cached_model_picker_if_fresh(&cache_signature, picker_started) {
+        if self.open_cached_model_picker_if_fresh(&cache_signature, picker_started, preserve_input)
+        {
             return;
         }
 
@@ -605,7 +617,7 @@ impl App {
                 picker_started,
                 routes,
                 routes_ms,
-                false,
+                preserve_input,
                 false,
             );
             if self.inline_interactive_state.is_some() {
@@ -627,7 +639,7 @@ impl App {
                     picker_started,
                     routes,
                     routes_ms,
-                    false,
+                    preserve_input,
                     true,
                 );
                 return;
@@ -643,7 +655,7 @@ impl App {
             picker_started,
             routes,
             routes_ms,
-            false,
+            preserve_input,
             true,
         );
     }
@@ -2058,7 +2070,7 @@ impl App {
             return;
         }
 
-        self.open_model_picker();
+        self.open_model_picker_preserving_input();
         if !self
             .inline_interactive_state
             .as_ref()
