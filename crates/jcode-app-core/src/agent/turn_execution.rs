@@ -214,6 +214,9 @@ impl Agent {
             self.locked_tools = None;
             self.cache_tracker.reset();
         }
+        // Allow the late-MCP-registration recheck to fire once for the next
+        // snapshot (e.g. after an explicit `mcp` reload).
+        self.mcp_late_register_resolved = false;
     }
 
     /// Unlock tools if a tool execution may have changed the registry
@@ -284,20 +287,41 @@ impl Agent {
         //
         // Exception: MCP servers connect on a background task and register
         // `mcp__*` tools seconds after the session starts — typically *after*
-        // the first turn has already locked the snapshot. If we returned the
-        // stale snapshot forever, the model would never see MCP tools (#206).
-        // The only other unlock path fires when the model calls the `mcp`
-        // management tool, which it cannot do without first seeing MCP tools.
+        // the first turn has already locked the snapshot. We deliberately do
+        // NOT block the first turn on MCP connection: servers can be slow or
+        // hang, and we want the user to be able to talk to the agent the moment
+        // the session spawns. The price is that the first locked snapshot is
+        // missing MCP tools, and the only other unlock path fires when the model
+        // calls the `mcp` management tool — which it cannot do without first
+        // seeing MCP tools (#206).
         //
-        // So if the locked snapshot is missing MCP tools that are now present
-        // in the registry, rebuild it once. This costs exactly one provider
-        // prompt-cache miss per session (the turn MCP tools first appear) and
-        // is stable thereafter.
+        // So, exactly once per locked snapshot, if MCP tools have since appeared
+        // in the registry, we rebuild. This is a single intentional provider
+        // prompt-cache miss (the turn MCP tools first appear). The
+        // `mcp_late_register_resolved` flag makes this a one-shot check so we do
+        // not rescan the registry on every subsequent turn.
         if let Some(ref locked) = self.locked_tools {
+            if self.mcp_late_register_resolved {
+                return locked.clone();
+            }
             if self.registry_has_new_mcp_tools(locked).await {
-                logging::info("MCP tools registered after lock — rebuilding tool snapshot (#206)");
-                self.unlock_tools();
+                logging::info(
+                    "MCP tools registered after first turn locked the tool snapshot — \
+                     rebuilding once to expose them. This is one intentional prompt-cache \
+                     miss; we accept it so the agent is reachable immediately at spawn \
+                     instead of blocking on MCP connection (#206).",
+                );
+                // Latch the one-shot guard and drop the stale snapshot directly.
+                // We intentionally do NOT call `unlock_tools()` here, because that
+                // re-arms the guard (it is the explicit-reload path) and would let
+                // the recheck fire again on every later turn.
+                self.mcp_late_register_resolved = true;
+                self.locked_tools = None;
+                self.cache_tracker.reset();
             } else {
+                // No MCP tools have appeared. They may still be connecting, so
+                // leave the guard unset and re-check on the next turn. Once they
+                // appear (or never do, after the registry settles) we stop.
                 return locked.clone();
             }
         }
