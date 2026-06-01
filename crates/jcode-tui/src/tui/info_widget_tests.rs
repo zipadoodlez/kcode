@@ -133,10 +133,11 @@ fn todos_widget_renders_exact_pips_for_small_lists() {
 
     let lines = render_todos_widget(&data, Rect::new(0, 0, 80, 8));
     let header = lines_text(&lines[..1]);
-    // Exact 1:1 pips on the header: 2 done, 1 active, 1 open.
-    assert_eq!(header.matches('●').count(), 2, "expected 2 done pips: {header}");
-    assert_eq!(header.matches('◐').count(), 1, "expected 1 active pip: {header}");
+    // Exact 1:1 pips on the header: 2 done + 1 active render as filled ●,
+    // 1 open renders as hollow ○. (Active is full amber, not half.)
+    assert_eq!(header.matches('●').count(), 3, "expected 3 filled pips: {header}");
     assert_eq!(header.matches('○').count(), 1, "expected 1 open pip: {header}");
+    assert!(!header.contains('◐'), "active pip should be full, not half: {header}");
     // The old block bar should be gone everywhere.
     let all = lines_text(&lines);
     assert!(!all.contains('█'), "old block bar should be gone: {all}");

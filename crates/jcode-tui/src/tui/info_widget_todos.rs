@@ -69,7 +69,7 @@ fn push_todo_confidence_suffix(spans: &mut Vec<Span<'static>>, todo: &crate::tod
 
 /// Build a compact pip-dot status meter for a set of todos.
 ///
-/// Each todo becomes one pip: filled = completed, half = in_progress,
+/// Each todo becomes one pip: green filled = completed, amber filled = in_progress,
 /// hollow = pending/blocked. We render an exact 1:1 pip per todo whenever
 /// the list is small enough to fit in `width_pips` columns; only larger
 /// lists collapse to a proportional summary so the footprint stays small.
@@ -108,7 +108,7 @@ fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_p
             spans.push(Span::styled("●", Style::default().fg(done_color)));
         }
         for _ in 0..in_progress {
-            spans.push(Span::styled("◐", Style::default().fg(active_color)));
+            spans.push(Span::styled("●", Style::default().fg(active_color)));
         }
         for _ in 0..open {
             spans.push(Span::styled("○", Style::default().fg(open_color)));
@@ -138,7 +138,7 @@ fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_p
             spans.push(Span::styled("●", Style::default().fg(done_color)));
         }
         for _ in 0..active_pips {
-            spans.push(Span::styled("◐", Style::default().fg(active_color)));
+            spans.push(Span::styled("●", Style::default().fg(active_color)));
         }
         for _ in 0..open_pips {
             spans.push(Span::styled("○", Style::default().fg(open_color)));
