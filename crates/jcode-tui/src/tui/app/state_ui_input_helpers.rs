@@ -1241,7 +1241,7 @@ impl App {
         ];
 
         prompts.push((
-            "Continue my last CLI agent session".to_string(),
+            "Continue my last Codex CLI / Claude Code session".to_string(),
             latest_external_cli_continuation_prompt().unwrap_or_else(|| {
                 "Find my recent Codex or Claude Code sessions, identify the latest useful one, summarize what was happening, and continue from there.".to_string()
             }),
