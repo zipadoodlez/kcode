@@ -76,8 +76,6 @@ const MODEL_CATALOG_REFRESH_RETRY_SECS: u64 = 60;
 /// Standard OpenRouter catalog freshness window for the inactive-slot refresh
 /// path. Matches the shared on-disk model-catalog TTL (24h).
 const STANDARD_OPENROUTER_CATALOG_TTL_SECS: u64 = 24 * 60 * 60;
-/// Pin provider to preserve cache for this long after a cache hit
-const CACHE_PIN_TTL_SECS: u64 = 60 * 60;
 
 /// Endpoints cache TTL (1 hour) - per-model provider endpoint data
 const ENDPOINTS_CACHE_TTL_SECS: u64 = 60 * 60;
@@ -1759,20 +1757,28 @@ impl OpenRouterProvider {
         if let Some(pin) = pin
             && pin.model == model
         {
-            let cache_recent = pin
-                .last_cache_read
-                .map(|t| t.elapsed().as_secs() <= CACHE_PIN_TTL_SECS)
-                .unwrap_or(false);
+            // Once OpenRouter has actually served a request for this model from a
+            // concrete provider, stick to that provider for the rest of the
+            // session. Re-selecting a provider per request would route to a
+            // backend with a cold KV cache, so we pin the observed provider and
+            // disable fallbacks to keep prompt-prefix caching warm.
             let use_pin = match pin.source {
                 PinSource::Explicit => true,
-                PinSource::Observed => cache_recent || base.order.is_none(),
+                // Honor an explicit user-configured order only when the user
+                // actively narrowed routing themselves; otherwise the observed
+                // session provider wins so the cache stays warm.
+                PinSource::Observed => base.order.is_none(),
             };
 
             if use_pin {
                 let mut routing = base.clone();
                 routing.order = Some(vec![pin.provider.clone()]);
-                if !pin.allow_fallbacks {
-                    routing.allow_fallbacks = false;
+                // Pin hard: an explicit pin honors its own fallback preference,
+                // an observed (session) pin always disables fallbacks so every
+                // turn reuses the same upstream provider and its KV cache.
+                match pin.source {
+                    PinSource::Explicit if pin.allow_fallbacks => {}
+                    _ => routing.allow_fallbacks = false,
                 }
                 return routing;
             }
