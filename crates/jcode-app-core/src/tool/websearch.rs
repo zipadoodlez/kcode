@@ -202,7 +202,19 @@ impl WebSearchTool {
             ));
         }
 
-        Ok(parse_ddg_results(&response.text().await?, num_results))
+        let body = response.text().await?;
+        let results = parse_ddg_results(&body, num_results);
+        if results.is_empty()
+            && let Some(reason) = detect_anti_bot_page(&body)
+        {
+            return Err(anyhow::anyhow!(
+                "DuckDuckGo served an anti-bot challenge page ({reason}) instead of \
+                 results. This is commonly caused by TLS fingerprinting or IP \
+                 reputation on Linux. Falling back to another engine if configured."
+            ));
+        }
+
+        Ok(results)
     }
 
     async fn search_bing(
@@ -292,10 +304,17 @@ impl WebSearchTool {
             ));
         }
 
-        Ok(parse_bing_html_results(
-            &response.text().await?,
-            num_results,
-        ))
+        let body = response.text().await?;
+        let results = parse_bing_html_results(&body, num_results);
+        if results.is_empty()
+            && let Some(reason) = detect_anti_bot_page(&body)
+        {
+            return Err(anyhow::anyhow!(
+                "Bing served an anti-bot challenge page ({reason}) instead of results."
+            ));
+        }
+
+        Ok(results)
     }
 }
 
@@ -466,6 +485,33 @@ fn parse_ddg_results(html: &str, max_results: usize) -> Vec<SearchResult> {
     results
 }
 
+/// Detect whether an HTML body is an anti-bot/captcha challenge rather than a
+/// real results page. DuckDuckGo (and similar) serve these with HTTP 200, so a
+/// successful status plus zero parsed results is ambiguous without this check.
+///
+/// Returns a short human-readable reason when a challenge page is detected.
+fn detect_anti_bot_page(html: &str) -> Option<&'static str> {
+    let lowered = html.to_ascii_lowercase();
+    const MARKERS: &[(&str, &str)] = &[
+        ("anomaly-modal", "anomaly challenge"),
+        ("anomaly.js", "anomaly challenge"),
+        ("dpn=1", "anomaly challenge"),
+        ("captcha", "captcha"),
+        ("g-recaptcha", "recaptcha"),
+        ("are you a robot", "bot check"),
+        ("unusual traffic", "bot check"),
+        ("verify you are human", "human verification"),
+        ("challenge-platform", "cloudflare challenge"),
+        ("cf-challenge", "cloudflare challenge"),
+    ];
+    for (needle, reason) in MARKERS {
+        if lowered.contains(needle) {
+            return Some(reason);
+        }
+    }
+    None
+}
+
 fn decode_ddg_url(url: &str) -> String {
     // DDG wraps URLs like //duckduckgo.com/l/?uddg=ACTUAL_URL&...
     if let Some(uddg_start) = url.find("uddg=") {
@@ -572,5 +618,37 @@ mod tests {
         );
         assert_eq!(WebSearchEngine::parse("bing"), Some(WebSearchEngine::Bing));
         assert_eq!(WebSearchEngine::parse("google"), None);
+    }
+
+    #[test]
+    fn detects_ddg_anomaly_challenge_page() {
+        // Shape of the anti-bot challenge DDG serves (HTTP 200) instead of
+        // results when a request is flagged (e.g. TLS fingerprint on Linux).
+        let html = r#"<!DOCTYPE html><html><head>
+            <script src="/dist/anomaly.js"></script></head>
+            <body><div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div>
+            </body></html>"#;
+        assert_eq!(detect_anti_bot_page(html), Some("anomaly challenge"));
+        // And it should parse to zero real results.
+        assert!(parse_ddg_results(html, 10).is_empty());
+    }
+
+    #[test]
+    fn detects_generic_captcha_page() {
+        let html = r#"<html><body><div class="g-recaptcha"></div>
+            Please verify you are human.</body></html>"#;
+        assert!(detect_anti_bot_page(html).is_some());
+    }
+
+    #[test]
+    fn real_results_are_not_flagged_as_anti_bot() {
+        let html = r#"
+            <div class="result results_links web-result">
+              <a class="result__a" href="https://rust-lang.org/">Rust</a>
+              <a class="result__snippet" href="https://rust-lang.org/">A language.</a>
+            </div>
+        "#;
+        assert_eq!(detect_anti_bot_page(html), None);
+        assert_eq!(parse_ddg_results(html, 10).len(), 1);
     }
 }
