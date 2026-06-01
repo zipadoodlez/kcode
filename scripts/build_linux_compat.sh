@@ -126,17 +126,25 @@ WRAPPER
 	          fi
 	        done
 
-		    tar_inputs=("'"$artifact"'" "'"$artifact"'.bin")
-		    shopt -s nullglob
-		    openssl_libs=(libssl.so* libcrypto.so*)
-		    shopt -u nullglob
-		    tar_inputs+=("${openssl_libs[@]}")
-		    (cd /out && tar czf '"$artifact"'.tar.gz "${tar_inputs[@]}")
+		    extra_libs=()
+		    for pattern in libssl.so\* libcrypto.so\*; do
+		      for lib in $pattern; do
+		        [[ -e "$lib" ]] && extra_libs+=("$lib")
+		      done
+		    done
+
+		    if (( ${#extra_libs[@]} > 0 )); then
+		      (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"' '"$artifact"'.bin "${extra_libs[@]}")
+		    else
+		      (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"' '"$artifact"'.bin)
+		    fi
 
 		    chown_inputs=("/out/'"$artifact"'" "/out/'"$artifact"'.bin" "/out/'"$artifact"'.tar.gz")
-		    for lib in "${openssl_libs[@]}"; do
-		      chown_inputs+=("/out/$lib")
-		    done
+		    if (( ${#extra_libs[@]} > 0 )); then
+		      for lib in "${extra_libs[@]}"; do
+		        chown_inputs+=("/out/$lib")
+		      done
+		    fi
 		    chown "$HOST_UID:$HOST_GID" "${chown_inputs[@]}" 2>/dev/null || true
 		  '
 
