@@ -727,6 +727,68 @@ impl Registry {
                 });
             }
 
+            // Advertise-early: register proxy tools for each configured server
+            // from the on-disk schema cache *before* connections settle, so the
+            // first locked tool snapshot already contains MCP tools and we avoid
+            // the intentional prompt-cache miss entirely (#206 Phase 2). The
+            // proxies connect-on-first-call. Servers with no cached schemas yet
+            // (cold start, or reconfigured) fall back to the post-connect
+            // registration + one-shot late-register rebuild below.
+            let schema_cache = crate::mcp::McpSchemaCache::load();
+            let mut advertised_servers: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            {
+                let config_servers: Vec<(String, crate::mcp::McpServerConfig)> = {
+                    let manager = mcp_manager.read().await;
+                    manager
+                        .config()
+                        .servers
+                        .iter()
+                        .map(|(name, cfg)| (name.clone(), cfg.clone()))
+                        .collect()
+                };
+                let mut advertised_tool_count = 0usize;
+                for (server, cfg) in &config_servers {
+                    if let Some(cached) = schema_cache.tools_for(server, cfg) {
+                        let tools = crate::mcp::create_mcp_tools_from_cached(
+                            server,
+                            cached,
+                            Arc::clone(&mcp_manager),
+                        );
+                        advertised_tool_count += tools.len();
+                        for (name, tool) in tools {
+                            self.register(name, tool).await;
+                        }
+                        advertised_servers.insert(server.clone());
+                    }
+                }
+                if advertised_tool_count > 0 {
+                    crate::logging::info(&format!(
+                        "MCP: advertised {} cached tool(s) from {} server(s) at spawn \
+                         (connect-on-first-call); zero prompt-cache miss expected (#206)",
+                        advertised_tool_count,
+                        advertised_servers.len()
+                    ));
+                    // Reflect the advertised tools in the status indicator
+                    // immediately so the UI shows them before connections settle.
+                    if let Some(ref tx) = event_tx {
+                        let mut counts: std::collections::BTreeMap<String, usize> =
+                            std::collections::BTreeMap::new();
+                        for (server, cfg) in &config_servers {
+                            if let Some(cached) = schema_cache.tools_for(server, cfg) {
+                                counts.insert(server.clone(), cached.len());
+                            }
+                        }
+                        let servers: Vec<String> = counts
+                            .into_iter()
+                            .map(|(name, count)| format!("{}:{}", name, count))
+                            .collect();
+                        let _ =
+                            tx.send(crate::protocol::ServerEvent::McpStatus { servers });
+                    }
+                }
+            }
+
             // Spawn connection and tool registration in background
             let registry = self.clone();
             tokio::spawn(async move {
@@ -760,7 +822,60 @@ impl Registry {
                     {
                         *server_counts.entry(server.to_string()).or_default() += 1;
                     }
+                    // Idempotent: advertise-early may have already registered an
+                    // identical proxy. Re-registering refreshes it with the live
+                    // schema, which is correct (handles schema drift).
                     registry.register(name.clone(), tool.clone()).await;
+                }
+
+                // Reconcile the on-disk schema cache with the live schemas so the
+                // next spawn can advertise the up-to-date tools with zero cache
+                // miss. Group live tool defs by server and update each entry
+                // under the current config fingerprint; prune servers that are
+                // no longer configured. (#206 Phase 2)
+                {
+                    let (live_by_server, config_snapshot): (
+                        std::collections::BTreeMap<String, Vec<crate::mcp::McpToolDef>>,
+                        Vec<(String, crate::mcp::McpServerConfig)>,
+                    ) = {
+                        let manager = mcp_manager.read().await;
+                        let mut grouped: std::collections::BTreeMap<
+                            String,
+                            Vec<crate::mcp::McpToolDef>,
+                        > = std::collections::BTreeMap::new();
+                        for (server, def) in manager.all_tools().await {
+                            grouped.entry(server).or_default().push(def);
+                        }
+                        let configs = manager
+                            .config()
+                            .servers
+                            .iter()
+                            .map(|(name, cfg)| (name.clone(), cfg.clone()))
+                            .collect();
+                        (grouped, configs)
+                    };
+
+                    let mut cache = crate::mcp::McpSchemaCache::load();
+                    let mut dirty = false;
+                    for (server, cfg) in &config_snapshot {
+                        if let Some(defs) = live_by_server.get(server) {
+                            // Only cache servers that actually exposed tools.
+                            if cache.update(server, cfg, defs.clone()) {
+                                dirty = true;
+                            }
+                        }
+                    }
+                    let configured_names: Vec<String> =
+                        config_snapshot.iter().map(|(n, _)| n.clone()).collect();
+                    if cache.retain_servers(&configured_names) {
+                        dirty = true;
+                    }
+                    if dirty {
+                        cache.save();
+                        crate::logging::info(
+                            "MCP: updated on-disk tool-schema cache from live connection (#206)",
+                        );
+                    }
                 }
 
                 // Notify client of MCP status
