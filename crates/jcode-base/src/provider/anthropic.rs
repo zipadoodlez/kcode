@@ -960,10 +960,28 @@ impl AnthropicProvider {
         for block in blocks {
             match block {
                 ContentBlock::Text { text, .. } => {
-                    result.push(ApiContentBlock::Text {
-                        text: text.clone(),
-                        cache_control: None,
-                    });
+                    // A text block that immediately follows an image-bearing tool_result is the
+                    // "[Attached image associated with the preceding tool result: ...]" label
+                    // emitted alongside image tool outputs. The Anthropic API requires every
+                    // tool_result for a parallel tool-call turn to be contiguous in the next user
+                    // message; a sibling text block wedged between tool_results makes the API
+                    // report later tool_use ids as missing their tool_result. Fold the label into
+                    // the tool_result's content blocks so the tool_results stay contiguous.
+                    if let Some(ApiContentBlock::ToolResult {
+                        content: ToolResultContent::Blocks(blocks),
+                        ..
+                    }) = result.last_mut()
+                        && blocks
+                            .iter()
+                            .any(|b| matches!(b, ToolResultContentBlock::Image { .. }))
+                    {
+                        blocks.push(ToolResultContentBlock::Text { text: text.clone() });
+                    } else {
+                        result.push(ApiContentBlock::Text {
+                            text: text.clone(),
+                            cache_control: None,
+                        });
+                    }
                 }
                 ContentBlock::AnthropicThinking {
                     thinking,
