@@ -1463,13 +1463,22 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     let sep = || Span::styled(" · ", Style::default().fg(rgb(60, 62, 78)));
     let mut spans: Vec<Span> = Vec::new();
 
+    // Working directory (basename, with ~ for home)
+    if let Some(dir) = app.working_dir().and_then(|d| overscroll_dir_label(&d)) {
+        spans.push(Span::styled("▸ ", Style::default().fg(rgb(120, 150, 190))));
+        spans.push(Span::styled(dir, Style::default().fg(rgb(175, 190, 215))));
+    }
+
     // Model
     let model = data
         .model
         .clone()
         .filter(|m| !m.is_empty())
         .unwrap_or_else(|| app.provider_model());
-    if !model.is_empty() {
+    if !model.is_empty() && !overscroll_is_placeholder(&model) {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
         spans.push(Span::styled("◆ ", Style::default().fg(rgb(150, 200, 255))));
         spans.push(Span::styled(
             model,
@@ -1523,6 +1532,14 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
             spans.push(sep());
         }
         spans.push(Span::styled("ctx ", label_style));
+        spans.push(Span::styled(
+            format!(
+                "{}/{} ",
+                overscroll_format_tokens(used),
+                overscroll_format_tokens(limit)
+            ),
+            Style::default().fg(rgb(165, 170, 190)),
+        ));
         spans.extend(overscroll_context_bar(used, limit, 10));
     }
 
@@ -1537,6 +1554,28 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         line
     };
     frame.render_widget(Paragraph::new(aligned_line), area);
+}
+
+fn overscroll_dir_label(path: &str) -> Option<String> {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let basename = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    if basename.is_empty() {
+        Some("/".to_string())
+    } else {
+        Some(basename.to_string())
+    }
+}
+
+/// Placeholder header strings used during remote startup; not real model names.
+fn overscroll_is_placeholder(model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    m.starts_with("connecting")
+        || m.starts_with("loading")
+        || m == "connected"
+        || m.contains("connecting to server")
 }
 
 fn overscroll_provider_display(provider: &str) -> String {
@@ -1603,6 +1642,19 @@ fn overscroll_context_usage(
         .unwrap_or(crate::provider::DEFAULT_CONTEXT_LIMIT)
         .max(1);
     Some((used_tokens, limit))
+}
+
+/// Format a token count compactly: 1234 -> "1.2k", 200000 -> "200k", 1_500_000 -> "1.5M".
+fn overscroll_format_tokens(tokens: usize) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 10_000 {
+        format!("{}k", tokens / 1000)
+    } else if tokens >= 1_000 {
+        format!("{:.1}k", tokens as f64 / 1000.0)
+    } else {
+        tokens.to_string()
+    }
 }
 
 /// Render a compact rounded progress bar (◖████░░◗) plus a percentage label.
