@@ -17,7 +17,7 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         Span::styled("⚡ ", Style::default().fg(rgb(140, 180, 255))),
         Span::styled(
             truncate_smart(&short_name, max_len.saturating_sub(2)),
-            Style::default().fg(rgb(180, 180, 190)).bold(),
+            Style::default().fg(rgb(255, 150, 200)).bold(),
         ),
     ];
 

@@ -1474,7 +1474,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     if !model.is_empty() && !overscroll_is_placeholder(&model) {
         spans.push(Span::styled(
             model,
-            Style::default().fg(rgb(180, 180, 190)).bold(),
+            Style::default().fg(rgb(255, 150, 200)).bold(),
         ));
         // Reasoning level shown inline next to the model, e.g. " high".
         if let Some(effort) = data
