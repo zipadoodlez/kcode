@@ -203,9 +203,9 @@ fn expanded_todos_height(data: &InfoWidgetData) -> u16 {
         return 0;
     }
 
-    let available_lines = MAX_TODO_LINES.saturating_sub(2);
+    let available_lines = MAX_TODO_LINES.saturating_sub(1);
     let todo_lines = data.todos.len().min(available_lines);
-    let mut height = 2 + u16::try_from(todo_lines).unwrap_or(u16::MAX);
+    let mut height = 1 + u16::try_from(todo_lines).unwrap_or(u16::MAX);
     if data.todos.len() > available_lines {
         height += 1;
     }

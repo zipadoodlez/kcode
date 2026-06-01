@@ -110,6 +110,40 @@ fn todos_widgets_show_item_and_aggregate_confidence() {
 }
 
 #[test]
+fn todos_widget_renders_exact_pips_for_small_lists() {
+    let mk = |status: &str| crate::todo::TodoItem {
+        id: status.to_string(),
+        content: format!("item {status}"),
+        status: status.to_string(),
+        priority: "medium".to_string(),
+        confidence: Some(80),
+        completion_confidence: None,
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    };
+    let data = InfoWidgetData {
+        todos: vec![
+            mk("completed"),
+            mk("completed"),
+            mk("in_progress"),
+            mk("pending"),
+        ],
+        ..Default::default()
+    };
+
+    let lines = render_todos_widget(&data, Rect::new(0, 0, 80, 8));
+    let header = lines_text(&lines[..1]);
+    // Exact 1:1 pips on the header: 2 done, 1 active, 1 open.
+    assert_eq!(header.matches('●').count(), 2, "expected 2 done pips: {header}");
+    assert_eq!(header.matches('◐').count(), 1, "expected 1 active pip: {header}");
+    assert_eq!(header.matches('○').count(), 1, "expected 1 open pip: {header}");
+    // The old block bar should be gone everywhere.
+    let all = lines_text(&lines);
+    assert!(!all.contains('█'), "old block bar should be gone: {all}");
+    assert!(!all.contains('░'), "old empty bar should be gone: {all}");
+}
+
+#[test]
 fn cost_based_usage_widgets_show_price_and_tokens() {
     let usage = UsageInfo {
         provider: UsageProvider::CostBased,

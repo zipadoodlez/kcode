@@ -876,9 +876,9 @@ pub(crate) fn calculate_widget_height(
             if data.todos.is_empty() {
                 return 0;
             }
-            // Header + progress bar + up to 5 items
+            // Header (with inline pip meter) + up to 5 items
             let items = data.todos.len().min(5) as u16;
-            2 + items + if data.todos.len() > 5 { 1 } else { 0 }
+            1 + items + if data.todos.len() > 5 { 1 } else { 0 }
         }
         WidgetKind::ContextUsage => {
             if data

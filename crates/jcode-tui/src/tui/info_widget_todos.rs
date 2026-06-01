@@ -1,5 +1,9 @@
 use super::*;
 
+/// Below this many todos we always render an exact 1:1 pip per todo,
+/// even if the panel is a bit narrow, so small lists are never normalized.
+const EXACT_PIP_FLOOR: usize = 12;
+
 fn todo_confidence_weight(priority: &str) -> u32 {
     match priority {
         "high" => 3,
@@ -63,6 +67,85 @@ fn push_todo_confidence_suffix(spans: &mut Vec<Span<'static>>, todo: &crate::tod
     ));
 }
 
+/// Build a compact pip-dot status meter for a set of todos.
+///
+/// Each todo becomes one pip: filled = completed, half = in_progress,
+/// hollow = pending/blocked. We render an exact 1:1 pip per todo whenever
+/// the list is small enough to fit in `width_pips` columns; only larger
+/// lists collapse to a proportional summary so the footprint stays small.
+fn push_todo_pips(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData, width_pips: usize) {
+    let total = data.todos.len();
+    if total == 0 || width_pips == 0 {
+        return;
+    }
+
+    let done_color = rgb(100, 180, 100);
+    let active_color = rgb(255, 200, 100);
+    let open_color = rgb(90, 90, 105);
+
+    let completed = data
+        .todos
+        .iter()
+        .filter(|t| t.status == "completed")
+        .count();
+    let in_progress = data
+        .todos
+        .iter()
+        .filter(|t| t.status == "in_progress")
+        .count();
+    let open = total.saturating_sub(completed + in_progress);
+
+    spans.push(Span::raw("  "));
+
+    // Prefer exact 1:1 pips. Allow it whenever the list fits the available
+    // width, plus a generous floor so typical lists never get normalized
+    // just because the panel is a little narrow.
+    let exact_threshold = width_pips.max(EXACT_PIP_FLOOR);
+
+    if total <= exact_threshold {
+        // One pip per todo, in status order: done, active, open.
+        for _ in 0..completed {
+            spans.push(Span::styled("●", Style::default().fg(done_color)));
+        }
+        for _ in 0..in_progress {
+            spans.push(Span::styled("◐", Style::default().fg(active_color)));
+        }
+        for _ in 0..open {
+            spans.push(Span::styled("○", Style::default().fg(open_color)));
+        }
+    } else {
+        // Collapse proportionally to width_pips.
+        let max_pips = width_pips.max(1);
+        let scale = |count: usize| -> usize {
+            ((count as f64 / total as f64) * max_pips as f64).round() as usize
+        };
+        let mut done_pips = scale(completed);
+        let mut active_pips = scale(in_progress);
+        // Ensure at least one active pip if any work is in progress.
+        if in_progress > 0 && active_pips == 0 {
+            active_pips = 1;
+        }
+        // Ensure at least one done pip if anything is completed.
+        if completed > 0 && done_pips == 0 {
+            done_pips = 1;
+        }
+        let used = (done_pips + active_pips).min(max_pips);
+        let open_pips = max_pips.saturating_sub(used);
+        let done_pips = done_pips.min(max_pips);
+        let active_pips = active_pips.min(max_pips.saturating_sub(done_pips));
+
+        for _ in 0..done_pips {
+            spans.push(Span::styled("●", Style::default().fg(done_color)));
+        }
+        for _ in 0..active_pips {
+            spans.push(Span::styled("◐", Style::default().fg(active_color)));
+        }
+        for _ in 0..open_pips {
+            spans.push(Span::styled("○", Style::default().fg(open_color)));
+        }
+    }
+}
+
 fn push_aggregate_confidence_suffix(spans: &mut Vec<Span<'static>>, data: &InfoWidgetData) {
     let Some(score) = aggregate_todo_confidence(&data.todos) else {
         return;
@@ -97,7 +180,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         .filter(|t| t.status == "in_progress")
         .count();
 
-    // Header with progress
+    // Header with progress + inline pip meter
     let mut header = vec![
         Span::styled("Todos ", Style::default().fg(rgb(180, 180, 190)).bold()),
         Span::styled(
@@ -105,21 +188,10 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
             Style::default().fg(rgb(140, 140, 150)),
         ),
     ];
+    let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 10) as usize;
+    push_todo_pips(&mut header, data, pip_budget);
     push_aggregate_confidence_suffix(&mut header, data);
     lines.push(Line::from(header));
-
-    // Mini progress bar
-    let bar_width = inner.width.saturating_sub(2).min(20) as usize;
-    if bar_width >= 4 && total > 0 {
-        let filled = ((completed as f64 / total as f64) * bar_width as f64).round() as usize;
-        let empty = bar_width.saturating_sub(filled);
-        lines.push(Line::from(vec![
-            Span::styled("[", Style::default().fg(rgb(90, 90, 100))),
-            Span::styled("█".repeat(filled), Style::default().fg(rgb(100, 180, 100))),
-            Span::styled("░".repeat(empty), Style::default().fg(rgb(50, 50, 60))),
-            Span::styled("]", Style::default().fg(rgb(90, 90, 100))),
-        ]));
-    }
 
     // Sort todos: in_progress first, then pending, then completed
     let mut sorted_todos: Vec<&crate::todo::TodoItem> = data.todos.iter().collect();
@@ -135,7 +207,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     });
 
     // Render todos (limit based on available height)
-    let available_lines = inner.height.saturating_sub(2) as usize; // Account for header + bar
+    let available_lines = inner.height.saturating_sub(1) as usize; // Account for header
     for todo in sorted_todos.iter().take(available_lines.min(5)) {
         let is_blocked = !todo.blocked_by.is_empty();
         let (icon, status_color) = if is_blocked && todo.status != "completed" {
@@ -216,7 +288,7 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
         .filter(|t| t.status == "in_progress")
         .count();
 
-    // Header with progress
+    // Header with progress + inline pip meter
     let mut header = vec![
         Span::styled("Todos ", Style::default().fg(rgb(180, 180, 190)).bold()),
         Span::styled(
@@ -224,21 +296,10 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
             Style::default().fg(rgb(140, 140, 150)),
         ),
     ];
+    let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 14) as usize;
+    push_todo_pips(&mut header, data, pip_budget);
     push_aggregate_confidence_suffix(&mut header, data);
     lines.push(Line::from(header));
-
-    // Mini progress bar
-    let bar_width = inner.width.saturating_sub(2).min(20) as usize;
-    if bar_width >= 4 && total > 0 {
-        let filled = ((completed as f64 / total as f64) * bar_width as f64).round() as usize;
-        let empty = bar_width.saturating_sub(filled);
-        lines.push(Line::from(vec![
-            Span::styled("[", Style::default().fg(rgb(90, 90, 100))),
-            Span::styled("█".repeat(filled), Style::default().fg(rgb(100, 180, 100))),
-            Span::styled("░".repeat(empty), Style::default().fg(rgb(50, 50, 60))),
-            Span::styled("]", Style::default().fg(rgb(90, 90, 100))),
-        ]));
-    }
 
     // Sort todos: in_progress first, then pending, then completed
     let mut sorted_todos: Vec<&crate::todo::TodoItem> = data.todos.iter().collect();
@@ -254,7 +315,7 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
     });
 
     // Render todos with priority colors
-    let available_lines = MAX_TODO_LINES.saturating_sub(2); // Account for header + bar
+    let available_lines = MAX_TODO_LINES.saturating_sub(1); // Account for header
     for todo in sorted_todos.iter().take(available_lines) {
         let is_blocked = !todo.blocked_by.is_empty();
         let (icon, status_color) = if is_blocked && todo.status != "completed" {
