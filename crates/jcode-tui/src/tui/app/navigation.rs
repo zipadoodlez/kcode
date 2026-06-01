@@ -1415,10 +1415,16 @@ impl App {
         let before = self.scroll_offset;
         let max = self.scroll_max_estimate();
         let rendered_max = super::super::ui::last_max_scroll();
+        // The renderer's exact extent is the authoritative ceiling. Only fall
+        // back to the (possibly inflated) estimate while streaming can leave
+        // `rendered_max` stale at 0 even though there is content to scroll.
         let bottom_threshold = if rendered_max > 0 {
             rendered_max.min(max)
-        } else {
+        } else if self.is_processing || !self.streaming_text.is_empty() {
             max
+        } else {
+            // Not streaming and nothing to scroll: we are already at the bottom.
+            0
         };
         self.scroll_offset = self.scroll_offset.saturating_add(amount);
         if self.scroll_offset >= bottom_threshold {

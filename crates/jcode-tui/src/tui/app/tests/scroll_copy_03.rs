@@ -417,6 +417,39 @@ fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
 }
 
 #[test]
+fn test_queued_wheel_down_at_bottom_does_not_accumulate_phantom_scroll() {
+    // Touchpad/mouse momentum can queue many downward wheel steps. If they keep
+    // "succeeding" against the already-pinned bottom, the queue (or offset) would
+    // accumulate phantom scroll that a later wheel-up has to drain first. The
+    // queue must be cleared as soon as a step can no longer move the view.
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 12);
+    render_and_snap(&app, &mut terminal);
+
+    // Already following the bottom.
+    assert!(!app.auto_scroll_paused);
+
+    // Simulate a burst of queued downward wheel momentum.
+    app.mouse_scroll_target = Some(super::MouseScrollTarget::Chat);
+    app.mouse_scroll_queue = 24;
+
+    app.progress_mouse_scroll_animation();
+
+    assert_eq!(
+        app.mouse_scroll_queue, 0,
+        "blocked downward momentum must clear the queue instead of parking phantom scroll"
+    );
+    assert!(
+        app.mouse_scroll_target.is_none(),
+        "scroll target should reset once the queue is drained"
+    );
+    assert!(
+        !app.auto_scroll_paused,
+        "still following the bottom after blocked downward momentum"
+    );
+}
+
+#[test]
 fn test_copy_selection_from_bottom_rebases_scroll_instead_of_jumping_to_top() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(80, 25, 0, 40);
