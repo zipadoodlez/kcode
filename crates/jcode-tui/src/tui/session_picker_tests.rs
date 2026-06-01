@@ -1071,6 +1071,38 @@ fn onboarding_banner_up_from_list_highlights_start_new_and_enter_returns_start_n
 }
 
 #[test]
+fn onboarding_banner_renders_prompt_and_start_new_row() {
+    let mut picker = SessionPicker::new(vec![codex_session("codex_one")]);
+    picker.activate_external_cli_filter(SessionFilterMode::Codex);
+    picker.activate_onboarding_banner(vec![
+        Line::from("Welcome to jcode"),
+        Line::from("We found your Codex sessions."),
+    ]);
+
+    let backend = ratatui::backend::TestBackend::new(120, 40);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| picker.render(frame))
+        .expect("render onboarding picker");
+
+    let buffer = terminal.backend().buffer().clone();
+    let text: String = buffer
+        .content()
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+
+    assert!(
+        text.contains("Welcome to jcode"),
+        "onboarding prompt should render in the banner: {text:?}"
+    );
+    assert!(
+        text.contains("Start a new session"),
+        "start-new row should render in the banner: {text:?}"
+    );
+}
+
+#[test]
 fn test_keyboard_scroll_uses_preview_focus_for_paging() {
     let s1 = make_session("session_1", "one", false, SessionStatus::Closed);
     let s2 = make_session("session_2", "two", false, SessionStatus::Closed);
