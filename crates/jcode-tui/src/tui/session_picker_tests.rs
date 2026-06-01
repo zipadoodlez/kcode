@@ -1087,11 +1087,7 @@ fn onboarding_banner_renders_prompt_and_start_new_row() {
         .expect("render onboarding picker");
 
     let buffer = terminal.backend().buffer().clone();
-    let text: String = buffer
-        .content()
-        .iter()
-        .map(|cell| cell.symbol())
-        .collect();
+    let text: String = buffer.content().iter().map(|cell| cell.symbol()).collect();
 
     assert!(
         text.contains("Welcome to jcode"),

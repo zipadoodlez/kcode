@@ -875,8 +875,10 @@ pub(in crate::tui::app) fn handle_server_event(
             let history_mcp_count = mcp_servers.len();
             let history_model = provider_model.clone();
 
-            if should_defer_history_for_runtime_identity(server_has_update, server_version.as_deref())
-            {
+            if should_defer_history_for_runtime_identity(
+                server_has_update,
+                server_version.as_deref(),
+            ) {
                 let client_detected_stale = server_has_update.is_none();
                 app.remote_server_version = server_version;
                 app.remote_server_short_name = server_name.clone();
