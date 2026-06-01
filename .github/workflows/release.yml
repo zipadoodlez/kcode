@@ -366,7 +366,7 @@ jobs:
 
                 def install
                   libexec.install "jcode-linux-x86_64", "jcode-linux-x86_64.bin"
-                  libexec.install Dir["libssl.so*"], Dir["libcrypto.so*"]
+                  libexec.install Dir["libssl.so*"], Dir["libcrypto.so*"] unless Dir["libssl.so*", "libcrypto.so*"].empty?
                   (bin/"jcode").write <<~SH
                     #!/bin/sh
                     exec "#{libexec}/jcode-linux-x86_64" "$@"
@@ -460,8 +460,12 @@ jobs:
           package() {
               install -Dm755 "${srcdir}/jcode-linux-x86_64" "${pkgdir}/usr/lib/jcode/jcode-linux-x86_64"
               install -Dm755 "${srcdir}/jcode-linux-x86_64.bin" "${pkgdir}/usr/lib/jcode/jcode-linux-x86_64.bin"
-              install -Dm644 "${srcdir}"/libssl.so* "${pkgdir}/usr/lib/jcode/"
-              install -Dm644 "${srcdir}"/libcrypto.so* "${pkgdir}/usr/lib/jcode/"
+              if compgen -G "${srcdir}/libssl.so*" >/dev/null; then
+                  install -Dm644 "${srcdir}"/libssl.so* "${pkgdir}/usr/lib/jcode/"
+              fi
+              if compgen -G "${srcdir}/libcrypto.so*" >/dev/null; then
+                  install -Dm644 "${srcdir}"/libcrypto.so* "${pkgdir}/usr/lib/jcode/"
+              fi
               mkdir -p "${pkgdir}/usr/bin"
               ln -s /usr/lib/jcode/jcode-linux-x86_64 "${pkgdir}/usr/bin/jcode"
           }

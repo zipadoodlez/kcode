@@ -126,10 +126,19 @@ WRAPPER
 	          fi
 	        done
 
-	    (cd /out && tar czf '"$artifact"'.tar.gz '"$artifact"' '"$artifact"'.bin libssl.so* libcrypto.so*)
+		    tar_inputs=("'"$artifact"'" "'"$artifact"'.bin")
+		    shopt -s nullglob
+		    openssl_libs=(libssl.so* libcrypto.so*)
+		    shopt -u nullglob
+		    tar_inputs+=("${openssl_libs[@]}")
+		    (cd /out && tar czf '"$artifact"'.tar.gz "${tar_inputs[@]}")
 
-	    chown "$HOST_UID:$HOST_GID" "/out/'"$artifact"'" "/out/'"$artifact"'.bin" "/out/'"$artifact"'.tar.gz" /out/libssl.so* /out/libcrypto.so* 2>/dev/null || true
-	  '
+		    chown_inputs=("/out/'"$artifact"'" "/out/'"$artifact"'.bin" "/out/'"$artifact"'.tar.gz")
+		    for lib in "${openssl_libs[@]}"; do
+		      chown_inputs+=("/out/$lib")
+		    done
+		    chown "$HOST_UID:$HOST_GID" "${chown_inputs[@]}" 2>/dev/null || true
+		  '
 
 echo "Built artifacts:"
 ls -lh "$out_dir/$artifact" "$out_dir/$artifact.tar.gz"
