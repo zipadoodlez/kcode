@@ -161,7 +161,9 @@ impl App {
             HostToApp::Scroll { pane, delta } if delta < 0 => {
                 let amount = delta.unsigned_abs() as usize;
                 match pane {
-                    PaneKind::Chat => self.scroll_up(amount),
+                    PaneKind::Chat => {
+                        self.scroll_up(amount);
+                    }
                     PaneKind::SidePanel => {
                         let current = if self.diff_pane_scroll == usize::MAX {
                             crate::tui::ui::last_diff_pane_effective_scroll()
@@ -176,7 +178,9 @@ impl App {
             HostToApp::Scroll { pane, delta } if delta > 0 => {
                 let amount = delta as usize;
                 match pane {
-                    PaneKind::Chat => self.scroll_down(amount),
+                    PaneKind::Chat => {
+                        self.scroll_down(amount);
+                    }
                     PaneKind::SidePanel => {
                         if self.diff_pane_scroll == usize::MAX {
                             self.diff_pane_scroll =

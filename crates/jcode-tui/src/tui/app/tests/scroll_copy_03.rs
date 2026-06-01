@@ -373,6 +373,50 @@ fn test_scroll_round_trip() {
 }
 
 #[test]
+fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
+    // Repro for the "scroll past the end" bug. While streaming, scroll_max_estimate
+    // can exceed the renderer's actual max (rendered_max). The old code capped the
+    // paused scroll_offset to that inflated estimate, so scrolling down "past" the
+    // visible bottom silently inflated scroll_offset above rendered_max without
+    // moving the view. A later scroll-up then had to first drain that phantom
+    // offset before the viewport moved at all.
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 12);
+
+    // Establish a rendered scroll extent.
+    render_and_snap(&app, &mut terminal);
+    let rendered_max = crate::tui::ui::last_max_scroll();
+    assert!(rendered_max > 2, "expected scrollable chat content");
+
+    // Pause partway up the transcript.
+    app.scroll_offset = 1;
+    app.auto_scroll_paused = true;
+
+    // Simulate streaming so scroll_max_estimate() inflates above rendered_max.
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+    app.streaming_text = "x".repeat(20_000);
+
+    // Hammer scroll-down well past the bottom.
+    for _ in 0..200 {
+        app.scroll_down(1);
+        if !app.auto_scroll_paused {
+            break;
+        }
+    }
+
+    // The stored offset must never exceed the largest offset the renderer can
+    // actually display; otherwise scrolling back up has to drain phantom offset.
+    let rendered_max = crate::tui::ui::last_max_scroll();
+    assert!(
+        app.scroll_offset <= rendered_max,
+        "scroll_offset ({}) must not exceed rendered_max ({}) - phantom offset accumulated",
+        app.scroll_offset,
+        rendered_max
+    );
+}
+
+#[test]
 fn test_copy_selection_from_bottom_rebases_scroll_instead_of_jumping_to_top() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(80, 25, 0, 40);

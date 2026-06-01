@@ -669,11 +669,10 @@ impl App {
         match target {
             MouseScrollTarget::Chat => {
                 if direction < 0 {
-                    self.scroll_up(1);
+                    self.scroll_up(1)
                 } else {
-                    self.scroll_down(1);
+                    self.scroll_down(1)
                 }
-                true
             }
             MouseScrollTarget::SidePane => {
                 let current = if self.diff_pane_scroll == usize::MAX {
@@ -1369,7 +1368,13 @@ impl App {
         }
     }
 
-    pub(super) fn scroll_up(&mut self, amount: usize) {
+    /// Scroll the chat transcript up by `amount` lines.
+    ///
+    /// Returns `true` if the stored scroll position actually changed. Callers
+    /// (e.g. the mouse-wheel queue) rely on this to avoid accumulating
+    /// "phantom" scroll once the viewport is already pinned to the top.
+    pub(super) fn scroll_up(&mut self, amount: usize) -> bool {
+        let before = (self.scroll_offset, self.auto_scroll_paused);
         let max = self.scroll_max_estimate();
         if !self.auto_scroll_paused {
             let rendered_max = super::super::ui::last_max_scroll();
@@ -1383,6 +1388,7 @@ impl App {
         }
         self.auto_scroll_paused = true;
         self.maybe_queue_compacted_history_load();
+        before != (self.scroll_offset, self.auto_scroll_paused)
     }
 
     pub(super) fn pause_chat_auto_scroll(&mut self) {
@@ -1396,10 +1402,17 @@ impl App {
         self.auto_scroll_paused = true;
     }
 
-    pub(super) fn scroll_down(&mut self, amount: usize) {
+    /// Scroll the chat transcript down by `amount` lines.
+    ///
+    /// Returns `true` if the stored scroll position actually changed. When the
+    /// view is already following the bottom this is a no-op and returns
+    /// `false`, so the mouse-wheel queue does not accumulate phantom scroll
+    /// that would later have to be undone before scrolling up moves the view.
+    pub(super) fn scroll_down(&mut self, amount: usize) -> bool {
         if !self.auto_scroll_paused {
-            return;
+            return false;
         }
+        let before = self.scroll_offset;
         let max = self.scroll_max_estimate();
         let rendered_max = super::super::ui::last_max_scroll();
         let bottom_threshold = if rendered_max > 0 {
@@ -1410,8 +1423,14 @@ impl App {
         self.scroll_offset = self.scroll_offset.saturating_add(amount);
         if self.scroll_offset >= bottom_threshold {
             self.follow_chat_bottom();
+            true
         } else {
-            self.scroll_offset = self.scroll_offset.min(max);
+            // Never let the stored offset grow past the largest offset that
+            // still moves the rendered viewport. Otherwise scrolling down at
+            // (or near) the bottom silently accumulates "phantom" offset that
+            // later has to be undone before scrolling up moves the view again.
+            self.scroll_offset = self.scroll_offset.min(bottom_threshold);
+            self.scroll_offset != before
         }
     }
 
