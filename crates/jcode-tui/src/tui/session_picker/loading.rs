@@ -217,6 +217,39 @@ fn raw_value_search_excerpt(raw: &RawValue, budget: usize) -> Option<String> {
     (!excerpt.is_empty()).then_some(excerpt)
 }
 
+fn raw_value_display_text(raw: &RawValue) -> Option<String> {
+    fn collect_text(value: &serde_json::Value, out: &mut String) {
+        match value {
+            serde_json::Value::String(text) => {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(text);
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    collect_text(item, out);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                if let Some(text) = map.get("text").and_then(|v| v.as_str()) {
+                    if !out.is_empty() {
+                        out.push('\n');
+                    }
+                    out.push_str(text);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let value: serde_json::Value = serde_json::from_str(raw.get()).ok()?;
+    let mut text = String::new();
+    collect_text(&value, &mut text);
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_string())
+}
+
 #[cfg(test)]
 pub(super) fn session_matches_query(session: &SessionInfo, query: &str) -> bool {
     let normalized = query.trim().to_lowercase();
@@ -975,6 +1008,7 @@ struct SessionMessageSummaryData {
     user_message_count: usize,
     assistant_message_count: usize,
     estimated_tokens: usize,
+    first_user_prompt: Option<String>,
     search_text: String,
 }
 
@@ -986,7 +1020,12 @@ impl SessionMessageSummaryData {
 
         self.visible_message_count += 1;
         match message.role {
-            Role::User => self.user_message_count += 1,
+            Role::User => {
+                self.user_message_count += 1;
+                if self.first_user_prompt.is_none() {
+                    self.first_user_prompt = message.content_text.clone();
+                }
+            }
             Role::Assistant => self.assistant_message_count += 1,
         }
         if let Some(usage) = &message.token_usage {
@@ -1012,6 +1051,9 @@ impl SessionMessageSummaryData {
             .assistant_message_count
             .saturating_add(other.assistant_message_count);
         self.estimated_tokens = self.estimated_tokens.saturating_add(other.estimated_tokens);
+        if self.first_user_prompt.is_none() {
+            self.first_user_prompt = other.first_user_prompt;
+        }
         let mut remaining =
             INITIAL_TRANSCRIPT_SEARCH_BUDGET_BYTES.saturating_sub(self.search_text.len());
         push_raw_search_excerpt(&mut self.search_text, &other.search_text, &mut remaining);
@@ -1082,6 +1124,7 @@ struct SessionMessageSummary {
     // the raw prefix for old snapshots that predate `display_role`.
     content_starts_with_system_reminder: bool,
     content_raw: Option<String>,
+    content_text: Option<String>,
     display_role: Option<StoredDisplayRole>,
     token_usage: Option<SessionTokenUsageSummary>,
 }
@@ -1146,10 +1189,16 @@ impl<'de> Visitor<'de> for SessionMessageSummaryVisitor {
         } else {
             None
         };
+        let content_text = if display_role.is_none() && !content_starts_with_system_reminder {
+            content.and_then(raw_value_display_text)
+        } else {
+            None
+        };
         Ok(SessionMessageSummary {
             role,
             content_starts_with_system_reminder,
             content_raw,
+            content_text,
             display_role,
             token_usage,
         })
@@ -1492,6 +1541,7 @@ pub fn load_sessions() -> Result<Vec<SessionInfo>> {
                     status,
                     needs_catchup,
                     estimated_tokens,
+                    first_user_prompt: session.messages.first_user_prompt,
                     messages_preview,
                     search_index,
                     server_name: None,
@@ -1586,6 +1636,7 @@ fn load_external_claude_code_sessions(scan_limit: usize) -> Vec<SessionInfo> {
                 status: SessionStatus::Closed,
                 needs_catchup: false,
                 estimated_tokens: 0,
+                first_user_prompt: Some(session.first_prompt.clone()),
                 messages_preview: Vec::new(),
                 search_index,
                 server_name: None,
@@ -1752,6 +1803,7 @@ fn load_codex_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         status: SessionStatus::Closed,
         needs_catchup: false,
         estimated_tokens: 0,
+        first_user_prompt: None,
         messages_preview: Vec::new(),
         search_index,
         server_name: None,
@@ -1936,6 +1988,7 @@ fn load_pi_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         status: SessionStatus::Closed,
         needs_catchup: false,
         estimated_tokens: 0,
+        first_user_prompt: None,
         messages_preview: Vec::new(),
         search_index,
         server_name: None,
@@ -2068,6 +2121,10 @@ fn load_pi_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         None,
         &preview,
     );
+    let first_user_prompt = preview
+        .iter()
+        .find(|msg| msg.role == "user" && !msg.content.trim().is_empty())
+        .map(|msg| msg.content.clone());
 
     Ok(Some(SessionInfo {
         id: format!("pi:{session_id}"),
@@ -2091,6 +2148,7 @@ fn load_pi_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         status: SessionStatus::Closed,
         needs_catchup: false,
         estimated_tokens: 0,
+        first_user_prompt,
         messages_preview: preview,
         search_index,
         server_name: None,
@@ -2193,6 +2251,7 @@ fn load_opencode_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         status: SessionStatus::Closed,
         needs_catchup: false,
         estimated_tokens: 0,
+        first_user_prompt: None,
         messages_preview: Vec::new(),
         search_index,
         server_name: None,
@@ -2306,6 +2365,10 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         None,
         &preview,
     );
+    let first_user_prompt = preview
+        .iter()
+        .find(|msg| msg.role == "user" && !msg.content.trim().is_empty())
+        .map(|msg| msg.content.clone());
 
     Ok(Some(SessionInfo {
         id: format!("opencode:{session_id}"),
@@ -2329,6 +2392,7 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         status: SessionStatus::Closed,
         needs_catchup: false,
         estimated_tokens: 0,
+        first_user_prompt,
         messages_preview: preview,
         search_index,
         server_name: None,

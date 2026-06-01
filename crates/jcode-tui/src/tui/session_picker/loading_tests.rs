@@ -121,6 +121,7 @@ fn cached_grouped_sessions_round_trip_from_disk() {
         status: SessionStatus::Closed,
         needs_catchup: false,
         estimated_tokens: 0,
+        first_user_prompt: None,
         messages_preview: Vec::new(),
         search_index: "cache test".to_string(),
         server_name: None,

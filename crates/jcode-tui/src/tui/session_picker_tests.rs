@@ -83,6 +83,10 @@ fn make_session_with_flags(
         status,
         needs_catchup: false,
         estimated_tokens: 200,
+        first_user_prompt: messages_preview
+            .iter()
+            .find(|msg| msg.role == "user" && !msg.content.trim().is_empty())
+            .map(|msg| msg.content.clone()),
         messages_preview,
         search_index,
         server_name: None,
