@@ -45,7 +45,6 @@ fn timeout_message(timeout_ms: u64) -> String {
     msg
 }
 
-
 fn progress_ratio_regex() -> Result<&'static regex::Regex> {
     static REGEX: LazyLock<Result<regex::Regex, regex::Error>> = LazyLock::new(|| {
         regex::Regex::new(
@@ -732,7 +731,8 @@ impl BashTool {
                                             } else {
                                                 format!("{}\n", input)
                                             };
-                                            if stdin_pipe.write_all(line.as_bytes()).await.is_err() {
+                                            if stdin_pipe.write_all(line.as_bytes()).await.is_err()
+                                            {
                                                 break;
                                             }
                                             if stdin_pipe.flush().await.is_err() {
@@ -744,8 +744,10 @@ impl BashTool {
 
                                     tokio::time::sleep(Duration::from_millis(100)).await;
                                 } else {
-                                    tokio::time::sleep(Duration::from_millis(STDIN_POLL_INTERVAL_MS))
-                                        .await;
+                                    tokio::time::sleep(Duration::from_millis(
+                                        STDIN_POLL_INTERVAL_MS,
+                                    ))
+                                    .await;
                                 }
                             }
                         }
