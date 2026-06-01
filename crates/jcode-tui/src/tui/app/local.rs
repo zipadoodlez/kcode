@@ -162,6 +162,9 @@ pub(super) fn handle_bus_event(
             app.handle_login_completed(login);
             true
         }
+        Ok(BusEvent::OnboardingModelValidated(result)) => {
+            app.handle_onboarding_model_validated(result)
+        }
         Ok(BusEvent::ModelsUpdated) => {
             app.invalidate_model_picker_cache();
             true

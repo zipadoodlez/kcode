@@ -73,7 +73,7 @@ impl App {
         )
     }
 
-    fn effective_remote_provider_model(&self) -> Option<String> {
+    pub(super) fn effective_remote_provider_model(&self) -> Option<String> {
         Self::sanitize_remote_model_hint(self.remote_provider_model.clone())
             .or_else(|| Self::sanitize_remote_model_hint(self.session.model.clone()))
             .or_else(|| self.configured_remote_model_hint())

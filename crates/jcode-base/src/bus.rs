@@ -119,6 +119,22 @@ pub struct LoginCompleted {
     pub message: String,
 }
 
+/// Result of the first-run onboarding default-model validation ping. Published
+/// after the new-session screen runs a lightweight live check of the
+/// auto-selected default model so the UI can show a single "ready"/"failed"
+/// validation line instead of the usual login/import chatter.
+#[derive(Clone, Debug)]
+pub struct OnboardingModelValidated {
+    /// Session the validation was started for; the UI ignores stale results.
+    pub session_id: String,
+    /// Friendly model label shown to the user (e.g. "GPT-5.5 (low)").
+    pub model_label: String,
+    /// Whether the live validation ping succeeded.
+    pub ok: bool,
+    /// Optional short detail (failure reason) shown after a failed check.
+    pub detail: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct InputShellCompleted {
     pub session_id: String,
@@ -321,6 +337,8 @@ pub enum BusEvent {
     UsageReportProgress(jcode_usage_types::ProviderUsageProgress),
     /// OAuth/login flow completed in the background
     LoginCompleted(LoginCompleted),
+    /// First-run onboarding finished validating the auto-selected default model.
+    OnboardingModelValidated(OnboardingModelValidated),
     /// Local `!cmd` shell command completed from the input line
     InputShellCompleted(InputShellCompleted),
     /// Clipboard paste/image URL work completed off the UI thread

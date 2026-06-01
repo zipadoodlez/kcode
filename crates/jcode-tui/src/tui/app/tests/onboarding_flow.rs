@@ -10,18 +10,18 @@ fn onboarding_test_app() -> App {
 }
 
 #[test]
-fn onboarding_begins_at_model_select() {
+fn onboarding_begins_and_advances_past_model_select() {
     let mut app = create_test_app();
     app.onboarding_flow = None;
     app.begin_onboarding_flow();
+    // `begin_onboarding_flow` immediately advances past the legacy ModelSelect
+    // phase: with no external transcripts to resume it lands on the
+    // suggestion-card (new-session) screen rather than blocking on a picker.
     assert!(matches!(
         app.onboarding_phase(),
-        Some(OnboardingPhase::ModelSelect)
+        Some(OnboardingPhase::Suggestions)
     ));
     // begin is idempotent: a second call does not reset the phase.
-    if let Some(flow) = app.onboarding_flow.as_mut() {
-        flow.phase = OnboardingPhase::Suggestions;
-    }
     app.begin_onboarding_flow();
     assert!(matches!(
         app.onboarding_phase(),
@@ -508,4 +508,69 @@ fn startup_check_is_noop_once_committed() {
         // Already committed: never touches the flow.
         assert!(app.onboarding_flow.is_none());
     });
+}
+
+#[test]
+fn model_validation_success_appends_single_ready_line() {
+    let mut app = create_test_app();
+    let session_id = app.session.id.clone();
+    let before = app.display_messages().len();
+
+    let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
+        session_id,
+        model_label: "GPT-5.5 (low)".to_string(),
+        ok: true,
+        detail: None,
+    });
+
+    assert!(consumed);
+    let messages = app.display_messages();
+    assert_eq!(messages.len(), before + 1, "exactly one validation line");
+    let line = &messages.last().unwrap().content;
+    assert!(line.contains("GPT-5.5 (low)"), "names the model: {line:?}");
+    assert!(line.contains("validated"), "states it validated: {line:?}");
+    assert!(line.starts_with('\u{2713}'), "leads with a check: {line:?}");
+}
+
+#[test]
+fn model_validation_failure_appends_single_warning_line_with_detail() {
+    let mut app = create_test_app();
+    let session_id = app.session.id.clone();
+    let before = app.display_messages().len();
+
+    let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
+        session_id,
+        model_label: "Claude Opus 4.8".to_string(),
+        ok: false,
+        detail: Some("timed out after 30s".to_string()),
+    });
+
+    assert!(consumed);
+    let messages = app.display_messages();
+    assert_eq!(messages.len(), before + 1, "exactly one validation line");
+    let line = &messages.last().unwrap().content;
+    assert!(line.contains("Claude Opus 4.8"), "names the model: {line:?}");
+    assert!(line.contains("timed out after 30s"), "includes detail: {line:?}");
+    assert!(line.contains("/model"), "offers a way out: {line:?}");
+    assert!(line.starts_with('\u{26a0}'), "leads with a warning: {line:?}");
+}
+
+#[test]
+fn model_validation_ignores_stale_session_result() {
+    let mut app = create_test_app();
+    let before = app.display_messages().len();
+
+    let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
+        session_id: "some-other-session".to_string(),
+        model_label: "GPT-5.5".to_string(),
+        ok: true,
+        detail: None,
+    });
+
+    assert!(!consumed, "stale result is not consumed");
+    assert_eq!(
+        app.display_messages().len(),
+        before,
+        "stale result appends nothing"
+    );
 }

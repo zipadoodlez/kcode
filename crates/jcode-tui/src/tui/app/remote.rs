@@ -472,6 +472,9 @@ pub(super) async fn handle_bus_event(
             }
             true
         }
+        Ok(BusEvent::OnboardingModelValidated(result)) => {
+            app.handle_onboarding_model_validated(result)
+        }
         Ok(BusEvent::UpdateStatus(status)) => {
             app.handle_update_status(status);
             true

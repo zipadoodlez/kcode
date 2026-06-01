@@ -726,6 +726,12 @@ pub struct App {
     /// TUI launches, so no in-TUI login event fires; this lets us still begin the
     /// flow once the TUI is ready and already authenticated.
     onboarding_startup_checked: bool,
+    /// Pending first-run model-validation request for the new-session screen.
+    /// In remote/client mode the live default model is reported by the server
+    /// asynchronously, so we record that a validation is wanted and let the
+    /// onboarding tick fire it once a concrete model id (not "unknown") is
+    /// known. `None` means no validation is pending.
+    onboarding_pending_model_validation: Option<onboarding_flow::OnboardingPendingValidation>,
     // Inline UI state for copy badges ([Alt] [⇧] [S])
     copy_badge_ui: CopyBadgeUiState,
     // Modal in-app selection/copy state for the chat viewport.

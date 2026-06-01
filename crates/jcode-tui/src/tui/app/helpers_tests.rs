@@ -1,7 +1,7 @@
 use super::{
     build_resume_command, clear_ambient_info_cache_for_tests, extract_bracketed_system_message,
     format_countdown_until, gather_ambient_info, inferred_reasoning_efforts,
-    partition_queued_messages, resume_invocation_args,
+    partition_queued_messages, pretty_model_display_name, resume_invocation_args,
 };
 use crate::ambient::{AmbientManager, Priority, ScheduleRequest, ScheduleTarget};
 use crate::terminal_launch::{detected_resume_terminal, shell_command};
@@ -291,5 +291,38 @@ fn gather_ambient_info_filters_to_session_reminders_when_ambient_disabled() {
         info.next_reminder_wake
             .as_deref()
             .is_some_and(|text| text.starts_with("in 4m") || text.starts_with("in 5m"))
+    );
+}
+
+#[test]
+fn pretty_model_display_name_formats_common_models() {
+    assert_eq!(pretty_model_display_name("gpt-5.5"), "GPT-5.5");
+    assert_eq!(pretty_model_display_name("gpt-5.1-codex"), "GPT-5.1-codex");
+    assert_eq!(
+        pretty_model_display_name("claude-opus-4-8"),
+        "Claude Opus 4.8"
+    );
+    assert_eq!(
+        pretty_model_display_name("claude-sonnet-4-5"),
+        "Claude Sonnet 4.5"
+    );
+    assert_eq!(
+        pretty_model_display_name("claude-opus-4-8[1m]"),
+        "Claude Opus 4.8 (1M)"
+    );
+    assert_eq!(
+        pretty_model_display_name("gemini-2.5-pro"),
+        "Gemini 2.5 Pro"
+    );
+}
+
+#[test]
+fn pretty_model_display_name_handles_empty_and_unknown() {
+    assert_eq!(pretty_model_display_name(""), "your default model");
+    assert_eq!(pretty_model_display_name("   "), "your default model");
+    // Unknown shapes fall back to a title-cased dashed rendering.
+    assert_eq!(
+        pretty_model_display_name("some-new-model"),
+        "Some New Model"
     );
 }

@@ -186,6 +186,39 @@ pub(crate) enum OnboardingPhase {
     Done,
 }
 
+/// A first-run new-session model-validation request that is waiting for a
+/// concrete default-model id to be known before it fires. In remote/client
+/// mode the live model is reported by the server asynchronously, so the
+/// onboarding tick polls until a real id (not "unknown") is available, then
+/// runs the lightweight validation ping.
+#[derive(Clone, Debug)]
+pub(crate) struct OnboardingPendingValidation {
+    /// Session the validation belongs to; stale requests are ignored.
+    pub(crate) session_id: String,
+    /// When the request was created, so we can give up after a short wait
+    /// (and validate whatever default we have) rather than spinning forever.
+    pub(crate) requested_at: Instant,
+}
+
+impl OnboardingPendingValidation {
+    /// How long we will wait for the server to report a concrete model id
+    /// before validating with the best default we currently have.
+    const RESOLVE_TIMEOUT: Duration = Duration::from_secs(8);
+
+    pub(crate) fn new(session_id: String) -> Self {
+        Self {
+            session_id,
+            requested_at: Instant::now(),
+        }
+    }
+
+    /// Whether we have waited long enough that we should validate now even if
+    /// the model id has not been reported yet.
+    pub(crate) fn resolve_timed_out(&self) -> bool {
+        self.requested_at.elapsed() >= Self::RESOLVE_TIMEOUT
+    }
+}
+
 /// Runtime state for the onboarding flow. `None`/`Done` means inactive.
 #[derive(Clone, Debug)]
 pub(crate) struct OnboardingFlow {

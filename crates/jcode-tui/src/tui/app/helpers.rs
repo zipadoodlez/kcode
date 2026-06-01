@@ -281,6 +281,91 @@ pub(super) fn effort_display_label(effort: &str) -> &str {
     }
 }
 
+/// Turn a raw model id into a friendlier display name for onboarding copy.
+///
+/// Examples:
+///   `gpt-5.5`            -> `GPT-5.5`
+///   `claude-opus-4-8`    -> `Claude Opus 4.8`
+///   `claude-opus-4-8[1m]`-> `Claude Opus 4.8 (1M)`
+///   `gemini-2.5-pro`     -> `Gemini 2.5 Pro`
+/// Unknown shapes are returned mostly as-is so we never hide the real id.
+pub(super) fn pretty_model_display_name(model: &str) -> String {
+    let model = model.trim();
+    if model.is_empty() {
+        return "your default model".to_string();
+    }
+
+    // Preserve and re-attach a `[1m]` long-context suffix as " (1M)".
+    let (core, long_context) = match model.strip_suffix("[1m]") {
+        Some(stripped) => (stripped, true),
+        None => (model, false),
+    };
+
+    let lower = core.to_ascii_lowercase();
+    let mut pretty = if let Some(rest) = lower.strip_prefix("gpt-") {
+        // OpenAI: keep the dotted version, just upcase the family.
+        format!("GPT-{}", rest)
+    } else if lower.starts_with("claude-") {
+        // Anthropic: claude-opus-4-8 -> Claude Opus 4.8. Convert the trailing
+        // `-<major>-<minor>` version into `<major>.<minor>` and title-case the
+        // family/tier words.
+        prettify_claude(core)
+    } else if lower.starts_with("gemini-") {
+        title_case_dashed(core)
+    } else {
+        title_case_dashed(core)
+    };
+
+    if long_context {
+        pretty.push_str(" (1M)");
+    }
+    pretty
+}
+
+/// Render `claude-opus-4-8` as `Claude Opus 4.8`.
+fn prettify_claude(core: &str) -> String {
+    let parts: Vec<&str> = core.split('-').collect();
+    let mut words: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < parts.len() {
+        let part = parts[i];
+        // Collapse a `<major>-<minor>` numeric pair into `<major>.<minor>`.
+        if part.chars().all(|c| c.is_ascii_digit())
+            && i + 1 < parts.len()
+            && parts[i + 1].chars().all(|c| c.is_ascii_digit())
+        {
+            words.push(format!("{}.{}", part, parts[i + 1]));
+            i += 2;
+            continue;
+        }
+        words.push(title_case_word(part));
+        i += 1;
+    }
+    words.join(" ")
+}
+
+/// Title-case a dash-separated id (`gemini-2.5-pro` -> `Gemini 2.5 Pro`).
+fn title_case_dashed(core: &str) -> String {
+    core.split('-')
+        .map(title_case_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Title-case a single token, leaving anything containing a digit untouched so
+/// version fragments like `4.8` or `2.5` are preserved.
+fn title_case_word(word: &str) -> String {
+    if word.is_empty() {
+        return String::new();
+    }
+    if word.chars().any(|c| c.is_ascii_digit()) {
+        return word.to_string();
+    }
+    let mut chars = word.chars();
+    let first = chars.next().unwrap().to_ascii_uppercase();
+    format!("{}{}", first, chars.as_str())
+}
+
 pub(super) fn inferred_reasoning_efforts(
     provider_name: Option<&str>,
     model_name: Option<&str>,

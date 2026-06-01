@@ -4,7 +4,9 @@
 //! the driving methods off `App` so the rest of the TUI can advance the flow in
 //! response to login, model selection, key presses, and the auto-advance timer.
 
-use super::onboarding_flow::{ExternalCli, ImportReview, OnboardingFlow, OnboardingPhase};
+use super::onboarding_flow::{
+    ExternalCli, ImportReview, OnboardingFlow, OnboardingPendingValidation, OnboardingPhase,
+};
 use super::{App, DisplayMessage, SessionPickerMode};
 use crate::tui::session_picker::{self, SessionFilterMode, SessionPicker};
 use crossterm::event::KeyCode;
@@ -691,6 +693,12 @@ impl App {
     /// Drop into the suggestion-card state (the "No" / no-OAuth path). Prints
     /// the same starter prompts the empty-screen welcome offers, as an inline
     /// numbered list the user can pick by typing the number or anything else.
+    ///
+    /// This is also the "Start a new session" landing screen on first run. We
+    /// intentionally keep it clean: the usual login/import system chatter is
+    /// suppressed while onboarding drives the UI, and instead of that noise we
+    /// kick off a single lightweight live validation of the auto-selected
+    /// default model and report it as one tidy "ready"/"failed" line.
     pub(super) fn onboarding_show_suggestions(&mut self) {
         if let Some(flow) = self.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::Suggestions;
@@ -699,6 +707,7 @@ impl App {
         if suggestions.is_empty() {
             self.onboarding_finish();
             self.set_status_notice("You're all set, type anything to start");
+            self.onboarding_validate_default_model();
             return;
         }
         let mut body = String::from("Here are a few things you can try:\n");
@@ -711,6 +720,206 @@ impl App {
         ));
         self.push_display_message(DisplayMessage::system(body));
         self.set_status_notice("Try a suggestion, or type anything to start");
+        self.onboarding_validate_default_model();
+    }
+
+    /// Friendly label for the active default model, including the reasoning
+    /// effort tier when one applies (e.g. "GPT-5.5 (low)"). Used by the
+    /// onboarding new-session validation line.
+    fn onboarding_default_model_label(&self) -> String {
+        let model = self.onboarding_default_model_id();
+        let pretty = super::helpers::pretty_model_display_name(&model);
+        match self.provider.reasoning_effort() {
+            Some(effort) if !effort.trim().is_empty() && effort != "none" => {
+                let effort_label = super::helpers::effort_display_label(&effort);
+                format!("{} ({})", pretty, effort_label.to_ascii_lowercase())
+            }
+            _ => pretty,
+        }
+    }
+
+    /// Resolve the raw id of the default model the new-session screen is about
+    /// to use. In remote/client mode the live model is reported by the server,
+    /// so prefer the same resolution the header uses; fall back to the session
+    /// model and finally the local provider's model.
+    fn onboarding_default_model_id(&self) -> String {
+        if self.is_remote {
+            if let Some(model) = self.effective_remote_provider_model() {
+                return model;
+            }
+        }
+        self.session
+            .model
+            .clone()
+            .filter(|m| !m.trim().is_empty() && !m.eq_ignore_ascii_case("unknown"))
+            .unwrap_or_else(|| self.provider.model())
+    }
+
+    /// Request a one-shot, lightweight live validation of the auto-selected
+    /// default model for the clean new-session screen. We want a single line
+    /// that tells the user their default model is actually working, rather than
+    /// the usual login/import status spam.
+    ///
+    /// In remote/client mode the live default model is reported by the server
+    /// asynchronously, so firing immediately can race ahead of the model id
+    /// being known (resolving to "unknown" and validating the wrong provider).
+    /// Instead we record a pending request and let `onboarding_tick` fire it
+    /// once a concrete model id is available (or a short timeout elapses).
+    pub(super) fn onboarding_validate_default_model(&mut self) {
+        if !crate::auth::AuthStatus::check_fast().has_any_available() {
+            return;
+        }
+        // If we already know a concrete model (typically local mode), run it
+        // right away; otherwise defer to the tick loop until the server reports
+        // the live model id.
+        if self.onboarding_default_model_id_is_concrete() {
+            self.onboarding_spawn_model_validation();
+        } else {
+            self.onboarding_pending_model_validation =
+                Some(OnboardingPendingValidation::new(self.session.id.clone()));
+        }
+    }
+
+    /// Whether we currently have a concrete (non-"unknown") default model id to
+    /// validate. In remote mode this becomes true once the server reports the
+    /// live model.
+    fn onboarding_default_model_id_is_concrete(&self) -> bool {
+        let model = self.onboarding_default_model_id();
+        let trimmed = model.trim();
+        !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("unknown")
+    }
+
+    /// Spawn the background validation ping for the current default model.
+    fn onboarding_spawn_model_validation(&mut self) {
+        let Some(provider) = self.onboarding_validation_provider() else {
+            return;
+        };
+        let model_label = self.onboarding_default_model_label();
+        let session_id = self.session.id.clone();
+        self.set_status_notice(format!("Checking {model_label}..."));
+        tokio::spawn(async move {
+            let (ok, detail) = match Self::onboarding_run_model_validation(provider).await {
+                Ok(()) => (true, None),
+                Err(err) => (false, Some(Self::onboarding_trim_validation_error(&err))),
+            };
+            crate::bus::Bus::global().publish(crate::bus::BusEvent::OnboardingModelValidated(
+                crate::bus::OnboardingModelValidated {
+                    session_id,
+                    model_label,
+                    ok,
+                    detail,
+                },
+            ));
+        });
+    }
+
+    /// Drive a pending (deferred) model validation from the onboarding tick.
+    /// Returns true if it fired this tick. Fires once a concrete model id is
+    /// known, or after a short resolve timeout so the line always appears.
+    pub(super) fn onboarding_tick_model_validation(&mut self) -> bool {
+        let Some(pending) = self.onboarding_pending_model_validation.as_ref() else {
+            return false;
+        };
+        if pending.session_id != self.session.id {
+            // Session changed out from under us; drop the stale request.
+            self.onboarding_pending_model_validation = None;
+            return false;
+        }
+        if self.onboarding_default_model_id_is_concrete() || pending.resolve_timed_out() {
+            self.onboarding_pending_model_validation = None;
+            self.onboarding_spawn_model_validation();
+            return true;
+        }
+        false
+    }
+
+    /// Build the provider used for the onboarding model-validation ping.
+    ///
+    /// In local mode we fork the live provider. In remote/client mode the app's
+    /// `self.provider` is a `NullProvider` (real turns run in the backend), so
+    /// we spin up a real local provider and pin it to the displayed session
+    /// model so the ping exercises the same model the user is about to use.
+    fn onboarding_validation_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::provider::Provider>> {
+        if !self.is_remote {
+            return Some(self.provider.fork());
+        }
+        let provider: std::sync::Arc<dyn crate::provider::Provider> =
+            std::sync::Arc::new(crate::provider::MultiProvider::new_fast());
+        let model = self.onboarding_default_model_id();
+        if !model.trim().is_empty() && !model.eq_ignore_ascii_case("unknown") {
+            // Best-effort: if the model can't be set locally we still ping the
+            // provider default, which is enough to confirm credentials work.
+            let _ = provider.set_model(&model);
+        }
+        Some(provider)
+    }
+
+    /// Run the lightweight live validation ping against the active provider.
+    /// Succeeds as long as the provider returns any non-empty completion.
+    async fn onboarding_run_model_validation(
+        provider: std::sync::Arc<dyn crate::provider::Provider>,
+    ) -> anyhow::Result<()> {
+        let reply = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            provider.complete_simple(
+                "Reply with exactly: OK",
+                "You are validating connectivity. Reply with exactly: OK",
+            ),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("timed out after 30s"))??;
+        if reply.trim().is_empty() {
+            anyhow::bail!("empty response");
+        }
+        Ok(())
+    }
+
+    /// Condense a validation error into a short user-facing detail string.
+    fn onboarding_trim_validation_error(err: &anyhow::Error) -> String {
+        let msg = err.to_string();
+        let first_line = msg.lines().next().unwrap_or(&msg).trim();
+        let trimmed: String = first_line.chars().take(140).collect();
+        if trimmed.is_empty() {
+            "unknown error".to_string()
+        } else {
+            trimmed
+        }
+    }
+
+    /// Handle the result of the onboarding default-model validation: append one
+    /// clean validation line and refresh the status notice. Stale results (from
+    /// a previous session) are ignored.
+    pub(super) fn handle_onboarding_model_validated(
+        &mut self,
+        result: crate::bus::OnboardingModelValidated,
+    ) -> bool {
+        if result.session_id != self.session.id {
+            return false;
+        }
+        if result.ok {
+            self.push_display_message(DisplayMessage::system(format!(
+                "✓ {} works - validated and ready.",
+                result.model_label
+            )));
+            self.set_status_notice(format!(
+                "{} ready - type anything to start",
+                result.model_label
+            ));
+        } else {
+            let detail = result.detail.map(|d| format!(" ({d})")).unwrap_or_default();
+            self.push_display_message(DisplayMessage::system(format!(
+                "⚠ {} could not be validated{}. You can still try it, or run /model to pick another.",
+
+                result.model_label, detail
+            )));
+            self.set_status_notice(format!(
+                "{} not validated - type anything to try, or /model",
+                result.model_label
+            ));
+        }
+        true
     }
 
     /// Mark the flow complete; the normal UI takes over.
@@ -755,6 +964,13 @@ impl App {
             self.maybe_begin_onboarding_flow_on_startup();
             // If startup just kicked the flow on, request a redraw.
             changed = self.onboarding_flow_active();
+        }
+        // Drive the deferred new-session model validation independently of the
+        // flow phase: it may be requested right as the flow finishes (the
+        // no-transcripts path calls `onboarding_finish()` before validating), so
+        // gating it on `onboarding_flow_active()` would strand it forever.
+        if self.onboarding_tick_model_validation() {
+            changed = true;
         }
         if !self.onboarding_flow_active() {
             return changed;
