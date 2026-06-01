@@ -206,6 +206,40 @@ fn test_remote_runtime_activity_notification_renders_as_system_message() {
 }
 
 #[test]
+fn test_remote_auth_activity_notification_is_status_only_during_onboarding() {
+    let mut app = create_test_app();
+    let mut flow = crate::tui::app::onboarding_flow::OnboardingFlow::begin();
+    flow.phase = crate::tui::app::onboarding_flow::OnboardingPhase::Login { import: None };
+    app.onboarding_flow = Some(flow);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Notification {
+            from_session: "jcode".to_string(),
+            from_name: Some("Jcode".to_string()),
+            notification_type: crate::protocol::NotificationType::Message {
+                scope: Some("auth_activity".to_string()),
+                channel: None,
+            },
+            message: "**Auth Change Received**\n\nThe server is refreshing provider credentials."
+                .to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(
+        app.display_messages.is_empty(),
+        "onboarding should keep auth runtime activity out of chat"
+    );
+    assert_eq!(
+        app.status_notice(),
+        Some("Auth Change Received".to_string())
+    );
+}
+
+#[test]
 fn test_remote_catalog_activity_notification_upserts_progress_card() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -244,9 +278,10 @@ fn test_remote_catalog_activity_notification_upserts_progress_card() {
     assert_eq!(cards.len(), 1, "progress updates should upsert one card");
     assert!(cards[0].content.contains("refresh-model-list"));
     assert!(cards[0].content.contains("Waiting on provider APIs"));
-    assert_eq!(
-        app.status_notice(),
-        Some("Waiting on provider APIs (2s elapsed)".to_string())
+    let status = app.status_notice().expect("status notice");
+    assert!(
+        status.contains("Waiting on provider APIs (2s elapsed)"),
+        "status should summarize latest catalog progress, got: {status}"
     );
 }
 
