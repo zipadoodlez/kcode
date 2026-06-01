@@ -192,10 +192,7 @@ fn estimated_cost_line(info: &UsageInfo) -> Option<Line<'static>> {
             format!("${:.2}", cost),
             Style::default().fg(rgb(180, 180, 190)).bold(),
         ),
-        Span::styled(
-            " est. API cost",
-            Style::default().fg(rgb(120, 120, 130)),
-        ),
+        Span::styled(" est. API cost", Style::default().fg(rgb(120, 120, 130))),
     ]))
 }
 

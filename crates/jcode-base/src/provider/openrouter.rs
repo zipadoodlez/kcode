@@ -327,6 +327,10 @@ impl OpenRouterTransportState {
             return Self::JcodeSubscription;
         }
 
+        if matches!(runtime_provider.as_deref(), Some("openrouter")) {
+            return Self::OpenRouterApiKey;
+        }
+
         if configured_allow_no_auth() {
             return Self::DirectNoAuth;
         }

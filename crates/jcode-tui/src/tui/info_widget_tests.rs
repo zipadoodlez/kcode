@@ -203,13 +203,22 @@ fn anthropic_subscription_widget_shows_estimated_api_cost() {
 
     let expanded_text = lines_text(&render_usage_widget(&data, Rect::new(0, 0, 40, 6)));
     assert!(expanded_text.contains("$1.23"), "expanded: {expanded_text}");
-    assert!(expanded_text.contains("est. API cost"), "expanded: {expanded_text}");
+    assert!(
+        expanded_text.contains("est. API cost"),
+        "expanded: {expanded_text}"
+    );
     // Subscription usage bars are still shown.
-    assert!(expanded_text.contains("5-hour"), "expanded: {expanded_text}");
+    assert!(
+        expanded_text.contains("5-hour"),
+        "expanded: {expanded_text}"
+    );
 
     let compact_text = lines_text(&render_usage_compact(&usage, 40));
     assert!(compact_text.contains("$1.23"), "compact: {compact_text}");
-    assert!(compact_text.contains("est. API cost"), "compact: {compact_text}");
+    assert!(
+        compact_text.contains("est. API cost"),
+        "compact: {compact_text}"
+    );
 }
 
 #[test]
