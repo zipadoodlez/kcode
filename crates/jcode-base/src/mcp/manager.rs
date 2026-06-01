@@ -13,6 +13,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// Bound on how long a tool call will wait for a not-yet-connected MCP server
+/// to come up before failing with a clean tool error. Keeps a slow/hanging
+/// server from blocking a single tool call forever (and never blocks spawn).
+const CONNECT_ON_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct McpManagerMemoryProfile {
     pub shared_pool_enabled: bool,
@@ -261,22 +266,28 @@ impl McpManager {
         tools
     }
 
-    /// Call a tool on a specific server
+    /// Call a tool on a specific server.
+    ///
+    /// Connect-on-first-call: if the server is configured but not yet connected
+    /// (e.g. because we advertised its tools early from the on-disk schema cache
+    /// while the background connection was still settling), this connects it
+    /// first, bounded by `CONNECT_ON_CALL_TIMEOUT`. This is the latency we
+    /// deliberately deferred from spawn — paid only when a tool is actually
+    /// used, never blocking startup.
     pub async fn call_tool(
         &self,
         server: &str,
         tool: &str,
         arguments: serde_json::Value,
     ) -> Result<ToolCallResult> {
-        // Try pool handles first
+        // Fast path: already connected via pool handle.
         {
             let handles = self.pool_handles.read().await;
             if let Some(handle) = handles.get(server) {
                 return handle.call_tool(tool, arguments).await;
             }
         }
-
-        // Try owned clients
+        // Fast path: already connected via owned client.
         {
             let clients = self.owned_clients.read().await;
             if let Some(client) = clients.get(server) {
@@ -284,7 +295,65 @@ impl McpManager {
             }
         }
 
+        // Not connected yet. If the server is configured, connect-on-first-call.
+        if let Some(config) = self.config.servers.get(server).cloned() {
+            crate::logging::info(&format!(
+                "MCP: connecting to '{server}' on first tool call (connect-on-first-call)"
+            ));
+            let connect = self.connect(server, &config);
+            match tokio::time::timeout(CONNECT_ON_CALL_TIMEOUT, connect).await {
+                Ok(Ok(())) => {
+                    // Retry once now that we should be connected.
+                    {
+                        let handles = self.pool_handles.read().await;
+                        if let Some(handle) = handles.get(server) {
+                            return handle.call_tool(tool, arguments).await;
+                        }
+                    }
+                    let clients = self.owned_clients.read().await;
+                    if let Some(client) = clients.get(server) {
+                        return client.call_tool(tool, arguments).await;
+                    }
+                    anyhow::bail!(
+                        "MCP server '{server}' connected but exposed no handle for tool '{tool}'"
+                    );
+                }
+                Ok(Err(err)) => {
+                    anyhow::bail!("MCP server '{server}' failed to connect: {err:#}");
+                }
+                Err(_) => {
+                    anyhow::bail!(
+                        "MCP server '{server}' did not connect within {}s; tool '{tool}' is \
+                         unavailable right now",
+                        CONNECT_ON_CALL_TIMEOUT.as_secs()
+                    );
+                }
+            }
+        }
+
         anyhow::bail!("MCP server '{}' not connected", server)
+    }
+
+    /// Ensure a configured server is connected, bounded by `timeout`. No-op if
+    /// already connected or not configured. Used to warm a server proactively.
+    pub async fn ensure_server_connected(
+        &self,
+        server: &str,
+        timeout: std::time::Duration,
+    ) -> Result<()> {
+        if self.connected_servers().await.iter().any(|s| s == server) {
+            return Ok(());
+        }
+        let Some(config) = self.config.servers.get(server).cloned() else {
+            anyhow::bail!("MCP server '{server}' is not configured");
+        };
+        match tokio::time::timeout(timeout, self.connect(server, &config)).await {
+            Ok(result) => result,
+            Err(_) => anyhow::bail!(
+                "MCP server '{server}' did not connect within {}s",
+                timeout.as_secs()
+            ),
+        }
     }
 
     /// Reload config and reconnect to servers
@@ -375,3 +444,75 @@ fn estimate_tool_bytes(tool: &McpToolDef) -> usize {
             .unwrap_or(0)
         + crate::process_memory::estimate_json_bytes(&tool.input_schema)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn empty_config() -> McpConfig {
+        McpConfig::default()
+    }
+
+    #[tokio::test]
+    async fn call_tool_unconfigured_server_bails_cleanly() {
+        let manager = McpManager::with_config(empty_config());
+        let err = manager
+            .call_tool("ghost", "do_thing", serde_json::json!({}))
+            .await
+            .expect_err("calling an unknown server must error");
+        assert!(
+            err.to_string().contains("ghost"),
+            "error should name the missing server: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_server_connected_unconfigured_errors() {
+        let manager = McpManager::with_config(empty_config());
+        let err = manager
+            .ensure_server_connected("ghost", Duration::from_millis(50))
+            .await
+            .expect_err("ensuring an unconfigured server must error");
+        assert!(err.to_string().contains("not configured"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn connect_on_first_call_fails_cleanly_for_broken_server() {
+        // A configured server whose command exits immediately and never speaks
+        // MCP. connect-on-first-call must surface a clean, bounded tool error
+        // (connection failure) rather than hanging or panicking.
+        let mut config = McpConfig::default();
+        config.servers.insert(
+            "broken".to_string(),
+            McpServerConfig {
+                // `true` exits 0 immediately: the stdio handshake gets EOF, so
+                // connect fails fast instead of waiting on the initialize bound.
+                command: "true".to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                shared: false,
+            },
+        );
+        let manager = McpManager::with_config(config);
+
+        let started = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            Duration::from_secs(40),
+            manager.call_tool("broken", "anything", serde_json::json!({})),
+        )
+        .await;
+        let inner = result.expect("call_tool must return, not hang");
+        assert!(inner.is_err(), "broken server must yield a tool error");
+        let msg = inner.unwrap_err().to_string();
+        assert!(
+            msg.contains("broken"),
+            "tool error should name the server: {msg}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(35),
+            "connect-on-first-call must be bounded"
+        );
+    }
+}
+

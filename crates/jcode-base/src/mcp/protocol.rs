@@ -111,7 +111,7 @@ pub struct ServerInfo {
 }
 
 /// MCP Tool definition from server
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpToolDef {
     pub name: String,
     #[serde(default)]

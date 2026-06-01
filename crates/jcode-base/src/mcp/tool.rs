@@ -108,3 +108,23 @@ pub async fn create_mcp_tools(manager: Arc<RwLock<McpManager>>) -> Vec<(String, 
     }
     tools
 }
+
+/// Build proxy tools for a single server from cached schemas, without requiring
+/// a live connection. Used to advertise a server's tools immediately at spawn
+/// (the proxy connects on first call). The returned tools are functionally
+/// identical to live ones; only their definitions come from the disk cache.
+pub fn create_mcp_tools_from_cached(
+    server_name: &str,
+    tool_defs: &[McpToolDef],
+    manager: Arc<RwLock<McpManager>>,
+) -> Vec<(String, Arc<dyn Tool>)> {
+    tool_defs
+        .iter()
+        .map(|tool_def| {
+            let prefixed_name = format!("mcp__{}__{}", server_name, tool_def.name);
+            let mcp_tool =
+                McpTool::new(server_name.to_string(), tool_def.clone(), Arc::clone(&manager));
+            (prefixed_name, Arc::new(mcp_tool) as Arc<dyn Tool>)
+        })
+        .collect()
+}
