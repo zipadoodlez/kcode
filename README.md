@@ -343,6 +343,34 @@ For custom OpenAI-compatible endpoints, jcode now prompts for the API base and s
 
 If you prefer to configure things by editing files instead of using the login UI, jcode supports both a custom OpenAI-compatible endpoint config and MCP config files.
 
+#### OpenAI-compatible providers
+
+Many hosted services speak the standard OpenAI `/v1/chat/completions` API. jcode talks to them through one shared OpenAI-compatible provider, so you can use almost any such endpoint without waiting for a dedicated integration.
+
+There are two ways to set one up:
+
+- **Built-in named profiles** — jcode ships ready-made profiles for several popular OpenAI-compatible services. Log in by id and jcode fills in the base URL and key environment variable for you:
+
+  ```bash
+  jcode login --provider <profile-id>
+  # for example:
+  jcode login --provider openrouter
+  jcode login --provider deepseek
+  jcode login --provider opencode      # OpenCode Zen
+  jcode login --provider moonshotai
+  ```
+
+  Built-in OpenAI-compatible profile ids include: `openrouter`, `deepseek`, `zai`, `kimi`, `moonshotai`, `opencode` (OpenCode Zen), `opencode-go`, `302ai`, `baseten`, `cortecs`, `huggingface`, `nebius`, `scaleway`, `stackit`, and `firmware`. Each profile only sets the endpoint and key variable; you still pick the model with `/model` (or `--model`). Run `jcode login` with no provider to see the interactive list.
+
+- **Any other endpoint** — point jcode at an arbitrary OpenAI-compatible API (hosted or local) with `jcode login --provider openai-compatible` or the scriptable `jcode provider add` command described below.
+
+Useful environment overrides for these endpoints:
+
+- `JCODE_STREAM_IDLE_TIMEOUT_SECS` — raise the streaming idle timeout (default 180s) for slow reasoning models that think silently before emitting tokens. Also settable as `[provider] stream_idle_timeout_secs` in `config.toml`.
+- Per-model `context_window` (alias `context_limit`) in a `[[providers.<name>.models]]` entry — set the context window when the endpoint has no usable `/v1/models` response, so jcode does not fall back to the generic 200k default.
+
+For details on self-hosting, local runtimes, and the exact config file shape, see below.
+
 #### Self-hosted OpenAI-compatible endpoints, including vLLM
 
 For agents and scripts, the preferred path is the one-shot provider profile command. It writes a named profile to `~/.jcode/config.toml`, stores secrets in jcode's private app config directory when requested, and prints exact run/validation commands:
