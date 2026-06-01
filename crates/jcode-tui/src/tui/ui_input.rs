@@ -1459,7 +1459,8 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     }
     let data = app.info_widget_data();
 
-    let sep = || Span::styled(" · ", Style::default().fg(rgb(70, 70, 80)));
+    let label_style = Style::default().fg(rgb(95, 100, 120));
+    let sep = || Span::styled(" · ", Style::default().fg(rgb(60, 62, 78)));
     let mut spans: Vec<Span> = Vec::new();
 
     // Model
@@ -1469,7 +1470,11 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         .filter(|m| !m.is_empty())
         .unwrap_or_else(|| app.provider_model());
     if !model.is_empty() {
-        spans.push(Span::styled(model, Style::default().fg(rgb(200, 200, 220))));
+        spans.push(Span::styled("◆ ", Style::default().fg(rgb(150, 200, 255))));
+        spans.push(Span::styled(
+            model,
+            Style::default().fg(rgb(225, 230, 245)).bold(),
+        ));
     }
 
     // Provider
@@ -1482,7 +1487,10 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         if !spans.is_empty() {
             spans.push(sep());
         }
-        spans.push(Span::styled(provider, Style::default().fg(rgb(140, 160, 210))));
+        spans.push(Span::styled(
+            overscroll_provider_display(&provider),
+            Style::default().fg(rgb(150, 175, 230)),
+        ));
     }
 
     // Access method (auth)
@@ -1502,28 +1510,20 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         if !spans.is_empty() {
             spans.push(sep());
         }
+        spans.push(Span::styled("reasoning ", label_style));
         spans.push(Span::styled(
-            format!("reasoning {}", effort),
-            Style::default().fg(rgb(180, 150, 210)),
+            effort.to_string(),
+            Style::default().fg(rgb(200, 165, 235)).bold(),
         ));
     }
 
-    // Context usage percentage
-    if let Some(pct) = overscroll_context_percent(&data) {
+    // Context usage as a rounded bar
+    if let Some((used, limit)) = overscroll_context_usage(&data) {
         if !spans.is_empty() {
             spans.push(sep());
         }
-        let color = if pct >= 90 {
-            rgb(230, 120, 110)
-        } else if pct >= 70 {
-            rgb(230, 190, 110)
-        } else {
-            rgb(140, 200, 150)
-        };
-        spans.push(Span::styled(
-            format!("{}% ctx", pct),
-            Style::default().fg(color),
-        ));
+        spans.push(Span::styled("ctx ", label_style));
+        spans.extend(overscroll_context_bar(used, limit, 10));
     }
 
     if spans.is_empty() {
@@ -1539,6 +1539,22 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     frame.render_widget(Paragraph::new(aligned_line), area);
 }
 
+fn overscroll_provider_display(provider: &str) -> String {
+    match provider.to_ascii_lowercase().as_str() {
+        "claude" => "Claude OAuth".to_string(),
+        "anthropic" => "Anthropic API".to_string(),
+        "openai" => "OpenAI".to_string(),
+        "openrouter" => "OpenRouter".to_string(),
+        "opencode" => "OpenCode".to_string(),
+        "gemini" => "Gemini".to_string(),
+        "copilot" => "GitHub Copilot".to_string(),
+        "cursor" => "Cursor".to_string(),
+        "bedrock" => "AWS Bedrock".to_string(),
+        "antigravity" => "Antigravity".to_string(),
+        _ => provider.to_string(),
+    }
+}
+
 fn overscroll_auth_label(method: crate::tui::info_widget::AuthMethod) -> Option<(&'static str, Color)> {
     use crate::tui::info_widget::AuthMethod;
     match method {
@@ -1547,11 +1563,11 @@ fn overscroll_auth_label(method: crate::tui::info_widget::AuthMethod) -> Option<
         | AuthMethod::AnthropicApiKey
         | AuthMethod::OpenAIApiKey
         | AuthMethod::OpenRouterApiKey
-        | AuthMethod::OpenCodeApiKey => Some(("API key", rgb(180, 180, 190))),
-        AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 160, 100))),
-        AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(100, 200, 180))),
-        AuthMethod::CopilotOAuth => Some(("OAuth", rgb(110, 200, 140))),
-        AuthMethod::GeminiOAuth => Some(("OAuth", rgb(120, 190, 255))),
+        | AuthMethod::OpenCodeApiKey => Some(("API key", rgb(170, 175, 190))),
+        AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 170, 110))),
+        AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(110, 210, 190))),
+        AuthMethod::CopilotOAuth => Some(("OAuth", rgb(120, 210, 150))),
+        AuthMethod::GeminiOAuth => Some(("OAuth", rgb(130, 195, 255))),
     }
 }
 
@@ -1570,7 +1586,9 @@ fn overscroll_short_reasoning(effort: &str) -> Option<&str> {
     })
 }
 
-fn overscroll_context_percent(data: &crate::tui::info_widget::InfoWidgetData) -> Option<u16> {
+fn overscroll_context_usage(
+    data: &crate::tui::info_widget::InfoWidgetData,
+) -> Option<(usize, usize)> {
     let used_tokens = if let Some(observed) = data.observed_context_tokens {
         observed as usize
     } else {
@@ -1584,8 +1602,45 @@ fn overscroll_context_percent(data: &crate::tui::info_widget::InfoWidgetData) ->
         .context_limit
         .unwrap_or(crate::provider::DEFAULT_CONTEXT_LIMIT)
         .max(1);
-    let pct = ((used_tokens as f64 / limit as f64) * 100.0).round() as u16;
-    Some(pct.min(100))
+    Some((used_tokens, limit))
+}
+
+/// Render a compact rounded progress bar (◖████░░◗) plus a percentage label.
+fn overscroll_context_bar(used: usize, limit: usize, cells: usize) -> Vec<Span<'static>> {
+    let limit = limit.max(1);
+    let ratio = (used as f64 / limit as f64).clamp(0.0, 1.0);
+    let pct = (ratio * 100.0).round() as u16;
+    let filled = (ratio * cells as f64).round() as usize;
+    let filled = filled.min(cells);
+
+    let fill_color = if pct >= 90 {
+        rgb(235, 110, 105)
+    } else if pct >= 70 {
+        rgb(235, 190, 110)
+    } else {
+        rgb(130, 205, 150)
+    };
+    let track_color = rgb(58, 60, 74);
+    let cap_color = if filled > 0 { fill_color } else { track_color };
+
+    let mut spans = Vec::with_capacity(cells + 3);
+    // Rounded left cap takes the fill color when there is any usage.
+    spans.push(Span::styled("◖", Style::default().fg(cap_color)));
+    spans.push(Span::styled(
+        "█".repeat(filled),
+        Style::default().fg(fill_color),
+    ));
+    spans.push(Span::styled(
+        "░".repeat(cells.saturating_sub(filled)),
+        Style::default().fg(track_color),
+    ));
+    let right_cap_color = if filled >= cells { fill_color } else { track_color };
+    spans.push(Span::styled("◗", Style::default().fg(right_cap_color)));
+    spans.push(Span::styled(
+        format!(" {}%", pct),
+        Style::default().fg(fill_color).bold(),
+    ));
+    spans
 }
 
 pub(super) fn draw_input(
