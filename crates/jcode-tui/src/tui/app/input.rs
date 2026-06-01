@@ -2002,6 +2002,14 @@ impl App {
             return Ok(());
         }
 
+        // While the model picker preview is visible, route its favorite/default
+        // hotkeys (Ctrl+D, Ctrl+F, Alt+F) to the focused picker handler before the
+        // global control shortcuts can claim them (e.g. Ctrl+D as quit). This makes
+        // the hotkeys work directly in the preview list the user always sees.
+        if self.model_picker_preview_hotkey(code, modifiers)? {
+            return Ok(());
+        }
+
         if self.pending_provider_failover.is_some() && !self.is_processing {
             if code == KeyCode::Esc {
                 self.cancel_pending_provider_failover("Provider auto-switch canceled");

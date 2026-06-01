@@ -427,6 +427,10 @@ impl crate::tui::TuiState for App {
         self.auto_scroll_paused
     }
 
+    fn chat_overscroll_active(&self) -> bool {
+        self.chat_overscroll_active()
+    }
+
     fn provider_name(&self) -> String {
         if self.is_remote {
             self.remote_header_provider_name().unwrap_or_default()

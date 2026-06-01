@@ -961,3 +961,54 @@ fn test_ctrl_digit_side_panel_preset_in_app() {
         .unwrap();
     assert_eq!(app.diagram_pane_ratio_target, 100);
 }
+
+#[test]
+fn test_chat_overscroll_reveals_status_line_then_rebounds() {
+    let _lock = scroll_render_test_lock();
+
+    let (mut app, mut terminal) = create_scroll_test_app(80, 14, 0, 36);
+
+    // Give the app some context so the overscroll line has a percentage to show.
+    app.context_info = crate::prompt::ContextInfo {
+        total_chars: 40_000,
+        ..Default::default()
+    };
+    app.context_limit = 200_000;
+
+    // Pinned to the bottom: no overscroll line yet.
+    let pinned = render_and_snap(&app, &mut terminal);
+    assert!(!app.chat_overscroll_active(), "should start without overscroll");
+    assert!(
+        !pinned.contains("% ctx"),
+        "overscroll status line should be hidden while pinned"
+    );
+
+    // Scroll down at the bottom => overscroll registered, line revealed.
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 10,
+        row: 5,
+        modifiers: KeyModifiers::empty(),
+    });
+    assert!(
+        app.chat_overscroll_active(),
+        "overscroll should be active after scrolling down at the bottom"
+    );
+    let revealed = render_and_snap(&app, &mut terminal);
+    assert!(
+        revealed.contains("% ctx"),
+        "overscroll status line should show context percentage: {revealed:?}"
+    );
+
+    // Scrolling up cancels the overscroll line immediately.
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 10,
+        row: 5,
+        modifiers: KeyModifiers::empty(),
+    });
+    assert!(
+        !app.chat_overscroll_active(),
+        "scrolling up should cancel the overscroll line"
+    );
+}

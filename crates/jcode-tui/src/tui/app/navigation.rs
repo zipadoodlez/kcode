@@ -75,6 +75,9 @@ fn is_mouse_scroll_kind(kind: MouseEventKind) -> bool {
 impl App {
     const MOUSE_SCROLL_INTENT_LINES: i16 = 3;
     const MOUSE_SCROLL_MAX_QUEUE: i16 = 24;
+    /// How long the overscroll status line stays revealed after the last
+    /// downward overscroll tick before it rebounds away.
+    const OVERSCROLL_DWELL: std::time::Duration = std::time::Duration::from_millis(600);
 
     fn log_mouse_scroll_trace(
         &self,
@@ -1374,6 +1377,8 @@ impl App {
     /// (e.g. the mouse-wheel queue) rely on this to avoid accumulating
     /// "phantom" scroll once the viewport is already pinned to the top.
     pub(super) fn scroll_up(&mut self, amount: usize) -> bool {
+        // Scrolling up cancels any pending overscroll rebound line immediately.
+        self.chat_overscroll_last = None;
         let before = (self.scroll_offset, self.auto_scroll_paused);
         let max = self.scroll_max_estimate();
         if !self.auto_scroll_paused {
@@ -1410,6 +1415,9 @@ impl App {
     /// that would later have to be undone before scrolling up moves the view.
     pub(super) fn scroll_down(&mut self, amount: usize) -> bool {
         if !self.auto_scroll_paused {
+            // Already pinned to the bottom: a further downward scroll is an
+            // "overscroll". Reveal the elastic status line and keep it dwelling.
+            self.register_chat_overscroll();
             return false;
         }
         let before = self.scroll_offset;
@@ -1443,6 +1451,32 @@ impl App {
     pub(super) fn follow_chat_bottom(&mut self) {
         self.scroll_offset = 0;
         self.auto_scroll_paused = false;
+    }
+
+    /// Record an overscroll tick (downward scroll while already pinned to the
+    /// bottom). Reveals the elastic status line below the input and (re)starts
+    /// the dwell window after which it rebounds away.
+    pub(super) fn register_chat_overscroll(&mut self) {
+        self.chat_overscroll_last = Some(Instant::now());
+    }
+
+    /// Whether the overscroll status line is currently revealed.
+    pub(super) fn chat_overscroll_active(&self) -> bool {
+        self.chat_overscroll_last
+            .map(|t| t.elapsed() < Self::OVERSCROLL_DWELL)
+            .unwrap_or(false)
+    }
+
+    /// Drive the overscroll dwell timer. Returns `true` when the revealed state
+    /// changed (so the caller can request a redraw). Called every tick.
+    pub(super) fn update_chat_overscroll(&mut self) -> bool {
+        if let Some(t) = self.chat_overscroll_last
+            && t.elapsed() >= Self::OVERSCROLL_DWELL
+        {
+            self.chat_overscroll_last = None;
+            return true;
+        }
+        false
     }
 
     pub(super) fn debug_scroll_up(&mut self, amount: usize) {

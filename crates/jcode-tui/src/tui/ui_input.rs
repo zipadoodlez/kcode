@@ -1450,6 +1450,144 @@ pub(super) fn draw_notification(frame: &mut Frame, app: &dyn TuiState, area: Rec
     frame.render_widget(Paragraph::new(aligned_line), area);
 }
 
+/// Draw the elastic overscroll status line, revealed below the input when the
+/// user scrolls past the bottom of the transcript. Shows model, provider,
+/// access method, reasoning level, and context usage percentage.
+pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
+    if area.height == 0 || area.width == 0 {
+        return;
+    }
+    let data = app.info_widget_data();
+
+    let sep = || Span::styled(" · ", Style::default().fg(rgb(70, 70, 80)));
+    let mut spans: Vec<Span> = Vec::new();
+
+    // Model
+    let model = data
+        .model
+        .clone()
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| app.provider_model());
+    if !model.is_empty() {
+        spans.push(Span::styled(model, Style::default().fg(rgb(200, 200, 220))));
+    }
+
+    // Provider
+    let provider = data
+        .provider_name
+        .clone()
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| app.provider_name());
+    if !provider.is_empty() {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
+        spans.push(Span::styled(provider, Style::default().fg(rgb(140, 160, 210))));
+    }
+
+    // Access method (auth)
+    if let Some((label, color)) = overscroll_auth_label(data.auth_method) {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
+        spans.push(Span::styled(label.to_string(), Style::default().fg(color)));
+    }
+
+    // Reasoning level
+    if let Some(effort) = data
+        .reasoning_effort
+        .as_deref()
+        .and_then(overscroll_short_reasoning)
+    {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
+        spans.push(Span::styled(
+            format!("reasoning {}", effort),
+            Style::default().fg(rgb(180, 150, 210)),
+        ));
+    }
+
+    // Context usage percentage
+    if let Some(pct) = overscroll_context_percent(&data) {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
+        let color = if pct >= 90 {
+            rgb(230, 120, 110)
+        } else if pct >= 70 {
+            rgb(230, 190, 110)
+        } else {
+            rgb(140, 200, 150)
+        };
+        spans.push(Span::styled(
+            format!("{}% ctx", pct),
+            Style::default().fg(color),
+        ));
+    }
+
+    if spans.is_empty() {
+        return;
+    }
+
+    let line = Line::from(spans);
+    let aligned_line = if app.centered_mode() {
+        line.alignment(Alignment::Center)
+    } else {
+        line
+    };
+    frame.render_widget(Paragraph::new(aligned_line), area);
+}
+
+fn overscroll_auth_label(method: crate::tui::info_widget::AuthMethod) -> Option<(&'static str, Color)> {
+    use crate::tui::info_widget::AuthMethod;
+    match method {
+        AuthMethod::Unknown => None,
+        AuthMethod::ApiKey
+        | AuthMethod::AnthropicApiKey
+        | AuthMethod::OpenAIApiKey
+        | AuthMethod::OpenRouterApiKey
+        | AuthMethod::OpenCodeApiKey => Some(("API key", rgb(180, 180, 190))),
+        AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 160, 100))),
+        AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(100, 200, 180))),
+        AuthMethod::CopilotOAuth => Some(("OAuth", rgb(110, 200, 140))),
+        AuthMethod::GeminiOAuth => Some(("OAuth", rgb(120, 190, 255))),
+    }
+}
+
+fn overscroll_short_reasoning(effort: &str) -> Option<&str> {
+    let effort = effort.trim();
+    if effort.is_empty() {
+        return None;
+    }
+    Some(match effort {
+        "xhigh" => "xhigh",
+        "high" => "high",
+        "medium" => "medium",
+        "low" => "low",
+        "none" => "none",
+        other => other,
+    })
+}
+
+fn overscroll_context_percent(data: &crate::tui::info_widget::InfoWidgetData) -> Option<u16> {
+    let used_tokens = if let Some(observed) = data.observed_context_tokens {
+        observed as usize
+    } else {
+        let info = data.context_info.as_ref()?;
+        if info.total_chars == 0 {
+            return None;
+        }
+        info.estimated_tokens()
+    };
+    let limit = data
+        .context_limit
+        .unwrap_or(crate::provider::DEFAULT_CONTEXT_LIMIT)
+        .max(1);
+    let pct = ((used_tokens as f64 / limit as f64) * 100.0).round() as u16;
+    Some(pct.min(100))
+}
+
 pub(super) fn draw_input(
     frame: &mut Frame,
     app: &dyn TuiState,

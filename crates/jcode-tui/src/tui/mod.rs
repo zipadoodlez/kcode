@@ -135,6 +135,11 @@ pub trait TuiState {
     fn scroll_offset(&self) -> usize;
     /// Whether auto-scroll to bottom is paused (user scrolled up during streaming)
     fn auto_scroll_paused(&self) -> bool;
+    /// Whether the elastic overscroll status line (revealed by scrolling past
+    /// the bottom of the transcript) is currently shown.
+    fn chat_overscroll_active(&self) -> bool {
+        false
+    }
     fn provider_name(&self) -> String;
     fn provider_model(&self) -> String;
     /// Upstream provider (e.g., which provider OpenRouter routed to)
@@ -1319,6 +1324,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         || !state.streaming_text().is_empty()
         || state.status_notice().is_some()
         || state.has_pending_mouse_scroll_animation()
+        || state.chat_overscroll_active()
         || state.has_notification()
         || rate_limit_countdown_redraw_active(state)
         || state.remote_startup_phase_active()
