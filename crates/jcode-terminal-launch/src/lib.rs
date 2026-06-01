@@ -479,4 +479,20 @@ mod tests {
         assert!(applescript.contains("exec \\\"") == false);
         assert!(applescript.contains("'/usr/local/bin/jcode'"));
     }
+
+    // Reproduction for issue #203 part 3: when no terminal emulator can be
+    // spawned, the new-terminal resume path returns Ok(false), which the app
+    // surfaces as "No terminal found. Resume manually:".
+    #[test]
+    fn no_terminal_available_returns_ok_false() {
+        let command = TerminalCommand::new(
+            std::path::PathBuf::from("/usr/local/bin/jcode"),
+            vec!["--resume".to_string(), "abc-123".to_string()],
+        );
+        let result = spawn_command_in_new_terminal_with(&command, Path::new("/tmp"), |_cmd| {
+            // Simulate every candidate terminal being absent.
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+        });
+        assert!(matches!(result, Ok(false)));
+    }
 }

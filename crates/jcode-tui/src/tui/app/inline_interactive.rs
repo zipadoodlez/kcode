@@ -1389,6 +1389,34 @@ impl App {
         )
     }
 
+    /// When a runtime model-picker preview is visible, route its favorite/default
+    /// hotkeys to the focused picker handler. Returns true if the key was consumed.
+    pub(super) fn model_picker_preview_hotkey(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> Result<bool> {
+        let active = self
+            .inline_interactive_state
+            .as_ref()
+            .map(|picker| picker.preview && picker_is_runtime_model_picker(picker))
+            .unwrap_or(false);
+        if !active {
+            return Ok(false);
+        }
+        let is_default = modifiers.contains(KeyModifiers::CONTROL)
+            && key_char_eq_ignore_ascii_case(code, 'd');
+        let is_favorite = modifiers.contains(KeyModifiers::CONTROL)
+            && key_char_eq_ignore_ascii_case(code, 'f');
+        let is_cycle_favorite = modifiers.contains(KeyModifiers::ALT)
+            && key_char_eq_ignore_ascii_case(code, 'f');
+        if is_default || is_favorite || is_cycle_favorite {
+            self.handle_inline_interactive_key(code, modifiers)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     pub(super) fn handle_inline_interactive_preview_key(
         &mut self,
         code: &KeyCode,
@@ -1731,10 +1759,24 @@ impl App {
                     spawned += 1;
                     names.push(name);
                 }
-                Ok(false) | Err(_) => failed.push(resume_target_manual_command(
-                    &resolved_target,
-                    socket.as_deref(),
-                )),
+                Ok(false) | Err(_) => {
+                    // No terminal emulator could be spawned. For a single jcode
+                    // session, fall back to resuming in the current terminal
+                    // instead of dead-ending with a manual command (issue #203).
+                    if targets.len() == 1
+                        && spawned == 0
+                        && matches!(resolved_target, ResumeTarget::JcodeSession { .. })
+                    {
+                        self.handle_session_picker_current_terminal_selection(std::slice::from_ref(
+                            target,
+                        ));
+                        return;
+                    }
+                    failed.push(resume_target_manual_command(
+                        &resolved_target,
+                        socket.as_deref(),
+                    ));
+                }
             }
         }
 
@@ -1883,6 +1925,14 @@ impl App {
             }
         }
 
+        // Single recovered session that could not get a new terminal: resume it
+        // in the current terminal instead of forcing a manual command (#203).
+        if spawned == 0 && recovered.len() == 1 && failed.len() == 1 {
+            self.handle_session_picker_current_terminal_selection(&[ResumeTarget::JcodeSession {
+                session_id: recovered[0].clone(),
+            }]);
+            return;
+        }
         if spawned > 0 && failed.is_empty() {
             self.push_display_message(DisplayMessage::system(format!(
                 "Restored {} crashed session(s) in new windows.",
