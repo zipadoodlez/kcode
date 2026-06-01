@@ -597,9 +597,17 @@ pub struct App {
     kv_cache_miss_samples: Vec<KvCacheMissSample>,
     // Total cost in USD (for API-key providers)
     total_cost: f32,
+    // Estimated cost in USD for subscription/OAuth providers (Anthropic, etc.)
+    // where the user is not billed per token but we can still show what the
+    // equivalent API usage would have cost. None when no estimate is available.
+    estimated_cost: Option<f32>,
     // Cached pricing (input $/1M tokens, output $/1M tokens)
     cached_prompt_price: Option<f32>,
     cached_completion_price: Option<f32>,
+    // Cached cache-read pricing ($/1M tokens), when known for the active model.
+    cached_cache_read_price: Option<f32>,
+    // Model the cached_*_price values were resolved for, so we re-resolve on switch.
+    cached_price_model: Option<String>,
     // Context limit tracking (for compaction warning)
     context_limit: u64,
     context_warning_shown: bool,

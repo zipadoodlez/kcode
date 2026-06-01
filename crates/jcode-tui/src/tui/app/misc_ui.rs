@@ -88,12 +88,15 @@ impl App {
         let is_explicit_openai_api = matches!(runtime_provider.as_deref(), Some("openai-api"));
         let is_explicit_openai_oauth = matches!(runtime_provider.as_deref(), Some("openai"));
 
-        let should_calculate_cost = if provider_name.contains("openrouter") {
+        let is_anthropic = provider_name.contains("anthropic") || provider_name.contains("claude");
+
+        // Whether the user is billed per token for this turn (direct API key).
+        let billed_per_token = if provider_name.contains("openrouter") {
             crate::provider::openrouter::OpenRouterTransportState::from_current_env(
                 runtime_provider.as_deref(),
             )
             .accrues_user_api_key_cost()
-        } else if provider_name.contains("anthropic") || provider_name.contains("claude") {
+        } else if is_anthropic {
             // Anthropic Auto prefers OAuth (Claude subscription, no per-token
             // user cost) when OAuth credentials exist, so only accrue API-key
             // cost when the API key is the credential that will actually be used.
@@ -116,19 +119,71 @@ impl App {
             false
         };
 
-        if !should_calculate_cost {
+        // For Anthropic OAuth / Claude subscription users there is no per-token
+        // billing, but we can still surface an estimated equivalent API cost so
+        // the info widget shows a dollar figure (like OpenRouter does).
+        let estimate_only = !billed_per_token && is_anthropic;
+
+        if !billed_per_token && !estimate_only {
             return;
         }
 
-        // Default pricing (will be cached after first turn)
-        let prompt_price = *self.cached_prompt_price.get_or_insert(15.0); // $15/1M tokens default
-        let completion_price = *self.cached_completion_price.get_or_insert(60.0); // $60/1M tokens default
+        self.refresh_cached_pricing(is_anthropic);
 
-        // Calculate cost for this turn
-        let prompt_cost = (self.streaming_input_tokens as f32 * prompt_price) / 1_000_000.0;
+        // Pricing in $/1M tokens. Anthropic resolves real per-model pricing in
+        // refresh_cached_pricing; other providers fall back to the generic
+        // defaults cached here.
+        let prompt_price = *self.cached_prompt_price.get_or_insert(15.0);
+        let completion_price = *self.cached_completion_price.get_or_insert(60.0);
+        let cache_read_price = self.cached_cache_read_price;
+
+        // Cache-read tokens are billed at the (cheaper) cache-read rate when we
+        // know it; otherwise treat them as regular input tokens.
+        let cache_read_tokens = self.streaming_cache_read_tokens.unwrap_or(0);
+        let full_input_tokens = self
+            .streaming_input_tokens
+            .saturating_sub(cache_read_tokens.min(self.streaming_input_tokens));
+
+        let prompt_cost = (full_input_tokens as f32 * prompt_price) / 1_000_000.0;
         let completion_cost =
             (self.streaming_output_tokens as f32 * completion_price) / 1_000_000.0;
-        self.total_cost += prompt_cost + completion_cost;
+        let cache_read_cost = match cache_read_price {
+            Some(price) => (cache_read_tokens as f32 * price) / 1_000_000.0,
+            None => (cache_read_tokens as f32 * prompt_price) / 1_000_000.0,
+        };
+        let turn_cost = prompt_cost + completion_cost + cache_read_cost;
+
+        if estimate_only {
+            *self.estimated_cost.get_or_insert(0.0) += turn_cost;
+        } else {
+            self.total_cost += turn_cost;
+        }
+    }
+
+    /// Resolve and cache per-model pricing for the active provider. For
+    /// Anthropic/Claude models we use the published API pricing (input, output
+    /// and cache-read), which lets us show an accurate dollar estimate even on
+    /// the subscription/OAuth plan. Re-resolves when the active model changes.
+    fn refresh_cached_pricing(&mut self, is_anthropic: bool) {
+        let model = self.provider.model().to_string();
+        if self.cached_price_model.as_deref() == Some(model.as_str()) {
+            return;
+        }
+
+        if is_anthropic {
+            if let Some(estimate) = jcode_provider_core::pricing::anthropic_api_pricing(&model) {
+                let per_mtok = |micros: Option<u64>| micros.map(|m| m as f32 / 1_000_000.0);
+                self.cached_prompt_price = per_mtok(estimate.input_price_per_mtok_micros);
+                self.cached_completion_price = per_mtok(estimate.output_price_per_mtok_micros);
+                self.cached_cache_read_price = per_mtok(estimate.cache_read_price_per_mtok_micros);
+                self.cached_price_model = Some(model);
+                return;
+            }
+        }
+
+        // Unknown model: leave existing defaults in place but remember the model
+        // so we do not repeatedly attempt resolution for it.
+        self.cached_price_model = Some(model);
     }
 
     pub(super) fn compute_streaming_tps(&self) -> Option<f32> {

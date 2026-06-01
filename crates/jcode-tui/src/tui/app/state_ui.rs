@@ -1171,6 +1171,12 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(format!("- total_cost_usd: {:.6}", app.total_cost));
     lines.push(format!(
+        "- estimated_cost_usd: {}",
+        app.estimated_cost
+            .map(|cost| format!("{:.6}", cost))
+            .unwrap_or_else(|| "None".to_string())
+    ));
+    lines.push(format!(
         "- cached_prompt_price_per_1m: {}",
         app.cached_prompt_price
             .map(|price| format!("{:.6}", price))
