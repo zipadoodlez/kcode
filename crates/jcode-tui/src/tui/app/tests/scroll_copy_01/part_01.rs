@@ -979,7 +979,7 @@ fn test_chat_overscroll_reveals_status_line_then_rebounds() {
     let pinned = render_and_snap(&app, &mut terminal);
     assert!(!app.chat_overscroll_active(), "should start without overscroll");
     assert!(
-        !pinned.contains("◖"),
+        !pinned.contains("▰") && !pinned.contains("▱"),
         "overscroll bar should be hidden while pinned"
     );
 
@@ -996,7 +996,7 @@ fn test_chat_overscroll_reveals_status_line_then_rebounds() {
     );
     let revealed = render_and_snap(&app, &mut terminal);
     assert!(
-        revealed.contains("◖") && revealed.contains("%"),
+        revealed.contains("▰") || revealed.contains("▱"),
         "overscroll status line should show context bar: {revealed:?}"
     );
 

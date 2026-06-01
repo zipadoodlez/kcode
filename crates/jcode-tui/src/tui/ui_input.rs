@@ -1459,7 +1459,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     }
     let data = app.info_widget_data();
 
-    let sep = || Span::styled(" · ", Style::default().fg(rgb(60, 62, 78)));
+    let sep = || Span::styled(" · ", Style::default().fg(rgb(100, 100, 110)));
     let mut spans: Vec<Span> = Vec::new();
 
     // Model
@@ -1471,7 +1471,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     if !model.is_empty() && !overscroll_is_placeholder(&model) {
         spans.push(Span::styled(
             model,
-            Style::default().fg(rgb(225, 230, 245)).bold(),
+            Style::default().fg(rgb(180, 180, 190)).bold(),
         ));
         // Reasoning level shown inline next to the model, e.g. " high".
         if let Some(effort) = data
@@ -1481,7 +1481,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         {
             spans.push(Span::styled(
                 format!(" {}", effort),
-                Style::default().fg(rgb(200, 165, 235)),
+                Style::default().fg(rgb(140, 140, 150)),
             ));
         }
     }
@@ -1498,7 +1498,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         }
         spans.push(Span::styled(
             overscroll_provider_display(&provider),
-            Style::default().fg(rgb(150, 175, 230)),
+            Style::default().fg(rgb(140, 180, 255)),
         ));
     }
 
@@ -1522,7 +1522,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
                 overscroll_format_tokens(used),
                 overscroll_format_tokens(limit)
             ),
-            Style::default().fg(rgb(165, 170, 190)),
+            Style::default().fg(rgb(140, 140, 150)),
         ));
         spans.extend(overscroll_context_bar(used, limit, 10));
     }
@@ -1532,8 +1532,8 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         if !spans.is_empty() {
             spans.push(sep());
         }
-        spans.push(Span::styled(" ", Style::default().fg(rgb(120, 150, 190))));
-        spans.push(Span::styled(dir, Style::default().fg(rgb(150, 170, 200))));
+        spans.push(Span::styled(" ", Style::default().fg(rgb(140, 180, 255))));
+        spans.push(Span::styled(dir, Style::default().fg(rgb(140, 140, 150))));
     }
 
     if spans.is_empty() {
@@ -1612,13 +1612,13 @@ fn overscroll_auth_label(method: crate::tui::info_widget::AuthMethod) -> Option<
         AuthMethod::Unknown => None,
         AuthMethod::ApiKey
         | AuthMethod::AnthropicApiKey
-        | AuthMethod::OpenAIApiKey
-        | AuthMethod::OpenRouterApiKey
-        | AuthMethod::OpenCodeApiKey => Some(("API key", rgb(170, 175, 190))),
-        AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 170, 110))),
-        AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(110, 210, 190))),
-        AuthMethod::CopilotOAuth => Some(("OAuth", rgb(120, 210, 150))),
-        AuthMethod::GeminiOAuth => Some(("OAuth", rgb(130, 195, 255))),
+        | AuthMethod::OpenAIApiKey => Some(("API key", rgb(180, 180, 190))),
+        AuthMethod::OpenRouterApiKey
+        | AuthMethod::OpenCodeApiKey => Some(("API key", rgb(140, 180, 255))),
+        AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 160, 100))),
+        AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(100, 200, 180))),
+        AuthMethod::CopilotOAuth => Some(("OAuth", rgb(110, 200, 140))),
+        AuthMethod::GeminiOAuth => Some(("OAuth", rgb(120, 190, 255))),
     }
 }
 
@@ -1677,29 +1677,27 @@ fn overscroll_context_bar(used: usize, limit: usize, cells: usize) -> Vec<Span<'
     let filled = (ratio * cells as f64).round() as usize;
     let filled = filled.min(cells);
 
-    let fill_color = if pct >= 90 {
-        rgb(235, 110, 105)
-    } else if pct >= 70 {
-        rgb(235, 190, 110)
+    // Match the info widget usage bar palette (based on remaining context).
+    let left_pct = 100u16.saturating_sub(pct);
+    let fill_color = if left_pct <= 20 {
+        rgb(255, 100, 100)
+    } else if left_pct <= 50 {
+        rgb(255, 200, 100)
     } else {
-        rgb(130, 205, 150)
+        rgb(100, 200, 100)
     };
-    let track_color = rgb(58, 60, 74);
-    let cap_color = if filled > 0 { fill_color } else { track_color };
+    let track_color = rgb(50, 50, 60);
 
-    let mut spans = Vec::with_capacity(cells + 3);
-    // Rounded left cap takes the fill color when there is any usage.
-    spans.push(Span::styled("◖", Style::default().fg(cap_color)));
+    let mut spans = Vec::with_capacity(cells + 2);
+    // Slim segmented pill (▰ filled / ▱ empty) reads thinner than full blocks.
     spans.push(Span::styled(
-        "█".repeat(filled),
+        "▰".repeat(filled),
         Style::default().fg(fill_color),
     ));
     spans.push(Span::styled(
-        "░".repeat(cells.saturating_sub(filled)),
+        "▱".repeat(cells.saturating_sub(filled)),
         Style::default().fg(track_color),
     ));
-    let right_cap_color = if filled >= cells { fill_color } else { track_color };
-    spans.push(Span::styled("◗", Style::default().fg(right_cap_color)));
     spans.push(Span::styled(
         format!(" {}%", pct),
         Style::default().fg(fill_color).bold(),
