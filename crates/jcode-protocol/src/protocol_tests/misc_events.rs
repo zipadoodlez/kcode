@@ -196,6 +196,25 @@ fn test_set_feature_roundtrip() -> Result<()> {
 }
 
 #[test]
+fn test_set_route_deserializes_as_set_model_compat_alias() -> Result<()> {
+    let decoded = parse_request_json(r#"{"type":"set_route","id":42,"model":"claude-opus-4-5"}"#)?;
+    let Request::SetModel { id, model } = decoded else {
+        return Err(anyhow!(
+            "expected set_route compatibility alias to decode as SetModel"
+        ));
+    };
+    assert_eq!(id, 42);
+    assert_eq!(model, "claude-opus-4-5");
+
+    let encoded = serde_json::to_string(&Request::SetModel {
+        id: 43,
+        model: "gpt-5.5".to_string(),
+    })?;
+    assert!(encoded.contains("\"type\":\"set_model\""));
+    Ok(())
+}
+
+#[test]
 fn test_subscribe_request_roundtrip_preserves_session_takeover_flags() -> Result<()> {
     let req = Request::Subscribe {
         id: 89,
