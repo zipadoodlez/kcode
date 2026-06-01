@@ -29,6 +29,24 @@ const BACKGROUND_PROGRESS_GUIDANCE: &str = "For long-running background commands
 const BASH_TOOL_DESCRIPTION: &str = "Run a bash command. For long-running background commands, prefer scripts that emit progress/checkpoint lines. Print `JCODE_PROGRESS {json}` or `JCODE_CHECKPOINT {json}` lines for reliable reporting, or at least output parseable progress like `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or `Running ...`.";
 const WINDOWS_SHELL_TOOL_DESCRIPTION: &str = "Run a shell command. For long-running background commands, prefer scripts that emit progress/checkpoint lines. Print `JCODE_PROGRESS {json}` or `JCODE_CHECKPOINT {json}` lines for reliable reporting, or at least output parseable progress like `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or `Running ...`.";
 
+/// Build a clear timeout message. The `timeout` param is in milliseconds, which
+/// agents frequently mistake for seconds (e.g. passing 1000 thinking it means
+/// 1000s when it is 1s). Spell out the seconds equivalent and, for suspiciously
+/// short timeouts, hint that the unit is milliseconds so the next attempt uses a
+/// sane value instead of repeating the same mistake.
+fn timeout_message(timeout_ms: u64) -> String {
+    let secs = timeout_ms as f64 / 1000.0;
+    let mut msg = format!("Command timed out after {}ms ({:.1}s)", timeout_ms, secs);
+    if timeout_ms <= 5000 {
+        msg.push_str(
+            ". Note: the `timeout` parameter is in MILLISECONDS, not seconds. \
+             If you meant a longer limit, pass a larger value (e.g. 600000 = 10min) or omit `timeout`.",
+        );
+    }
+    msg
+}
+
+
 fn progress_ratio_regex() -> Result<&'static regex::Regex> {
     static REGEX: LazyLock<Result<regex::Regex, regex::Error>> = LazyLock::new(|| {
         regex::Regex::new(
@@ -560,7 +578,7 @@ impl Tool for BashTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in ms."
+                    "description": "Timeout in MILLISECONDS (not seconds). Kills the command when exceeded and reports exit 124. e.g. 1000 = 1s, 600000 = 10min. Omit to run with no timeout; do NOT pass small values like 1000 for long jobs such as builds or test suites."
                 },
                 "run_in_background": {
                     "type": "boolean",
@@ -769,7 +787,7 @@ impl BashTool {
             Err(_) => {
                 // Timeout - try to kill the process
                 let _ = child.kill().await;
-                Err(anyhow::anyhow!("Command timed out after {}ms", timeout_ms))
+                Err(anyhow::anyhow!("{}", timeout_message(timeout_ms)))
             }
         }
     }
@@ -1039,15 +1057,10 @@ impl BashTool {
 
                     if timed_out {
                         let _ = child.wait().await;
-                        let timeout_line = format!(
-                            "\n--- Command timed out after {}ms ---\n",
-                            timeout_ms.unwrap_or_default()
-                        );
+                        let msg = timeout_message(timeout_ms.unwrap_or_default());
+                        let timeout_line = format!("\n--- {} ---\n", msg);
                         file.write_all(timeout_line.as_bytes()).await.ok();
-                        return Ok(TaskResult::failed(
-                            Some(124),
-                            format!("Command timed out after {}ms", timeout_ms.unwrap_or_default()),
-                        ));
+                        return Ok(TaskResult::failed(Some(124), msg));
                     }
 
                     let status = child.wait().await?;
