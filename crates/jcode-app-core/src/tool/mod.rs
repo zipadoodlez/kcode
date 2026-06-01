@@ -24,6 +24,7 @@ mod open;
 mod patch;
 mod read;
 pub mod selfdev;
+pub(crate) mod serde_coerce;
 mod session_search;
 mod side_panel;
 mod skill;
