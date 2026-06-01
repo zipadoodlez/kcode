@@ -651,8 +651,8 @@ fn model_widget_renders_connection_type() {
 }
 
 #[test]
-fn usage_bar_shows_numeric_label_after_pill() {
-    let line = super::render_usage_bar(200_000, 1_000_000, 26);
+fn usage_pill_renders_filled_and_empty_segments() {
+    let line = super::render_usage_pill(200_000, 1_000_000, 26);
     let text: String = line
         .spans
         .iter()
@@ -661,15 +661,11 @@ fn usage_bar_shows_numeric_label_after_pill() {
 
     assert!(text.contains('▰'), "expected filled pill segments: {text}");
     assert!(text.contains('▱'), "expected empty pill segments: {text}");
-    assert!(
-        text.contains("200k/1000k"),
-        "expected usage label after bar: {text}"
-    );
 }
 
 #[test]
-fn usage_bar_renders_pill_when_narrow() {
-    let line = super::render_usage_bar(200_000, 1_000_000, 10);
+fn usage_pill_renders_when_narrow() {
+    let line = super::render_usage_pill(200_000, 1_000_000, 10);
     let text: String = line
         .spans
         .iter()
