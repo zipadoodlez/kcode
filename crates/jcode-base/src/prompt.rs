@@ -13,6 +13,11 @@ const SELFDEV_HINT_PROMPT: &str = include_str!("prompt/selfdev_hint.txt");
 const SELFDEV_MODE_PROMPT: &str = include_str!("prompt/selfdev_mode.txt");
 const SELFDEV_FOCUS_TUI_PROMPT: &str = include_str!("prompt/selfdev_focus_tui.txt");
 const SELFDEV_FOCUS_DESKTOP_PROMPT: &str = include_str!("prompt/selfdev_focus_desktop.txt");
+/// Final todo-confidence guidance when validation is still needed.
+pub const TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT: &str =
+    include_str!("prompt/todo_confidence_needs_validation.txt");
+/// Final todo-confidence guidance when completion confidence is sufficient.
+pub const TODO_CONFIDENCE_READY_PROMPT: &str = include_str!("prompt/todo_confidence_ready.txt");
 
 /// Split system prompt for efficient caching
 /// Static content is cached, dynamic content is not

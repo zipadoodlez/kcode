@@ -2487,15 +2487,15 @@ pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoIt
     }
 
     if summary.needs_more_work {
-        lines.push(
-            "- Auto-poke instruction: confidence is below the threshold or incomplete. Keep working: validate, test, fix gaps, and update completion_confidence when the evidence changes."
-                .to_string(),
-        );
+        lines.push(format!(
+            "- {}",
+            crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
+        ));
     } else {
-        lines.push(
-            "- Suggested action: use this confidence summary when deciding whether any further validation would materially improve certainty before finalizing."
-                .to_string(),
-        );
+        lines.push(format!(
+            "- {}",
+            crate::prompt::TODO_CONFIDENCE_READY_PROMPT.trim()
+        ));
     }
 
     lines.join("\n")

@@ -2619,15 +2619,15 @@ fn build_run_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) ->
         || missing_completion_confidence > 0
         || below_threshold_count > 0;
     if needs_validation {
-        lines.push(
-            "- Suggested action: validate or test before finalizing. Inspect the result and update completion_confidence when the evidence changes."
-                .to_string(),
-        );
+        lines.push(format!(
+            "- {}",
+            crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
+        ));
     } else {
-        lines.push(
-            "- Suggested action: use this confidence summary when deciding whether any further validation would materially improve certainty before finalizing."
-                .to_string(),
-        );
+        lines.push(format!(
+            "- {}",
+            crate::prompt::TODO_CONFIDENCE_READY_PROMPT.trim()
+        ));
     }
 
     lines.join("\n")
