@@ -424,8 +424,9 @@ fn pinned_content_image_layout_with_font(
     lines_before_image: usize,
     has_following_content: bool,
     font_size: Option<(u16, u16)>,
+    force_full_width: bool,
 ) -> SidePanelImageLayout {
-    estimate_side_panel_image_layout_with_font(
+    let layout = estimate_side_panel_image_layout_with_font(
         width,
         height,
         inner.width,
@@ -433,7 +434,42 @@ fn pinned_content_image_layout_with_font(
         lines_before_image,
         has_following_content,
         font_size,
-    )
+    );
+
+    // Real pasted/read images (photos, screenshots) must always be shown in
+    // full. The viewport zoom heuristic is tuned for mermaid diagrams, which can
+    // pan horizontally, but for a wide screenshot it crops to the left edge.
+    // If the chosen zoom would overflow the pane width, fall back to a fully
+    // visible Fit render so the whole image is on screen.
+    if force_full_width
+        && let SidePanelImageRenderMode::ScrollableViewport { zoom_percent } = layout.render_mode
+    {
+        let (cell_w, cell_h) = font_size.unwrap_or((8, 16));
+        let cell_w = cell_w.max(1) as u32;
+        let cell_h = cell_h.max(1) as u32;
+        let avail_px = (inner.width.max(1) as u32).saturating_mul(cell_w);
+        let scaled_w_px = width
+            .saturating_mul(zoom_percent as u32)
+            .checked_div(100)
+            .unwrap_or(width);
+        if scaled_w_px > avail_px {
+            // Fit to width: scale the height by the same width ratio, then
+            // convert to terminal rows.
+            let fitted_h_px = height
+                .saturating_mul(avail_px)
+                .checked_div(width.max(1))
+                .unwrap_or(height);
+            let rows = super::diagram_pane::div_ceil_u32(fitted_h_px.max(1), cell_h)
+                .min(inner.height.max(1) as u32)
+                .max(SIDE_PANEL_INLINE_IMAGE_MIN_ROWS as u32) as u16;
+            return SidePanelImageLayout {
+                rows,
+                render_mode: SidePanelImageRenderMode::Fit,
+            };
+        }
+    }
+
+    layout
 }
 
 type SidePaneSnapshotCache = (
@@ -1074,6 +1110,7 @@ pub(super) fn draw_pinned_content_cached(
                             text_lines.len(),
                             i + 1 < entries.len(),
                             mermaid::get_font_size(),
+                            true,
                         );
                         image_placements.push(PinnedImagePlacement {
                             after_text_line: text_lines.len(),

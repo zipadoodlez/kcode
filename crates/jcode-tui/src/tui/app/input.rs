@@ -350,7 +350,11 @@ where
 {
     match kind {
         ClipboardPasteKind::Smart => {
-            if let Some(text) = read_text() {
+            // Only treat the clipboard as text when it has *non-empty* text.
+            // Image-only clipboards (especially on Wayland/arboard) frequently
+            // expose an empty text target, which previously short-circuited the
+            // image path and produced a silent "0 char" paste.
+            if let Some(text) = read_text().filter(|t| !t.trim().is_empty()) {
                 if let Some(url) = super::extract_image_url(&text)
                     && let Some(content) = download_image_url(&url)
                 {
@@ -442,6 +446,29 @@ mod tests {
             matches!(content, ClipboardPasteContent::Empty),
             "expected empty paste, got {content:?}"
         );
+    }
+
+    #[test]
+    fn smart_paste_uses_image_when_text_target_is_blank() {
+        // Image-only clipboards can advertise an empty text target; the image
+        // must still be pasted instead of producing a silent empty text paste.
+        let content = read_clipboard_for_paste_with(
+            &ClipboardPasteKind::Smart,
+            || Some("   ".to_string()),
+            || Some(("image/png".to_string(), "base64".to_string())),
+            |_| None,
+        );
+
+        match content {
+            ClipboardPasteContent::Image {
+                media_type,
+                base64_data,
+            } => {
+                assert_eq!(media_type, "image/png");
+                assert_eq!(base64_data, "base64");
+            }
+            other => panic!("expected image paste, got {other:?}"),
+        }
     }
 
     #[test]
