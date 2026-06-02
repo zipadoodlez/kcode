@@ -95,9 +95,6 @@ pub(super) fn render_usage_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
                     inner.width,
                 ));
             }
-            if let Some(line) = estimated_cost_line(info) {
-                lines.push(line);
-            }
             lines
         }
     }
@@ -172,28 +169,7 @@ pub(super) fn render_usage_compact(info: &UsageInfo, width: u16) -> Vec<Line<'st
             width,
         ));
     }
-    if let Some(line) = estimated_cost_line(info) {
-        lines.push(line);
-    }
     lines
-}
-
-/// Estimated equivalent API cost line for subscription/OAuth providers.
-/// Shown for plans where the user is not billed per token (e.g. Claude
-/// subscription) but we can still surface what the usage would have cost.
-fn estimated_cost_line(info: &UsageInfo) -> Option<Line<'static>> {
-    let cost = info.estimated_cost?;
-    if cost <= 0.0 {
-        return None;
-    }
-    Some(Line::from(vec![
-        Span::styled("~", Style::default().fg(rgb(120, 120, 130))),
-        Span::styled(
-            format!("${:.2}", cost),
-            Style::default().fg(rgb(180, 180, 190)).bold(),
-        ),
-        Span::styled(" est. API cost", Style::default().fg(rgb(120, 120, 130))),
-    ]))
 }
 
 fn render_labeled_bar(

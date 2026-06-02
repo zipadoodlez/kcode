@@ -119,12 +119,7 @@ impl App {
             false
         };
 
-        // For Anthropic OAuth / Claude subscription users there is no per-token
-        // billing, but we can still surface an estimated equivalent API cost so
-        // the info widget shows a dollar figure (like OpenRouter does).
-        let estimate_only = !billed_per_token && is_anthropic;
-
-        if !billed_per_token && !estimate_only {
+        if !billed_per_token {
             return;
         }
 
@@ -151,19 +146,13 @@ impl App {
             Some(price) => (cache_read_tokens as f32 * price) / 1_000_000.0,
             None => (cache_read_tokens as f32 * prompt_price) / 1_000_000.0,
         };
-        let turn_cost = prompt_cost + completion_cost + cache_read_cost;
-
-        if estimate_only {
-            *self.estimated_cost.get_or_insert(0.0) += turn_cost;
-        } else {
-            self.total_cost += turn_cost;
-        }
+        self.total_cost += prompt_cost + completion_cost + cache_read_cost;
     }
 
     /// Resolve and cache per-model pricing for the active provider. For
     /// Anthropic/Claude models we use the published API pricing (input, output
-    /// and cache-read), which lets us show an accurate dollar estimate even on
-    /// the subscription/OAuth plan. Re-resolves when the active model changes.
+    /// and cache-read) so the API-key cost figure is accurate per model.
+    /// Re-resolves when the active model changes.
     fn refresh_cached_pricing(&mut self, is_anthropic: bool) {
         let model = self.provider.model().to_string();
         if self.cached_price_model.as_deref() == Some(model.as_str()) {

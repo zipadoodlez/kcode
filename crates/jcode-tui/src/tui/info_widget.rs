@@ -351,10 +351,6 @@ pub struct UsageInfo {
     pub spark_resets_at: Option<String>,
     /// Total cost in USD - for API-key providers (OpenRouter, direct API key)
     pub total_cost: f32,
-    /// Estimated cost in USD for subscription/OAuth providers (e.g. Anthropic
-    /// Claude subscription) where the user is not billed per token but we can
-    /// still show the equivalent API spend. `None` when no estimate is known.
-    pub estimated_cost: Option<f32>,
     /// Input tokens used - for cost calculation
     pub input_tokens: u64,
     /// Output tokens used - for cost calculation

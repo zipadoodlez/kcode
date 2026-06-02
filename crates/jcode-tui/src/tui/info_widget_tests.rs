@@ -181,63 +181,6 @@ fn cost_based_usage_widgets_show_price_and_tokens() {
     assert!(compact_text.contains("12.3K in + 678 out"));
 }
 
-#[test]
-fn anthropic_subscription_widget_shows_estimated_api_cost() {
-    // Claude subscription / OAuth: not billed per token, but we surface an
-    // estimated equivalent API cost line alongside the usage bars.
-    let usage = UsageInfo {
-        provider: UsageProvider::Anthropic,
-        five_hour: 0.25,
-        seven_day: 0.10,
-        total_cost: 0.0,
-        estimated_cost: Some(1.2345),
-        input_tokens: 100_000,
-        output_tokens: 5_000,
-        available: true,
-        ..Default::default()
-    };
-    let data = InfoWidgetData {
-        usage_info: Some(usage.clone()),
-        ..Default::default()
-    };
-
-    let expanded_text = lines_text(&render_usage_widget(&data, Rect::new(0, 0, 40, 6)));
-    assert!(expanded_text.contains("$1.23"), "expanded: {expanded_text}");
-    assert!(
-        expanded_text.contains("est. API cost"),
-        "expanded: {expanded_text}"
-    );
-    // Subscription usage bars are still shown.
-    assert!(
-        expanded_text.contains("5-hour"),
-        "expanded: {expanded_text}"
-    );
-
-    let compact_text = lines_text(&render_usage_compact(&usage, 40));
-    assert!(compact_text.contains("$1.23"), "compact: {compact_text}");
-    assert!(
-        compact_text.contains("est. API cost"),
-        "compact: {compact_text}"
-    );
-}
-
-#[test]
-fn anthropic_subscription_widget_hides_zero_estimated_cost() {
-    let usage = UsageInfo {
-        provider: UsageProvider::Anthropic,
-        total_cost: 0.0,
-        estimated_cost: Some(0.0),
-        available: true,
-        ..Default::default()
-    };
-    let data = InfoWidgetData {
-        usage_info: Some(usage.clone()),
-        ..Default::default()
-    };
-    let expanded_text = lines_text(&render_usage_widget(&data, Rect::new(0, 0, 40, 6)));
-    assert!(!expanded_text.contains("est. API cost"), "{expanded_text}");
-}
-
 fn node(kind: &str, label: &str, degree: usize) -> GraphNode {
     GraphNode {
         id: format!("{}:{}", kind, label.replace(' ', "_")),
