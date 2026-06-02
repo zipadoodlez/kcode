@@ -6,14 +6,14 @@ use async_trait::async_trait;
 use chrono::Utc;
 pub use jcode_provider_gemini::{
     AVAILABLE_MODELS, CODE_ASSIST_API_VERSION, CODE_ASSIST_ENDPOINT, ClientMetadata,
-    CodeAssistGenerateRequest, CodeAssistGenerateResponse, DEFAULT_MODEL, GeminiCandidate,
-    GeminiContent, GeminiFunctionCall, GeminiFunctionCallingConfig, GeminiFunctionDeclaration,
-    GeminiFunctionResponse, GeminiPart, GeminiPromptFeedback, GeminiRuntimeState, GeminiTool,
-    GeminiToolConfig, GeminiUsageMetadata, GeminiUserTier, IneligibleTier, InlineData,
-    LoadCodeAssistRequest, LoadCodeAssistResponse, LongRunningOperationResponse,
-    OnboardUserRequest, OnboardUserResponse, ProjectRef, USER_TIER_FREE,
-    VertexGenerateContentRequest, VertexGenerateContentResponse, choose_onboard_tier,
-    client_metadata, extract_gemini_model_ids, gemini_fallback_models,
+    CodeAssistGenerateRequest, CodeAssistGenerateResponse, DEFAULT_MODEL, GEMINI_API_ENDPOINT,
+    GEMINI_API_VERSION, GeminiCandidate, GeminiContent, GeminiFunctionCall,
+    GeminiFunctionCallingConfig, GeminiFunctionDeclaration, GeminiFunctionResponse, GeminiPart,
+    GeminiPromptFeedback, GeminiRuntimeState, GeminiTool, GeminiToolConfig, GeminiUsageMetadata,
+    GeminiUserTier, IneligibleTier, InlineData, LoadCodeAssistRequest, LoadCodeAssistResponse,
+    LongRunningOperationResponse, OnboardUserRequest, OnboardUserResponse, ProjectRef,
+    USER_TIER_FREE, VertexGenerateContentRequest, VertexGenerateContentResponse,
+    choose_onboard_tier, client_metadata, extract_gemini_model_ids, gemini_fallback_models,
     google_cloud_project_from_env, ineligible_or_project_error, is_gemini_model_id,
     load_code_assist_request, merge_gemini_model_lists, validate_load_code_assist_response,
 };

@@ -23,6 +23,52 @@ const GEMINI_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
+/// Environment variable names that hold an official Gemini Developer API key
+/// (Google AI Studio). Checked in order; the first non-empty value wins.
+pub const GEMINI_API_KEY_ENV_VARS: &[&str] = &["GEMINI_API_KEY", "GOOGLE_API_KEY"];
+/// Config file that may persist a saved Gemini Developer API key.
+pub const GEMINI_API_KEY_ENV_FILE: &str = "gemini.env";
+
+/// Resolve an official Gemini Developer API key from the environment or the
+/// saved `gemini.env` config file.
+///
+/// Unlike the OAuth Code Assist path (which talks to cloudcode-pa with a free
+/// quota tier), an API key authenticates directly against
+/// `generativelanguage.googleapis.com` and uses the key's own quota. Preferring
+/// the env var keeps it consistent with every other API-key provider in jcode.
+pub fn api_key() -> Option<String> {
+    for env_key in GEMINI_API_KEY_ENV_VARS {
+        if let Some(key) = crate::provider_catalog::load_api_key_from_env_or_config(
+            env_key,
+            GEMINI_API_KEY_ENV_FILE,
+        ) {
+            return Some(key);
+        }
+    }
+    None
+}
+
+/// True when an official Gemini Developer API key is configured.
+pub fn has_api_key() -> bool {
+    api_key().is_some()
+}
+
+/// Persist a Gemini Developer API key to the `gemini.env` config file under the
+/// canonical `GEMINI_API_KEY` name.
+pub fn save_api_key(key: &str) -> Result<()> {
+    let key = key.trim();
+    if key.is_empty() {
+        anyhow::bail!("Gemini API key cannot be empty");
+    }
+    crate::provider_catalog::save_env_value_to_env_file(
+        GEMINI_API_KEY_ENV_VARS[0],
+        GEMINI_API_KEY_ENV_FILE,
+        Some(key),
+    )?;
+    super::AuthStatus::invalidate_cache();
+    Ok(())
+}
+
 fn gemini_client_id() -> String {
     std::env::var(GEMINI_CLIENT_ID_ENV).unwrap_or_else(|_| GEMINI_CLIENT_ID.to_string())
 }

@@ -24,6 +24,10 @@ pub const FALLBACK_MODELS: &[&str] = &[
 ];
 pub const CODE_ASSIST_ENDPOINT: &str = "https://cloudcode-pa.googleapis.com";
 pub const CODE_ASSIST_API_VERSION: &str = "v1internal";
+/// Official Gemini Developer API (Google AI Studio) endpoint. Used when an API
+/// key is configured instead of OAuth Code Assist credentials.
+pub const GEMINI_API_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
+pub const GEMINI_API_VERSION: &str = "v1beta";
 pub const USER_TIER_FREE: &str = "free-tier";
 pub const USER_TIER_LEGACY: &str = "legacy-tier";
 
