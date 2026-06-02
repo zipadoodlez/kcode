@@ -1995,11 +1995,23 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let (chat_area, diff_pane_area) = if needs_side_pane {
         const MIN_DIFF_WIDTH: u16 = 30;
         const MIN_CHAT_WIDTH: u16 = 20;
+        // Pinned images live in a tall narrow column, so a wide image fits to
+        // the pane width and ends up small with empty space below it. When the
+        // pane is showing image content (and the user has not manually resized
+        // it), widen the default split so images use more of the available
+        // horizontal space. Diffs/markdown keep the standard ratio.
+        let image_dominant_pane =
+            has_pinned_content && !has_file_diff_edits && !has_side_panel_content;
+        const ADAPTIVE_IMAGE_RATIO: u32 = 55;
+        let base_ratio = app.diagram_pane_ratio().clamp(25, 100) as u32;
+        let effective_ratio = if image_dominant_pane && !app.diagram_pane_ratio_user_adjusted() {
+            base_ratio.max(ADAPTIVE_IMAGE_RATIO)
+        } else {
+            base_ratio
+        };
         let max_diff = chat_area.width.saturating_sub(MIN_CHAT_WIDTH);
         if max_diff >= MIN_DIFF_WIDTH {
-            let diff_width = (((chat_area.width as u32
-                * app.diagram_pane_ratio().clamp(25, 100) as u32)
-                / 100) as u16)
+            let diff_width = (((chat_area.width as u32 * effective_ratio) / 100) as u16)
                 .max(MIN_DIFF_WIDTH)
                 .min(max_diff);
             let new_chat_width = chat_area.width.saturating_sub(diff_width);

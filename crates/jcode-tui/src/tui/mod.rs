@@ -273,6 +273,8 @@ pub trait TuiState {
     fn diagram_scroll(&self) -> (i32, i32);
     /// Diagram pane width ratio percentage
     fn diagram_pane_ratio(&self) -> u8;
+    /// Whether the user has manually resized the diagram/side pane width.
+    fn diagram_pane_ratio_user_adjusted(&self) -> bool;
     /// Whether the diagram pane ratio is currently animating
     fn diagram_pane_animating(&self) -> bool;
     /// Whether the pinned diagram pane is visible

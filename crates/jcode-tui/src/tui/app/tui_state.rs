@@ -1337,6 +1337,10 @@ impl crate::tui::TuiState for App {
         self.animated_diagram_pane_ratio()
     }
 
+    fn diagram_pane_ratio_user_adjusted(&self) -> bool {
+        self.diagram_pane_ratio_user_adjusted
+    }
+
     fn diagram_pane_animating(&self) -> bool {
         self.diagram_pane_anim_start
             .map(|s| s.elapsed().as_secs_f32() < Self::DIAGRAM_PANE_ANIM_DURATION)

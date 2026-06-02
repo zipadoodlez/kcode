@@ -816,10 +816,12 @@ impl App {
 
     pub(super) fn adjust_diagram_pane_ratio(&mut self, delta: i8) {
         let next = self.diagram_pane_ratio_target as i16 + delta as i16;
+        self.diagram_pane_ratio_user_adjusted = true;
         self.set_diagram_pane_ratio(next, true, true);
     }
 
     pub(super) fn set_diagram_pane_ratio_immediate(&mut self, next: u8) {
+        self.diagram_pane_ratio_user_adjusted = true;
         self.set_diagram_pane_ratio(next as i16, false, false);
     }
 

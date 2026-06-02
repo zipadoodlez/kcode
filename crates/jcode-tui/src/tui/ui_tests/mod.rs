@@ -344,6 +344,9 @@ impl crate::tui::TuiState for TestState {
     fn diagram_pane_ratio(&self) -> u8 {
         50
     }
+    fn diagram_pane_ratio_user_adjusted(&self) -> bool {
+        false
+    }
     fn diagram_pane_animating(&self) -> bool {
         false
     }
