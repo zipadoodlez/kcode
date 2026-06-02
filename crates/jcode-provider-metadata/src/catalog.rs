@@ -126,6 +126,20 @@ pub const OPENAI_NATIVE_OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiC
     requires_api_key: true,
 };
 
+pub const GEMINI_OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
+    id: "gemini-api",
+    display_name: "Gemini API",
+    // Google's official OpenAI-compatible surface for the Gemini Developer API.
+    // The `/models` endpoint here returns `models/`-prefixed ids, which the live
+    // probe layer normalizes back to bare model names.
+    api_base: "https://generativelanguage.googleapis.com/v1beta/openai",
+    api_key_env: "GEMINI_API_KEY",
+    env_file: "gemini.env",
+    setup_url: "https://ai.google.dev/gemini-api/docs/openai",
+    default_model: Some("gemini-2.5-flash"),
+    requires_api_key: true,
+};
+
 pub const DEEPSEEK_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "deepseek",
     display_name: "DeepSeek",
@@ -405,7 +419,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 35] = [
+pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 36] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -419,6 +433,7 @@ pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 35] = [
     OPENROUTER_OPENAI_COMPAT_PROFILE,
     ANTHROPIC_OPENAI_COMPAT_PROFILE,
     OPENAI_NATIVE_OPENAI_COMPAT_PROFILE,
+    GEMINI_OPENAI_COMPAT_PROFILE,
     DEEPSEEK_PROFILE,
     COMTEGRA_PROFILE,
     FPT_PROFILE,
@@ -1013,6 +1028,19 @@ pub const GEMINI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), Some(11), Some(4), Some(11), Some(13)),
 };
 
+pub const GEMINI_API_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
+    id: "gemini-api",
+    display_name: "Gemini API",
+    auth_kind: LoginProviderAuthKind::ApiKey,
+    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
+    auth_status_method: "API key",
+    aliases: &["gemini-key", "gemini-apikey", "google-ai-studio", "ai-studio"],
+    menu_detail: "Google AI Studio Developer API key (OpenAI-compatible)",
+    recommended: false,
+    target: LoginProviderTarget::OpenAiCompatible(GEMINI_OPENAI_COMPAT_PROFILE),
+    order: LoginProviderSurfaceOrder::new(Some(38), Some(38), Some(38), Some(38), Some(38)),
+};
+
 pub const ANTIGRAVITY_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "antigravity",
     display_name: "Antigravity",
@@ -1052,7 +1080,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 46] = [
+pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 47] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     ANTHROPIC_API_LOGIN_PROVIDER,
@@ -1097,6 +1125,7 @@ pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 46] = [
     CURSOR_LOGIN_PROVIDER,
     COPILOT_LOGIN_PROVIDER,
     GEMINI_LOGIN_PROVIDER,
+    GEMINI_API_LOGIN_PROVIDER,
     ANTIGRAVITY_LOGIN_PROVIDER,
     GOOGLE_LOGIN_PROVIDER,
 ];

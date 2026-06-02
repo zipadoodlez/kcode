@@ -473,6 +473,12 @@ pub fn openai_compatible_profile_static_models(profile: OpenAiCompatibleProfile)
             push("kimi-k2.5");
             push("MiniMax-M2.5");
         }
+        "gemini-api" => {
+            push("gemini-2.5-flash");
+            push("gemini-2.5-pro");
+            push("gemini-2.0-flash");
+            push("gemini-2.0-flash-lite");
+        }
         _ => {}
     }
 
