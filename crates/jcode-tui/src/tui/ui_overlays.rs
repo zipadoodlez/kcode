@@ -533,35 +533,18 @@ pub(super) fn draw_model_status_overlay(
 }
 
 fn model_status_line_style(raw: &str, default: Style) -> Style {
-    let trimmed = raw.trim_start();
-    if trimmed.starts_with('✓')
-        || trimmed.contains("Fully tested")
-        || trimmed.contains("strict_covered")
-        || trimmed.contains("Passed")
-    {
-        Style::default().fg(rgb(120, 220, 150))
-    } else if trimmed.starts_with('✗')
-        || trimmed.contains("Failed")
-        || trimmed.contains("0.00%")
-        || trimmed.contains("no_model_specific_live_evidence")
-    {
-        Style::default().fg(rgb(240, 110, 110))
-    } else if trimmed.starts_with('!')
-        || trimmed.starts_with('-')
-        || trimmed.contains("Skipped")
-        || trimmed.contains("Blocked")
-        || trimmed.contains("Partially tested")
-        || trimmed.contains("observed_missing_strict_checkpoints")
-    {
-        Style::default().fg(rgb(235, 190, 105))
-    } else if trimmed.starts_with('•')
-        || trimmed.contains("NotRun")
-        || trimmed.contains("Known providers")
-        || trimmed.contains("Uncovered provider/model gaps")
-    {
-        Style::default().fg(dim_color())
-    } else {
-        default
+    // Reuse the same semantic classification the CLI uses so the TUI overlay
+    // and `jcode provider-test-coverage` stay color-consistent.
+    use crate::live_tests::CoverageLineStyle;
+    match crate::live_tests::classify_provider_test_coverage_line(raw) {
+        CoverageLineStyle::Title => Style::default()
+            .fg(accent_color())
+            .add_modifier(Modifier::BOLD),
+        CoverageLineStyle::Pass => Style::default().fg(rgb(120, 220, 150)),
+        CoverageLineStyle::Fail => Style::default().fg(rgb(240, 110, 110)),
+        CoverageLineStyle::Warn => Style::default().fg(rgb(235, 190, 105)),
+        CoverageLineStyle::Dim => Style::default().fg(dim_color()),
+        CoverageLineStyle::Plain => default,
     }
 }
 

@@ -978,7 +978,8 @@ fn build_provider_test_coverage_summary() -> String {
                 &coverage,
                 path.display().to_string(),
             );
-            crate::live_tests::format_strict_live_provider_model_coverage_summary(&summary, 50)
+            // 0 = no per-pair cap: the overlay scrolls, so show every pair.
+            crate::live_tests::format_strict_live_provider_model_coverage_summary(&summary, 0)
         }
         Err(err) => {
             let mut out = String::new();

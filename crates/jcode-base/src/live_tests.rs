@@ -1632,17 +1632,6 @@ const STRICT_PIPELINE_STAGES: &[(&str, &str)] = &[
     (checkpoints::REAL_JCODE_TOOL_SMOKE, "real tool smoke"),
 ];
 
-/// One-glyph rendering of a checkpoint outcome for the per-pair pipeline bar.
-fn pipeline_glyph(status: Option<LiveVerificationStageStatus>) -> char {
-    match status {
-        Some(LiveVerificationStageStatus::Passed) => '+',
-        Some(LiveVerificationStageStatus::Failed) => 'x',
-        Some(LiveVerificationStageStatus::Blocked) => '!',
-        Some(LiveVerificationStageStatus::Skipped) => '~',
-        Some(LiveVerificationStageStatus::NotRun) | None => '.',
-    }
-}
-
 /// Plain-English description of the first thing standing between a pair and
 /// READY, plus whether it is a hard failure (ran and failed/blocked) or just
 /// "never run". Returns `None` when every stage passed.
@@ -1805,64 +1794,76 @@ pub fn format_strict_live_provider_model_coverage_summary(
     ));
     out.push_str("A pair is READY only after every stage below passes in a real Jcode runtime.\n");
     out.push_str("Anything short of READY is work-in-progress, not necessarily broken -- the\n");
-    out.push_str("bar below shows exactly how far each pair got and what to run next.\n\n");
+    out.push_str("list below shows exactly how far each pair got and what to run next.\n\n");
 
     // -- The pipeline legend (the 11 stages, numbered, in order). --------------
     out.push_str(&format!(
-        "The pipeline ({stage_count} stages, left to right):\n"
+        "The pipeline ({stage_count} stages, in order; a pair is READY only after the last):\n"
     ));
     for (index, (_, label)) in STRICT_PIPELINE_STAGES.iter().enumerate() {
         out.push_str(&format!("  {:>2}. {}\n", index + 1, label));
     }
-    out.push_str("\nIn each bar:  + passed   x failed   ! blocked   ~ skipped   . not run yet\n\n");
+    out.push('\n');
 
     // -- Per-provider rollup. --------------------------------------------------
-    out.push_str("Per provider (READY = pairs that cleared all stages):\n");
-    out.push_str("  provider               READY    furthest non-ready pair reached\n");
+    let all_pairs_for_rollup = summary
+        .covered_pairs
+        .iter()
+        .chain(summary.uncovered_pairs.iter())
+        .collect::<Vec<_>>();
+    out.push_str("Per provider (ready pairs / pairs seen, and the closest pair still in progress):\n");
+    out.push_str(&format!(
+        "  {:<22} {:>9}   closest pair still in progress\n",
+        "provider", "ready/seen"
+    ));
     out.push_str("  ----------------------------------------------------------------\n");
     if summary.providers.is_empty() {
         out.push_str("  (no provider has model-specific live evidence yet)\n");
     } else {
-        let all_pairs = summary
-            .covered_pairs
-            .iter()
-            .chain(summary.uncovered_pairs.iter())
-            .collect::<Vec<_>>();
         for provider in &summary.providers {
-            // How far did the best not-yet-ready pair climb?
-            let best_reached = all_pairs
-                .iter()
-                .filter(|pair| pair.provider_id == provider.provider_id && !pair.covered)
-                .map(|pair| stages_passed(pair))
-                .max();
-            let reached = match (provider.covered_model_pairs, best_reached) {
-                (n, _) if n == provider.total_model_pairs && provider.total_model_pairs > 0 => {
-                    "all pairs READY".to_string()
+            let not_ready = provider
+                .total_model_pairs
+                .saturating_sub(provider.covered_model_pairs);
+            let detail = if not_ready == 0 && provider.total_model_pairs > 0 {
+                "all seen pairs READY".to_string()
+            } else {
+                // The not-yet-READY pair that climbed furthest, plus its blocker.
+                let closest = all_pairs_for_rollup
+                    .iter()
+                    .filter(|pair| pair.provider_id == provider.provider_id && !pair.covered)
+                    .max_by_key(|pair| stages_passed(pair));
+                match closest {
+                    Some(pair) => {
+                        let reached = stages_passed(pair);
+                        match first_blocker(pair) {
+                            Some((_, label, hard_fail)) => {
+                                let verb = if hard_fail { "failed at" } else { "stuck before" };
+                                format!(
+                                    "{not_ready} not ready (best {reached}/{stage_count}, {verb} {label})"
+                                )
+                            }
+                            // No hard blocker but still not strictly covered: every
+                            // stage was reached, but some were skipped not passed.
+                            None => format!(
+                                "{not_ready} not ready (best {reached}/{stage_count}, some stages skipped)"
+                            ),
+                        }
+                    }
+                    None => format!("{not_ready} not ready"),
                 }
-                (_, Some(passed)) => format!(
-                    "{}/{} stages ({})",
-                    passed,
-                    stage_count,
-                    STRICT_PIPELINE_STAGES
-                        .get(passed.saturating_sub(1))
-                        .map(|(_, label)| *label)
-                        .filter(|_| passed > 0)
-                        .unwrap_or("nothing yet")
-                ),
-                (_, None) => "no evidence".to_string(),
             };
             out.push_str(&format!(
-                "  {:<22} {:>2}/{:<2}    {}\n",
+                "  {:<22} {:>4}/{:<4}  {}\n",
                 provider.provider_id,
                 provider.covered_model_pairs,
                 provider.total_model_pairs,
-                reached,
+                detail,
             ));
         }
     }
     out.push('\n');
 
-    // -- Per-pair pipeline bars: the heart of the report. ----------------------
+    // -- Per-pair list: one line per pair, furthest first. ---------------------
     let mut all_pairs = summary
         .covered_pairs
         .iter()
@@ -1881,42 +1882,60 @@ pub fn format_strict_live_provider_model_coverage_summary(
         out.push_str("No provider+model pairs have live evidence yet. Run\n");
         out.push_str("`jcode provider-doctor <provider> --tier full` to record one.\n\n");
     } else {
-        let shown = all_pairs.len().min(gap_limit);
-        out.push_str(&format!(
-            "Each pair, furthest first (showing {shown} of {}):\n",
+        // `gap_limit == 0` means "no cap": show every pair.
+        let cap = if gap_limit == 0 {
             all_pairs.len()
-        ));
-        for pair in all_pairs.iter().take(gap_limit) {
-            let bar: String = STRICT_PIPELINE_STAGES
-                .iter()
-                .map(|(id, _)| pipeline_glyph(pair.checkpoint_status(id)))
-                .collect();
+        } else {
+            gap_limit
+        };
+        let shown = all_pairs.len().min(cap);
+        if shown == all_pairs.len() {
+            out.push_str(&format!(
+                "Each pair, furthest first (all {} shown), one line each:\n",
+                all_pairs.len()
+            ));
+        } else {
+            out.push_str(&format!(
+                "Each pair, furthest first (showing {shown} of {}), one line each:\n",
+                all_pairs.len()
+            ));
+        }
+        let shown_pairs = all_pairs.iter().take(cap).collect::<Vec<_>>();
+        // Pad the status and name columns so the per-pair detail stays aligned.
+        let status_width = shown_pairs
+            .iter()
+            .map(|pair| pair_status_token(pair, stage_count).len())
+            .max()
+            .unwrap_or(5)
+            .max(5);
+        let name_width = shown_pairs
+            .iter()
+            .map(|pair| pair.provider_id.len() + 3 + pair.model.len())
+            .max()
+            .unwrap_or(0);
+        for pair in &shown_pairs {
+            let status = pair_status_token(pair, stage_count);
             let name = format!("{} / {}", pair.provider_id, pair.model);
             let tested = format!(
                 "last tested {} by {}",
                 humanize_time_ago(pair.latest_recorded_at, now),
                 coverage_actor_label(pair.latest_jcode_dirty, &pair.latest_jcode_version),
             );
-            if pair.covered {
-                out.push_str(&format!("  {bar}  {name}\n      READY -- {tested}\n"));
+            let detail = if pair.covered {
+                tested
             } else {
-                let next = first_blocker(pair);
-                let detail = match next {
+                match first_blocker(pair) {
                     Some((stage_id, label, hard_fail)) => {
-                        let verb = if hard_fail {
-                            "FAILED at"
-                        } else {
-                            "stuck before"
-                        };
+                        let verb = if hard_fail { "failed at" } else { "stuck before" };
                         let fix = pair_fix_hint(&pair.provider_id, &pair.model, stage_id);
-                        format!("{verb} `{label}` -> {fix}")
+                        format!("{verb} `{label}`; {fix}; {tested}")
                     }
-                    None => "READY".to_string(),
-                };
-                out.push_str(&format!(
-                    "  {bar}  {name}\n      {detail}\n      {tested}\n"
-                ));
-            }
+                    None => tested,
+                }
+            };
+            out.push_str(&format!(
+                "  {status:<status_width$}  {name:<name_width$}  {detail}\n"
+            ));
         }
         out.push('\n');
     }
@@ -1960,7 +1979,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
             "status",
             "doctor",
             "key",
-            "READY/seen",
+            "ready/seen pairs",
             id_width = id_width
         ));
         for entry in rows {
@@ -1979,7 +1998,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
         }
         out.push_str(
             "  Legend: doctor=`provider-doctor` can drive it; key=credential present;\n  \
-             READY/seen = strict-covered pairs / pairs observed in the ledger.\n\n",
+             ready/seen pairs = READY pairs / pairs seen in the ledger (e.g. 1/3 = 1 of 3 ready).\n\n",
         );
     }
 
@@ -2036,6 +2055,17 @@ pub fn format_strict_live_provider_model_coverage_summary(
     out.push_str(&format!("\nLedger: {}\n", summary.coverage_source));
 
     out
+}
+
+/// Compact, scannable status token for one provider/model pair, shown as the
+/// first column of each per-pair line. READY means every stage passed; anything
+/// short of that shows how many stages were cleared, e.g. `6/11`.
+fn pair_status_token(pair: &LiveProviderModelCoveragePair, stage_count: usize) -> String {
+    if pair.covered {
+        "READY".to_string()
+    } else {
+        format!("{}/{}", stages_passed(pair), stage_count)
+    }
 }
 
 /// Number of consecutive leading stages a pair has passed (its furthest point in
@@ -2116,45 +2146,150 @@ pub fn colorize_provider_test_coverage_output(output: &str) -> String {
         + if output.ends_with('\n') { "\n" } else { "" }
 }
 
+/// Semantic role of a single line in a provider-test-coverage report. Both the
+/// CLI (ANSI) and the TUI overlay map this one classification onto their own
+/// color palette, so the two surfaces stay in lock-step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CoverageLineStyle {
+    /// Section banner / headline / `Foo:` label.
+    Title,
+    /// Fully READY / passed.
+    Pass,
+    /// Hard failure (ran and failed/blocked).
+    Fail,
+    /// In progress / skipped / needs attention but not a hard failure.
+    Warn,
+    /// Subdued metadata, table chrome, untested rows.
+    Dim,
+    /// No special styling.
+    Plain,
+}
+
+/// True when `token` looks like a pipeline stage count such as `6/11`.
+fn is_stage_fraction(token: &str) -> bool {
+    let mut parts = token.splitn(2, '/');
+    match (parts.next(), parts.next()) {
+        (Some(a), Some(b)) => {
+            !a.is_empty()
+                && !b.is_empty()
+                && a.bytes().all(|c| c.is_ascii_digit())
+                && b.bytes().all(|c| c.is_ascii_digit())
+        }
+        _ => false,
+    }
+}
+
+/// Classify one report line for coloring. Rules are ordered most-specific first
+/// so per-pair status tokens win over the prose that merely mentions "READY".
+pub fn classify_provider_test_coverage_line(line: &str) -> CoverageLineStyle {
+    use CoverageLineStyle::{Dim, Fail, Pass, Plain, Title, Warn};
+    let t = line.trim_start();
+    if t.is_empty() {
+        return Plain;
+    }
+
+    // Detail-report checkpoint glyphs are unambiguous: color by the leading icon.
+    match t.chars().next() {
+        Some('✓') => return Pass,
+        Some('✗') => return Fail,
+        Some('!') => return Warn,
+        Some('•') => return Dim,
+        _ => {}
+    }
+
+    // Per-pair / detail rows that are fully READY lead with the READY token.
+    if t == "READY" || t.starts_with("READY ") || t.starts_with("READY\t") {
+        return Pass;
+    }
+
+    // Per-pair in-progress rows lead with an `N/M` stage count.
+    if let Some(first) = t.split_whitespace().next() {
+        if is_stage_fraction(first) {
+            return if t.contains("failed at") { Fail } else { Warn };
+        }
+    }
+
+    // Provider-monitor rows end with a `ready/seen` fraction; color by status
+    // word. Checked before generic prose so a sentence that merely mentions
+    // "READY" is not miscolored.
+    if t
+        .split_whitespace()
+        .last()
+        .is_some_and(is_stage_fraction)
+    {
+        if t.contains("needs native suite") || t.contains("untested") {
+            return Dim;
+        }
+        if t.contains("no key") || t.contains("in progress") {
+            return Warn;
+        }
+        if t.contains("READY") {
+            return Pass;
+        }
+        return Plain;
+    }
+
+    // Section banners, the headline count, `#` headings, and `Foo:` labels.
+    if t.starts_with("READY:")
+        || t.starts_with('#')
+        || t == "Live provider/model readiness"
+        || (!t.is_empty() && t.chars().all(|c| c == '='))
+        || (t.ends_with(':') && !t.starts_with('['))
+    {
+        return Title;
+    }
+
+    // Detail-report status verdicts.
+    if t.contains("Fully tested") || t.contains("all seen pairs READY") {
+        return Pass;
+    }
+    if t.contains("Partially tested") {
+        return Warn;
+    }
+
+    // Per-provider rollup detail ("N not ready (...)").
+    if t.contains("not ready") {
+        return if t.contains("failed at") { Fail } else { Warn };
+    }
+
+    // Issue-tracked targets: "[...] provider / model: <verdict>".
+    if t.starts_with('[') {
+        if t.ends_with(": READY") {
+            return Pass;
+        }
+        if t.contains("no evidence") {
+            return Dim;
+        }
+        return Warn;
+    }
+
+    // Provider-monitor table chrome: header row, rule, legend.
+    if t.starts_with("provider ") || t.starts_with("----") || t.starts_with("Legend:") {
+        return Dim;
+    }
+
+    // Subdued metadata.
+    if t.starts_with("last tested")
+        || t.starts_with("Ledger:")
+        || t.starts_with("Evidence source:")
+    {
+        return Dim;
+    }
+
+    Plain
+}
+
 fn colorize_provider_test_coverage_line(line: &str) -> String {
-    let trimmed = line.trim_start();
-    let color = if trimmed.starts_with("last tested") {
-        // Metadata line: keep it subdued so the bar/verdict stay prominent.
-        Some("90")
-    } else if trimmed == "READY"
-        || trimmed.starts_with("READY -- ")
-        || trimmed.starts_with('✓')
-        || trimmed.contains("**Fully tested**")
-        || trimmed.contains("all pairs READY")
-        || trimmed.ends_with(": READY")
-        || trimmed.contains("Passed")
-    {
-        Some("32")
-    } else if trimmed.starts_with("FAILED at")
-        || trimmed.starts_with('✗')
-        || trimmed.contains("Failed")
-        || trimmed.contains("no evidence")
-    {
-        Some("31")
-    } else if trimmed.starts_with("stuck before")
-        || trimmed.starts_with('!')
-        || trimmed.contains("Skipped")
-        || trimmed.contains("Blocked")
-        || trimmed.contains("Partially tested")
-        || trimmed.contains("not yet READY")
-    {
-        Some("33")
-    } else if trimmed.starts_with('#')
-        || trimmed.starts_with('=')
-        || trimmed.ends_with(':')
-        || trimmed.starts_with("READY:")
-    {
-        Some("1;36")
-    } else {
-        None
+    let code = match classify_provider_test_coverage_line(line) {
+        CoverageLineStyle::Title => Some("1;36"),
+        CoverageLineStyle::Pass => Some("32"),
+        CoverageLineStyle::Fail => Some("31"),
+        CoverageLineStyle::Warn => Some("33"),
+        CoverageLineStyle::Dim => Some("90"),
+        CoverageLineStyle::Plain => None,
     };
-    match color {
-        Some(color) => format!("\x1b[{color}m{line}\x1b[0m"),
+    match code {
+        Some(code) => format!("\x1b[{code}m{line}\x1b[0m"),
         None => line.to_string(),
     }
 }
@@ -2632,5 +2767,118 @@ mod tests {
         let report = format_strict_live_provider_model_coverage_summary(&summary, 10);
         assert!(report.contains("Issue-tracked targets"));
         assert!(report.contains("[#223] xiaomi-mimo / mimo-v2.5: READY"));
+    }
+
+    #[test]
+    fn coverage_summary_lists_one_line_per_pair_without_glyph_bars() {
+        let mut latest = BTreeMap::new();
+        latest.insert(
+            "zai::glm-4.5::strict".to_string(),
+            coverage_entry("zai", "Z.AI", Some("glm-4.5"), strict_statuses(&[])),
+        );
+        let mut stuck = strict_statuses(&[]);
+        stuck.insert(
+            checkpoints::STREAMING_CHAT_COMPLETION.to_string(),
+            LiveVerificationStageStatus::Failed,
+        );
+        latest.insert(
+            "nvidia-nim::gemma::partial".to_string(),
+            coverage_entry("nvidia-nim", "NVIDIA NIM", Some("gemma-4-31b"), stuck),
+        );
+        let coverage = LiveVerificationCoverage {
+            schema_version: SCHEMA_VERSION,
+            updated_at: Utc::now(),
+            checkpoint_taxonomy_version: CHECKPOINT_TAXONOMY_VERSION,
+            checkpoint_taxonomy: checkpoint_catalog_metadata(),
+            latest,
+        };
+        let summary = strict_live_provider_model_coverage_summary(&coverage, "unit");
+        let report = format_strict_live_provider_model_coverage_summary(&summary, 0);
+
+        // No glyph bars: the old `+++++` / `~`/`.` rendering is gone.
+        assert!(
+            !report.contains("+++++"),
+            "glyph bar should be gone:\n{report}"
+        );
+        assert!(
+            !report.contains("In each bar"),
+            "glyph legend should be gone:\n{report}"
+        );
+        // One line per pair: READY pair, then the stuck pair as `N/11`.
+        let ready_line = report
+            .lines()
+            .find(|l| l.contains("zai / glm-4.5"))
+            .expect("missing READY pair line");
+        assert!(ready_line.trim_start().starts_with("READY"), "{ready_line}");
+        let stuck_line = report
+            .lines()
+            .find(|l| l.contains("nvidia-nim / gemma-4-31b"))
+            .expect("missing stuck pair line");
+        assert!(stuck_line.contains("/11"), "{stuck_line}");
+        assert!(stuck_line.contains("failed at"), "{stuck_line}");
+        // The provider-monitor legend explains the ready/seen fraction.
+        assert!(report.contains("ready/seen pairs"), "{report}");
+    }
+
+    #[test]
+    fn coverage_line_classifier_assigns_expected_styles() {
+        use CoverageLineStyle::{Dim, Fail, Pass, Plain, Title, Warn};
+        let cases = [
+            ("Live provider/model readiness", Title),
+            ("=============================", Title),
+            ("READY: 30/79 provider+model pairs (38%) passed", Title),
+            ("The pipeline (11 stages, in order):", Title),
+            (
+                "  A pair is READY only after every stage passes.",
+                Plain,
+            ),
+            (
+                "  READY  zai / glm-4.5    last tested 1 hour ago",
+                Pass,
+            ),
+            (
+                "  6/11   opencode / glm-5    failed at `streaming reply`; run ...",
+                Fail,
+            ),
+            (
+                "  0/11   fpt / x    stuck before `live catalog`; run ...",
+                Warn,
+            ),
+            (
+                "  fpt                       1/3     2 not ready (best 11/11, some stages skipped)",
+                Warn,
+            ),
+            (
+                "  minimax                   0/1     1 not ready (best 5/11, failed at chat reply)",
+                Fail,
+            ),
+            ("  cerebras             READY               yes      yes   1/3", Pass),
+            ("  gemini               in progress         no       -     0/3", Warn),
+            ("  302ai                no key              yes      -     0/0", Warn),
+            (
+                "  openai-compatible    untested            yes      yes   0/0",
+                Dim,
+            ),
+            (
+                "  bedrock              needs native suite  no       -     0/0",
+                Dim,
+            ),
+            ("  [#223] xiaomi-mimo / mimo-v2.5: READY", Pass),
+            ("  [#234] opencode-go / kimi-k2.5: no evidence yet", Dim),
+            (
+                "  [#110] minimax / MiniMax-M2.7: seen, not yet READY",
+                Warn,
+            ),
+            ("Ledger: /home/x/coverage.json", Dim),
+            ("✓ Credential loaded - Passed", Pass),
+            ("✗ streaming chat completion - Failed", Fail),
+        ];
+        for (line, expected) in cases {
+            assert_eq!(
+                classify_provider_test_coverage_line(line),
+                expected,
+                "line classified wrong: {line:?}"
+            );
+        }
     }
 }

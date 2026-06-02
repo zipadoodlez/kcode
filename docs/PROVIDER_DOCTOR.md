@@ -145,17 +145,18 @@ strict checkpoints flips the pair to strict ("READY") in
 checkpoints as skipped, so they never over-credit a pair.
 
 `jcode provider-test-coverage` renders the same 11 checkpoints as an 11-stage
-pipeline. Each observed pair gets a one-line bar (`+` passed, `x` failed,
-`!` blocked, `~` skipped, `.` not run yet) plus, for any pair that is not yet
-READY, the exact `provider-doctor` command to push it past its first blocker.
-So the two commands are two views of one pipeline: the coverage report shows
-where every pair is stuck and hands you the doctor command to advance it.
+pipeline. Each observed pair gets one compact line: a status token (`READY`, or
+`N/11` = how many stages it cleared) followed by `provider / model`, and then,
+for any pair that is not yet READY, the first blocker plus the exact
+`provider-doctor` command to push it past that blocker. So the two commands are
+two views of one pipeline: the coverage report shows where every pair is stuck
+and hands you the doctor command to advance it.
 
-Each pair also shows a freshness line, e.g.:
+Each line ends with a freshness note, e.g.:
 
 ```
-  +++++++++++  cerebras / gpt-oss-120b
-      READY -- last tested 9 minutes ago (2026-05-30) by developer (dev build)
+  READY  cerebras / gpt-oss-120b   last tested 9 minutes ago (2026-05-30) by developer (dev build)
+  6/11   nvidia-nim / gemma-4-31b  failed at `streaming reply`; run `jcode provider-doctor nvidia-nim --model gemma-4-31b --tier full`; last tested 2 days ago ...
 ```
 
 - **how long ago** the most recent run was, in plain English plus the absolute
@@ -163,4 +164,3 @@ Each pair also shows a freshness line, e.g.:
 - **who ran it**: a clean release build is labeled `user (release build)` (real
   user evidence), a dirty/dev build is `developer (dev build)`. This is derived
   durably from the build flag recorded with each run, not guessed.
-

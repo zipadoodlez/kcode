@@ -399,8 +399,8 @@ pub(crate) enum Command {
         #[arg(long)]
         coverage_file: Option<String>,
 
-        /// Maximum uncovered provider/model gaps to show in the full summary
-        #[arg(long, default_value_t = 50)]
+        /// Maximum provider/model pairs to list in the full summary (0 = show all)
+        #[arg(long, default_value_t = 0)]
         coverage_limit: usize,
     },
 
