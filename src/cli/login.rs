@@ -1112,6 +1112,21 @@ async fn login_antigravity_flow(no_browser: bool) -> Result<()> {
 }
 
 async fn login_gemini_flow(no_browser: bool) -> Result<()> {
+    // Offer the auth-method choice only on an interactive terminal so scripted
+    // / piped invocations preserve the historical OAuth-only behavior.
+    if io::stdin().is_terminal() {
+        eprintln!("Gemini login. Choose an authentication method:");
+        eprintln!("  [1] Google account OAuth (free Code Assist tier, default)");
+        eprintln!(
+            "  [2] Gemini Developer API key (Google AI Studio, generativelanguage.googleapis.com)"
+        );
+        eprintln!();
+        let choice = read_line_trimmed("Enter 1-2 [1]: ")?;
+        if choice == "2" {
+            return login_gemini_api_key_flow();
+        }
+    }
+
     eprintln!("Starting native Gemini login...");
     eprintln!(
         "If your student/education plan is attached to your Google account, use that account in the browser flow."
@@ -1135,6 +1150,30 @@ async fn login_gemini_flow(no_browser: bool) -> Result<()> {
         eprintln!("Google account: {}", email);
     }
     crate::telemetry::record_auth_success("gemini", "oauth");
+    Ok(())
+}
+
+fn login_gemini_api_key_flow() -> Result<()> {
+    eprintln!("Setting up Gemini Developer API key...");
+    eprintln!("Get your API key from: https://aistudio.google.com/apikey\n");
+    eprint!("Paste your Gemini API key: ");
+    io::stdout().flush()?;
+
+    let key = read_secret_line()?;
+    if key.is_empty() {
+        anyhow::bail!("No API key provided.");
+    }
+
+    crate::auth::gemini::save_api_key(&key)?;
+    eprintln!("\nSuccessfully saved Gemini Developer API key!");
+    eprintln!(
+        "Stored at {}",
+        crate::storage::app_config_dir()?
+            .join(crate::auth::gemini::GEMINI_API_KEY_ENV_FILE)
+            .display()
+    );
+    eprintln!("Provider: gemini (official Gemini Developer API, generativelanguage.googleapis.com)");
+    crate::telemetry::record_auth_success("gemini", "api_key");
     Ok(())
 }
 

@@ -689,7 +689,14 @@ fn build_auth_status_uncached(mode: AuthProbeMode) -> (AuthStatus, Vec<(&'static
             token_state(antigravity::load_tokens().map(|tokens| tokens.is_expired()))
     });
     record_auth_probe_step(&mut timings, "gemini", || {
-        status.gemini = token_state(gemini::load_tokens().map(|tokens| tokens.is_expired()))
+        // An official Gemini Developer API key is a static credential with no
+        // expiry handshake, so treat its presence as immediately Available and
+        // fall back to OAuth token state otherwise.
+        status.gemini = if gemini::has_api_key() {
+            AuthState::Available
+        } else {
+            token_state(gemini::load_tokens().map(|tokens| tokens.is_expired()))
+        }
     });
     record_auth_probe_step(&mut timings, "cursor", || {
         probe_cursor_status(&mut status, mode)

@@ -948,6 +948,12 @@ fn maybe_enable_claude_auth_for_auto(has_other_provider: bool) -> Result<bool> {
 }
 
 fn ensure_gemini_auth_allowed_for_explicit_choice() -> Result<()> {
+    // An official Gemini Developer API key (GEMINI_API_KEY) authenticates
+    // directly against generativelanguage.googleapis.com and needs no OAuth
+    // consent flow, so allow it without further prompting.
+    if auth::gemini::has_api_key() {
+        return Ok(());
+    }
     if auth::gemini::load_tokens().is_ok() {
         return Ok(());
     }
@@ -984,6 +990,10 @@ fn ensure_gemini_auth_allowed_for_explicit_choice() -> Result<()> {
 }
 
 fn maybe_enable_gemini_auth_for_auto(has_other_provider: bool) -> Result<bool> {
+    // A configured Gemini Developer API key is sufficient on its own.
+    if auth::gemini::has_api_key() {
+        return Ok(true);
+    }
     if auth::gemini::load_tokens().is_ok() {
         return Ok(true);
     }
@@ -1413,7 +1423,13 @@ async fn init_provider_with_options(
         ProviderChoice::Gemini => {
             disable_subscription_runtime_mode();
             ensure_gemini_auth_allowed_for_explicit_choice()?;
-            init_notice("Using Gemini provider (native Google Code Assist OAuth)");
+            if auth::gemini::has_api_key() {
+                init_notice(
+                    "Using Gemini provider (official Gemini Developer API key, generativelanguage.googleapis.com)",
+                );
+            } else {
+                init_notice("Using Gemini provider (native Google Code Assist OAuth)");
+            }
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(provider::gemini::GeminiProvider::new())

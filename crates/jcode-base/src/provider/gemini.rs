@@ -39,6 +39,17 @@ pub struct GeminiProvider {
     fetched_models: Arc<RwLock<Vec<String>>>,
 }
 
+/// How the Gemini provider authenticates to Google.
+#[derive(Clone)]
+enum GeminiAuthMode {
+    /// OAuth Code Assist (cloudcode-pa, free tier). The default when no API key
+    /// is configured.
+    Oauth,
+    /// Official Gemini Developer API key (Google AI Studio), sent as
+    /// `x-goog-api-key` to `generativelanguage.googleapis.com`.
+    ApiKey(String),
+}
+
 impl GeminiProvider {
     fn persisted_catalog_path() -> Result<std::path::PathBuf> {
         Ok(crate::storage::app_config_dir()?.join("gemini_models_cache.json"))
@@ -99,7 +110,57 @@ impl GeminiProvider {
         format!("{endpoint}/{version}")
     }
 
+    /// Base URL for the official Gemini Developer API (Google AI Studio).
+    fn developer_api_base_url() -> String {
+        let endpoint = std::env::var("GEMINI_API_ENDPOINT")
+            .unwrap_or_else(|_| GEMINI_API_ENDPOINT.to_string());
+        let version = std::env::var("GEMINI_API_VERSION")
+            .unwrap_or_else(|_| GEMINI_API_VERSION.to_string());
+        format!(
+            "{}/{}",
+            endpoint.trim_end_matches('/'),
+            version.trim_matches('/')
+        )
+    }
+
+    /// Resolve the active authentication mode.
+    ///
+    /// An official Gemini Developer API key takes precedence over OAuth Code
+    /// Assist credentials: it points at `generativelanguage.googleapis.com` with
+    /// the key's own (often higher) quota, while OAuth uses the free
+    /// cloudcode-pa tier. Set `JCODE_GEMINI_FORCE_OAUTH=1` to pin OAuth even when
+    /// a key is present.
+    fn auth_mode() -> GeminiAuthMode {
+        let force_oauth = std::env::var("JCODE_GEMINI_FORCE_OAUTH")
+            .map(|value| {
+                let value = value.trim();
+                !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+            })
+            .unwrap_or(false);
+        if !force_oauth
+            && let Some(api_key) = gemini_auth::api_key()
+        {
+            return GeminiAuthMode::ApiKey(api_key);
+        }
+        GeminiAuthMode::Oauth
+    }
+
     async fn ensure_state(&self) -> Result<GeminiRuntimeState> {
+        // The Developer API key path is stateless: there is no Code Assist
+        // project/onboarding handshake, so synthesize a lightweight session.
+        if let GeminiAuthMode::ApiKey(_) = Self::auth_mode() {
+            let mut guard = self.state.lock().await;
+            if let Some(state) = guard.clone() {
+                return Ok(state);
+            }
+            let state = GeminiRuntimeState {
+                project_id: String::new(),
+                session_id: Uuid::new_v4().to_string(),
+            };
+            *guard = Some(state.clone());
+            return Ok(state);
+        }
+
         let mut guard = self.state.lock().await;
         if let Some(state) = guard.clone() {
             return Ok(state);
@@ -199,6 +260,9 @@ impl GeminiProvider {
     }
 
     async fn refresh_available_models(&self) -> Result<Vec<String>> {
+        if let GeminiAuthMode::ApiKey(api_key) = Self::auth_mode() {
+            return self.refresh_available_models_api_key(&api_key).await;
+        }
         let project_id_env = google_cloud_project_from_env();
         let load_req = load_code_assist_request(
             project_id_env.clone(),
@@ -226,35 +290,63 @@ impl GeminiProvider {
         Ok(models)
     }
 
-    async fn post_json<T: DeserializeOwned>(
-        &self,
-        method: &str,
-        body: &impl Serialize,
-    ) -> Result<T> {
-        let tokens = gemini_auth::load_or_refresh_tokens().await?;
-        let url = format!("{}:{method}", Self::base_url());
-        let body_value =
-            serde_json::to_value(body).context("Failed to serialize Gemini request body")?;
+    /// Discover models via the official Developer API `ListModels` endpoint.
+    /// Returned names look like `models/gemini-2.5-pro`, so strip the prefix
+    /// before normalizing through the shared catalog merge.
+    async fn refresh_available_models_api_key(&self, api_key: &str) -> Result<Vec<String>> {
+        let url = format!("{}/models", Self::developer_api_base_url());
+        let response: Value = match self.get_json_api_key(&url, api_key, "ListModels").await {
+            Ok(response) => response,
+            Err(err) => {
+                crate::logging::info(&format!(
+                    "Gemini Developer API model discovery failed: {err:#}"
+                ));
+                return Ok(Vec::new());
+            }
+        };
+
+        let raw: Vec<String> = response
+            .get("models")
+            .and_then(|models| models.as_array())
+            .map(|models| {
+                models
+                    .iter()
+                    .filter_map(|model| model.get("name").and_then(|name| name.as_str()))
+                    .map(|name| name.trim_start_matches("models/").to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let models = merge_gemini_model_lists(raw);
+        if !models.is_empty() {
+            crate::logging::info(&format!(
+                "Discovered Gemini Developer API models: {}",
+                models.join(", ")
+            ));
+            if let Ok(mut guard) = self.fetched_models.write() {
+                *guard = models.clone();
+            }
+            Self::persist_catalog(&models);
+        }
+        Ok(models)
+    }
+
+    /// Send a request with a single transient-error retry, transparently
+    /// rebuilding the HTTP client on the second attempt. The `make` closure
+    /// produces a fully-configured (auth + body) request builder for each try.
+    async fn send_with_retry<F>(&self, make: F, url: &str) -> Result<reqwest::Response>
+    where
+        F: Fn(reqwest::Client) -> reqwest::RequestBuilder,
+    {
         let mut last_error: Option<anyhow::Error> = None;
-        let mut resp = None;
         for attempt in 0..2 {
             let client = if attempt == 0 {
                 self.client.clone()
             } else {
                 gemini_http_client()
             };
-            match client
-                .post(&url)
-                .bearer_auth(&tokens.access_token)
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .json(&body_value)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    resp = Some(response);
-                    break;
-                }
+            match make(client).send().await {
+                Ok(response) => return Ok(response),
                 Err(err) if attempt == 0 && is_transient_gemini_transport_error(&err) => {
                     last_error = Some(err.into());
                     tokio::time::sleep(Duration::from_millis(250)).await;
@@ -264,13 +356,31 @@ impl GeminiProvider {
                 }
             }
         }
-        let resp = match resp {
-            Some(resp) => resp,
-            None => {
-                let err = last_error.unwrap_or_else(|| anyhow::anyhow!("Gemini request failed"));
-                return Err(err).with_context(|| format!("Gemini request to {} failed", url));
-            }
-        };
+        let err = last_error.unwrap_or_else(|| anyhow::anyhow!("Gemini request failed"));
+        Err(err).with_context(|| format!("Gemini request to {} failed", url))
+    }
+
+    async fn post_json<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        body: &impl Serialize,
+    ) -> Result<T> {
+        let tokens = gemini_auth::load_or_refresh_tokens().await?;
+        let url = format!("{}:{method}", Self::base_url());
+        let body_value =
+            serde_json::to_value(body).context("Failed to serialize Gemini request body")?;
+        let resp = self
+            .send_with_retry(
+                |client| {
+                    client
+                        .post(&url)
+                        .bearer_auth(&tokens.access_token)
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                        .json(&body_value)
+                },
+                &url,
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -288,45 +398,91 @@ impl GeminiProvider {
             .with_context(|| format!("Failed to parse Gemini {} response", method))
     }
 
+    /// POST a JSON body to the official Gemini Developer API, authenticating
+    /// with an `x-goog-api-key` header instead of an OAuth bearer token.
+    async fn post_json_api_key<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        api_key: &str,
+        body: &impl Serialize,
+        label: &str,
+    ) -> Result<T> {
+        let body_value =
+            serde_json::to_value(body).context("Failed to serialize Gemini request body")?;
+        let resp = self
+            .send_with_retry(
+                |client| {
+                    client
+                        .post(url)
+                        .header("x-goog-api-key", api_key)
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                        .json(&body_value)
+                },
+                url,
+            )
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = crate::util::http_error_body(resp, "HTTP error").await;
+            anyhow::bail!(
+                "Gemini request {} failed (HTTP {}): {}",
+                label,
+                status,
+                body.trim()
+            );
+        }
+
+        resp.json()
+            .await
+            .with_context(|| format!("Failed to parse Gemini {} response", label))
+    }
+
+    /// GET a JSON resource from the official Gemini Developer API using an
+    /// `x-goog-api-key` header.
+    async fn get_json_api_key<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        api_key: &str,
+        label: &str,
+    ) -> Result<T> {
+        let resp = self
+            .send_with_retry(
+                |client| {
+                    client
+                        .get(url)
+                        .header("x-goog-api-key", api_key)
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                },
+                url,
+            )
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = crate::util::http_error_body(resp, "HTTP error").await;
+            anyhow::bail!("Gemini {} failed (HTTP {}): {}", label, status, body.trim());
+        }
+
+        resp.json()
+            .await
+            .with_context(|| format!("Failed to parse Gemini {} response", label))
+    }
+
     async fn get_operation<T: DeserializeOwned>(&self, name: &str) -> Result<T> {
         let tokens = gemini_auth::load_or_refresh_tokens().await?;
         let url = format!("{}/{}", Self::base_url(), name.trim_start_matches('/'));
-        let mut last_error: Option<anyhow::Error> = None;
-        let mut resp = None;
-        for attempt in 0..2 {
-            let client = if attempt == 0 {
-                self.client.clone()
-            } else {
-                gemini_http_client()
-            };
-            match client
-                .get(&url)
-                .bearer_auth(&tokens.access_token)
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    resp = Some(response);
-                    break;
-                }
-                Err(err) if attempt == 0 && is_transient_gemini_transport_error(&err) => {
-                    last_error = Some(err.into());
-                    tokio::time::sleep(Duration::from_millis(250)).await;
-                }
-                Err(err) => {
-                    return Err(err).with_context(|| format!("Gemini request to {} failed", url));
-                }
-            }
-        }
-        let resp = match resp {
-            Some(resp) => resp,
-            None => {
-                let err =
-                    last_error.unwrap_or_else(|| anyhow::anyhow!("Gemini operation lookup failed"));
-                return Err(err).with_context(|| format!("Gemini request to {} failed", url));
-            }
-        };
+        let resp = self
+            .send_with_retry(
+                |client| {
+                    client
+                        .get(&url)
+                        .bearer_auth(&tokens.access_token)
+                        .header(reqwest::header::CONTENT_TYPE, "application/json")
+                },
+                &url,
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -413,9 +569,32 @@ impl GeminiProvider {
             ],
         );
 
-        self.post_json("generateContent", &request)
-            .await
-            .context("Gemini generateContent failed")
+        match Self::auth_mode() {
+            GeminiAuthMode::ApiKey(api_key) => {
+                // The Developer API consumes the inner generateContent body
+                // directly (no Code Assist envelope) and returns the response
+                // without the `{ response: ... }` wrapper, so adapt both sides.
+                let mut inner = request.request;
+                inner.session_id = None;
+                let url = format!(
+                    "{}/models/{}:generateContent",
+                    Self::developer_api_base_url(),
+                    model
+                );
+                let response: VertexGenerateContentResponse = self
+                    .post_json_api_key(&url, &api_key, &inner, "generateContent")
+                    .await
+                    .context("Gemini generateContent failed")?;
+                Ok(CodeAssistGenerateResponse {
+                    trace_id: None,
+                    response: Some(response),
+                })
+            }
+            GeminiAuthMode::Oauth => self
+                .post_json("generateContent", &request)
+                .await
+                .context("Gemini generateContent failed"),
+        }
     }
 }
 
