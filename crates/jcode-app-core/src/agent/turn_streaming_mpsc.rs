@@ -368,7 +368,7 @@ impl Agent {
                         // Only send thinking content if enabled in config
                         if crate::config::config().display.show_thinking {
                             let _ = event_tx.send(ServerEvent::TextDelta {
-                                text: format!("💭 {}\n", thinking_text),
+                                text: thinking_text.clone(),
                             });
                         }
                         if store_reasoning_content {

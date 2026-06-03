@@ -2345,6 +2345,67 @@ impl App {
         }
     }
 
+    /// Begin a reasoning region rendered as a dim-gutter markdown blockquote with
+    /// an italic `Thinking` header. Idempotent while the region is open.
+    pub(super) fn open_reasoning_region(&mut self) {
+        if self.reasoning_streaming {
+            return;
+        }
+        // Separate the reasoning block from any prior content with a blank line so
+        // the blockquote starts cleanly.
+        if !self.streaming_text.is_empty() {
+            if self.streaming_text.ends_with("\n\n") {
+                // already separated
+            } else if self.streaming_text.ends_with('\n') {
+                self.append_streaming_text("\n");
+            } else {
+                self.append_streaming_text("\n\n");
+            }
+        }
+        self.reasoning_streaming = true;
+        self.append_reasoning_text("*Thinking…*\n");
+    }
+
+    /// Append reasoning text into the open blockquote region, prefixing each line
+    /// (including blank lines) with `> ` so the whole span stays one quote block.
+    pub(super) fn append_reasoning_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let mut at_line_start = self.streaming_text.is_empty() || self.streaming_text.ends_with('\n');
+        let mut out = String::with_capacity(text.len() + 8);
+        for ch in text.chars() {
+            if at_line_start {
+                out.push_str("> ");
+                at_line_start = false;
+            }
+            out.push(ch);
+            if ch == '\n' {
+                at_line_start = true;
+            }
+        }
+        self.append_streaming_text(&out);
+    }
+
+    /// Close the reasoning blockquote, optionally writing a footer line (e.g. the
+    /// elapsed `Thought for Xs`) inside the quote, then terminating it with a blank
+    /// line so subsequent output renders as normal text.
+    pub(super) fn close_reasoning_region(&mut self, footer: Option<String>) {
+        if !self.reasoning_streaming {
+            return;
+        }
+        if !self.streaming_text.is_empty() && !self.streaming_text.ends_with('\n') {
+            self.append_streaming_text("\n");
+        }
+        if let Some(footer) = footer {
+            self.append_reasoning_text(&format!("{}\n", footer));
+        }
+        self.reasoning_streaming = false;
+        if !self.streaming_text.ends_with("\n\n") {
+            self.append_streaming_text("\n");
+        }
+    }
+
     pub(super) fn append_streaming_text(&mut self, text: &str) {
         if text.is_empty() {
             return;
@@ -2361,6 +2422,7 @@ impl App {
     pub(super) fn clear_streaming_render_state(&mut self) {
         self.streaming_text.clear();
         self.stream_message_ended = false;
+        self.reasoning_streaming = false;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();
@@ -2369,6 +2431,7 @@ impl App {
     pub(super) fn take_streaming_text(&mut self) -> String {
         let content = std::mem::take(&mut self.streaming_text);
         self.stream_message_ended = false;
+        self.reasoning_streaming = false;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();

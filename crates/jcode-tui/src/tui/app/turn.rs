@@ -459,6 +459,11 @@ impl App {
                                         self.status = ProcessingStatus::Streaming;
                                         text_content.push_str(&text);
                                         self.resume_streaming_tps();
+                                        // Real output token: close any open reasoning region first so
+                                        // the answer renders as normal (non-quoted) text.
+                                        if self.reasoning_streaming && !text.trim().is_empty() {
+                                            self.close_reasoning_region(None);
+                                        }
                                         if let Some(chunk) = self.stream_buffer.push(&text) {
                                             self.append_streaming_text(&chunk);
                                             self.broadcast_debug(crate::tui::backend::DebugEvent::TextDelta {
@@ -480,6 +485,11 @@ impl App {
                                             id: id.clone(),
                                             name: name.clone(),
                                         });
+                                        // Close any open reasoning region before committing the
+                                        // assistant message so the blockquote is well-formed.
+                                        if self.reasoning_streaming {
+                                            self.close_reasoning_region(None);
+                                        }
                                         self.commit_pending_streaming_assistant_message();
                                         // Update status to show tool in progress
                                         self.status = ProcessingStatus::RunningTool(name.clone());
@@ -676,23 +686,16 @@ impl App {
                                     }
                                     StreamEvent::ThinkingDelta(thinking_text) => {
                                         self.resume_streaming_tps();
-                                        // Buffer thinking content and emit with prefix only once
+                                        // Buffer thinking content for status/debug accounting.
                                         self.thinking_buffer.push_str(&thinking_text);
-                                        // Display reasoning/thinking content from OpenAI
+                                        // Flush any pending real output before reasoning text.
                                         if let Some(chunk) = self.stream_buffer.flush() {
                                             self.append_streaming_text(&chunk);
                                         }
-                                        // Only show thinking content if enabled in config
+                                        // Only render thinking content if enabled in config.
                                         if config().display.show_thinking {
-                                            // Only emit the prefix once at the start of thinking
-                                            if !self.thinking_prefix_emitted && !self.thinking_buffer.trim().is_empty() {
-                                                self.insert_thought_line(self.thinking_buffer.trim_start().to_string());
-                                                self.thinking_prefix_emitted = true;
-                                                self.thinking_buffer.clear();
-                                            } else if self.thinking_prefix_emitted {
-                                                // After prefix is emitted, append subsequent chunks directly
-                                                self.append_streaming_text(&thinking_text);
-                                            }
+                                            self.open_reasoning_region();
+                                            self.append_reasoning_text(&thinking_text);
                                         }
                                         if store_reasoning_content {
                                             reasoning_content.push_str(&thinking_text);
@@ -709,8 +712,12 @@ impl App {
                                         if let Some(chunk) = self.stream_buffer.flush() {
                                             self.append_streaming_text(&chunk);
                                         }
-                                        let thinking_msg = format!("*Thought for {:.1}s*", duration_secs);
-                                        self.insert_thought_line(thinking_msg);
+                                        if config().display.show_thinking {
+                                            self.close_reasoning_region(Some(format!(
+                                                "*Thought for {:.1}s*",
+                                                duration_secs
+                                            )));
+                                        }
                                         self.thinking_prefix_emitted = false;
                                         self.thinking_buffer.clear();
                                     }

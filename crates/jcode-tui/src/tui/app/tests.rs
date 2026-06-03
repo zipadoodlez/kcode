@@ -32,6 +32,7 @@ include!("tests/scroll_copy_02/part_02.rs");
 include!("tests/scroll_copy_03.rs");
 include!("tests/onboarding_flow.rs");
 include!("tests/onboarding_golden.rs");
+include!("tests/reasoning_region.rs");
 
 #[test]
 fn kv_cache_signature_prefix_match_allows_appended_messages() {
