@@ -65,7 +65,16 @@ pub(crate) fn server_update_candidate(is_selfdev_session: bool) -> Option<(PathB
 /// not downgrade".
 pub(crate) fn reload_exec_target(is_selfdev_session: bool) -> Option<(PathBuf, &'static str)> {
     let candidate = server_update_candidate(is_selfdev_session)?;
-    let current_exe = std::env::current_exe().ok();
+    // On Linux a self-dev rebuild rewrites the running binary in place (a dirty
+    // build reuses the same `versions/<hash>` path), which unlinks the running
+    // inode. `current_exe()` then resolves `/proc/self/exe` to a path with a
+    // trailing " (deleted)" marker that is NOT a real file. If we keep that
+    // marker we (a) fail the "same binary" fast-path below, (b) read no mtime so
+    // the freshly-built candidate looks like a downgrade, and (c) fall back to
+    // re-execing the bogus " (deleted)" path, which does not exist -> the server
+    // exits without a replacement and strands every connected client. Strip the
+    // marker so we compare against (and can re-exec) the real on-disk path.
+    let current_exe = std::env::current_exe().ok().map(strip_deleted_suffix);
 
     let candidate_canonical = canonicalize_or(candidate.0.clone());
     let current_canonical = current_exe.as_ref().map(|p| canonicalize_or(p.clone()));
@@ -75,7 +84,7 @@ pub(crate) fn reload_exec_target(is_selfdev_session: bool) -> Option<(PathBuf, &
     let candidate_mtime = mtime(candidate_canonical.as_path());
 
     match guarded_reload_target(
-        candidate,
+        candidate.clone(),
         candidate_canonical.as_path(),
         current_exe.as_deref(),
         current_canonical.as_deref(),
@@ -84,6 +93,18 @@ pub(crate) fn reload_exec_target(is_selfdev_session: bool) -> Option<(PathBuf, &
     ) {
         ReloadTargetDecision::UseCandidate(target) => Some(target),
         ReloadTargetDecision::DowngradeBlockedUseCurrent(target) => {
+            // Never strand clients by re-execing a binary that is gone from disk.
+            // If the running exe was unlinked (e.g. an in-place rebuild) but the
+            // candidate still exists, prefer the candidate over refusing to
+            // reload. The candidate may be older, but a live downgrade beats a
+            // dead server with no replacement.
+            if !target.0.exists() && candidate_canonical.exists() {
+                crate::logging::warn(&format!(
+                    "reload downgrade guard: current binary {:?} is missing on disk; falling back to candidate {:?} to avoid stranding clients",
+                    target.0, candidate.0,
+                ));
+                return Some(candidate);
+            }
             crate::logging::warn(&format!(
                 "reload downgrade guard: refusing to exec into older candidate; re-execing current binary {:?} instead",
                 target.0,
@@ -145,6 +166,18 @@ fn guarded_reload_target(
 
 fn canonicalize_or(path: PathBuf) -> PathBuf {
     std::fs::canonicalize(&path).unwrap_or(path)
+}
+
+/// Strip the Linux `/proc/self/exe` " (deleted)" marker that appears when the
+/// running binary has been unlinked or replaced in place. The marker is part of
+/// the readlink target, not the real filename, so removing it recovers the path
+/// that may now point at the freshly written replacement binary.
+fn strip_deleted_suffix(path: PathBuf) -> PathBuf {
+    const DELETED_MARKER: &str = " (deleted)";
+    if let Some(stripped) = path.to_str().and_then(|s| s.strip_suffix(DELETED_MARKER)) {
+        return PathBuf::from(stripped);
+    }
+    path
 }
 
 pub(crate) fn git_common_dir_for(path: &Path) -> Option<PathBuf> {
@@ -264,7 +297,11 @@ pub(crate) fn server_has_newer_binary() -> bool {
     // signal we have. `newer_binary_available` compares candidate mtimes against
     // the running binary, excludes reloading into ourselves, and treats any
     // uncertainty (unreadable mtime) as "no update".
-    let current_exe = std::env::current_exe().ok();
+    //
+    // Strip the Linux " (deleted)" marker (see `strip_deleted_suffix`) so an
+    // in-place rebuild does not make the running binary's mtime unreadable and
+    // suppress a legitimate update signal.
+    let current_exe = std::env::current_exe().ok().map(strip_deleted_suffix);
     let current_mtime = current_exe
         .as_ref()
         .and_then(|p| std::fs::metadata(p).ok())
@@ -543,5 +580,33 @@ mod reload_target_tests {
             decision,
             ReloadTargetDecision::DowngradeUnverifiable(_)
         ));
+    }
+}
+
+#[cfg(test)]
+mod deleted_suffix_tests {
+    use super::strip_deleted_suffix;
+    use std::path::PathBuf;
+
+    #[test]
+    fn strips_linux_deleted_marker() {
+        let p = PathBuf::from("/home/u/.jcode/builds/versions/abc/jcode (deleted)");
+        assert_eq!(
+            strip_deleted_suffix(p),
+            PathBuf::from("/home/u/.jcode/builds/versions/abc/jcode")
+        );
+    }
+
+    #[test]
+    fn leaves_normal_paths_untouched() {
+        let p = PathBuf::from("/home/u/.jcode/builds/versions/abc/jcode");
+        assert_eq!(strip_deleted_suffix(p.clone()), p);
+    }
+
+    #[test]
+    fn only_strips_trailing_marker() {
+        // A path that merely contains the substring must not be altered.
+        let p = PathBuf::from("/home/u/jcode (deleted)/jcode");
+        assert_eq!(strip_deleted_suffix(p.clone()), p);
     }
 }
