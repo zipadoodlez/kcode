@@ -1585,14 +1585,16 @@ pub(crate) fn copy_pane_vertical_edge_point(
 ) -> Option<(crate::tui::CopySelectionPoint, bool)> {
     let snapshot = copy_snapshot_for_pane(pane)?;
     let area = snapshot.content_area;
-    if column < area.x || column >= area.x.saturating_add(area.width) || area.height == 0 {
+    if area.width == 0 || area.height == 0 {
         return None;
     }
 
     // Browser-style edge auto-scroll: terminals clamp the mouse to the visible
     // viewport, so a drag that "leaves" the top/bottom of the pane is reported on
     // the boundary row itself. Treat the first/last visible rows as scroll edges so
-    // dragging a selection to the edge keeps pulling in more transcript.
+    // dragging a selection to the edge keeps pulling in more transcript. The
+    // horizontal position is clamped into the pane so the selection extends no
+    // matter where along the edge the cursor sits (just like a browser window).
     let last_row = area.y.saturating_add(area.height).saturating_sub(1);
     let (edge_row, upward) = if row <= area.y {
         (area.y, true)
@@ -1602,7 +1604,32 @@ pub(crate) fn copy_pane_vertical_edge_point(
         return None;
     };
 
-    copy_point_from_snapshot(&snapshot, column, edge_row).map(|point| (point, upward))
+    let clamped_col = column.clamp(
+        area.x,
+        area.x.saturating_add(area.width).saturating_sub(1),
+    );
+
+    copy_point_from_snapshot(&snapshot, clamped_col, edge_row).map(|point| (point, upward))
+}
+
+/// Edge point for tick-driven continuous auto-scroll, where there is no live
+/// mouse position. Uses the top/bottom boundary row of the pane and its left
+/// content column so the selection keeps extending to the freshly revealed line.
+pub(crate) fn copy_pane_autoscroll_edge_point(
+    pane: crate::tui::CopySelectionPane,
+    upward: bool,
+) -> Option<crate::tui::CopySelectionPoint> {
+    let snapshot = copy_snapshot_for_pane(pane)?;
+    let area = snapshot.content_area;
+    if area.width == 0 || area.height == 0 {
+        return None;
+    }
+    let edge_row = if upward {
+        area.y
+    } else {
+        area.y.saturating_add(area.height).saturating_sub(1)
+    };
+    copy_point_from_snapshot(&snapshot, area.x, edge_row)
 }
 
 #[cfg(test)]

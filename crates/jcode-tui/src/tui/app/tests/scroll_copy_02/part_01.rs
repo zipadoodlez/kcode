@@ -819,6 +819,25 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         "drag to top edge should auto-scroll chat up (before={before}, after={})",
         app.scroll_offset()
     );
+
+    // Browser-style continuous scroll: holding the drag at the edge keeps pulling
+    // in more transcript on subsequent ticks without any further mouse movement.
+    let after_drag = app.scroll_offset();
+    assert!(app.progress_copy_selection_edge_autoscroll());
+    assert!(
+        app.scroll_offset() < after_drag,
+        "edge autoscroll tick should keep scrolling (after_drag={after_drag}, after_tick={})",
+        app.scroll_offset()
+    );
+
+    // Releasing the mouse stops the continuous autoscroll.
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: col,
+        row: top_row,
+        modifiers: KeyModifiers::empty(),
+    });
+    assert!(!app.progress_copy_selection_edge_autoscroll());
 }
 
 #[test]

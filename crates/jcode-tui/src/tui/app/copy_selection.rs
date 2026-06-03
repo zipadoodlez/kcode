@@ -425,6 +425,26 @@ impl App {
         }
     }
 
+    /// Drive browser-style continuous edge auto-scroll while a mouse drag is
+    /// held at the top/bottom edge of a pane. Called once per UI tick; returns
+    /// true if it scrolled (so the caller can request a redraw).
+    pub(super) fn progress_copy_selection_edge_autoscroll(&mut self) -> bool {
+        let Some((pane, upward)) = self.copy_selection_edge_autoscroll else {
+            return false;
+        };
+        // Only active during an in-progress mouse drag selection.
+        if !self.copy_selection_dragging {
+            self.copy_selection_edge_autoscroll = None;
+            return false;
+        }
+        // Extend the selection to the current edge line, then scroll once more.
+        if let Some(point) = crate::tui::ui::copy_pane_autoscroll_edge_point(pane, upward) {
+            self.update_selection_with_point(point, true);
+        }
+        self.scroll_copy_selection_pane(pane, upward);
+        true
+    }
+
     fn scroll_copy_selection_pane(
         &mut self,
         pane: crate::tui::CopySelectionPane,
@@ -491,15 +511,21 @@ impl App {
                 // boundary row of the active pane, keep scrolling so the selection can
                 // extend past the currently visible transcript. This takes priority
                 // over a plain in-pane update so reaching the edge pulls in more rows.
+                // We also arm a tick-driven autoscroll so it keeps going while the
+                // mouse is simply held at the edge (no further movement needed), just
+                // like dragging a selection past the edge of a browser window.
                 if let Some(pane) = active_pane {
                     if let Some((edge_point, upward)) =
                         crate::tui::ui::copy_pane_vertical_edge_point(pane, mouse.column, mouse.row)
                     {
                         self.update_selection_with_point(edge_point, true);
                         self.scroll_copy_selection_pane(pane, upward);
+                        self.copy_selection_edge_autoscroll = Some((pane, upward));
                         return Some(false);
                     }
                 }
+                // Left the edge: stop the continuous autoscroll.
+                self.copy_selection_edge_autoscroll = None;
                 if let Some(point) = point.filter(|point| Some(point.pane) == active_pane) {
                     self.update_selection_with_point(point, true);
                 }
@@ -507,6 +533,7 @@ impl App {
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 let had_pending = self.copy_selection_pending_anchor.take().is_some();
+                self.copy_selection_edge_autoscroll = None;
                 if !self.copy_selection_dragging {
                     return if self.copy_selection_mode || had_pending {
                         Some(false)
