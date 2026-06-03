@@ -583,11 +583,14 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                 } else if in_table {
                     current_cell.push_str(&text);
                 } else {
-                    // "Thought for X.Xs" footers and blockquote bodies (used for
-                    // streamed reasoning) render dim + italic.
+                    // "Thought for X.Xs" footers and streamed reasoning lines
+                    // (italic, prefixed with a sentinel) render dim with no gutter.
                     let is_thinking_duration =
                         text.starts_with("Thought for ") && text.ends_with('s');
-                    let mut style = if is_thinking_duration || blockquote_depth > 0 {
+                    let reasoning_text = text.strip_prefix(crate::REASONING_SENTINEL);
+                    let is_reasoning = reasoning_text.is_some();
+                    let text = reasoning_text.unwrap_or(&text);
+                    let mut style = if is_thinking_duration || is_reasoning {
                         Style::default().fg(md_dim_color()).italic()
                     } else {
                         match (bold, italic) {

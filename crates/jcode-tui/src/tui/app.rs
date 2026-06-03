@@ -695,8 +695,11 @@ pub struct App {
     thinking_buffer: String,
     // Whether the legacy single-line thought prefix was emitted this session
     thinking_prefix_emitted: bool,
-    // Whether we are currently streaming reasoning into an open blockquote region
+    // Whether we are currently streaming reasoning (dim+italic) text
     reasoning_streaming: bool,
+    // Incomplete trailing reasoning line awaiting a newline before it is emitted as
+    // a complete italic+dim line (reasoning is wrapped per whole line).
+    reasoning_pending_line: String,
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec

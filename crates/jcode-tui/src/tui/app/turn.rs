@@ -707,16 +707,13 @@ impl App {
                                         self.thinking_buffer.clear();
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingEnd);
                                     }
-                                    StreamEvent::ThinkingDone { duration_secs } => {
+                                    StreamEvent::ThinkingDone { duration_secs: _ } => {
                                         // Flush any pending buffered text first
                                         if let Some(chunk) = self.stream_buffer.flush() {
                                             self.append_streaming_text(&chunk);
                                         }
                                         if config().display.show_thinking {
-                                            self.close_reasoning_region(Some(format!(
-                                                "*Thought for {:.1}s*",
-                                                duration_secs
-                                            )));
+                                            self.close_reasoning_region(None);
                                         }
                                         self.thinking_prefix_emitted = false;
                                         self.thinking_buffer.clear();

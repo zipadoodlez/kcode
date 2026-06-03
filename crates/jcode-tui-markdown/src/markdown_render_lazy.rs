@@ -569,7 +569,10 @@ pub fn render_markdown_lazy(
                 } else {
                     let is_thinking_duration =
                         text.starts_with("Thought for ") && text.ends_with('s');
-                    let mut style = if is_thinking_duration {
+                    let reasoning_text = text.strip_prefix(crate::REASONING_SENTINEL);
+                    let is_reasoning = reasoning_text.is_some();
+                    let text = reasoning_text.unwrap_or(&text);
+                    let mut style = if is_thinking_duration || is_reasoning {
                         Style::default().fg(md_dim_color()).italic()
                     } else {
                         match (bold, italic) {

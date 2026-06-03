@@ -377,10 +377,9 @@ impl Agent {
                             reasoning_content.push_str(&thinking_text);
                         }
                     }
-                    StreamEvent::ThinkingDone { duration_secs } => {
+                    StreamEvent::ThinkingDone { duration_secs: _ } => {
                         if reasoning_fmt.is_open() {
-                            let closing = reasoning_fmt
-                                .finish(Some(&format!("*Thought for {:.1}s*", duration_secs)));
+                            let closing = reasoning_fmt.finish(None);
                             if !closing.is_empty() {
                                 let _ = event_tx.send(ServerEvent::TextDelta { text: closing });
                             }

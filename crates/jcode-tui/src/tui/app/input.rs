@@ -2345,14 +2345,13 @@ impl App {
         }
     }
 
-    /// Begin a reasoning region rendered as a dim-gutter markdown blockquote with
-    /// italic body text (no header). Idempotent while the region is open.
+    /// Begin a reasoning region. Reasoning renders as dim, italic text (no
+    /// blockquote gutter, no header, no footer). Idempotent while open.
     pub(super) fn open_reasoning_region(&mut self) {
         if self.reasoning_streaming {
             return;
         }
-        // Separate the reasoning block from any prior content with a blank line so
-        // the blockquote starts cleanly.
+        // Separate the reasoning block from any prior content with a blank line.
         if !self.streaming_text.is_empty() {
             if self.streaming_text.ends_with("\n\n") {
                 // already separated
@@ -2363,47 +2362,62 @@ impl App {
             }
         }
         self.reasoning_streaming = true;
+        self.reasoning_pending_line.clear();
     }
 
-    /// Append reasoning text into the open blockquote region, prefixing each line
-    /// (including blank lines) with `> ` so the whole span stays one quote block,
-    /// rendering with a dim `│` gutter.
+    /// Wrap one complete reasoning line as dim+italic markdown: an invisible
+    /// sentinel inside `*…*` that the renderer strips and styles dim, with no
+    /// gutter. Empty lines are emitted as a bare newline (no empty emphasis run).
+    fn reasoning_line_markup(line: &str) -> String {
+        if line.is_empty() {
+            "\n".to_string()
+        } else {
+            format!("*{}{}*\n", jcode_tui_markdown::REASONING_SENTINEL, line)
+        }
+    }
+
+    /// Append streamed reasoning text. Complete lines are emitted immediately as
+    /// dim+italic markdown; a trailing partial line is buffered until its newline
+    /// arrives so emphasis markers always wrap a whole line.
     pub(super) fn append_reasoning_text(&mut self, text: &str) {
         if text.is_empty() {
             return;
         }
-        let mut at_line_start =
-            self.streaming_text.is_empty() || self.streaming_text.ends_with('\n');
-        let mut out = String::with_capacity(text.len() + 8);
+        let mut out = String::new();
         for ch in text.chars() {
-            if at_line_start {
-                out.push_str("> ");
-                at_line_start = false;
-            }
-            out.push(ch);
             if ch == '\n' {
-                at_line_start = true;
+                let line = std::mem::take(&mut self.reasoning_pending_line);
+                out.push_str(&Self::reasoning_line_markup(&line));
+            } else {
+                self.reasoning_pending_line.push(ch);
             }
         }
-        self.append_streaming_text(&out);
+        if !out.is_empty() {
+            self.append_streaming_text(&out);
+        }
     }
 
-    /// Close the reasoning blockquote, optionally writing a footer line (e.g. the
-    /// elapsed `Thought for Xs`) inside the quote, then terminating it with a blank
-    /// line so subsequent output renders as normal text.
-    pub(super) fn close_reasoning_region(&mut self, footer: Option<String>) {
+    /// Flush any buffered partial reasoning line, then end the region. The
+    /// `_footer` argument is ignored (the "Thought for Xs" footer was removed);
+    /// it is kept for call-site compatibility.
+    pub(super) fn close_reasoning_region(&mut self, _footer: Option<String>) {
         if !self.reasoning_streaming {
             return;
         }
-        if !self.streaming_text.is_empty() && !self.streaming_text.ends_with('\n') {
-            self.append_streaming_text("\n");
-        }
-        if let Some(footer) = footer {
-            self.append_reasoning_text(&format!("{}\n", footer));
+        let pending = std::mem::take(&mut self.reasoning_pending_line);
+        if !pending.is_empty() {
+            let markup = Self::reasoning_line_markup(&pending);
+            self.append_streaming_text(&markup);
         }
         self.reasoning_streaming = false;
+        // Terminate the reasoning block with a blank line so following output
+        // renders as a normal paragraph.
         if !self.streaming_text.ends_with("\n\n") {
-            self.append_streaming_text("\n");
+            if self.streaming_text.ends_with('\n') {
+                self.append_streaming_text("\n");
+            } else {
+                self.append_streaming_text("\n\n");
+            }
         }
     }
 
@@ -2424,6 +2438,7 @@ impl App {
         self.streaming_text.clear();
         self.stream_message_ended = false;
         self.reasoning_streaming = false;
+        self.reasoning_pending_line.clear();
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();
@@ -2433,6 +2448,7 @@ impl App {
         let content = std::mem::take(&mut self.streaming_text);
         self.stream_message_ended = false;
         self.reasoning_streaming = false;
+        self.reasoning_pending_line.clear();
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();

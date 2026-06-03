@@ -101,6 +101,13 @@ mod render_support;
 pub use render_full::render_markdown_with_width;
 pub use render_lazy::render_markdown_lazy;
 pub use render_support::extract_copy_targets_from_rendered_lines;
+
+/// Invisible sentinel prepended (inside `*…*`) to streamed reasoning/thinking
+/// lines. The renderer strips it and styles the line dim + italic with no
+/// blockquote gutter. Kept zero-width so it stays invisible if it ever leaks
+/// into copied text. Shared with the TUI/server reasoning formatters.
+pub const REASONING_SENTINEL: &str = "\u{2063}";
+
 use render_support::{
     highlight_code_cached, line_plain_text, placeholder_code_block, ranges_overlap, render_table,
 };
