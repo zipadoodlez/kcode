@@ -779,6 +779,7 @@ impl App {
             return;
         };
         let model_label = self.onboarding_default_model_label();
+        let provider_key = crate::session::derive_session_provider_key(provider.name());
         let session_id = self.session.id.clone();
         self.set_status_notice(format!("Checking {model_label}..."));
         tokio::spawn(async move {
@@ -790,6 +791,7 @@ impl App {
                 crate::bus::OnboardingModelValidated {
                     session_id,
                     model_label,
+                    provider_key,
                     ok,
                     detail,
                 },
@@ -872,9 +874,70 @@ impl App {
         }
     }
 
-    /// Handle the result of the onboarding default-model validation: append one
-    /// clean validation line and refresh the status notice. Stale results (from
-    /// a previous session) are ignored.
+    /// Whether a validation detail string looks like an authentication failure
+    /// (expired/invalid credentials), which is fixed by logging in again rather
+    /// than by switching models.
+    fn onboarding_detail_looks_like_auth(detail: &str) -> bool {
+        let lower = detail.to_ascii_lowercase();
+        lower.contains("401")
+            || lower.contains("unauthorized")
+            || lower.contains("authentication")
+            || lower.contains("invalid api key")
+            || lower.contains("invalid x-api-key")
+            || lower.contains("credentials")
+    }
+
+    /// Build the "other providers" rows for the onboarding readiness summary.
+    ///
+    /// We already ran a live ping for the default model; for the remaining
+    /// configured providers we trust the cached auth probe (Available -> ready,
+    /// Expired -> needs attention). `skip` is the provider key backing the
+    /// default model so we don't list it twice.
+    fn onboarding_other_provider_rows(
+        skip: Option<&str>,
+    ) -> (Vec<String>, Vec<String>) {
+        use crate::auth::AuthState;
+        let status = crate::auth::AuthStatus::check_fast();
+        // (display name, provider-key, state)
+        let providers: [(&str, &str, AuthState); 8] = [
+            ("Anthropic (Claude)", "anthropic", status.anthropic.state),
+            ("OpenAI", "openai", status.openai),
+            ("Jcode subscription", "jcode", status.jcode),
+            ("Gemini", "gemini", status.gemini),
+            ("GitHub Copilot", "copilot", status.copilot),
+            ("Cursor", "cursor", status.cursor),
+            ("OpenRouter", "openrouter", status.openrouter),
+            ("Antigravity", "antigravity", status.antigravity),
+        ];
+        // Normalize the default provider's key so aliases like "claude" map to
+        // the canonical "anthropic" bucket we list below.
+        let skip = skip.map(|s| {
+            let s = s.trim().to_ascii_lowercase();
+            match s.as_str() {
+                "claude" | "claude cli" => "anthropic".to_string(),
+                other => other.to_string(),
+            }
+        });
+        let mut ready = Vec::new();
+        let mut attention = Vec::new();
+        for (name, key, state) in providers {
+            if skip.as_deref() == Some(key) {
+                continue;
+            }
+            match state {
+                AuthState::Available => ready.push(name.to_string()),
+                AuthState::Expired => {
+                    attention.push(format!("{name} - login expired"))
+                }
+                AuthState::NotConfigured => {}
+            }
+        }
+        (ready, attention)
+    }
+
+    /// Handle the result of the onboarding default-model validation: render one
+    /// clean readiness summary listing the logins that work and the ones that
+    /// need attention. Stale results (from a previous session) are ignored.
     pub(super) fn handle_onboarding_model_validated(
         &mut self,
         result: crate::bus::OnboardingModelValidated,
@@ -882,51 +945,80 @@ impl App {
         if result.session_id != self.session.id {
             return false;
         }
+
+        let detail_text = result.detail.clone().unwrap_or_default();
+        let looks_like_auth =
+            !result.ok && Self::onboarding_detail_looks_like_auth(&detail_text);
+
+        // Gather the other configured providers so the summary shows the full
+        // picture, not just the default model. We skip the default model's own
+        // provider since it gets the live-ping line below.
+        let (mut ready, mut attention) =
+            Self::onboarding_other_provider_rows(result.provider_key.as_deref());
+
+        // Place the freshly-pinged default model at the top of whichever list it
+        // belongs in, so it always reads first.
         if result.ok {
-            self.push_display_message(DisplayMessage::system(format!(
-                "✓ {} works - validated and ready.",
-                result.model_label
-            )));
+            ready.insert(0, format!("{} (default)", result.model_label));
+        } else {
+            let reason = if detail_text.is_empty() {
+                "could not be validated".to_string()
+            } else {
+                detail_text.clone()
+            };
+            attention.insert(0, format!("{} (default) - {reason}", result.model_label));
+        }
+
+        // Render a single tidy block with the two sections.
+        let mut body = String::new();
+        if !ready.is_empty() {
+            body.push_str("**Ready to use**\n");
+            for row in &ready {
+                body.push_str(&format!("- ✓ {row}\n"));
+            }
+        }
+        if !attention.is_empty() {
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str("**Needs attention**\n");
+            for row in &attention {
+                body.push_str(&format!("- ✕ {row}\n"));
+            }
+            let fix_hint = if looks_like_auth || !ready.is_empty() {
+                "Run /login to fix a login, or /model to pick another."
+            } else {
+                "Run /login to add a login, or /model to pick another."
+            };
+            body.push_str(&format!("\n{fix_hint}"));
+        }
+        if body.is_empty() {
+            // Defensive: should not happen because the default model always
+            // lands in one of the lists.
+            body.push_str("Type anything to start.");
+        }
+        self.push_display_message(DisplayMessage::system(body.trim_end().to_string()));
+
+        // Status-bar notice: concise, action-oriented.
+        if attention.is_empty() {
             self.set_status_notice(format!(
                 "{} ready - type anything to start",
                 result.model_label
             ));
+        } else if result.ok {
+            self.set_status_notice(format!(
+                "{} ready - type anything to start ({} login{} need attention)",
+                result.model_label,
+                attention.len(),
+                if attention.len() == 1 { "" } else { "s" }
+            ));
         } else {
-            let detail_text = result.detail.unwrap_or_default();
-            let detail = if detail_text.is_empty() {
-                String::new()
-            } else {
-                format!(" ({detail_text})")
-            };
-            // An auth failure (expired/invalid credentials) is fixed by logging
-            // in again, so point the user at /login in addition to /model.
-            let looks_like_auth = {
-                let lower = detail_text.to_ascii_lowercase();
-                lower.contains("401")
-                    || lower.contains("unauthorized")
-                    || lower.contains("authentication")
-                    || lower.contains("invalid api key")
-                    || lower.contains("invalid x-api-key")
-                    || lower.contains("credentials")
-            };
-            let fix_hint = if looks_like_auth {
-                "Run /login to fix your credentials, or /model to pick another."
-            } else {
-                "You can still try it, or run /model to pick another."
-            };
-            let status_hint = if looks_like_auth {
-                "type anything to try, /login to fix credentials, or /model"
+            let hint = if looks_like_auth {
+                "/login to fix credentials, or /model"
             } else {
                 "type anything to try, or /model"
             };
-            self.push_display_message(DisplayMessage::system(format!(
-                "⚠ {} could not be validated{}. {}",
-                result.model_label, detail, fix_hint
-            )));
-            self.set_status_notice(format!(
-                "{} not validated - {}",
-                result.model_label, status_hint
-            ));
+            self.set_status_notice(format!("{} not validated - {hint}", result.model_label));
         }
         true
     }

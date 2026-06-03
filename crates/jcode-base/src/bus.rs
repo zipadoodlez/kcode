@@ -129,6 +129,9 @@ pub struct OnboardingModelValidated {
     pub session_id: String,
     /// Friendly model label shown to the user (e.g. "GPT-5.5 (low)").
     pub model_label: String,
+    /// Provider key backing the default model (e.g. "anthropic", "openai") so
+    /// the readiness summary can avoid listing the default provider twice.
+    pub provider_key: Option<String>,
     /// Whether the live validation ping succeeded.
     pub ok: bool,
     /// Optional short detail (failure reason) shown after a failed check.

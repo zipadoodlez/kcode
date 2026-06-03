@@ -517,17 +517,24 @@ fn model_validation_success_appends_single_ready_line() {
     let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
         session_id,
         model_label: "GPT-5.5 (low)".to_string(),
+        provider_key: Some("openai".to_string()),
         ok: true,
         detail: None,
     });
 
     assert!(consumed);
     let messages = app.display_messages();
-    assert_eq!(messages.len(), before + 1, "exactly one validation line");
+    assert_eq!(messages.len(), before + 1, "exactly one summary block");
     let line = &messages.last().unwrap().content;
-    assert!(line.contains("GPT-5.5 (low)"), "names the model: {line:?}");
-    assert!(line.contains("validated"), "states it validated: {line:?}");
-    assert!(line.starts_with('\u{2713}'), "leads with a check: {line:?}");
+    assert!(line.contains("Ready to use"), "has a ready section: {line:?}");
+    assert!(
+        line.contains("GPT-5.5 (low) (default)"),
+        "names the default model: {line:?}"
+    );
+    assert!(
+        line.contains('\u{2713}'),
+        "marks ready rows with a check: {line:?}"
+    );
 }
 
 #[test]
@@ -539,18 +546,29 @@ fn model_validation_failure_appends_single_warning_line_with_detail() {
     let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
         session_id,
         model_label: "Claude Opus 4.8".to_string(),
+        provider_key: Some("anthropic".to_string()),
         ok: false,
         detail: Some("timed out after 30s".to_string()),
     });
 
     assert!(consumed);
     let messages = app.display_messages();
-    assert_eq!(messages.len(), before + 1, "exactly one validation line");
+    assert_eq!(messages.len(), before + 1, "exactly one summary block");
     let line = &messages.last().unwrap().content;
-    assert!(line.contains("Claude Opus 4.8"), "names the model: {line:?}");
+    assert!(
+        line.contains("Needs attention"),
+        "has an attention section: {line:?}"
+    );
+    assert!(
+        line.contains("Claude Opus 4.8 (default)"),
+        "names the default model: {line:?}"
+    );
     assert!(line.contains("timed out after 30s"), "includes detail: {line:?}");
     assert!(line.contains("/model"), "offers a way out: {line:?}");
-    assert!(line.starts_with('\u{26a0}'), "leads with a warning: {line:?}");
+    assert!(
+        line.contains('\u{2715}'),
+        "marks attention rows with a cross: {line:?}"
+    );
 }
 
 #[test]
@@ -561,6 +579,7 @@ fn model_validation_auth_failure_offers_login_fix() {
     let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
         session_id,
         model_label: "Claude Opus 4.8".to_string(),
+        provider_key: Some("anthropic".to_string()),
         ok: false,
         detail: Some(
             "Anthropic API error (401 Unauthorized): Invalid authentication credentials"
@@ -585,6 +604,7 @@ fn model_validation_ignores_stale_session_result() {
     let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
         session_id: "some-other-session".to_string(),
         model_label: "GPT-5.5".to_string(),
+        provider_key: Some("openai".to_string()),
         ok: true,
         detail: None,
     });
