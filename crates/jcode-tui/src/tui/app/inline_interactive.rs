@@ -1163,6 +1163,58 @@ impl App {
             ));
         }
 
+        // Always-on structured summary of what the picker actually presented.
+        // Pairs with `model_routes_summary` (catalog side) so a shared log shows
+        // both how many routes were built and how many survived into the picker
+        // UI, plus the per-provider breakdown the user sees. This is the key
+        // evidence for "configured provider missing from /model" reports.
+        {
+            use std::collections::BTreeMap;
+            let mut by_provider: BTreeMap<String, usize> = BTreeMap::new();
+            let mut available_entries = 0usize;
+            for entry in &entries {
+                if let Some(route) = entry.active_option() {
+                    if route.available {
+                        available_entries += 1;
+                    }
+                    let key = route.provider.trim().to_ascii_lowercase().replace(' ', "_");
+                    let key = if key.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        key
+                    };
+                    *by_provider.entry(key).or_insert(0) += 1;
+                }
+            }
+            let per_provider = by_provider
+                .into_iter()
+                .map(|(provider, count)| format!("{provider}:{count}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            crate::logging::event_info(
+                "model_picker_open",
+                vec![
+                    ("remote", self.is_remote.to_string()),
+                    (
+                        "simplified",
+                        crate::perf::tui_policy().simplified_model_picker.to_string(),
+                    ),
+                    ("routes_in", routes.len().to_string()),
+                    ("models", model_order.len().to_string()),
+                    ("entries", entries.len().to_string()),
+                    ("entries_available", available_entries.to_string()),
+                    ("current_model", current_model.clone()),
+                    ("current_provider", current_provider.clone()),
+                    (
+                        "recent_auth_provider",
+                        recent_auth_provider.unwrap_or("none").to_string(),
+                    ),
+                    ("by_provider", per_provider),
+                    ("total_ms", total_ms.to_string()),
+                ],
+            );
+        }
+
         let previous_picker = self.inline_interactive_state.as_ref().and_then(|picker| {
             if picker.kind == PickerKind::Model {
                 Some((
@@ -2491,6 +2543,29 @@ impl App {
                         );
                         let route_detail = route.detail.trim().to_string();
 
+                        // Record exactly which model spec + route the user chose
+                        // and how it will be applied. Pairs with the server-side
+                        // model-switch logs so we can trace a `/model` choice all
+                        // the way to the provider endpoint that ends up serving it
+                        // (issues #292/#278: switch routes to wrong endpoint).
+                        crate::logging::event_info(
+                            "model_picker_select",
+                            vec![
+                                ("entry", entry.name.clone()),
+                                ("spec", spec.clone()),
+                                ("provider", route.provider.clone()),
+                                ("api_method", route.api_method.clone()),
+                                ("route_provider", route_selection.provider_label.clone()),
+                                ("route_model", route_selection.model.clone()),
+                                ("route_api_method", route_selection.api_method.clone()),
+                                (
+                                    "effort",
+                                    effort.clone().unwrap_or_else(|| "none".to_string()),
+                                ),
+                                ("remote", self.is_remote.to_string()),
+                            ],
+                        );
+
                         if self.is_remote {
                             self.inline_interactive_state = None;
                             self.upstream_provider = None;
@@ -2513,12 +2588,36 @@ impl App {
                                         self.provider.name(),
                                         self.session.provider_key.as_deref(),
                                     );
-                                    self.session.model = Some(active_model);
+                                    self.session.model = Some(active_model.clone());
                                     self.session.route_api_method =
                                         Some(route_selection.api_method.clone());
                                     let _ = self.session.save();
+                                    crate::logging::event_info(
+                                        "model_picker_select_applied",
+                                        vec![
+                                            ("spec", spec.clone()),
+                                            ("active_model", active_model),
+                                            ("provider", self.provider.name().to_string()),
+                                            (
+                                                "api_method",
+                                                route_selection.api_method.clone(),
+                                            ),
+                                        ],
+                                    );
                                 }
                                 Err(error) => {
+                                    crate::logging::event_error(
+                                        "model_picker_select_failed",
+                                        vec![
+                                            ("spec", spec.clone()),
+                                            ("provider", route.provider.clone()),
+                                            (
+                                                "api_method",
+                                                route_selection.api_method.clone(),
+                                            ),
+                                            ("error", error.to_string()),
+                                        ],
+                                    );
                                     self.push_display_message(DisplayMessage::error(
                                         crate::tui::app::model_context::model_switch_failure_message(
                                             &error.to_string(),

@@ -562,14 +562,113 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
         ));
     }
 
+    let routes_before_filter = routes.len();
+
     // Drop obviously non-chat models (embeddings, speech, rerankers, etc.) that
     // some providers (Bedrock, OpenAI-compatible profiles like NVIDIA NIM / FPT
     // / Chutes) dump wholesale into their catalogs. Without this the picker is
     // flooded with hundreds of unusable entries.
     routes.retain(|route| is_listable_model_name(&route.model));
 
-    dedupe_model_routes(routes)
+    let routes = dedupe_model_routes(routes);
+
+    // Structured, always-on summary of catalog route building. This is the
+    // single most useful line for the recurring "model picker empty / only
+    // OpenAI+Anthropic appear / configured provider's models missing" reports
+    // (issues #292, #268, #312, #304): it records which credentials were
+    // detected and how many routes each provider contributed, so a shared log
+    // explains exactly why a model was or was not offered. No secrets here.
+    log_model_routes_summary(
+        "build",
+        &routes,
+        routes_before_filter,
+        has_oauth,
+        has_api_key,
+        openai_auth.openai_has_oauth,
+        openai_auth.openai_has_api_key,
+        has_openrouter,
+        has_openrouter_provider_features,
+        added_direct_openai_compatible_routes,
+        total_ms,
+    );
+
+    routes
 }
+
+/// Count routes per provider label (lowercased, spaces removed) so the catalog
+/// summary log shows where the picker entries came from.
+fn provider_route_counts(routes: &[ModelRoute]) -> std::collections::BTreeMap<String, usize> {
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for route in routes {
+        let key = route
+            .provider
+            .trim()
+            .to_ascii_lowercase()
+            .replace(' ', "_");
+        let key = if key.is_empty() {
+            "unknown".to_string()
+        } else {
+            key
+        };
+        *counts.entry(key).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Emit a structured, non-secret summary of model-route building. Callers pass
+/// the credential-detection flags they already computed so the log explains why
+/// each provider's routes were or were not produced.
+#[allow(clippy::too_many_arguments)]
+fn log_model_routes_summary(
+    phase: &str,
+    routes: &[ModelRoute],
+    routes_before_filter: usize,
+    anthropic_oauth: bool,
+    anthropic_api_key: bool,
+    openai_oauth: bool,
+    openai_api_key: bool,
+    has_openrouter: bool,
+    openrouter_provider_features: bool,
+    direct_openai_compatible: bool,
+    total_ms: u128,
+) {
+    let available = routes.iter().filter(|route| route.available).count();
+    let per_provider = provider_route_counts(routes)
+        .into_iter()
+        .map(|(provider, count)| format!("{provider}:{count}"))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    crate::logging::event_info(
+        "model_routes_summary",
+        vec![
+            ("phase", phase.to_string()),
+            ("routes_total", routes.len().to_string()),
+            ("routes_available", available.to_string()),
+            ("routes_before_filter", routes_before_filter.to_string()),
+            (
+                "routes_dropped",
+                routes_before_filter.saturating_sub(routes.len()).to_string(),
+            ),
+            ("anthropic_oauth", anthropic_oauth.to_string()),
+            ("anthropic_api", anthropic_api_key.to_string()),
+            ("openai_oauth", openai_oauth.to_string()),
+            ("openai_api", openai_api_key.to_string()),
+            ("openrouter_configured", has_openrouter.to_string()),
+            (
+                "openrouter_provider_features",
+                openrouter_provider_features.to_string(),
+            ),
+            (
+                "direct_openai_compatible",
+                direct_openai_compatible.to_string(),
+            ),
+            ("by_provider", per_provider),
+            ("build_ms", total_ms.to_string()),
+        ],
+    );
+}
+
 
 pub fn remote_model_routes_fallback(
     remote_provider_name: Option<&str>,
