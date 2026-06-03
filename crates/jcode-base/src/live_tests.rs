@@ -1811,7 +1811,9 @@ pub fn format_strict_live_provider_model_coverage_summary(
         .iter()
         .chain(summary.uncovered_pairs.iter())
         .collect::<Vec<_>>();
-    out.push_str("Per provider (ready pairs / pairs seen, and the closest pair still in progress):\n");
+    out.push_str(
+        "Per provider (ready pairs / pairs seen, and the closest pair still in progress):\n",
+    );
     out.push_str(&format!(
         "  {:<22} {:>9}   closest pair still in progress\n",
         "provider", "ready/seen"
@@ -1837,7 +1839,11 @@ pub fn format_strict_live_provider_model_coverage_summary(
                         let reached = stages_passed(pair);
                         match first_blocker(pair) {
                             Some((_, label, hard_fail)) => {
-                                let verb = if hard_fail { "failed at" } else { "stuck before" };
+                                let verb = if hard_fail {
+                                    "failed at"
+                                } else {
+                                    "stuck before"
+                                };
                                 format!(
                                     "{not_ready} not ready (best {reached}/{stage_count}, {verb} {label})"
                                 )
@@ -1926,7 +1932,11 @@ pub fn format_strict_live_provider_model_coverage_summary(
             } else {
                 match first_blocker(pair) {
                     Some((stage_id, label, hard_fail)) => {
-                        let verb = if hard_fail { "failed at" } else { "stuck before" };
+                        let verb = if hard_fail {
+                            "failed at"
+                        } else {
+                            "stuck before"
+                        };
                         let fix = pair_fix_hint(&pair.provider_id, &pair.model, stage_id);
                         format!("{verb} `{label}`; {fix}; {tested}")
                     }
@@ -2212,11 +2222,7 @@ pub fn classify_provider_test_coverage_line(line: &str) -> CoverageLineStyle {
     // Provider-monitor rows end with a `ready/seen` fraction; color by status
     // word. Checked before generic prose so a sentence that merely mentions
     // "READY" is not miscolored.
-    if t
-        .split_whitespace()
-        .last()
-        .is_some_and(is_stage_fraction)
-    {
+    if t.split_whitespace().last().is_some_and(is_stage_fraction) {
         if t.contains("needs native suite") || t.contains("untested") {
             return Dim;
         }
@@ -2269,9 +2275,7 @@ pub fn classify_provider_test_coverage_line(line: &str) -> CoverageLineStyle {
     }
 
     // Subdued metadata.
-    if t.starts_with("last tested")
-        || t.starts_with("Ledger:")
-        || t.starts_with("Evidence source:")
+    if t.starts_with("last tested") || t.starts_with("Ledger:") || t.starts_with("Evidence source:")
     {
         return Dim;
     }
@@ -2828,14 +2832,8 @@ mod tests {
             ("=============================", Title),
             ("READY: 30/79 provider+model pairs (38%) passed", Title),
             ("The pipeline (11 stages, in order):", Title),
-            (
-                "  A pair is READY only after every stage passes.",
-                Plain,
-            ),
-            (
-                "  READY  zai / glm-4.5    last tested 1 hour ago",
-                Pass,
-            ),
+            ("  A pair is READY only after every stage passes.", Plain),
+            ("  READY  zai / glm-4.5    last tested 1 hour ago", Pass),
             (
                 "  6/11   opencode / glm-5    failed at `streaming reply`; run ...",
                 Fail,
@@ -2852,9 +2850,18 @@ mod tests {
                 "  minimax                   0/1     1 not ready (best 5/11, failed at chat reply)",
                 Fail,
             ),
-            ("  cerebras             READY               yes      yes   1/3", Pass),
-            ("  gemini               in progress         no       -     0/3", Warn),
-            ("  302ai                no key              yes      -     0/0", Warn),
+            (
+                "  cerebras             READY               yes      yes   1/3",
+                Pass,
+            ),
+            (
+                "  gemini               in progress         no       -     0/3",
+                Warn,
+            ),
+            (
+                "  302ai                no key              yes      -     0/0",
+                Warn,
+            ),
             (
                 "  openai-compatible    untested            yes      yes   0/0",
                 Dim,
@@ -2865,10 +2872,7 @@ mod tests {
             ),
             ("  [#223] xiaomi-mimo / mimo-v2.5: READY", Pass),
             ("  [#234] opencode-go / kimi-k2.5: no evidence yet", Dim),
-            (
-                "  [#110] minimax / MiniMax-M2.7: seen, not yet READY",
-                Warn,
-            ),
+            ("  [#110] minimax / MiniMax-M2.7: seen, not yet READY", Warn),
             ("Ledger: /home/x/coverage.json", Dim),
             ("✓ Credential loaded - Passed", Pass),
             ("✗ streaming chat completion - Failed", Fail),

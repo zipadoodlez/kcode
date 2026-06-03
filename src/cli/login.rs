@@ -1172,7 +1172,9 @@ fn login_gemini_api_key_flow() -> Result<()> {
             .join(crate::auth::gemini::GEMINI_API_KEY_ENV_FILE)
             .display()
     );
-    eprintln!("Provider: gemini (official Gemini Developer API, generativelanguage.googleapis.com)");
+    eprintln!(
+        "Provider: gemini (official Gemini Developer API, generativelanguage.googleapis.com)"
+    );
     crate::telemetry::record_auth_success("gemini", "api_key");
     Ok(())
 }

@@ -1034,7 +1034,12 @@ pub const GEMINI_API_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDesc
     auth_kind: LoginProviderAuthKind::ApiKey,
     auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
     auth_status_method: "API key",
-    aliases: &["gemini-key", "gemini-apikey", "google-ai-studio", "ai-studio"],
+    aliases: &[
+        "gemini-key",
+        "gemini-apikey",
+        "google-ai-studio",
+        "ai-studio",
+    ],
     menu_detail: "Google AI Studio Developer API key (OpenAI-compatible)",
     recommended: false,
     target: LoginProviderTarget::OpenAiCompatible(GEMINI_OPENAI_COMPAT_PROFILE),

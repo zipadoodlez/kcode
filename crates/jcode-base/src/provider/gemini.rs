@@ -114,8 +114,8 @@ impl GeminiProvider {
     fn developer_api_base_url() -> String {
         let endpoint = std::env::var("GEMINI_API_ENDPOINT")
             .unwrap_or_else(|_| GEMINI_API_ENDPOINT.to_string());
-        let version = std::env::var("GEMINI_API_VERSION")
-            .unwrap_or_else(|_| GEMINI_API_VERSION.to_string());
+        let version =
+            std::env::var("GEMINI_API_VERSION").unwrap_or_else(|_| GEMINI_API_VERSION.to_string());
         format!(
             "{}/{}",
             endpoint.trim_end_matches('/'),
@@ -137,9 +137,7 @@ impl GeminiProvider {
                 !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
             })
             .unwrap_or(false);
-        if !force_oauth
-            && let Some(api_key) = gemini_auth::api_key()
-        {
+        if !force_oauth && let Some(api_key) = gemini_auth::api_key() {
             return GeminiAuthMode::ApiKey(api_key);
         }
         GeminiAuthMode::Oauth
