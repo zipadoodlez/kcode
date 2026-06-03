@@ -440,6 +440,13 @@ impl App {
         provider: crate::provider_catalog::LoginProviderDescriptor,
     ) {
         crate::telemetry::record_provider_selected(provider.id);
+        crate::logging::event_info(
+            "login_started",
+            vec![
+                ("provider_id", provider.id.to_string()),
+                ("auth_kind", provider.auth_kind.label().to_string()),
+            ],
+        );
         match provider.target {
             crate::provider_catalog::LoginProviderTarget::AutoImport => {
                 match crate::external_auth::pending_external_auth_review_candidates() {
@@ -1859,6 +1866,28 @@ impl App {
                 let resolved_openai_compatible = openai_compatible_profile
                     .map(crate::provider_catalog::resolve_openai_compatible_profile);
 
+                // Record the key-save attempt before touching disk. This is the
+                // single most important breadcrumb for issue #312 ("paste API
+                // key for OpenAI-compatible/opencode silently returns to menu"):
+                // it proves the input was received and which env var/file jcode
+                // tried to write, without logging the key itself.
+                crate::logging::event_info(
+                    "login_api_key_save_attempt",
+                    vec![
+                        ("provider_id", provider_id.clone()),
+                        ("provider", provider.clone()),
+                        ("auth_method", auth_method.clone()),
+                        ("env_var", key_name.clone()),
+                        ("env_file", env_file.clone()),
+                        ("input_len", key.len().to_string()),
+                        ("optional", api_key_optional.to_string()),
+                        (
+                            "openai_compatible",
+                            openai_compatible_profile.is_some().to_string(),
+                        ),
+                    ],
+                );
+
                 let save_result: anyhow::Result<()> =
                     if let Some(resolved) = resolved_openai_compatible.as_ref() {
                         (|| {
@@ -1927,6 +1956,19 @@ impl App {
                 match save_result {
                     Ok(()) => {
                         crate::auth::AuthStatus::invalidate_cache();
+                        crate::logging::event_info(
+                            "login_api_key_saved",
+                            vec![
+                                ("provider_id", provider_id.clone()),
+                                ("provider", provider.clone()),
+                                ("env_var", key_name.clone()),
+                                ("env_file", env_file.clone()),
+                                (
+                                    "openai_compatible",
+                                    openai_compatible_profile.is_some().to_string(),
+                                ),
+                            ],
+                        );
                         if key_name == crate::provider::bedrock::API_KEY_ENV {
                             crate::provider::activation::lock_runtime_provider_key("bedrock");
                             if let Some(default_model) = default_model.as_deref() {
@@ -2000,6 +2042,17 @@ impl App {
                     Err(e) => {
                         let reason = crate::auth::login_diagnostics::classify_auth_failure_message(
                             &e.to_string(),
+                        );
+                        crate::logging::event_error(
+                            "login_api_key_save_failed",
+                            vec![
+                                ("provider_id", provider_id.clone()),
+                                ("provider", provider.clone()),
+                                ("env_var", key_name.clone()),
+                                ("env_file", env_file.clone()),
+                                ("reason", reason.label().to_string()),
+                                ("error", e.to_string()),
+                            ],
                         );
                         crate::telemetry::record_auth_failed_reason(
                             &provider_id,
@@ -2353,6 +2406,14 @@ impl App {
         provider_id: String,
         provider_label: String,
     ) {
+        crate::logging::event_info(
+            "login_post_activation_started",
+            vec![
+                ("provider_id", provider_id.clone()),
+                ("provider", provider_label.clone()),
+                ("session_id", self.session.id.clone()),
+            ],
+        );
         crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
             crate::bus::UiActivity::catalog(
                 Some(self.session.id.clone()),
@@ -2429,11 +2490,32 @@ impl App {
 
                         if let Some(model) = selected {
                             let model_request = format!("{}:{}", provider_id, model);
+                            crate::logging::event_info(
+                                "login_post_activation_route_selected",
+                                vec![
+                                    ("provider_id", provider_id.clone()),
+                                    ("model", model.clone()),
+                                    ("provider_routes", provider_routes.len().to_string()),
+                                    ("models_added", summary.models_added.to_string()),
+                                    ("routes_added", summary.routes_added.to_string()),
+                                ],
+                            );
                             match provider.set_model(&model_request) {
                                 Ok(()) => {
                                     let provider_key = crate::provider::MultiProvider::session_provider_key_for_model_request(
                                         &model_request,
                                         provider.name(),
+                                    );
+                                    crate::logging::event_info(
+                                        "login_post_activation_model_applied",
+                                        vec![
+                                            ("provider_id", provider_id.clone()),
+                                            ("model", model.clone()),
+                                            (
+                                                "session_provider",
+                                                provider_key.clone().unwrap_or_default(),
+                                            ),
+                                        ],
                                     );
                                     crate::bus::Bus::global().publish_models_updated();
                                     crate::bus::Bus::global().publish(
@@ -2459,6 +2541,14 @@ impl App {
                                     );
                                 }
                                 Err(error) => {
+                                    crate::logging::event_error(
+                                        "login_post_activation_model_failed",
+                                        vec![
+                                            ("provider_id", provider_id.clone()),
+                                            ("model", model.clone()),
+                                            ("error", error.to_string()),
+                                        ],
+                                    );
                                     crate::bus::Bus::global().publish(
                                         crate::bus::BusEvent::LoginCompleted(
                                             crate::bus::LoginCompleted {
@@ -2474,6 +2564,13 @@ impl App {
                                 }
                             }
                         } else {
+                            crate::logging::event_warn(
+                                "login_post_activation_no_route",
+                                vec![
+                                    ("provider_id", provider_id.clone()),
+                                    ("provider_routes", provider_routes.len().to_string()),
+                                ],
+                            );
                             crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
                                 crate::bus::UiActivity::catalog(
                                     Some(session_id),
@@ -2490,6 +2587,13 @@ impl App {
                         }
                     }
                     Err(error) => {
+                        crate::logging::event_error(
+                            "login_post_activation_refresh_failed",
+                            vec![
+                                ("provider_id", provider_id.clone()),
+                                ("error", error.to_string()),
+                            ],
+                        );
                         crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
                             crate::bus::UiActivity::catalog(
                                 Some(session_id),
@@ -2523,6 +2627,13 @@ impl App {
             return;
         }
         crate::auth::AuthStatus::invalidate_cache();
+        crate::logging::event_info(
+            "login_completed",
+            vec![
+                ("provider", login.provider.clone()),
+                ("success", login.success.to_string()),
+            ],
+        );
         if let Some((provider, method)) = self
             .pending_login
             .as_ref()
