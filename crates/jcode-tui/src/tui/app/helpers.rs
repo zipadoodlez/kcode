@@ -272,7 +272,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
 pub(super) fn effort_display_label(effort: &str) -> &str {
     match effort {
         "max" => "Max",
-        "xhigh" => "Max",
+        "xhigh" => "xHigh (Max)",
         "high" => "High",
         "medium" => "Medium",
         "low" => "Low",
