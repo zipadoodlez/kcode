@@ -431,6 +431,10 @@ impl crate::tui::TuiState for App {
         self.chat_overscroll_active()
     }
 
+    fn copy_selection_edge_autoscroll_active(&self) -> bool {
+        self.copy_selection_edge_autoscroll.is_some() && self.copy_selection_dragging
+    }
+
     fn provider_name(&self) -> String {
         if self.is_remote {
             self.remote_header_provider_name().unwrap_or_default()

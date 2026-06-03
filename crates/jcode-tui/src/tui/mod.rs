@@ -140,6 +140,14 @@ pub trait TuiState {
     fn chat_overscroll_active(&self) -> bool {
         false
     }
+    /// Whether a mouse drag-selection is currently held at the top/bottom edge of
+    /// a pane and should keep auto-scrolling on every tick (browser-style). When
+    /// true the redraw loop must stay responsive even if the transcript is
+    /// otherwise idle, since the terminal sends no further events while the mouse
+    /// is held still.
+    fn copy_selection_edge_autoscroll_active(&self) -> bool {
+        false
+    }
     fn provider_name(&self) -> String;
     fn provider_model(&self) -> String;
     /// Upstream provider (e.g., which provider OpenRouter routed to)
@@ -1227,6 +1235,7 @@ pub(crate) fn redraw_interval_with_policy(
         && !state.is_processing()
         && state.streaming_text().is_empty()
         && !state.has_pending_mouse_scroll_animation()
+        && !state.copy_selection_edge_autoscroll_active()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
@@ -1267,6 +1276,7 @@ pub(crate) fn redraw_interval_with_policy(
         || !state.streaming_text().is_empty()
         || state.status_notice().is_some()
         || state.has_pending_mouse_scroll_animation()
+        || state.copy_selection_edge_autoscroll_active()
         || state.has_notification()
         || rate_limit_countdown_redraw_active(state)
     {
@@ -1304,6 +1314,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         && !state.is_processing()
         && state.streaming_text().is_empty()
         && !state.has_pending_mouse_scroll_animation()
+        && !state.copy_selection_edge_autoscroll_active()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
@@ -1324,6 +1335,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         || !state.streaming_text().is_empty()
         || state.status_notice().is_some()
         || state.has_pending_mouse_scroll_animation()
+        || state.copy_selection_edge_autoscroll_active()
         || state.chat_overscroll_active()
         || state.has_notification()
         || rate_limit_countdown_redraw_active(state)

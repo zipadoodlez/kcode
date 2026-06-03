@@ -830,6 +830,40 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         app.scroll_offset()
     );
 
+    // The redraw loop must stay responsive while the mouse is held at the edge,
+    // even though the transcript is otherwise idle and no further mouse events
+    // arrive. Otherwise the deep-idle 5s cadence would stall the autoscroll.
+    assert!(
+        crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app),
+        "edge autoscroll should be reported active while drag is held at edge"
+    );
+    assert!(
+        crate::tui::periodic_redraw_required(&app),
+        "periodic redraw must be required while edge autoscroll is armed"
+    );
+    let policy = crate::perf::tui_policy();
+    let interval = crate::tui::redraw_interval_with_policy(&app, &policy);
+    assert!(
+        interval <= crate::tui::REDRAW_IDLE,
+        "redraw interval should stay fast during edge autoscroll, got {interval:?}"
+    );
+
+    // Simulate the real tick loop driving several frames with the mouse held
+    // still (no further drag events): it should keep scrolling toward the top.
+    let mut prev = app.scroll_offset();
+    for _ in 0..5 {
+        if prev == 0 {
+            break;
+        }
+        assert!(app.progress_copy_selection_edge_autoscroll());
+        assert!(
+            app.scroll_offset() < prev,
+            "held-still tick should keep scrolling up (prev={prev}, now={})",
+            app.scroll_offset()
+        );
+        prev = app.scroll_offset();
+    }
+
     // Releasing the mouse stops the continuous autoscroll.
     app.handle_mouse_event(MouseEvent {
         kind: MouseEventKind::Up(MouseButton::Left),
@@ -838,6 +872,9 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         modifiers: KeyModifiers::empty(),
     });
     assert!(!app.progress_copy_selection_edge_autoscroll());
+    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(
+        &app
+    ));
 }
 
 #[test]
