@@ -658,4 +658,33 @@ mod tests {
         let line = format_structured_event("tool_done", vec![("exit_code", "127")]);
         assert_eq!(line, "EVENT event=tool_done exit_code=127");
     }
+
+    #[test]
+    fn diagnostic_field_names_are_not_redacted() {
+        // The model-picker / login diagnostics intentionally avoid field names
+        // that collide with the secret-redaction heuristic (which masks any
+        // field whose name contains key/token/secret/credential/...). If any of
+        // these regress, the uploaded logs we ask users for would show
+        // `<redacted>` instead of the boolean/count/env-var-name we need.
+        for name in [
+            "env_var",
+            "input_len",
+            "optional",
+            "anthropic_api",
+            "openai_api",
+            "azure_api",
+            "copilot_cred",
+            "session_provider",
+            "routes_in",
+            "by_provider",
+            "requested_model",
+            "route_provider",
+        ] {
+            assert_eq!(
+                redact_auth_field(name, "value"),
+                "value",
+                "diagnostic field `{name}` should not be redacted",
+            );
+        }
+    }
 }
