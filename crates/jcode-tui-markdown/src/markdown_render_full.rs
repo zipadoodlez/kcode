@@ -583,10 +583,11 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                 } else if in_table {
                     current_cell.push_str(&text);
                 } else {
-                    // Check for "Thought for X.Xs" pattern and render dimmed
+                    // "Thought for X.Xs" footers and blockquote bodies (used for
+                    // streamed reasoning) render dim + italic.
                     let is_thinking_duration =
                         text.starts_with("Thought for ") && text.ends_with('s');
-                    let mut style = if is_thinking_duration {
+                    let mut style = if is_thinking_duration || blockquote_depth > 0 {
                         Style::default().fg(md_dim_color()).italic()
                     } else {
                         match (bold, italic) {

@@ -53,21 +53,20 @@ pub fn wrap_line(
     let mut current_has_content = false;
     let mut pending_repeated_prefix = false;
 
-    let flush_line =
-        |result: &mut Vec<Line<'static>>,
-         current_spans: &mut Vec<Span<'static>>,
-         current_width: &mut usize,
-         current_has_content: &mut bool,
-         pending_repeated_prefix: &mut bool| {
-            let mut new_line = Line::from(std::mem::take(current_spans));
-            if let Some(align) = alignment {
-                new_line = new_line.alignment(align);
-            }
-            result.push(new_line);
-            *current_width = 0;
-            *current_has_content = false;
-            *pending_repeated_prefix = repeated_prefix.is_some();
-        };
+    let flush_line = |result: &mut Vec<Line<'static>>,
+                      current_spans: &mut Vec<Span<'static>>,
+                      current_width: &mut usize,
+                      current_has_content: &mut bool,
+                      pending_repeated_prefix: &mut bool| {
+        let mut new_line = Line::from(std::mem::take(current_spans));
+        if let Some(align) = alignment {
+            new_line = new_line.alignment(align);
+        }
+        result.push(new_line);
+        *current_width = 0;
+        *current_has_content = false;
+        *pending_repeated_prefix = repeated_prefix.is_some();
+    };
 
     for token in tokens {
         let token_width = token.word_width + token.space_width;

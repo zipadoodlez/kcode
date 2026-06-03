@@ -2346,7 +2346,7 @@ impl App {
     }
 
     /// Begin a reasoning region rendered as a dim-gutter markdown blockquote with
-    /// an italic `Thinking` header. Idempotent while the region is open.
+    /// italic body text (no header). Idempotent while the region is open.
     pub(super) fn open_reasoning_region(&mut self) {
         if self.reasoning_streaming {
             return;
@@ -2363,11 +2363,11 @@ impl App {
             }
         }
         self.reasoning_streaming = true;
-        self.append_reasoning_text("*Thinking…*\n");
     }
 
     /// Append reasoning text into the open blockquote region, prefixing each line
-    /// (including blank lines) with `> ` so the whole span stays one quote block.
+    /// (including blank lines) with `> ` so the whole span stays one quote block,
+    /// rendering with a dim `│` gutter.
     pub(super) fn append_reasoning_text(&mut self, text: &str) {
         if text.is_empty() {
             return;
