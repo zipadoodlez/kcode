@@ -862,11 +862,34 @@ impl App {
         Ok(())
     }
 
-    /// Condense a validation error into a short user-facing detail string.
+    /// Condense a validation error into a short, user-facing detail string.
+    ///
+    /// Provider errors are often a full JSON blob on a single line; we map the
+    /// common cases to a tidy phrase so the onboarding summary stays readable,
+    /// and otherwise fall back to a clipped first line.
     fn onboarding_trim_validation_error(err: &anyhow::Error) -> String {
         let msg = err.to_string();
+        let lower = msg.to_ascii_lowercase();
+        // Common, recognizable failures get a short canonical phrase.
+        if lower.contains("401")
+            || lower.contains("unauthorized")
+            || lower.contains("invalid authentication")
+            || lower.contains("invalid api key")
+            || lower.contains("invalid x-api-key")
+        {
+            return "login expired or invalid".to_string();
+        }
+        if lower.contains("timed out") || lower.contains("timeout") {
+            return "timed out".to_string();
+        }
+        if lower.contains("429") || lower.contains("rate limit") {
+            return "rate limited".to_string();
+        }
+        if lower.contains("empty response") {
+            return "no response".to_string();
+        }
         let first_line = msg.lines().next().unwrap_or(&msg).trim();
-        let trimmed: String = first_line.chars().take(140).collect();
+        let trimmed: String = first_line.chars().take(100).collect();
         if trimmed.is_empty() {
             "unknown error".to_string()
         } else {
@@ -885,6 +908,8 @@ impl App {
             || lower.contains("invalid api key")
             || lower.contains("invalid x-api-key")
             || lower.contains("credentials")
+            || lower.contains("login expired")
+            || lower.contains("expired or invalid")
     }
 
     /// Build the "other providers" rows for the onboarding readiness summary.
