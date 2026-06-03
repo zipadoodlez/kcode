@@ -686,7 +686,7 @@ impl App {
                                         if config().display.show_thinking {
                                             // Only emit the prefix once at the start of thinking
                                             if !self.thinking_prefix_emitted && !self.thinking_buffer.trim().is_empty() {
-                                                self.insert_thought_line(format!("💭 {}", self.thinking_buffer.trim_start()));
+                                                self.insert_thought_line(self.thinking_buffer.trim_start().to_string());
                                                 self.thinking_prefix_emitted = true;
                                                 self.thinking_buffer.clear();
                                             } else if self.thinking_prefix_emitted {
