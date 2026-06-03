@@ -1589,10 +1589,15 @@ pub(crate) fn copy_pane_vertical_edge_point(
         return None;
     }
 
-    let (edge_row, upward) = if row < area.y {
+    // Browser-style edge auto-scroll: terminals clamp the mouse to the visible
+    // viewport, so a drag that "leaves" the top/bottom of the pane is reported on
+    // the boundary row itself. Treat the first/last visible rows as scroll edges so
+    // dragging a selection to the edge keeps pulling in more transcript.
+    let last_row = area.y.saturating_add(area.height).saturating_sub(1);
+    let (edge_row, upward) = if row <= area.y {
         (area.y, true)
-    } else if row >= area.y.saturating_add(area.height) {
-        (area.y.saturating_add(area.height).saturating_sub(1), false)
+    } else if row >= last_row {
+        (last_row, false)
     } else {
         return None;
     };

@@ -486,17 +486,22 @@ impl App {
                     self.update_selection_with_point(point, true);
                     return Some(false);
                 }
-                if let Some(point) =
-                    point.filter(|point| Some(point.pane) == self.current_copy_selection_pane())
-                {
-                    self.update_selection_with_point(point, true);
-                } else if let Some(pane) = self.current_copy_selection_pane() {
-                    if let Some((point, upward)) =
+                let active_pane = self.current_copy_selection_pane();
+                // Browser-style edge auto-scroll: if the drag is at the top/bottom
+                // boundary row of the active pane, keep scrolling so the selection can
+                // extend past the currently visible transcript. This takes priority
+                // over a plain in-pane update so reaching the edge pulls in more rows.
+                if let Some(pane) = active_pane {
+                    if let Some((edge_point, upward)) =
                         crate::tui::ui::copy_pane_vertical_edge_point(pane, mouse.column, mouse.row)
                     {
-                        self.update_selection_with_point(point, true);
+                        self.update_selection_with_point(edge_point, true);
                         self.scroll_copy_selection_pane(pane, upward);
+                        return Some(false);
                     }
+                }
+                if let Some(point) = point.filter(|point| Some(point.pane) == active_pane) {
+                    self.update_selection_with_point(point, true);
                 }
                 Some(false)
             }
