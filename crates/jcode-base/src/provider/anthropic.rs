@@ -613,6 +613,19 @@ impl AnthropicProvider {
         model: &str,
         is_oauth: bool,
     ) -> (Option<ApiThinking>, Option<ApiOutputConfig>, Option<f32>) {
+        // `display.show_thinking` is a request to *see* the model's reasoning.
+        // Anthropic only streams thinking summaries when a thinking request is
+        // present, so opting into the display must also opt into generating it.
+        let show_thinking = crate::config::config().display.show_thinking;
+        self.build_reasoning_request_parts_inner(model, is_oauth, show_thinking)
+    }
+
+    fn build_reasoning_request_parts_inner(
+        &self,
+        model: &str,
+        is_oauth: bool,
+        show_thinking: bool,
+    ) -> (Option<ApiThinking>, Option<ApiOutputConfig>, Option<f32>) {
         let effort = self.reasoning_effort();
         let effort = effort.as_deref().filter(|effort| *effort != "none");
 
@@ -622,18 +635,24 @@ impl AnthropicProvider {
                 effort: Self::actual_effort_for_model(model, effort),
             });
 
-        let thinking = effort.and_then(|effort| {
-            if Self::model_supports_adaptive_thinking(model) {
-                Some(ApiThinking::Adaptive {
-                    display: Some("summarized"),
-                })
-            } else if Self::model_supports_manual_thinking(model) {
-                Self::manual_thinking_budget(effort, self.max_tokens)
-                    .map(|budget_tokens| ApiThinking::Enabled { budget_tokens })
-            } else {
-                None
-            }
-        });
+        // When only the display toggle is on (no explicit effort), request
+        // thinking without forcing `output_config`, so the model keeps its
+        // default reasoning strength and only the thinking *display* is enabled.
+        let thinking = if Self::model_supports_adaptive_thinking(model) {
+            (effort.is_some() || show_thinking).then_some(ApiThinking::Adaptive {
+                display: Some("summarized"),
+            })
+        } else if Self::model_supports_manual_thinking(model) {
+            // Manual-thinking models need a concrete budget. Use the configured
+            // effort, or fall back to a minimal budget when only the display
+            // toggle is on.
+            effort
+                .or(show_thinking.then_some("low"))
+                .and_then(|effort| Self::manual_thinking_budget(effort, self.max_tokens))
+                .map(|budget_tokens| ApiThinking::Enabled { budget_tokens })
+        } else {
+            None
+        };
 
         // Extended/adaptive thinking is incompatible with temperature. OAuth path
         // normally mirrors Claude Code's temperature=1.0, so omit it when thinking is active.

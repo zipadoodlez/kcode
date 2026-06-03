@@ -2367,13 +2367,11 @@ impl App {
 
     /// Wrap one complete reasoning line as dim+italic markdown: an invisible
     /// sentinel inside `*…*` that the renderer strips and styles dim, with no
-    /// gutter. Empty lines are emitted as a bare newline (no empty emphasis run).
+    /// gutter. Embedded markdown is escaped so the styling covers the whole line.
+    /// Empty lines are emitted as a bare newline (no empty emphasis run). Shared
+    /// with the server formatter via `jcode-tui-markdown`.
     fn reasoning_line_markup(line: &str) -> String {
-        if line.is_empty() {
-            "\n".to_string()
-        } else {
-            format!("*{}{}*\n", jcode_tui_markdown::REASONING_SENTINEL, line)
-        }
+        jcode_tui_markdown::reasoning_line_markup(line)
     }
 
     /// Append streamed reasoning text. Complete lines are emitted immediately as
