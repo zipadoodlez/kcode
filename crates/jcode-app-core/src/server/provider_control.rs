@@ -268,17 +268,21 @@ async fn apply_auth_runtime_model_to_agent(
     };
 
     match result {
-        Ok(_) => crate::logging::auth_event(
+        Ok(resolved_model) => crate::logging::auth_event(
             "auth_changed_runtime_model_applied",
             provider,
-            &[("provider_session", "reset")],
+            &[
+                ("requested_model", model),
+                ("resolved_model", resolved_model.as_str()),
+                ("provider_session", "reset"),
+            ],
         ),
         Err(error) => {
             let message = error.to_string();
             crate::logging::auth_event(
                 "auth_changed_runtime_model_failed",
                 provider,
-                &[("reason", message.as_str())],
+                &[("requested_model", model), ("reason", message.as_str())],
             );
         }
     }
@@ -301,6 +305,14 @@ fn send_model_changed_result(
     match result {
         Ok((updated, provider_name)) => {
             crate::telemetry::record_model_switch();
+            crate::logging::event_info(
+                "server_model_changed",
+                vec![
+                    ("id", id.to_string()),
+                    ("model", updated.clone()),
+                    ("provider", provider_name.clone()),
+                ],
+            );
             let _ = client_event_tx.send(ServerEvent::ModelChanged {
                 id,
                 model: updated,
@@ -309,6 +321,14 @@ fn send_model_changed_result(
             });
         }
         Err(error) => {
+            crate::logging::event_error(
+                "server_model_change_failed",
+                vec![
+                    ("id", id.to_string()),
+                    ("fallback_model", fallback_model.clone()),
+                    ("error", error.to_string()),
+                ],
+            );
             let _ = client_event_tx.send(ServerEvent::ModelChanged {
                 id,
                 model: fallback_model,
@@ -345,6 +365,16 @@ fn apply_cycle_model(
         (current_index + len - 1) % len
     };
     let next_model = models[next_index].clone();
+    crate::logging::event_info(
+        "server_cycle_model_request",
+        vec![
+            ("id", id.to_string()),
+            ("direction", (direction as i64).to_string()),
+            ("current_model", current.clone()),
+            ("next_model", next_model.clone()),
+            ("available_models", len.to_string()),
+        ],
+    );
     let result = {
         let result = agent.set_model(&next_model);
         if result.is_ok() {
@@ -435,7 +465,25 @@ fn apply_set_model(
     agent: &mut Agent,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
+    crate::logging::event_info(
+        "server_set_model_request",
+        vec![
+            ("id", id.to_string()),
+            ("requested_model", model.clone()),
+            ("current_model", agent.provider_model()),
+            ("current_provider", agent.provider_name()),
+        ],
+    );
+
     if let Some(current) = model_switching_unavailable_current(agent) {
+        crate::logging::event_warn(
+            "server_set_model_unavailable",
+            vec![
+                ("id", id.to_string()),
+                ("requested_model", model.clone()),
+                ("current_model", current.clone()),
+            ],
+        );
         let _ = client_event_tx.send(ServerEvent::ModelChanged {
             id,
             model: current,
@@ -462,7 +510,28 @@ fn apply_set_route(
     agent: &mut Agent,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
+    crate::logging::event_info(
+        "server_set_route_request",
+        vec![
+            ("id", id.to_string()),
+            ("requested_model", selection.model.clone()),
+            ("requested_provider", selection.provider_label.clone()),
+            ("requested_api_method", selection.api_method.clone()),
+            ("current_model", agent.provider_model()),
+            ("current_provider", agent.provider_name()),
+        ],
+    );
+
     if let Some(current) = model_switching_unavailable_current(agent) {
+        crate::logging::event_warn(
+            "server_set_route_unavailable",
+            vec![
+                ("id", id.to_string()),
+                ("requested_model", selection.model.clone()),
+                ("requested_provider", selection.provider_label.clone()),
+                ("current_model", current.clone()),
+            ],
+        );
         let _ = client_event_tx.send(ServerEvent::ModelChanged {
             id,
             model: current,
@@ -874,6 +943,13 @@ pub(super) async fn handle_notify_auth_changed(
     let agent_clone = agent.clone();
     tokio::spawn(async move {
         let activation = crate::auth::lifecycle::activate_auth_change(&activation_request);
+        // Snapshot which providers jcode now believes are configured right after
+        // an auth change activates. This is the cornerstone for diagnosing
+        // "logged in but model picker still empty / only OpenAI+Anthropic" and
+        // "paste key silently returns to menu" reports (#312, #292, #304): if a
+        // provider the user just configured is not Available here, the failure is
+        // upstream of the picker.
+        crate::auth::AuthStatus::check_fast().log_snapshot("auth_changed");
         let mut bus_rx = crate::bus::Bus::global().subscribe();
         for provider in targets.providers {
             provider.on_auth_changed();
