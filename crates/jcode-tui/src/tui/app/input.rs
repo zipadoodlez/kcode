@@ -2559,6 +2559,9 @@ impl App {
         self.onboarding_preview_mode = false;
 
         // Add user message to display (show placeholder to user, not full paste)
+        // Remember the typed prompt so we can restore it to the input box if this
+        // turn fails (e.g. "token refresh needed"), instead of dropping it.
+        self.last_submitted_input = Some(raw_input.clone());
         self.push_display_message(DisplayMessage {
             role: "user".to_string(),
             content: raw_input, // Show placeholder to user (condensed view)
@@ -2713,6 +2716,7 @@ impl App {
             {
                 Ok(()) => {
                     self.last_stream_error = None;
+                    self.last_submitted_input = None;
                 }
                 Err(e) => {
                     let err_str = crate::util::format_error_chain(&e);

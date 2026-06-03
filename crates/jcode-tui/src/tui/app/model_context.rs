@@ -336,9 +336,32 @@ impl App {
         };
     }
 
+    /// Put the prompt that started the failed turn back into the input box so the
+    /// user does not lose what they typed when a turn errors out (for example a
+    /// "token refresh needed" / auth error). Only restores when the input box is
+    /// empty, so we never clobber text the user has already started typing.
+    pub(super) fn restore_failed_input_to_box(&mut self) {
+        let Some(prompt) = self.last_submitted_input.take() else {
+            return;
+        };
+        if prompt.trim().is_empty() {
+            return;
+        }
+        if !self.input.is_empty() {
+            // User already started a new prompt; do not overwrite it.
+            return;
+        }
+        self.input = prompt;
+        self.cursor_pos = self.input.len();
+        self.reset_tab_completion();
+        self.sync_model_picker_preview_from_input();
+        self.set_status_notice("Prompt restored to input after error");
+    }
+
     pub(super) fn handle_turn_error(&mut self, error: impl Into<String>) {
         let error = error.into();
         self.last_stream_error = Some(error.clone());
+        self.restore_failed_input_to_box();
 
         if let Some(prompt) = crate::provider::parse_failover_prompt_message(&error) {
             self.handle_provider_failover_prompt(prompt);

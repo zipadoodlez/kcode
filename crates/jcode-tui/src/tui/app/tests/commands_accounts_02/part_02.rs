@@ -234,3 +234,31 @@ fn test_fix_resets_provider_session() {
     assert!(msg.content.contains("Fix Results"));
     assert!(msg.content.contains("Reset provider session resume state"));
 }
+
+#[test]
+fn test_turn_error_restores_prompt_to_input() {
+    let mut app = create_test_app();
+    // Simulate a submitted prompt that started a turn.
+    app.last_submitted_input = Some("explain this bug".to_string());
+    app.input.clear();
+
+    app.handle_turn_error("Token refresh needed");
+
+    // The typed prompt should be restored to the input box so it is not lost.
+    assert_eq!(app.input, "explain this bug");
+    // And the saved copy is consumed once restored.
+    assert!(app.last_submitted_input.is_none());
+}
+
+#[test]
+fn test_turn_error_does_not_clobber_new_input() {
+    let mut app = create_test_app();
+    app.last_submitted_input = Some("old prompt".to_string());
+    // User already started typing a new prompt.
+    app.input = "new prompt".to_string();
+
+    app.handle_turn_error("Token refresh needed");
+
+    // We must not overwrite text the user already started.
+    assert_eq!(app.input, "new prompt");
+}

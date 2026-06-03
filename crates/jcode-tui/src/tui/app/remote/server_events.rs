@@ -616,6 +616,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.is_processing = false;
                 app.status = ProcessingStatus::Idle;
                 app.stream_message_ended = false;
+                // Turn completed successfully; drop the saved prompt so a later
+                // unrelated failure cannot restore stale text into the input box.
+                app.last_submitted_input = None;
                 app.processing_started = None;
                 app.replay_processing_started_ms = None;
                 app.replay_elapsed_override = None;
@@ -740,6 +743,9 @@ pub(in crate::tui::app) fn handle_server_event(
             if !is_failover_prompt && !app.schedule_pending_remote_retry("⚠ Remote request failed.")
             {
                 app.clear_pending_remote_retry();
+                // No automatic retry will resend this turn, so restore the prompt the
+                // user typed back into the input box instead of dropping it.
+                app.restore_failed_input_to_box();
                 return app.schedule_auto_poke_followup_if_needed()
                     || app.schedule_overnight_poke_followup_if_needed();
             }

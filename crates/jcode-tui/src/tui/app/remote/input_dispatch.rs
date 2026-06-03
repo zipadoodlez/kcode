@@ -94,6 +94,9 @@ pub(in crate::tui::app) async fn submit_prepared_remote_input(
     }
 
     app.commit_pending_streaming_assistant_message();
+    // Remember the typed prompt so we can restore it to the input box if this turn
+    // fails (e.g. "token refresh needed"), instead of dropping it.
+    app.last_submitted_input = Some(prepared.raw_input.clone());
     app.push_display_message(DisplayMessage {
         role: "user".to_string(),
         content: prepared.raw_input,
