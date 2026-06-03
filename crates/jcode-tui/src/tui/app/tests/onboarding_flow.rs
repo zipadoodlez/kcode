@@ -398,7 +398,7 @@ fn continue_prompt_key_ignored_when_not_in_phase() {
 }
 
 #[test]
-fn no_external_transcripts_falls_back_to_session_search() {
+fn no_external_transcripts_lands_on_suggestions_without_autosubmit() {
     with_temp_jcode_home(|| {
         let mut app = onboarding_test_app();
         if let Some(flow) = app.onboarding_flow.as_mut() {
@@ -408,20 +408,18 @@ fn no_external_transcripts_falls_back_to_session_search() {
                 shown_at: std::time::Instant::now(),
             };
         }
-        // Temp home has no Codex transcripts, so opening the picker should fall
-        // back to the session-search prompt and finish the flow.
+        // Temp home has no Codex transcripts, so opening the picker should land
+        // the user on the clean new-session suggestion cards rather than
+        // auto-submitting a "search for my last session" turn.
         app.onboarding_open_transcript_picker(ExternalCli::Codex);
         assert!(matches!(
             app.onboarding_phase(),
-            None | Some(OnboardingPhase::Done)
+            Some(OnboardingPhase::Suggestions)
         ));
         assert!(app.session_picker_overlay.is_none());
-        // The fallback announced it's finding and continuing the latest session.
-        assert!(
-            app.display_messages()
-                .iter()
-                .any(|m| m.content.contains("find and continue"))
-        );
+        // It must NOT have queued/dispatched an agent turn.
+        assert!(!app.pending_queued_dispatch);
+        assert!(app.queued_messages.is_empty());
     });
 }
 

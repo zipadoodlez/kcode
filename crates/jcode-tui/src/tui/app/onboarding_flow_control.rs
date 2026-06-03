@@ -664,30 +664,14 @@ impl App {
         ]
     }
 
-    /// Fallback: seed the input with a prompt asking the agent to session-search
-    /// the latest external session and continue, then submit it.
-    pub(super) fn onboarding_fallback_to_session_search(&mut self, cli: ExternalCli) {
-        let prompt = format!(
-            "Use session search to find my most recent {} session, summarize what we were \
-             working on, then continue from exactly where we left off.",
-            cli.label()
-        );
-        self.push_display_message(DisplayMessage::system(format!(
-            "No {0} transcripts were found locally, so I'll search for your most recent \
-             {0} session and pick up where you left off.",
-            cli.label()
-        )));
-        self.onboarding_finish();
-        // Dispatch through the queued-message path rather than `submit_input()`.
-        // `submit_input()` sets the local-only `pending_turn`/`is_processing`
-        // flags, which the remote run loop never consumes: the prompt would be
-        // persisted as a dangling user message and the UI would spin on
-        // "sending…" forever. `pending_queued_dispatch` is honored by both the
-        // local and remote loops, so the turn actually starts in either mode.
-        self.input.clear();
-        self.cursor_pos = 0;
-        self.queued_messages.push(prompt);
-        self.pending_queued_dispatch = true;
+    /// Fallback when an external CLI login is present but no resumable
+    /// transcripts load: just land the user on the clean new-session screen with
+    /// the prompt-suggestion cards. We intentionally do NOT auto-submit a
+    /// "search for my last session" turn here; firing an agent turn the user
+    /// never asked for on first run is surprising. They can resume later via
+    /// `/resume` if they want.
+    pub(super) fn onboarding_fallback_to_session_search(&mut self, _cli: ExternalCli) {
+        self.onboarding_show_suggestions();
     }
 
     /// Drop into the suggestion-card state (the "No" / no-OAuth path). Prints
