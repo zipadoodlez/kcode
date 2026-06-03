@@ -535,3 +535,67 @@ fn normalize_github_host_key_rejects_non_github_hosts() {
     assert_eq!(normalize_github_host_key("gitlab.com"), None);
     assert_eq!(normalize_github_host_key(""), None);
 }
+
+#[test]
+fn live_verify_failure_record_blocks_auto_use() -> Result<()> {
+    // Lock the test env and isolate JCODE_HOME so the validation record we write
+    // does not touch the developer's real auth-validation.json.
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().map_err(|e| anyhow!(e))?;
+    let prev_jcode_home = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    // Ensure no env token is present, otherwise the gate short-circuits to
+    // "allowed" regardless of the saved record.
+    let prev_env: Vec<(&str, Option<std::ffi::OsString>)> =
+        ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]
+            .into_iter()
+            .map(|k| (k, std::env::var_os(k)))
+            .collect();
+    for (k, _) in &prev_env {
+        crate::env::remove_var(k);
+    }
+
+    // A banned/ineligible account produces exactly this failure summary shape
+    // from `exchange_github_token`; `verify_copilot_credentials_live` persists
+    // it verbatim. The auto-use gate must treat it as blocking.
+    let record = crate::auth::validation::ProviderValidationRecord {
+        checked_at_ms: chrono::Utc::now().timestamp_millis(),
+        success: false,
+        provider_smoke_ok: Some(false),
+        tool_smoke_ok: None,
+        summary: "Copilot token exchange failed (HTTP 403): access blocked".to_string(),
+    };
+    crate::auth::validation::save("copilot", record)?;
+
+    assert!(
+        validation_failure_blocks_auto_use(),
+        "a recent banned-account exchange failure must block auto-use"
+    );
+
+    // A successful exchange record must NOT block auto-use.
+    let ok_record = crate::auth::validation::ProviderValidationRecord {
+        checked_at_ms: chrono::Utc::now().timestamp_millis(),
+        success: true,
+        provider_smoke_ok: Some(true),
+        tool_smoke_ok: None,
+        summary: "copilot token exchange ok".to_string(),
+    };
+    crate::auth::validation::save("copilot", ok_record)?;
+    assert!(
+        !validation_failure_blocks_auto_use(),
+        "a successful exchange must not block auto-use"
+    );
+
+    for (k, prev) in prev_env {
+        if let Some(prev) = prev {
+            crate::env::set_var(k, prev);
+        }
+    }
+    if let Some(prev) = prev_jcode_home {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+    Ok(())
+}

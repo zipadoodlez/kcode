@@ -625,6 +625,48 @@ pub async fn exchange_github_token(
     })
 }
 
+/// Run a live Copilot auth check and persist the result as a validation record.
+///
+/// This is the only definitive way to know a discovered GitHub token is actually
+/// usable for Copilot: a token can exist locally while the account is banned,
+/// not entitled, or otherwise rejected by the Copilot token service. We exchange
+/// the GitHub OAuth token for a Copilot bearer token (the same call the live
+/// provider makes) and record success/failure so presence-based readiness
+/// surfaces (`validation_failure_blocks_auto_use`, `check_fast`) reflect reality.
+///
+/// Returns `Ok(())` when the token exchange succeeds, or the underlying error
+/// (whose message embeds the HTTP status, e.g. `HTTP 401`/`HTTP 403`) otherwise.
+pub async fn verify_copilot_credentials_live(client: &reqwest::Client) -> Result<()> {
+    let github_token = load_github_token()?;
+    let result = exchange_github_token(client, &github_token).await;
+
+    let summary = match &result {
+        Ok(_) => "copilot token exchange ok".to_string(),
+        Err(err) => format!("{err}"),
+    };
+    let record = crate::auth::validation::ProviderValidationRecord {
+        checked_at_ms: chrono::Utc::now().timestamp_millis(),
+        success: result.is_ok(),
+        provider_smoke_ok: Some(result.is_ok()),
+        tool_smoke_ok: None,
+        summary,
+    };
+    // Best-effort: a failure to persist must not change the live result.
+    let _ = crate::auth::validation::save("copilot", record);
+    // Refresh the auth snapshot so readiness surfaces pick up the new record.
+    crate::auth::AuthStatus::invalidate_cache();
+
+    result.map(|_| ())
+}
+
+/// Convenience wrapper around [`verify_copilot_credentials_live`] that builds a
+/// short-lived HTTP client. Useful for callers (e.g. the TUI crate) that do not
+/// depend on `reqwest` directly.
+pub async fn verify_copilot_credentials_live_default() -> Result<()> {
+    let client = reqwest::Client::new();
+    verify_copilot_credentials_live(&client).await
+}
+
 /// Initiate GitHub OAuth device flow for Copilot authentication.
 /// Returns the device code response with user instructions.
 pub async fn initiate_device_flow(client: &reqwest::Client) -> Result<DeviceCodeResponse> {
