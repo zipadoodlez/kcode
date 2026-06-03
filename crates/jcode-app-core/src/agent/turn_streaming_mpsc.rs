@@ -246,8 +246,7 @@ impl Agent {
                 crate::provider::stores_reasoning_content_for_context(&provider_name);
             let mut reasoning_content = String::new();
             let mut reasoning_signature = String::new();
-            let mut reasoning_fmt =
-                crate::agent::reasoning_format::ReasoningStreamFormatter::new();
+            let mut reasoning_fmt = crate::agent::reasoning_format::ReasoningStreamFormatter::new();
             let mut openai_reasoning_items: Vec<ContentBlock> = Vec::new();
             let mut openai_native_compaction: Option<(String, usize)> = None;
             let mut tool_id_to_name: std::collections::HashMap<String, String> =
