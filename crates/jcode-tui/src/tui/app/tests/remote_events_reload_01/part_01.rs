@@ -1111,3 +1111,21 @@ fn test_handle_server_event_side_pane_images_ignores_inactive_session() {
     assert!(!needs_redraw);
     assert!(app.remote_side_pane_images.is_empty());
 }
+
+#[test]
+fn test_handle_server_event_mcp_status_updates_tools_without_status_notice() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::McpStatus {
+            servers: vec!["agentcard:8".to_string()],
+        },
+        &mut remote,
+    );
+
+    assert_eq!(app.mcp_server_names, vec![("agentcard".to_string(), 8)]);
+    assert_eq!(app.status_notice(), None);
+}

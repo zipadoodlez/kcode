@@ -1363,8 +1363,6 @@ pub(in crate::tui::app) fn handle_server_event(
             false
         }
         ServerEvent::McpStatus { servers } => {
-            let previous_tool_total: usize =
-                app.mcp_server_names.iter().map(|(_, count)| count).sum();
             app.mcp_server_names = servers
                 .iter()
                 .filter_map(|s| {
@@ -1373,26 +1371,10 @@ pub(in crate::tui::app) fn handle_server_event(
                     Some((name.to_string(), count))
                 })
                 .collect();
-            let new_tool_total: usize = app.mcp_server_names.iter().map(|(_, count)| count).sum();
-            // When MCP tools first become available (servers finished
-            // connecting), the next turn rebuilds the tool snapshot once to
-            // expose them — a single intentional prompt-cache miss we accept so
-            // the agent is reachable immediately at spawn instead of blocking on
-            // MCP connection (#206). Surface this so it isn't mistaken for a bug.
-            if previous_tool_total == 0 && new_tool_total > 0 {
-                let server_count = app
-                    .mcp_server_names
-                    .iter()
-                    .filter(|(_, count)| *count > 0)
-                    .count();
-                app.set_status_notice(format!(
-                    "MCP ready: {} tool{} from {} server{} (one-time tool refresh)",
-                    new_tool_total,
-                    if new_tool_total == 1 { "" } else { "s" },
-                    server_count,
-                    if server_count == 1 { "" } else { "s" },
-                ));
-            }
+            // Keep MCP readiness non-intrusive. The footer/tool indicator reads
+            // `mcp_server_names` directly, so avoid a transient status notice here:
+            // status notices render near the prompt and can cover text while the
+            // user is typing during startup.
             false
         }
         ServerEvent::ModelChanged {
