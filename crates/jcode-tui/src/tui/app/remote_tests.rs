@@ -277,6 +277,71 @@ fn reload_wait_status_message_uses_waiting_language() {
 }
 
 #[test]
+fn submit_prepared_remote_input_defers_until_history_loads() {
+    // Regression for the intermittent "first prompt vanishes / weird render"
+    // bug: when a manual submit lands before the bootstrap History payload is
+    // applied, the History handler's `session_changed` branch calls
+    // `clear_display_messages()` and wipes the just-echoed user message. The
+    // submit path must hold the prompt until history loads instead of echoing
+    // and sending it into that race.
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
+
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    // History has NOT loaded yet (fresh connect window).
+    assert!(!remote.has_loaded_history());
+
+    let prepared = crate::tui::app::input::PreparedInput {
+        raw_input: "hi".to_string(),
+        expanded: "hi".to_string(),
+        images: vec![],
+    };
+    rt.block_on(crate::tui::app::remote::submit_prepared_remote_input(
+        &mut app,
+        &mut remote,
+        prepared,
+    ))
+    .expect("submit should not error while history is loading");
+
+    // The prompt must be held, not echoed or sent.
+    assert!(
+        !app.is_processing,
+        "submit must not begin a remote send before history loads"
+    );
+    assert!(
+        app.display_messages().iter().all(|m| m.role != "user"),
+        "user message must not be echoed before history loads (would be clobbered)"
+    );
+    let held = app
+        .pending_prompt_before_history
+        .as_ref()
+        .expect("prompt should be held until history loads");
+    assert_eq!(held.raw_input, "hi");
+
+    // Once history loads, the post-connect dispatcher fires the held prompt.
+    remote.mark_history_loaded();
+    rt.block_on(process_remote_followups(&mut app, &mut remote));
+
+    assert!(
+        app.pending_prompt_before_history.is_none(),
+        "held prompt should be consumed once history is loaded"
+    );
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.role == "user" && m.content == "hi"),
+        "the held prompt should be echoed as a user message after history loads"
+    );
+    assert!(
+        app.is_processing,
+        "the held prompt should be sent once history is loaded"
+    );
+}
+
+#[test]
 fn process_remote_followups_auto_submits_staged_startup_prompt() {
     // Regression for issues #267/#268/#76: a headed swarm spawn stages its
     // initial prompt into `app.input` with `submit_input_on_startup = true`

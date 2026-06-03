@@ -88,6 +88,22 @@ pub(in crate::tui::app) async fn submit_prepared_remote_input(
         return Ok(());
     }
 
+    // Submitting before the bootstrap History payload has been applied is racy:
+    // the session-change branch of the History handler calls
+    // `clear_display_messages()`, which wipes the user message we are about to
+    // echo locally (the prompt appears to "vanish" while the server still
+    // streams a reply against it). Hold the prompt and let
+    // `process_remote_followups` dispatch it once history is loaded - the same
+    // gating that startup auto-submit already relies on.
+    if !remote.has_loaded_history() {
+        crate::logging::info(
+            "Deferring manually submitted prompt until remote history loads (avoids first-prompt clobber)",
+        );
+        app.pending_prompt_before_history = Some(prepared);
+        app.set_status_notice("Loading session...");
+        return Ok(());
+    }
+
     if let Some(command) = input::extract_input_shell_command(&prepared.expanded) {
         submit_remote_input_shell(app, remote, prepared.raw_input, command.to_string()).await?;
         return Ok(());

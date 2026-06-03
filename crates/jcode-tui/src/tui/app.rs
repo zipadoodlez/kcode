@@ -946,6 +946,14 @@ pub struct App {
     // the model switch and use stale provider/model state.
     remote_model_switch_in_flight: bool,
     pending_prompt_after_model_switch: Option<input::PreparedInput>,
+    // A manually submitted prompt that arrived before the remote session's
+    // bootstrap History payload was applied. Submitting in that window is racy:
+    // the locally-echoed user message is wiped by the `session_changed`
+    // `clear_display_messages()` in the History handler (the prompt "vanishes"
+    // while the server still streams a reply). Hold it until history loads and
+    // let `process_remote_followups` dispatch it, exactly like a staged startup
+    // prompt.
+    pending_prompt_before_history: Option<input::PreparedInput>,
     // Pending account switch from inline picker (for remote mode async processing)
     pending_account_picker_action: Option<crate::tui::AccountPickerAction>,
     // Keybindings for model switching

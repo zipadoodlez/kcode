@@ -823,6 +823,27 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
         return;
     }
 
+    // Now that history is loaded (guaranteed by the gate above), dispatch any
+    // prompt that the user submitted during the pre-history window. Submitting
+    // it earlier would have been clobbered by the bootstrap History payload's
+    // `session_changed` clear; deferring here fixes the intermittent
+    // "first prompt vanishes / weird render" bug.
+    if !app.is_processing
+        && let Some(prepared) = app.pending_prompt_before_history.take()
+    {
+        crate::logging::info(
+            "Dispatching prompt that was held until remote history finished loading",
+        );
+        if let Err(error) = submit_prepared_remote_input(app, remote, prepared).await {
+            app.push_display_message(DisplayMessage::error(format!(
+                "Failed to submit prompt after session load: {}",
+                error
+            )));
+            app.set_status_notice("Prompt failed");
+        }
+        return;
+    }
+
     let synthetic_startup_dispatch = app.is_processing
         && app.current_message_id.is_none()
         && app.remote_resume_activity.is_none()
