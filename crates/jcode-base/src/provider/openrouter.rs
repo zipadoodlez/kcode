@@ -955,6 +955,10 @@ impl OpenRouterProvider {
         matches!(profile_id, Some(id) if id.eq_ignore_ascii_case("deepseek"))
     }
 
+    fn profile_rejects_image_input(profile_id: Option<&str>) -> bool {
+        matches!(profile_id, Some(id) if id.eq_ignore_ascii_case("deepseek"))
+    }
+
     fn profile_supports_unified_reasoning(
         profile_id: Option<&str>,
         send_openrouter_headers: bool,
