@@ -6,6 +6,7 @@ mod interrupts;
 mod messages;
 mod prompting;
 mod provider;
+mod reasoning_format;
 mod response_recovery;
 mod status;
 mod streaming;
