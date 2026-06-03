@@ -554,6 +554,30 @@ fn model_validation_failure_appends_single_warning_line_with_detail() {
 }
 
 #[test]
+fn model_validation_auth_failure_offers_login_fix() {
+    let mut app = create_test_app();
+    let session_id = app.session.id.clone();
+
+    let consumed = app.handle_onboarding_model_validated(crate::bus::OnboardingModelValidated {
+        session_id,
+        model_label: "Claude Opus 4.8".to_string(),
+        ok: false,
+        detail: Some(
+            "Anthropic API error (401 Unauthorized): Invalid authentication credentials"
+                .to_string(),
+        ),
+    });
+
+    assert!(consumed);
+    let messages = app.display_messages();
+    let line = &messages.last().unwrap().content;
+    // Auth failures should point the user at /login to re-authenticate, while
+    // still offering /model as an alternative.
+    assert!(line.contains("/login"), "auth failure offers /login: {line:?}");
+    assert!(line.contains("/model"), "still offers /model: {line:?}");
+}
+
+#[test]
 fn model_validation_ignores_stale_session_result() {
     let mut app = create_test_app();
     let before = app.display_messages().len();

@@ -892,15 +892,40 @@ impl App {
                 result.model_label
             ));
         } else {
-            let detail = result.detail.map(|d| format!(" ({d})")).unwrap_or_default();
+            let detail_text = result.detail.unwrap_or_default();
+            let detail = if detail_text.is_empty() {
+                String::new()
+            } else {
+                format!(" ({detail_text})")
+            };
+            // An auth failure (expired/invalid credentials) is fixed by logging
+            // in again, so point the user at /login in addition to /model.
+            let looks_like_auth = {
+                let lower = detail_text.to_ascii_lowercase();
+                lower.contains("401")
+                    || lower.contains("unauthorized")
+                    || lower.contains("authentication")
+                    || lower.contains("invalid api key")
+                    || lower.contains("invalid x-api-key")
+                    || lower.contains("credentials")
+            };
+            let fix_hint = if looks_like_auth {
+                "Run /login to fix your credentials, or /model to pick another."
+            } else {
+                "You can still try it, or run /model to pick another."
+            };
+            let status_hint = if looks_like_auth {
+                "type anything to try, /login to fix credentials, or /model"
+            } else {
+                "type anything to try, or /model"
+            };
             self.push_display_message(DisplayMessage::system(format!(
-                "⚠ {} could not be validated{}. You can still try it, or run /model to pick another.",
-
-                result.model_label, detail
+                "⚠ {} could not be validated{}. {}",
+                result.model_label, detail, fix_hint
             )));
             self.set_status_notice(format!(
-                "{} not validated - type anything to try, or /model",
-                result.model_label
+                "{} not validated - {}",
+                result.model_label, status_hint
             ));
         }
         true
