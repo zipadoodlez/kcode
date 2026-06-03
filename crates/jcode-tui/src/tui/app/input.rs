@@ -2372,7 +2372,8 @@ impl App {
         if text.is_empty() {
             return;
         }
-        let mut at_line_start = self.streaming_text.is_empty() || self.streaming_text.ends_with('\n');
+        let mut at_line_start =
+            self.streaming_text.is_empty() || self.streaming_text.ends_with('\n');
         let mut out = String::with_capacity(text.len() + 8);
         for ch in text.chars() {
             if at_line_start {

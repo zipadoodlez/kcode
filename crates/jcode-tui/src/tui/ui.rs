@@ -1604,10 +1604,7 @@ pub(crate) fn copy_pane_vertical_edge_point(
         return None;
     };
 
-    let clamped_col = column.clamp(
-        area.x,
-        area.x.saturating_add(area.width).saturating_sub(1),
-    );
+    let clamped_col = column.clamp(area.x, area.x.saturating_add(area.width).saturating_sub(1));
 
     copy_point_from_snapshot(&snapshot, clamped_col, edge_row).map(|point| (point, upward))
 }
