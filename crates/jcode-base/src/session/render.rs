@@ -12,6 +12,24 @@ use std::collections::HashMap;
 /// entire compacted prefix with a marker.
 pub const DEFAULT_VISIBLE_COMPACTED_HISTORY_MESSAGES: usize = 64;
 
+/// Format persisted reasoning/thinking text into the dim+italic markdown used
+/// by the live streaming path (see `reasoning_format::ReasoningStreamFormatter`).
+/// Each line is wrapped via the shared `reasoning_line_markup` so resumed
+/// sessions render reasoning identically to how it streamed, terminated by a
+/// blank line so following answer text renders as a normal paragraph.
+fn format_reasoning_markup(text: &str) -> String {
+    if text.trim().is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for line in text.split('\n') {
+        out.push_str(&jcode_tui_markdown::reasoning_line_markup(line));
+    }
+    // Blank line terminates the reasoning block.
+    out.push('\n');
+    out
+}
+
 fn is_internal_system_reminder(msg: &super::StoredMessage) -> bool {
     msg.content
         .iter()
@@ -379,10 +397,11 @@ pub fn render_messages_and_images_with_compacted_history(
                         tool_data,
                     });
                 }
-                ContentBlock::Reasoning { .. }
-                | ContentBlock::ReasoningTrace { .. }
-                | ContentBlock::AnthropicThinking { .. }
-                | ContentBlock::OpenAIReasoning { .. } => {}
+                ContentBlock::Reasoning { text: t }
+                | ContentBlock::ReasoningTrace { text: t } => {
+                    text.push_str(&format_reasoning_markup(t));
+                }
+                ContentBlock::AnthropicThinking { .. } | ContentBlock::OpenAIReasoning { .. } => {}
                 ContentBlock::Image { media_type, data } => {
                     images.push(RenderedImage {
                         media_type: media_type.clone(),

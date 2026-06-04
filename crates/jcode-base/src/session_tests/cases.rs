@@ -1056,6 +1056,79 @@ fn test_render_messages_honors_system_display_role_override() {
 }
 
 #[test]
+fn test_render_messages_renders_persisted_reasoning() {
+    use jcode_tui_markdown::REASONING_SENTINEL;
+
+    let mut session = Session::create_with_id(
+        "session_render_reasoning_test".to_string(),
+        None,
+        Some("render reasoning test".to_string()),
+    );
+
+    session.add_message(
+        Role::Assistant,
+        vec![
+            ContentBlock::ReasoningTrace {
+                text: "step one\nstep two".to_string(),
+            },
+            ContentBlock::Text {
+                text: "Here is the answer.".to_string(),
+                cache_control: None,
+            },
+        ],
+    );
+
+    let rendered = render_messages(&session);
+    assert_eq!(rendered.len(), 1);
+    let content = &rendered[0].content;
+    // Reasoning lines are rendered as dim/italic markup with the sentinel.
+    assert!(
+        content.contains(&format!("*{0}step one{0}*", REASONING_SENTINEL)),
+        "expected reasoning markup, got: {content:?}"
+    );
+    assert!(
+        content.contains(&format!("*{0}step two{0}*", REASONING_SENTINEL)),
+        "expected reasoning markup, got: {content:?}"
+    );
+    // Answer text follows the reasoning block.
+    assert!(content.contains("Here is the answer."));
+    let reasoning_end = content.find("step two").unwrap();
+    let answer_start = content.find("Here is the answer.").unwrap();
+    assert!(
+        reasoning_end < answer_start,
+        "reasoning should precede the answer text: {content:?}"
+    );
+}
+
+#[test]
+fn test_render_messages_renders_legacy_reasoning_variant() {
+    use jcode_tui_markdown::REASONING_SENTINEL;
+
+    let mut session = Session::create_with_id(
+        "session_render_legacy_reasoning_test".to_string(),
+        None,
+        Some("render legacy reasoning test".to_string()),
+    );
+
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::Reasoning {
+            text: "legacy thought".to_string(),
+        }],
+    );
+
+    let rendered = render_messages(&session);
+    assert_eq!(rendered.len(), 1);
+    assert!(
+        rendered[0]
+            .content
+            .contains(&format!("*{0}legacy thought{0}*", REASONING_SENTINEL)),
+        "expected legacy reasoning markup, got: {:?}",
+        rendered[0].content
+    );
+}
+
+#[test]
 fn test_render_messages_honors_background_task_display_role_override() {
     let mut session = Session::create_with_id(
         "session_background_task_role_test".to_string(),
