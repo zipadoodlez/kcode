@@ -634,15 +634,32 @@ impl AntigravityProvider {
                 project_id
             }
         };
+        let resolved_model = self.resolve_model_for_request(model);
+        let tools_is_empty = tools.is_empty();
+        let mut tools = super::gemini::build_tools(tools);
+        // Claude models on the Cloud Code backend reach Anthropic via a
+        // Gemini->Anthropic schema translation that rejects JSON Schema
+        // combiners (`anyOf`/`oneOf`/`allOf`) with HTTP 400 "must match JSON
+        // Schema draft 2020-12". Gemini models accept them, so this is scoped to
+        // Claude only. See `flatten_schema_combiners` for the collapse rule.
+        if model_is_claude(&resolved_model)
+            && let Some(tools) = tools.as_mut()
+        {
+            for tool in tools.iter_mut() {
+                for decl in tool.function_declarations.iter_mut() {
+                    decl.parameters = flatten_schema_combiners(&decl.parameters);
+                }
+            }
+        }
         let request = CodeAssistGenerateRequest {
-            model: self.resolve_model_for_request(model),
+            model: resolved_model,
             project,
             user_prompt_id: Uuid::new_v4().to_string(),
             request: VertexGenerateContentRequest {
                 contents: super::gemini::build_contents(messages),
                 system_instruction: super::gemini::build_system_instruction(system),
-                tools: super::gemini::build_tools(tools),
-                tool_config: if tools.is_empty() {
+                tools,
+                tool_config: if tools_is_empty {
                     None
                 } else {
                     Some(GeminiToolConfig {
@@ -692,6 +709,14 @@ impl AntigravityProvider {
             ],
         );
 
+        if std::env::var("JCODE_ANTIGRAVITY_DUMP_REQUEST").is_ok()
+            && let Ok(full) = serde_json::to_string_pretty(&request)
+        {
+            let path = std::env::temp_dir().join("antigravity_request_dump.json");
+            let _ = std::fs::write(&path, &full);
+            eprintln!("[dump] wrote outgoing request to {}", path.display());
+        }
+
         let response = self
             .client
             .post(GENERATE_CONTENT_API_URL)
@@ -723,6 +748,57 @@ impl AntigravityProvider {
             .json()
             .await
             .context("Failed to decode Antigravity generateContent response")
+    }
+}
+
+/// Whether a resolved Antigravity model id targets an Anthropic Claude model.
+fn model_is_claude(model: &str) -> bool {
+    model.trim().to_ascii_lowercase().contains("claude")
+}
+
+/// Collapse JSON Schema combiners (`anyOf`/`oneOf`/`allOf`) to their first
+/// branch throughout a tool-parameter schema.
+///
+/// The Antigravity Cloud Code backend forwards Claude tool calls through a
+/// Gemini->Anthropic schema translation that rejects these combiners with
+/// HTTP 400 ("input_schema: JSON schema is invalid. It must match JSON Schema
+/// draft 2020-12"). Collapsing to the first branch preserves a usable, valid
+/// schema (e.g. `anyOf: [string, array<string>]` becomes `string`) so the tool
+/// call is accepted; the agent simply uses the primary branch's shape.
+fn flatten_schema_combiners(schema: &Value) -> Value {
+    match schema {
+        Value::Object(map) => {
+            for combiner in ["anyOf", "oneOf", "allOf"] {
+                if let Some(Value::Array(branches)) = map.get(combiner)
+                    && let Some(first) = branches.first()
+                {
+                    // Merge sibling keys (e.g. `description`) onto the chosen
+                    // branch so we don't lose prompt-visible metadata.
+                    let mut flattened = match flatten_schema_combiners(first) {
+                        Value::Object(branch_map) => branch_map,
+                        other => return other,
+                    };
+                    for (key, value) in map {
+                        if key == combiner {
+                            continue;
+                        }
+                        flattened
+                            .entry(key.clone())
+                            .or_insert_with(|| flatten_schema_combiners(value));
+                    }
+                    return Value::Object(flattened);
+                }
+            }
+            let mut out = serde_json::Map::new();
+            for (key, value) in map {
+                out.insert(key.clone(), flatten_schema_combiners(value));
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => {
+            Value::Array(items.iter().map(flatten_schema_combiners).collect())
+        }
+        _ => schema.clone(),
     }
 }
 
