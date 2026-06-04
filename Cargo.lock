@@ -3910,6 +3910,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-render-core"
+version = "0.1.0"
+dependencies = [
+ "pulldown-cmark",
+ "serde",
+ "unicode-width 0.2.0",
+]
+
+[[package]]
 name = "jcode-selfdev-types"
 version = "0.1.0"
 dependencies = [
@@ -4076,6 +4085,7 @@ dependencies = [
 name = "jcode-tui-markdown"
 version = "0.1.0"
 dependencies = [
+ "jcode-render-core",
  "jcode-tui-mermaid",
  "jcode-tui-workspace",
  "pulldown-cmark",
