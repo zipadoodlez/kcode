@@ -269,7 +269,7 @@ fn model_ids_with_context_aliases(models: Vec<String>) -> Vec<String> {
         if seen.insert(model.clone()) {
             deduped.push(model.clone());
         }
-        if get_cached_context_limit(&normalized).unwrap_or_default() >= 1_000_000 {
+        if model_exposes_1m_alias(&normalized) {
             let alias = format!("{}[1m]", normalized);
             if seen.insert(alias.clone()) {
                 deduped.push(alias);
@@ -278,6 +278,27 @@ fn model_ids_with_context_aliases(models: Vec<String>) -> Vec<String> {
     }
 
     deduped
+}
+
+/// Whether a `<model>[1m]` long-context picker alias should be surfaced.
+///
+/// For *known* Claude models this is authoritative: only opt-in 1M models (Opus
+/// 4.6, Sonnet 4.6) get an alias. Native-1M models (Opus 4.8, 4.7) already use
+/// 1M by default, so a `[1m]` alias would be a redundant duplicate, and
+/// 200K-only models (Sonnet 4.5, which the live catalog wrongly advertises as
+/// 1M) get no alias. Unknown/future Claude ids and all non-Claude models keep
+/// the prior behavior: alias when the cached catalog limit is >= 1M.
+fn model_exposes_1m_alias(normalized_model: &str) -> bool {
+    if normalized_model.starts_with("claude-") {
+        let mode = jcode_provider_core::anthropic_context_mode(normalized_model);
+        // Only trust the classifier for models it actually recognizes; for
+        // anything it maps to `Standard` we can't tell a genuine 200K model from
+        // an unrecognized future one, so fall back to the catalog heuristic.
+        if mode != jcode_provider_core::AnthropicContextMode::Standard {
+            return mode.exposes_1m_alias();
+        }
+    }
+    get_cached_context_limit(normalized_model).unwrap_or_default() >= 1_000_000
 }
 
 fn live_catalog_model_ids(service: &ModelCatalogService, scope: &str) -> Option<Vec<String>> {

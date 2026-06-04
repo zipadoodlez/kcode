@@ -69,19 +69,22 @@ fn test_anthropic_live_catalog_replaces_static_fallback_list() {
     crate::env::remove_var("ANTHROPIC_API_KEY");
     crate::auth::claude::set_active_account_override(Some("work".to_string()));
 
+    // Use a model the static classifier does not recognize so this exercises
+    // the generic catalog-driven path (>=1M cached limit => synthesized [1m]
+    // alias). Known models (e.g. opus-4-8/4-7) are classified statically.
     populate_context_limits(
-        [("claude-opus-4-7".to_string(), 1_048_576)]
+        [("claude-opus-5-preview".to_string(), 1_048_576)]
             .into_iter()
             .collect(),
     );
-    populate_anthropic_models(vec!["claude-opus-4-7".to_string()]);
+    populate_anthropic_models(vec!["claude-opus-5-preview".to_string()]);
     let models = known_anthropic_model_ids();
 
     assert_eq!(
         models,
         vec![
-            "claude-opus-4-7".to_string(),
-            "claude-opus-4-7[1m]".to_string()
+            "claude-opus-5-preview".to_string(),
+            "claude-opus-5-preview[1m]".to_string()
         ]
     );
 
@@ -118,8 +121,8 @@ fn test_anthropic_model_catalog_hydrates_from_disk_cache() {
         crate::env::remove_var("ANTHROPIC_API_KEY");
         crate::auth::claude::set_active_account_override(Some("disk-claude".to_string()));
         persist_anthropic_model_catalog(&AnthropicModelCatalog {
-            available_models: vec!["claude-opus-4-7".to_string()],
-            context_limits: [("claude-opus-4-7".to_string(), 1_048_576)]
+            available_models: vec!["claude-opus-5-preview".to_string()],
+            context_limits: [("claude-opus-5-preview".to_string(), 1_048_576)]
                 .into_iter()
                 .collect(),
         });
@@ -127,11 +130,14 @@ fn test_anthropic_model_catalog_hydrates_from_disk_cache() {
         assert_eq!(
             cached_anthropic_model_ids(),
             Some(vec![
-                "claude-opus-4-7".to_string(),
-                "claude-opus-4-7[1m]".to_string()
+                "claude-opus-5-preview".to_string(),
+                "claude-opus-5-preview[1m]".to_string()
             ])
         );
-        assert_eq!(context_limit_for_model("claude-opus-4-7"), Some(1_048_576));
+        assert_eq!(
+            context_limit_for_model("claude-opus-5-preview"),
+            Some(1_048_576)
+        );
 
         crate::auth::claude::set_active_account_override(None);
     });

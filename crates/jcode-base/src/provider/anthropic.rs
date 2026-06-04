@@ -388,7 +388,6 @@ const DEFAULT_MAX_TOKENS: u32 = 32_768;
 /// Available models
 pub const AVAILABLE_MODELS: &[&str] = &[
     "claude-opus-4-8",
-    "claude-opus-4-8[1m]",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
     "claude-sonnet-4-6",
@@ -1368,6 +1367,19 @@ impl Provider for AnthropicProvider {
     }
 
     fn set_model(&self, model: &str) -> Result<()> {
+        // Native-1M models (Opus 4.8/4.7) no longer carry a redundant `[1m]`
+        // alias. Gracefully migrate a stale `<model>[1m]` id (from old config or
+        // a restored session) to its canonical form, since the suffix is a no-op
+        // for these models.
+        let model: &str = if is_1m_model(model)
+            && matches!(
+                jcode_provider_core::anthropic_context_mode(model),
+                jcode_provider_core::AnthropicContextMode::Native1M
+            ) {
+            strip_1m_suffix(model)
+        } else {
+            model
+        };
         if !crate::provider::known_anthropic_model_ids()
             .iter()
             .any(|known| known == model)

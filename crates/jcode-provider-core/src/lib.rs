@@ -7,8 +7,9 @@ pub mod pricing;
 pub mod selection;
 
 pub use anthropic::{
-    ANTHROPIC_OAUTH_BETA_HEADERS, ANTHROPIC_OAUTH_BETA_HEADERS_1M, anthropic_effectively_1m,
-    anthropic_is_1m_model, anthropic_map_tool_name_for_oauth, anthropic_map_tool_name_from_oauth,
+    ANTHROPIC_OAUTH_BETA_HEADERS, ANTHROPIC_OAUTH_BETA_HEADERS_1M, AnthropicContextMode,
+    anthropic_context_mode, anthropic_effectively_1m, anthropic_is_1m_model,
+    anthropic_map_tool_name_for_oauth, anthropic_map_tool_name_from_oauth,
     anthropic_oauth_beta_headers, anthropic_stainless_arch, anthropic_stainless_os,
     anthropic_strip_1m_suffix,
 };
