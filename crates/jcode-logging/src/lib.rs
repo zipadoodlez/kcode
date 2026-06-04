@@ -10,10 +10,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 static LOGGER: Mutex<Option<Logger>> = Mutex::new(None);
+static CLEANUP_STARTED: AtomicBool = AtomicBool::new(false);
 static TASK_LOG_CONTEXTS: OnceLock<Mutex<HashMap<String, LogContext>>> = OnceLock::new();
 static RATE_LIMITS: OnceLock<Mutex<HashMap<String, RateLimitState>>> = OnceLock::new();
 
@@ -221,6 +223,17 @@ pub fn init() {
     };
     if guard.is_none() {
         *guard = Logger::new();
+    }
+    drop(guard);
+
+    // Prune stale daily log files once per process, off the startup path so
+    // disk I/O never blocks launch. cleanup_old_logs is scoped to our own
+    // `jcode-*.log` files, so it is safe to run unconditionally.
+    if !CLEANUP_STARTED.swap(true, Ordering::SeqCst) {
+        std::thread::Builder::new()
+            .name("jcode-log-cleanup".to_string())
+            .spawn(cleanup_old_logs)
+            .ok();
     }
 }
 
@@ -536,22 +549,43 @@ pub fn log_path() -> Option<PathBuf> {
     Some(log_dir.join(format!("jcode-{}.log", date)))
 }
 
-/// Clean up old logs (keep last 7 days)
+/// Remove daily `jcode-*.log` / `jcode-desktop-*.log` files older than 7 days.
+///
+/// Scoped deliberately to the date-stamped log files this logger produces. The
+/// log directory also holds non-log data (e.g. `memory/`, `memory-events-*.jsonl`)
+/// that must NOT be touched here, so we never blanket-delete by mtime.
 pub fn cleanup_old_logs() {
-    if let Some(log_dir) = log_dir()
-        && let Ok(entries) = fs::read_dir(&log_dir)
-    {
-        let cutoff = Local::now() - chrono::Duration::days(7);
-        for entry in entries.flatten() {
-            if let Ok(metadata) = entry.metadata()
-                && let Ok(modified) = metadata.modified()
+    if let Some(log_dir) = log_dir() {
+        cleanup_old_logs_in(&log_dir, Local::now());
+    }
+}
+
+/// Core of [`cleanup_old_logs`], parameterized on the directory and "now" so it
+/// can be unit-tested without touching the real log directory or process env.
+fn cleanup_old_logs_in(log_dir: &std::path::Path, now: chrono::DateTime<Local>) {
+    let Ok(entries) = fs::read_dir(log_dir) else {
+        return;
+    };
+    let cutoff = now - chrono::Duration::days(7);
+    for entry in entries.flatten() {
+        // Only consider our own date-stamped log files.
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let is_jcode_log = (name.starts_with("jcode-") || name.starts_with("jcode-desktop-"))
+            && name.ends_with(".log");
+        if !is_jcode_log {
+            continue;
+        }
+
+        if let Ok(metadata) = entry.metadata()
+            && metadata.is_file()
+            && let Ok(modified) = metadata.modified()
+        {
+            let modified: chrono::DateTime<Local> = modified.into();
+            if modified < cutoff
+                && let Err(err) = fs::remove_file(entry.path())
             {
-                let modified: chrono::DateTime<Local> = modified.into();
-                if modified < cutoff
-                    && let Err(err) = fs::remove_file(entry.path())
-                {
-                    eprintln!("jcode logger cleanup failed: {err}");
-                }
+                eprintln!("jcode logger cleanup failed: {err}");
             }
         }
     }
@@ -686,5 +720,55 @@ mod tests {
                 "diagnostic field `{name}` should not be redacted",
             );
         }
+    }
+
+    #[test]
+    fn cleanup_removes_only_old_jcode_logs() {
+        use std::time::{Duration, SystemTime};
+
+        let dir = std::env::temp_dir().join(format!(
+            "jcode-log-cleanup-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).expect("create temp log dir");
+
+        let old_mtime = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 30); // 30 days
+
+        let write = |name: &str, age_old: bool| {
+            let path = dir.join(name);
+            let mut f = File::create(&path).expect("create file");
+            f.write_all(b"x").ok();
+            if age_old {
+                f.set_modified(old_mtime).expect("set mtime");
+            }
+            path
+        };
+
+        // Old log files that SHOULD be deleted.
+        let old_log = write("jcode-2000-01-01.log", true);
+        let old_desktop = write("jcode-desktop-2000-01-01.log", true);
+        // Recent log file that SHOULD survive.
+        let new_log = write("jcode-2099-01-01.log", false);
+        // Non-log data that SHOULD survive even though it is old.
+        let old_memory = write("memory-events-2000-01-01.jsonl", true);
+        let old_other = write("notes-2000-01-01.txt", true);
+        // A subdirectory (e.g. `memory/`) must never be removed.
+        let subdir = dir.join("memory");
+        fs::create_dir_all(&subdir).expect("create subdir");
+
+        cleanup_old_logs_in(&dir, Local::now());
+
+        assert!(!old_log.exists(), "old jcode log should be deleted");
+        assert!(!old_desktop.exists(), "old desktop log should be deleted");
+        assert!(new_log.exists(), "recent jcode log must survive");
+        assert!(old_memory.exists(), "memory-events jsonl must survive");
+        assert!(old_other.exists(), "unrelated files must survive");
+        assert!(subdir.is_dir(), "subdirectories must survive");
+
+        fs::remove_dir_all(&dir).ok();
     }
 }
