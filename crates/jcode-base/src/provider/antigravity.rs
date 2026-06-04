@@ -637,17 +637,17 @@ impl AntigravityProvider {
         let resolved_model = self.resolve_model_for_request(model);
         let tools_is_empty = tools.is_empty();
         let mut tools = super::gemini::build_tools(tools);
-        // Claude models on the Cloud Code backend reach Anthropic via a
-        // Gemini->Anthropic schema translation that rejects JSON Schema
-        // combiners (`anyOf`/`oneOf`/`allOf`) with HTTP 400 "must match JSON
-        // Schema draft 2020-12". Gemini models accept them, so this is scoped to
-        // Claude only. See `flatten_schema_combiners` for the collapse rule.
-        if model_is_claude(&resolved_model)
-            && let Some(tools) = tools.as_mut()
-        {
+        // Normalize each tool's JSON schema for the specific Antigravity backend
+        // path the resolved model uses. The Cloud Code backend forwards each
+        // model family to a different upstream (Gemini-native, Gemini->Anthropic,
+        // or an OpenAI-compatible bridge), and each upstream rejects a different
+        // construct. Gemini-native accepts everything jcode emits, so Gemini
+        // models pass through unchanged. See `antigravity_compatible_schema`.
+        if let Some(tools) = tools.as_mut() {
             for tool in tools.iter_mut() {
                 for decl in tool.function_declarations.iter_mut() {
-                    decl.parameters = flatten_schema_combiners(&decl.parameters);
+                    decl.parameters =
+                        antigravity_compatible_schema(&decl.parameters, &resolved_model);
                 }
             }
         }
@@ -709,14 +709,6 @@ impl AntigravityProvider {
             ],
         );
 
-        if std::env::var("JCODE_ANTIGRAVITY_DUMP_REQUEST").is_ok()
-            && let Ok(full) = serde_json::to_string_pretty(&request)
-        {
-            let path = std::env::temp_dir().join("antigravity_request_dump.json");
-            let _ = std::fs::write(&path, &full);
-            eprintln!("[dump] wrote outgoing request to {}", path.display());
-        }
-
         let response = self
             .client
             .post(GENERATE_CONTENT_API_URL)
@@ -754,6 +746,79 @@ impl AntigravityProvider {
 /// Whether a resolved Antigravity model id targets an Anthropic Claude model.
 fn model_is_claude(model: &str) -> bool {
     model.trim().to_ascii_lowercase().contains("claude")
+}
+
+/// Whether a resolved Antigravity model id targets a Gemini model.
+///
+/// Gemini is the backend's native path and accepts every JSON Schema construct
+/// jcode emits, so no schema rewriting is needed for these models.
+fn model_is_gemini(model: &str) -> bool {
+    model.trim().to_ascii_lowercase().starts_with("gemini")
+}
+
+/// Normalize a tool-parameter JSON schema for the Antigravity backend path that
+/// the resolved model uses.
+///
+/// The Antigravity Cloud Code backend multiplexes several upstreams behind one
+/// `generateContent` endpoint, and each upstream validates tool schemas
+/// differently. jcode's emitted schemas are valid JSON Schema draft 2020-12
+/// (verified against the metaschema), but two upstreams reject specific
+/// constructs after their own re-translation:
+///
+/// - **Claude** (Gemini->Anthropic translation): rejects combiners
+///   (`anyOf`/`oneOf`/`allOf`) with HTTP 400 "must match JSON Schema draft
+///   2020-12". We collapse each combiner to its first branch.
+/// - **gpt-oss / other OpenAI-compatible bridges**: round-trip numeric schema
+///   bounds through a protobuf `int64`, which proto3 JSON re-encodes as a
+///   string, then reject it ("'10' is not of type 'integer'"). We drop
+///   `minItems`/`maxItems`/`minLength`/`maxLength`/`minProperties`/
+///   `maxProperties` for these models. These are advisory bounds the model does
+///   not need to satisfy a call, so dropping them is safe.
+///
+/// Gemini (the native path) is returned unchanged.
+fn antigravity_compatible_schema(schema: &Value, model: &str) -> Value {
+    if model_is_gemini(model) {
+        return schema.clone();
+    }
+    if model_is_claude(model) {
+        return flatten_schema_combiners(schema);
+    }
+    // Non-Gemini, non-Claude models (e.g. gpt-oss) reach an OpenAI-compatible
+    // bridge that mangles numeric bounds; also flatten combiners defensively
+    // since those bridges share Anthropic's strictness about them.
+    strip_numeric_schema_bounds(&flatten_schema_combiners(schema))
+}
+
+/// Numeric JSON Schema bounds an OpenAI-compatible Antigravity bridge corrupts
+/// when round-tripping through a protobuf `int64` field.
+const NUMERIC_SCHEMA_BOUND_KEYS: &[&str] = &[
+    "minItems",
+    "maxItems",
+    "minLength",
+    "maxLength",
+    "minProperties",
+    "maxProperties",
+];
+
+/// Recursively drop [`NUMERIC_SCHEMA_BOUND_KEYS`] from a schema. See
+/// `antigravity_compatible_schema` for why this is needed.
+fn strip_numeric_schema_bounds(schema: &Value) -> Value {
+    match schema {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (key, value) in map {
+                if NUMERIC_SCHEMA_BOUND_KEYS.contains(&key.as_str()) {
+                    continue;
+                }
+                out.insert(key.clone(), strip_numeric_schema_bounds(value));
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => {
+            Value::Array(items.iter().map(strip_numeric_schema_bounds).collect())
+        }
+        _ => schema.clone(),
+    }
 }
 
 /// Collapse JSON Schema combiners (`anyOf`/`oneOf`/`allOf`) to their first
