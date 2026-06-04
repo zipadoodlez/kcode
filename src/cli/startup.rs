@@ -17,8 +17,13 @@ pub async fn run() -> Result<()> {
 
     logging::init();
     startup_profile::mark("logging_init");
-    logging::cleanup_old_logs();
-    startup_profile::mark("log_cleanup");
+    // Old log pruning now runs on a background thread inside logging::init(),
+    // so it no longer blocks startup. Memory-event logs have a separate,
+    // longer (14-day) retention, so prune them on their own background thread.
+    std::thread::Builder::new()
+        .name("jcode-memlog-cleanup".to_string())
+        .spawn(crate::memory_log::cleanup_old_memory_logs)
+        .ok();
     logging::info("jcode starting");
 
     // Wire config-reload reactions without making config depend on auth/bus:
