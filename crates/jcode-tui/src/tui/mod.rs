@@ -1193,10 +1193,13 @@ fn full_frame_status_animation_active_with_policy(
 
 fn primary_status_spinner_fast_path_available_with_policy(
     state: &dyn TuiState,
-    policy: &crate::perf::TuiPerfPolicy,
+    _policy: &crate::perf::TuiPerfPolicy,
 ) -> bool {
-    policy.enable_decorative_animations
-        && state.is_processing()
+    // The single-cell spinner fast path is available in every performance tier,
+    // including Minimal/SSH/WSL where decorative animations are off. Keep these
+    // conditions in sync with `app::run_shell::status_spinner_only_symbol`, which
+    // is what actually gates the spinner-only tick in the run loop.
+    state.is_processing()
         && app::run_shell::status_uses_primary_spinner(&state.status())
         && state.streaming_text().is_empty()
         && !state.centered_mode()
@@ -1208,8 +1211,11 @@ fn primary_status_spinner_needs_full_redraw_with_policy(
     state: &dyn TuiState,
     policy: &crate::perf::TuiPerfPolicy,
 ) -> bool {
-    policy.enable_decorative_animations
-        && state.is_processing()
+    // The primary spinner only needs the more expensive full-redraw cadence when
+    // the cheap single-cell fast path cannot run (e.g. centered composer). When
+    // the fast path is available we keep full redraws at the slow passive-liveness
+    // rate and let the one-cell renderer animate the spinner.
+    state.is_processing()
         && app::run_shell::status_uses_primary_spinner(&state.status())
         && state.streaming_text().is_empty()
         && !primary_status_spinner_fast_path_available_with_policy(state, policy)

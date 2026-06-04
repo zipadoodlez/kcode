@@ -252,6 +252,17 @@ impl App {
                     redraw_interval = interval(redraw_period);
                 }
                 tokio::select! {
+                    // Cheap single-cell spinner refresh between full redraws. This
+                    // keeps the thinking/connecting spinner feeling responsive
+                    // (especially in low-resource tiers where full redraws run at
+                    // the ~1 Hz passive-liveness rate) by patching just the status
+                    // cell. Only active while there is no streaming text to reveal.
+                    _ = status_spinner_interval.tick(), if super::run_shell::status_spinner_only_symbol(self).is_some() => {
+                        if !status_spinner_renderer.draw_status_spinner_only(self, terminal)? {
+                            status_spinner_renderer.draw_full(self, terminal)?;
+                            super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                        }
+                    }
                     // Redraw periodically
                     _ = redraw_interval.tick() => {
                         if let Some(chunk) = self.stream_buffer.flush_smooth_frame() {
@@ -260,6 +271,7 @@ impl App {
                         // Poll for background compaction completion during streaming
                         self.poll_compaction_completion();
                         status_spinner_renderer.draw_full(self, terminal)?;
+                        super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
                     }
                     bus_event = async {
                         match bus_receiver.as_mut() {
