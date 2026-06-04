@@ -66,6 +66,7 @@ members = [
     "crates/jcode-mobile-core",
     "crates/jcode-mobile-sim",
     "crates/jcode-desktop",
+    "crates/jcode-render-core",
 ]
 
 [lib]
