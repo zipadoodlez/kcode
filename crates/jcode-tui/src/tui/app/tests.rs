@@ -78,7 +78,9 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
     let mut app = create_test_app();
     crate::provider::anthropic::set_cache_ttl_1h(true);
     app.display_messages.push(DisplayMessage::user("first"));
+    let session_id = app.kv_cache_session_id();
     app.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id,
         input_tokens: 911_873,
         completed_at: Instant::now() - Duration::from_secs(3723),
         provider: "anthropic".to_string(),
@@ -109,6 +111,96 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
         "{warning:?}"
     );
 }
+
+#[test]
+fn kv_cache_baseline_from_other_session_is_ignored() {
+    // A single App can stream multiple sessions over its lifetime. A baseline
+    // captured for a large session must not be diffed against a fresh, smaller
+    // session, or the new history looks like a broken prefix and emits a
+    // spurious `harness:_prefix_changed` miss. See the false positives in
+    // ~/.jcode/logs KV_CACHE_USAGE telemetry (common_prefix=0, current
+    // message_count << baseline_message_count, yet read_pct=100/miss=none).
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_session_id = Some("session_big".to_string());
+
+    let big_history: Vec<Message> = (0..40)
+        .map(|i| Message::user(format!("big session message {i}").as_str()))
+        .collect();
+    let big_signature = App::kv_cache_request_signature(&big_history, &[], "system", "");
+    app.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id: Some("session_big".to_string()),
+        input_tokens: 200_000,
+        completed_at: Instant::now(),
+        provider: "anthropic".to_string(),
+        model: "claude-opus-4-6".to_string(),
+        upstream_provider: None,
+        signature: Some(big_signature),
+    });
+
+    // Switch to a brand-new, much smaller session and start its first request.
+    app.remote_session_id = Some("session_small".to_string());
+    let small_signature =
+        App::kv_cache_request_signature(&[Message::user("hello from small session")], &[], "system", "");
+    app.begin_remote_kv_cache_request(small_signature);
+
+    let request = app
+        .pending_kv_cache_request
+        .as_ref()
+        .expect("request should be pending");
+    assert!(
+        request.baseline.is_none(),
+        "foreign-session baseline must be treated as absent: {:?}",
+        request.baseline
+    );
+    assert_eq!(
+        request.baseline_messages_prefix_matches, None,
+        "no cross-session prefix comparison should happen"
+    );
+}
+
+#[test]
+fn kv_cache_baseline_same_session_still_compares() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_session_id = Some("session_same".to_string());
+
+    let history = vec![
+        Message::user("first prompt"),
+        Message::assistant_text("first answer"),
+    ];
+    let baseline_signature = App::kv_cache_request_signature(&history, &[], "system", "");
+    app.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id: Some("session_same".to_string()),
+        input_tokens: 1_000,
+        completed_at: Instant::now(),
+        provider: "anthropic".to_string(),
+        model: "claude-opus-4-6".to_string(),
+        upstream_provider: None,
+        signature: Some(baseline_signature),
+    });
+
+    // Append-only growth in the same session keeps the prefix intact.
+    let mut grown = history.clone();
+    grown.push(Message::user("follow up"));
+    let grown_signature = App::kv_cache_request_signature(&grown, &[], "system", "");
+    app.begin_remote_kv_cache_request(grown_signature);
+
+    let request = app
+        .pending_kv_cache_request
+        .as_ref()
+        .expect("request should be pending");
+    assert!(
+        request.baseline.is_some(),
+        "same-session baseline should be retained"
+    );
+    assert_eq!(
+        request.baseline_messages_prefix_matches,
+        Some(true),
+        "append-only same-session growth keeps the cached prefix"
+    );
+}
+
 
 #[test]
 fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {

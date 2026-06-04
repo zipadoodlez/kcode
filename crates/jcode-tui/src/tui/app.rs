@@ -73,6 +73,7 @@ mod model_context;
 mod navigation;
 mod observe;
 pub(crate) mod onboarding_flow;
+mod productivity;
 mod onboarding_flow_control;
 mod remote;
 mod remote_notifications;
@@ -162,6 +163,11 @@ pub(in crate::tui::app) struct KvCacheRequestSignature {
 
 #[derive(Debug, Clone)]
 struct KvCacheBaseline {
+    /// Session this baseline was captured for. Baselines must only be diffed
+    /// against requests from the same session; otherwise a session switch makes
+    /// the new (often smaller) history look like a broken prefix and produces a
+    /// spurious `harness:_prefix_changed` miss.
+    session_id: Option<String>,
     input_tokens: u64,
     completed_at: Instant,
     provider: String,
@@ -760,6 +766,10 @@ pub struct App {
     remote_client_instance_id: String,
     remote_provider_name: Option<String>,
     remote_provider_model: Option<String>,
+    /// Runtime/billing provider key reported by a remote server (e.g.
+    /// "claude-api", "anthropic-api", "claude"). Lets the info widget choose
+    /// subscription vs cost-based usage display for remote sessions.
+    remote_runtime_provider_key: Option<String>,
     remote_startup_phase: Option<RemoteStartupPhase>,
     remote_startup_phase_started: Option<Instant>,
     remote_reasoning_effort: Option<String>,
@@ -1099,6 +1109,8 @@ pub struct App {
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
+    /// Whether a `/productivity` report generation is currently in flight.
+    productivity_refreshing: bool,
     /// Last time the passive overnight progress card polled its run files.
     last_overnight_card_refresh: Option<Instant>,
 }
@@ -1181,7 +1193,7 @@ impl App {
             self.kv_cache_turn_call_index = 1;
         }
 
-        let baseline = self.kv_cache_baseline.clone();
+        let baseline = self.kv_cache_baseline_for_current_session();
         let signature =
             Self::kv_cache_request_signature(messages, tools, system_static, system_dynamic);
         let baseline_messages_prefix_matches = baseline
@@ -1226,7 +1238,7 @@ impl App {
             self.kv_cache_turn_call_index = 1;
         }
 
-        let baseline = self.kv_cache_baseline.clone();
+        let baseline = self.kv_cache_baseline_for_current_session();
         let baseline_messages_prefix_matches = baseline
             .as_ref()
             .and_then(|baseline| baseline.signature.as_ref())
@@ -1248,6 +1260,35 @@ impl App {
             baseline_messages_prefix_matches,
             baseline,
         });
+    }
+
+    /// Session id the next KV-cache baseline should be tagged with.
+    ///
+    /// A single `App` can stream several sessions over its lifetime (remote
+    /// session switches, local handoffs). The baseline must only be compared
+    /// against requests from the same session, so we capture the active id here.
+    fn kv_cache_session_id(&self) -> Option<String> {
+        if self.is_remote {
+            self.remote_session_id.clone()
+        } else {
+            Some(self.session.id.clone())
+        }
+    }
+
+    /// Return the stored baseline only when it belongs to the active session.
+    ///
+    /// Diffing a request against a baseline captured for a different (often
+    /// larger) session makes the new history look like a broken prefix and
+    /// emits a spurious `harness:_prefix_changed` miss. Treat a foreign baseline
+    /// as absent (warmup) instead.
+    fn kv_cache_baseline_for_current_session(&self) -> Option<KvCacheBaseline> {
+        let baseline = self.kv_cache_baseline.clone()?;
+        let current = self.kv_cache_session_id();
+        if baseline.session_id == current {
+            Some(baseline)
+        } else {
+            None
+        }
     }
 
     fn maybe_push_cold_cache_warning(
@@ -1308,8 +1349,11 @@ impl App {
 
         self.record_kv_cache_miss_sample(&request);
 
+        let baseline_session_id = self.kv_cache_session_id();
+
         if !has_cache_telemetry {
             self.kv_cache_baseline = Some(KvCacheBaseline {
+                session_id: baseline_session_id,
                 input_tokens: self.streaming_input_tokens,
                 completed_at: Instant::now(),
                 provider: request.provider,
@@ -1341,6 +1385,7 @@ impl App {
         self.log_kv_cache_usage_summary(&request, optimal_input_tokens);
 
         self.kv_cache_baseline = Some(KvCacheBaseline {
+            session_id: baseline_session_id,
             input_tokens: self.streaming_input_tokens,
             completed_at: Instant::now(),
             provider: request.provider,
@@ -1546,7 +1591,7 @@ impl App {
             upstream_provider: self.upstream_provider.clone(),
             signature: None,
             baseline_messages_prefix_matches: None,
-            baseline: self.kv_cache_baseline.clone(),
+            baseline: self.kv_cache_baseline_for_current_session(),
         }
     }
 
