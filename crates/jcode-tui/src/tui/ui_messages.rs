@@ -266,13 +266,22 @@ pub(crate) fn render_system_message(
     let centered = markdown::center_code_blocks();
     let wrap_width = centered_wrap_width(width.saturating_sub(4), centered, 96);
     let display_content = normalize_system_content_for_display(&msg.content);
-    // System messages render markdown (bold/lists/headings/links) so authored
-    // summaries read cleanly. To preserve the long-standing line-oriented layout
-    // of status/help text, we keep single newlines as hard breaks rather than
-    // letting markdown collapse them into one paragraph. Color is then forced to
-    // the system color so system output stays visually distinct.
-    let hard_broken = preserve_hard_line_breaks_for_markdown(&display_content);
-    let mut lines = markdown::render_markdown_with_width(&hard_broken, Some(wrap_width));
+    // Authored summaries that use markdown (bold/lists/headings/links) render as
+    // markdown so they read cleanly. Plain status/help text keeps the original
+    // line-oriented plaintext path, which preserves authored indentation and
+    // wraps long lines to width: markdown parsing would otherwise strip leading
+    // indentation and leave long paragraphs unwrapped (stretching edge to edge).
+    // Either way, color is forced to the system color so output stays distinct.
+    let mut lines = if content_has_markdown_formatting(&display_content) {
+        // Keep single newlines as hard breaks rather than letting markdown
+        // collapse them into one paragraph, then wrap to width so long lines
+        // still respect the layout/gutters.
+        let hard_broken = preserve_hard_line_breaks_for_markdown(&display_content);
+        let rendered = markdown::render_markdown_with_width(&hard_broken, Some(wrap_width));
+        markdown::wrap_lines(rendered, wrap_width)
+    } else {
+        render_plaintext_lines(&display_content, wrap_width)
+    };
     if centered {
         left_pad_lines_for_centered_mode(&mut lines, width);
     }
@@ -282,6 +291,46 @@ pub(crate) fn render_system_message(
         }
     }
     lines
+}
+
+/// Heuristic: does authored system content use markdown formatting that is
+/// worth rendering (bold/italic, inline code, headings, lists, links,
+/// blockquotes, fenced code, tables)?
+///
+/// Plain status/help text (no markdown) keeps the original plaintext path so
+/// authored indentation is preserved and long lines wrap to width. We only opt
+/// into markdown when a marker is actually present, which avoids regressing
+/// indented/aligned output that markdown parsing would otherwise flatten.
+fn content_has_markdown_formatting(content: &str) -> bool {
+    // Inline markers that can appear anywhere on a line.
+    if content.contains("**")
+        || content.contains("__")
+        || content.contains('`')
+        || content.contains("](")
+    {
+        return true;
+    }
+    // Block markers only count at the start of a (trimmed) line.
+    content.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("# ")
+            || trimmed.starts_with("## ")
+            || trimmed.starts_with("### ")
+            || trimmed.starts_with("- ")
+            || trimmed.starts_with("* ")
+            || trimmed.starts_with("+ ")
+            || trimmed.starts_with("> ")
+            || trimmed.starts_with("```")
+            || trimmed.starts_with("~~~")
+            || trimmed.starts_with('|')
+            || trimmed
+                .split_once('.')
+                .is_some_and(|(num, rest)| {
+                    !num.is_empty()
+                        && num.chars().all(|c| c.is_ascii_digit())
+                        && rest.starts_with(' ')
+                })
+    })
 }
 
 /// Convert single newlines in authored system content into markdown hard line
