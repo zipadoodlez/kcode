@@ -98,6 +98,12 @@ mod render_lazy;
 #[path = "markdown_render_support.rs"]
 mod render_support;
 
+mod render_core_adapter;
+pub use render_core_adapter::{
+    document_to_lines, render_markdown_via_core, render_markdown_via_core_wrapped,
+    styled_line_to_line,
+};
+
 pub use render_full::render_markdown_with_width;
 pub use render_lazy::render_markdown_lazy;
 pub use render_support::extract_copy_targets_from_rendered_lines;
