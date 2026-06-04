@@ -1,0 +1,88 @@
+name: Require Linked Issue
+
+# Ensure every pull request references a GitHub issue. A PR passes when it
+# either uses a closing keyword (e.g. "Closes #123") in its body, links an
+# issue through GitHub's "Development" sidebar, or mentions an issue number
+# such as "#123" / "owner/repo#123" in the title or body.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: require-issue-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  require-issue:
+    name: Require Linked Issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check for a linked issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info('No pull_request payload; skipping.');
+              return;
+            }
+
+            const title = pr.title || '';
+            const body = pr.body || '';
+            const text = `${title}\n\n${body}`;
+
+            // 1) Closing keywords in the PR body/title (GitHub auto-links these).
+            const closingKeyword =
+              /\b(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\b\s*:?\s+(?:[\w.-]+\/[\w.-]+)?#\d+/i;
+
+            // 2) Any plain issue reference like #123 or owner/repo#123.
+            const issueRef = /(?:[\w.-]+\/[\w.-]+)?#\d+/;
+
+            // 3) A full GitHub issue URL.
+            const issueUrl = /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/i;
+
+            let linked =
+              closingKeyword.test(text) ||
+              issueRef.test(text) ||
+              issueUrl.test(text);
+
+            // 4) Issues linked via the "Development" sidebar (closing issue refs).
+            if (!linked) {
+              try {
+                const query = `query($owner:String!, $repo:String!, $number:Int!) {
+                  repository(owner:$owner, name:$repo) {
+                    pullRequest(number:$number) {
+                      closingIssuesReferences(first: 5) { totalCount }
+                    }
+                  }
+                }`;
+                const result = await github.graphql(query, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  number: pr.number,
+                });
+                const count =
+                  result?.repository?.pullRequest?.closingIssuesReferences?.totalCount || 0;
+                if (count > 0) linked = true;
+              } catch (err) {
+                core.warning(`Could not query closing issue references: ${err}`);
+              }
+            }
+
+            if (!linked) {
+              core.setFailed(
+                'This PR is not linked to a GitHub issue. Reference one by adding a ' +
+                  'closing keyword (e.g. "Closes #123") to the PR description, linking ' +
+                  'an issue via the Development sidebar, or mentioning an issue number ' +
+                  '(e.g. "#123") in the title or body.'
+              );
+              return;
+            }
+
+            core.info('Found a linked issue. ✅');
