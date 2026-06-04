@@ -441,6 +441,37 @@ fn process_remote_followups_auto_reloads_server_by_default() {
 }
 
 #[test]
+fn process_remote_followups_reloads_server_even_before_history_loads() {
+    // Regression guard: when the server/client binaries differ, the History
+    // handler defers session state and sets `pending_server_reload = true`
+    // WITHOUT marking history as loaded. The reload must still fire; otherwise
+    // history stays unloaded forever and every typed prompt stalls on
+    // "Loading session..." until the user restarts.
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    // Intentionally do NOT mark history loaded, mirroring the deferred path.
+    assert!(!remote.has_loaded_history());
+
+    app.pending_server_reload = true;
+    app.auto_server_reload = true;
+
+    rt.block_on(process_remote_followups(&mut app, &mut remote));
+
+    assert!(
+        !app.pending_server_reload,
+        "pending server reload should be consumed even while history is unloaded"
+    );
+    let last = app
+        .display_messages()
+        .last()
+        .expect("missing reload message");
+    assert_eq!(last.title.as_deref(), Some("Reload"));
+    assert!(last.content.contains("Reloading server with newer binary"));
+}
+
+#[test]
 fn process_remote_followups_respects_disabled_auto_server_reload() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().expect("runtime");

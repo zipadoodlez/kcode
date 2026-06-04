@@ -796,7 +796,65 @@ fn note_startup_submit_deferred(app: &mut App, reason: &'static str) {
     ));
 }
 
+/// Fire a pending server reload (newer binary on disk, or a server/client
+/// runtime-identity mismatch that the History handler intentionally deferred).
+///
+/// Extracted so it can run BEFORE the `has_loaded_history` gate in
+/// `process_remote_followups`: the runtime-identity defer path never marks
+/// history as loaded, so the reload must be allowed to fire while history is
+/// still pending, otherwise the connection stalls indefinitely on
+/// "Loading session...".
+async fn dispatch_pending_server_reload(app: &mut App, remote: &mut RemoteConnection) {
+    app.pending_server_reload = false;
+    if app.auto_server_reload {
+        // Defense-in-depth for issue #277: a correct reload only needs to
+        // happen once. If we keep being told a newer binary is available
+        // after several auto-reloads, treat it as a false-positive loop and
+        // stop hammering the server (which would otherwise flicker the UI).
+        const MAX_AUTO_SERVER_RELOADS: u32 = 3;
+        if app.server_auto_reload_attempts >= MAX_AUTO_SERVER_RELOADS {
+            crate::logging::warn(&format!(
+                "Suppressing server auto-reload after {} attempts; server keeps reporting an update (possible reload loop, issue #277)",
+                app.server_auto_reload_attempts
+            ));
+            app.push_display_message(DisplayMessage::system(
+                "ℹ Server keeps reporting a newer binary after repeated reloads; auto-reload paused to avoid a loop. Use `/reload` manually if needed.".to_string(),
+            ));
+            app.set_status_notice("Server auto-reload paused (possible loop)");
+        } else {
+            app.server_auto_reload_attempts += 1;
+            app.append_reload_message("Reloading server with newer binary...");
+            if let Err(err) = remote.reload().await {
+                app.push_display_message(DisplayMessage::error(format!(
+                    "Failed to auto-reload server: {}. Use `/reload` to retry.",
+                    err
+                )));
+                app.set_status_notice("Server update available - auto reload failed");
+            }
+        }
+    } else {
+        app.push_display_message(DisplayMessage::system(
+            "ℹ Newer server binary detected. Auto-reload is disabled by `display.auto_server_reload = false`. Use `/reload` manually when you're ready.".to_string(),
+        ));
+        app.set_status_notice("Server update available - manual /reload recommended");
+    }
+}
+
 pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteConnection) {
+    // A pending *server* reload must be dispatched even when the bootstrap
+    // History payload was intentionally deferred. The runtime-identity /
+    // stale-binary guard in the History handler sets `pending_server_reload =
+    // true` and returns WITHOUT marking history as loaded, by design: we want to
+    // reload the server before applying any session state. If the
+    // `has_loaded_history` gate below ran first, the reload would never fire,
+    // history would stay unloaded forever, and every typed prompt would be stuck
+    // behind "Loading session..." until the user restarted (server/client binary
+    // mismatch reload-handoff stall).
+    if app.pending_server_reload && !app.is_processing {
+        dispatch_pending_server_reload(app, remote).await;
+        return;
+    }
+
     if !remote.has_loaded_history() {
         note_startup_submit_deferred(app, "remote history not loaded yet");
         return;
@@ -894,42 +952,6 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     if app.pending_background_client_reload.is_some() && !app.is_processing {
         app.maybe_finish_background_client_reload();
         return;
-    }
-
-    if app.pending_server_reload && !app.is_processing {
-        app.pending_server_reload = false;
-        if app.auto_server_reload {
-            // Defense-in-depth for issue #277: a correct reload only needs to
-            // happen once. If we keep being told a newer binary is available
-            // after several auto-reloads, treat it as a false-positive loop and
-            // stop hammering the server (which would otherwise flicker the UI).
-            const MAX_AUTO_SERVER_RELOADS: u32 = 3;
-            if app.server_auto_reload_attempts >= MAX_AUTO_SERVER_RELOADS {
-                crate::logging::warn(&format!(
-                    "Suppressing server auto-reload after {} attempts; server keeps reporting an update (possible reload loop, issue #277)",
-                    app.server_auto_reload_attempts
-                ));
-                app.push_display_message(DisplayMessage::system(
-                    "ℹ Server keeps reporting a newer binary after repeated reloads; auto-reload paused to avoid a loop. Use `/reload` manually if needed.".to_string(),
-                ));
-                app.set_status_notice("Server auto-reload paused (possible loop)");
-            } else {
-                app.server_auto_reload_attempts += 1;
-                app.append_reload_message("Reloading server with newer binary...");
-                if let Err(err) = remote.reload().await {
-                    app.push_display_message(DisplayMessage::error(format!(
-                        "Failed to auto-reload server: {}. Use `/reload` to retry.",
-                        err
-                    )));
-                    app.set_status_notice("Server update available - auto reload failed");
-                }
-            }
-        } else {
-            app.push_display_message(DisplayMessage::system(
-                "ℹ Newer server binary detected. Auto-reload is disabled by `display.auto_server_reload = false`. Use `/reload` manually when you're ready.".to_string(),
-            ));
-            app.set_status_notice("Server update available - manual /reload recommended");
-        }
     }
 
     if app.pending_split_request && !app.is_processing {
