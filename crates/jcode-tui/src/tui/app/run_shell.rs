@@ -56,8 +56,14 @@ fn status_spinner_delay_until_next_frame(elapsed: f32) -> Duration {
 
 pub(super) fn status_spinner_only_symbol(app: &App) -> Option<&'static str> {
     let policy = crate::perf::tui_policy();
-    if !policy.enable_decorative_animations
-        || !app.is_processing
+    // The single-cell spinner fast path is intentionally available even when
+    // decorative animations are disabled (Minimal tier, SSH, WSL, etc.). It
+    // patches exactly one status cell between full redraws, so it stays very
+    // cheap while keeping the "thinking/connecting/streaming" spinner feeling
+    // responsive instead of choppy at the ~1 Hz passive-liveness redraw rate.
+    // When decorative animations are off it advances at the smooth liveness
+    // rate; otherwise it uses the full-rate spinner clock.
+    if !app.is_processing
         || !app.streaming_text.is_empty()
         || app.centered_mode()
         || app.has_pending_mouse_scroll_animation()
@@ -70,7 +76,7 @@ pub(super) fn status_spinner_only_symbol(app: &App) -> Option<&'static str> {
         Some(jcode_tui_style::theme::activity_indicator(
             status_spinner_elapsed(app),
             STATUS_SPINNER_FPS,
-            true,
+            policy.enable_decorative_animations,
         ))
     } else {
         None
