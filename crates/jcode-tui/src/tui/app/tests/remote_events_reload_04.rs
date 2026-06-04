@@ -405,7 +405,11 @@ fn test_new_for_remote_uses_startup_stub_without_loading_full_transcript() {
         app.display_messages()[0].content,
         "hello from persisted history"
     );
-    assert_eq!(app.session.messages.len(), 1);
+    // The remote client renders persisted history into `display_messages`,
+    // then calls `strip_transcript_for_remote_client()` to release the backing
+    // transcript (the server is the source of truth for the live transcript).
+    // So the stripped `session.messages` is expected to be empty here.
+    assert_eq!(app.session.messages.len(), 0);
     assert_eq!(app.remote_session_id.as_deref(), Some(session_id));
     assert_eq!(crate::tui::TuiState::provider_model(&app), "gpt-5.4");
 
