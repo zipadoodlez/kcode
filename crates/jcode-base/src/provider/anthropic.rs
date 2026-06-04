@@ -457,6 +457,63 @@ impl AnthropicProvider {
         usage.five_hour >= 0.99 && usage.seven_day >= 0.99
     }
 
+    /// Resolve a usable access token (OAuth or API key) and whether it is OAuth.
+    ///
+    /// Exposed for the provider-doctor's native Claude driver so it can validate
+    /// the credential and fetch the live model catalog through the exact same
+    /// resolution path the runtime uses. Returns the bearer token and an
+    /// `is_oauth` flag so callers can pick the matching catalog endpoint.
+    pub async fn resolve_access_token_for_doctor(&self) -> Result<(String, bool)> {
+        self.get_access_token().await
+    }
+
+    /// Pin the credential mode (OAuth vs API key) for a provider-doctor run.
+    ///
+    /// The `claude` login provider is specifically the OAuth/subscription path,
+    /// while `claude-api` is the API-key path. The doctor must test the path
+    /// implied by the provider id under test, regardless of what
+    /// `JCODE_RUNTIME_PROVIDER` happens to be in the current process (e.g. a
+    /// self-dev session may have it set to `claude-api`). This also updates
+    /// `JCODE_RUNTIME_PROVIDER` so any provider instances the probes build
+    /// afterwards inherit the same mode. Errors if the requested credential is
+    /// not available, so the doctor can record a clear AUTH failure.
+    pub fn pin_credential_mode_for_doctor(&self, oauth: bool) -> Result<()> {
+        let mode = if oauth {
+            AnthropicCredentialMode::OAuth
+        } else {
+            AnthropicCredentialMode::ApiKey
+        };
+        self.set_credential_mode(mode)
+    }
+
+    /// Fetch the live Anthropic model catalog using the resolved credential.
+    ///
+    /// Mirrors [`Provider::prefetch_models`] but returns the model ids to the
+    /// caller (rather than only persisting them) so the doctor can assert the
+    /// live `GET /v1/models` endpoint works and that the model under test is in
+    /// the live catalog.
+    pub async fn fetch_live_model_ids_for_doctor(&self) -> Result<Vec<String>> {
+        let (token, is_oauth) = self.get_access_token().await?;
+        if token.trim().is_empty() {
+            anyhow::bail!("resolved an empty Anthropic access token");
+        }
+        let catalog = if is_oauth {
+            crate::provider::fetch_anthropic_model_catalog_oauth(&token).await?
+        } else {
+            crate::provider::fetch_anthropic_model_catalog(&token).await?
+        };
+        // Persist so the rest of the process benefits from the warm catalog,
+        // exactly like the runtime's own prefetch.
+        crate::provider::persist_anthropic_model_catalog(&catalog);
+        if !catalog.context_limits.is_empty() {
+            crate::provider::populate_context_limits(catalog.context_limits.clone());
+        }
+        if !catalog.available_models.is_empty() {
+            crate::provider::populate_anthropic_models(catalog.available_models.clone());
+        }
+        Ok(catalog.available_models)
+    }
+
     pub fn new() -> Self {
         let model = std::env::var("JCODE_ANTHROPIC_MODEL").unwrap_or_else(|_| {
             if Self::is_usage_exhausted() {
