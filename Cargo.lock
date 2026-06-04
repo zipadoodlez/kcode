@@ -4010,6 +4010,7 @@ dependencies = [
  "jcode-session-types",
  "jcode-terminal-image",
  "jcode-tui-account-picker",
+ "jcode-tui-anim",
  "jcode-tui-core",
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
@@ -4041,6 +4042,10 @@ version = "0.1.0"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "jcode-tui-anim"
+version = "0.1.0"
 
 [[package]]
 name = "jcode-tui-core"

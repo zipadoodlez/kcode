@@ -52,6 +52,7 @@ members = [
     "crates/jcode-tool-core",
     "crates/jcode-tool-types",
     "crates/jcode-tui-account-picker",
+    "crates/jcode-tui-anim",
     "crates/jcode-tui-render",
     "crates/jcode-tui-session-picker",
     "crates/jcode-tui-style",
@@ -289,6 +290,22 @@ incremental = true
 
 [profile.dev.package."*"]
 opt-level = 0
+
+# Keep the idle-animation math kernels fully optimized even in debug-style
+# builds. This crate is pure, dependency-free numeric code (the trig-heavy 3D
+# samplers that otherwise dominate idle CPU). Pinning it to opt-level = 3 here
+# means the optimized object is compiled once and reused across iterative
+# dev/selfdev rebuilds, since it only recompiles when the animation code itself
+# changes. The "*" glob above sets the default for dependencies; these explicit
+# package entries take precedence for this one crate in each profile.
+[profile.dev.package."jcode-tui-anim"]
+opt-level = 3
+
+[profile.selfdev.package."jcode-tui-anim"]
+opt-level = 3
+
+[profile.test.package."jcode-tui-anim"]
+opt-level = 3
 
 [profile.test]
 debug = 0
