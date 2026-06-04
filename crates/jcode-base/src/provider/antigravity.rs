@@ -479,6 +479,61 @@ impl AntigravityProvider {
             .clone()
     }
 
+    /// Resolve the live OAuth credential the runtime would use, for the
+    /// provider-doctor's native Antigravity driver.
+    ///
+    /// Antigravity authenticates exclusively via the Google OAuth tokens minted
+    /// by `jcode login --provider antigravity`; there is no API-key path. This
+    /// loads (and refreshes if needed) those tokens through the exact same code
+    /// path inference uses, returning only the resolved Google account email so
+    /// the doctor can confirm the credential without ever surfacing the token
+    /// itself.
+    pub async fn resolve_account_for_doctor(&self) -> Result<String> {
+        let tokens = antigravity_auth::load_or_refresh_tokens().await?;
+        if tokens.access_token.trim().is_empty() {
+            anyhow::bail!("resolved an empty Antigravity access token");
+        }
+        match antigravity_auth::fetch_email(&tokens.access_token).await {
+            Ok(email) if !email.trim().is_empty() => Ok(email),
+            _ => Ok(String::new()),
+        }
+    }
+
+    /// Fetch the live Antigravity model catalog using the resolved credential.
+    ///
+    /// Mirrors [`Provider::prefetch_models`] but returns the available model ids
+    /// to the caller (rather than only persisting them) so the doctor can assert
+    /// the live `fetchAvailableModels` endpoint works and that the model under
+    /// test is in the live catalog. The warm catalog is persisted exactly like
+    /// the runtime's own prefetch so the rest of the process benefits.
+    pub async fn fetch_live_model_ids_for_doctor(&self) -> Result<Vec<String>> {
+        let snapshot = self.fetch_available_models().await?;
+        if snapshot.models.is_empty() {
+            anyhow::bail!("Antigravity model catalog returned no models");
+        }
+        Self::persist_catalog(&snapshot);
+        if let Some(default_model_id) = snapshot.default_model_id.clone() {
+            *self
+                .backend_default_model
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(default_model_id);
+        }
+        let model_ids: Vec<String> = snapshot
+            .models
+            .iter()
+            .filter(|model| model.available)
+            .map(|model| model.id.clone())
+            .collect();
+        *self
+            .fetched_catalog
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = snapshot.models;
+        if model_ids.is_empty() {
+            anyhow::bail!("Antigravity model catalog returned no available models");
+        }
+        Ok(model_ids)
+    }
+
     /// Resolve a requested model id into a real backend model id. The literal
     /// alias `"default"` (and the empty string) is rejected by the
     /// `generateContent` endpoint with HTTP 404, so it is mapped to the

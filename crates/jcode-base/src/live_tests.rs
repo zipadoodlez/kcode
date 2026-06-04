@@ -1665,10 +1665,13 @@ fn doctor_tier_for_stage(stage_id: &str) -> &'static str {
     }
 }
 
-/// True when `jcode provider-doctor <provider>` can actually drive this provider
-/// (only OpenAI-compatible providers are supported today).
+/// True when `provider-doctor` can drive `provider_id` end-to-end, either via
+/// the generic OpenAI-compatible driver (any compat profile) or a native-runtime
+/// driver (Claude OAuth, Antigravity). Used to annotate the monitoring roster so
+/// native providers are not perpetually marked "needs native suite".
 fn doctor_supports_provider(provider_id: &str) -> bool {
     crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some()
+        || crate::auth::provider_e2e::native_doctor_supports_provider(provider_id)
 }
 
 /// True when a credential for `provider_id` is reachable, either via an
@@ -1692,6 +1695,9 @@ fn provider_has_credential(provider_id: &str) -> bool {
         "openai" | "openai-api" => &["OPENAI_API_KEY"],
         "openrouter" => &["OPENROUTER_API_KEY"],
         "gemini" | "google" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        // Antigravity authenticates only via cached Google OAuth tokens, not an
+        // env var; report a credential when those tokens are present on disk.
+        "antigravity" => return crate::auth::antigravity::has_cached_auth(),
         _ => &[],
     };
     env_candidates.iter().any(|key| {

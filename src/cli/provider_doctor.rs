@@ -5,8 +5,8 @@ use std::io::IsTerminal;
 use anyhow::{Context, Result, anyhow};
 
 use crate::auth::provider_e2e::{
-    DoctorReport, DoctorTier, native_doctor_supports_provider, run_claude_native_e2e,
-    run_provider_e2e,
+    DoctorReport, DoctorTier, native_doctor_supports_provider, run_antigravity_native_e2e,
+    run_claude_native_e2e, run_provider_e2e,
 };
 use crate::live_tests::LiveVerificationStageStatus;
 
@@ -20,11 +20,18 @@ pub async fn run_provider_doctor_command(
         .parse()
         .map_err(|message: String| anyhow!("{message}"))?;
 
-    // Native-runtime providers (currently the Claude OAuth/subscription
-    // provider) cannot be driven by the OpenAI-compatible doctor; route them to
-    // the native driver, which exercises the production Anthropic runtime.
+    // Native-runtime providers cannot be driven by the OpenAI-compatible doctor;
+    // route them to their native drivers, which exercise the production runtime.
     if native_doctor_supports_provider(provider) {
-        let report = run_claude_native_e2e(provider, model, tier).await?;
+        let is_antigravity = matches!(
+            crate::auth::lifecycle::normalized_auth_provider_id(Some(provider)),
+            Some("antigravity")
+        );
+        let report = if is_antigravity {
+            run_antigravity_native_e2e(provider, model, tier).await?
+        } else {
+            run_claude_native_e2e(provider, model, tier).await?
+        };
         emit_report(&report, emit_json);
         return if report.tier_passed {
             Ok(())
