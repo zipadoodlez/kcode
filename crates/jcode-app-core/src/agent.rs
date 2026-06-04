@@ -13,13 +13,10 @@ mod streaming;
 mod tools;
 mod turn_execution;
 mod turn_loops;
-mod turn_streaming_broadcast;
 mod turn_streaming_mpsc;
 mod utils;
 
-use self::streaming::{
-    send_stream_keepalive_broadcast, send_stream_keepalive_mpsc, stream_keepalive_ticker,
-};
+use self::streaming::{send_stream_keepalive_mpsc, stream_keepalive_ticker};
 use self::tools::{
     cap_sdk_tool_content_for_history, cap_tool_output_for_history, print_tool_summary,
     tool_output_side_pane_images, tool_output_to_content_blocks,
@@ -47,7 +44,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 use interrupts::{NoToolCallOutcome, PostToolInterruptOutcome};
 pub use jcode_agent_runtime::{
@@ -881,6 +878,9 @@ impl Agent {
                         md.push_str("\n\n");
                     }
                     ContentBlock::Reasoning { text } => {
+                        md.push_str(&format!("*Thinking:* {}\n\n", text));
+                    }
+                    ContentBlock::ReasoningTrace { text } => {
                         md.push_str(&format!("*Thinking:* {}\n\n", text));
                     }
                     ContentBlock::AnthropicThinking { thinking, .. } => {

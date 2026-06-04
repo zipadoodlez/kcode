@@ -33,40 +33,6 @@ impl Agent {
         self.run_turn(false).await
     }
 
-    /// Run a single message with events streamed to a broadcast channel (for server mode)
-    pub async fn run_once_streaming(
-        &mut self,
-        user_message: &str,
-        event_tx: broadcast::Sender<ServerEvent>,
-    ) -> Result<()> {
-        // Inject any pending notifications before the user message
-        let alerts = self.take_alerts();
-        if !alerts.is_empty() {
-            let alert_text = format!(
-                "[NOTIFICATION]\nYou received {} notification(s) from other agents working in this codebase:\n\n{}\n\nUse the communicate tool (actions: list, read, message/broadcast, dm, channel, share) to coordinate with other agents.",
-                alerts.len(),
-                alerts.join("\n\n---\n\n")
-            );
-            self.add_message(
-                Role::User,
-                vec![ContentBlock::Text {
-                    text: alert_text,
-                    cache_control: None,
-                }],
-            );
-        }
-
-        self.add_message(
-            Role::User,
-            vec![ContentBlock::Text {
-                text: user_message.to_string(),
-                cache_control: None,
-            }],
-        );
-        self.session.save()?;
-        self.run_turn_streaming(event_tx).await
-    }
-
     /// Run one conversation turn with streaming events via mpsc channel (per-client)
     pub async fn run_once_streaming_mpsc(
         &mut self,
@@ -422,8 +388,7 @@ impl Agent {
             vec![ContentBlock::ToolUse {
                 id: tool_call_id,
                 name: tool_name,
-                input,
-            }],
+                input, thought_signature: None, }],
         );
         self.session.save()?;
         Ok(message_id)
@@ -766,6 +731,7 @@ impl Agent {
                         transcript.push_str(&format!("[Result: {}]\n", preview));
                     }
                     ContentBlock::Reasoning { .. }
+                    | ContentBlock::ReasoningTrace { .. }
                     | ContentBlock::AnthropicThinking { .. }
                     | ContentBlock::OpenAIReasoning { .. } => {}
                     ContentBlock::Image { .. } => {
