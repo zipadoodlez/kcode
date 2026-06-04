@@ -1578,6 +1578,15 @@ pub(crate) fn copy_point_from_screen(
     }
 }
 
+/// Number of rows at the top/bottom of a pane that act as the browser-style
+/// auto-scroll "hot zone". Dragging a selection anywhere inside this band keeps
+/// pulling in more transcript, instead of requiring the cursor to land exactly
+/// on the boundary row. Scales gently with pane height and is capped so small
+/// panes keep a usable middle region.
+fn edge_autoscroll_zone_rows(height: u16) -> u16 {
+    (height / 4).clamp(1, 3)
+}
+
 pub(crate) fn copy_pane_vertical_edge_point(
     pane: crate::tui::CopySelectionPane,
     column: u16,
@@ -1591,14 +1600,18 @@ pub(crate) fn copy_pane_vertical_edge_point(
 
     // Browser-style edge auto-scroll: terminals clamp the mouse to the visible
     // viewport, so a drag that "leaves" the top/bottom of the pane is reported on
-    // the boundary row itself. Treat the first/last visible rows as scroll edges so
-    // dragging a selection to the edge keeps pulling in more transcript. The
-    // horizontal position is clamped into the pane so the selection extends no
-    // matter where along the edge the cursor sits (just like a browser window).
+    // the boundary row itself. We additionally treat a small band near each edge
+    // as a hot zone, so dragging *near* (not just exactly onto) the top/bottom
+    // keeps pulling in more transcript, just like dragging a selection toward the
+    // edge of a browser window. The horizontal position is clamped into the pane
+    // so the selection extends no matter where along the edge the cursor sits.
     let last_row = area.y.saturating_add(area.height).saturating_sub(1);
-    let (edge_row, upward) = if row <= area.y {
+    let zone = edge_autoscroll_zone_rows(area.height);
+    let top_trigger = area.y.saturating_add(zone);
+    let bottom_trigger = last_row.saturating_sub(zone);
+    let (edge_row, upward) = if row <= top_trigger {
         (area.y, true)
-    } else if row >= last_row {
+    } else if row >= bottom_trigger {
         (last_row, false)
     } else {
         return None;
