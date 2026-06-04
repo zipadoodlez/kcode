@@ -168,6 +168,11 @@ pub struct GeminiPart {
     pub function_call: Option<GeminiFunctionCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function_response: Option<GeminiFunctionResponse>,
+    /// Gemini 3 thought signature for this part. Must be replayed verbatim on
+    /// the `functionCall` part in later turns or the Cloud Code backend rejects
+    /// the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

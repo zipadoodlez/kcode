@@ -17,16 +17,18 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 const DEFAULT_MODEL: &str = "default";
+/// Known-good model id used when the backend default is unknown. The literal
+/// alias `"default"` is rejected by `generateContent` with HTTP 404, so we must
+/// always resolve it to a real model id before issuing a request.
+const DEFAULT_FALLBACK_MODEL: &str = "gemini-3-flash";
 const AVAILABLE_MODELS: &[&str] = &[
-    "default",
     "claude-opus-4-6-thinking",
     "claude-sonnet-4-6",
-    "gemini-3-pro-high",
-    "gemini-3-pro-low",
-    "gemini-3-flash",
     "gemini-3.1-pro-high",
     "gemini-3.1-pro-low",
+    "gemini-3-flash",
     "gemini-3-flash-agent",
+    "gemini-3.5-flash-low",
     "gpt-oss-120b-medium",
 ];
 const FETCH_MODELS_API_URL: &str =
@@ -42,6 +44,18 @@ const CATALOG_REFRESH_TTL_HOURS: i64 = 6;
 struct PersistedCatalog {
     models: Vec<CatalogModel>,
     fetched_at_rfc3339: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_model_id: Option<String>,
+}
+
+/// Result of parsing the backend `fetchAvailableModels` response: the ordered
+/// catalog plus the backend-advertised default agent model id. The alias
+/// `"default"` is not a real model id, so the resolved backend default is what
+/// inference must actually send.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct CatalogSnapshot {
+    models: Vec<CatalogModel>,
+    default_model_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -68,6 +82,7 @@ struct CatalogModel {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FetchAvailableModelsResponse {
     #[serde(default)]
     models: HashMap<String, FetchAvailableModelEntry>,
@@ -180,7 +195,14 @@ pub(crate) fn is_known_model(model: &str) -> bool {
 
 fn parse_fetch_available_models_response(
     response: &FetchAvailableModelsResponse,
-) -> Vec<CatalogModel> {
+) -> CatalogSnapshot {
+    let default_model_id = response
+        .default_agent_model_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string);
+
     let mut preferred_ids = Vec::new();
     if let Some(default_agent_model_id) = response.default_agent_model_id.as_deref() {
         preferred_ids.push(default_agent_model_id.trim().to_string());
@@ -315,7 +337,10 @@ fn parse_fetch_available_models_response(
         })
         .collect();
     models.sort_by_key(|model| !model.available);
-    models
+    CatalogSnapshot {
+        models,
+        default_model_id,
+    }
 }
 
 fn catalog_model_detail(model: &CatalogModel) -> String {
@@ -358,6 +383,9 @@ pub struct AntigravityProvider {
     client: reqwest::Client,
     model: Arc<RwLock<String>>,
     fetched_catalog: Arc<RwLock<Vec<CatalogModel>>>,
+    /// Backend-advertised default agent model id (from `fetchAvailableModels`).
+    /// Used to resolve the `"default"` alias to a real model for inference.
+    backend_default_model: Arc<RwLock<Option<String>>>,
 }
 
 impl Clone for AntigravityProvider {
@@ -366,6 +394,7 @@ impl Clone for AntigravityProvider {
             client: self.client.clone(),
             model: self.model.clone(),
             fetched_catalog: self.fetched_catalog.clone(),
+            backend_default_model: self.backend_default_model.clone(),
         }
     }
 }
@@ -382,16 +411,17 @@ impl AntigravityProvider {
             .filter(|catalog: &PersistedCatalog| !catalog.models.is_empty())
     }
 
-    fn persist_catalog(models: &[CatalogModel]) {
-        if models.is_empty() {
+    fn persist_catalog(snapshot: &CatalogSnapshot) {
+        if snapshot.models.is_empty() {
             return;
         }
         let Ok(path) = Self::persisted_catalog_path() else {
             return;
         };
         let payload = PersistedCatalog {
-            models: models.to_vec(),
+            models: snapshot.models.clone(),
             fetched_at_rfc3339: Utc::now().to_rfc3339(),
+            default_model_id: snapshot.default_model_id.clone(),
         };
         if let Err(error) = crate::storage::write_json(&path, &payload) {
             crate::logging::warn(&format!(
@@ -403,15 +433,21 @@ impl AntigravityProvider {
     }
 
     fn seed_cached_catalog(&self) {
-        if let Some(catalog) = Self::load_persisted_catalog()
-            && let Ok(mut models) = self.fetched_catalog.write()
-        {
+        if let Some(catalog) = Self::load_persisted_catalog() {
             if catalog_is_stale(&catalog.fetched_at_rfc3339) {
                 crate::logging::info(
                     "Loaded stale persisted Antigravity model catalog; a refresh will update it on next prefetch",
                 );
             }
-            *models = catalog.models;
+            if let Some(default_model_id) = catalog.default_model_id.clone() {
+                *self
+                    .backend_default_model
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(default_model_id);
+            }
+            if let Ok(mut models) = self.fetched_catalog.write() {
+                *models = catalog.models;
+            }
         }
     }
 
@@ -423,6 +459,7 @@ impl AntigravityProvider {
             client: crate::provider::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
             fetched_catalog: Arc::new(RwLock::new(Vec::new())),
+            backend_default_model: Arc::new(RwLock::new(None)),
         };
         provider.seed_cached_catalog();
         provider
@@ -435,11 +472,68 @@ impl AntigravityProvider {
             .clone()
     }
 
+    fn backend_default_model(&self) -> Option<String> {
+        self.backend_default_model
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Resolve a requested model id into a real backend model id. The literal
+    /// alias `"default"` (and the empty string) is rejected by the
+    /// `generateContent` endpoint with HTTP 404, so it is mapped to the
+    /// backend-advertised default, then to a known-good catalog model, and
+    /// finally to a hardcoded fallback.
+    ///
+    /// Note: this only resolves the `"default"` alias / empty input. An
+    /// explicit model id from the user is always honoured verbatim.
+    fn resolve_model_for_request(&self, model: &str) -> String {
+        let trimmed = model.trim();
+        if !trimmed.is_empty() && trimmed != DEFAULT_MODEL {
+            return trimmed.to_string();
+        }
+
+        if let Some(backend_default) = self
+            .backend_default_model()
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty() && id != DEFAULT_MODEL)
+        {
+            return backend_default;
+        }
+
+        // No backend-advertised default: pick a usable catalog model. Prefer a
+        // Gemini model, which works reliably with tool use on this backend.
+        // Claude models on the Cloud Code backend currently reject jcode's tool
+        // schemas (they require JSON Schema draft 2020-12), so they are a poor
+        // automatic default even when listed first in the catalog.
+        let catalog = self.fetched_catalog();
+        if let Some(gemini_model) = catalog
+            .iter()
+            .find(|model| {
+                model.available
+                    && model.id.trim() != DEFAULT_MODEL
+                    && model.id.starts_with("gemini-")
+            })
+            .map(|model| model.id.clone())
+        {
+            return gemini_model;
+        }
+        if let Some(catalog_model) = catalog
+            .iter()
+            .find(|model| model.available && model.id.trim() != DEFAULT_MODEL)
+            .map(|model| model.id.clone())
+        {
+            return catalog_model;
+        }
+
+        DEFAULT_FALLBACK_MODEL.to_string()
+    }
+
     async fn fetch_available_models_with_project(
         &self,
         access_token: &str,
         project_id: Option<&str>,
-    ) -> Result<Vec<CatalogModel>> {
+    ) -> Result<CatalogSnapshot> {
         let request = if let Some(project_id) = project_id.filter(|value| !value.trim().is_empty())
         {
             serde_json::json!({ "project": project_id })
@@ -486,7 +580,7 @@ impl AntigravityProvider {
         Ok(parse_fetch_available_models_response(&parsed))
     }
 
-    async fn fetch_available_models(&self) -> Result<Vec<CatalogModel>> {
+    async fn fetch_available_models(&self) -> Result<CatalogSnapshot> {
         let mut tokens = antigravity_auth::load_or_refresh_tokens().await?;
 
         if let Some(project_id) = tokens
@@ -494,23 +588,23 @@ impl AntigravityProvider {
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            && let Ok(models) = self
+            && let Ok(snapshot) = self
                 .fetch_available_models_with_project(&tokens.access_token, Some(project_id))
                 .await
-            && !models.is_empty()
+            && !snapshot.models.is_empty()
         {
-            return Ok(models);
+            return Ok(snapshot);
         }
 
         if let Ok(project_id) = antigravity_auth::fetch_project_id(&tokens.access_token).await {
             tokens.project_id = Some(project_id.clone());
             let _ = antigravity_auth::save_tokens(&tokens);
-            if let Ok(models) = self
+            if let Ok(snapshot) = self
                 .fetch_available_models_with_project(&tokens.access_token, Some(&project_id))
                 .await
-                && !models.is_empty()
+                && !snapshot.models.is_empty()
             {
-                return Ok(models);
+                return Ok(snapshot);
             }
         }
 
@@ -541,7 +635,7 @@ impl AntigravityProvider {
             }
         };
         let request = CodeAssistGenerateRequest {
-            model: model.to_string(),
+            model: self.resolve_model_for_request(model),
             project,
             user_prompt_id: Uuid::new_v4().to_string(),
             request: VertexGenerateContentRequest {
@@ -723,23 +817,60 @@ impl Provider for AntigravityProvider {
                 return;
             };
             if let Some(content) = candidate.content {
+                // Gemini 3 attaches a `thoughtSignature` to function-call parts
+                // (and occasionally to a standalone preceding part). Emit tool
+                // calls through the standard ToolUseStart/End path so jcode
+                // drives the multi-turn loop, and replay the signature via a
+                // dedicated ToolUseSignature event so it can be persisted on the
+                // ToolUse block and resent on later turns (required by the
+                // Cloud Code backend, which rejects function calls missing it).
+                let mut pending_signature: Option<String> = None;
                 for part in content.parts {
+                    let part_signature = part
+                        .thought_signature
+                        .as_ref()
+                        .filter(|sig| !sig.is_empty())
+                        .cloned();
                     if let Some(text) = part.text.filter(|text| !text.is_empty()) {
                         let _ = tx.send(Ok(StreamEvent::TextDelta(text))).await;
                     }
                     if let Some(function_call) = part.function_call {
+                        let signature = part_signature.clone().or_else(|| pending_signature.take());
+                        let raw_call_id = function_call
+                            .id
+                            .clone()
+                            .unwrap_or_else(|| Uuid::new_v4().to_string());
+                        let call_id = crate::message::sanitize_tool_id(&raw_call_id);
                         let _ = tx
-                            .send(Ok(StreamEvent::NativeToolCall {
-                                request_id: function_call
-                                    .id
-                                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
-                                tool_name: function_call.name,
-                                input: function_call.args,
+                            .send(Ok(StreamEvent::ToolUseStart {
+                                id: call_id,
+                                name: function_call.name,
                             }))
                             .await;
+                        let _ = tx
+                            .send(Ok(StreamEvent::ToolInputDelta(
+                                function_call.args.to_string(),
+                            )))
+                            .await;
+                        let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;
+                        if let Some(signature) = signature {
+                            let _ = tx
+                                .send(Ok(StreamEvent::ToolUseSignature(signature)))
+                                .await;
+                        }
+                    } else if let Some(signature) = part_signature {
+                        // Standalone signature part; remember it for the next
+                        // function call in this candidate.
+                        pending_signature = Some(signature);
                     }
                 }
             }
+
+            let _ = tx
+                .send(Ok(StreamEvent::MessageEnd {
+                    stop_reason: candidate.finish_reason.clone(),
+                }))
+                .await;
         });
 
         Ok(Box::pin(ReceiverStream::new(rx)))
@@ -828,21 +959,34 @@ impl Provider for AntigravityProvider {
 
     async fn prefetch_models(&self) -> Result<()> {
         match self.fetch_available_models().await {
-            Ok(models) => {
-                if !models.is_empty() {
+            Ok(snapshot) => {
+                if !snapshot.models.is_empty() {
                     crate::logging::info(&format!(
-                        "Discovered Antigravity models: {}",
-                        models
+                        "Discovered Antigravity models: {}{}",
+                        snapshot
+                            .models
                             .iter()
                             .map(|model| model.id.as_str())
                             .collect::<Vec<_>>()
-                            .join(", ")
+                            .join(", "),
+                        snapshot
+                            .default_model_id
+                            .as_deref()
+                            .map(|id| format!(" (default: {id})"))
+                            .unwrap_or_default()
                     ));
-                    Self::persist_catalog(&models);
+                    Self::persist_catalog(&snapshot);
+                    if let Some(default_model_id) = snapshot.default_model_id.clone() {
+                        *self
+                            .backend_default_model
+                            .write()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                            Some(default_model_id);
+                    }
                     *self
                         .fetched_catalog
                         .write()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = models;
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = snapshot.models;
                 }
             }
             Err(err) => {
@@ -865,6 +1009,7 @@ impl Provider for AntigravityProvider {
             client: self.client.clone(),
             model: Arc::new(RwLock::new(self.model())),
             fetched_catalog: self.fetched_catalog.clone(),
+            backend_default_model: self.backend_default_model.clone(),
         })
     }
 }
