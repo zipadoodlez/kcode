@@ -735,6 +735,8 @@ pub(super) fn handle_disconnect(
     }
     if !app.streaming_text.is_empty() {
         let content = app.take_streaming_text();
+        let content = app.collapse_reasoning_for_commit(content);
+        if !content.trim().is_empty() {
         app.push_display_message(DisplayMessage {
             role: "assistant".to_string(),
             content,
@@ -743,6 +745,7 @@ pub(super) fn handle_disconnect(
             title: None,
             tool_data: None,
         });
+        }
     }
     app.clear_streaming_render_state();
     app.streaming_tool_calls.clear();
@@ -1130,6 +1133,8 @@ async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
             app.last_stream_activity = None;
             if !app.streaming_text.is_empty() {
                 let content = app.take_streaming_text();
+                let content = app.collapse_reasoning_for_commit(content);
+                if !content.trim().is_empty() {
                 app.push_display_message(DisplayMessage {
                     role: "assistant".to_string(),
                     content,
@@ -1138,6 +1143,7 @@ async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
                     title: None,
                     tool_data: None,
                 });
+                }
             }
             if !app.schedule_pending_remote_retry(
                 "⚠ Stream stalled (no response for 2 minutes). Processing cancelled.",

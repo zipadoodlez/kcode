@@ -643,8 +643,7 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
             "session_id": spec.session_id,
             "command": "/subagent",
         }),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
 
     app.push_display_message(DisplayMessage {
         role: "tool".to_string(),
@@ -658,8 +657,7 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
     let content_blocks = vec![ContentBlock::ToolUse {
         id: tool_call.id.clone(),
         name: tool_call.name.clone(),
-        input: tool_call.input.clone(),
-    }];
+        input: tool_call.input.clone(), thought_signature: None, }];
     app.add_provider_message(Message {
         role: Role::Assistant,
         content: content_blocks.clone(),
@@ -2673,8 +2671,65 @@ fn handle_alignment_command(app: &mut App, trimmed: &str) -> bool {
     true
 }
 
+fn handle_reasoning_display_command(app: &mut App, trimmed: &str) -> bool {
+    if trimmed != "/reasoning"
+        && !trimmed.starts_with("/reasoning ")
+        && trimmed != "/thinking"
+        && !trimmed.starts_with("/thinking ")
+    {
+        return false;
+    }
+
+    let rest = trimmed
+        .strip_prefix("/reasoning")
+        .or_else(|| trimmed.strip_prefix("/thinking"))
+        .unwrap_or_default()
+        .trim();
+
+    if rest.is_empty() || matches!(rest, "show" | "status") {
+        let current = crate::config::config().display.reasoning_display();
+        app.push_display_message(DisplayMessage::system(format!(
+            "Reasoning display is currently {}.\n\n\
+             Modes:\n\
+             • off - never show reasoning\n\
+             • full - keep every reasoning trace in the transcript\n\
+             • current - show only the live reasoning, then collapse it once a tool runs or the answer commits\n\n\
+             Use /reasoning <off|full|current> to change it.",
+            current.label()
+        )));
+        return true;
+    }
+
+    let Some(mode) = crate::config::ReasoningDisplayMode::parse(rest) else {
+        app.push_display_message(DisplayMessage::error(
+            "Usage: /reasoning (show), /reasoning off, /reasoning full, or /reasoning current"
+                .to_string(),
+        ));
+        return true;
+    };
+
+    app.set_status_notice(format!("Reasoning display: {}", mode.label()));
+    match crate::config::Config::set_reasoning_display(mode) {
+        Ok(()) => app.push_display_message(DisplayMessage::system(format!(
+            "Saved reasoning display: {}. Applied to this session immediately.",
+            mode.label()
+        ))),
+        Err(error) => app.push_display_message(DisplayMessage::error(format!(
+            "Applied reasoning display {} for this session, but failed to save it as the default: {}",
+            mode.label(),
+            error
+        ))),
+    }
+
+    true
+}
+
 pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
     if handle_alignment_command(app, trimmed) {
+        return true;
+    }
+
+    if handle_reasoning_display_command(app, trimmed) {
         return true;
     }
 

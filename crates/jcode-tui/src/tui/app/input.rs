@@ -19,6 +19,37 @@ use std::time::{Duration, Instant};
 
 const INPUT_SHELL_MAX_OUTPUT_LEN: usize = 30_000;
 
+/// Remove reasoning-marked lines from committed transcript text. Reasoning lines
+/// are wrapped in emphasis containing the invisible [`REASONING_SENTINEL`]
+/// (see `jcode_tui_markdown::reasoning_line_markup`). Trailing blank lines left
+/// behind are trimmed so the remaining answer renders cleanly.
+pub(super) fn strip_reasoning_lines(content: &str) -> String {
+    let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
+    let mut out_lines: Vec<&str> = Vec::new();
+    for line in content.split('\n') {
+        if line.contains(sentinel) {
+            continue;
+        }
+        out_lines.push(line);
+    }
+    // Collapse runs of blank lines created by removed reasoning blocks, and trim
+    // leading/trailing blank lines.
+    let mut result = String::with_capacity(content.len());
+    let mut prev_blank = true; // suppress leading blanks
+    for line in out_lines {
+        let is_blank = line.trim().is_empty();
+        if is_blank && prev_blank {
+            continue;
+        }
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str(line);
+        prev_blank = is_blank;
+    }
+    result.trim_end().to_string()
+}
+
 pub(super) fn edit_input_in_external_editor(app: &mut App) {
     match edit_text_in_external_editor(&app.input) {
         Ok(edited) => {
@@ -2427,6 +2458,20 @@ impl App {
         self.refresh_split_view_if_needed();
     }
 
+    /// In `current` reasoning display mode, reasoning is shown live but collapsed
+    /// once the assistant commits a message or runs a tool. Strip any
+    /// reasoning-marked lines (identified by [`REASONING_SENTINEL`]) from text
+    /// about to be committed to the transcript. Other modes pass through.
+    pub(super) fn collapse_reasoning_for_commit(&self, content: String) -> String {
+        if !matches!(
+            crate::config::config().display.reasoning_display(),
+            crate::config::ReasoningDisplayMode::Current
+        ) {
+            return content;
+        }
+        strip_reasoning_lines(&content)
+    }
+
     pub(super) fn replace_streaming_text(&mut self, text: String) {
         self.streaming_text = text;
         self.refresh_split_view_if_needed();
@@ -2464,6 +2509,12 @@ impl App {
         }
 
         let content = self.take_streaming_text();
+        let content = self.collapse_reasoning_for_commit(content);
+        if content.trim().is_empty() {
+            // Nothing left after collapsing reasoning-only content.
+            self.stream_buffer.clear();
+            return false;
+        }
         self.push_display_message(DisplayMessage::assistant(content));
         self.stream_buffer.clear();
         true

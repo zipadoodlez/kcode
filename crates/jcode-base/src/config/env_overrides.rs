@@ -194,6 +194,11 @@ impl Config {
                 self.display.show_thinking = parsed;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_REASONING_DISPLAY") {
+            if let Some(mode) = crate::config::ReasoningDisplayMode::parse(&v) {
+                self.display.set_reasoning_display(mode);
+            }
+        }
         if let Ok(v) = std::env::var("JCODE_MARKDOWN_SPACING") {
             match v.trim().to_lowercase().as_str() {
                 "compact" => self.display.markdown_spacing = MarkdownSpacingMode::Compact,

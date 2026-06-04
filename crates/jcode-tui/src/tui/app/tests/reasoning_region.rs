@@ -137,3 +137,30 @@ fn reasoning_region_renders_dim_italic_text_without_gutter() {
         body_span.style
     );
 }
+
+#[test]
+fn strip_reasoning_lines_removes_reasoning_keeps_answer() {
+    use crate::tui::app::input::strip_reasoning_lines;
+
+    // Build content the way the streaming buffer would: reasoning lines wrapped
+    // with the sentinel, then a normal answer paragraph.
+    let mut content = String::new();
+    content.push_str(&jcode_tui_markdown::reasoning_line_markup("thinking one"));
+    content.push_str(&jcode_tui_markdown::reasoning_line_markup("thinking two"));
+    content.push('\n');
+    content.push_str("Here is the answer.\n");
+
+    let stripped = strip_reasoning_lines(&content);
+    assert_eq!(stripped, "Here is the answer.");
+    assert!(!stripped.contains(jcode_tui_markdown::REASONING_SENTINEL));
+}
+
+#[test]
+fn strip_reasoning_lines_reasoning_only_becomes_empty() {
+    use crate::tui::app::input::strip_reasoning_lines;
+
+    let mut content = String::new();
+    content.push_str(&jcode_tui_markdown::reasoning_line_markup("only thinking"));
+    let stripped = strip_reasoning_lines(&content);
+    assert!(stripped.trim().is_empty(), "got: {stripped:?}");
+}

@@ -159,6 +159,18 @@ impl Config {
         Ok(())
     }
 
+    /// Update the persisted reasoning display mode preference.
+    pub fn set_reasoning_display(mode: ReasoningDisplayMode) -> anyhow::Result<()> {
+        let mut cfg = Self::load();
+        cfg.display.set_reasoning_display(mode);
+        cfg.save()?;
+        crate::logging::info(&format!(
+            "Saved display.reasoning_display to config: {}",
+            mode.label()
+        ));
+        Ok(())
+    }
+
     fn normalize_external_auth_source_id(source_id: &str) -> String {
         source_id.trim().to_ascii_lowercase()
     }

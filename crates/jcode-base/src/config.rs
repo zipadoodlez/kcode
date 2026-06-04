@@ -8,7 +8,7 @@ pub use jcode_config_types::{
     CompactionMode, CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition,
     DiffDisplayMode, DisplayConfig, FeatureConfig, GatewayConfig, KeybindingsConfig,
     MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
-    NamedProviderType, NativeScrollbarConfig, ProviderConfig, SafetyConfig,
+    NamedProviderType, NativeScrollbarConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
     SessionPickerResumeAction, SwarmSpawnMode, UpdateChannel, WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
@@ -111,6 +111,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_PROVIDER",
     "JCODE_PROMPT_ENTRY_ANIMATION",
     "JCODE_QUEUE_MODE",
+    "JCODE_REASONING_DISPLAY",
     "JCODE_REDRAW_FPS",
     "JCODE_SAME_PROVIDER_ACCOUNT_FAILOVER",
     "JCODE_SCROLL_BOOKMARK_KEY",

@@ -297,21 +297,21 @@ impl App {
                                                     cache_control: None,
                                                 });
                                             }
+                                            crate::message::push_reasoning_blocks(
+                                                &mut content_blocks,
+                                                &provider_name,
+                                                &reasoning_content,
+                                                Some(&reasoning_signature),
+                                                store_reasoning_content,
+                                            );
                                             if store_reasoning_content {
-                                                crate::message::push_reasoning_content_block(
-                                                    &mut content_blocks,
-                                                    &provider_name,
-                                                    &reasoning_content,
-                                                    Some(&reasoning_signature),
-                                                );
                                                 content_blocks.extend(openai_reasoning_items.iter().cloned());
                                             }
                                             for tc in &tool_calls {
                                                 content_blocks.push(ContentBlock::ToolUse {
                                                     id: tc.id.clone(),
                                                     name: tc.name.clone(),
-                                                    input: tc.input.clone(),
-                                                });
+                                                    input: tc.input.clone(), thought_signature: None, });
                                             }
                                             if !content_blocks.is_empty() {
                                                 let content_clone = content_blocks.clone();
@@ -330,6 +330,8 @@ impl App {
                                             }
                                             if !self.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
+                                                let content = self.collapse_reasoning_for_commit(content);
+                                                if !content.trim().is_empty() {
                                                 self.push_display_message(DisplayMessage {
                                                     role: "assistant".to_string(),
                                                     content,
@@ -338,6 +340,7 @@ impl App {
                                                     title: None,
                                                     tool_data: None,
                                                 });
+                                                }
                                             }
                                         }
                                         self.clear_streaming_render_state();
@@ -363,21 +366,21 @@ impl App {
                                                     cache_control: None,
                                                 });
                                             }
+                                            crate::message::push_reasoning_blocks(
+                                                &mut content_blocks,
+                                                &provider_name,
+                                                &reasoning_content,
+                                                Some(&reasoning_signature),
+                                                store_reasoning_content,
+                                            );
                                             if store_reasoning_content {
-                                                crate::message::push_reasoning_content_block(
-                                                    &mut content_blocks,
-                                                    &provider_name,
-                                                    &reasoning_content,
-                                                    Some(&reasoning_signature),
-                                                );
                                                 content_blocks.extend(openai_reasoning_items.iter().cloned());
                                             }
                                             for tc in &tool_calls {
                                                 content_blocks.push(ContentBlock::ToolUse {
                                                     id: tc.id.clone(),
                                                     name: tc.name.clone(),
-                                                    input: tc.input.clone(),
-                                                });
+                                                    input: tc.input.clone(), thought_signature: None, });
                                             }
                                             // Add partial assistant response to messages
                                             if !content_blocks.is_empty() {
@@ -391,6 +394,8 @@ impl App {
                                             // Add display message for partial response
                                             if !self.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
+                                                let content = self.collapse_reasoning_for_commit(content);
+                                                if !content.trim().is_empty() {
                                                 self.push_display_message(DisplayMessage {
                                                     role: "assistant".to_string(),
                                                     content,
@@ -399,6 +404,7 @@ impl App {
                                                     title: None,
                                                     tool_data: None,
                                                 });
+                                                }
                                             }
                                         }
                                         // Add user's interleaved message
@@ -502,14 +508,12 @@ impl App {
                                             id: id.clone(),
                                             name: name.clone(),
                                             input: serde_json::Value::Null,
-                                            intent: None,
-                                        });
+                                            intent: None, thought_signature: None, });
                                         current_tool = Some(ToolCall {
                                             id,
                                             name,
                                             input: serde_json::Value::Null,
-                                            intent: None,
-                                        });
+                                            intent: None, thought_signature: None, });
                                         current_tool_input.clear();
                                         if eager_stream_redraw {
                                             status_spinner_renderer.draw_full(self, terminal)?;
@@ -562,6 +566,21 @@ impl App {
                                             current_tool_input.clear();
                                             if eager_stream_redraw {
                                                 status_spinner_renderer.draw_full(self, terminal)?;
+                                            }
+                                        }
+                                    }
+                                    StreamEvent::ToolUseSignature(signature) => {
+                                        // Attach Gemini 3 thought signature to the
+                                        // most recent tool call so it can be
+                                        // persisted and replayed on later turns.
+                                        if !signature.is_empty() {
+                                            if let Some(tool) = tool_calls.last_mut() {
+                                                tool.thought_signature = Some(signature.clone());
+                                            }
+                                            if let Some(streaming_tool) =
+                                                self.streaming_tool_calls.last_mut()
+                                            {
+                                                streaming_tool.thought_signature = Some(signature);
                                             }
                                         }
                                     }
@@ -693,13 +712,14 @@ impl App {
                                             self.append_streaming_text(&chunk);
                                         }
                                         // Only render thinking content if enabled in config.
-                                        if config().display.show_thinking {
+                                        if config().display.reasoning_enabled() {
                                             self.open_reasoning_region();
                                             self.append_reasoning_text(&thinking_text);
                                         }
-                                        if store_reasoning_content {
-                                            reasoning_content.push_str(&thinking_text);
-                                        }
+                                        // Always capture reasoning text so it can be
+                                        // persisted as a history-only trace, regardless
+                                        // of provider replay support.
+                                        reasoning_content.push_str(&thinking_text);
                                     }
                                     StreamEvent::ThinkingEnd => {
                                         self.pause_streaming_tps(true);
@@ -712,7 +732,7 @@ impl App {
                                         if let Some(chunk) = self.stream_buffer.flush() {
                                             self.append_streaming_text(&chunk);
                                         }
-                                        if config().display.show_thinking {
+                                        if config().display.reasoning_enabled() {
                                             self.close_reasoning_region(None);
                                         }
                                         self.thinking_prefix_emitted = false;
@@ -814,8 +834,7 @@ impl App {
                                             id: id.clone(),
                                             name: crate::message::GENERATED_IMAGE_TOOL_NAME.to_string(),
                                             input,
-                                            intent: Some("OpenAI native image generation".to_string()),
-                                        };
+                                            intent: Some("OpenAI native image generation".to_string()), thought_signature: None, };
                                         let summary = crate::message::generated_image_summary(
                                             &path,
                                             metadata_path.as_deref(),
@@ -969,21 +988,21 @@ impl App {
                     cache_control: None,
                 });
             }
+            crate::message::push_reasoning_blocks(
+                &mut content_blocks,
+                &provider_name,
+                &reasoning_content,
+                Some(&reasoning_signature),
+                store_reasoning_content,
+            );
             if store_reasoning_content {
-                crate::message::push_reasoning_content_block(
-                    &mut content_blocks,
-                    &provider_name,
-                    &reasoning_content,
-                    Some(&reasoning_signature),
-                );
                 content_blocks.extend(openai_reasoning_items.iter().cloned());
             }
             for tc in &tool_calls {
                 content_blocks.push(ContentBlock::ToolUse {
                     id: tc.id.clone(),
                     name: tc.name.clone(),
-                    input: tc.input.clone(),
-                });
+                    input: tc.input.clone(), thought_signature: None, });
             }
 
             let assistant_message_id = if !content_blocks.is_empty() {
@@ -1034,14 +1053,17 @@ impl App {
                 // Had tool calls - only display text that came AFTER the last tool
                 // (text before each tool was already committed in ToolUseEnd handler)
                 if !self.streaming_text.is_empty() {
+                    let content = self.collapse_reasoning_for_commit(self.streaming_text.clone());
+                    if !content.trim().is_empty() {
                     self.push_display_message(DisplayMessage {
                         role: "assistant".to_string(),
-                        content: self.streaming_text.clone(),
+                        content,
                         tool_calls: vec![],
                         duration_secs: duration,
                         title: None,
                         tool_data: None,
                     });
+                    }
                 }
                 if self.has_streaming_footer_stats() {
                     self.push_turn_footer(duration);
@@ -1195,6 +1217,8 @@ impl App {
                                             }
                                             if !self.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
+                                                let content = self.collapse_reasoning_for_commit(content);
+                                                if !content.trim().is_empty() {
                                                 self.push_display_message(DisplayMessage {
                                                     role: "assistant".to_string(),
                                                     content,
@@ -1203,6 +1227,7 @@ impl App {
                                                     title: None,
                                                     tool_data: None,
                                                 });
+                                                }
                                             }
                                             self.clear_streaming_render_state();
                                             self.stream_buffer.clear();
