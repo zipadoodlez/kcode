@@ -2,13 +2,39 @@ use super::{
     BackgroundInfo, CacheHitInfo, CacheMissAttribution, GraphEdge, GraphNode, InfoWidgetData,
     Margins, MemoryActivity, MemoryEvent, MemoryEventKind, MemoryInfo, MemoryState, PipelineState,
     StepStatus, SwarmInfo, UsageInfo, UsageProvider, WidgetKind, calculate_placements,
-    occasional_status_tip, render_kv_cache_widget, render_memory_compact, render_memory_widget,
-    render_model_widget, render_todos_compact, render_todos_expanded, render_todos_widget,
-    render_usage_compact, render_usage_widget, truncate_smart,
+    effective_prompt_tokens, occasional_status_tip, render_kv_cache_widget, render_memory_compact,
+    render_memory_widget, render_model_widget, render_todos_compact, render_todos_expanded,
+    render_todos_widget, render_usage_compact, render_usage_widget, truncate_smart,
 };
 use crate::protocol::SwarmMemberStatus;
 use ratatui::layout::Rect;
 use std::time::{Duration, Instant};
+
+#[test]
+fn effective_prompt_tokens_handles_split_and_subset_accounting() {
+    // Anthropic-style split accounting: `input` is only the uncached remainder,
+    // so cache_read pushed beyond input means the true prompt is the sum.
+    assert_eq!(effective_prompt_tokens(2449, 19499, 684), 22632);
+    // OpenAI-style subset accounting: cached tokens are inside `input`.
+    assert_eq!(effective_prompt_tokens(10000, 6000, 0), 10000);
+    // No cache telemetry at all behaves like a plain input count.
+    assert_eq!(effective_prompt_tokens(5000, 0, 0), 5000);
+}
+
+#[test]
+fn cache_hit_ratio_uses_effective_prompt_for_split_providers() {
+    // Mirrors a real Anthropic log line where read >> input and the old code
+    // clamped the ratio to 100%.
+    let cache = CacheHitInfo {
+        reported_input_tokens: 2449,
+        read_tokens: 19499,
+        creation_tokens: 684,
+        ..Default::default()
+    };
+    // 19499 / (2449 + 19499 + 684) = 0.8616...
+    let ratio = cache.hit_ratio().expect("ratio");
+    assert!((ratio - 0.8616).abs() < 0.01, "ratio was {ratio}");
+}
 
 #[test]
 fn truncate_smart_handles_unicode() {
@@ -37,6 +63,7 @@ fn kv_cache_widget_shows_session_hit_ratio() {
             optimal_input_tokens: 16_667,
             last_reported_input_tokens: Some(10_000),
             last_read_tokens: Some(9_400),
+            last_creation_tokens: Some(0),
             last_optimal_input_tokens: Some(9_895),
             miss_attributions: vec![CacheMissAttribution {
                 turn_number: 20,
@@ -59,7 +86,7 @@ fn kv_cache_widget_shows_session_hit_ratio() {
     assert!(text.contains("last "));
     assert!(text.contains("94%"));
     assert!(text.contains("session "));
-    assert!(text.contains("75%"));
+    assert!(text.contains("39%"));
     assert!(text.contains("miss attribution"));
     assert!(text.contains("69k missed total"));
     assert!(text.contains("20>"));

@@ -409,13 +409,20 @@ pub(in crate::tui::app) fn handle_server_event(
                         );
                     app.last_cache_reported_input_tokens = Some(input);
                     app.last_cache_read_tokens = Some(app.streaming_cache_read_tokens.unwrap_or(0));
+                    app.last_cache_creation_tokens =
+                        Some(app.streaming_cache_creation_tokens.unwrap_or(0));
                 }
 
                 if let Some(baseline) = app.kv_cache_baseline.as_mut() {
                     baseline.input_tokens = input;
                     baseline.completed_at = Instant::now();
                 }
-                app.cache_next_optimal_input_tokens = Some(input);
+                app.cache_next_optimal_input_tokens =
+                    Some(crate::tui::info_widget::effective_prompt_tokens(
+                        input,
+                        app.streaming_cache_read_tokens.unwrap_or(0),
+                        app.streaming_cache_creation_tokens.unwrap_or(0),
+                    ));
                 app.last_api_completed = Some(Instant::now());
                 app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
                 app.last_api_completed_model = Some(<App as TuiState>::provider_model(app));
@@ -952,6 +959,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.total_cache_optimal_input_tokens = 0;
                 app.last_cache_reported_input_tokens = None;
                 app.last_cache_read_tokens = None;
+                app.last_cache_creation_tokens = None;
                 app.last_cache_optimal_input_tokens = None;
                 app.cache_next_optimal_input_tokens = None;
                 app.kv_cache_baseline = None;

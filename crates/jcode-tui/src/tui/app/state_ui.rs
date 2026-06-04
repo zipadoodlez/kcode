@@ -960,8 +960,14 @@ fn format_cache_stats(app: &App) -> String {
     let read = remote_cache_read.saturating_add(app.total_cache_read_tokens);
     let write = remote_cache_write.saturating_add(app.total_cache_creation_tokens);
     let optimal = app.total_cache_optimal_input_tokens;
-    let read_pct = cache_ratio_pct(read, reported);
-    let write_pct = cache_ratio_pct(write, reported);
+    // `reported` is the aggregate of provider-reported `input_tokens`, which for
+    // split-accounting providers (Anthropic) excludes cached + cache-creation
+    // tokens. Percentages must use the effective prompt size so they stay in
+    // 0-100% instead of clamping at 100%.
+    let effective_reported =
+        crate::tui::info_widget::effective_prompt_tokens(reported, read, write);
+    let read_pct = cache_ratio_pct(read, effective_reported);
+    let write_pct = cache_ratio_pct(write, effective_reported);
     let optimal_pct = (optimal > 0).then(|| cache_ratio_pct(read, optimal));
     let cache_totals_source = match (
         remote_usage.is_some(),
@@ -992,8 +998,22 @@ fn format_cache_stats(app: &App) -> String {
     } else {
         0
     });
-    let read_pct_including_live = cache_ratio_pct(read_including_live, reported_including_live);
-    let write_pct_including_live = cache_ratio_pct(write_including_live, reported_including_live);
+    let read_pct_including_live = cache_ratio_pct(
+        read_including_live,
+        crate::tui::info_widget::effective_prompt_tokens(
+            reported_including_live,
+            read_including_live,
+            write_including_live,
+        ),
+    );
+    let write_pct_including_live = cache_ratio_pct(
+        write_including_live,
+        crate::tui::info_widget::effective_prompt_tokens(
+            reported_including_live,
+            read_including_live,
+            write_including_live,
+        ),
+    );
     let ttl = if crate::provider::anthropic::is_cache_ttl_1h() {
         "1 hour"
     } else {
@@ -1221,9 +1241,16 @@ fn format_cache_stats(app: &App) -> String {
         "- total_cache_optimal_input_tokens: {}",
         bold_count(optimal)
     ));
-    lines.push(format!("- cache_read_pct_of_reported_input: {}%", read_pct));
     lines.push(format!(
-        "- cache_write_pct_of_reported_input: {}%",
+        "- effective_prompt_tokens (input+read+creation for split providers): {}",
+        bold_count(effective_reported)
+    ));
+    lines.push(format!(
+        "- cache_read_pct_of_effective_prompt: {}%",
+        read_pct
+    ));
+    lines.push(format!(
+        "- cache_write_pct_of_effective_prompt: {}%",
         write_pct
     ));
     lines.push(format!(
@@ -1239,11 +1266,11 @@ fn format_cache_stats(app: &App) -> String {
         bold_count(write_including_live)
     ));
     lines.push(format!(
-        "- cache_read_pct_of_reported_input_including_unrecorded_live: {}%",
+        "- cache_read_pct_of_effective_prompt_including_unrecorded_live: {}%",
         read_pct_including_live
     ));
     lines.push(format!(
-        "- cache_write_pct_of_reported_input_including_unrecorded_live: {}%",
+        "- cache_write_pct_of_effective_prompt_including_unrecorded_live: {}%",
         write_pct_including_live
     ));
     lines.push(format!(
@@ -1259,6 +1286,10 @@ fn format_cache_stats(app: &App) -> String {
     lines.push(format!(
         "- last_cache_read_tokens: {}",
         opt_u64(app.last_cache_read_tokens)
+    ));
+    lines.push(format!(
+        "- last_cache_creation_tokens: {}",
+        opt_u64(app.last_cache_creation_tokens)
     ));
     lines.push(format!(
         "- last_cache_optimal_input_tokens: {}",

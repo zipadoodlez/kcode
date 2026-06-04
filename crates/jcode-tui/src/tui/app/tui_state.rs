@@ -1206,6 +1206,7 @@ impl crate::tui::TuiState for App {
                 optimal_input_tokens: self.total_cache_optimal_input_tokens,
                 last_reported_input_tokens: self.last_cache_reported_input_tokens,
                 last_read_tokens: self.last_cache_read_tokens,
+                last_creation_tokens: self.last_cache_creation_tokens,
                 last_optimal_input_tokens: self.last_cache_optimal_input_tokens,
                 miss_attributions: self
                     .kv_cache_miss_samples

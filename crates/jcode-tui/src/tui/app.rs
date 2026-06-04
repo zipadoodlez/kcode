@@ -593,6 +593,7 @@ pub struct App {
     total_cache_optimal_input_tokens: u64,
     last_cache_reported_input_tokens: Option<u64>,
     last_cache_read_tokens: Option<u64>,
+    last_cache_creation_tokens: Option<u64>,
     last_cache_optimal_input_tokens: Option<u64>,
     cache_next_optimal_input_tokens: Option<u64>,
     kv_cache_baseline: Option<KvCacheBaseline>,
@@ -1351,7 +1352,16 @@ impl App {
         }
 
         let optimal_input_tokens = self.cache_next_optimal_input_tokens;
-        self.cache_next_optimal_input_tokens = Some(self.streaming_input_tokens);
+        // Stash the *effective* prompt size for this request so the next request's
+        // cache-read can be compared against everything that just became cacheable.
+        // For split-accounting providers (Anthropic) bare `input` is only the
+        // uncached remainder, so the reusable prefix is input + read + creation.
+        self.cache_next_optimal_input_tokens =
+            Some(crate::tui::info_widget::effective_prompt_tokens(
+                self.streaming_input_tokens,
+                self.streaming_cache_read_tokens.unwrap_or(0),
+                self.streaming_cache_creation_tokens.unwrap_or(0),
+            ));
 
         let request = self
             .pending_kv_cache_request
@@ -1392,6 +1402,7 @@ impl App {
             .saturating_add(self.streaming_cache_creation_tokens.unwrap_or(0));
         self.last_cache_reported_input_tokens = Some(self.streaming_input_tokens);
         self.last_cache_read_tokens = Some(self.streaming_cache_read_tokens.unwrap_or(0));
+        self.last_cache_creation_tokens = Some(self.streaming_cache_creation_tokens.unwrap_or(0));
         self.last_cache_optimal_input_tokens = optimal_input_tokens;
 
         self.log_kv_cache_usage_summary(&request, optimal_input_tokens);

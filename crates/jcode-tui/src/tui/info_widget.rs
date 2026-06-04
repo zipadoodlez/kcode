@@ -380,10 +380,32 @@ pub struct CacheHitInfo {
     pub last_reported_input_tokens: Option<u64>,
     /// Cached input tokens read on the latest completed request with cache telemetry.
     pub last_read_tokens: Option<u64>,
+    /// Tokens written/created in provider cache on the latest completed request.
+    pub last_creation_tokens: Option<u64>,
     /// Approximate reusable prefix tokens expected on the latest completed request.
     pub last_optimal_input_tokens: Option<u64>,
     /// Recent attributed misses with estimated cacheable tokens not read.
     pub miss_attributions: Vec<CacheMissAttribution>,
+}
+
+/// Effective prompt size to use as the denominator for cache-hit ratios.
+///
+/// Providers report `input_tokens` differently:
+/// - Anthropic/Claude (split accounting): `input` is the *uncached remainder*,
+///   while cache-read and cache-creation tokens are reported separately, so the
+///   true prompt size is `input + read + creation`.
+/// - OpenAI-style (subset accounting): cached tokens are already counted inside
+///   `input`, so the prompt size is just `input`.
+///
+/// We don't always know the provider at the point a ratio is computed, so we use
+/// the same heuristic the compaction path uses: treat accounting as split when a
+/// cache-creation count exists or when reported reads exceed the bare input.
+pub fn effective_prompt_tokens(input: u64, read: u64, creation: u64) -> u64 {
+    if creation > 0 || read > input {
+        input.saturating_add(read).saturating_add(creation)
+    } else {
+        input
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -395,14 +417,23 @@ pub struct CacheMissAttribution {
 }
 
 impl CacheHitInfo {
+    /// Effective total prompt tokens across the session (read denominator).
+    fn effective_reported_tokens(&self) -> u64 {
+        effective_prompt_tokens(self.reported_input_tokens, self.read_tokens, self.creation_tokens)
+    }
+
+    /// Fraction of the session's prompt tokens that were served from cache.
     pub fn hit_ratio(&self) -> Option<f32> {
-        if self.reported_input_tokens == 0 {
+        let denominator = self.effective_reported_tokens();
+        if denominator == 0 {
             None
         } else {
-            Some((self.read_tokens as f32 / self.reported_input_tokens as f32).clamp(0.0, 1.0))
+            Some((self.read_tokens as f32 / denominator as f32).clamp(0.0, 1.0))
         }
     }
 
+    /// Fraction of the previously-cacheable prompt that was actually reused
+    /// (read_tokens vs. the prior request's full prompt).
     pub fn optimal_ratio(&self) -> Option<f32> {
         if self.optimal_input_tokens == 0 {
             None
@@ -413,10 +444,15 @@ impl CacheHitInfo {
 
     pub fn last_ratio(&self) -> Option<f32> {
         let input = self.last_reported_input_tokens?;
-        if input == 0 {
+        let denominator = effective_prompt_tokens(
+            input,
+            self.last_read_tokens.unwrap_or(0),
+            self.last_creation_tokens.unwrap_or(0),
+        );
+        if denominator == 0 {
             None
         } else {
-            Some((self.last_read_tokens.unwrap_or(0) as f32 / input as f32).clamp(0.0, 1.0))
+            Some((self.last_read_tokens.unwrap_or(0) as f32 / denominator as f32).clamp(0.0, 1.0))
         }
     }
 
