@@ -311,10 +311,25 @@ impl Agent {
         if !self.disabled_tools.is_empty() {
             tools.retain(|tool| !self.disabled_tools.contains(&tool.name));
         }
-        if !self.session.is_canary {
-            tools.retain(|tool| tool.name != "selfdev");
-        }
+        Self::apply_selfdev_tool_surface(&mut tools, self.session.is_canary);
         tools
+    }
+
+    /// Tailor the `selfdev` tool definition to the session mode.
+    ///
+    /// The registry stores a single shared `selfdev` tool with a default
+    /// (non-self-dev) schema. Self-dev sessions get the full build/test/reload
+    /// surface; every other session keeps the lightweight on-ramp surface
+    /// (`enter`, `setup`, `reload`, `status`, `find-config`). The tool stays
+    /// available in all sessions so the agent can always enter self-dev mode.
+    fn apply_selfdev_tool_surface(tools: &mut [ToolDefinition], is_canary: bool) {
+        for tool in tools.iter_mut() {
+            if tool.name == "selfdev" {
+                tool.description = crate::tool::selfdev::SelfDevTool::description_for(is_canary)
+                    .to_string();
+                tool.input_schema = crate::tool::selfdev::SelfDevTool::schema_for(is_canary);
+            }
+        }
     }
 
     /// Returns true if the registry contains `mcp__*` tools (subject to the
@@ -348,9 +363,7 @@ impl Agent {
         if !self.disabled_tools.is_empty() {
             tools.retain(|tool| !self.disabled_tools.contains(&tool.name));
         }
-        if !self.session.is_canary {
-            tools.retain(|tool| tool.name != "selfdev");
-        }
+        Self::apply_selfdev_tool_surface(&mut tools, self.session.is_canary);
         tools
     }
 
