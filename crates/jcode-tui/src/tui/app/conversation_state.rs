@@ -414,6 +414,25 @@ impl App {
         self.remote_startup_phase_started = None;
     }
 
+    /// Begin (or restart) the per-connection history-recovery budget.
+    ///
+    /// Called when a remote connection starts waiting for the bootstrap
+    /// `History` payload. Each fresh connection gets a clean budget so a stall on
+    /// one connection does not exhaust the retries available to the next.
+    pub(crate) fn begin_remote_history_wait(&mut self) {
+        self.remote_history_wait_started = Some(Instant::now());
+        self.remote_history_recovery_attempts = 0;
+        self.remote_history_recovery_last_attempt = None;
+    }
+
+    /// Clear the history-recovery watchdog once history has loaded (or the
+    /// connection is no longer waiting on it).
+    pub(crate) fn clear_remote_history_wait(&mut self) {
+        self.remote_history_wait_started = None;
+        self.remote_history_recovery_attempts = 0;
+        self.remote_history_recovery_last_attempt = None;
+    }
+
     pub(super) fn set_memory_feature_enabled(&mut self, enabled: bool) {
         self.memory_enabled = enabled;
         if !enabled {

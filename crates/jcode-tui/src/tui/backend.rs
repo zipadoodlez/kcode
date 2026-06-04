@@ -531,6 +531,21 @@ impl RemoteConnection {
         self.send_request(request).await
     }
 
+    /// Re-request the session history payload from the server.
+    ///
+    /// Used by the client-side history-recovery watchdog: if the bootstrap
+    /// `History` event never arrives after a (re)connect (e.g. it was dropped
+    /// during a reload handoff, or the server was momentarily busy), the client
+    /// would otherwise be stuck forever on "loading session…" with every prompt
+    /// gated behind `has_loaded_history()`. Sending a fresh `GetHistory` lets the
+    /// server resend the payload so the session can recover without a `/restart`.
+    pub async fn request_history(&mut self) -> Result<u64> {
+        let id = self.next_request_id;
+        self.next_request_id += 1;
+        self.send_request(Request::GetHistory { id }).await?;
+        Ok(id)
+    }
+
     /// Resume a specific session by ID
     pub async fn resume_session(&mut self, session_id: &str) -> Result<()> {
         let request = Request::ResumeSession {

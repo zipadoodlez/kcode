@@ -813,6 +813,16 @@ pub struct App {
     runtime_mode: AppRuntimeMode,
     // Remote rewind/undo request waiting for the server's replacement History payload.
     pending_remote_rewind_notice: Option<PendingRemoteRewindNotice>,
+    // History-recovery watchdog for the "stuck on loading session…" bug. When a
+    // remote (re)connect never receives the bootstrap `History` event, every
+    // prompt path is gated behind `has_loaded_history()` and the session is
+    // permanently stuck on "loading session…" until the user runs `/restart`.
+    // These track when the current connection began waiting for history and how
+    // many times we have re-requested it, so the watchdog can re-issue
+    // `GetHistory` a few times before giving up.
+    remote_history_wait_started: Option<Instant>,
+    remote_history_recovery_attempts: u32,
+    remote_history_recovery_last_attempt: Option<Instant>,
     // Server was just spawned - allow initial connection retries in run_remote
     server_spawning: bool,
     // Whether running in replay mode (readonly playback of a saved session)

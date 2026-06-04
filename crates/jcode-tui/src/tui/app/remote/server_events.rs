@@ -1114,6 +1114,9 @@ pub(in crate::tui::app) fn handle_server_event(
                     history_model.as_deref().unwrap_or("<none>")
                 ));
                 remote.mark_history_loaded();
+                // History arrived: cancel the "stuck on loading session…"
+                // recovery watchdog so it doesn't re-request on a later tick.
+                app.clear_remote_history_wait();
                 if messages.is_empty() && !session_changed && !app.display_messages().is_empty() {
                     crate::logging::info(
                         "Preserving locally restored display history for metadata-only History bootstrap",
