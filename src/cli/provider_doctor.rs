@@ -5,8 +5,8 @@ use std::io::IsTerminal;
 use anyhow::{Context, Result, anyhow};
 
 use crate::auth::provider_e2e::{
-    DoctorReport, DoctorTier, native_doctor_supports_provider, run_antigravity_native_e2e,
-    run_claude_native_e2e, run_provider_e2e,
+    DoctorReport, DoctorTier, NativeProviderKind, native_doctor_supports_provider,
+    run_antigravity_native_e2e, run_claude_native_e2e, run_generic_native_e2e, run_provider_e2e,
 };
 use crate::live_tests::LiveVerificationStageStatus;
 
@@ -22,15 +22,20 @@ pub async fn run_provider_doctor_command(
 
     // Native-runtime providers cannot be driven by the OpenAI-compatible doctor;
     // route them to their native drivers, which exercise the production runtime.
+    // Claude and Antigravity keep bespoke drivers (unusual credential/catalog
+    // stories); everything else flows through the generic native driver.
     if native_doctor_supports_provider(provider) {
-        let is_antigravity = matches!(
-            crate::auth::lifecycle::normalized_auth_provider_id(Some(provider)),
-            Some("antigravity")
-        );
-        let report = if is_antigravity {
-            run_antigravity_native_e2e(provider, model, tier).await?
-        } else {
-            run_claude_native_e2e(provider, model, tier).await?
+        let normalized = crate::auth::lifecycle::normalized_auth_provider_id(Some(provider));
+        let report = match normalized {
+            Some("claude") => run_claude_native_e2e(provider, model, tier).await?,
+            Some("antigravity") => run_antigravity_native_e2e(provider, model, tier).await?,
+            Some(other) => {
+                let kind = NativeProviderKind::from_normalized(other).ok_or_else(|| {
+                    anyhow!("`{provider}` has no native provider-doctor driver")
+                })?;
+                run_generic_native_e2e(kind, model, tier).await?
+            }
+            None => anyhow::bail!("`{provider}` has no native provider-doctor driver"),
         };
         emit_report(&report, emit_json);
         return if report.tier_passed {

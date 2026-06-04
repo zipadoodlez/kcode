@@ -311,6 +311,15 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
                 crate::provider::ModelRouteApiMethod::OpenAIApiKey
             );
         }
+        "gemini" => {
+            // Gemini's Code Assist OAuth routes carry the `code-assist-oauth`
+            // api_method (not the bare provider id), so match on the parsed kind
+            // like the other native credential routes above.
+            return matches!(
+                api_method,
+                crate::provider::ModelRouteApiMethod::CodeAssistOAuth
+            );
+        }
         _ => {}
     }
 
