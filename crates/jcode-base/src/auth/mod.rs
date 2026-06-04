@@ -1,4 +1,5 @@
 pub mod account_store;
+pub mod active_method;
 pub mod antigravity;
 pub mod azure;
 pub mod claude;
@@ -36,6 +37,8 @@ pub use status_types::{
     AuthCredentialSource, AuthExpiryConfidence, AuthReadinessLevel, AuthRefreshSupport, AuthState,
     AuthStatus, AuthValidationMethod, ProviderAuth, ProviderAuthAssessment,
 };
+
+pub use active_method::{ActiveCredential, ResolvedProviderAuth, resolve_dual_credential_auth};
 
 use crate::provider_catalog::LoginProviderAuthStateKey;
 use crate::provider_catalog::LoginProviderDescriptor;

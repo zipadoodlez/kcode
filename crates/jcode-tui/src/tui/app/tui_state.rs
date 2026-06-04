@@ -156,105 +156,67 @@ impl App {
         }
     }
 
-    /// Determine the auth/billing method for a remote session using the
-    /// runtime/billing provider key reported by the server. This lets remote
-    /// Anthropic/OpenAI API-key sessions show cost-based usage instead of
-    /// subscription bars, matching how local sessions behave.
-    fn remote_widget_auth_method(
+    /// Resolve the active credential (OAuth vs API key) for a dual-auth
+    /// provider (Anthropic / OpenAI). This is the one place billing identity is
+    /// decided for the info widget, regardless of transport:
+    ///
+    /// * Remote sessions use [`App::remote_resolved_credential`], which the
+    ///   server resolved authoritatively from its live credentials.
+    /// * Local sessions use [`resolve_dual_credential_auth`], shared with the
+    ///   header tag and model-switch line so all surfaces agree.
+    ///
+    /// Returns `None` when neither transport can determine the credential (e.g.
+    /// the server didn't report one, or no credentials are configured locally).
+    fn dual_credential_active(
         &self,
         route: WidgetRouteInfo,
-    ) -> crate::tui::info_widget::AuthMethod {
-        use crate::tui::info_widget::AuthMethod;
-
-        let runtime_key = self
-            .remote_runtime_provider_key
-            .as_deref()
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-            .map(str::to_ascii_lowercase);
-
-        // Explicit API-key runtime identities (e.g. "claude-api",
-        // "anthropic-api", "openai-api") indicate cost-based billing.
-        let is_explicit_api = |key: &str, prefixes: &[&str]| {
-            prefixes.iter().any(|prefix| {
-                key == *prefix
-                    || key.starts_with(&format!("{prefix}-"))
-                    || key.starts_with(&format!("{prefix}:"))
-            })
-        };
-
-        match route.provider {
-            WidgetProviderKind::Anthropic => {
-                if runtime_key
-                    .as_deref()
-                    .is_some_and(|key| is_explicit_api(key, &["claude-api", "anthropic-api"]))
-                {
-                    AuthMethod::AnthropicApiKey
-                } else {
-                    AuthMethod::Unknown
-                }
-            }
-            WidgetProviderKind::OpenAI => {
-                if runtime_key
-                    .as_deref()
-                    .is_some_and(|key| is_explicit_api(key, &["openai-api"]))
-                {
-                    AuthMethod::OpenAIApiKey
-                } else {
-                    AuthMethod::Unknown
-                }
-            }
-            _ => AuthMethod::Unknown,
-        }
-    }
-
-    fn widget_auth_method(&self, route: WidgetRouteInfo) -> crate::tui::info_widget::AuthMethod {
+        provider: jcode_provider_core::ActiveProvider,
+    ) -> Option<crate::auth::ActiveCredential> {
         if route.is_remote {
-            // Remote sessions can't inspect local credentials, but the server
-            // reports the runtime/billing provider key (e.g. "claude-api",
-            // "anthropic-api", "openai-api") so we can still distinguish
-            // cost-based API-key billing from subscription (OAuth) billing.
-            return self.remote_widget_auth_method(route);
+            return self.remote_resolved_credential.map(Into::into);
         }
 
         let auth_status = crate::auth::AuthStatus::check_fast();
         let runtime_provider = active_runtime_provider_key();
+        crate::auth::resolve_dual_credential_auth(
+            provider,
+            &auth_status,
+            runtime_provider.as_deref(),
+        )
+        .map(|resolved| resolved.active)
+    }
 
-        // Anthropic/OpenAI credential resolution is shared with the header tag
-        // and model-switch line via resolve_dual_credential_auth so all three
-        // surfaces agree on OAuth-vs-API-key.
-        use crate::auth::{ActiveCredential, resolve_dual_credential_auth};
+    fn widget_auth_method(&self, route: WidgetRouteInfo) -> crate::tui::info_widget::AuthMethod {
+        use crate::auth::ActiveCredential;
         use crate::tui::info_widget::AuthMethod;
 
         match route.provider {
             WidgetProviderKind::Anthropic => {
-                match resolve_dual_credential_auth(
-                    jcode_provider_core::ActiveProvider::Claude,
-                    &auth_status,
-                    runtime_provider.as_deref(),
-                ) {
-                    Some(resolved) => match resolved.active {
-                        ActiveCredential::OAuth => AuthMethod::AnthropicOAuth,
-                        ActiveCredential::ApiKey => AuthMethod::AnthropicApiKey,
-                    },
+                match self
+                    .dual_credential_active(route, jcode_provider_core::ActiveProvider::Claude)
+                {
+                    Some(ActiveCredential::OAuth) => AuthMethod::AnthropicOAuth,
+                    Some(ActiveCredential::ApiKey) => AuthMethod::AnthropicApiKey,
                     None => AuthMethod::Unknown,
                 }
             }
             WidgetProviderKind::OpenAI => {
-                match resolve_dual_credential_auth(
-                    jcode_provider_core::ActiveProvider::OpenAI,
-                    &auth_status,
-                    runtime_provider.as_deref(),
-                ) {
-                    Some(resolved) => match resolved.active {
-                        ActiveCredential::OAuth => AuthMethod::OpenAIOAuth,
-                        ActiveCredential::ApiKey => AuthMethod::OpenAIApiKey,
-                    },
+                match self
+                    .dual_credential_active(route, jcode_provider_core::ActiveProvider::OpenAI)
+                {
+                    Some(ActiveCredential::OAuth) => AuthMethod::OpenAIOAuth,
+                    Some(ActiveCredential::ApiKey) => AuthMethod::OpenAIApiKey,
                     None => AuthMethod::Unknown,
                 }
             }
+            // Providers below have no OAuth-vs-API-key ambiguity to resolve from
+            // remote credentials; remote sessions render usage via
+            // `widget_usage_info`'s `is_remote` handling, so report Unknown here
+            // and let the local heuristics run only for local sessions.
+            _ if route.is_remote => AuthMethod::Unknown,
             WidgetProviderKind::OpenCode => crate::tui::info_widget::AuthMethod::OpenCodeApiKey,
             WidgetProviderKind::OpenRouter => {
+                let runtime_provider = active_runtime_provider_key();
                 let transport_state =
                     crate::provider::openrouter::OpenRouterTransportState::from_current_env(
                         runtime_provider.as_deref(),
@@ -270,6 +232,7 @@ impl App {
             WidgetProviderKind::CostBasedApiKey => crate::tui::info_widget::AuthMethod::ApiKey,
             WidgetProviderKind::Copilot => crate::tui::info_widget::AuthMethod::CopilotOAuth,
             WidgetProviderKind::Gemini => {
+                let auth_status = crate::auth::AuthStatus::check_fast();
                 if auth_status.gemini == crate::auth::AuthState::Available {
                     crate::tui::info_widget::AuthMethod::GeminiOAuth
                 } else {
@@ -921,7 +884,8 @@ impl crate::tui::TuiState for App {
                             tool_result_count += 1;
                             tool_result_chars += content.len();
                         }
-                        ContentBlock::Reasoning { text } => {
+                        ContentBlock::Reasoning { text }
+                        | ContentBlock::ReasoningTrace { text } => {
                             asst_chars += text.len();
                         }
                         ContentBlock::AnthropicThinking {
