@@ -326,6 +326,12 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
             // even though the runtime identity is `jcode`.
             return matches!(api_method, crate::provider::ModelRouteApiMethod::OpenRouter);
         }
+        "azure-openai" => {
+            // Azure OpenAI reuses the OpenRouter transport (configured via Azure
+            // env), so its routes carry the `openrouter` api_method while keeping
+            // the `azure-openai` runtime identity.
+            return matches!(api_method, crate::provider::ModelRouteApiMethod::OpenRouter);
+        }
         _ => {}
     }
 
