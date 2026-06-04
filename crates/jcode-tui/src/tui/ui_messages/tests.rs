@@ -35,7 +35,7 @@ fn render_system_message_forces_system_color_on_all_spans() {
 }
 
 #[test]
-fn render_system_message_renders_markdown_syntax_verbatim() {
+fn render_system_message_renders_markdown_formatting() {
     let msg = DisplayMessage::system(
         "**bold** and `code` and # heading\n- bullet item\n[link](http://example.com)",
     );
@@ -47,15 +47,33 @@ fn render_system_message_renders_markdown_syntax_verbatim() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    // Markdown markers must survive as literal plaintext (no formatting applied).
-    assert!(plain.contains("**bold**"), "got: {plain:?}");
-    assert!(plain.contains("`code`"), "got: {plain:?}");
-    assert!(plain.contains("# heading"), "got: {plain:?}");
-    assert!(plain.contains("- bullet item"), "got: {plain:?}");
+    // System messages now render markdown: the inline markers are consumed and
+    // the underlying text survives. Bold/code markers should no longer appear
+    // literally, while the text content and a bullet glyph remain.
+    assert!(plain.contains("bold"), "keeps bold text: {plain:?}");
     assert!(
-        plain.contains("[link](http://example.com)"),
-        "got: {plain:?}"
+        !plain.contains("**bold**"),
+        "strips bold markers: {plain:?}"
     );
+    assert!(plain.contains("code"), "keeps code text: {plain:?}");
+    assert!(plain.contains("heading"), "keeps heading text: {plain:?}");
+    assert!(
+        plain.contains("bullet item"),
+        "keeps bullet text: {plain:?}"
+    );
+    // The link text renders without the raw markdown link syntax.
+    assert!(plain.contains("link"), "keeps link text: {plain:?}");
+    assert!(
+        !plain.contains("[link](http://example.com)"),
+        "strips raw link syntax: {plain:?}"
+    );
+
+    // Color is still forced to the system color over every span.
+    for line in &lines {
+        for span in &line.spans {
+            assert_eq!(span.style.fg, Some(system_message_color()));
+        }
+    }
 }
 
 #[test]
