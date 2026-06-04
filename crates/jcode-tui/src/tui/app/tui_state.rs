@@ -156,44 +156,101 @@ impl App {
         }
     }
 
+    /// Determine the auth/billing method for a remote session using the
+    /// runtime/billing provider key reported by the server. This lets remote
+    /// Anthropic/OpenAI API-key sessions show cost-based usage instead of
+    /// subscription bars, matching how local sessions behave.
+    fn remote_widget_auth_method(
+        &self,
+        route: WidgetRouteInfo,
+    ) -> crate::tui::info_widget::AuthMethod {
+        use crate::tui::info_widget::AuthMethod;
+
+        let runtime_key = self
+            .remote_runtime_provider_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_ascii_lowercase);
+
+        // Explicit API-key runtime identities (e.g. "claude-api",
+        // "anthropic-api", "openai-api") indicate cost-based billing.
+        let is_explicit_api = |key: &str, prefixes: &[&str]| {
+            prefixes.iter().any(|prefix| {
+                key == *prefix
+                    || key.starts_with(&format!("{prefix}-"))
+                    || key.starts_with(&format!("{prefix}:"))
+            })
+        };
+
+        match route.provider {
+            WidgetProviderKind::Anthropic => {
+                if runtime_key
+                    .as_deref()
+                    .is_some_and(|key| is_explicit_api(key, &["claude-api", "anthropic-api"]))
+                {
+                    AuthMethod::AnthropicApiKey
+                } else {
+                    AuthMethod::Unknown
+                }
+            }
+            WidgetProviderKind::OpenAI => {
+                if runtime_key
+                    .as_deref()
+                    .is_some_and(|key| is_explicit_api(key, &["openai-api"]))
+                {
+                    AuthMethod::OpenAIApiKey
+                } else {
+                    AuthMethod::Unknown
+                }
+            }
+            _ => AuthMethod::Unknown,
+        }
+    }
+
     fn widget_auth_method(&self, route: WidgetRouteInfo) -> crate::tui::info_widget::AuthMethod {
         if route.is_remote {
-            return crate::tui::info_widget::AuthMethod::Unknown;
+            // Remote sessions can't inspect local credentials, but the server
+            // reports the runtime/billing provider key (e.g. "claude-api",
+            // "anthropic-api", "openai-api") so we can still distinguish
+            // cost-based API-key billing from subscription (OAuth) billing.
+            return self.remote_widget_auth_method(route);
         }
 
         let auth_status = crate::auth::AuthStatus::check_fast();
         let runtime_provider = active_runtime_provider_key();
 
+        // Anthropic/OpenAI credential resolution is shared with the header tag
+        // and model-switch line via resolve_dual_credential_auth so all three
+        // surfaces agree on OAuth-vs-API-key.
+        use crate::auth::{ActiveCredential, resolve_dual_credential_auth};
+        use crate::tui::info_widget::AuthMethod;
+
         match route.provider {
             WidgetProviderKind::Anthropic => {
-                if matches!(
+                match resolve_dual_credential_auth(
+                    jcode_provider_core::ActiveProvider::Claude,
+                    &auth_status,
                     runtime_provider.as_deref(),
-                    Some("claude-api" | "anthropic-api")
                 ) {
-                    crate::tui::info_widget::AuthMethod::AnthropicApiKey
-                } else if matches!(runtime_provider.as_deref(), Some("claude" | "anthropic")) {
-                    crate::tui::info_widget::AuthMethod::AnthropicOAuth
-                } else if auth_status.anthropic.has_oauth {
-                    // Anthropic Auto prefers OAuth (Claude subscription) before
-                    // falling back to a direct API key.
-                    crate::tui::info_widget::AuthMethod::AnthropicOAuth
-                } else if auth_status.anthropic.has_api_key {
-                    crate::tui::info_widget::AuthMethod::AnthropicApiKey
-                } else {
-                    crate::tui::info_widget::AuthMethod::Unknown
+                    Some(resolved) => match resolved.active {
+                        ActiveCredential::OAuth => AuthMethod::AnthropicOAuth,
+                        ActiveCredential::ApiKey => AuthMethod::AnthropicApiKey,
+                    },
+                    None => AuthMethod::Unknown,
                 }
             }
             WidgetProviderKind::OpenAI => {
-                if matches!(runtime_provider.as_deref(), Some("openai-api")) {
-                    crate::tui::info_widget::AuthMethod::OpenAIApiKey
-                } else if matches!(runtime_provider.as_deref(), Some("openai")) {
-                    crate::tui::info_widget::AuthMethod::OpenAIOAuth
-                } else if auth_status.openai_has_oauth {
-                    crate::tui::info_widget::AuthMethod::OpenAIOAuth
-                } else if auth_status.openai_has_api_key {
-                    crate::tui::info_widget::AuthMethod::OpenAIApiKey
-                } else {
-                    crate::tui::info_widget::AuthMethod::Unknown
+                match resolve_dual_credential_auth(
+                    jcode_provider_core::ActiveProvider::OpenAI,
+                    &auth_status,
+                    runtime_provider.as_deref(),
+                ) {
+                    Some(resolved) => match resolved.active {
+                        ActiveCredential::OAuth => AuthMethod::OpenAIOAuth,
+                        ActiveCredential::ApiKey => AuthMethod::OpenAIApiKey,
+                    },
+                    None => AuthMethod::Unknown,
                 }
             }
             WidgetProviderKind::OpenCode => crate::tui::info_widget::AuthMethod::OpenCodeApiKey,

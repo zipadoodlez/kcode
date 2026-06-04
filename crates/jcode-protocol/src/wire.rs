@@ -935,6 +935,11 @@ pub enum ServerEvent {
         /// Upstream provider (e.g., which provider OpenRouter routed to, or calculated preference)
         #[serde(skip_serializing_if = "Option::is_none")]
         upstream_provider: Option<String>,
+        /// Runtime/billing provider key for this session (e.g. "claude-api",
+        /// "anthropic-api", "claude"). Lets remote clients distinguish
+        /// subscription (OAuth) from cost-based (API key) billing for usage display.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        runtime_provider_key: Option<String>,
         /// Reasoning effort for providers that expose it
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning_effort: Option<String>,

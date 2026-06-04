@@ -868,6 +868,7 @@ pub(in crate::tui::app) fn handle_server_event(
             connection_type,
             status_detail,
             upstream_provider,
+            runtime_provider_key,
             reasoning_effort,
             service_tier,
             compaction_mode,
@@ -996,6 +997,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 autojudge_enabled.unwrap_or(crate::config::config().autojudge.enabled);
             if upstream_provider.is_some() {
                 app.upstream_provider = upstream_provider;
+            }
+            if session_changed || runtime_provider_key.is_some() {
+                app.remote_runtime_provider_key = runtime_provider_key;
             }
             if session_changed || connection_type.is_some() {
                 app.connection_type = connection_type;

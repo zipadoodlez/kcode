@@ -658,6 +658,49 @@ fn test_info_widget_remote_opencode_shows_cost_based_usage() {
 }
 
 #[test]
+fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
+    // Remote Anthropic sessions billed via API key (runtime provider key
+    // "claude-api"/"anthropic-api") should display cost-based usage instead of
+    // subscription bars, mirroring local behavior. OAuth subscription sessions
+    // (no explicit API runtime key) keep the subscription usage provider.
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_provider_name = Some("Claude".to_string());
+    app.remote_provider_model = Some("claude-sonnet-4-20250514".to_string());
+    app.remote_runtime_provider_key = Some("claude-api".to_string());
+    app.total_input_tokens = 12_000;
+    app.total_output_tokens = 3_400;
+
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(
+        data.auth_method,
+        crate::tui::info_widget::AuthMethod::AnthropicApiKey
+    );
+    let usage = data
+        .usage_info
+        .as_ref()
+        .expect("remote anthropic api-key usage info");
+    assert_eq!(
+        usage.provider,
+        crate::tui::info_widget::UsageProvider::CostBased
+    );
+    assert_eq!(usage.input_tokens, 12_000);
+    assert_eq!(usage.output_tokens, 3_400);
+
+    // OAuth subscription (provider key "claude") keeps subscription bars.
+    app.remote_runtime_provider_key = Some("claude".to_string());
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(
+        data.auth_method,
+        crate::tui::info_widget::AuthMethod::Unknown
+    );
+    assert_eq!(
+        data.usage_info.as_ref().map(|info| info.provider),
+        Some(crate::tui::info_widget::UsageProvider::Anthropic)
+    );
+}
+
+#[test]
 fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     let _guard = crate::storage::lock_test_env();
     let tracked_env = [
