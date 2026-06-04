@@ -1082,20 +1082,21 @@ impl Provider for MultiProvider {
         }
     }
 
-    fn active_auth_method_label(&self) -> Option<&'static str> {
+    fn active_resolved_credential(&self) -> Option<jcode_provider_core::ResolvedCredential> {
+        use jcode_provider_core::ResolvedCredential;
         match self.active_provider() {
             ActiveProvider::Claude => {
                 let anthropic = self.anthropic_provider()?;
                 Some(match anthropic.credential_mode_snapshot() {
-                    anthropic::AnthropicCredentialMode::OAuth => "OAuth",
-                    anthropic::AnthropicCredentialMode::ApiKey => "API key",
+                    anthropic::AnthropicCredentialMode::OAuth => ResolvedCredential::Oauth,
+                    anthropic::AnthropicCredentialMode::ApiKey => ResolvedCredential::ApiKey,
                     // Auto prefers OAuth (Claude subscription) when available,
                     // otherwise falls back to the API key. Mirror that exactly.
                     anthropic::AnthropicCredentialMode::Auto => {
                         if crate::auth::claude::load_credentials().is_ok() {
-                            "OAuth"
+                            ResolvedCredential::Oauth
                         } else {
-                            "API key"
+                            ResolvedCredential::ApiKey
                         }
                     }
                 })
@@ -1103,14 +1104,14 @@ impl Provider for MultiProvider {
             ActiveProvider::OpenAI => {
                 let openai = self.openai_provider()?;
                 Some(match openai.credential_mode_snapshot() {
-                    openai::OpenAICredentialMode::OAuth => "OAuth",
-                    openai::OpenAICredentialMode::ApiKey => "API key",
+                    openai::OpenAICredentialMode::OAuth => ResolvedCredential::Oauth,
+                    openai::OpenAICredentialMode::ApiKey => ResolvedCredential::ApiKey,
                     // Auto resolves to OAuth first when available, otherwise API key.
                     openai::OpenAICredentialMode::Auto => {
                         if crate::auth::codex::load_oauth_credentials().is_ok() {
-                            "OAuth"
+                            ResolvedCredential::Oauth
                         } else {
-                            "API key"
+                            ResolvedCredential::ApiKey
                         }
                     }
                 })

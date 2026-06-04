@@ -333,7 +333,7 @@ fn test_remote_rewind_completion_shows_undo_hint_after_history_refresh() {
             connection_type: None,
             status_detail: None,
             upstream_provider: None,
-            runtime_provider_key: None,
+            resolved_credential: None,
             reasoning_effort: None,
             service_tier: None,
             compaction_mode: crate::config::CompactionMode::Reactive,

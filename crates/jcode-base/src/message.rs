@@ -244,6 +244,55 @@ pub fn push_reasoning_content_block(
     }
 }
 
+/// Persist the model's reasoning for an assistant turn.
+///
+/// This always keeps a readable, history-only copy of the reasoning in the
+/// transcript (`ContentBlock::ReasoningTrace`) so the thinking can be recalled
+/// or debugged later. When `store_replay_context` is set, it *additionally*
+/// stores the provider-specific replay block (`AnthropicThinking` /
+/// `Reasoning`) that the provider needs echoed back on subsequent turns. To
+/// avoid storing the same readable text twice, the history trace is skipped
+/// when the replay block already captured the identical readable reasoning.
+pub fn push_reasoning_blocks(
+    blocks: &mut Vec<ContentBlock>,
+    provider_name: &str,
+    reasoning_content: &str,
+    reasoning_signature: Option<&str>,
+    store_replay_context: bool,
+) {
+    if reasoning_content.is_empty() {
+        return;
+    }
+
+    // Whether the replay block we stored already contains the readable text.
+    let mut readable_replay_stored = false;
+    if store_replay_context {
+        if provider_name.eq_ignore_ascii_case("anthropic") {
+            if let Some(signature) = reasoning_signature.filter(|s| !s.is_empty()) {
+                blocks.push(ContentBlock::AnthropicThinking {
+                    thinking: reasoning_content.to_string(),
+                    signature: signature.to_string(),
+                });
+                readable_replay_stored = true;
+            }
+        } else if provider_name.eq_ignore_ascii_case("openai") {
+            // OpenAI native reasoning items carry encrypted content, not readable
+            // text, so a separate history trace is still required below.
+        } else {
+            blocks.push(ContentBlock::Reasoning {
+                text: reasoning_content.to_string(),
+            });
+            readable_replay_stored = true;
+        }
+    }
+
+    if !readable_replay_stored {
+        blocks.push(ContentBlock::ReasoningTrace {
+            text: reasoning_content.to_string(),
+        });
+    }
+}
+
 pub fn generated_image_tool_input(
     path: &str,
     metadata_path: Option<&str>,

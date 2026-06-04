@@ -177,6 +177,7 @@ pub fn build_compaction_conversation_text(
                     conversation_text.push_str(&format!("[Result: {}]\n", truncated));
                 }
                 ContentBlock::Reasoning { .. }
+                | ContentBlock::ReasoningTrace { .. }
                 | ContentBlock::AnthropicThinking { .. }
                 | ContentBlock::OpenAIReasoning { .. } => {}
                 ContentBlock::Image { .. } => conversation_text.push_str("[Image]\n"),
@@ -290,6 +291,7 @@ pub fn content_char_count(content: &[ContentBlock]) -> usize {
         .map(|block| match block {
             ContentBlock::Text { text, .. } => text.len(),
             ContentBlock::Reasoning { text } => text.len(),
+            ContentBlock::ReasoningTrace { text } => text.len(),
             ContentBlock::AnthropicThinking {
                 thinking,
                 signature,
@@ -607,8 +609,7 @@ mod tests {
             content: vec![ContentBlock::ToolUse {
                 id: "call_1".to_string(),
                 name: "read".to_string(),
-                input: serde_json::json!({"file":"src/lib.rs"}),
-            }],
+                input: serde_json::json!({"file":"src/lib.rs"}), thought_signature: None, }],
             timestamp: None,
             tool_duration_ms: None,
         };
@@ -710,8 +711,7 @@ mod tests {
                 content: vec![ContentBlock::ToolUse {
                     id: "call_1".to_string(),
                     name: "read".to_string(),
-                    input: serde_json::json!({"file":"src/lib.rs"}),
-                }],
+                    input: serde_json::json!({"file":"src/lib.rs"}), thought_signature: None, }],
                 timestamp: None,
                 tool_duration_ms: None,
             },

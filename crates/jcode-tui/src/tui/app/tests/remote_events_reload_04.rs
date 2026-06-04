@@ -659,15 +659,16 @@ fn test_info_widget_remote_opencode_shows_cost_based_usage() {
 
 #[test]
 fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
-    // Remote Anthropic sessions billed via API key (runtime provider key
-    // "claude-api"/"anthropic-api") should display cost-based usage instead of
+    // Remote Anthropic sessions billed via API key (server resolves
+    // ResolvedCredential::ApiKey) should display cost-based usage instead of
     // subscription bars, mirroring local behavior. OAuth subscription sessions
-    // (no explicit API runtime key) keep the subscription usage provider.
+    // (server resolves ResolvedCredential::Oauth) keep the subscription usage
+    // provider.
     let mut app = create_test_app();
     app.is_remote = true;
     app.remote_provider_name = Some("Claude".to_string());
     app.remote_provider_model = Some("claude-sonnet-4-20250514".to_string());
-    app.remote_runtime_provider_key = Some("claude-api".to_string());
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
     app.total_input_tokens = 12_000;
     app.total_output_tokens = 3_400;
 
@@ -687,12 +688,13 @@ fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
     assert_eq!(usage.input_tokens, 12_000);
     assert_eq!(usage.output_tokens, 3_400);
 
-    // OAuth subscription (provider key "claude") keeps subscription bars.
-    app.remote_runtime_provider_key = Some("claude".to_string());
+    // OAuth subscription keeps subscription bars; the server now reports the
+    // resolved credential directly, so the widget reflects AnthropicOAuth.
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
     let data = crate::tui::TuiState::info_widget_data(&app);
     assert_eq!(
         data.auth_method,
-        crate::tui::info_widget::AuthMethod::Unknown
+        crate::tui::info_widget::AuthMethod::AnthropicOAuth
     );
     assert_eq!(
         data.usage_info.as_ref().map(|info| info.provider),

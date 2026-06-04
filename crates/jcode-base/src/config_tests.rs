@@ -64,6 +64,70 @@ fn swarm_spawn_mode_rejects_invalid_values() {
 }
 
 #[test]
+fn swarm_spawn_mode_as_str_round_trips() {
+    for mode in [
+        SwarmSpawnMode::Visible,
+        SwarmSpawnMode::Headless,
+        SwarmSpawnMode::Auto,
+    ] {
+        assert_eq!(SwarmSpawnMode::parse(mode.as_str()), Some(mode));
+    }
+}
+
+#[test]
+fn test_env_override_swarm_spawn_mode() {
+    let _guard = crate::storage::lock_test_env();
+    let prev = std::env::var_os("JCODE_SWARM_SPAWN_MODE");
+    crate::env::set_var("JCODE_SWARM_SPAWN_MODE", "headless");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+
+    assert_eq!(cfg.agents.swarm_spawn_mode, SwarmSpawnMode::Headless);
+
+    restore_env_var("JCODE_SWARM_SPAWN_MODE", prev);
+}
+
+#[test]
+fn test_env_override_swarm_model() {
+    let _guard = crate::storage::lock_test_env();
+    let prev = std::env::var_os("JCODE_SWARM_MODEL");
+    crate::env::set_var("JCODE_SWARM_MODEL", "claude-opus-4-6");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+
+    assert_eq!(cfg.agents.swarm_model.as_deref(), Some("claude-opus-4-6"));
+
+    // Empty value clears the override back to "inherit".
+    crate::env::set_var("JCODE_SWARM_MODEL", "  ");
+    let mut cfg = Config::default();
+    cfg.agents.swarm_model = Some("preset".to_string());
+    cfg.apply_env_overrides();
+    assert_eq!(cfg.agents.swarm_model, None);
+
+    restore_env_var("JCODE_SWARM_MODEL", prev);
+}
+
+#[test]
+fn test_env_override_memory_sidecar() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_model = std::env::var_os("JCODE_MEMORY_MODEL");
+    let prev_enabled = std::env::var_os("JCODE_MEMORY_SIDECAR_ENABLED");
+    crate::env::set_var("JCODE_MEMORY_MODEL", "claude-haiku-4");
+    crate::env::set_var("JCODE_MEMORY_SIDECAR_ENABLED", "true");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+
+    assert_eq!(cfg.agents.memory_model.as_deref(), Some("claude-haiku-4"));
+    assert!(cfg.agents.memory_sidecar_enabled);
+
+    restore_env_var("JCODE_MEMORY_MODEL", prev_model);
+    restore_env_var("JCODE_MEMORY_SIDECAR_ENABLED", prev_enabled);
+}
+
+#[test]
 fn tool_config_defaults_to_full_toolset() {
     let selection = ToolConfig::default().selection();
     assert!(selection.allowed_tools.is_none());
@@ -238,6 +302,15 @@ fn test_generated_default_config_uses_low_openai_reasoning_effort() {
         content.contains("[acp]") && content.contains("tool_profile = \"acp\""),
         "generated default config should document ACP profile settings"
     );
+    assert!(
+        content.contains("[agents]") && content.contains("swarm_spawn_mode = \"visible\""),
+        "generated default config should document agent spawn defaults"
+    );
+
+    // The generated file must always be valid TOML for the current Config schema.
+    let parsed: Config =
+        toml::from_str(&content).expect("generated default config should parse as Config");
+    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Visible);
 
     if let Some(prev) = prev_home {
         crate::env::set_var("JCODE_HOME", prev);

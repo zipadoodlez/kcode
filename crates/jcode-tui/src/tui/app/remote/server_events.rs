@@ -293,8 +293,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 id,
                 name,
                 input: serde_json::Value::Null,
-                intent: None,
-            });
+                intent: None, thought_signature: None, });
             eager_stream_redraw
         }
         ServerEvent::ToolInput { delta } => {
@@ -311,8 +310,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 id: id.clone(),
                 name: name.clone(),
                 input: parsed_input.clone(),
-                intent: ToolCall::intent_from_input(&parsed_input),
-            };
+                intent: ToolCall::intent_from_input(&parsed_input), thought_signature: None, };
             if let Some(key) = App::experimental_feature_key_for_tool(&tool_call) {
                 app.note_experimental_feature_use(key);
             }
@@ -868,7 +866,7 @@ pub(in crate::tui::app) fn handle_server_event(
             connection_type,
             status_detail,
             upstream_provider,
-            runtime_provider_key,
+            resolved_credential,
             reasoning_effort,
             service_tier,
             compaction_mode,
@@ -998,8 +996,8 @@ pub(in crate::tui::app) fn handle_server_event(
             if upstream_provider.is_some() {
                 app.upstream_provider = upstream_provider;
             }
-            if session_changed || runtime_provider_key.is_some() {
-                app.remote_runtime_provider_key = runtime_provider_key;
+            if session_changed || resolved_credential.is_some() {
+                app.remote_resolved_credential = resolved_credential;
             }
             if session_changed || connection_type.is_some() {
                 app.connection_type = connection_type;

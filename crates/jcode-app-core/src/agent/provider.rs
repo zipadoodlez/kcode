@@ -160,6 +160,16 @@ impl Agent {
         self.session.provider_key.clone()
     }
 
+    /// The credential the active provider will use for the next request, when
+    /// the provider distinguishes OAuth (subscription) from API key (cost).
+    /// Resolved authoritatively here so remote clients can render billing/usage
+    /// without re-deriving it from the provider name.
+    pub fn active_resolved_credential(
+        &self,
+    ) -> Option<jcode_provider_core::ResolvedCredential> {
+        self.provider.active_resolved_credential()
+    }
+
     pub fn set_session_provider_key(&mut self, provider_key: Option<String>) {
         self.session.provider_key = provider_key;
     }

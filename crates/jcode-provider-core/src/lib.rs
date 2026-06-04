@@ -85,6 +85,22 @@ pub trait Provider: Send + Sync {
     /// this to report the auth method accurately instead of inferring it from
     /// which credentials happen to be configured.
     fn active_auth_method_label(&self) -> Option<&'static str> {
+        self.active_resolved_credential()
+            .map(ResolvedCredential::auth_method_label)
+    }
+
+    /// The credential the active provider will actually use for the next
+    /// request, when the provider supports both OAuth and API-key auth
+    /// (currently Anthropic and OpenAI). Returns `None` for providers with no
+    /// OAuth-vs-API-key ambiguity.
+    ///
+    /// This is the authoritative, server-side answer to "subscription or
+    /// cost-based billing?". It is computed from the provider's live credential
+    /// mode rather than re-derived from credential probes or env strings, so
+    /// every surface (header tag, info-widget usage, model-switch line) and
+    /// every transport (local or remote) agrees. Remote clients receive the
+    /// resolved value over the wire instead of guessing from a provider name.
+    fn active_resolved_credential(&self) -> Option<ResolvedCredential> {
         None
     }
 
@@ -819,6 +835,36 @@ impl ModelCatalogSnapshot {
 
 pub const CHEAPNESS_REFERENCE_INPUT_TOKENS: u64 = 25_000;
 pub const CHEAPNESS_REFERENCE_OUTPUT_TOKENS: u64 = 5_000;
+
+/// The credential a dual-auth provider (Anthropic / OpenAI) will actually use
+/// for the next request. This is the authoritative billing identity: `Oauth`
+/// means subscription usage, `ApiKey` means cost-based usage. It is resolved
+/// once, server-side, from the provider's live credential mode and shipped to
+/// remote clients so they never have to re-derive it from a provider name.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolvedCredential {
+    /// OAuth / subscription login (Claude subscription, Codex login, ...).
+    Oauth,
+    /// Direct provider API key (cost-based billing).
+    ApiKey,
+}
+
+impl ResolvedCredential {
+    /// Human-readable label used by header/auth surfaces.
+    pub fn auth_method_label(self) -> &'static str {
+        match self {
+            Self::Oauth => "OAuth",
+            Self::ApiKey => "API key",
+        }
+    }
+
+    /// True when requests bill against a subscription (OAuth) rather than a
+    /// metered API key.
+    pub fn is_subscription(self) -> bool {
+        matches!(self, Self::Oauth)
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

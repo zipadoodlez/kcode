@@ -243,6 +243,31 @@ cross_provider_failover = "countdown"
 # Also overridable per-launch via JCODE_STREAM_IDLE_TIMEOUT_SECS.
 # stream_idle_timeout_secs = 600
 
+[agents]
+# Defaults for spawned helper agents (swarm workers, subagents, sidecars).
+# All keys are optional; the values below are the built-in defaults.
+#
+# Default model for spawned swarm/subagent sessions.
+# Leave unset (or "inherit"/"coordinator") so workers inherit the model of the
+# session that spawned them. Set a concrete model only to pin every worker to it.
+# Env override: JCODE_SWARM_MODEL
+# swarm_model = "inherit"
+#
+# How swarm-created agents are spawned:
+#   "visible"  - open a headed terminal window (default; alias: "headed")
+#   "headless" - create the worker in-process with no terminal window
+#   "auto"     - try visible first, fall back to headless if no window can open
+# The swarm tool's per-call `spawn_mode` overrides this when set.
+# Env override: JCODE_SWARM_SPAWN_MODE
+swarm_spawn_mode = "visible"
+#
+# Model for the memory sidecar (relevance/extraction). Unset = sidecar auto-select.
+# Env override: JCODE_MEMORY_MODEL
+# memory_model = "claude-haiku-4"
+#
+# Whether the memory sidecar handles relevance/extraction.
+# memory_sidecar_enabled = false
+
 [ambient]
 # Ambient mode: background agent that maintains your codebase
 # Enable ambient mode (default: false)

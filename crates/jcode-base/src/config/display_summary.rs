@@ -84,9 +84,11 @@ impl Config {
 
 **Agent models:**
 - Swarm / subagent: {}
+- Swarm spawn mode: {}
 - Review: {}
 - Judge: {}
 - Memory: {}
+- Memory sidecar: {}
 - Ambient: {}
 
 **Gateway:**
@@ -229,6 +231,7 @@ impl Config {
                 .swarm_model
                 .as_deref()
                 .unwrap_or("(inherit current session)"),
+            self.agents.swarm_spawn_mode.as_str(),
             self.autoreview
                 .model
                 .as_deref()
@@ -241,6 +244,11 @@ impl Config {
                 .memory_model
                 .as_deref()
                 .unwrap_or("(sidecar auto-select)"),
+            if self.agents.memory_sidecar_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
             self.ambient
                 .model
                 .as_deref()

@@ -766,10 +766,12 @@ pub struct App {
     remote_client_instance_id: String,
     remote_provider_name: Option<String>,
     remote_provider_model: Option<String>,
-    /// Runtime/billing provider key reported by a remote server (e.g.
-    /// "claude-api", "anthropic-api", "claude"). Lets the info widget choose
-    /// subscription vs cost-based usage display for remote sessions.
-    remote_runtime_provider_key: Option<String>,
+    /// Server-resolved billing credential reported by a remote server: OAuth
+    /// (subscription) vs API key (cost-based), or `None` when the active
+    /// provider has no OAuth-vs-API-key distinction. Lets the info widget choose
+    /// subscription vs cost-based usage display for remote sessions without
+    /// re-deriving it from the provider name.
+    remote_resolved_credential: Option<jcode_provider_core::ResolvedCredential>,
     remote_startup_phase: Option<RemoteStartupPhase>,
     remote_startup_phase_started: Option<Instant>,
     remote_reasoning_effort: Option<String>,

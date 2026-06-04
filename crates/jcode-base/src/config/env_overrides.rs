@@ -279,6 +279,34 @@ impl Config {
             }
         }
 
+        // Agents (spawned helper sessions)
+        if let Ok(v) = std::env::var("JCODE_SWARM_MODEL") {
+            let trimmed = v.trim();
+            self.agents.swarm_model = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        if let Ok(v) = std::env::var("JCODE_SWARM_SPAWN_MODE") {
+            if let Some(parsed) = SwarmSpawnMode::parse(&v) {
+                self.agents.swarm_spawn_mode = parsed;
+            }
+        }
+        if let Ok(v) = std::env::var("JCODE_MEMORY_MODEL") {
+            let trimmed = v.trim();
+            self.agents.memory_model = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        if let Ok(v) = std::env::var("JCODE_MEMORY_SIDECAR_ENABLED") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.agents.memory_sidecar_enabled = parsed;
+            }
+        }
+
         // Web search
         if let Ok(v) = std::env::var("JCODE_WEBSEARCH_ENGINE")
             && let Some(engine) = WebSearchEngine::parse(&v)

@@ -392,6 +392,15 @@ impl SwarmSpawnMode {
             _ => None,
         }
     }
+
+    /// Canonical lowercase string for this mode (matches the config/env values).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Visible => "visible",
+            Self::Headless => "headless",
+            Self::Auto => "auto",
+        }
+    }
 }
 
 /// Automatic end-of-turn code review configuration.

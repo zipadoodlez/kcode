@@ -162,6 +162,7 @@ impl App {
                         transcript.push_str(&format!("[Result: {}]\n", preview));
                     }
                     ContentBlock::Reasoning { .. }
+                    | ContentBlock::ReasoningTrace { .. }
                     | ContentBlock::AnthropicThinking { .. }
                     | ContentBlock::OpenAIReasoning { .. } => {}
                     ContentBlock::Image { .. } => {

@@ -190,7 +190,7 @@ pub(super) async fn handle_get_model_catalog(
         provider_model,
         available_models,
         available_model_routes,
-        runtime_provider_key,
+        resolved_credential,
         source,
     ) = {
         match agent.try_lock() {
@@ -199,7 +199,7 @@ pub(super) async fn handle_get_model_catalog(
                 Some(agent_guard.provider_model()),
                 agent_guard.available_models_display(),
                 agent_guard.model_routes(),
-                agent_guard.session_provider_key(),
+                agent_guard.active_resolved_credential(),
                 "live",
             ),
             Err(_) => {
@@ -211,14 +211,12 @@ pub(super) async fn handle_get_model_catalog(
                     .or_else(|_| Session::load_startup_stub(session_id))
                     .ok();
                 let persisted_model = persisted.as_ref().and_then(|session| session.model.clone());
-                let persisted_provider_key =
-                    persisted.as_ref().and_then(|session| session.provider_key.clone());
                 (
                     Some(provider.name().to_string()),
                     persisted_model.or_else(|| Some(provider.model())),
                     provider.available_models_display(),
                     provider.model_routes(),
-                    persisted_provider_key,
+                    provider.active_resolved_credential(),
                     "fallback",
                 )
             }
@@ -252,7 +250,7 @@ pub(super) async fn handle_get_model_catalog(
         connection_type: None,
         status_detail: None,
         upstream_provider: None,
-        runtime_provider_key,
+        resolved_credential,
         reasoning_effort: None,
         service_tier: None,
         subagent_model: None,
@@ -537,7 +535,7 @@ async fn send_history_from_persisted_session(
         connection_type: None,
         status_detail: None,
         upstream_provider: None,
-        runtime_provider_key: session.provider_key.clone(),
+        resolved_credential: provider.active_resolved_credential(),
         reasoning_effort: session
             .reasoning_effort
             .clone()
@@ -585,7 +583,7 @@ pub(super) async fn send_history(
         skills,
         tool_names,
         upstream_provider,
-        runtime_provider_key,
+        resolved_credential,
         connection_type,
         status_detail,
         reasoning_effort,
@@ -660,7 +658,7 @@ pub(super) async fn send_history(
             skills,
             tool_names,
             agent_guard.last_upstream_provider(),
-            agent_guard.session_provider_key(),
+            agent_guard.active_resolved_credential(),
             agent_guard.last_connection_type(),
             agent_guard.last_status_detail(),
             reasoning_effort,
@@ -753,7 +751,7 @@ pub(super) async fn send_history(
         connection_type,
         status_detail,
         upstream_provider,
-        runtime_provider_key,
+        resolved_credential,
         reasoning_effort,
         service_tier,
         compaction_mode,

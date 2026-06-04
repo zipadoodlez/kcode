@@ -1013,15 +1013,25 @@ pub(crate) fn build_contents(messages: &[Message]) -> Vec<GeminiContent> {
                         });
                     }
                     crate::message::ContentBlock::Reasoning { .. }
+                    | crate::message::ContentBlock::ReasoningTrace { .. }
                     | crate::message::ContentBlock::AnthropicThinking { .. }
                     | crate::message::ContentBlock::OpenAIReasoning { .. } => {}
-                    crate::message::ContentBlock::ToolUse { id, name, input } => {
+                    crate::message::ContentBlock::ToolUse {
+                        id,
+                        name,
+                        input,
+                        thought_signature,
+                    } => {
                         parts.push(GeminiPart {
                             function_call: Some(GeminiFunctionCall {
                                 name: name.clone(),
                                 args: crate::message::ToolCall::input_as_object(input),
                                 id: Some(id.clone()),
                             }),
+                            thought_signature: thought_signature
+                                .as_ref()
+                                .filter(|sig| !sig.is_empty())
+                                .cloned(),
                             ..Default::default()
                         });
                     }

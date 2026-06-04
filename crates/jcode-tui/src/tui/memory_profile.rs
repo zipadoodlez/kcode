@@ -196,7 +196,7 @@ impl ProviderMessageMemoryStats {
                     self.text_bytes += text.len();
                     self.record_bytes(text.len());
                 }
-                ContentBlock::Reasoning { text } => {
+                ContentBlock::Reasoning { text } | ContentBlock::ReasoningTrace { text } => {
                     self.reasoning_bytes += text.len();
                     self.record_bytes(text.len());
                 }
@@ -369,8 +369,7 @@ mod tests {
                 ContentBlock::ToolUse {
                     id: "tool_1".to_string(),
                     name: "bash".to_string(),
-                    input: serde_json::json!({"command": "printf 'hello'"}),
-                },
+                    input: serde_json::json!({"command": "printf 'hello'"}), thought_signature: None, },
                 ContentBlock::ToolResult {
                     tool_use_id: "tool_1".to_string(),
                     content: "hello from tool".to_string(),

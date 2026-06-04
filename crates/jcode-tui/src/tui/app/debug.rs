@@ -343,7 +343,8 @@ impl ProviderMessageMemoryStats {
                     self.text_bytes += text.len();
                     self.record_bytes(text.len());
                 }
-                crate::message::ContentBlock::Reasoning { text } => {
+                crate::message::ContentBlock::Reasoning { text }
+                | crate::message::ContentBlock::ReasoningTrace { text } => {
                     self.reasoning_bytes += text.len();
                     self.record_bytes(text.len());
                 }

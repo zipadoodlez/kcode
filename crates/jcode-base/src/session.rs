@@ -1013,7 +1013,9 @@ impl Session {
         for msg in &mut redacted.messages {
             for block in &mut msg.content {
                 match block {
-                    ContentBlock::Text { text, .. } | ContentBlock::Reasoning { text } => {
+                    ContentBlock::Text { text, .. }
+                    | ContentBlock::Reasoning { text }
+                    | ContentBlock::ReasoningTrace { text } => {
                         *text = crate::message::redact_secrets(text);
                     }
                     ContentBlock::AnthropicThinking { thinking, .. } => {

@@ -8,6 +8,10 @@ pub struct ToolCall {
     pub input: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<String>,
+    /// Gemini 3 thought signature attached to this tool call, replayed on
+    /// later turns so the Cloud Code backend accepts the function call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 /// Tool definition advertised to model providers.
@@ -117,6 +121,14 @@ pub enum ContentBlock {
     Reasoning {
         text: String,
     },
+    /// History-only reasoning trace. Captured purely so the model's thinking is
+    /// preserved in the transcript for later recall/debugging. Unlike
+    /// `Reasoning`/`AnthropicThinking`/`OpenAIReasoning`, this block is never
+    /// replayed back to any provider, so it carries no token cost on later turns
+    /// and cannot trigger provider-side "unsigned thinking" rejections.
+    ReasoningTrace {
+        text: String,
+    },
     /// Anthropic signed thinking content. Anthropic requires the signature when
     /// replaying thinking blocks in future request context.
     AnthropicThinking {
@@ -138,6 +150,13 @@ pub enum ContentBlock {
         id: String,
         name: String,
         input: serde_json::Value,
+        /// Gemini 3 "thought signature" for this function call. The Antigravity
+        /// / Cloud Code backend requires the original signature to be replayed
+        /// on the matching `functionCall` part in subsequent turns, otherwise it
+        /// rejects the request ("Function call is missing a thought_signature").
+        /// Empty/None for providers that do not use thought signatures.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thought_signature: Option<String>,
     },
     ToolResult {
         tool_use_id: String,
@@ -583,6 +602,10 @@ pub enum StreamEvent {
     ToolInputDelta(String),
     /// Tool use complete
     ToolUseEnd,
+    /// Gemini 3 thought signature for the most recent tool call. Emitted right
+    /// after the matching `ToolUseStart`/`ToolUseEnd` so the agent loop can
+    /// persist it on the `ToolUse` block and replay it on later turns.
+    ToolUseSignature(String),
     /// Tool result from provider (provider already executed the tool)
     ToolResult {
         tool_use_id: String,

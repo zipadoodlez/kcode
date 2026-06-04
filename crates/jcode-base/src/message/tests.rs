@@ -112,8 +112,7 @@ fn tool_call_preserves_invalid_streamed_json_as_validation_error() {
         id: "call_invalid_json".to_string(),
         name: "bash".to_string(),
         input,
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
 
     assert_eq!(
         call.validation_error().as_deref(),
@@ -127,8 +126,7 @@ fn tool_call_validation_rejects_empty_name_and_non_object_input() {
         id: "call_1".to_string(),
         name: "".to_string(),
         input: serde_json::json!({}),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
     assert_eq!(
         empty_name.validation_error().as_deref(),
         Some("Invalid tool call: tool name must not be empty.")
@@ -138,8 +136,7 @@ fn tool_call_validation_rejects_empty_name_and_non_object_input() {
         id: "call_2".to_string(),
         name: "read".to_string(),
         input: serde_json::json!(20),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
     assert_eq!(
         primitive_args.validation_error().as_deref(),
         Some("Invalid tool call for 'read': arguments must be a JSON object, got number.")
@@ -149,8 +146,7 @@ fn tool_call_validation_rejects_empty_name_and_non_object_input() {
         id: "call_3".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"path":"README.md"}),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
     assert_eq!(valid.validation_error(), None);
 }
 
@@ -369,8 +365,7 @@ fn ends_with_fresh_user_turn_rejects_trailing_tool_result() {
             content: vec![ContentBlock::ToolUse {
                 id: "call_1".to_string(),
                 name: "bash".to_string(),
-                input: serde_json::json!({}),
-            }],
+                input: serde_json::json!({}), thought_signature: None, }],
             timestamp: Some(Utc::now()),
             tool_duration_ms: None,
         },
@@ -657,4 +652,83 @@ fn parse_background_task_notification_markdown_extracts_fields() -> Result<()> {
         "bg action=\"output\" task_id=\"abc123\""
     );
     Ok(())
+}
+
+#[test]
+fn push_reasoning_blocks_always_captures_history() {
+    // seal/claude-api (replay disabled) must still persist a history trace.
+    let mut blocks = Vec::new();
+    push_reasoning_blocks(&mut blocks, "anthropic", "thinking about X", None, false);
+    assert_eq!(blocks.len(), 1);
+    match &blocks[0] {
+        ContentBlock::ReasoningTrace { text } => assert_eq!(text, "thinking about X"),
+        other => panic!("expected ReasoningTrace, got {other:?}"),
+    }
+}
+
+#[test]
+fn push_reasoning_blocks_anthropic_signed_replay() {
+    let mut blocks = Vec::new();
+    push_reasoning_blocks(&mut blocks, "anthropic", "signed thought", Some("sig"), true);
+    // Signed thinking is replayable AND readable, so no extra trace is needed.
+    assert_eq!(blocks.len(), 1);
+    match &blocks[0] {
+        ContentBlock::AnthropicThinking { thinking, signature } => {
+            assert_eq!(thinking, "signed thought");
+            assert_eq!(signature, "sig");
+        }
+        other => panic!("expected AnthropicThinking, got {other:?}"),
+    }
+}
+
+#[test]
+fn push_reasoning_blocks_anthropic_unsigned_falls_back_to_trace() {
+    let mut blocks = Vec::new();
+    // Replay requested but no signature: cannot replay, must still keep history.
+    push_reasoning_blocks(&mut blocks, "anthropic", "unsigned thought", None, true);
+    assert_eq!(blocks.len(), 1);
+    assert!(matches!(blocks[0], ContentBlock::ReasoningTrace { .. }));
+}
+
+#[test]
+fn push_reasoning_blocks_openai_keeps_readable_trace() {
+    let mut blocks = Vec::new();
+    // OpenAI native reasoning is encrypted/unreadable, so a readable trace is
+    // always added for history regardless of replay setting.
+    push_reasoning_blocks(&mut blocks, "openai", "openai reasoning", None, true);
+    assert_eq!(blocks.len(), 1);
+    match &blocks[0] {
+        ContentBlock::ReasoningTrace { text } => assert_eq!(text, "openai reasoning"),
+        other => panic!("expected ReasoningTrace, got {other:?}"),
+    }
+}
+
+#[test]
+fn push_reasoning_blocks_openrouter_replay_is_readable() {
+    let mut blocks = Vec::new();
+    push_reasoning_blocks(&mut blocks, "openrouter", "or reasoning", None, true);
+    // OpenRouter stores a readable Reasoning block, which doubles as history.
+    assert_eq!(blocks.len(), 1);
+    assert!(matches!(blocks[0], ContentBlock::Reasoning { .. }));
+}
+
+#[test]
+fn push_reasoning_blocks_skips_empty() {
+    let mut blocks = Vec::new();
+    push_reasoning_blocks(&mut blocks, "anthropic", "", None, false);
+    assert!(blocks.is_empty());
+}
+
+#[test]
+fn reasoning_trace_serde_round_trip() {
+    let block = ContentBlock::ReasoningTrace {
+        text: "persisted reasoning".to_string(),
+    };
+    let json = serde_json::to_string(&block).expect("serialize");
+    assert!(json.contains("\"type\":\"reasoning_trace\""), "json={json}");
+    let parsed: ContentBlock = serde_json::from_str(&json).expect("deserialize");
+    match parsed {
+        ContentBlock::ReasoningTrace { text } => assert_eq!(text, "persisted reasoning"),
+        other => panic!("expected ReasoningTrace, got {other:?}"),
+    }
 }

@@ -86,6 +86,7 @@ impl ClaudeProvider {
                     ContentBlock::ToolResult { content, .. } => parts.push(content.clone()),
                     ContentBlock::ToolUse { .. } => {}
                     ContentBlock::Reasoning { .. }
+                    | ContentBlock::ReasoningTrace { .. }
                     | ContentBlock::AnthropicThinking { .. }
                     | ContentBlock::OpenAIReasoning { .. } => {}
                     ContentBlock::Image { .. } => {}

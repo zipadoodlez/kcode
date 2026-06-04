@@ -206,6 +206,7 @@ impl Tool for ConversationSearchTool {
                                 output.push_str(&format!("[Tool result: {}]\n", preview));
                             }
                             crate::message::ContentBlock::Reasoning { .. }
+                            | crate::message::ContentBlock::ReasoningTrace { .. }
                             | crate::message::ContentBlock::AnthropicThinking { .. }
                             | crate::message::ContentBlock::OpenAIReasoning { .. } => {}
                             crate::message::ContentBlock::Image { .. } => {

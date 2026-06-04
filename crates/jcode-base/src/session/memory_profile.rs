@@ -71,7 +71,7 @@ impl ContentBlockMemoryStats {
                 self.text_bytes += text.len();
                 self.record_bytes(text.len());
             }
-            ContentBlock::Reasoning { text } => {
+            ContentBlock::Reasoning { text } | ContentBlock::ReasoningTrace { text } => {
                 self.reasoning_blocks += 1;
                 self.reasoning_bytes += text.len();
                 self.record_bytes(text.len());

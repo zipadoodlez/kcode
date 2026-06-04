@@ -68,6 +68,7 @@ fn build_cli_prompt(system: &str, messages: &[Message]) -> String {
                     out.push('\n');
                 }
                 ContentBlock::Reasoning { .. }
+                | ContentBlock::ReasoningTrace { .. }
                 | ContentBlock::AnthropicThinking { .. }
                 | ContentBlock::OpenAIReasoning { .. } => {}
                 ContentBlock::ToolUse { name, input, .. } => {
