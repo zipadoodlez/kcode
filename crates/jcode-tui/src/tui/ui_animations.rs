@@ -1,5 +1,5 @@
 use crate::tui::{TuiState, color_support::rgb};
-use ratatui::{prelude::*, widgets::Paragraph};
+use ratatui::prelude::*;
 use std::cell::RefCell;
 use std::collections::{HashSet, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
@@ -174,7 +174,108 @@ pub(super) fn draw_idle_animation(frame: &mut Frame, app: &dyn TuiState, area: R
         let lum_map = &bufs.lum_map;
 
         let time_hue = elapsed * 40.0;
-        let centered = app.centered_mode();
+
+        // Render glyphs directly into the frame buffer. Each idle line is exactly
+        // `area.width` cells wide, so Paragraph's Center/Left alignment offset is
+        // always 0; writing cells in place produces byte-identical output to the
+        // old `Paragraph::new(Vec<Line<Vec<Span>>>)` path (proven by
+        // `direct_blit_matches_paragraph` below) while avoiding a per-cell String
+        // plus a Vec<Span>/Vec<Line>/Paragraph allocation on every animation
+        // frame (60 FPS) -- the dominant idle-render cost once the samplers were
+        // optimized.
+        blit_idle(frame.buffer_mut(), area, hit, lum_map, sw, time_hue);
+    });
+}
+
+/// Composite the subpixel `hit`/`lum_map` grids into terminal cells, writing
+/// directly into `buf` over `area`. Factored out so it can be diffed against the
+/// original Paragraph-based renderer in tests.
+fn blit_idle(
+    buf: &mut Buffer,
+    area: Rect,
+    hit: &[bool],
+    lum_map: &[f32],
+    sw: usize,
+    time_hue: f32,
+) {
+    const SUB_X: usize = 3;
+    const SUB_Y: usize = 3;
+    let cw = area.width as usize;
+    let ch = area.height as usize;
+
+    for row in 0..ch {
+        let y = area.y + row as u16;
+        for col in 0..cw {
+            let x = area.x + col as u16;
+
+            let mut pattern = 0u16;
+            let mut total_lum = 0.0f32;
+            let mut hit_count = 0u32;
+
+            for sy in 0..SUB_Y {
+                for sx in 0..SUB_X {
+                    let px = col * SUB_X + sx;
+                    let py = row * SUB_Y + sy;
+                    let idx = py * sw + px;
+                    if hit[idx] {
+                        pattern |= 1 << (sy * SUB_X + sx);
+                        total_lum += lum_map[idx];
+                        hit_count += 1;
+                    }
+                }
+            }
+
+            let cell = &mut buf[(x, y)];
+            if hit_count == 0 {
+                // Matches the old `Span::raw(" ")`: symbol becomes a space and
+                // the (empty) default style patches nothing onto the cell.
+                cell.set_char(' ');
+            } else {
+                let avg_lum = total_lum / hit_count as f32;
+                let coverage = hit_count as f32 / (SUB_X * SUB_Y) as f32;
+                let t = (avg_lum + 1.0) * 0.5;
+                let glyph = shape_char_3x3(pattern, t);
+
+                let hue = (time_hue + t * 160.0) % 360.0;
+                let hue = if hue < 0.0 { hue + 360.0 } else { hue };
+
+                let sat = 0.5 + t * 0.4;
+                let val = (0.10 + t * t * 0.90) * (0.55 + coverage * 0.45);
+                let (r, g, b) = hsv_to_rgb(hue, sat, val);
+                // Matches the old `Span::styled(.., Style::default().fg(..))`:
+                // set the symbol and patch only the foreground color.
+                cell.set_char(glyph).set_fg(rgb(r, g, b));
+            }
+        }
+    }
+}
+
+fn idle_animation_variant() -> &'static str {
+    choose_animation_variant(IDLE_VARIANTS, 0x4944_4c45_414e_494d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::widgets::{Paragraph, Widget};
+
+    type IdleSampler = fn(f32, usize, usize, &mut [bool], &mut [f32], &mut [f32]);
+
+    /// The original Paragraph-based renderer, kept here verbatim so we can prove
+    /// the in-place `blit_idle` produces a byte-identical `Buffer`.
+    fn render_idle_via_paragraph(
+        buf: &mut Buffer,
+        area: Rect,
+        hit: &[bool],
+        lum_map: &[f32],
+        sw: usize,
+        time_hue: f32,
+        centered: bool,
+    ) {
+        const SUB_X: usize = 3;
+        const SUB_Y: usize = 3;
+        let cw = area.width as usize;
+        let ch = area.height as usize;
         let align = if centered {
             Alignment::Center
         } else {
@@ -208,7 +309,7 @@ pub(super) fn draw_idle_animation(frame: &mut Frame, app: &dyn TuiState, area: R
                             let avg_lum = total_lum / hit_count as f32;
                             let coverage = hit_count as f32 / (SUB_X * SUB_Y) as f32;
                             let t = (avg_lum + 1.0) * 0.5;
-                            let ch = shape_char_3x3(pattern, t);
+                            let glyph = shape_char_3x3(pattern, t);
 
                             let hue = (time_hue + t * 160.0) % 360.0;
                             let hue = if hue < 0.0 { hue + 360.0 } else { hue };
@@ -216,7 +317,7 @@ pub(super) fn draw_idle_animation(frame: &mut Frame, app: &dyn TuiState, area: R
                             let sat = 0.5 + t * 0.4;
                             let val = (0.10 + t * t * 0.90) * (0.55 + coverage * 0.45);
                             let (r, g, b) = hsv_to_rgb(hue, sat, val);
-                            Span::styled(String::from(ch), Style::default().fg(rgb(r, g, b)))
+                            Span::styled(String::from(glyph), Style::default().fg(rgb(r, g, b)))
                         }
                     })
                     .collect();
@@ -224,19 +325,62 @@ pub(super) fn draw_idle_animation(frame: &mut Frame, app: &dyn TuiState, area: R
             })
             .collect();
 
-        frame.render_widget(Paragraph::new(lines), area);
-    });
-}
+        Paragraph::new(lines).render(area, buf);
+    }
 
-fn idle_animation_variant() -> &'static str {
-    choose_animation_variant(IDLE_VARIANTS, 0x4944_4c45_414e_494d)
-}
+    /// The direct-buffer renderer must produce a Buffer byte-identical to the
+    /// old Paragraph path, for both Center and Left "alignment" (the idle lines
+    /// are full width, so the offset is always 0), across several sizes/times
+    /// and all idle variants.
+    #[test]
+    fn direct_blit_matches_paragraph() {
+        type Sampler = fn(f32, usize, usize, &mut [bool], &mut [f32], &mut [f32]);
+        let samplers: &[(&str, Sampler)] = &[
+            ("donut", sample_donut),
+            ("orbit_rings", sample_orbit_rings),
+            ("gyroscope", sample_gyroscope),
+            ("black_hole", sample_black_hole),
+        ];
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+        for &(cw, chh) in &[(40u16, 16u16), (80, 30), (120, 40), (57, 23)] {
+            const SUB_X: usize = 3;
+            const SUB_Y: usize = 3;
+            let sw = cw as usize * SUB_X;
+            let sh = chh as usize * SUB_Y;
+            let area = Rect::new(2, 1, cw, chh);
+            let buf_area = Rect::new(0, 0, cw + 4, chh + 2);
 
-    type IdleSampler = fn(f32, usize, usize, &mut [bool], &mut [f32], &mut [f32]);
+            for &(name, sampler) in samplers {
+                for &elapsed in &[0.0f32, 0.4, 1.6, 3.3, 7.1] {
+                    let n = sw * sh;
+                    let (mut hit, mut lum, mut z) =
+                        (vec![false; n], vec![0.0f32; n], vec![0.0f32; n]);
+                    sampler(elapsed, sw, sh, &mut hit, &mut lum, &mut z);
+                    let time_hue = elapsed * 40.0;
+
+                    for &centered in &[false, true] {
+                        let mut buf_ref = Buffer::empty(buf_area);
+                        let mut buf_new = Buffer::empty(buf_area);
+                        render_idle_via_paragraph(
+                            &mut buf_ref,
+                            area,
+                            &hit,
+                            &lum,
+                            sw,
+                            time_hue,
+                            centered,
+                        );
+                        blit_idle(&mut buf_new, area, &hit, &lum, sw, time_hue);
+
+                        assert_eq!(
+                            buf_ref, buf_new,
+                            "{name}: buffer mismatch at {cw}x{chh} t={elapsed} centered={centered}"
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     fn hit_bounds(hit: &[bool], sw: usize, sh: usize) -> Option<(usize, usize, usize, usize)> {
         let mut min_x = sw;
