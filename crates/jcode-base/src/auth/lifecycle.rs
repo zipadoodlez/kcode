@@ -320,6 +320,12 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
                 crate::provider::ModelRouteApiMethod::CodeAssistOAuth
             );
         }
+        "jcode" => {
+            // The Jcode subscription runtime is the OpenRouter transport with a
+            // curated catalog, so its routes carry the `openrouter` api_method
+            // even though the runtime identity is `jcode`.
+            return matches!(api_method, crate::provider::ModelRouteApiMethod::OpenRouter);
+        }
         _ => {}
     }
 
