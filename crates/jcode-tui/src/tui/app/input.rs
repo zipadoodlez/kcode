@@ -1533,7 +1533,12 @@ pub(super) fn handle_pre_control_shortcuts(
     code: KeyCode,
     modifiers: KeyModifiers,
 ) -> bool {
+    // Plain Ctrl+K kills to end of line (emacs habit). Ctrl+Shift+K must fall
+    // through to the scroll handler: with the Kitty keyboard protocol enabled,
+    // terminals report Ctrl+Shift+K as Char('k') + CONTROL|SHIFT, so without the
+    // Shift guard this would swallow the scroll-up chord and wipe the draft.
     if modifiers.contains(KeyModifiers::CONTROL)
+        && !modifiers.contains(KeyModifiers::SHIFT)
         && matches!(code, KeyCode::Char('k'))
         && !app.input.is_empty()
     {
