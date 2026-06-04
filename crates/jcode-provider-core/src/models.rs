@@ -176,6 +176,19 @@ pub fn context_limit_for_model_with_provider_and_cache(
         return Some(272_000);
     }
 
+    // Opus 4.8 / 4.7 ship a 1M-token input window natively (the live Anthropic
+    // catalog reports `max_input_tokens: 1000000`). Unlike 4.6, the 1M window is
+    // the default rather than an opt-in `[1m]` beta, so report it regardless of
+    // the suffix. The live catalog cache can still override this if the API
+    // reports something different.
+    if model.starts_with("claude-opus-4-8")
+        || model.starts_with("claude-opus-4.8")
+        || model.starts_with("claude-opus-4-7")
+        || model.starts_with("claude-opus-4.7")
+    {
+        return Some(1_000_000);
+    }
+
     if model.starts_with("claude-opus-4-6") || model.starts_with("claude-opus-4.6") {
         return Some(if is_1m { 1_048_576 } else { 200_000 });
     }

@@ -1540,6 +1540,14 @@ fn test_context_limit_claude() {
             context_limit_for_model("claude-sonnet-4-6[1m]"),
             Some(1_048_576)
         );
+        // Opus 4.8 / 4.7 expose a 1M window natively (no `[1m]` opt-in needed),
+        // matching the live Anthropic catalog's `max_input_tokens: 1000000`.
+        assert_eq!(context_limit_for_model("claude-opus-4-8"), Some(1_000_000));
+        assert_eq!(
+            context_limit_for_model("claude-opus-4-8[1m]"),
+            Some(1_000_000)
+        );
+        assert_eq!(context_limit_for_model("claude-opus-4-7"), Some(1_000_000));
     });
 }
 
