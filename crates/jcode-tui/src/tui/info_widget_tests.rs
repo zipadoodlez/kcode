@@ -54,11 +54,11 @@ fn kv_cache_widget_shows_session_hit_ratio() {
 
     assert_eq!(lines.len(), 4);
     assert!(text.contains("KV cache:"));
-    assert!(text.contains("warm "));
+    assert!(text.contains("yield "));
     assert!(text.contains("90%"));
     assert!(text.contains("last "));
     assert!(text.contains("94%"));
-    assert!(text.contains("all "));
+    assert!(text.contains("session "));
     assert!(text.contains("75%"));
     assert!(text.contains("miss attribution"));
     assert!(text.contains("69k missed total"));

@@ -1522,7 +1522,7 @@ fn render_kv_cache_summary_line(cache: &CacheHitInfo) -> Line<'static> {
 
     if let Some(warm_pct) = warm_pct {
         spans.push(Span::styled(
-            "warm ",
+            "yield ",
             Style::default().fg(rgb(140, 140, 150)),
         ));
         spans.push(Span::styled(
@@ -1531,7 +1531,7 @@ fn render_kv_cache_summary_line(cache: &CacheHitInfo) -> Line<'static> {
         ));
     } else {
         spans.push(Span::styled(
-            "warming",
+            "priming",
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ));
     }
@@ -1550,17 +1550,12 @@ fn render_kv_cache_summary_line(cache: &CacheHitInfo) -> Line<'static> {
 
     spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
     spans.push(Span::styled(
-        "all ",
+        "session ",
         Style::default().fg(rgb(140, 140, 150)),
     ));
     spans.push(Span::styled(
         format!("{}%", lifetime_pct),
         Style::default().fg(color).bold(),
-    ));
-
-    spans.push(Span::styled(
-        " lifetime",
-        Style::default().fg(rgb(100, 100, 110)),
     ));
 
     Line::from(spans)
