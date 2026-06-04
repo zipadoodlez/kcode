@@ -3829,6 +3829,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-productivity-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "jcode-storage",
+ "rayon",
+ "resvg",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "usvg",
+]
+
+[[package]]
 name = "jcode-protocol"
 version = "0.1.0"
 dependencies = [
@@ -4004,6 +4019,7 @@ dependencies = [
  "jcode-build-meta",
  "jcode-core",
  "jcode-logging",
+ "jcode-productivity-core",
  "jcode-protocol",
  "jcode-provider-core",
  "jcode-selfdev-types",
