@@ -43,12 +43,54 @@ const WEBSOCKET_FIRST_EVENT_TIMEOUT_SECS: u64 = 8;
 const WEBSOCKET_COMPLETION_TIMEOUT_SECS: u64 = 300;
 /// Maximum age of a persistent WebSocket connection before forcing reconnect
 const WEBSOCKET_PERSISTENT_MAX_AGE_SECS: u64 = 3000; // 50 min (server limit is 60 min)
-/// If a persistent socket sits idle this long, reconnect before reuse instead of
-/// discovering a dead socket on the next turn.
-const WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS: u64 = 90;
+/// Default idle window after which we reconnect instead of reusing the socket.
+///
+/// Raised from the original 90s. Tearing the socket down loses the server-side
+/// `previous_response_id` chain, so the next turn must re-send the full
+/// conversation and relies on OpenAI prefix-hash routing, which frequently
+/// lands on a cold machine (observed zero cache reads). The lightweight
+/// healthcheck ping below (1.5s timeout) is the real liveness probe, so for
+/// typical interactive pauses we prefer to confirm-and-reuse the live socket
+/// and keep the warm cache. Dead/half-closed sockets are still detected by the
+/// ping and reconnect gracefully, and `WEBSOCKET_PERSISTENT_MAX_AGE_SECS` still
+/// caps total connection lifetime. Tunable via
+/// `JCODE_OPENAI_WS_IDLE_RECONNECT_SECS` (0 disables the idle reconnect entirely,
+/// relying solely on the healthcheck + max-age cap).
+const WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT: u64 = 600; // 10 min
 /// If a persistent socket has been idle for a while, send a lightweight ping
 /// before reuse so we can proactively detect half-closed connections.
 const WEBSOCKET_PERSISTENT_HEALTHCHECK_IDLE_SECS: u64 = 15;
+
+/// Resolved idle-reconnect threshold (seconds), read once from the environment.
+/// `Some(secs)` means reconnect after that idle duration; `None` means never
+/// force a reconnect on idle alone (healthcheck + max-age still apply).
+static WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS: LazyLock<Option<u64>> = LazyLock::new(|| {
+    match std::env::var("JCODE_OPENAI_WS_IDLE_RECONNECT_SECS") {
+        Ok(raw) => match raw.trim().parse::<u64>() {
+            Ok(0) => {
+                crate::logging::info(
+                    "OpenAI persistent WS idle reconnect disabled (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS=0); relying on healthcheck + max-age",
+                );
+                None
+            }
+            Ok(secs) => {
+                crate::logging::info(&format!(
+                    "OpenAI persistent WS idle reconnect threshold set to {}s (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS)",
+                    secs
+                ));
+                Some(secs)
+            }
+            Err(_) => {
+                crate::logging::info(&format!(
+                    "Warning: invalid JCODE_OPENAI_WS_IDLE_RECONNECT_SECS '{}'; using default {}s",
+                    raw, WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT
+                ));
+                Some(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT)
+            }
+        },
+        Err(_) => Some(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT),
+    }
+});
 const WEBSOCKET_PERSISTENT_HEALTHCHECK_TIMEOUT_MS: u64 = 1500;
 /// Base websocket cooldown after a fallback in auto mode.
 /// Keep this short so one flaky attempt does not pin the TUI to HTTPS for a long time.
@@ -355,8 +397,15 @@ fn persistent_ws_idle_needs_healthcheck(idle_for: Duration) -> bool {
     idle_for >= Duration::from_secs(WEBSOCKET_PERSISTENT_HEALTHCHECK_IDLE_SECS)
 }
 
+fn idle_requires_reconnect_with(threshold_secs: Option<u64>, idle_for: Duration) -> bool {
+    match threshold_secs {
+        Some(secs) => idle_for >= Duration::from_secs(secs),
+        None => false,
+    }
+}
+
 fn persistent_ws_idle_requires_reconnect(idle_for: Duration) -> bool {
-    idle_for >= Duration::from_secs(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS)
+    idle_requires_reconnect_with(*WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS, idle_for)
 }
 
 async fn emit_connection_phase(
