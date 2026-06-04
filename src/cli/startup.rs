@@ -24,6 +24,12 @@ pub async fn run() -> Result<()> {
         .name("jcode-memlog-cleanup".to_string())
         .spawn(crate::memory_log::cleanup_old_memory_logs)
         .ok();
+    // Prune stale per-session `.bak` recovery copies (never the transcripts
+    // themselves) so the sessions directory does not grow without bound.
+    std::thread::Builder::new()
+        .name("jcode-session-bak-prune".to_string())
+        .spawn(crate::session::prune_old_session_backups)
+        .ok();
     logging::info("jcode starting");
 
     // Wire config-reload reactions without making config depend on auth/bus:
