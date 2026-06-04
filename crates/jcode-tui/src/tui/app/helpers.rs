@@ -286,7 +286,7 @@ pub(super) fn effort_display_label(effort: &str) -> &str {
 /// Examples:
 ///   `gpt-5.5`            -> `GPT-5.5`
 ///   `claude-opus-4-8`    -> `Claude Opus 4.8`
-///   `claude-opus-4-8[1m]`-> `Claude Opus 4.8 (1M)`
+///   `claude-opus-4-6[1m]`-> `Claude Opus 4.6 (1M)`
 ///   `gemini-2.5-pro`     -> `Gemini 2.5 Pro`
 /// Unknown shapes are returned mostly as-is so we never hide the real id.
 pub(super) fn pretty_model_display_name(model: &str) -> String {
