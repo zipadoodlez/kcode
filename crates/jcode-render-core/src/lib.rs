@@ -21,9 +21,11 @@
 
 pub mod markdown;
 pub mod model;
+pub mod preprocess;
 pub mod wrap;
 
 pub use markdown::parse_markdown;
+pub use preprocess::escape_currency_dollars;
 pub use model::{
     Alignment, Block, BlockKind, Document, FillRole, StyleRole, StyledLine, StyledSpan, TextAttrs,
 };

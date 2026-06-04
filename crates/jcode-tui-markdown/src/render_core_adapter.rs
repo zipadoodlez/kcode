@@ -43,11 +43,17 @@ pub fn document_to_lines(doc: &Document) -> Vec<Line<'static>> {
                 // a width via the wrapped variant).
                 lines.extend(crate::render_support::render_table(&block.table, None));
             }
+            BlockKind::ThematicBreak => {
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(crate::RULE_LEN),
+                    Style::default().fg(md_dim_color()),
+                )));
+            }
             BlockKind::BlockQuote => {
+                // The quote gutter (`│ ` per nesting level) is baked into the
+                // stored lines by the parser, so render spans verbatim.
                 for sl in &block.lines {
-                    let mut spans = vec![Span::styled("│ ".to_string(), Style::default().fg(md_dim_color()))];
-                    spans.extend(sl.spans.iter().map(|s| styled_span_to_span(s, &block.kind)));
-                    lines.push(Line::from(spans));
+                    lines.push(styled_line_to_line(sl, &block.kind));
                 }
             }
             _ => {
@@ -183,13 +189,18 @@ pub fn render_markdown_via_core_wrapped(text: &str, width: usize) -> Vec<Line<'s
             BlockKind::Table => {
                 out.extend(crate::render_support::render_table(&block.table, Some(width)));
             }
+            BlockKind::ThematicBreak => {
+                // Legacy fills the available width when one is known.
+                out.push(Line::from(Span::styled(
+                    "─".repeat(width),
+                    Style::default().fg(md_dim_color()),
+                )));
+            }
             BlockKind::BlockQuote => {
-                let wrapped = wrap_lines(&block.lines, width.saturating_sub(2), &ColumnWidth);
-                for sl in &wrapped {
-                    let mut spans =
-                        vec![Span::styled("│ ".to_string(), Style::default().fg(md_dim_color()))];
-                    spans.extend(sl.spans.iter().map(|s| styled_span_to_span(s, &block.kind)));
-                    out.push(Line::from(spans));
+                // Gutter prefix is baked in; render verbatim (no reflow) to keep
+                // it aligned, matching the legacy line-per-source-line behavior.
+                for sl in &block.lines {
+                    out.push(styled_line_to_line(sl, &block.kind));
                 }
             }
             _ => {
