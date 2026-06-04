@@ -27,8 +27,7 @@ pub(super) fn handle_tool_done(
         id: id.clone(),
         name: name.clone(),
         input: serde_json::Value::Null,
-        intent: None,
-    });
+        intent: None, thought_signature: None, });
     app.commit_pending_streaming_assistant_message();
     crate::tui::mermaid::clear_streaming_preview_diagram();
     let is_batch = tool_call.name == "batch";
@@ -69,8 +68,7 @@ pub(super) fn handle_generated_image(
         id: id.clone(),
         name: crate::message::GENERATED_IMAGE_TOOL_NAME.to_string(),
         input,
-        intent: Some("OpenAI native image generation".to_string()),
-    };
+        intent: Some("OpenAI native image generation".to_string()), thought_signature: None, };
     let summary = crate::message::generated_image_summary(
         &path,
         metadata_path.as_deref(),

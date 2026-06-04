@@ -91,8 +91,7 @@ fn tool_use_input_is_hidden_by_default_and_searchable_when_requested() {
                     name: "websearch".to_string(),
                     input: json!({
                         "query": "best time post hackernews visibility upvotes"
-                    }),
-                }],
+                    }), thought_signature: None, }],
             )],
         );
 

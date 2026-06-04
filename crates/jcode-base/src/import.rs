@@ -351,8 +351,7 @@ fn convert_content_blocks(content: &ClaudeCodeContent) -> Vec<ContentBlock> {
                     Some(ContentBlock::ToolUse {
                         id: id.clone(),
                         name: name.clone(),
-                        input: input.clone(),
-                    })
+                        input: input.clone(), thought_signature: None, })
                 }
                 ClaudeCodeContentBlock::ToolResult {
                     tool_use_id,

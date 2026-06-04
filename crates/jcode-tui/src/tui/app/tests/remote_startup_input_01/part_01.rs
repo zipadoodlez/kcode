@@ -203,8 +203,7 @@ fn test_prepare_review_spawned_session_uses_visible_transcript_for_judge_session
                     ContentBlock::ToolUse {
                         id: tool_id.clone(),
                         name: "bash".to_string(),
-                        input: serde_json::json!({"command": "git diff --stat"}),
-                    },
+                        input: serde_json::json!({"command": "git diff --stat"}), thought_signature: None, },
                 ],
             );
             parent.add_message(

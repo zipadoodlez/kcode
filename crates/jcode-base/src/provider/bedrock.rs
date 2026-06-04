@@ -470,7 +470,9 @@ impl BedrockProvider {
                                 };
                             content.push(ContentBlock::ToolResult(result));
                         }
-                        JContentBlock::ToolUse { id, name, input } => {
+                        JContentBlock::ToolUse {
+                            id, name, input, ..
+                        } => {
                             let tool_use =
                                 match aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
                                     .tool_use_id(id)

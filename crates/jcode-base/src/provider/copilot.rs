@@ -517,7 +517,7 @@ impl CopilotApiProvider {
                             ContentBlock::Text { text, .. } => {
                                 content_text.push_str(text);
                             }
-                            ContentBlock::ToolUse { id, name, input } => {
+                            ContentBlock::ToolUse { id, name, input, .. } => {
                                 let args = if input.is_object() {
                                     input.to_string()
                                 } else {

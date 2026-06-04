@@ -323,7 +323,7 @@ fn validate_auth_test_tool_smoke_transcript(
     for message in messages {
         for block in &message.content {
             match block {
-                crate::message::ContentBlock::ToolUse { id, name, input } => {
+                crate::message::ContentBlock::ToolUse { id, name, input, .. } => {
                     tool_uses.push((id.as_str(), name.as_str(), input));
                 }
                 crate::message::ContentBlock::ToolResult {
@@ -347,8 +347,7 @@ fn validate_auth_test_tool_smoke_transcript(
         id: tool_id.to_string(),
         name: tool_name.to_string(),
         input: input.clone(),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
     if let Some(error) = tool_call.validation_error() {
         anyhow::bail!("tool smoke emitted invalid tool call: {error}");
     }
@@ -517,8 +516,7 @@ mod auth_tool_smoke_tests {
                 vec![crate::message::ContentBlock::ToolUse {
                     id: "call_1".to_string(),
                     name: AUTH_TEST_TOOL_NAME.to_string(),
-                    input: serde_json::json!({"command": AUTH_TEST_TOOL_COMMAND}),
-                }],
+                    input: serde_json::json!({"command": AUTH_TEST_TOOL_COMMAND}), thought_signature: None, }],
             ),
             stored_message(
                 crate::message::Role::User,

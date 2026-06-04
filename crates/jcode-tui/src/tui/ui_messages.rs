@@ -1727,8 +1727,7 @@ pub(crate) fn render_tool_message(
                 intent: call
                     .get("intent")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-            };
+                    .map(|s| s.to_string()), thought_signature: None, };
 
             let sub_result = sub_results.get(&(i + 1));
             let sub_errored = sub_result.map(|result| result.errored).unwrap_or_else(|| {

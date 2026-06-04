@@ -128,8 +128,7 @@ fn create_tool_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend
                 id: "tool_1".to_string(),
                 name: "bash".to_string(),
                 input: serde_json::json!({"command": "cat /root/secret"}),
-                intent: None,
-            },
+                intent: None, thought_signature: None, },
         ),
     ];
     app.bump_display_messages_version();
@@ -156,8 +155,7 @@ fn create_tool_failed_output_copy_test_app()
                 id: "tool_1".to_string(),
                 name: "bash".to_string(),
                 input: serde_json::json!({"command": "cat /root/secret"}),
-                intent: None,
-            },
+                intent: None, thought_signature: None, },
         ),
     ];
     app.bump_display_messages_version();

@@ -112,7 +112,7 @@ fn collect_tool_exposures(session: &Session) -> Vec<ToolExposureObservation> {
     for (message_index, msg) in session.messages.iter().enumerate() {
         for block in &msg.content {
             match block {
-                ContentBlock::ToolUse { id, name, input } => {
+                ContentBlock::ToolUse { id, name, input, .. } => {
                     tool_map.insert(
                         id.clone(),
                         ToolCall {
@@ -120,6 +120,7 @@ fn collect_tool_exposures(session: &Session) -> Vec<ToolExposureObservation> {
                             name: name.clone(),
                             input: input.clone(),
                             intent: None,
+                            thought_signature: None,
                         },
                     );
                 }
@@ -136,6 +137,7 @@ fn collect_tool_exposures(session: &Session) -> Vec<ToolExposureObservation> {
                             name: "tool".to_string(),
                             input: Value::Null,
                             intent: None,
+                            thought_signature: None,
                         });
                     observations.push(ToolExposureObservation {
                         tool,

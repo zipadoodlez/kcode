@@ -18,8 +18,7 @@ fn test_prepare_messages_live_batch_rows_do_not_soft_wrap_on_narrow_width() {
                 input: serde_json::json!({
                     "command": "cargo test --package jcode --lib tui::ui::tests::render_tool_message_batch_rows_do_not_soft_wrap_on_narrow_width -- --nocapture"
                 }),
-                intent: None,
-            }],
+                intent: None, thought_signature: None, }],
             subcalls: vec![crate::bus::BatchSubcallProgress {
                 index: 1,
                 tool_call: ToolCall {
@@ -28,8 +27,7 @@ fn test_prepare_messages_live_batch_rows_do_not_soft_wrap_on_narrow_width() {
                     input: serde_json::json!({
                         "command": "cargo test --package jcode --lib tui::ui::tests::render_tool_message_batch_rows_do_not_soft_wrap_on_narrow_width -- --nocapture"
                     }),
-                    intent: None,
-                },
+                    intent: None, thought_signature: None, },
                 state: crate::bus::BatchSubcallState::Running,
             }],
         }),
@@ -77,8 +75,7 @@ fn test_prepare_messages_centered_live_batch_rows_keep_dedicated_padding_span() 
                 input: serde_json::json!({
                     "command": "cargo test --package jcode --lib tui::ui::tests::render_tool_message_batch_rows_do_not_soft_wrap_on_narrow_width -- --nocapture --exact with-extra-flags-and-output-to-stretch-the-line"
                 }),
-                intent: None,
-            }],
+                intent: None, thought_signature: None, }],
             subcalls: vec![crate::bus::BatchSubcallProgress {
                 index: 1,
                 tool_call: ToolCall {
@@ -87,8 +84,7 @@ fn test_prepare_messages_centered_live_batch_rows_keep_dedicated_padding_span() 
                     input: serde_json::json!({
                         "command": "cargo test --package jcode --lib tui::ui::tests::render_tool_message_batch_rows_do_not_soft_wrap_on_narrow_width -- --nocapture --exact with-extra-flags-and-output-to-stretch-the-line"
                     }),
-                    intent: None,
-                },
+                    intent: None, thought_signature: None, },
                 state: crate::bus::BatchSubcallState::Running,
             }],
         }),
@@ -144,8 +140,7 @@ fn test_prepare_messages_shows_live_batch_progress_in_chat_history() {
                 id: "batch-2-bash".to_string(),
                 name: "bash".to_string(),
                 input: serde_json::json!({"command": "cargo build --release --workspace"}),
-                intent: None,
-            }],
+                intent: None, thought_signature: None, }],
             subcalls: vec![
                 crate::bus::BatchSubcallProgress {
                     index: 1,
@@ -153,8 +148,7 @@ fn test_prepare_messages_shows_live_batch_progress_in_chat_history() {
                         id: "batch-1-read".to_string(),
                         name: "read".to_string(),
                         input: serde_json::json!({"file_path": "Cargo.toml"}),
-                        intent: None,
-                    },
+                        intent: None, thought_signature: None, },
                     state: crate::bus::BatchSubcallState::Succeeded,
                 },
                 crate::bus::BatchSubcallProgress {
@@ -163,8 +157,7 @@ fn test_prepare_messages_shows_live_batch_progress_in_chat_history() {
                         id: "batch-2-bash".to_string(),
                         name: "bash".to_string(),
                         input: serde_json::json!({"command": "cargo build --release --workspace"}),
-                        intent: None,
-                    },
+                        intent: None, thought_signature: None, },
                     state: crate::bus::BatchSubcallState::Running,
                 },
             ],
@@ -228,16 +221,14 @@ fn test_prepare_messages_places_live_batch_after_committed_assistant_text() {
                 id: "batch-1-read".to_string(),
                 name: "read".to_string(),
                 input: serde_json::json!({"file_path": "src/main.rs"}),
-                intent: None,
-            }],
+                intent: None, thought_signature: None, }],
             subcalls: vec![crate::bus::BatchSubcallProgress {
                 index: 1,
                 tool_call: ToolCall {
                     id: "batch-1-read".to_string(),
                     name: "read".to_string(),
                     input: serde_json::json!({"file_path": "src/main.rs"}),
-                    intent: None,
-                },
+                    intent: None, thought_signature: None, },
                 state: crate::bus::BatchSubcallState::Running,
             }],
         }),
@@ -279,16 +270,14 @@ fn test_prepare_messages_live_batch_spinner_advances_between_frames() {
             id: "batch-1-bash".to_string(),
             name: "bash".to_string(),
             input: serde_json::json!({"command": "sleep 1"}),
-            intent: None,
-        }],
+            intent: None, thought_signature: None, }],
         subcalls: vec![crate::bus::BatchSubcallProgress {
             index: 1,
             tool_call: ToolCall {
                 id: "batch-1-bash".to_string(),
                 name: "bash".to_string(),
                 input: serde_json::json!({"command": "sleep 1"}),
-                intent: None,
-            },
+                intent: None, thought_signature: None, },
             state: crate::bus::BatchSubcallState::Running,
         }],
     };
@@ -353,16 +342,14 @@ fn test_prepare_messages_live_batch_centered_mode_uses_left_aligned_padding() {
                 id: "batch-1-read".to_string(),
                 name: "read".to_string(),
                 input: serde_json::json!({"file_path": "Cargo.toml"}),
-                intent: None,
-            }],
+                intent: None, thought_signature: None, }],
             subcalls: vec![crate::bus::BatchSubcallProgress {
                 index: 1,
                 tool_call: ToolCall {
                     id: "batch-1-read".to_string(),
                     name: "read".to_string(),
                     input: serde_json::json!({"file_path": "Cargo.toml"}),
-                    intent: None,
-                },
+                    intent: None, thought_signature: None, },
                 state: crate::bus::BatchSubcallState::Running,
             }],
         }),
@@ -475,8 +462,7 @@ fn test_prepare_messages_tool_row_refreshes_after_message_version_bump() {
         id: "tool-1".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"file_path": "src/main.rs"}),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
 
     let placeholder = DisplayMessage {
         role: "tool".to_string(),
@@ -651,8 +637,7 @@ fn test_render_tool_message_batch_nested_subcall_params_still_render() {
                     {"tool": "grep", "parameters": {"pattern": "TODO", "path": "src"}}
                 ]
             }),
-            intent: None,
-        }),
+            intent: None, thought_signature: None, }),
     };
 
     let lines = render_tool_message(&msg, 120, crate::config::DiffDisplayMode::Off);
@@ -687,8 +672,7 @@ fn test_render_tool_message_batch_flat_grep_subcall_uses_pattern_and_path() {
                     {"tool": "grep", "pattern": "TODO", "path": "src"}
                 ]
             }),
-            intent: None,
-        }),
+            intent: None, thought_signature: None, }),
     };
 
     let lines = render_tool_message(&msg, 120, crate::config::DiffDisplayMode::Off);
@@ -725,8 +709,7 @@ fn test_render_tool_message_batch_subcall_lines_alignment_unset() {
                     {"tool": "grep", "pattern": "TODO", "path": "src"}
                 ]
             }),
-            intent: None,
-        }),
+            intent: None, thought_signature: None, }),
     };
 
     // In non-centered mode, lines have no alignment set

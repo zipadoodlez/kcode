@@ -653,8 +653,7 @@ fn bash_exposure_collects_file_and_line_hits() {
         input: json!({
             "command": "cat src/tool/lsp.rs && rg -n auth_status src/tool/lsp.rs"
         }),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
     let content = "src/tool/lsp.rs:42:let status = auth_status();\n";
 
     collect_bash_exposure(

@@ -703,8 +703,7 @@ async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop(
             content: vec![ContentBlock::ToolUse {
                 id: "call_1".to_string(),
                 name: "bash".to_string(),
-                input: serde_json::json!({}),
-            }],
+                input: serde_json::json!({}), thought_signature: None, }],
             timestamp: Some(chrono::Utc::now()),
             tool_duration_ms: None,
         },

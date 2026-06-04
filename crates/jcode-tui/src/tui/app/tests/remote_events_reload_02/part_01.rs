@@ -503,8 +503,7 @@ fn test_observe_marks_large_tool_results() {
         id: "tool_big".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"file_path": "large.txt"}),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
     let output = "x".repeat(48_000);
     app.observe_tool_result(&tool_call, &output, false, Some("read"));
 
@@ -530,8 +529,7 @@ fn test_observe_repaint_does_not_leave_severity_badge_artifact() {
         id: "tool_big".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"file_path": "large.txt"}),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
 
     let large_output = "x".repeat(48_000);
     app.observe_tool_result(&tool_call, &large_output, false, Some("read"));

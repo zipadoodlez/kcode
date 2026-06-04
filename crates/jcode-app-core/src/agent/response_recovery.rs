@@ -94,6 +94,7 @@ impl Agent {
             name: tool_name,
             input: arguments,
             intent,
+            thought_signature: None,
         });
 
         true

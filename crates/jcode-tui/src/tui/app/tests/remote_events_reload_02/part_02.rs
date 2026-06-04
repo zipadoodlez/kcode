@@ -71,8 +71,7 @@ fn test_replace_latest_tool_display_message_updates_latest_match_and_bumps_versi
         id: "tool-1".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"file_path": "src/main.rs"}),
-        intent: None,
-    };
+        intent: None, thought_signature: None, };
 
     app.push_display_message(DisplayMessage {
         role: "tool".to_string(),

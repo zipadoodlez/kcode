@@ -123,8 +123,7 @@ fn make_edit_badge_test_app(
                     "old_string": old_string,
                     "new_string": new_string,
                 }),
-                intent: None,
-            },
+                intent: None, thought_signature: None, },
         ),
     ];
     app.bump_display_messages_version();
@@ -328,8 +327,7 @@ fn test_expand_badge_shortcut_opens_full_inline_from_non_inline_mode() {
                 "old_string": "old line\n",
                 "new_string": "new line\n",
             }),
-            intent: None,
-        },
+            intent: None, thought_signature: None, },
     ));
     app.bump_display_messages_version();
     app.diff_mode = crate::config::DiffDisplayMode::Off;
@@ -358,8 +356,7 @@ fn test_expand_badge_shortcut_uses_display_messages_when_edit_count_is_stale() {
                 "old_string": "old line\n",
                 "new_string": "new line\n",
             }),
-            intent: None,
-        },
+            intent: None, thought_signature: None, },
     ));
     app.bump_display_messages_version();
     app.diff_mode = crate::config::DiffDisplayMode::Off;
