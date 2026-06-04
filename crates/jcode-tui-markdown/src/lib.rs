@@ -127,11 +127,19 @@ fn escape_reasoning_inline_markdown(line: &str) -> String {
     out
 }
 
-/// Wrap one complete reasoning/thinking line as dim+italic markdown: an
-/// invisible [`REASONING_SENTINEL`] inside an `*…*` emphasis run that the
-/// renderer strips and styles dim, with no blockquote gutter. The line body is
-/// escaped so embedded markdown cannot break the styling. Empty lines become a
-/// bare newline (no empty emphasis run). The result always ends in `\n`.
+/// Wrap one complete reasoning/thinking line as dim+italic markdown: the
+/// invisible [`REASONING_SENTINEL`] is placed just inside *both* ends of an
+/// `*…*` emphasis run that the renderer strips and styles dim, with no
+/// blockquote gutter. The line body is escaped so embedded markdown cannot break
+/// the styling. Empty lines become a bare newline (no empty emphasis run). The
+/// result always ends in `\n`.
+///
+/// The sentinel must wrap both ends because CommonMark's emphasis flanking rules
+/// require the opening `*` to not be followed by whitespace and the closing `*`
+/// to not be preceded by whitespace. A reasoning line that starts or ends with
+/// whitespace (or is whitespace-only) would otherwise leave the asterisks as
+/// literal text and break the dim/italic styling. The zero-width sentinels
+/// guarantee both asterisks are flanked by non-whitespace regardless of the body.
 ///
 /// Shared by the server and TUI reasoning formatters so the wrapping/escaping
 /// rules stay in lockstep with the renderer that consumes them.
@@ -140,7 +148,7 @@ pub fn reasoning_line_markup(line: &str) -> String {
         "\n".to_string()
     } else {
         format!(
-            "*{}{}*\n",
+            "*{0}{1}{0}*\n",
             REASONING_SENTINEL,
             escape_reasoning_inline_markdown(line)
         )

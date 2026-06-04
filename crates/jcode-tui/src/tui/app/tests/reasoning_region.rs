@@ -2,7 +2,8 @@
 //
 // Reasoning text is rendered as dim, italic lines (no blockquote `│` gutter, no
 // header, no footer). Each complete line is wrapped in `*…*` with an invisible
-// REASONING_SENTINEL prefix that the markdown renderer strips and dims. The
+// REASONING_SENTINEL inside both ends that the markdown renderer strips and dims.
+// (Both ends so whitespace at the line edges can't break CommonMark emphasis.) The
 // region auto-closes when real output or a tool call begins so the final answer
 // renders as normal (non-italic) text.
 
@@ -20,11 +21,11 @@ fn reasoning_region_emits_dim_italic_lines_no_gutter_header_or_footer() {
     assert!(!text.contains("Thought for"), "no footer expected: {text:?}");
     let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
     assert!(
-        text.contains(&format!("*{sentinel}Let me think.*")),
+        text.contains(&format!("*{sentinel}Let me think.{sentinel}*")),
         "first line not dim+italic: {text:?}"
     );
     assert!(
-        text.contains(&format!("*{sentinel}Second thought.*")),
+        text.contains(&format!("*{sentinel}Second thought.{sentinel}*")),
         "second line not dim+italic: {text:?}"
     );
 }
@@ -65,11 +66,17 @@ fn reasoning_region_open_is_idempotent() {
 
     let text = app.streaming_text();
     let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
-    assert!(text.contains(&format!("*{sentinel}a*")), "first chunk: {text:?}");
-    assert!(text.contains(&format!("*{sentinel}b*")), "second chunk: {text:?}");
+    assert!(
+        text.contains(&format!("*{sentinel}a{sentinel}*")),
+        "first chunk: {text:?}"
+    );
+    assert!(
+        text.contains(&format!("*{sentinel}b{sentinel}*")),
+        "second chunk: {text:?}"
+    );
     // No extra separator burst between the two chunks.
     assert!(
-        !text.contains(&format!("*{sentinel}a*\n\n")),
+        !text.contains(&format!("*{sentinel}a{sentinel}*\n\n")),
         "second chunk should not restart the region: {text:?}"
     );
 }
@@ -86,7 +93,7 @@ fn reasoning_line_split_across_deltas_stays_one_run() {
     let text = app.streaming_text();
     let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
     assert!(
-        text.contains(&format!("*{sentinel}one two*")),
+        text.contains(&format!("*{sentinel}one two{sentinel}*")),
         "split line must be one emphasis run: {text:?}"
     );
 }

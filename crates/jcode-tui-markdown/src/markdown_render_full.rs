@@ -592,17 +592,26 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                     current_cell.push_str(&text);
                 } else {
                     // "Thought for X.Xs" footers and streamed reasoning lines
-                    // (italic, prefixed with a sentinel) render dim with no gutter.
+                    // (italic, sentinel-wrapped) render dim with no gutter.
                     let is_thinking_duration =
                         text.starts_with("Thought for ") && text.ends_with('s');
-                    let reasoning_text = text.strip_prefix(crate::REASONING_SENTINEL);
-                    if reasoning_text.is_some() {
+                    // The sentinel can appear at the start and/or end of the line
+                    // (and smart-punctuation may split it across events), so latch
+                    // on its presence anywhere and strip every occurrence.
+                    let has_sentinel = text.contains(crate::REASONING_SENTINEL);
+                    if has_sentinel {
                         // Latch for the rest of this emphasis span so smart-
                         // punctuation splits keep the dim/italic styling.
                         reasoning_emphasis = true;
                     }
                     let is_reasoning = reasoning_emphasis;
-                    let text = reasoning_text.unwrap_or(&text);
+                    let stripped;
+                    let text: &str = if has_sentinel {
+                        stripped = text.replace(crate::REASONING_SENTINEL, "");
+                        &stripped
+                    } else {
+                        &text
+                    };
                     let mut style = if is_thinking_duration || is_reasoning {
                         Style::default().fg(md_dim_color()).italic()
                     } else {

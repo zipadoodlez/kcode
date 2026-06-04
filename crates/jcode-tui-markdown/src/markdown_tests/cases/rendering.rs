@@ -604,10 +604,12 @@ fn assert_reasoning_line_fully_dim_italic(line: &str) {
     // Styling must not have eaten any characters. Smart-punctuation may pretty
     // up the text (straight quotes/dashes become typographic ones), so compare
     // after normalizing those equivalences; the point is that no content is lost
-    // and nothing reverts to non-reasoning styling.
+    // and nothing reverts to non-reasoning styling. Leading/trailing whitespace
+    // is not visually meaningful (the renderer may collapse it), so compare the
+    // trimmed bodies.
     assert_eq!(
-        normalize_smart_punctuation(visible.trim_end()),
-        normalize_smart_punctuation(line),
+        normalize_smart_punctuation(visible.trim()),
+        normalize_smart_punctuation(line.trim()),
         "reasoning text content lost during render for {line:?}"
     );
 }
@@ -652,6 +654,18 @@ fn test_reasoning_line_survives_embedded_markdown() {
         "unbalanced `open code that never closes",
         "mixed it's **bold** with `code` and a [link](x)",
         "🤔 unicode and emoji with it's apostrophe",
+        // Whitespace edges: CommonMark emphasis flanking rules reject a closing
+        // `*` preceded by whitespace (or an opening `*` followed by whitespace),
+        // so lines that start/end with whitespace must still stay dim+italic.
+        "trailing spaces break the closing star   ",
+        "   leading spaces before the text",
+        "  surrounded by spaces on both sides  ",
+        "trailing tab breaks it\t",
+        "ends right at an asterisk *",
+        "* starts at an asterisk",
+        "   ",
+        "\t",
+        "ends with escaped backslash and space \\ ",
     ];
     for case in cases {
         assert_reasoning_line_fully_dim_italic(case);
