@@ -74,6 +74,68 @@ fn kv_cache_signature_prefix_match_detects_prefix_mutation() {
 }
 
 #[test]
+fn kv_cache_signature_ignores_non_transmitted_message_metadata() {
+    use crate::message::{ContentBlock, Message, Role};
+
+    // A boundary assistant message that has already been sent upstream. The
+    // provider only ever receives its `Text` block; the struct-level timestamp
+    // and tool_duration_ms, plus any history-only ReasoningTrace block, are
+    // never part of the prompt token stream.
+    let baseline_messages = vec![
+        Message::user("first prompt"),
+        Message {
+            role: Role::Assistant,
+            content: vec![ContentBlock::Text {
+                text: "boundary answer".to_string(),
+                cache_control: None,
+            }],
+            timestamp: Some(chrono::Utc::now()),
+            tool_duration_ms: None,
+        },
+    ];
+
+    // Next request: the same boundary message but with volatile/harness-only
+    // fields backfilled in memory, then two appended messages. This mirrors the
+    // real production sequence where PROVIDER_CANONICAL_INPUT stayed append-only
+    // yet the harness previously reported harness:_prefix_changed.
+    let mut current_messages = vec![
+        Message::user("first prompt"),
+        Message {
+            role: Role::Assistant,
+            content: vec![
+                ContentBlock::Text {
+                    text: "boundary answer".to_string(),
+                    // Ephemeral cache breakpoint that hops to the newest message.
+                    cache_control: Some(crate::message::CacheControl::ephemeral(None)),
+                },
+                // History-only reasoning trace, never replayed to a provider.
+                ContentBlock::ReasoningTrace {
+                    text: "internal scratch thinking".to_string(),
+                },
+            ],
+            // Backfilled after the tool ran / a newer turn was committed.
+            timestamp: Some(chrono::Utc::now() + chrono::Duration::seconds(5)),
+            tool_duration_ms: Some(1234),
+        },
+    ];
+    current_messages.push(Message::user("follow up"));
+    current_messages.push(Message::assistant_text("second answer"));
+
+    let baseline = App::kv_cache_request_signature(&baseline_messages, &[], "system", "");
+    let current = App::kv_cache_request_signature(&current_messages, &[], "system", "");
+
+    assert!(
+        App::kv_cache_signatures_prefix_match(&current, &baseline),
+        "non-transmitted metadata changes on the boundary message must not break the cache prefix"
+    );
+    assert_eq!(
+        App::kv_cache_common_prefix_messages(&current, &baseline),
+        baseline_messages.len(),
+        "the whole prior request should still count as a common prefix"
+    );
+}
+
+#[test]
 fn cold_cache_warning_is_persisted_when_starting_next_request() {
     let mut app = create_test_app();
     crate::provider::anthropic::set_cache_ttl_1h(true);
