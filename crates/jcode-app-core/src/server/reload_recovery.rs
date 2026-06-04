@@ -229,3 +229,231 @@ pub(super) fn mark_delivered_if_matching_continuation(
     ));
     Ok(true)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct IsolatedHome {
+        prev_home: Option<std::ffi::OsString>,
+        _temp: tempfile::TempDir,
+    }
+
+    impl IsolatedHome {
+        fn new() -> Self {
+            let temp = tempfile::TempDir::new().expect("jcode home");
+            let prev_home = std::env::var_os("JCODE_HOME");
+            crate::env::set_var("JCODE_HOME", temp.path());
+            Self {
+                prev_home,
+                _temp: temp,
+            }
+        }
+    }
+
+    impl Drop for IsolatedHome {
+        fn drop(&mut self) {
+            if let Some(prev) = self.prev_home.take() {
+                crate::env::set_var("JCODE_HOME", prev);
+            } else {
+                crate::env::remove_var("JCODE_HOME");
+            }
+        }
+    }
+
+    fn directive(message: &str) -> ReloadRecoveryDirective {
+        ReloadRecoveryDirective {
+            reconnect_notice: Some("reconnected".to_string()),
+            continuation_message: message.to_string(),
+        }
+    }
+
+    #[test]
+    fn sanitize_session_id_strips_path_traversal_and_separators() {
+        // A malicious or merely unusual session id must never be able to escape
+        // the recovery directory or collide with sibling paths.
+        assert_eq!(sanitize_session_id("../../etc/passwd"), "______etc_passwd");
+        assert_eq!(sanitize_session_id("a/b\\c"), "a_b_c");
+        assert_eq!(
+            sanitize_session_id("sess.with space"),
+            "sess_with_space"
+        );
+        // Already-safe ids are preserved verbatim.
+        assert_eq!(
+            sanitize_session_id("session-abc_123"),
+            "session-abc_123"
+        );
+    }
+
+    #[test]
+    fn path_for_session_stays_inside_recovery_dir() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+
+        let dir = recovery_dir()?;
+        let evil = path_for_session("../../escape")?;
+        assert!(
+            evil.starts_with(&dir),
+            "traversal session id escaped recovery dir: {} not under {}",
+            evil.display(),
+            dir.display()
+        );
+        assert_eq!(
+            evil.file_name().and_then(|n| n.to_str()),
+            Some("______escape.json")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn persist_then_peek_roundtrips_record() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+
+        let session_id = "session-roundtrip";
+        persist_intent(
+            "reload-roundtrip",
+            session_id,
+            ReloadRecoveryRole::Headless,
+            directive("resume the headless task"),
+            "headless test",
+        )?;
+
+        let record = peek_for_session(session_id)?.expect("record should exist");
+        assert_eq!(record.reload_id, "reload-roundtrip");
+        assert_eq!(record.session_id, session_id);
+        assert_eq!(record.role, ReloadRecoveryRole::Headless);
+        assert_eq!(record.status, ReloadRecoveryStatus::Pending);
+        assert_eq!(
+            record.directive.continuation_message,
+            "resume the headless task"
+        );
+        assert!(record.delivered_at.is_none());
+        assert!(has_pending_for_session(session_id));
+        Ok(())
+    }
+
+    #[test]
+    fn peek_for_missing_session_is_none() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+        assert!(peek_for_session("never-persisted")?.is_none());
+        assert!(!has_pending_for_session("never-persisted"));
+        assert!(pending_directive_for_session("never-persisted")?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn pending_directive_does_not_consume_intent() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+
+        let session_id = "session-non-consuming";
+        persist_intent(
+            "reload-non-consuming",
+            session_id,
+            ReloadRecoveryRole::InterruptedPeer,
+            directive("continue please"),
+            "peek test",
+        )?;
+
+        // Reading the directive (for History payloads) must leave the durable
+        // intent pending so a lost frame can be retried after reconnect.
+        for _ in 0..3 {
+            let directive =
+                pending_directive_for_session(session_id)?.expect("directive present");
+            assert_eq!(directive.continuation_message, "continue please");
+            assert!(has_pending_for_session(session_id));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mark_delivered_is_idempotent_and_matches_exact_continuation() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+
+        let session_id = "session-deliver";
+        let continuation = "exact continuation body";
+        persist_intent(
+            "reload-deliver",
+            session_id,
+            ReloadRecoveryRole::Initiator,
+            directive(continuation),
+            "delivery test",
+        )?;
+
+        // A non-matching continuation must not consume the intent.
+        assert!(!mark_delivered_if_matching_continuation(
+            session_id,
+            "some other message",
+            "server-a",
+        )?);
+        assert!(
+            has_pending_for_session(session_id),
+            "mismatched continuation must leave intent pending"
+        );
+
+        // The exact continuation consumes it exactly once.
+        assert!(mark_delivered_if_matching_continuation(
+            session_id,
+            continuation,
+            "server-a",
+        )?);
+        assert!(!has_pending_for_session(session_id));
+
+        // Re-delivery is a no-op (idempotent) even with the right body.
+        assert!(!mark_delivered_if_matching_continuation(
+            session_id,
+            continuation,
+            "server-b",
+        )?);
+
+        // And the persisted record records when it was delivered.
+        let record = peek_for_session(session_id)?.expect("record should still exist");
+        assert_eq!(record.status, ReloadRecoveryStatus::Delivered);
+        assert!(record.delivered_at.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn mark_delivered_for_missing_session_is_false() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+        assert!(!mark_delivered_if_matching_continuation(
+            "missing-session",
+            "anything",
+            "server",
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn persist_intent_overwrites_prior_record_for_same_session() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+
+        let session_id = "session-overwrite";
+        persist_intent(
+            "reload-old",
+            session_id,
+            ReloadRecoveryRole::InterruptedPeer,
+            directive("old continuation"),
+            "first",
+        )?;
+        persist_intent(
+            "reload-new",
+            session_id,
+            ReloadRecoveryRole::Headless,
+            directive("new continuation"),
+            "second",
+        )?;
+
+        let record = peek_for_session(session_id)?.expect("record should exist");
+        assert_eq!(record.reload_id, "reload-new");
+        assert_eq!(record.role, ReloadRecoveryRole::Headless);
+        assert_eq!(record.directive.continuation_message, "new continuation");
+        assert_eq!(record.status, ReloadRecoveryStatus::Pending);
+        Ok(())
+    }
+}

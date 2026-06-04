@@ -727,4 +727,198 @@ mod tests {
             assert_eq!(status, ReloadWaitStatus::Ready);
         }
     }
+
+    /// Spawn a short-lived child and reap it so we hold a pid that is reliably
+    /// dead at the moment of selection. Retries guard against the (extremely
+    /// rare) case where the kernel immediately recycles the pid for another
+    /// test thread's process.
+    #[cfg(unix)]
+    fn spawn_and_reap_dead_pid() -> u32 {
+        use std::process::Command;
+        for _ in 0..16 {
+            let mut child = Command::new("/bin/sh")
+                .arg("-c")
+                .arg("exit 0")
+                .spawn()
+                .expect("spawn short-lived child");
+            let pid = child.id();
+            let _ = child.wait();
+            if !reload_process_alive(pid) {
+                return pid;
+            }
+        }
+        panic!("could not obtain a reliably-dead pid");
+    }
+
+    // Note: the marker-driven Ready/Idle/Failed/Waiting verdicts and the
+    // foreign-pid socket-ready clearing are already covered in
+    // `server::socket_tests`. The tests below intentionally cover only the
+    // gaps not exercised there: stale-marker cleanup, Failed-marker
+    // preservation, corrupt-marker tolerance, and the dead last-known-pid
+    // fallback.
+
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn inspect_reload_wait_status_idle_when_last_known_pid_is_dead_without_marker() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+        clear_reload_marker();
+
+        let dead_pid = spawn_and_reap_dead_pid();
+        let status = inspect_reload_wait_status(
+            &temp.path().join("missing.sock"),
+            Duration::from_secs(5),
+            Some(dead_pid),
+        )
+        .await;
+        assert_eq!(status, ReloadWaitStatus::Idle);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn clear_reload_marker_if_stale_for_pid_keeps_own_starting_marker() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        let current = std::process::id();
+        ReloadState {
+            request_id: "req-keep".to_string(),
+            hash: "hash-keep".to_string(),
+            phase: ReloadPhase::Starting,
+            pid: current,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            detail: None,
+        }
+        .write();
+
+        clear_reload_marker_if_stale_for_pid(current);
+        assert!(
+            reload_marker_exists(),
+            "an in-flight Starting marker owned by this pid must survive cleanup"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn clear_reload_marker_if_stale_for_pid_clears_foreign_or_completed_markers() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        let current = std::process::id();
+
+        // Foreign pid still in Starting -> stale, must be cleared.
+        ReloadState {
+            request_id: "req-foreign".to_string(),
+            hash: "hash-foreign".to_string(),
+            phase: ReloadPhase::Starting,
+            pid: current.wrapping_add(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            detail: None,
+        }
+        .write();
+        clear_reload_marker_if_stale_for_pid(current);
+        assert!(
+            !reload_marker_exists(),
+            "a foreign Starting marker must be cleared"
+        );
+
+        // Own pid but already completed (SocketReady) -> not an in-flight boot.
+        ReloadState {
+            request_id: "req-ready".to_string(),
+            hash: "hash-ready".to_string(),
+            phase: ReloadPhase::SocketReady,
+            pid: current,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            detail: None,
+        }
+        .write();
+        clear_reload_marker_if_stale_for_pid(current);
+        assert!(
+            !reload_marker_exists(),
+            "a completed marker must be cleared on stale check"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn publish_reload_socket_ready_leaves_failed_marker_untouched() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        write_reload_state(
+            "req-failed",
+            "hash-failed",
+            ReloadPhase::Failed,
+            Some("boom".to_string()),
+        );
+        publish_reload_socket_ready();
+
+        let state = ReloadState::load().expect("marker should still exist");
+        assert_eq!(
+            state.phase,
+            ReloadPhase::Failed,
+            "publish must not overwrite a Failed marker"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn recent_reload_state_ignores_corrupt_marker() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        let path = reload_marker_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create runtime dir");
+        }
+        std::fs::write(&path, b"{ this is not valid json").expect("write corrupt marker");
+
+        assert!(
+            ReloadState::load().is_none(),
+            "corrupt marker should not deserialize"
+        );
+        assert!(
+            recent_reload_state(Duration::from_secs(5)).is_none(),
+            "corrupt marker should be treated as no recent state"
+        );
+        assert!(
+            !reload_marker_active(Duration::from_secs(5)),
+            "corrupt marker must not be reported as active"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn reload_marker_active_treats_failed_phase_as_inactive() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        write_reload_state("req", "hash", ReloadPhase::Failed, Some("x".to_string()));
+        assert!(
+            !reload_marker_active(Duration::from_secs(5)),
+            "a Failed reload must not look active"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reload_process_alive_handles_zero_and_dead_pids() {
+        assert!(!reload_process_alive(0), "pid 0 is never a live reload pid");
+        let dead = spawn_and_reap_dead_pid();
+        assert!(
+            !reload_process_alive(dead),
+            "a reaped child pid must be reported dead"
+        );
+        assert!(
+            reload_process_alive(std::process::id()),
+            "the current process must be reported alive"
+        );
+    }
 }
