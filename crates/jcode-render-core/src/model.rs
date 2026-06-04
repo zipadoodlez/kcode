@@ -29,6 +29,8 @@ pub enum StyleRole {
     Html,
     /// Model "reasoning" text (dim + italic latch in the TUI).
     Reasoning,
+    /// Math (inline `$..$` or display `$$..$$`) content.
+    Math,
 }
 
 /// Background fill role for a span. Most spans have no background; code uses a
@@ -160,7 +162,13 @@ pub enum BlockKind {
     CodeBlock { language: Option<String> },
     BlockQuote,
     ListItem { ordered: bool, depth: usize },
+    /// GFM table. The raw cell text per row is carried in [`Block::table`]
+    /// (the first row is the header); column layout/wrapping is width-dependent
+    /// and therefore performed by each front-end adapter.
     Table,
+    /// Display math (`$$..$$`). Raw math source lines are in [`Block::lines`]
+    /// with [`StyleRole::Math`]; the adapter frames it.
+    MathDisplay,
     ThematicBreak,
     Html,
 }
@@ -172,11 +180,28 @@ pub enum BlockKind {
 pub struct Block {
     pub kind: BlockKind,
     pub lines: Vec<StyledLine>,
+    /// Raw table cells (row-major, first row is the header). Only populated for
+    /// [`BlockKind::Table`]; layout is deferred to the front-end adapter.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub table: Vec<Vec<String>>,
 }
 
 impl Block {
     pub fn new(kind: BlockKind, lines: Vec<StyledLine>) -> Self {
-        Self { kind, lines }
+        Self {
+            kind,
+            lines,
+            table: Vec::new(),
+        }
+    }
+
+    /// Construct a table block carrying raw cells (row-major, header first).
+    pub fn table(rows: Vec<Vec<String>>) -> Self {
+        Self {
+            kind: BlockKind::Table,
+            lines: Vec::new(),
+            table: rows,
+        }
     }
 }
 

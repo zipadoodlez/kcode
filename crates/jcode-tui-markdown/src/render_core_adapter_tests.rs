@@ -108,3 +108,46 @@ fn core_marks_bold_and_code_styling() {
         "inline code should carry a background fill"
     );
 }
+
+#[test]
+fn parity_table() {
+    let md = "\
+| A | B |
+|---|---|
+| 1 | 2 |";
+    assert_content_parity(md);
+}
+
+#[test]
+fn core_renders_table_borders() {
+    let core = render_markdown_via_core("| A | B |\n|---|---|\n| 1 | 2 |");
+    let text: String = core
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+        .collect();
+    assert!(text.contains('A') && text.contains('1'), "table cells present: {text}");
+}
+
+#[test]
+fn core_renders_inline_math() {
+    let core = render_markdown_via_core("an equation $x^2$ here");
+    let spans: Vec<_> = core.iter().flat_map(|l| l.spans.iter()).collect();
+    assert!(
+        spans.iter().any(|s| s.content.contains("$x^2$")),
+        "inline math should be wrapped in dollar signs"
+    );
+}
+
+#[test]
+fn core_renders_display_math_frame() {
+    let core = render_markdown_via_core("$$\nx^2 + y^2\n$$");
+    let texts = nonblank_texts(&core);
+    assert!(
+        texts.iter().any(|t| t.starts_with("┌─ math")),
+        "display math should be framed: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("x^2 + y^2")),
+        "display math content present: {texts:?}"
+    );
+}

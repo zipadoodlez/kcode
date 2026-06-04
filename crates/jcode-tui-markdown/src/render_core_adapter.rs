@@ -17,7 +17,7 @@ use ratatui::text::{Line, Span};
 
 use crate::{
     bold_color, code_bg, code_fg, heading_h1_color, heading_h2_color, heading_h3_color,
-    heading_color, html_fg, link_fg, md_dim_color, text_color,
+    heading_color, html_fg, link_fg, math_fg, md_dim_color, text_color,
 };
 
 /// Convert a parsed neutral [`Document`] into ratatui lines using the TUI
@@ -33,6 +33,15 @@ pub fn document_to_lines(doc: &Document) -> Vec<Line<'static>> {
         match &block.kind {
             BlockKind::CodeBlock { language } => {
                 push_code_block(&mut lines, block, language.as_deref());
+            }
+            BlockKind::MathDisplay => {
+                push_math_display(&mut lines, block);
+            }
+            BlockKind::Table => {
+                // Layout is width-dependent; defer to the legacy table renderer
+                // for exact parity. Unbounded width here (callers that wrap pass
+                // a width via the wrapped variant).
+                lines.extend(crate::render_support::render_table(&block.table, None));
             }
             BlockKind::BlockQuote => {
                 for sl in &block.lines {
@@ -66,6 +75,24 @@ fn push_code_block(lines: &mut Vec<Line<'static>>, block: &jcode_render_core::Bl
         lines.push(Line::from(spans));
     }
     lines.push(Line::from(Span::styled("└─".to_string(), dim)));
+}
+
+/// Render a display-math block with the legacy frame: `┌─ math `, `│ ` gutter
+/// per source line, and a closing `└─`.
+fn push_math_display(lines: &mut Vec<Line<'static>>, block: &jcode_render_core::Block) {
+    let dim = Style::default().fg(md_dim_color());
+    lines.push(Line::from(Span::styled("┌─ math ".to_string(), dim)).left_aligned());
+    for sl in &block.lines {
+        let text = sl.plain_text();
+        lines.push(
+            Line::from(vec![
+                Span::styled("│ ".to_string(), dim),
+                Span::styled(text, Style::default().fg(math_fg())),
+            ])
+            .left_aligned(),
+        );
+    }
+    lines.push(Line::from(Span::styled("└─".to_string(), dim)).left_aligned());
 }
 
 /// Convert one neutral [`StyledLine`] to a ratatui [`Line`], given the block it
@@ -115,6 +142,7 @@ fn role_color(role: StyleRole, kind: &BlockKind) -> ratatui::style::Color {
         StyleRole::Link => link_fg(),
         StyleRole::Html => html_fg(),
         StyleRole::Reasoning => md_dim_color(),
+        StyleRole::Math => math_fg(),
         StyleRole::Strong => match kind {
             BlockKind::Heading { level } => match level {
                 1 => heading_h1_color(),
@@ -133,7 +161,9 @@ pub fn render_markdown_via_core(text: &str) -> Vec<Line<'static>> {
 }
 
 /// Like [`render_markdown_via_core`] but wraps each block's lines to `width`
-/// columns using the shared wrapper.
+/// columns using the shared wrapper. Decorated blocks (code, math, tables,
+/// blockquotes) use their decoration-aware rendering; tables additionally get
+/// the width constraint.
 pub fn render_markdown_via_core_wrapped(text: &str, width: usize) -> Vec<Line<'static>> {
     use jcode_render_core::{ColumnWidth, wrap_lines};
     let doc = jcode_render_core::parse_markdown(text);
@@ -142,14 +172,32 @@ pub fn render_markdown_via_core_wrapped(text: &str, width: usize) -> Vec<Line<'s
         if idx > 0 {
             out.push(Line::default());
         }
-        // Code blocks are not reflowed (preserve source layout); other blocks wrap.
-        let wrapped: Vec<StyledLine> = if matches!(block.kind, BlockKind::CodeBlock { .. }) {
-            block.lines.clone()
-        } else {
-            wrap_lines(&block.lines, width, &ColumnWidth)
-        };
-        for sl in &wrapped {
-            out.push(styled_line_to_line(sl, &block.kind));
+        match &block.kind {
+            // Source layout preserved (not reflowed).
+            BlockKind::CodeBlock { language } => {
+                push_code_block(&mut out, block, language.as_deref());
+            }
+            BlockKind::MathDisplay => {
+                push_math_display(&mut out, block);
+            }
+            BlockKind::Table => {
+                out.extend(crate::render_support::render_table(&block.table, Some(width)));
+            }
+            BlockKind::BlockQuote => {
+                let wrapped = wrap_lines(&block.lines, width.saturating_sub(2), &ColumnWidth);
+                for sl in &wrapped {
+                    let mut spans =
+                        vec![Span::styled("│ ".to_string(), Style::default().fg(md_dim_color()))];
+                    spans.extend(sl.spans.iter().map(|s| styled_span_to_span(s, &block.kind)));
+                    out.push(Line::from(spans));
+                }
+            }
+            _ => {
+                let wrapped = wrap_lines(&block.lines, width, &ColumnWidth);
+                for sl in &wrapped {
+                    out.push(styled_line_to_line(sl, &block.kind));
+                }
+            }
         }
     }
     out

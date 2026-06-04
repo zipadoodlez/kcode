@@ -67,6 +67,7 @@ fn current_kind(blockquote_depth: usize, list_stack: &[ListFrame]) -> BlockKind 
 pub fn parse_markdown(text: &str) -> Document {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_MATH);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_FOOTNOTES);
@@ -94,6 +95,14 @@ pub fn parse_markdown(text: &str) -> Document {
     // Pending list-item marker prefix to emit when the item's first inline
     // text arrives.
     let mut pending_item_marker: Option<String> = None;
+
+    // Table accumulation. While `in_table`, inline text is collected into the
+    // current cell (as raw text) rather than styled spans, mirroring the legacy
+    // renderer which lays tables out by width.
+    let mut in_table = false;
+    let mut table_rows: Vec<Vec<String>> = Vec::new();
+    let mut table_row: Vec<String> = Vec::new();
+    let mut current_cell = String::new();
 
     let push_block = |doc: &mut Document, kind: BlockKind, lines: Vec<StyledLine>| {
         if !lines.is_empty() {
@@ -164,9 +173,44 @@ pub fn parse_markdown(text: &str) -> Document {
             Event::Start(Tag::Link { .. }) => {}
             Event::Start(Tag::Image { .. }) => {}
 
+            // ---- tables ----
+            Event::Start(Tag::Table(_)) => {
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    current_kind(blockquote_depth, &list_stack),
+                    Alignment::Left,
+                );
+                in_table = true;
+                table_rows.clear();
+            }
+            Event::Start(Tag::TableHead) | Event::Start(Tag::TableRow) => {
+                table_row.clear();
+            }
+            Event::Start(Tag::TableCell) => {
+                current_cell.clear();
+            }
+            Event::End(TagEnd::TableCell) => {
+                table_row.push(current_cell.trim().to_string());
+                current_cell.clear();
+            }
+            Event::End(TagEnd::TableHead) | Event::End(TagEnd::TableRow) => {
+                if !table_row.is_empty() {
+                    table_rows.push(std::mem::take(&mut table_row));
+                }
+            }
+            Event::End(TagEnd::Table) => {
+                in_table = false;
+                if !table_rows.is_empty() {
+                    doc.blocks.push(Block::table(std::mem::take(&mut table_rows)));
+                }
+            }
+
             // ---- inline content ----
             Event::Text(t) => {
-                if in_code_block {
+                if in_table {
+                    current_cell.push_str(&t);
+                } else if in_code_block {
                     code_buf.push_str(&t);
                 } else {
                     if let Some(marker) = pending_item_marker.take() {
@@ -181,29 +225,88 @@ pub fn parse_markdown(text: &str) -> Document {
                 }
             }
             Event::Code(t) => {
-                if let Some(marker) = pending_item_marker.take() {
-                    spans.push(StyledSpan::new(marker, StyleRole::Dim));
+                if in_table {
+                    current_cell.push_str(&t);
+                } else {
+                    if let Some(marker) = pending_item_marker.take() {
+                        spans.push(StyledSpan::new(marker, StyleRole::Dim));
+                    }
+                    spans.push(StyledSpan {
+                        text: t.to_string(),
+                        role: StyleRole::Code,
+                        fill: FillRole::Code,
+                        attrs: TextAttrs::none(),
+                    });
                 }
-                spans.push(StyledSpan {
-                    text: t.to_string(),
-                    role: StyleRole::Code,
-                    fill: FillRole::Code,
-                    attrs: TextAttrs::none(),
-                });
+            }
+            Event::InlineMath(math) => {
+                if in_table {
+                    current_cell.push('$');
+                    current_cell.push_str(&math);
+                    current_cell.push('$');
+                } else {
+                    if let Some(marker) = pending_item_marker.take() {
+                        spans.push(StyledSpan::new(marker, StyleRole::Dim));
+                    }
+                    spans.push(StyledSpan {
+                        text: format!("${math}$"),
+                        role: StyleRole::Math,
+                        fill: FillRole::None,
+                        attrs: TextAttrs::none(),
+                    });
+                }
+            }
+            Event::DisplayMath(math) => {
+                if in_table {
+                    current_cell.push_str("$$");
+                    current_cell.push_str(&math);
+                    current_cell.push_str("$$");
+                } else {
+                    flush_paragraph(
+                        &mut doc,
+                        &mut spans,
+                        current_kind(blockquote_depth, &list_stack),
+                        Alignment::Left,
+                    );
+                    let mut lines: Vec<StyledLine> = math
+                        .lines()
+                        .map(|l| {
+                            StyledLine::from_spans(vec![StyledSpan::new(
+                                l.to_string(),
+                                StyleRole::Math,
+                            )])
+                        })
+                        .collect();
+                    if lines.is_empty() {
+                        lines.push(StyledLine::from_spans(vec![StyledSpan::new(
+                            String::new(),
+                            StyleRole::Math,
+                        )]));
+                    }
+                    push_block(&mut doc, BlockKind::MathDisplay, lines);
+                }
             }
             Event::SoftBreak | Event::HardBreak => {
-                spans.push(StyledSpan::plain(" "));
+                if in_table {
+                    current_cell.push(' ');
+                } else {
+                    spans.push(StyledSpan::plain(" "));
+                }
             }
             Event::Html(raw) | Event::InlineHtml(raw) => {
-                spans.push(StyledSpan {
-                    text: raw.to_string(),
-                    role: StyleRole::Html,
-                    fill: FillRole::None,
-                    attrs: TextAttrs {
-                        italic: true,
-                        ..TextAttrs::none()
-                    },
-                });
+                if in_table {
+                    current_cell.push_str(&raw);
+                } else {
+                    spans.push(StyledSpan {
+                        text: raw.to_string(),
+                        role: StyleRole::Html,
+                        fill: FillRole::None,
+                        attrs: TextAttrs {
+                            italic: true,
+                            ..TextAttrs::none()
+                        },
+                    });
+                }
             }
             Event::Rule => {
                 flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left);
