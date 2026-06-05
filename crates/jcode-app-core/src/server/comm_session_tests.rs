@@ -1,7 +1,8 @@
 use super::{
-    ensure_spawn_coordinator_swarm, prepare_visible_spawn_session, register_visible_spawned_member,
-    require_coordinator_swarm, resolve_spawn_working_dir, resolve_stop_target_session,
-    resolve_swarm_spawn_model_and_provider, swarm_stop_allowed_by_owner,
+    CoordinatorSpawnIdentity, ensure_spawn_coordinator_swarm, prepare_visible_spawn_session,
+    register_visible_spawned_member, require_coordinator_swarm, resolve_coordinator_spawn_identity,
+    resolve_spawn_working_dir, resolve_stop_target_session, resolve_swarm_spawn_selection,
+    swarm_stop_allowed_by_owner,
 };
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
@@ -244,6 +245,7 @@ fn prepare_visible_spawn_session_persists_startup_before_launch() {
         Some(worktree.path().to_str().expect("utf8 worktree path")),
         None,
         None,
+        None,
         false,
         Some(startup),
         |session_id, _cwd: &std::path::Path, _selfdev, provider_key| {
@@ -289,6 +291,7 @@ fn prepare_visible_spawn_session_cleans_startup_when_launch_not_started() {
         Some(worktree.path().to_str().expect("utf8 worktree path")),
         None,
         None,
+        None,
         false,
         Some("Do the thing."),
         |_session_id, _cwd: &std::path::Path, _selfdev, _provider_key| Ok(false),
@@ -321,6 +324,7 @@ fn prepare_visible_spawn_session_cleans_session_when_launch_errors() {
 
     let error = prepare_visible_spawn_session(
         Some(worktree.path().to_str().expect("utf8 worktree path")),
+        None,
         None,
         None,
         false,
@@ -357,6 +361,7 @@ fn prepare_visible_spawn_session_persists_and_launches_provider_key_for_openrout
         Some(worktree.path().to_str().expect("utf8 worktree path")),
         Some("openai/gpt-5.4@OpenAI"),
         None,
+        None,
         false,
         None,
         |_session_id, _cwd: &std::path::Path, _selfdev, provider_key| {
@@ -385,6 +390,7 @@ fn prepare_visible_spawn_session_prefers_parent_provider_key_over_model_guess() 
         Some(worktree.path().to_str().expect("utf8 worktree path")),
         Some("gpt-5.4"),
         Some("ollama"),
+        None,
         false,
         None,
         |_session_id, _cwd: &std::path::Path, _selfdev, provider_key| {
@@ -402,65 +408,161 @@ fn prepare_visible_spawn_session_prefers_parent_provider_key_over_model_guess() 
     crate::env::remove_var("JCODE_HOME");
 }
 
+fn coordinator_identity(
+    model: Option<&str>,
+    provider_key: Option<&str>,
+    route_api_method: Option<&str>,
+) -> CoordinatorSpawnIdentity {
+    CoordinatorSpawnIdentity {
+        model: model.map(str::to_string),
+        provider_key: provider_key.map(str::to_string),
+        route_api_method: route_api_method.map(str::to_string),
+        is_canary: false,
+    }
+}
+
 #[test]
 fn resolve_swarm_spawn_model_prefers_configured_model_over_coordinator_model() {
-    let (model, provider_key) = resolve_swarm_spawn_model_and_provider(
+    let selection = resolve_swarm_spawn_selection(
         Some("openai/gpt-5.4@OpenAI".to_string()),
-        Some("nvidia/llama-3.3-nemotron-super-49b-v1".to_string()),
-        Some("nvidia".to_string()),
+        &coordinator_identity(
+            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
+            Some("nvidia"),
+            Some("openai-compatible:nvidia-nim"),
+        ),
     );
 
-    assert_eq!(model.as_deref(), Some("openai/gpt-5.4@OpenAI"));
-    assert_eq!(provider_key.as_deref(), Some("openrouter"));
+    assert_eq!(selection.model.as_deref(), Some("openai/gpt-5.4@OpenAI"));
+    assert_eq!(selection.provider_key.as_deref(), Some("openrouter"));
+    // A different configured model must not inherit the coordinator's route.
+    assert_eq!(selection.route_api_method, None);
 }
 
 #[test]
 fn resolve_swarm_spawn_model_inherits_coordinator_when_unconfigured() {
-    let (model, provider_key) = resolve_swarm_spawn_model_and_provider(
+    let selection = resolve_swarm_spawn_selection(
         None,
-        Some("nvidia/llama-3.3-nemotron-super-49b-v1".to_string()),
-        Some("nvidia".to_string()),
+        &coordinator_identity(
+            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
+            Some("nvidia"),
+            Some("openai-compatible:nvidia-nim"),
+        ),
     );
 
     assert_eq!(
-        model.as_deref(),
+        selection.model.as_deref(),
         Some("nvidia/llama-3.3-nemotron-super-49b-v1")
     );
-    assert_eq!(provider_key.as_deref(), Some("nvidia"));
+    assert_eq!(selection.provider_key.as_deref(), Some("nvidia"));
+    assert_eq!(
+        selection.route_api_method.as_deref(),
+        Some("openai-compatible:nvidia-nim")
+    );
+}
+
+#[test]
+fn resolve_swarm_spawn_model_inherits_coordinator_auth_route_for_oauth_vs_api() {
+    // Regression: a coordinator on the Claude API route must spawn agents on
+    // the same API route, not Claude OAuth (the config default).
+    let selection = resolve_swarm_spawn_selection(
+        None,
+        &coordinator_identity(Some("claude-opus-4-6"), Some("claude-api"), Some("claude-api")),
+    );
+
+    assert_eq!(selection.model.as_deref(), Some("claude-opus-4-6"));
+    assert_eq!(selection.provider_key.as_deref(), Some("claude-api"));
+    assert_eq!(selection.route_api_method.as_deref(), Some("claude-api"));
 }
 
 #[test]
 fn resolve_swarm_spawn_model_keeps_provider_key_when_config_matches_coordinator() {
-    let (model, provider_key) = resolve_swarm_spawn_model_and_provider(
+    let selection = resolve_swarm_spawn_selection(
         Some("custom-model".to_string()),
-        Some("custom-model".to_string()),
-        Some("custom-provider".to_string()),
+        &coordinator_identity(Some("custom-model"), Some("custom-provider"), Some("custom-route")),
     );
 
-    assert_eq!(model.as_deref(), Some("custom-model"));
-    assert_eq!(provider_key.as_deref(), Some("custom-provider"));
+    assert_eq!(selection.model.as_deref(), Some("custom-model"));
+    assert_eq!(selection.provider_key.as_deref(), Some("custom-provider"));
+    assert_eq!(selection.route_api_method.as_deref(), Some("custom-route"));
 }
 
 #[test]
 fn resolve_swarm_spawn_model_inherit_sentinel_uses_coordinator_model() {
     for sentinel in ["inherit", "INHERIT", "coordinator", " inherit ", ""] {
-        let (model, provider_key) = resolve_swarm_spawn_model_and_provider(
+        let selection = resolve_swarm_spawn_selection(
             Some(sentinel.to_string()),
-            Some("nvidia/llama-3.3-nemotron-super-49b-v1".to_string()),
-            Some("nvidia".to_string()),
+            &coordinator_identity(
+                Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
+                Some("nvidia"),
+                Some("openai-compatible:nvidia-nim"),
+            ),
         );
 
         assert_eq!(
-            model.as_deref(),
+            selection.model.as_deref(),
             Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
             "sentinel {sentinel:?} should inherit coordinator model",
         );
         assert_eq!(
-            provider_key.as_deref(),
+            selection.provider_key.as_deref(),
             Some("nvidia"),
             "sentinel {sentinel:?} should inherit coordinator provider key",
         );
+        assert_eq!(
+            selection.route_api_method.as_deref(),
+            Some("openai-compatible:nvidia-nim"),
+            "sentinel {sentinel:?} should inherit coordinator auth route",
+        );
     }
+}
+
+#[tokio::test]
+async fn coordinator_identity_uses_live_agent_when_lock_is_available() {
+    let agent = test_agent_with_working_dir("coord", "/tmp/coord").await;
+    let live_model = agent.lock().await.provider_model();
+    let sessions = Arc::new(RwLock::new(HashMap::new()));
+    sessions
+        .write()
+        .await
+        .insert("coord".to_string(), Arc::clone(&agent));
+
+    let identity = resolve_coordinator_spawn_identity("coord", &sessions).await;
+    assert_eq!(identity.model.as_deref(), Some(live_model.as_str()));
+}
+
+#[tokio::test]
+async fn coordinator_identity_falls_back_to_persisted_session_when_agent_busy() {
+    let _guard = crate::storage::lock_test_env();
+    let temp_home = tempfile::TempDir::new().expect("temp home");
+    crate::env::set_var("JCODE_HOME", temp_home.path());
+
+    let agent = test_agent_with_working_dir("coord_busy", "/tmp/coord").await;
+
+    // Persist a coordinator session that records a concrete model + auth route.
+    // Persist after the agent is built so it reflects the authoritative on-disk
+    // snapshot the spawn path will read when the agent lock is unavailable.
+    let mut session =
+        crate::session::Session::create_with_id("coord_busy".to_string(), None, None);
+    session.model = Some("claude-opus-4-6".to_string());
+    session.provider_key = Some("claude-api".to_string());
+    session.route_api_method = Some("claude-api".to_string());
+    session.save().expect("persist coordinator session");
+
+    // Hold the agent lock to simulate a coordinator mid-turn: the spawn path
+    // must not block and must read the persisted identity instead of defaults.
+    let _held = agent.lock().await;
+    let sessions = Arc::new(RwLock::new(HashMap::new()));
+    sessions
+        .write()
+        .await
+        .insert("coord_busy".to_string(), Arc::clone(&agent));
+
+    let identity = resolve_coordinator_spawn_identity("coord_busy", &sessions).await;
+    assert_eq!(identity.model.as_deref(), Some("claude-opus-4-6"));
+    assert_eq!(identity.provider_key.as_deref(), Some("claude-api"));
+    assert_eq!(identity.route_api_method.as_deref(), Some("claude-api"));
+
+    crate::env::remove_var("JCODE_HOME");
 }
 
 #[tokio::test]

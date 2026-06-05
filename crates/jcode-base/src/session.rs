@@ -178,6 +178,8 @@ struct SessionStartupStub {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
+    route_api_method: Option<String>,
+    #[serde(default)]
     reasoning_effort: Option<String>,
     #[serde(default)]
     subagent_model: Option<String>,
@@ -285,6 +287,7 @@ impl Session {
         session.provider_session_id = stub.provider_session_id;
         session.provider_key = stub.provider_key;
         session.model = stub.model;
+        session.route_api_method = stub.route_api_method;
         session.reasoning_effort = stub.reasoning_effort;
         session.subagent_model = stub.subagent_model;
         session.improve_mode = stub.improve_mode;
@@ -319,6 +322,7 @@ impl Session {
         session.provider_session_id = snapshot.provider_session_id;
         session.provider_key = snapshot.provider_key;
         session.model = snapshot.model;
+        session.route_api_method = snapshot.route_api_method;
         session.reasoning_effort = snapshot.reasoning_effort;
         session.subagent_model = snapshot.subagent_model;
         session.improve_mode = snapshot.improve_mode;
@@ -1431,6 +1435,8 @@ struct RemoteStartupSessionSnapshot {
     provider_key: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    route_api_method: Option<String>,
     #[serde(default)]
     reasoning_effort: Option<String>,
     #[serde(default)]

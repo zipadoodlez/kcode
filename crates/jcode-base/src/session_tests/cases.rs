@@ -432,6 +432,7 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
     session.model = Some("gpt-5.4".to_string());
     session.reasoning_effort = Some("high".to_string());
     session.provider_key = Some("openai".to_string());
+    session.route_api_method = Some("openai-api".to_string());
     session.set_canary("self-dev");
     session.append_stored_message(StoredMessage {
         id: "msg_1".to_string(),
@@ -481,6 +482,7 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
     assert_eq!(stub.model.as_deref(), Some("gpt-5.4"));
     assert_eq!(stub.reasoning_effort.as_deref(), Some("high"));
     assert_eq!(stub.provider_key.as_deref(), Some("openai"));
+    assert_eq!(stub.route_api_method.as_deref(), Some("openai-api"));
     assert!(stub.is_canary);
     assert!(stub.messages.is_empty());
     assert!(stub.env_snapshots.is_empty());

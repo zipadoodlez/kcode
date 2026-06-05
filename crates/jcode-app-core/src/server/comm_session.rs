@@ -29,6 +29,7 @@ fn create_visible_spawn_session(
     working_dir: Option<&str>,
     model_override: Option<&str>,
     provider_key_override: Option<&str>,
+    route_api_method_override: Option<&str>,
     selfdev_requested: bool,
 ) -> anyhow::Result<(String, PathBuf)> {
     let cwd = working_dir
@@ -42,6 +43,12 @@ fn create_visible_spawn_session(
     }
     if let Some(provider_key) = provider_key_override {
         session.provider_key = Some(provider_key.to_string());
+    }
+    if let Some(route_api_method) = route_api_method_override
+        .map(str::trim)
+        .filter(|route| !route.is_empty())
+    {
+        session.route_api_method = Some(route_api_method.to_string());
     }
     if selfdev_requested {
         session.set_canary("self-dev");
@@ -143,11 +150,86 @@ fn provider_key_for_spawn_model(
     crate::provider::provider_for_model(model).map(str::to_string)
 }
 
-fn resolve_swarm_spawn_model_and_provider(
+/// The model/auth identity a spawned swarm agent should inherit from its
+/// coordinator. Resolved with a persisted-session fallback so it stays correct
+/// even when the coordinator agent is mid-turn (its mutex held), which is the
+/// common case because spawns are issued from inside the coordinator's turn.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct CoordinatorSpawnIdentity {
+    pub model: Option<String>,
+    pub provider_key: Option<String>,
+    pub route_api_method: Option<String>,
+    pub is_canary: bool,
+}
+
+/// The resolved model + auth route a spawned swarm agent should be created
+/// with, after reconciling `agents.swarm_model` config against the
+/// coordinator's identity.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct SwarmSpawnSelection {
+    pub model: Option<String>,
+    pub provider_key: Option<String>,
+    pub route_api_method: Option<String>,
+}
+
+/// Resolve the coordinator's model/auth identity without blocking on its agent
+/// mutex. During an active coordinator turn the agent lock is held for the
+/// whole turn, so `try_lock` fails exactly when a spawn is issued. We fall back
+/// to the persisted session snapshot so spawned agents still inherit the
+/// coordinator's model, provider key, and auth route instead of silently
+/// dropping to the config default (e.g. Claude OAuth instead of the API route).
+async fn resolve_coordinator_spawn_identity(
+    req_session_id: &str,
+    sessions: &SessionAgents,
+) -> CoordinatorSpawnIdentity {
+    if let Some(agent) = {
+        let agent_sessions = sessions.read().await;
+        agent_sessions.get(req_session_id).cloned()
+    } {
+        if let Ok(agent_guard) = agent.try_lock() {
+            return CoordinatorSpawnIdentity {
+                model: Some(agent_guard.provider_model()),
+                provider_key: agent_guard.session_provider_key(),
+                route_api_method: agent_guard.session_route_api_method(),
+                is_canary: agent_guard.is_canary(),
+            };
+        }
+    }
+
+    // Agent busy (mid-turn) or not resident: read the authoritative persisted
+    // session snapshot instead of falling back to config defaults.
+    match Session::load_startup_stub(req_session_id) {
+        Ok(session) => {
+            let identity = CoordinatorSpawnIdentity {
+                model: session.model.clone(),
+                provider_key: session.provider_key.clone(),
+                route_api_method: session.route_api_method.clone(),
+                is_canary: session.is_canary,
+            };
+            crate::logging::info(&format!(
+                "Swarm spawn: coordinator {} agent busy/unavailable, inheriting identity from persisted session (model={:?} provider_key={:?} route={:?} canary={})",
+                req_session_id,
+                identity.model,
+                identity.provider_key,
+                identity.route_api_method,
+                identity.is_canary,
+            ));
+            identity
+        }
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "Swarm spawn: failed to load persisted coordinator session {} for model inheritance: {} (spawned agent will use server defaults)",
+                req_session_id, error
+            ));
+            CoordinatorSpawnIdentity::default()
+        }
+    }
+}
+
+fn resolve_swarm_spawn_selection(
     configured_swarm_model: Option<String>,
-    coordinator_model: Option<String>,
-    coordinator_provider_key: Option<String>,
-) -> (Option<String>, Option<String>) {
+    coordinator: &CoordinatorSpawnIdentity,
+) -> SwarmSpawnSelection {
     // Treat empty strings and the explicit "inherit"/"coordinator" sentinels as
     // "no override": spawned swarm agents should inherit the coordinator's model
     // unless `agents.swarm_model` is deliberately set to a concrete model. This
@@ -162,19 +244,33 @@ fn resolve_swarm_spawn_model_and_provider(
 
     match configured_swarm_model {
         Some(model) => {
-            let provider_key = if coordinator_model.as_deref() == Some(model.as_str()) {
-                coordinator_provider_key
-                    .or_else(|| provider_key_for_spawn_model(Some(&model), None))
+            // A concrete configured model only inherits the coordinator's
+            // provider_key/route when it targets the same model; otherwise the
+            // route would point at the wrong provider/auth mode.
+            if coordinator.model.as_deref() == Some(model.as_str()) {
+                SwarmSpawnSelection {
+                    model: Some(model.clone()),
+                    provider_key: coordinator
+                        .provider_key
+                        .clone()
+                        .or_else(|| provider_key_for_spawn_model(Some(&model), None)),
+                    route_api_method: coordinator.route_api_method.clone(),
+                }
             } else {
-                provider_key_for_spawn_model(Some(&model), None)
-            };
-            (Some(model), provider_key)
+                SwarmSpawnSelection {
+                    provider_key: provider_key_for_spawn_model(Some(&model), None),
+                    model: Some(model),
+                    route_api_method: None,
+                }
+            }
         }
-        None => {
-            let provider_key = coordinator_provider_key
-                .or_else(|| provider_key_for_spawn_model(coordinator_model.as_deref(), None));
-            (coordinator_model, provider_key)
-        }
+        None => SwarmSpawnSelection {
+            model: coordinator.model.clone(),
+            provider_key: coordinator.provider_key.clone().or_else(|| {
+                provider_key_for_spawn_model(coordinator.model.as_deref(), None)
+            }),
+            route_api_method: coordinator.route_api_method.clone(),
+        },
     }
 }
 
@@ -211,6 +307,7 @@ fn prepare_visible_spawn_session<F>(
     working_dir: Option<&str>,
     model_override: Option<&str>,
     provider_key_override: Option<&str>,
+    route_api_method_override: Option<&str>,
     selfdev_requested: bool,
     startup_message: Option<&str>,
     launch_visible: F,
@@ -223,6 +320,7 @@ where
         working_dir,
         model_override,
         provider_key.as_deref(),
+        route_api_method_override,
         selfdev_requested,
     )?;
 
@@ -347,32 +445,24 @@ pub(super) async fn spawn_swarm_agent(
 ) -> anyhow::Result<String> {
     let resolved_working_dir =
         resolve_spawn_working_dir(working_dir, req_session_id, sessions, swarm_members).await;
-    let (coordinator_model, coordinator_provider_key, coordinator_is_canary) = {
-        let agent_sessions = sessions.read().await;
-        agent_sessions
-            .get(req_session_id)
-            .and_then(|agent| {
-                agent.try_lock().ok().map(|agent_guard| {
-                    (
-                        Some(agent_guard.provider_model()),
-                        agent_guard.session_provider_key(),
-                        agent_guard.is_canary(),
-                    )
-                })
-            })
-            .unwrap_or((None, None, false))
-    };
+    let coordinator = resolve_coordinator_spawn_identity(req_session_id, sessions).await;
+    let coordinator_is_canary = coordinator.is_canary;
     let agents_config = &crate::config::config().agents;
     let configured_swarm_model = agents_config.swarm_model.clone();
     let resolved_spawn_mode = spawn_mode.unwrap_or(agents_config.swarm_spawn_mode);
-    let (spawn_model, spawn_provider_key) = resolve_swarm_spawn_model_and_provider(
-        configured_swarm_model.clone(),
-        coordinator_model.clone(),
-        coordinator_provider_key.clone(),
-    );
+    let selection = resolve_swarm_spawn_selection(configured_swarm_model.clone(), &coordinator);
+    let spawn_model = selection.model.clone();
+    let spawn_provider_key = selection.provider_key.clone();
+    let spawn_route_api_method = selection.route_api_method.clone();
     crate::logging::info(&format!(
-        "Swarm spawn model resolution: configured_swarm_model={:?} coordinator_model={:?} -> spawn_model={:?} spawn_provider_key={:?}",
-        configured_swarm_model, coordinator_model, spawn_model, spawn_provider_key,
+        "Swarm spawn model resolution: configured_swarm_model={:?} coordinator_model={:?} coordinator_provider_key={:?} coordinator_route={:?} -> spawn_model={:?} spawn_provider_key={:?} spawn_route={:?}",
+        configured_swarm_model,
+        coordinator.model,
+        coordinator.provider_key,
+        coordinator.route_api_method,
+        spawn_model,
+        spawn_provider_key,
+        spawn_route_api_method,
     ));
 
     let startup_message = initial_message
@@ -385,6 +475,7 @@ pub(super) async fn spawn_swarm_agent(
             resolved_working_dir.as_deref(),
             spawn_model.as_deref(),
             spawn_provider_key.as_deref(),
+            spawn_route_api_method.as_deref(),
             coordinator_is_canary,
             startup_message.as_deref(),
             spawn_visible_session_window,
@@ -412,6 +503,7 @@ pub(super) async fn spawn_swarm_agent(
                 coordinator_is_canary,
                 spawn_model.clone(),
                 spawn_provider_key.clone(),
+                spawn_route_api_method.clone(),
                 Some(Arc::clone(mcp_pool)),
                 Some(req_session_id.to_string()),
             )
