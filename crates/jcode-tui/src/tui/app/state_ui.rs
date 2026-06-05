@@ -1007,7 +1007,7 @@ fn format_cache_stats(app: &App) -> String {
         (false, false) => "none_yet",
     };
     let live_cache_telemetry = app.streaming_input_tokens > 0
-        && !app.current_api_usage_recorded
+        && !app.kv_cache.current_api_usage_recorded
         && (app.streaming_cache_read_tokens.is_some()
             || app.streaming_cache_creation_tokens.is_some());
     let live_reported = if live_cache_telemetry {
@@ -1153,13 +1153,13 @@ fn format_cache_stats(app: &App) -> String {
         )
     };
     let live_unrecorded_input_tokens =
-        if app.streaming_input_tokens > 0 && !app.current_api_usage_recorded {
+        if app.streaming_input_tokens > 0 && !app.kv_cache.current_api_usage_recorded {
             app.streaming_input_tokens
         } else {
             0
         };
     let live_unrecorded_output_tokens =
-        if app.streaming_output_tokens > 0 && !app.current_api_usage_recorded {
+        if app.streaming_output_tokens > 0 && !app.kv_cache.current_api_usage_recorded {
             app.streaming_output_tokens
         } else {
             0
@@ -1352,7 +1352,7 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(format!(
         "- current_api_usage_recorded: {}",
-        app.current_api_usage_recorded
+        app.kv_cache.current_api_usage_recorded
     ));
     lines.push(format!("- status: {:?}", app.status));
     lines.push(format!("- is_processing: {}", app.is_processing));
@@ -1381,18 +1381,18 @@ fn format_cache_stats(app: &App) -> String {
     lines.push("KV cache tracker state".to_string());
     lines.push(format!(
         "- kv_cache_turn_number: {}",
-        opt_usize(app.kv_cache_turn_number)
+        opt_usize(app.kv_cache.kv_cache_turn_number)
     ));
     lines.push(format!(
         "- kv_cache_turn_call_index: {}",
-        app.kv_cache_turn_call_index
+        app.kv_cache.kv_cache_turn_call_index
     ));
     lines.push(format!(
         "- kv_cache_miss_samples_len: {}",
-        app.kv_cache_miss_samples.len()
+        app.kv_cache.kv_cache_miss_samples.len()
     ));
-    push_cache_baseline(&mut lines, "baseline", app.kv_cache_baseline.as_ref());
-    if let Some(request) = app.pending_kv_cache_request.as_ref() {
+    push_cache_baseline(&mut lines, "baseline", app.kv_cache.kv_cache_baseline.as_ref());
+    if let Some(request) = app.kv_cache.pending_kv_cache_request.as_ref() {
         lines.push("- pending_request: present".to_string());
         lines.push(format!(
             "- pending_request.turn_number: {}",
@@ -1469,10 +1469,10 @@ fn format_cache_stats(app: &App) -> String {
     lines.push(String::new());
 
     lines.push("Recent miss attributions".to_string());
-    if app.kv_cache_miss_samples.is_empty() {
+    if app.kv_cache.kv_cache_miss_samples.is_empty() {
         lines.push("- none attributed".to_string());
     } else {
-        for sample in app.kv_cache_miss_samples.iter().rev() {
+        for sample in app.kv_cache.kv_cache_miss_samples.iter().rev() {
             lines.push(format!(
                 "- turn={} call={} missed_tokens={} reason={}",
                 sample.turn_number,

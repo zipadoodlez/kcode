@@ -1210,7 +1210,7 @@ impl crate::tui::TuiState for App {
                 last_creation_tokens: self.token_accounting.last_cache_creation_tokens,
                 last_optimal_input_tokens: self.token_accounting.last_cache_optimal_input_tokens,
                 miss_attributions: self
-                    .kv_cache_miss_samples
+                    .kv_cache.kv_cache_miss_samples
                     .iter()
                     .rev()
                     .map(|sample| crate::tui::info_widget::CacheMissAttribution {

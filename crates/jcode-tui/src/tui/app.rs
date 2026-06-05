@@ -566,6 +566,21 @@ struct TokenAccounting {
     cache_next_optimal_input_tokens: Option<u64>,
 }
 
+/// KV cache baseline tracking and per-turn cache-miss attribution.
+///
+/// Grouped out of [`App`]. The baseline and pending-request fields drive cache
+/// telemetry recording; the turn/call indices and miss samples feed the cache
+/// hit/miss attribution surfaced in the info widget.
+#[derive(Clone, Debug, Default)]
+struct KvCacheState {
+    kv_cache_baseline: Option<KvCacheBaseline>,
+    pending_kv_cache_request: Option<PendingKvCacheRequest>,
+    current_api_usage_recorded: bool,
+    kv_cache_turn_number: Option<usize>,
+    kv_cache_turn_call_index: u16,
+    kv_cache_miss_samples: Vec<KvCacheMissSample>,
+}
+
 /// State for an in-progress OAuth/API-key login flow triggered by `/login`.
 /// TUI Application state
 pub struct App {
@@ -607,12 +622,8 @@ pub struct App {
     status_detail: Option<String>,
     // Session-wide token + cache accounting (accumulated across all turns).
     token_accounting: TokenAccounting,
-    kv_cache_baseline: Option<KvCacheBaseline>,
-    pending_kv_cache_request: Option<PendingKvCacheRequest>,
-    current_api_usage_recorded: bool,
-    kv_cache_turn_number: Option<usize>,
-    kv_cache_turn_call_index: u16,
-    kv_cache_miss_samples: Vec<KvCacheMissSample>,
+    // KV cache baseline tracking + per-turn miss attribution.
+    kv_cache: KvCacheState,
     // Total cost in USD (for API-key providers)
     total_cost: f32,
     // Cached pricing (input $/1M tokens, output $/1M tokens)
@@ -1220,11 +1231,11 @@ impl App {
             .filter(|message| message.role == "user")
             .count()
             .max(1);
-        if self.kv_cache_turn_number == Some(turn_number) {
-            self.kv_cache_turn_call_index = self.kv_cache_turn_call_index.saturating_add(1).max(1);
+        if self.kv_cache.kv_cache_turn_number == Some(turn_number) {
+            self.kv_cache.kv_cache_turn_call_index = self.kv_cache.kv_cache_turn_call_index.saturating_add(1).max(1);
         } else {
-            self.kv_cache_turn_number = Some(turn_number);
-            self.kv_cache_turn_call_index = 1;
+            self.kv_cache.kv_cache_turn_number = Some(turn_number);
+            self.kv_cache.kv_cache_turn_call_index = 1;
         }
 
         let baseline = self.kv_cache_baseline_for_current_session();
@@ -1237,15 +1248,15 @@ impl App {
 
         self.maybe_push_cold_cache_warning(
             turn_number,
-            self.kv_cache_turn_call_index,
+            self.kv_cache.kv_cache_turn_call_index,
             baseline.as_ref(),
         );
         self.pause_streaming_tps(false);
-        self.current_api_usage_recorded = false;
+        self.kv_cache.current_api_usage_recorded = false;
 
-        self.pending_kv_cache_request = Some(PendingKvCacheRequest {
+        self.kv_cache.pending_kv_cache_request = Some(PendingKvCacheRequest {
             turn_number,
-            call_index: self.kv_cache_turn_call_index,
+            call_index: self.kv_cache.kv_cache_turn_call_index,
             provider: self.kv_cache_provider_name(),
             model: self.kv_cache_provider_model(),
             upstream_provider: self.upstream_provider.clone(),
@@ -1265,11 +1276,11 @@ impl App {
             .filter(|message| message.role == "user")
             .count()
             .max(1);
-        if self.kv_cache_turn_number == Some(turn_number) {
-            self.kv_cache_turn_call_index = self.kv_cache_turn_call_index.saturating_add(1).max(1);
+        if self.kv_cache.kv_cache_turn_number == Some(turn_number) {
+            self.kv_cache.kv_cache_turn_call_index = self.kv_cache.kv_cache_turn_call_index.saturating_add(1).max(1);
         } else {
-            self.kv_cache_turn_number = Some(turn_number);
-            self.kv_cache_turn_call_index = 1;
+            self.kv_cache.kv_cache_turn_number = Some(turn_number);
+            self.kv_cache.kv_cache_turn_call_index = 1;
         }
 
         let baseline = self.kv_cache_baseline_for_current_session();
@@ -1279,14 +1290,14 @@ impl App {
             .map(|previous| Self::kv_cache_signatures_prefix_match(&signature, previous));
         self.maybe_push_cold_cache_warning(
             turn_number,
-            self.kv_cache_turn_call_index,
+            self.kv_cache.kv_cache_turn_call_index,
             baseline.as_ref(),
         );
         self.pause_streaming_tps(false);
-        self.current_api_usage_recorded = false;
-        self.pending_kv_cache_request = Some(PendingKvCacheRequest {
+        self.kv_cache.current_api_usage_recorded = false;
+        self.kv_cache.pending_kv_cache_request = Some(PendingKvCacheRequest {
             turn_number,
-            call_index: self.kv_cache_turn_call_index,
+            call_index: self.kv_cache.kv_cache_turn_call_index,
             provider: self.kv_cache_provider_name(),
             model: self.kv_cache_provider_model(),
             upstream_provider: self.upstream_provider.clone(),
@@ -1316,7 +1327,7 @@ impl App {
     /// emits a spurious `harness:_prefix_changed` miss. Treat a foreign baseline
     /// as absent (warmup) instead.
     fn kv_cache_baseline_for_current_session(&self) -> Option<KvCacheBaseline> {
-        let baseline = self.kv_cache_baseline.clone()?;
+        let baseline = self.kv_cache.kv_cache_baseline.clone()?;
         let current = self.kv_cache_session_id();
         if baseline.session_id == current {
             Some(baseline)
@@ -1365,7 +1376,7 @@ impl App {
     pub(super) fn record_completed_stream_cache_usage(&mut self) -> bool {
         let has_cache_telemetry = self.streaming_cache_read_tokens.is_some()
             || self.streaming_cache_creation_tokens.is_some();
-        if self.current_api_usage_recorded {
+        if self.kv_cache.current_api_usage_recorded {
             return false;
         }
         if self.streaming_input_tokens == 0 {
@@ -1385,17 +1396,17 @@ impl App {
             ));
 
         let request = self
-            .pending_kv_cache_request
+            .kv_cache.pending_kv_cache_request
             .take()
             .unwrap_or_else(|| self.fallback_pending_kv_cache_request());
-        self.current_api_usage_recorded = true;
+        self.kv_cache.current_api_usage_recorded = true;
 
         self.record_kv_cache_miss_sample(&request);
 
         let baseline_session_id = self.kv_cache_session_id();
 
         if !has_cache_telemetry {
-            self.kv_cache_baseline = Some(KvCacheBaseline {
+            self.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
                 session_id: baseline_session_id,
                 input_tokens: self.streaming_input_tokens,
                 completed_at: Instant::now(),
@@ -1428,7 +1439,7 @@ impl App {
 
         self.log_kv_cache_usage_summary(&request, optimal_input_tokens);
 
-        self.kv_cache_baseline = Some(KvCacheBaseline {
+        self.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
             session_id: baseline_session_id,
             input_tokens: self.streaming_input_tokens,
             completed_at: Instant::now(),
@@ -1464,7 +1475,7 @@ impl App {
             None
         };
         let miss = self
-            .kv_cache_miss_samples
+            .kv_cache.kv_cache_miss_samples
             .last()
             .filter(|sample| {
                 sample.turn_number == request.turn_number && sample.call_index == request.call_index
@@ -1672,15 +1683,15 @@ impl App {
             return;
         }
 
-        self.kv_cache_miss_samples.push(KvCacheMissSample {
+        self.kv_cache.kv_cache_miss_samples.push(KvCacheMissSample {
             turn_number: request.turn_number,
             call_index: request.call_index,
             missed_tokens,
             reason,
         });
-        if self.kv_cache_miss_samples.len() > Self::KV_CACHE_MAX_MISS_SAMPLES {
-            let overflow = self.kv_cache_miss_samples.len() - Self::KV_CACHE_MAX_MISS_SAMPLES;
-            self.kv_cache_miss_samples.drain(0..overflow);
+        if self.kv_cache.kv_cache_miss_samples.len() > Self::KV_CACHE_MAX_MISS_SAMPLES {
+            let overflow = self.kv_cache.kv_cache_miss_samples.len() - Self::KV_CACHE_MAX_MISS_SAMPLES;
+            self.kv_cache.kv_cache_miss_samples.drain(0..overflow);
         }
     }
 

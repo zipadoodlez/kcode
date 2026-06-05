@@ -306,7 +306,7 @@ pub(super) fn activate_auto_poke_local(app: &mut App) {
             app.streaming_output_tokens = 0;
             app.streaming_cache_read_tokens = None;
             app.streaming_cache_creation_tokens = None;
-            app.current_api_usage_recorded = false;
+            app.kv_cache.current_api_usage_recorded = false;
             app.upstream_provider = None;
             app.status_detail = None;
             app.streaming_tps_start = None;

@@ -416,7 +416,7 @@ pub(in crate::tui::app) fn handle_server_event(
             let previous_output = app.streaming_output_tokens;
             let previous_cache_read = app.streaming_cache_read_tokens;
             let previous_cache_creation = app.streaming_cache_creation_tokens;
-            let was_recorded = app.current_api_usage_recorded;
+            let was_recorded = app.kv_cache.current_api_usage_recorded;
             app.accumulate_streaming_output_tokens(output, call_output_tokens_seen);
             app.streaming_input_tokens = input;
             app.streaming_output_tokens = output;
@@ -444,7 +444,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
                 app.last_api_completed_model = Some(<App as TuiState>::provider_model(app));
                 app.last_turn_input_tokens = (input > 0).then_some(input);
-            } else if was_recorded && app.current_api_usage_recorded {
+            } else if was_recorded && app.kv_cache.current_api_usage_recorded {
                 app.token_accounting.total_input_tokens = app
                     .token_accounting.total_input_tokens
                     .saturating_add(input.saturating_sub(previous_input));
@@ -495,7 +495,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         Some(app.streaming_cache_creation_tokens.unwrap_or(0));
                 }
 
-                if let Some(baseline) = app.kv_cache_baseline.as_mut() {
+                if let Some(baseline) = app.kv_cache.kv_cache_baseline.as_mut() {
                     baseline.input_tokens = input;
                     baseline.completed_at = Instant::now();
                 }
@@ -1055,7 +1055,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.streaming_output_tokens = 0;
                 app.streaming_cache_read_tokens = None;
                 app.streaming_cache_creation_tokens = None;
-                app.current_api_usage_recorded = false;
+                app.kv_cache.current_api_usage_recorded = false;
                 app.token_accounting.total_cache_reported_input_tokens = 0;
                 app.token_accounting.total_cache_read_tokens = 0;
                 app.token_accounting.total_cache_creation_tokens = 0;
@@ -1065,11 +1065,11 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.token_accounting.last_cache_creation_tokens = None;
                 app.token_accounting.last_cache_optimal_input_tokens = None;
                 app.token_accounting.cache_next_optimal_input_tokens = None;
-                app.kv_cache_baseline = None;
-                app.pending_kv_cache_request = None;
-                app.kv_cache_turn_number = None;
-                app.kv_cache_turn_call_index = 0;
-                app.kv_cache_miss_samples.clear();
+                app.kv_cache.kv_cache_baseline = None;
+                app.kv_cache.pending_kv_cache_request = None;
+                app.kv_cache.kv_cache_turn_number = None;
+                app.kv_cache.kv_cache_turn_call_index = 0;
+                app.kv_cache.kv_cache_miss_samples.clear();
                 app.processing_started = None;
                 app.clear_visible_turn_started();
                 app.replay_processing_started_ms = None;

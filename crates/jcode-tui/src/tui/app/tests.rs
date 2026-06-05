@@ -141,7 +141,7 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
     crate::provider::anthropic::set_cache_ttl_1h(true);
     app.display_messages.push(DisplayMessage::user("first"));
     let session_id = app.kv_cache_session_id();
-    app.kv_cache_baseline = Some(KvCacheBaseline {
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
         session_id,
         input_tokens: 911_873,
         completed_at: Instant::now() - Duration::from_secs(3723),
@@ -190,7 +190,7 @@ fn kv_cache_baseline_from_other_session_is_ignored() {
         .map(|i| Message::user(format!("big session message {i}").as_str()))
         .collect();
     let big_signature = App::kv_cache_request_signature(&big_history, &[], "system", "");
-    app.kv_cache_baseline = Some(KvCacheBaseline {
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
         session_id: Some("session_big".to_string()),
         input_tokens: 200_000,
         completed_at: Instant::now(),
@@ -211,7 +211,7 @@ fn kv_cache_baseline_from_other_session_is_ignored() {
     app.begin_remote_kv_cache_request(small_signature);
 
     let request = app
-        .pending_kv_cache_request
+        .kv_cache.pending_kv_cache_request
         .as_ref()
         .expect("request should be pending");
     assert!(
@@ -236,7 +236,7 @@ fn kv_cache_baseline_same_session_still_compares() {
         Message::assistant_text("first answer"),
     ];
     let baseline_signature = App::kv_cache_request_signature(&history, &[], "system", "");
-    app.kv_cache_baseline = Some(KvCacheBaseline {
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
         session_id: Some("session_same".to_string()),
         input_tokens: 1_000,
         completed_at: Instant::now(),
@@ -253,7 +253,7 @@ fn kv_cache_baseline_same_session_still_compares() {
     app.begin_remote_kv_cache_request(grown_signature);
 
     let request = app
-        .pending_kv_cache_request
+        .kv_cache.pending_kv_cache_request
         .as_ref()
         .expect("request should be pending");
     assert!(
@@ -312,7 +312,7 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
     assert_eq!(app.token_accounting.last_cache_reported_input_tokens, Some(63_762));
     assert_eq!(app.token_accounting.total_input_tokens, 63_762);
     assert!(app.last_api_completed.is_some());
-    assert!(app.pending_kv_cache_request.is_none());
+    assert!(app.kv_cache.pending_kv_cache_request.is_none());
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
