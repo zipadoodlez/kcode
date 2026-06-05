@@ -541,11 +541,13 @@ impl AntigravityProvider {
     /// finally to a hardcoded fallback.
     ///
     /// Note: this only resolves the `"default"` alias / empty input. An
-    /// explicit model id from the user is always honoured verbatim.
+    /// explicit model id from the user is honoured verbatim, except for ids
+    /// the backend advertises but cannot actually service, which are remapped
+    /// to an equivalent working id via [`remap_unsupported_model`].
     fn resolve_model_for_request(&self, model: &str) -> String {
         let trimmed = model.trim();
         if !trimmed.is_empty() && trimmed != DEFAULT_MODEL {
-            return trimmed.to_string();
+            return remap_unsupported_model(trimmed).to_string();
         }
 
         if let Some(backend_default) = self
@@ -801,6 +803,28 @@ impl AntigravityProvider {
 /// Whether a resolved Antigravity model id targets an Anthropic Claude model.
 fn model_is_claude(model: &str) -> bool {
     model.trim().to_ascii_lowercase().contains("claude")
+}
+
+/// Remap model ids that the Antigravity catalog advertises but the
+/// `generateContent`/`streamGenerateContent` backend cannot actually service,
+/// onto an equivalent id that works.
+///
+/// `gemini-3.1-pro-high` is advertised as `available` and is a *recognized* id
+/// (a typo'd id returns HTTP 404, but this one returns HTTP 400), yet every
+/// request for it is rejected with a detail-less HTTP 400 "Request contains an
+/// invalid argument" on both the unary and streaming endpoints, across all
+/// client versions, with or without tools, and regardless of `generationConfig`
+/// / `thinkingConfig`. The sibling `gemini-3.1-pro-low` accepts byte-identical
+/// requests and succeeds, and `gemini-pro-agent` advertises the *same* display
+/// name ("Gemini 3.1 Pro (High)"), provider, and token limits while accepting
+/// the same requests, so it is the working route to the High Pro model. Map the
+/// broken id onto it so users who pick "Gemini 3.1 Pro (High)" get a working
+/// model instead of a hard 400.
+fn remap_unsupported_model(model: &str) -> &str {
+    match model {
+        "gemini-3.1-pro-high" => "gemini-pro-agent",
+        other => other,
+    }
 }
 
 /// Whether a resolved Antigravity model id targets a Gemini model.
