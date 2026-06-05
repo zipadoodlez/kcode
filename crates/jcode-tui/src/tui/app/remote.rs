@@ -81,7 +81,9 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= app.update_chat_overscroll();
     needs_redraw |= app.update_pinned_images_auto_hide();
     needs_redraw |= dispatch_compacted_history_load(app, remote).await;
-    if let Some(chunk) = app.stream_buffer.flush() {
+    // Reveal buffered streaming text at the smooth paced rate on each tick, the
+    // same as the local turn loop. Finalization paths still call flush().
+    if let Some(chunk) = app.stream_buffer.flush_smooth_frame() {
         app.append_streaming_text(&chunk);
         needs_redraw = true;
     }

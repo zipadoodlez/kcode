@@ -591,7 +591,12 @@ fn test_submit_input_commits_pending_streaming_assistant_text_before_user_messag
     ));
     app.bump_display_messages_version();
     app.streaming_text = "Here is the final paragraph".to_string();
-    assert_eq!(app.stream_buffer.push(" that was still buffered."), None);
+    // Mirror the real streaming caller: append any paced chunk the buffer reveals.
+    // The paced StreamBuffer may reveal part of the text immediately, so commit
+    // (below) must still flush the remainder.
+    if let Some(chunk) = app.stream_buffer.push(" that was still buffered.") {
+        app.append_streaming_text(&chunk);
+    }
 
     app.input = "follow up".to_string();
     app.cursor_pos = app.input.len();
