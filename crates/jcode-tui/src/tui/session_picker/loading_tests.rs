@@ -319,6 +319,88 @@ fn load_codex_preview_preserves_blank_line_between_tool_transcript_and_followup_
 }
 
 #[test]
+fn load_codex_preview_reads_only_tail_of_large_transcript() {
+    // A transcript far larger than the tail cap should still produce a preview
+    // of the most-recent messages, parsed from only the tail slice. This is the
+    // regression guard for the picker-navigation lag: previews must not depend
+    // on parsing the whole (multi-MB) file.
+    let temp = tempfile::tempdir().expect("temp dir");
+    let transcript_path = temp.path().join("rollout-big.jsonl");
+
+    let mut contents = String::new();
+    // session_meta header line (always skipped).
+    contents.push_str(
+        "{\"timestamp\":\"2026-04-10T19:05:54.536Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019d-big\"}}\n",
+    );
+    // Padding messages near the head that must NOT appear in the preview once
+    // the file exceeds the tail cap.
+    for i in 0..50_000 {
+        contents.push_str(&format!(
+            "{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"old padding message {i} aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}]}}}}\n",
+        ));
+    }
+    assert!(
+        contents.len() as u64 > EXTERNAL_PREVIEW_TAIL_BYTES,
+        "test transcript must exceed the tail cap"
+    );
+    // Distinctive recent messages at the very end.
+    contents.push_str(
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"RECENT_USER_MARKER\"}]}}\n",
+    );
+    contents.push_str(
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"RECENT_ASSISTANT_MARKER\"}]}}\n",
+    );
+    std::fs::write(&transcript_path, &contents).expect("write big transcript");
+
+    let preview = load_codex_preview_from_path(&transcript_path).expect("preview");
+    // Preview is capped at 20 messages.
+    assert!(preview.len() <= 20, "preview should be capped, got {}", preview.len());
+    // The most-recent markers must be present.
+    let last_two = &preview[preview.len().saturating_sub(2)..];
+    assert!(last_two.iter().any(|m| m.content.contains("RECENT_USER_MARKER")));
+    assert!(last_two.iter().any(|m| m.content.contains("RECENT_ASSISTANT_MARKER")));
+    // The head padding must have been skipped (not parsed from the tail slice).
+    assert!(
+        !preview.iter().any(|m| m.content.contains("old padding message 0 ")),
+        "head messages should not appear when only the tail is read"
+    );
+}
+
+#[test]
+fn load_claude_code_preview_reads_only_tail_of_large_transcript() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let transcript_path = temp.path().join("claude-big.jsonl");
+
+    let mut contents = String::new();
+    for i in 0..50_000 {
+        contents.push_str(&format!(
+            "{{\"type\":\"assistant\",\"uuid\":\"a{i}\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"old padding message {i} bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}}]}}}}\n",
+        ));
+    }
+    assert!(
+        contents.len() as u64 > EXTERNAL_PREVIEW_TAIL_BYTES,
+        "test transcript must exceed the tail cap"
+    );
+    contents.push_str(
+        "{\"type\":\"user\",\"uuid\":\"u_last\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"RECENT_USER_MARKER\"}]}}\n",
+    );
+    contents.push_str(
+        "{\"type\":\"assistant\",\"uuid\":\"a_last\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"RECENT_ASSISTANT_MARKER\"}]}}\n",
+    );
+    std::fs::write(&transcript_path, &contents).expect("write big transcript");
+
+    let preview = load_claude_code_preview_from_path(&transcript_path).expect("preview");
+    assert!(preview.len() <= 20, "preview should be capped, got {}", preview.len());
+    let last_two = &preview[preview.len().saturating_sub(2)..];
+    assert!(last_two.iter().any(|m| m.content.contains("RECENT_USER_MARKER")));
+    assert!(last_two.iter().any(|m| m.content.contains("RECENT_ASSISTANT_MARKER")));
+    assert!(
+        !preview.iter().any(|m| m.content.contains("old padding message 0 ")),
+        "head messages should not appear when only the tail is read"
+    );
+}
+
+#[test]
 fn load_sessions_prefers_custom_title_over_generated_title() {
     let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp dir");

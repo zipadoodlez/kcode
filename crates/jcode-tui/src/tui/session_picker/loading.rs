@@ -642,6 +642,37 @@ fn collect_recent_files_recursive(root: &Path, extension: &str, limit: usize) ->
     files.into_iter().map(|(_, path)| path).collect()
 }
 
+/// Maximum number of bytes we read from the *tail* of an external transcript
+/// (Codex / Claude Code) when building its preview. These JSONL transcripts can
+/// be tens of MB, but the preview only ever shows the last ~20 messages, so
+/// parsing the whole file on every selection change made arrow-key navigation
+/// in the resume / onboarding picker lag badly (each load reparsed the entire
+/// file on a fresh thread). Reading a bounded tail keeps each preview load to a
+/// sub-millisecond seek + parse regardless of transcript size.
+///
+/// 512 KiB comfortably covers far more than 20 messages for normal transcripts
+/// while bounding the worst case.
+const EXTERNAL_PREVIEW_TAIL_BYTES: u64 = 512 * 1024;
+
+/// Read the trailing portion of a file as UTF-8 text, capped at
+/// [`EXTERNAL_PREVIEW_TAIL_BYTES`]. When the file is larger than the cap we seek
+/// to the tail and drop the (possibly partial) first line so we only ever parse
+/// complete JSONL records. Returns `(text, truncated_from_head)` where
+/// `truncated_from_head` indicates the head of the file was skipped.
+fn read_file_tail_text(path: &Path, max_bytes: u64) -> Option<(String, bool)> {
+    let mut file = File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let truncated = len > max_bytes;
+    if truncated {
+        file.seek(SeekFrom::Start(len - max_bytes)).ok()?;
+    }
+    let mut bytes = Vec::with_capacity(max_bytes.min(len) as usize);
+    file.take(max_bytes).read_to_end(&mut bytes).ok()?;
+    // Lossily decode: transcripts are UTF-8, but a tail seek can land mid
+    // multi-byte sequence, and replacement chars are harmless for a preview.
+    Some((String::from_utf8_lossy(&bytes).into_owned(), truncated))
+}
+
 fn push_preview_message(preview: &mut Vec<PreviewMessage>, role: &str, content: String) {
     let content = content.trim();
     if content.is_empty() {
@@ -1790,17 +1821,26 @@ fn load_external_claude_code_sessions(scan_limit: usize) -> Vec<SessionInfo> {
 }
 
 pub(super) fn load_claude_code_preview_from_path(path: &Path) -> Option<Vec<PreviewMessage>> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
+    // Only parse the tail of the transcript (see `load_codex_preview_from_path`):
+    // the preview shows the last ~20 messages, so reparsing multi-MB transcripts
+    // on every selection change made picker navigation lag.
+    let (text, truncated) = read_file_tail_text(path, EXTERNAL_PREVIEW_TAIL_BYTES)?;
     let mut preview = Vec::new();
 
-    for line in reader.lines() {
-        let line = line.ok()?;
+    // If we seeked into the middle of the file, the first line is a partial
+    // record; drop it. When we read the whole file the first line is a real
+    // record we must keep.
+    let skip = usize::from(truncated);
+    for line in text.lines().skip(skip) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+        // Boundary lines from a tail slice may be malformed; skip rather than
+        // abandon the whole preview.
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
         let entry_type = value
             .get("type")
             .and_then(|v| v.as_str())
@@ -1985,17 +2025,25 @@ fn find_codex_session_file(session_id: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn load_codex_preview_from_path(path: &Path) -> Option<Vec<PreviewMessage>> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
+    // Only parse the tail of the transcript: the preview shows the last ~20
+    // messages, and these rollout files can be tens of MB, so reading the whole
+    // file on every selection change made picker navigation lag.
+    let (text, _truncated) = read_file_tail_text(path, EXTERNAL_PREVIEW_TAIL_BYTES)?;
     let mut preview = Vec::new();
 
-    for line in reader.lines().skip(1) {
-        let line = line.ok()?;
+    // When we read from the start we skip the first line (the `session_meta`
+    // record). When we read a tail slice the first line is almost certainly a
+    // partial record, so we drop it either way.
+    for line in text.lines().skip(1) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
-        let value: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+        // A tail slice can yield malformed JSON on its boundary lines; skip
+        // those instead of bailing out of the whole preview.
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
         let line_type = value
             .get("type")
             .and_then(|v| v.as_str())
