@@ -128,6 +128,7 @@ fn recover_loaded_crashed_sessions(mut crashed: Vec<Session>) -> Result<Vec<Stri
         new_session.custom_title = old.custom_title.clone();
         new_session.working_dir = old.working_dir.clone();
         new_session.provider_key = old.provider_key.clone();
+        new_session.route_api_method = old.route_api_method.clone();
         new_session.model = old.model.clone();
         new_session.improve_mode = old.improve_mode;
         new_session.is_canary = old.is_canary;
