@@ -572,8 +572,8 @@ fn test_handle_server_event_token_usage_uses_per_call_deltas() {
 
     assert_eq!(app.streaming_output_tokens, 30);
     assert_eq!(app.streaming_total_output_tokens, 30);
-    assert_eq!(app.total_input_tokens, 100);
-    assert_eq!(app.total_output_tokens, 30);
+    assert_eq!(app.token_accounting.total_input_tokens, 100);
+    assert_eq!(app.token_accounting.total_output_tokens, 30);
 }
 
 #[test]

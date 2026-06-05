@@ -307,10 +307,10 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
         &mut remote,
     );
 
-    assert_eq!(app.total_cache_reported_input_tokens, 63_762);
-    assert_eq!(app.total_cache_read_tokens, 0);
-    assert_eq!(app.last_cache_reported_input_tokens, Some(63_762));
-    assert_eq!(app.total_input_tokens, 63_762);
+    assert_eq!(app.token_accounting.total_cache_reported_input_tokens, 63_762);
+    assert_eq!(app.token_accounting.total_cache_read_tokens, 0);
+    assert_eq!(app.token_accounting.last_cache_reported_input_tokens, Some(63_762));
+    assert_eq!(app.token_accounting.total_input_tokens, 63_762);
     assert!(app.last_api_completed.is_some());
     assert!(app.pending_kv_cache_request.is_none());
 
@@ -324,8 +324,8 @@ fn remote_token_usage_records_cache_stats_before_done_and_dedupes_snapshots() {
         &mut remote,
     );
 
-    assert_eq!(app.total_cache_reported_input_tokens, 63_762);
-    assert_eq!(app.total_input_tokens, 63_762);
+    assert_eq!(app.token_accounting.total_cache_reported_input_tokens, 63_762);
+    assert_eq!(app.token_accounting.total_input_tokens, 63_762);
 
     assert!(super::state_ui::handle_info_command(
         &mut app,

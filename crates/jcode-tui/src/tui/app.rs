@@ -544,6 +544,28 @@ struct CommandCandidatesCache {
     candidates: Vec<(String, &'static str)>,
 }
 
+/// Session-wide token and cache accounting accumulated across all turns.
+///
+/// Grouped out of [`App`] to keep the cohesive token/cache totals together. The
+/// `total_*` fields accumulate over the whole session; the `last_*` fields hold
+/// the most recently reported per-turn values used for cache TTL display.
+#[derive(Clone, Debug, Default)]
+struct TokenAccounting {
+    // Total session token usage (accumulated across all turns)
+    total_input_tokens: u64,
+    total_output_tokens: u64,
+    // Total session KV cache usage for turns where the provider reported cache telemetry.
+    total_cache_reported_input_tokens: u64,
+    total_cache_read_tokens: u64,
+    total_cache_creation_tokens: u64,
+    total_cache_optimal_input_tokens: u64,
+    last_cache_reported_input_tokens: Option<u64>,
+    last_cache_read_tokens: Option<u64>,
+    last_cache_creation_tokens: Option<u64>,
+    last_cache_optimal_input_tokens: Option<u64>,
+    cache_next_optimal_input_tokens: Option<u64>,
+}
+
 /// State for an in-progress OAuth/API-key login flow triggered by `/login`.
 /// TUI Application state
 pub struct App {
@@ -583,19 +605,8 @@ pub struct App {
     connection_type: Option<String>,
     // Provider-supplied human-readable transport detail for the current stream
     status_detail: Option<String>,
-    // Total session token usage (accumulated across all turns)
-    total_input_tokens: u64,
-    total_output_tokens: u64,
-    // Total session KV cache usage for turns where the provider reported cache telemetry.
-    total_cache_reported_input_tokens: u64,
-    total_cache_read_tokens: u64,
-    total_cache_creation_tokens: u64,
-    total_cache_optimal_input_tokens: u64,
-    last_cache_reported_input_tokens: Option<u64>,
-    last_cache_read_tokens: Option<u64>,
-    last_cache_creation_tokens: Option<u64>,
-    last_cache_optimal_input_tokens: Option<u64>,
-    cache_next_optimal_input_tokens: Option<u64>,
+    // Session-wide token + cache accounting (accumulated across all turns).
+    token_accounting: TokenAccounting,
     kv_cache_baseline: Option<KvCacheBaseline>,
     pending_kv_cache_request: Option<PendingKvCacheRequest>,
     current_api_usage_recorded: bool,
@@ -1361,12 +1372,12 @@ impl App {
             return false;
         }
 
-        let optimal_input_tokens = self.cache_next_optimal_input_tokens;
+        let optimal_input_tokens = self.token_accounting.cache_next_optimal_input_tokens;
         // Stash the *effective* prompt size for this request so the next request's
         // cache-read can be compared against everything that just became cacheable.
         // For split-accounting providers (Anthropic) bare `input` is only the
         // uncached remainder, so the reusable prefix is input + read + creation.
-        self.cache_next_optimal_input_tokens =
+        self.token_accounting.cache_next_optimal_input_tokens =
             Some(crate::tui::info_widget::effective_prompt_tokens(
                 self.streaming_input_tokens,
                 self.streaming_cache_read_tokens.unwrap_or(0),
@@ -1396,24 +1407,24 @@ impl App {
             return true;
         }
 
-        self.total_cache_reported_input_tokens = self
-            .total_cache_reported_input_tokens
+        self.token_accounting.total_cache_reported_input_tokens = self
+            .token_accounting.total_cache_reported_input_tokens
             .saturating_add(self.streaming_input_tokens);
         if let Some(optimal) = optimal_input_tokens {
-            self.total_cache_optimal_input_tokens = self
-                .total_cache_optimal_input_tokens
+            self.token_accounting.total_cache_optimal_input_tokens = self
+                .token_accounting.total_cache_optimal_input_tokens
                 .saturating_add(optimal);
         }
-        self.total_cache_read_tokens = self
-            .total_cache_read_tokens
+        self.token_accounting.total_cache_read_tokens = self
+            .token_accounting.total_cache_read_tokens
             .saturating_add(self.streaming_cache_read_tokens.unwrap_or(0));
-        self.total_cache_creation_tokens = self
-            .total_cache_creation_tokens
+        self.token_accounting.total_cache_creation_tokens = self
+            .token_accounting.total_cache_creation_tokens
             .saturating_add(self.streaming_cache_creation_tokens.unwrap_or(0));
-        self.last_cache_reported_input_tokens = Some(self.streaming_input_tokens);
-        self.last_cache_read_tokens = Some(self.streaming_cache_read_tokens.unwrap_or(0));
-        self.last_cache_creation_tokens = Some(self.streaming_cache_creation_tokens.unwrap_or(0));
-        self.last_cache_optimal_input_tokens = optimal_input_tokens;
+        self.token_accounting.last_cache_reported_input_tokens = Some(self.streaming_input_tokens);
+        self.token_accounting.last_cache_read_tokens = Some(self.streaming_cache_read_tokens.unwrap_or(0));
+        self.token_accounting.last_cache_creation_tokens = Some(self.streaming_cache_creation_tokens.unwrap_or(0));
+        self.token_accounting.last_cache_optimal_input_tokens = optimal_input_tokens;
 
         self.log_kv_cache_usage_summary(&request, optimal_input_tokens);
 
@@ -1441,13 +1452,13 @@ impl App {
         let creation_pct = ratio_pct(creation_tokens, input_tokens);
         let optimal_read_pct = optimal_input_tokens.map(|optimal| ratio_pct(read_tokens, optimal));
         let session_read_pct = ratio_pct(
-            self.total_cache_read_tokens,
-            self.total_cache_reported_input_tokens,
+            self.token_accounting.total_cache_read_tokens,
+            self.token_accounting.total_cache_reported_input_tokens,
         );
-        let session_optimal_read_pct = if self.total_cache_optimal_input_tokens > 0 {
+        let session_optimal_read_pct = if self.token_accounting.total_cache_optimal_input_tokens > 0 {
             Some(ratio_pct(
-                self.total_cache_read_tokens,
-                self.total_cache_optimal_input_tokens,
+                self.token_accounting.total_cache_read_tokens,
+                self.token_accounting.total_cache_optimal_input_tokens,
             ))
         } else {
             None
@@ -1571,11 +1582,11 @@ impl App {
             optimal_read_pct,
             missed_tokens,
             miss,
-            self.total_cache_reported_input_tokens,
-            self.total_cache_read_tokens,
-            self.total_cache_creation_tokens,
+            self.token_accounting.total_cache_reported_input_tokens,
+            self.token_accounting.total_cache_read_tokens,
+            self.token_accounting.total_cache_creation_tokens,
             session_read_pct,
-            self.total_cache_optimal_input_tokens,
+            self.token_accounting.total_cache_optimal_input_tokens,
             session_optimal_read_pct,
             baseline_input_tokens,
             baseline_age_secs,

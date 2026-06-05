@@ -645,8 +645,8 @@ fn test_info_widget_remote_opencode_shows_cost_based_usage() {
     app.is_remote = true;
     app.remote_provider_name = Some("opencode".to_string());
     app.remote_provider_model = Some("qwen3-coder".to_string());
-    app.total_input_tokens = 12_000;
-    app.total_output_tokens = 3_400;
+    app.token_accounting.total_input_tokens = 12_000;
+    app.token_accounting.total_output_tokens = 3_400;
 
     let data = crate::tui::TuiState::info_widget_data(&app);
 
@@ -673,8 +673,8 @@ fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
     app.remote_provider_name = Some("Claude".to_string());
     app.remote_provider_model = Some("claude-sonnet-4-20250514".to_string());
     app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
-    app.total_input_tokens = 12_000;
-    app.total_output_tokens = 3_400;
+    app.token_accounting.total_input_tokens = 12_000;
+    app.token_accounting.total_output_tokens = 3_400;
 
     let data = crate::tui::TuiState::info_widget_data(&app);
     assert_eq!(
@@ -775,8 +775,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         let mut app = create_named_provider_test_app(provider_name, model);
         app.streaming_input_tokens = 1_000;
         app.streaming_output_tokens = 1_000;
-        app.total_input_tokens = 12_000;
-        app.total_output_tokens = 3_400;
+        app.token_accounting.total_input_tokens = 12_000;
+        app.token_accounting.total_output_tokens = 3_400;
         app.update_cost_impl();
 
         assert!(
@@ -804,8 +804,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     let mut app = create_named_provider_test_app("openrouter", "subscription-model");
     app.streaming_input_tokens = 1_000;
     app.streaming_output_tokens = 1_000;
-    app.total_input_tokens = 12_000;
-    app.total_output_tokens = 3_400;
+    app.token_accounting.total_input_tokens = 12_000;
+    app.token_accounting.total_output_tokens = 3_400;
     app.update_cost_impl();
     assert_eq!(app.total_cost, 0.0);
 
@@ -821,8 +821,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     let mut app = create_named_provider_test_app("openrouter", "local-model");
     app.streaming_input_tokens = 1_000;
     app.streaming_output_tokens = 1_000;
-    app.total_input_tokens = 12_000;
-    app.total_output_tokens = 3_400;
+    app.token_accounting.total_input_tokens = 12_000;
+    app.token_accounting.total_output_tokens = 3_400;
     app.update_cost_impl();
     assert_eq!(app.total_cost, 0.0);
 

@@ -263,8 +263,8 @@ impl App {
             spark: None,
             spark_resets_at: None,
             total_cost: self.total_cost,
-            input_tokens: self.total_input_tokens,
-            output_tokens: self.total_output_tokens,
+            input_tokens: self.token_accounting.total_input_tokens,
+            output_tokens: self.token_accounting.total_output_tokens,
             cache_read_tokens: self.streaming_cache_read_tokens,
             cache_write_tokens: self.streaming_cache_creation_tokens,
             output_tps,
@@ -281,12 +281,12 @@ impl App {
                 spark: None,
                 spark_resets_at: None,
                 total_cost: 0.0,
-                input_tokens: self.total_input_tokens,
-                output_tokens: self.total_output_tokens,
+                input_tokens: self.token_accounting.total_input_tokens,
+                output_tokens: self.token_accounting.total_output_tokens,
                 cache_read_tokens: None,
                 cache_write_tokens: None,
                 output_tps,
-                available: self.total_input_tokens > 0 || self.total_output_tokens > 0,
+                available: self.token_accounting.total_input_tokens > 0 || self.token_accounting.total_output_tokens > 0,
             }),
             WidgetProviderKind::Anthropic => {
                 if matches!(
@@ -1199,16 +1199,16 @@ impl crate::tui::TuiState for App {
             None
         };
 
-        let cache_hit_info = (self.total_cache_reported_input_tokens > 0).then(|| {
+        let cache_hit_info = (self.token_accounting.total_cache_reported_input_tokens > 0).then(|| {
             crate::tui::info_widget::CacheHitInfo {
-                reported_input_tokens: self.total_cache_reported_input_tokens,
-                read_tokens: self.total_cache_read_tokens,
-                creation_tokens: self.total_cache_creation_tokens,
-                optimal_input_tokens: self.total_cache_optimal_input_tokens,
-                last_reported_input_tokens: self.last_cache_reported_input_tokens,
-                last_read_tokens: self.last_cache_read_tokens,
-                last_creation_tokens: self.last_cache_creation_tokens,
-                last_optimal_input_tokens: self.last_cache_optimal_input_tokens,
+                reported_input_tokens: self.token_accounting.total_cache_reported_input_tokens,
+                read_tokens: self.token_accounting.total_cache_read_tokens,
+                creation_tokens: self.token_accounting.total_cache_creation_tokens,
+                optimal_input_tokens: self.token_accounting.total_cache_optimal_input_tokens,
+                last_reported_input_tokens: self.token_accounting.last_cache_reported_input_tokens,
+                last_read_tokens: self.token_accounting.last_cache_read_tokens,
+                last_creation_tokens: self.token_accounting.last_cache_creation_tokens,
+                last_optimal_input_tokens: self.token_accounting.last_cache_optimal_input_tokens,
                 miss_attributions: self
                     .kv_cache_miss_samples
                     .iter()

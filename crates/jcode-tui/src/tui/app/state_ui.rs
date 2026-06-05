@@ -984,10 +984,10 @@ fn format_cache_stats(app: &App) -> String {
     let remote_cache_write = remote_usage
         .map(|usage| usage.cache_creation_input_tokens)
         .unwrap_or(0);
-    let reported = remote_cache_reported.saturating_add(app.total_cache_reported_input_tokens);
-    let read = remote_cache_read.saturating_add(app.total_cache_read_tokens);
-    let write = remote_cache_write.saturating_add(app.total_cache_creation_tokens);
-    let optimal = app.total_cache_optimal_input_tokens;
+    let reported = remote_cache_reported.saturating_add(app.token_accounting.total_cache_reported_input_tokens);
+    let read = remote_cache_read.saturating_add(app.token_accounting.total_cache_read_tokens);
+    let write = remote_cache_write.saturating_add(app.token_accounting.total_cache_creation_tokens);
+    let optimal = app.token_accounting.total_cache_optimal_input_tokens;
     // `reported` is the aggregate of provider-reported `input_tokens`, which for
     // split-accounting providers (Anthropic) excludes cached + cache-creation
     // tokens. Percentages must use the effective prompt size so they stay in
@@ -999,7 +999,7 @@ fn format_cache_stats(app: &App) -> String {
     let optimal_pct = (optimal > 0).then(|| cache_ratio_pct(read, optimal));
     let cache_totals_source = match (
         remote_usage.is_some(),
-        app.total_cache_reported_input_tokens > 0,
+        app.token_accounting.total_cache_reported_input_tokens > 0,
     ) {
         (true, true) => "remote_history+client_observed_api_calls",
         (true, false) => "remote_history",
@@ -1130,9 +1130,9 @@ fn format_cache_stats(app: &App) -> String {
     let (history_input_tokens, history_output_tokens, totals_source) = if app.is_remote {
         if let Some((input, output)) = remote_history_tokens {
             (
-                input.saturating_add(app.total_input_tokens),
-                output.saturating_add(app.total_output_tokens),
-                if app.total_input_tokens > 0 || app.total_output_tokens > 0 {
+                input.saturating_add(app.token_accounting.total_input_tokens),
+                output.saturating_add(app.token_accounting.total_output_tokens),
+                if app.token_accounting.total_input_tokens > 0 || app.token_accounting.total_output_tokens > 0 {
                     "remote_history+client_observed_api_calls"
                 } else {
                     "remote_history"
@@ -1140,15 +1140,15 @@ fn format_cache_stats(app: &App) -> String {
             )
         } else {
             (
-                app.total_input_tokens,
-                app.total_output_tokens,
+                app.token_accounting.total_input_tokens,
+                app.token_accounting.total_output_tokens,
                 "client_observed_api_calls",
             )
         }
     } else {
         (
-            app.total_input_tokens,
-            app.total_output_tokens,
+            app.token_accounting.total_input_tokens,
+            app.token_accounting.total_output_tokens,
             "local_completed_turns",
         )
     };
@@ -1211,11 +1211,11 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(format!(
         "- client_observed_completed_input_tokens: {}",
-        bold_count(app.total_input_tokens)
+        bold_count(app.token_accounting.total_input_tokens)
     ));
     lines.push(format!(
         "- client_observed_completed_output_tokens: {}",
-        bold_count(app.total_output_tokens)
+        bold_count(app.token_accounting.total_output_tokens)
     ));
     lines.push(format!("- total_cost_usd: {:.6}", app.total_cost));
     lines.push(format!(
@@ -1309,23 +1309,23 @@ fn format_cache_stats(app: &App) -> String {
     ));
     lines.push(format!(
         "- last_cache_reported_input_tokens: {}",
-        opt_u64(app.last_cache_reported_input_tokens)
+        opt_u64(app.token_accounting.last_cache_reported_input_tokens)
     ));
     lines.push(format!(
         "- last_cache_read_tokens: {}",
-        opt_u64(app.last_cache_read_tokens)
+        opt_u64(app.token_accounting.last_cache_read_tokens)
     ));
     lines.push(format!(
         "- last_cache_creation_tokens: {}",
-        opt_u64(app.last_cache_creation_tokens)
+        opt_u64(app.token_accounting.last_cache_creation_tokens)
     ));
     lines.push(format!(
         "- last_cache_optimal_input_tokens: {}",
-        opt_u64(app.last_cache_optimal_input_tokens)
+        opt_u64(app.token_accounting.last_cache_optimal_input_tokens)
     ));
     lines.push(format!(
         "- cache_next_optimal_input_tokens: {}",
-        opt_u64(app.cache_next_optimal_input_tokens)
+        opt_u64(app.token_accounting.cache_next_optimal_input_tokens)
     ));
     lines.push(String::new());
 
@@ -1738,7 +1738,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         ));
         info.push_str(&format!(
             "Tokens: ↑{} ↓{}\n",
-            app.total_input_tokens, app.total_output_tokens
+            app.token_accounting.total_input_tokens, app.token_accounting.total_output_tokens
         ));
         info.push_str(&format!("Terminal: {}\n", terminal_size));
         info.push_str(&format!("CWD: {}\n", cwd));
@@ -1818,7 +1818,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
                     app.provider.reasoning_effort(),
                     app.provider.service_tier(),
                     app.provider.transport(),
-                    Some((app.total_input_tokens, app.total_output_tokens)),
+                    Some((app.token_accounting.total_input_tokens, app.token_accounting.total_output_tokens)),
                 )
             };
 
