@@ -120,7 +120,7 @@ impl App {
                     "cursor_pos": self.cursor_pos,
                 },
                 "streaming": {
-                    "streaming_text_bytes": self.streaming_text.len(),
+                    "streaming_text_bytes": self.streaming.streaming_text.len(),
                     "thinking_buffer_bytes": self.thinking_buffer.len(),
                     "stream_buffer": self.stream_buffer.debug_memory_profile(),
                     "streaming_tool_calls_count": self.streaming_tool_calls.len(),

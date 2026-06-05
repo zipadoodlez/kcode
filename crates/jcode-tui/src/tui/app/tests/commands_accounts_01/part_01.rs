@@ -974,7 +974,7 @@ fn test_splitview_mirrors_chat_and_streaming_text() {
         DisplayMessage::assistant("We decided to ship it.".to_string()),
     ];
     app.bump_display_messages_version();
-    app.streaming_text = "Working on the follow-up now...".to_string();
+    app.streaming.streaming_text = "Working on the follow-up now...".to_string();
     app.set_split_view_enabled(true, true);
 
     let page = app

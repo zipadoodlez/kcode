@@ -540,7 +540,7 @@ fn test_handle_server_event_token_usage_uses_per_call_deltas() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.streaming_tps_collect_output = true;
+    app.streaming.streaming_tps_collect_output = true;
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
@@ -570,8 +570,8 @@ fn test_handle_server_event_token_usage_uses_per_call_deltas() {
         &mut remote,
     );
 
-    assert_eq!(app.streaming_output_tokens, 30);
-    assert_eq!(app.streaming_total_output_tokens, 30);
+    assert_eq!(app.streaming.streaming_output_tokens, 30);
+    assert_eq!(app.streaming.streaming_total_output_tokens, 30);
     assert_eq!(app.token_accounting.total_input_tokens, 100);
     assert_eq!(app.token_accounting.total_output_tokens, 30);
 }
@@ -583,7 +583,7 @@ fn test_handle_server_event_tool_exec_pauses_tps_but_collects_final_tool_usage()
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.streaming_tps_elapsed = Duration::from_secs(2);
+    app.streaming.streaming_tps_elapsed = Duration::from_secs(2);
 
     app.handle_server_event(
         crate::protocol::ServerEvent::ToolStart {
@@ -593,10 +593,10 @@ fn test_handle_server_event_tool_exec_pauses_tps_but_collects_final_tool_usage()
         &mut remote,
     );
 
-    assert!(app.streaming_tps_collect_output);
-    assert!(app.streaming_tps_start.is_some());
+    assert!(app.streaming.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_start.is_some());
 
-    app.streaming_tps_start = Some(Instant::now() - Duration::from_secs(3));
+    app.streaming.streaming_tps_start = Some(Instant::now() - Duration::from_secs(3));
 
     app.handle_server_event(
         crate::protocol::ServerEvent::ToolExec {
@@ -606,9 +606,9 @@ fn test_handle_server_event_tool_exec_pauses_tps_but_collects_final_tool_usage()
         &mut remote,
     );
 
-    assert!(app.streaming_tps_collect_output);
-    assert!(app.streaming_tps_start.is_none());
-    assert!(app.streaming_tps_elapsed >= Duration::from_secs(5));
+    assert!(app.streaming.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_start.is_none());
+    assert!(app.streaming.streaming_tps_elapsed >= Duration::from_secs(5));
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
@@ -620,8 +620,8 @@ fn test_handle_server_event_tool_exec_pauses_tps_but_collects_final_tool_usage()
         &mut remote,
     );
 
-    assert_eq!(app.streaming_total_output_tokens, 25);
-    assert_eq!(app.streaming_tps_observed_output_tokens, 25);
+    assert_eq!(app.streaming.streaming_total_output_tokens, 25);
+    assert_eq!(app.streaming.streaming_tps_observed_output_tokens, 25);
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TextDelta {
@@ -630,8 +630,8 @@ fn test_handle_server_event_tool_exec_pauses_tps_but_collects_final_tool_usage()
         &mut remote,
     );
 
-    assert!(app.streaming_tps_collect_output);
-    assert!(app.streaming_tps_start.is_some());
+    assert!(app.streaming.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_start.is_some());
 }
 
 #[test]
@@ -641,7 +641,7 @@ fn test_handle_server_event_kv_cache_request_resets_tps_output_watermark_for_nex
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.streaming_tps_collect_output = true;
+    app.streaming.streaming_tps_collect_output = true;
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
@@ -671,7 +671,7 @@ fn test_handle_server_event_kv_cache_request_resets_tps_output_watermark_for_nex
         &mut remote,
     );
 
-    assert!(!app.streaming_tps_collect_output);
+    assert!(!app.streaming.streaming_tps_collect_output);
 
     app.handle_server_event(
         crate::protocol::ServerEvent::ConnectionPhase {
@@ -680,7 +680,7 @@ fn test_handle_server_event_kv_cache_request_resets_tps_output_watermark_for_nex
         &mut remote,
     );
 
-    assert!(app.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_collect_output);
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
@@ -692,8 +692,8 @@ fn test_handle_server_event_kv_cache_request_resets_tps_output_watermark_for_nex
         &mut remote,
     );
 
-    assert_eq!(app.streaming_total_output_tokens, 55);
-    assert_eq!(app.streaming_tps_observed_output_tokens, 55);
+    assert_eq!(app.streaming.streaming_total_output_tokens, 55);
+    assert_eq!(app.streaming.streaming_tps_observed_output_tokens, 55);
 }
 
 #[test]
@@ -705,7 +705,7 @@ fn test_handle_server_event_message_end_marks_stream_as_finalizing_without_stall
 
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
-    app.streaming_tps_collect_output = true;
+    app.streaming.streaming_tps_collect_output = true;
 
     let needs_redraw =
         app.handle_server_event(crate::protocol::ServerEvent::MessageEnd, &mut remote);
@@ -713,7 +713,7 @@ fn test_handle_server_event_message_end_marks_stream_as_finalizing_without_stall
     assert!(needs_redraw);
     assert!(app.stream_message_ended);
     assert!(matches!(app.status, ProcessingStatus::Streaming));
-    assert!(app.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_collect_output);
 }
 
 #[test]
@@ -730,8 +730,8 @@ fn test_handle_server_event_tps_connection_phase_streaming_starts_collection_onl
         &mut remote,
     );
 
-    assert!(!app.streaming_tps_collect_output);
-    assert!(app.streaming_tps_start.is_none());
+    assert!(!app.streaming.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_start.is_none());
 
     app.handle_server_event(
         crate::protocol::ServerEvent::ConnectionPhase {
@@ -740,8 +740,8 @@ fn test_handle_server_event_tps_connection_phase_streaming_starts_collection_onl
         &mut remote,
     );
 
-    assert!(app.streaming_tps_collect_output);
-    assert!(app.streaming_tps_start.is_some());
+    assert!(app.streaming.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_start.is_some());
     assert!(matches!(app.status, ProcessingStatus::Streaming));
 }
 
@@ -758,13 +758,13 @@ fn test_handle_server_event_tps_message_end_counts_late_usage_without_timer_runn
         },
         &mut remote,
     );
-    app.streaming_tps_start = Some(Instant::now() - Duration::from_secs(4));
+    app.streaming.streaming_tps_start = Some(Instant::now() - Duration::from_secs(4));
 
     app.handle_server_event(crate::protocol::ServerEvent::MessageEnd, &mut remote);
 
-    assert!(app.streaming_tps_collect_output);
-    assert!(app.streaming_tps_start.is_none());
-    assert!(app.streaming_tps_elapsed >= Duration::from_secs(4));
+    assert!(app.streaming.streaming_tps_collect_output);
+    assert!(app.streaming.streaming_tps_start.is_none());
+    assert!(app.streaming.streaming_tps_elapsed >= Duration::from_secs(4));
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
@@ -776,10 +776,10 @@ fn test_handle_server_event_tps_message_end_counts_late_usage_without_timer_runn
         &mut remote,
     );
 
-    assert_eq!(app.streaming_total_output_tokens, 20);
-    assert_eq!(app.streaming_tps_observed_output_tokens, 20);
-    assert!(app.streaming_tps_observed_elapsed >= Duration::from_secs(4));
-    assert!(app.streaming_tps_start.is_none());
+    assert_eq!(app.streaming.streaming_total_output_tokens, 20);
+    assert_eq!(app.streaming.streaming_tps_observed_output_tokens, 20);
+    assert!(app.streaming.streaming_tps_observed_elapsed >= Duration::from_secs(4));
+    assert!(app.streaming.streaming_tps_start.is_none());
 }
 
 #[test]
@@ -795,7 +795,7 @@ fn test_handle_server_event_tps_redundant_late_usage_after_message_end_does_not_
         },
         &mut remote,
     );
-    app.streaming_tps_start = Some(Instant::now() - Duration::from_secs(5));
+    app.streaming.streaming_tps_start = Some(Instant::now() - Duration::from_secs(5));
 
     app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
@@ -826,8 +826,8 @@ fn test_handle_server_event_tps_redundant_late_usage_after_message_end_does_not_
         &mut remote,
     );
 
-    assert_eq!(app.streaming_total_output_tokens, 30);
-    assert_eq!(app.streaming_tps_observed_output_tokens, 30);
+    assert_eq!(app.streaming.streaming_total_output_tokens, 30);
+    assert_eq!(app.streaming.streaming_tps_observed_output_tokens, 30);
     assert_eq!(*remote.call_output_tokens_seen(), 30);
 }
 
@@ -842,7 +842,7 @@ fn test_handle_server_event_interrupted_clears_stream_state_and_sets_idle() {
     app.status = ProcessingStatus::Streaming;
     app.processing_started = Some(Instant::now());
     app.current_message_id = Some(42);
-    app.streaming_text = "partial".to_string();
+    app.streaming.streaming_text = "partial".to_string();
     app.streaming_tool_calls.push(crate::message::ToolCall {
         id: "tool_1".to_string(),
         name: "bash".to_string(),
@@ -864,7 +864,7 @@ fn test_handle_server_event_interrupted_clears_stream_state_and_sets_idle() {
     assert!(matches!(app.status, ProcessingStatus::Idle));
     assert!(app.processing_started.is_none());
     assert!(app.current_message_id.is_none());
-    assert!(app.streaming_text.is_empty());
+    assert!(app.streaming.streaming_text.is_empty());
     assert!(app.streaming_tool_calls.is_empty());
     assert!(app.interleave_message.is_none());
     assert_eq!(app.queued_messages(), &["queued interrupt"]);

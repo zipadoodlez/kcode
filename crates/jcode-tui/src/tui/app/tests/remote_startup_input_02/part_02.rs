@@ -239,8 +239,8 @@ fn test_streaming_tokens() {
 
     assert_eq!(app.streaming_tokens(), (0, 0));
 
-    app.streaming_input_tokens = 100;
-    app.streaming_output_tokens = 50;
+    app.streaming.streaming_input_tokens = 100;
+    app.streaming.streaming_output_tokens = 50;
 
     assert_eq!(app.streaming_tokens(), (100, 50));
 }

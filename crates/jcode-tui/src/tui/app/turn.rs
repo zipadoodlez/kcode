@@ -340,7 +340,7 @@ impl App {
                                             if let Some(chunk) = self.stream_buffer.flush() {
                                                 self.append_streaming_text(&chunk);
                                             }
-                                            if !self.streaming_text.is_empty() {
+                                            if !self.streaming.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
                                                 let content = self.collapse_reasoning_for_commit(content);
                                                 if !content.trim().is_empty() {
@@ -404,7 +404,7 @@ impl App {
                                                 });
                                             }
                                             // Add display message for partial response
-                                            if !self.streaming_text.is_empty() {
+                                            if !self.streaming.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
                                                 let content = self.collapse_reasoning_for_commit(content);
                                                 if !content.trim().is_empty() {
@@ -604,22 +604,22 @@ impl App {
                                     } => {
                                         let mut usage_changed = false;
                                         if let Some(input) = input_tokens {
-                                            self.streaming_input_tokens = input;
+                                            self.streaming.streaming_input_tokens = input;
                                             usage_changed = true;
                                         }
                                         if let Some(output) = output_tokens {
-                                            self.streaming_output_tokens = output;
+                                            self.streaming.streaming_output_tokens = output;
                                             self.accumulate_streaming_output_tokens(
                                                 output,
                                                 &mut call_output_tokens_seen,
                                             );
                                         }
                                         if cache_read_input_tokens.is_some() {
-                                            self.streaming_cache_read_tokens = cache_read_input_tokens;
+                                            self.streaming.streaming_cache_read_tokens = cache_read_input_tokens;
                                             usage_changed = true;
                                         }
                                         if cache_creation_input_tokens.is_some() {
-                                            self.streaming_cache_creation_tokens =
+                                            self.streaming.streaming_cache_creation_tokens =
                                                 cache_creation_input_tokens;
                                             usage_changed = true;
                                         }
@@ -630,11 +630,11 @@ impl App {
                                             }
                                         }
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::TokenUsage {
-                                            input_tokens: self.streaming_input_tokens,
-                                            output_tokens: self.streaming_output_tokens,
-                                            cache_read_input_tokens: self.streaming_cache_read_tokens,
+                                            input_tokens: self.streaming.streaming_input_tokens,
+                                            output_tokens: self.streaming.streaming_output_tokens,
+                                            cache_read_input_tokens: self.streaming.streaming_cache_read_tokens,
                                             cache_creation_input_tokens: self
-                                                .streaming_cache_creation_tokens,
+                                                .streaming.streaming_cache_creation_tokens,
                                         });
                                     }
                                     StreamEvent::ConnectionType { connection } => {
@@ -675,7 +675,7 @@ impl App {
                                         let no_partial_output = text_content.is_empty()
                                             && tool_calls.is_empty()
                                             && current_tool.is_none()
-                                            && self.streaming_text.is_empty()
+                                            && self.streaming.streaming_text.is_empty()
                                             && !saw_message_end;
                                         if no_partial_output
                                             && let Some(reason) = crate::network_retry::classify_message(&message)
@@ -936,7 +936,7 @@ impl App {
                                 let no_partial_output = text_content.is_empty()
                                     && tool_calls.is_empty()
                                     && current_tool.is_none()
-                                    && self.streaming_text.is_empty()
+                                    && self.streaming.streaming_text.is_empty()
                                     && !saw_message_end;
                                 if no_partial_output
                                     && let Some(reason) = crate::network_retry::classify_network_interruption(e.as_ref())
@@ -962,7 +962,7 @@ impl App {
                                 let no_partial_output = text_content.is_empty()
                                     && tool_calls.is_empty()
                                     && current_tool.is_none()
-                                    && self.streaming_text.is_empty()
+                                    && self.streaming.streaming_text.is_empty()
                                     && !saw_message_end;
                                 if no_partial_output {
                                     let plan = crate::network_retry::wait_plan();
@@ -1064,8 +1064,8 @@ impl App {
             } else {
                 // Had tool calls - only display text that came AFTER the last tool
                 // (text before each tool was already committed in ToolUseEnd handler)
-                if !self.streaming_text.is_empty() {
-                    let content = self.collapse_reasoning_for_commit(self.streaming_text.clone());
+                if !self.streaming.streaming_text.is_empty() {
+                    let content = self.collapse_reasoning_for_commit(self.streaming.streaming_text.clone());
                     if !content.trim().is_empty() {
                     self.push_display_message(DisplayMessage {
                         role: "assistant".to_string(),
@@ -1227,7 +1227,7 @@ impl App {
                                             if let Some(chunk) = self.stream_buffer.flush() {
                                                 self.append_streaming_text(&chunk);
                                             }
-                                            if !self.streaming_text.is_empty() {
+                                            if !self.streaming.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
                                                 let content = self.collapse_reasoning_for_commit(content);
                                                 if !content.trim().is_empty() {

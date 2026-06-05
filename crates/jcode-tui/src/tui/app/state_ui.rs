@@ -677,7 +677,7 @@ impl App {
                     tool_data: m.tool_data.clone(),
                 })
                 .collect(),
-            streaming_text: self.streaming_text.clone(),
+            streaming_text: self.streaming.streaming_text.clone(),
             streaming_tool_calls: self.streaming_tool_calls.clone(),
             input: self.input.clone(),
             cursor_pos: self.cursor_pos,
@@ -698,10 +698,10 @@ impl App {
                 .map(|s| s.name.clone())
                 .collect(),
             session_id: self.provider_session_id.clone(),
-            input_tokens: self.streaming_input_tokens,
-            output_tokens: self.streaming_output_tokens,
-            cache_read_input_tokens: self.streaming_cache_read_tokens,
-            cache_creation_input_tokens: self.streaming_cache_creation_tokens,
+            input_tokens: self.streaming.streaming_input_tokens,
+            output_tokens: self.streaming.streaming_output_tokens,
+            cache_read_input_tokens: self.streaming.streaming_cache_read_tokens,
+            cache_creation_input_tokens: self.streaming.streaming_cache_creation_tokens,
             queued_messages: self.queued_messages.clone(),
         }
     }
@@ -1006,23 +1006,23 @@ fn format_cache_stats(app: &App) -> String {
         (false, true) => "client_observed_api_calls",
         (false, false) => "none_yet",
     };
-    let live_cache_telemetry = app.streaming_input_tokens > 0
+    let live_cache_telemetry = app.streaming.streaming_input_tokens > 0
         && !app.kv_cache.current_api_usage_recorded
-        && (app.streaming_cache_read_tokens.is_some()
-            || app.streaming_cache_creation_tokens.is_some());
+        && (app.streaming.streaming_cache_read_tokens.is_some()
+            || app.streaming.streaming_cache_creation_tokens.is_some());
     let live_reported = if live_cache_telemetry {
-        app.streaming_input_tokens
+        app.streaming.streaming_input_tokens
     } else {
         0
     };
     let reported_including_live = reported.saturating_add(live_reported);
     let read_including_live = read.saturating_add(if live_cache_telemetry {
-        app.streaming_cache_read_tokens.unwrap_or(0)
+        app.streaming.streaming_cache_read_tokens.unwrap_or(0)
     } else {
         0
     });
     let write_including_live = write.saturating_add(if live_cache_telemetry {
-        app.streaming_cache_creation_tokens.unwrap_or(0)
+        app.streaming.streaming_cache_creation_tokens.unwrap_or(0)
     } else {
         0
     });
@@ -1153,14 +1153,14 @@ fn format_cache_stats(app: &App) -> String {
         )
     };
     let live_unrecorded_input_tokens =
-        if app.streaming_input_tokens > 0 && !app.kv_cache.current_api_usage_recorded {
-            app.streaming_input_tokens
+        if app.streaming.streaming_input_tokens > 0 && !app.kv_cache.current_api_usage_recorded {
+            app.streaming.streaming_input_tokens
         } else {
             0
         };
     let live_unrecorded_output_tokens =
-        if app.streaming_output_tokens > 0 && !app.kv_cache.current_api_usage_recorded {
-            app.streaming_output_tokens
+        if app.streaming.streaming_output_tokens > 0 && !app.kv_cache.current_api_usage_recorded {
+            app.streaming.streaming_output_tokens
         } else {
             0
         };
@@ -1332,23 +1332,23 @@ fn format_cache_stats(app: &App) -> String {
     lines.push("Current / live stream counters".to_string());
     lines.push(format!(
         "- streaming_input_tokens: {}",
-        bold_count(app.streaming_input_tokens)
+        bold_count(app.streaming.streaming_input_tokens)
     ));
     lines.push(format!(
         "- streaming_output_tokens: {}",
-        bold_count(app.streaming_output_tokens)
+        bold_count(app.streaming.streaming_output_tokens)
     ));
     lines.push(format!(
         "- streaming_total_output_tokens: {}",
-        bold_count(app.streaming_total_output_tokens)
+        bold_count(app.streaming.streaming_total_output_tokens)
     ));
     lines.push(format!(
         "- streaming_cache_read_tokens: {}",
-        opt_u64(app.streaming_cache_read_tokens)
+        opt_u64(app.streaming.streaming_cache_read_tokens)
     ));
     lines.push(format!(
         "- streaming_cache_creation_tokens: {}",
-        opt_u64(app.streaming_cache_creation_tokens)
+        opt_u64(app.streaming.streaming_cache_creation_tokens)
     ));
     lines.push(format!(
         "- current_api_usage_recorded: {}",

@@ -204,7 +204,7 @@ impl App {
                 self.display_messages
                     .len()
                     .saturating_mul(100)
-                    .saturating_add(self.streaming_text.len()),
+                    .saturating_add(self.streaming.streaming_text.len()),
             );
         };
 
@@ -213,7 +213,7 @@ impl App {
         // measuring every message on each scroll input, which is noticeable in
         // very long sessions. The estimate below is only needed while streaming
         // can make LAST_MAX_SCROLL stale between frames.
-        if renderer_max > 0 && !self.is_processing && self.streaming_text.is_empty() {
+        if renderer_max > 0 && !self.is_processing && self.streaming.streaming_text.is_empty() {
             return renderer_max;
         }
 
@@ -268,7 +268,7 @@ impl App {
             lines
         });
 
-        message_lines.saturating_add(wrapped_text_lines(&self.streaming_text, width))
+        message_lines.saturating_add(wrapped_text_lines(&self.streaming.streaming_text, width))
     }
 
     pub(super) fn diagram_available(&self) -> bool {
@@ -1440,7 +1440,7 @@ impl App {
         // `rendered_max` stale at 0 even though there is content to scroll.
         let bottom_threshold = if rendered_max > 0 {
             rendered_max.min(max)
-        } else if self.is_processing || !self.streaming_text.is_empty() {
+        } else if self.is_processing || !self.streaming.streaming_text.is_empty() {
             max
         } else {
             // Not streaming and nothing to scroll: we are already at the bottom.

@@ -581,6 +581,44 @@ struct KvCacheState {
     kv_cache_miss_samples: Vec<KvCacheMissSample>,
 }
 
+/// Live streaming/turn progress: streamed text, per-turn token counts, and the
+/// tokens-per-second tracking state.
+///
+/// Grouped out of [`App`]. These fields are reset/updated as a unit each turn,
+/// so keeping them together clarifies the streaming lifecycle.
+#[derive(Clone, Debug, Default)]
+struct StreamingProgress {
+    streaming_text: String,
+    // Live token usage (per turn)
+    streaming_input_tokens: u64,
+    streaming_output_tokens: u64,
+    streaming_cache_read_tokens: Option<u64>,
+    streaming_cache_creation_tokens: Option<u64>,
+    // Accurate TPS tracking: counts model output generation time, not tool execution.
+    /// Set while the provider is generating output tokens (text, reasoning, or tool-call JSON).
+    streaming_tps_start: Option<Instant>,
+    /// Accumulated model-output generation time across agentic loop iterations.
+    streaming_tps_elapsed: Duration,
+    /// Whether incoming provider output-token deltas should contribute to TPS.
+    ///
+    /// This is enabled while an API call has generated model output, and can stay enabled
+    /// briefly after generation ends so late final usage snapshots still count.
+    streaming_tps_collect_output: bool,
+    /// Accumulated output tokens across all API calls in a turn.
+    ///
+    /// Providers may emit repeated cumulative usage snapshots for a single API call,
+    /// so we accumulate per-call deltas to avoid double counting.
+    streaming_total_output_tokens: u64,
+    /// Latest provider output-token snapshot used for TPS display.
+    ///
+    /// We update this only when newly generated output tokens are observed. That keeps the
+    /// displayed TPS anchored to the latest real token sample instead of decaying on every
+    /// redraw while no new usage data has arrived.
+    streaming_tps_observed_output_tokens: u64,
+    /// Streaming-only elapsed time corresponding to streaming_tps_observed_output_tokens.
+    streaming_tps_observed_elapsed: Duration,
+}
+
 /// State for an in-progress OAuth/API-key login flow triggered by `/login`.
 /// TUI Application state
 pub struct App {
@@ -603,17 +641,13 @@ pub struct App {
     auto_scroll_paused: bool,
     active_skill: Option<String>,
     is_processing: bool,
-    streaming_text: String,
+    // Live streaming/turn progress (text, per-turn tokens, TPS tracking).
+    streaming: StreamingProgress,
     should_quit: bool,
     // Message queueing
     queued_messages: Vec<String>,
     hidden_queued_system_messages: Vec<String>,
     current_turn_system_reminder: Option<String>,
-    // Live token usage (per turn)
-    streaming_input_tokens: u64,
-    streaming_output_tokens: u64,
-    streaming_cache_read_tokens: Option<u64>,
-    streaming_cache_creation_tokens: Option<u64>,
     // Upstream provider (e.g., which provider OpenRouter routed to)
     upstream_provider: Option<String>,
     // Active stream connection type (websocket/https/etc.)
@@ -649,29 +683,6 @@ pub struct App {
     remote_resume_activity: Option<RemoteResumeActivity>,
     // Reload reconnect is waiting for server history before deciding whether to continue.
     pending_reload_reconnect_status: Option<PendingReloadReconnectStatus>,
-    // Accurate TPS tracking: counts model output generation time, not tool execution.
-    /// Set while the provider is generating output tokens (text, reasoning, or tool-call JSON).
-    streaming_tps_start: Option<Instant>,
-    /// Accumulated model-output generation time across agentic loop iterations.
-    streaming_tps_elapsed: Duration,
-    /// Whether incoming provider output-token deltas should contribute to TPS.
-    ///
-    /// This is enabled while an API call has generated model output, and can stay enabled
-    /// briefly after generation ends so late final usage snapshots still count.
-    streaming_tps_collect_output: bool,
-    /// Accumulated output tokens across all API calls in a turn.
-    ///
-    /// Providers may emit repeated cumulative usage snapshots for a single API call,
-    /// so we accumulate per-call deltas to avoid double counting.
-    streaming_total_output_tokens: u64,
-    /// Latest provider output-token snapshot used for TPS display.
-    ///
-    /// We update this only when newly generated output tokens are observed. That keeps the
-    /// displayed TPS anchored to the latest real token sample instead of decaying on every
-    /// redraw while no new usage data has arrived.
-    streaming_tps_observed_output_tokens: u64,
-    /// Streaming-only elapsed time corresponding to streaming_tps_observed_output_tokens.
-    streaming_tps_observed_elapsed: Duration,
     // Current status
     status: ProcessingStatus,
     // Subagent status (shown during Task tool execution)
@@ -1374,12 +1385,12 @@ impl App {
     }
 
     pub(super) fn record_completed_stream_cache_usage(&mut self) -> bool {
-        let has_cache_telemetry = self.streaming_cache_read_tokens.is_some()
-            || self.streaming_cache_creation_tokens.is_some();
+        let has_cache_telemetry = self.streaming.streaming_cache_read_tokens.is_some()
+            || self.streaming.streaming_cache_creation_tokens.is_some();
         if self.kv_cache.current_api_usage_recorded {
             return false;
         }
-        if self.streaming_input_tokens == 0 {
+        if self.streaming.streaming_input_tokens == 0 {
             return false;
         }
 
@@ -1390,9 +1401,9 @@ impl App {
         // uncached remainder, so the reusable prefix is input + read + creation.
         self.token_accounting.cache_next_optimal_input_tokens =
             Some(crate::tui::info_widget::effective_prompt_tokens(
-                self.streaming_input_tokens,
-                self.streaming_cache_read_tokens.unwrap_or(0),
-                self.streaming_cache_creation_tokens.unwrap_or(0),
+                self.streaming.streaming_input_tokens,
+                self.streaming.streaming_cache_read_tokens.unwrap_or(0),
+                self.streaming.streaming_cache_creation_tokens.unwrap_or(0),
             ));
 
         let request = self
@@ -1408,7 +1419,7 @@ impl App {
         if !has_cache_telemetry {
             self.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
                 session_id: baseline_session_id,
-                input_tokens: self.streaming_input_tokens,
+                input_tokens: self.streaming.streaming_input_tokens,
                 completed_at: Instant::now(),
                 provider: request.provider,
                 model: request.model,
@@ -1420,7 +1431,7 @@ impl App {
 
         self.token_accounting.total_cache_reported_input_tokens = self
             .token_accounting.total_cache_reported_input_tokens
-            .saturating_add(self.streaming_input_tokens);
+            .saturating_add(self.streaming.streaming_input_tokens);
         if let Some(optimal) = optimal_input_tokens {
             self.token_accounting.total_cache_optimal_input_tokens = self
                 .token_accounting.total_cache_optimal_input_tokens
@@ -1428,20 +1439,20 @@ impl App {
         }
         self.token_accounting.total_cache_read_tokens = self
             .token_accounting.total_cache_read_tokens
-            .saturating_add(self.streaming_cache_read_tokens.unwrap_or(0));
+            .saturating_add(self.streaming.streaming_cache_read_tokens.unwrap_or(0));
         self.token_accounting.total_cache_creation_tokens = self
             .token_accounting.total_cache_creation_tokens
-            .saturating_add(self.streaming_cache_creation_tokens.unwrap_or(0));
-        self.token_accounting.last_cache_reported_input_tokens = Some(self.streaming_input_tokens);
-        self.token_accounting.last_cache_read_tokens = Some(self.streaming_cache_read_tokens.unwrap_or(0));
-        self.token_accounting.last_cache_creation_tokens = Some(self.streaming_cache_creation_tokens.unwrap_or(0));
+            .saturating_add(self.streaming.streaming_cache_creation_tokens.unwrap_or(0));
+        self.token_accounting.last_cache_reported_input_tokens = Some(self.streaming.streaming_input_tokens);
+        self.token_accounting.last_cache_read_tokens = Some(self.streaming.streaming_cache_read_tokens.unwrap_or(0));
+        self.token_accounting.last_cache_creation_tokens = Some(self.streaming.streaming_cache_creation_tokens.unwrap_or(0));
         self.token_accounting.last_cache_optimal_input_tokens = optimal_input_tokens;
 
         self.log_kv_cache_usage_summary(&request, optimal_input_tokens);
 
         self.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
             session_id: baseline_session_id,
-            input_tokens: self.streaming_input_tokens,
+            input_tokens: self.streaming.streaming_input_tokens,
             completed_at: Instant::now(),
             provider: request.provider,
             model: request.model,
@@ -1456,9 +1467,9 @@ impl App {
         request: &PendingKvCacheRequest,
         optimal_input_tokens: Option<u64>,
     ) {
-        let input_tokens = self.streaming_input_tokens;
-        let read_tokens = self.streaming_cache_read_tokens.unwrap_or(0);
-        let creation_tokens = self.streaming_cache_creation_tokens.unwrap_or(0);
+        let input_tokens = self.streaming.streaming_input_tokens;
+        let read_tokens = self.streaming.streaming_cache_read_tokens.unwrap_or(0);
+        let creation_tokens = self.streaming.streaming_cache_creation_tokens.unwrap_or(0);
         let read_pct = ratio_pct(read_tokens, input_tokens);
         let creation_pct = ratio_pct(creation_tokens, input_tokens);
         let optimal_read_pct = optimal_input_tokens.map(|optimal| ratio_pct(read_tokens, optimal));
@@ -1659,7 +1670,7 @@ impl App {
             return;
         }
 
-        let read_tokens = self.streaming_cache_read_tokens.unwrap_or(0);
+        let read_tokens = self.streaming.streaming_cache_read_tokens.unwrap_or(0);
         let missed_tokens = expected_tokens.saturating_sub(read_tokens);
         if missed_tokens < Self::KV_CACHE_MIN_MISSED_TOKENS {
             return;
@@ -1737,7 +1748,7 @@ impl App {
             return KvCacheMissReason::HarnessPrefixChanged;
         }
 
-        if self.streaming_cache_read_tokens.is_none() {
+        if self.streaming.streaming_cache_read_tokens.is_none() {
             return KvCacheMissReason::Unknown;
         }
         if read_tokens == 0 {

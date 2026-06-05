@@ -313,13 +313,13 @@ impl App {
     }
 
     pub(super) fn current_stream_context_tokens(&self) -> Option<u64> {
-        if self.streaming_input_tokens == 0 {
+        if self.streaming.streaming_input_tokens == 0 {
             return None;
         }
         Some(self.effective_context_tokens_from_usage(
-            self.streaming_input_tokens,
-            self.streaming_cache_read_tokens,
-            self.streaming_cache_creation_tokens,
+            self.streaming.streaming_input_tokens,
+            self.streaming.streaming_cache_read_tokens,
+            self.streaming.streaming_cache_creation_tokens,
         ))
     }
 
@@ -465,10 +465,10 @@ impl App {
         self.clear_streaming_render_state();
         self.stream_buffer.clear();
         self.streaming_tool_calls.clear();
-        self.streaming_input_tokens = 0;
-        self.streaming_output_tokens = 0;
-        self.streaming_cache_read_tokens = None;
-        self.streaming_cache_creation_tokens = None;
+        self.streaming.streaming_input_tokens = 0;
+        self.streaming.streaming_output_tokens = 0;
+        self.streaming.streaming_cache_read_tokens = None;
+        self.streaming.streaming_cache_creation_tokens = None;
         self.kv_cache.current_api_usage_recorded = false;
         self.thought_line_inserted = false;
         self.thinking_prefix_emitted = false;

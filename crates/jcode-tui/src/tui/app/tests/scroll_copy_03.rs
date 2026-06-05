@@ -136,7 +136,7 @@ fn test_prompt_preview_reserves_rows_without_overwriting_visible_history() {
     app.scroll_offset = 0;
     app.auto_scroll_paused = false;
     app.is_processing = false;
-    app.streaming_text.clear();
+    app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
     app.session.short_name = Some("test".to_string());
 
@@ -395,7 +395,7 @@ fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
     // Simulate streaming so scroll_max_estimate() inflates above rendered_max.
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
-    app.streaming_text = "x".repeat(20_000);
+    app.streaming.streaming_text = "x".repeat(20_000);
 
     // Hammer scroll-down well past the bottom.
     for _ in 0..200 {

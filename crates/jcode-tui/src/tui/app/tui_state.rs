@@ -265,8 +265,8 @@ impl App {
             total_cost: self.total_cost,
             input_tokens: self.token_accounting.total_input_tokens,
             output_tokens: self.token_accounting.total_output_tokens,
-            cache_read_tokens: self.streaming_cache_read_tokens,
-            cache_write_tokens: self.streaming_cache_creation_tokens,
+            cache_read_tokens: self.streaming.streaming_cache_read_tokens,
+            cache_write_tokens: self.streaming.streaming_cache_creation_tokens,
             output_tps,
             available: true,
         };
@@ -412,7 +412,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn streaming_text(&self) -> &str {
-        &self.streaming_text
+        &self.streaming.streaming_text
     }
 
     fn input(&self) -> &str {
@@ -505,13 +505,13 @@ impl crate::tui::TuiState for App {
     }
 
     fn streaming_tokens(&self) -> (u64, u64) {
-        (self.streaming_input_tokens, self.streaming_output_tokens)
+        (self.streaming.streaming_input_tokens, self.streaming.streaming_output_tokens)
     }
 
     fn streaming_cache_tokens(&self) -> (Option<u64>, Option<u64>) {
         (
-            self.streaming_cache_read_tokens,
-            self.streaming_cache_creation_tokens,
+            self.streaming.streaming_cache_read_tokens,
+            self.streaming.streaming_cache_creation_tokens,
         )
     }
 
@@ -1333,7 +1333,7 @@ impl crate::tui::TuiState for App {
     fn render_streaming_markdown(&self, width: usize) -> Vec<ratatui::text::Line<'static>> {
         let mut renderer = self.streaming_md_renderer.borrow_mut();
         renderer.set_width(Some(width));
-        renderer.update(&self.streaming_text)
+        renderer.update(&self.streaming.streaming_text)
     }
 
     fn centered_mode(&self) -> bool {

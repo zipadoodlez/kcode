@@ -23,7 +23,7 @@ impl App {
     }
 
     pub fn streaming_text(&self) -> &str {
-        &self.streaming_text
+        &self.streaming.streaming_text
     }
 
     pub fn active_skill(&self) -> Option<&str> {
@@ -44,7 +44,7 @@ impl App {
     }
 
     pub fn streaming_tokens(&self) -> (u64, u64) {
-        (self.streaming_input_tokens, self.streaming_output_tokens)
+        (self.streaming.streaming_input_tokens, self.streaming.streaming_output_tokens)
     }
 
     pub(super) fn build_turn_footer(&self, duration: Option<f32>) -> Option<String> {
@@ -56,16 +56,16 @@ impl App {
         if let Some(tps) = self.compute_streaming_tps() {
             parts.push(format!("{:.1} tps", tps));
         }
-        if self.streaming_input_tokens > 0 || self.streaming_output_tokens > 0 {
+        if self.streaming.streaming_input_tokens > 0 || self.streaming.streaming_output_tokens > 0 {
             parts.push(format!(
                 "↑{} ↓{}",
-                format_tokens(self.streaming_input_tokens),
-                format_tokens(self.streaming_output_tokens)
+                format_tokens(self.streaming.streaming_input_tokens),
+                format_tokens(self.streaming.streaming_output_tokens)
             ));
         }
         if let Some(cache) = format_cache_footer(
-            self.streaming_cache_read_tokens,
-            self.streaming_cache_creation_tokens,
+            self.streaming.streaming_cache_read_tokens,
+            self.streaming.streaming_cache_creation_tokens,
         ) {
             parts.push(cache);
         }
@@ -78,10 +78,10 @@ impl App {
     }
 
     pub(super) fn has_streaming_footer_stats(&self) -> bool {
-        self.streaming_input_tokens > 0
-            || self.streaming_output_tokens > 0
-            || self.streaming_cache_read_tokens.is_some()
-            || self.streaming_cache_creation_tokens.is_some()
+        self.streaming.streaming_input_tokens > 0
+            || self.streaming.streaming_output_tokens > 0
+            || self.streaming.streaming_cache_read_tokens.is_some()
+            || self.streaming.streaming_cache_creation_tokens.is_some()
             || self.compute_streaming_tps().is_some()
     }
 
@@ -93,7 +93,7 @@ impl App {
         self.last_api_completed_provider = Some(<Self as TuiState>::provider_name(self));
         self.last_api_completed_model = Some(<Self as TuiState>::provider_model(self));
         self.last_turn_input_tokens = {
-            let input = self.streaming_input_tokens;
+            let input = self.streaming.streaming_input_tokens;
             if input > 0 { Some(input) } else { None }
         };
 
@@ -124,9 +124,9 @@ impl App {
             &provider,
             upstream_provider,
             user_turn_count,
-            self.streaming_input_tokens,
-            self.streaming_cache_read_tokens,
-            self.streaming_cache_creation_tokens,
+            self.streaming.streaming_input_tokens,
+            self.streaming.streaming_cache_read_tokens,
+            self.streaming.streaming_cache_creation_tokens,
             cache_ttl.as_ref(),
         );
 
@@ -134,12 +134,12 @@ impl App {
             // Collect context for debugging
             let session_id = self.session_id().to_string();
             let model = <Self as TuiState>::provider_model(self);
-            let input_tokens = self.streaming_input_tokens;
-            let output_tokens = self.streaming_output_tokens;
+            let input_tokens = self.streaming.streaming_input_tokens;
+            let output_tokens = self.streaming.streaming_output_tokens;
 
             // Format as Option to distinguish None vs Some(0)
-            let cache_creation_dbg = format!("{:?}", self.streaming_cache_creation_tokens);
-            let cache_read_dbg = format!("{:?}", self.streaming_cache_read_tokens);
+            let cache_creation_dbg = format!("{:?}", self.streaming.streaming_cache_creation_tokens);
+            let cache_read_dbg = format!("{:?}", self.streaming.streaming_cache_read_tokens);
 
             // Count message types in conversation
             let mut user_msgs = 0;

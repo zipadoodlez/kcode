@@ -943,9 +943,9 @@ fn remote_done_finalizes_resumed_activity_without_current_message_id() {
         observed_at: Instant::now(),
         current_tool_name: Some("bg".to_string()),
     });
-    app.streaming_input_tokens = 63_762;
-    app.streaming_output_tokens = 153;
-    app.streaming_cache_read_tokens = Some(0);
+    app.streaming.streaming_input_tokens = 63_762;
+    app.streaming.streaming_output_tokens = 153;
+    app.streaming.streaming_cache_read_tokens = Some(0);
     app.stream_message_ended = true;
 
     app.handle_server_event(crate::protocol::ServerEvent::Done { id: 99 }, &mut remote);

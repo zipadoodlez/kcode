@@ -412,19 +412,19 @@ pub(in crate::tui::app) fn handle_server_event(
             cache_read_input,
             cache_creation_input,
         } => {
-            let previous_input = app.streaming_input_tokens;
-            let previous_output = app.streaming_output_tokens;
-            let previous_cache_read = app.streaming_cache_read_tokens;
-            let previous_cache_creation = app.streaming_cache_creation_tokens;
+            let previous_input = app.streaming.streaming_input_tokens;
+            let previous_output = app.streaming.streaming_output_tokens;
+            let previous_cache_read = app.streaming.streaming_cache_read_tokens;
+            let previous_cache_creation = app.streaming.streaming_cache_creation_tokens;
             let was_recorded = app.kv_cache.current_api_usage_recorded;
             app.accumulate_streaming_output_tokens(output, call_output_tokens_seen);
-            app.streaming_input_tokens = input;
-            app.streaming_output_tokens = output;
+            app.streaming.streaming_input_tokens = input;
+            app.streaming.streaming_output_tokens = output;
             if cache_read_input.is_some() {
-                app.streaming_cache_read_tokens = cache_read_input;
+                app.streaming.streaming_cache_read_tokens = cache_read_input;
             }
             if cache_creation_input.is_some() {
-                app.streaming_cache_creation_tokens = cache_creation_input;
+                app.streaming.streaming_cache_creation_tokens = cache_creation_input;
             }
             if app.record_completed_stream_cache_usage() {
                 app.token_accounting.total_input_tokens =
@@ -437,8 +437,8 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.accrue_remote_call_cost(
                     input,
                     output,
-                    app.streaming_cache_read_tokens.unwrap_or(0),
-                    app.streaming_cache_creation_tokens.unwrap_or(0),
+                    app.streaming.streaming_cache_read_tokens.unwrap_or(0),
+                    app.streaming.streaming_cache_creation_tokens.unwrap_or(0),
                 );
                 app.last_api_completed = Some(Instant::now());
                 app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
@@ -457,18 +457,18 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.accrue_remote_call_cost(
                     input.saturating_sub(previous_input),
                     output.saturating_sub(previous_output),
-                    app.streaming_cache_read_tokens
+                    app.streaming.streaming_cache_read_tokens
                         .unwrap_or(0)
                         .saturating_sub(previous_cache_read.unwrap_or(0)),
-                    app.streaming_cache_creation_tokens
+                    app.streaming.streaming_cache_creation_tokens
                         .unwrap_or(0)
                         .saturating_sub(previous_cache_creation.unwrap_or(0)),
                 );
 
                 let had_cache_telemetry =
                     previous_cache_read.is_some() || previous_cache_creation.is_some();
-                let has_cache_telemetry = app.streaming_cache_read_tokens.is_some()
-                    || app.streaming_cache_creation_tokens.is_some();
+                let has_cache_telemetry = app.streaming.streaming_cache_read_tokens.is_some()
+                    || app.streaming.streaming_cache_creation_tokens.is_some();
                 if has_cache_telemetry {
                     let reported_delta = if had_cache_telemetry {
                         input.saturating_sub(previous_input)
@@ -479,20 +479,20 @@ pub(in crate::tui::app) fn handle_server_event(
                         .token_accounting.total_cache_reported_input_tokens
                         .saturating_add(reported_delta);
                     app.token_accounting.total_cache_read_tokens = app.token_accounting.total_cache_read_tokens.saturating_add(
-                        app.streaming_cache_read_tokens
+                        app.streaming.streaming_cache_read_tokens
                             .unwrap_or(0)
                             .saturating_sub(previous_cache_read.unwrap_or(0)),
                     );
                     app.token_accounting.total_cache_creation_tokens =
                         app.token_accounting.total_cache_creation_tokens.saturating_add(
-                            app.streaming_cache_creation_tokens
+                            app.streaming.streaming_cache_creation_tokens
                                 .unwrap_or(0)
                                 .saturating_sub(previous_cache_creation.unwrap_or(0)),
                         );
                     app.token_accounting.last_cache_reported_input_tokens = Some(input);
-                    app.token_accounting.last_cache_read_tokens = Some(app.streaming_cache_read_tokens.unwrap_or(0));
+                    app.token_accounting.last_cache_read_tokens = Some(app.streaming.streaming_cache_read_tokens.unwrap_or(0));
                     app.token_accounting.last_cache_creation_tokens =
-                        Some(app.streaming_cache_creation_tokens.unwrap_or(0));
+                        Some(app.streaming.streaming_cache_creation_tokens.unwrap_or(0));
                 }
 
                 if let Some(baseline) = app.kv_cache.kv_cache_baseline.as_mut() {
@@ -502,8 +502,8 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.token_accounting.cache_next_optimal_input_tokens =
                     Some(crate::tui::info_widget::effective_prompt_tokens(
                         input,
-                        app.streaming_cache_read_tokens.unwrap_or(0),
-                        app.streaming_cache_creation_tokens.unwrap_or(0),
+                        app.streaming.streaming_cache_read_tokens.unwrap_or(0),
+                        app.streaming.streaming_cache_creation_tokens.unwrap_or(0),
                     ));
                 app.last_api_completed = Some(Instant::now());
                 app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
@@ -597,7 +597,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.current_message_id,
                 app.is_processing,
                 app.status,
-                app.streaming_text.len(),
+                app.streaming.streaming_text.len(),
                 app.pending_soft_interrupts.len(),
                 app.queued_messages.len()
             ));
@@ -612,7 +612,7 @@ pub(in crate::tui::app) fn handle_server_event(
             if let Some(chunk) = app.stream_buffer.flush() {
                 app.append_streaming_text(&chunk);
             }
-            if !app.streaming_text.is_empty() {
+            if !app.streaming.streaming_text.is_empty() {
                 let content = app.take_streaming_text();
                 let content = app.collapse_reasoning_for_commit(content);
                 if !content.trim().is_empty() {
@@ -665,7 +665,7 @@ pub(in crate::tui::app) fn handle_server_event(
             let has_resumed_turn_evidence = had_remote_resume_activity
                 || app.stream_message_ended
                 || app.has_streaming_footer_stats()
-                || !app.streaming_text.is_empty()
+                || !app.streaming.streaming_text.is_empty()
                 || !app.streaming_tool_calls.is_empty()
                 || matches!(
                     app.status,
@@ -686,7 +686,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.append_streaming_text(&chunk);
                 }
                 app.pause_streaming_tps(false);
-                if !app.streaming_text.is_empty() {
+                if !app.streaming.streaming_text.is_empty() {
                     let duration = app.display_turn_duration_secs();
                     let content = app.take_streaming_text();
                     let content = app.collapse_reasoning_for_commit(content);
@@ -1051,10 +1051,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.thought_line_inserted = false;
                 app.thinking_prefix_emitted = false;
                 app.thinking_buffer.clear();
-                app.streaming_input_tokens = 0;
-                app.streaming_output_tokens = 0;
-                app.streaming_cache_read_tokens = None;
-                app.streaming_cache_creation_tokens = None;
+                app.streaming.streaming_input_tokens = 0;
+                app.streaming.streaming_output_tokens = 0;
+                app.streaming.streaming_cache_read_tokens = None;
+                app.streaming.streaming_cache_creation_tokens = None;
                 app.kv_cache.current_api_usage_recorded = false;
                 app.token_accounting.total_cache_reported_input_tokens = 0;
                 app.token_accounting.total_cache_read_tokens = 0;
@@ -1676,7 +1676,7 @@ pub(in crate::tui::app) fn handle_server_event(
             if let Some(chunk) = app.stream_buffer.flush() {
                 app.append_streaming_text(&chunk);
             }
-            if !app.streaming_text.is_empty() {
+            if !app.streaming.streaming_text.is_empty() {
                 let duration = app.display_turn_duration_secs();
                 let flushed = app.take_streaming_text();
                 let flushed = app.collapse_reasoning_for_commit(flushed);

@@ -490,7 +490,7 @@ impl ScrollTestState {
             diff_pane_focus: app.diff_pane_focus,
             diff_pane_auto_scroll: app.diff_pane_auto_scroll,
             is_processing: app.is_processing,
-            streaming_text: app.streaming_text.clone(),
+            streaming_text: app.streaming.streaming_text.clone(),
             queued_messages: app.queued_messages.clone(),
             interleave_message: app.interleave_message.clone(),
             pending_soft_interrupts: app.pending_soft_interrupts.clone(),

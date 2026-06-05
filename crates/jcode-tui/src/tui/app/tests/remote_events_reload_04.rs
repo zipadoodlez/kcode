@@ -773,8 +773,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         crate::auth::AuthStatus::invalidate_cache();
 
         let mut app = create_named_provider_test_app(provider_name, model);
-        app.streaming_input_tokens = 1_000;
-        app.streaming_output_tokens = 1_000;
+        app.streaming.streaming_input_tokens = 1_000;
+        app.streaming.streaming_output_tokens = 1_000;
         app.token_accounting.total_input_tokens = 12_000;
         app.token_accounting.total_output_tokens = 3_400;
         app.update_cost_impl();
@@ -802,8 +802,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     crate::env::set_var("JCODE_RUNTIME_PROVIDER", "jcode");
     crate::env::remove_var("JCODE_OPENROUTER_ALLOW_NO_AUTH");
     let mut app = create_named_provider_test_app("openrouter", "subscription-model");
-    app.streaming_input_tokens = 1_000;
-    app.streaming_output_tokens = 1_000;
+    app.streaming.streaming_input_tokens = 1_000;
+    app.streaming.streaming_output_tokens = 1_000;
     app.token_accounting.total_input_tokens = 12_000;
     app.token_accounting.total_output_tokens = 3_400;
     app.update_cost_impl();
@@ -819,8 +819,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-compatible");
     crate::env::set_var("JCODE_OPENROUTER_ALLOW_NO_AUTH", "1");
     let mut app = create_named_provider_test_app("openrouter", "local-model");
-    app.streaming_input_tokens = 1_000;
-    app.streaming_output_tokens = 1_000;
+    app.streaming.streaming_input_tokens = 1_000;
+    app.streaming.streaming_output_tokens = 1_000;
     app.token_accounting.total_input_tokens = 12_000;
     app.token_accounting.total_output_tokens = 3_400;
     app.update_cost_impl();

@@ -1,12 +1,12 @@
 #[test]
 fn test_build_turn_footer_combines_compact_duration_with_streaming_stats() {
     let mut app = create_test_app();
-    app.streaming_input_tokens = 210_000;
-    app.streaming_output_tokens = 440;
-    app.streaming_tps_collect_output = true;
-    app.streaming_total_output_tokens = 440;
-    app.streaming_tps_observed_output_tokens = 440;
-    app.streaming_tps_observed_elapsed = Duration::from_secs(220);
+    app.streaming.streaming_input_tokens = 210_000;
+    app.streaming.streaming_output_tokens = 440;
+    app.streaming.streaming_tps_collect_output = true;
+    app.streaming.streaming_total_output_tokens = 440;
+    app.streaming.streaming_tps_observed_output_tokens = 440;
+    app.streaming.streaming_tps_observed_elapsed = Duration::from_secs(220);
 
     let footer = app
         .build_turn_footer(Some(316.1))

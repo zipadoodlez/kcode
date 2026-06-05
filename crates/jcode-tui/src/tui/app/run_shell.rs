@@ -64,7 +64,7 @@ pub(super) fn status_spinner_only_symbol(app: &App) -> Option<&'static str> {
     // When decorative animations are off it advances at the smooth liveness
     // rate; otherwise it uses the full-rate spinner clock.
     if !app.is_processing
-        || !app.streaming_text.is_empty()
+        || !app.streaming.streaming_text.is_empty()
         || app.centered_mode()
         || app.has_pending_mouse_scroll_animation()
         || app.remote_startup_phase_active()

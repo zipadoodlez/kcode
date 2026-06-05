@@ -736,7 +736,7 @@ pub(super) fn handle_disconnect(
     if let Some(chunk) = app.stream_buffer.flush() {
         app.append_streaming_text(&chunk);
     }
-    if !app.streaming_text.is_empty() {
+    if !app.streaming.streaming_text.is_empty() {
         let content = app.take_streaming_text();
         let content = app.collapse_reasoning_for_commit(content);
         if !content.trim().is_empty() {
@@ -1249,7 +1249,7 @@ async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
             app.current_message_id = None;
             app.processing_started = None;
             app.last_stream_activity = None;
-            if !app.streaming_text.is_empty() {
+            if !app.streaming.streaming_text.is_empty() {
                 let content = app.take_streaming_text();
                 let content = app.collapse_reasoning_for_commit(content);
                 if !content.trim().is_empty() {

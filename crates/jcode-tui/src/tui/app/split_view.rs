@@ -99,7 +99,7 @@ impl App {
     }
 
     fn refresh_split_view_cache(&mut self, force: bool) -> bool {
-        let streaming_hash = hash_str(&self.streaming_text);
+        let streaming_hash = hash_str(&self.streaming.streaming_text);
         if !force
             && self.split_view_rendered_display_version == self.display_messages_version
             && self.split_view_rendered_streaming_hash == streaming_hash
