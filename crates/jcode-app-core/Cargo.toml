@@ -78,20 +78,12 @@ jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
 jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
 jcode-provider-gemini = { path = "../jcode-provider-gemini" }
-jcode-tui-markdown = { path = "../jcode-tui-markdown" }
-jcode-tui-messages = { path = "../jcode-tui-messages" }
-jcode-tui-core = { path = "../jcode-tui-core" }
-jcode-tui-mermaid = { path = "../jcode-tui-mermaid" }
-jcode-tui-account-picker = { path = "../jcode-tui-account-picker" }
-jcode-tui-render = { path = "../jcode-tui-render" }
-jcode-tui-session-picker = { path = "../jcode-tui-session-picker", features = ["serde"] }
-jcode-tui-style = { path = "../jcode-tui-style" }
-jcode-tui-tool-display = { path = "../jcode-tui-tool-display" }
-jcode-tui-usage-overlay = { path = "../jcode-tui-usage-overlay" }
+# NOTE: jcode-app-core does NOT depend on any jcode-tui-* crate. They were
+# unused dead dependency edges here (the TUI declares them itself). Removing
+# them stops a jcode-tui-* edit from cascading a recompile through app-core.
 jcode-update-core = { path = "../jcode-update-core" }
 jcode-terminal-launch = { path = "../jcode-terminal-launch" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }
-jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 jcode-usage-types = { path = "../jcode-usage-types" }
 
 # Streaming
