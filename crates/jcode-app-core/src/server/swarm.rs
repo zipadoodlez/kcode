@@ -1,5 +1,5 @@
 use super::state::{MAX_EVENT_HISTORY, fanout_session_event};
-use super::{FileAccess, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
+use super::{SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan};
 use super::{persist_swarm_state_for, remove_persisted_swarm_state_for};
 use crate::agent::Agent;
 use crate::plan::{PlanItem, newly_ready_item_ids};
@@ -495,37 +495,6 @@ pub(super) async fn remove_plan_participant(
     if let Some(vp) = plans.get_mut(swarm_id) {
         vp.participants.remove(session_id);
     }
-}
-
-pub(super) async fn remove_session_file_touches(
-    session_id: &str,
-    file_touches: &Arc<RwLock<HashMap<PathBuf, Vec<FileAccess>>>>,
-    files_touched_by_session: &Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
-) {
-    let touched_paths = {
-        let mut reverse = files_touched_by_session.write().await;
-        reverse.remove(session_id)
-    };
-
-    let mut touches = file_touches.write().await;
-    if let Some(paths) = touched_paths {
-        for path in paths {
-            let mut remove_path = false;
-            if let Some(accesses) = touches.get_mut(&path) {
-                accesses.retain(|access| access.session_id != session_id);
-                remove_path = accesses.is_empty();
-            }
-            if remove_path {
-                touches.remove(&path);
-            }
-        }
-        return;
-    }
-
-    touches.retain(|_, accesses| {
-        accesses.retain(|access| access.session_id != session_id);
-        !accesses.is_empty()
-    });
 }
 
 pub(super) async fn remove_session_from_swarm(

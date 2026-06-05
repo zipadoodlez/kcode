@@ -1,11 +1,10 @@
 use super::{
-    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, ServerIdentity,
-    SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember, VersionedPlan,
+    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService,
+    ServerIdentity, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember, VersionedPlan,
 };
 use crate::agent::Agent;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
@@ -29,8 +28,7 @@ pub(super) async fn maybe_handle_server_state_command(
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    file_touches: &Arc<RwLock<HashMap<PathBuf, Vec<FileAccess>>>>,
-    files_touched_by_session: &Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
+    file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
     debug_jobs: &Arc<RwLock<HashMap<String, DebugJob>>>,
@@ -124,8 +122,7 @@ pub(super) async fn maybe_handle_server_state_command(
             shared_context,
             swarm_plans,
             swarm_coordinators,
-            file_touches,
-            files_touched_by_session,
+            file_touch,
             channel_subscriptions,
             channel_subscriptions_by_session,
             debug_jobs,
@@ -262,8 +259,7 @@ async fn build_server_memory_payload(
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    file_touches: &Arc<RwLock<HashMap<PathBuf, Vec<FileAccess>>>>,
-    files_touched_by_session: &Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
+    file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     channel_subscriptions_by_session: &ChannelSubscriptions,
     debug_jobs: &Arc<RwLock<HashMap<String, DebugJob>>>,
@@ -460,7 +456,7 @@ async fn build_server_memory_payload(
         .sum();
     drop(coordinators);
 
-    let touches = file_touches.read().await;
+    let touches = file_touch.snapshot().await;
     let file_touch_path_count = touches.len();
     let file_touch_entry_count: usize = touches.values().map(|entries| entries.len()).sum();
     let file_touch_estimate_bytes: usize = touches
@@ -475,7 +471,7 @@ async fn build_server_memory_payload(
         .sum();
     drop(touches);
 
-    let touched_by_session = files_touched_by_session.read().await;
+    let touched_by_session = file_touch.reverse_snapshot().await;
     let touched_session_count = touched_by_session.len();
     let touched_session_estimate_bytes: usize = touched_by_session
         .iter()

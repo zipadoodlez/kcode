@@ -1,6 +1,6 @@
 use super::swarm_channels::list_channels_for_swarm;
 use super::{
-    FileAccess, ServerIdentity, SharedContext, SwarmMember, SwarmState, VersionedPlan,
+    FileTouchService, ServerIdentity, SharedContext, SwarmMember, SwarmState, VersionedPlan,
     git_common_dir_for, swarm_id_for_dir,
 };
 use crate::agent::Agent;
@@ -26,7 +26,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
     shared_context: &Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
-    file_touches: &Arc<RwLock<HashMap<PathBuf, Vec<FileAccess>>>>,
+    file_touch: &FileTouchService,
     channel_subscriptions: &ChannelSubscriptions,
     server_identity: &ServerIdentity,
 ) -> Result<Option<String>> {
@@ -388,7 +388,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
     }
 
     if cmd == "swarm:touches" {
-        let touches = file_touches.read().await;
+        let touches = file_touch.snapshot().await;
         let members = swarm_members.read().await;
         let mut out: Vec<serde_json::Value> = Vec::new();
         for (path, accesses) in touches.iter() {
@@ -419,7 +419,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
 
     if cmd.starts_with("swarm:touches:") {
         let arg = cmd.strip_prefix("swarm:touches:").unwrap_or("").trim();
-        let touches = file_touches.read().await;
+        let touches = file_touch.snapshot().await;
         let members = swarm_members.read().await;
         let output = if arg.starts_with("swarm:") {
             let swarm_id = arg.strip_prefix("swarm:").unwrap_or("");
@@ -485,7 +485,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
     }
 
     if cmd == "swarm:conflicts" {
-        let touches = file_touches.read().await;
+        let touches = file_touch.snapshot().await;
         let members = swarm_members.read().await;
         let mut out: Vec<serde_json::Value> = Vec::new();
         for (path, accesses) in touches.iter() {
@@ -615,7 +615,7 @@ pub(super) async fn maybe_handle_swarm_read_command(
         let members = swarm_members.read().await;
         let plans = swarm_plans.read().await;
         let ctx = shared_context.read().await;
-        let touches = file_touches.read().await;
+        let touches = file_touch.snapshot().await;
 
         let output = if let Some(session_ids) = swarms.get(swarm_id) {
             let coordinator = coordinators.get(swarm_id);

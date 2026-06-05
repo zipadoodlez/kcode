@@ -18,9 +18,9 @@ use super::comm_sync::{
     handle_comm_resync_plan, handle_comm_status, handle_comm_summary,
 };
 use super::{
-    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, SessionAgents,
-    SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime,
-    VersionedPlan, format_structured_completion_report, truncate_detail,
+    AwaitMembersRuntime, ChannelSubscriptions, ClientConnectionInfo, FileTouchService,
+    SessionAgents, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
+    SwarmMutationRuntime, VersionedPlan, format_structured_completion_report, truncate_detail,
     update_member_status_with_report,
 };
 use crate::config::SwarmSpawnMode;
@@ -28,7 +28,6 @@ use crate::protocol::{Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
@@ -64,7 +63,7 @@ pub(super) struct LightweightControlContext<'a> {
     pub(super) shared_context: &'a Arc<RwLock<HashMap<String, HashMap<String, SharedContext>>>>,
     pub(super) swarm_plans: &'a Arc<RwLock<HashMap<String, VersionedPlan>>>,
     pub(super) swarm_coordinators: &'a Arc<RwLock<HashMap<String, String>>>,
-    pub(super) files_touched_by_session: &'a Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
+    pub(super) file_touch: &'a FileTouchService,
     pub(super) channel_subscriptions: &'a ChannelSubscriptions,
     pub(super) channel_subscriptions_by_session: &'a ChannelSubscriptions,
     pub(super) client_connections: &'a Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
@@ -91,7 +90,7 @@ pub(super) async fn handle_lightweight_control_request(
         shared_context,
         swarm_plans,
         swarm_coordinators,
-        files_touched_by_session,
+        file_touch,
         channel_subscriptions,
         channel_subscriptions_by_session,
         client_connections,
@@ -203,7 +202,7 @@ pub(super) async fn handle_lightweight_control_request(
                 &client_event_tx,
                 swarm_members,
                 swarms_by_id,
-                files_touched_by_session,
+                file_touch,
                 sessions,
                 client_connections,
             )
@@ -427,7 +426,7 @@ pub(super) async fn handle_lightweight_control_request(
                 sessions,
                 swarm_members,
                 client_connections,
-                files_touched_by_session,
+                file_touch,
                 &client_event_tx,
             )
             .await;

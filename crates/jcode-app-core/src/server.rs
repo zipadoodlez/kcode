@@ -58,7 +58,7 @@ use self::runtime::ServerRuntime;
 use self::swarm::{
     broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
     record_swarm_event, record_swarm_event_for_session, refresh_swarm_task_staleness,
-    remove_plan_participant, remove_session_file_touches, remove_session_from_swarm,
+    remove_plan_participant, remove_session_from_swarm,
     rename_plan_participant, run_swarm_message, update_member_status,
     update_member_status_with_report,
 };
@@ -361,6 +361,9 @@ use self::util::{
 mod file_activity;
 use self::file_activity::file_activity_scope_label;
 
+mod file_touch_service;
+pub(crate) use self::file_touch_service::FileTouchService;
+
 #[cfg(test)]
 mod socket_tests;
 
@@ -402,10 +405,8 @@ pub struct Server {
     client_count: Arc<RwLock<usize>>,
     /// Connected client mapping (client_id -> session_id)
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
-    /// Track file touches: path -> list of accesses
-    file_touches: Arc<RwLock<HashMap<PathBuf, Vec<FileAccess>>>>,
-    /// Reverse index for file touches: session_id -> touched paths
-    files_touched_by_session: Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
+    /// File-touch tracking service (forward path index + reverse session index)
+    file_touch: FileTouchService,
     /// Shared ownership of core swarm coordination state.
     swarm_state: SwarmState,
     /// Shared context by swarm (swarm_id -> key -> SharedContext)
@@ -489,8 +490,7 @@ impl Server {
             session_id: Arc::new(RwLock::new(String::new())),
             client_count: Arc::new(RwLock::new(0)),
             client_connections: Arc::new(RwLock::new(HashMap::new())),
-            file_touches: Arc::new(RwLock::new(HashMap::new())),
-            files_touched_by_session: Arc::new(RwLock::new(HashMap::new())),
+            file_touch: FileTouchService::new(),
             swarm_state: SwarmState::new(
                 restored_swarm_members,
                 restored_swarms_by_id,
@@ -1005,8 +1005,7 @@ impl Server {
         }
 
         // Spawn the bus monitor for swarm coordination
-        let monitor_file_touches = Arc::clone(&self.file_touches);
-        let monitor_files_touched_by_session = Arc::clone(&self.files_touched_by_session);
+        let monitor_file_touch = self.file_touch.clone();
         let monitor_swarm_members = Arc::clone(&self.swarm_state.members);
         let monitor_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
         let monitor_swarm_plans = Arc::clone(&self.swarm_state.plans);
@@ -1019,8 +1018,7 @@ impl Server {
         let monitor_swarm_event_tx = self.swarm_event_tx.clone();
         tokio::spawn(async move {
             Self::monitor_bus(
-                monitor_file_touches,
-                monitor_files_touched_by_session,
+                monitor_file_touch,
                 monitor_swarm_members,
                 monitor_swarms_by_id,
                 monitor_swarm_plans,
@@ -1474,8 +1472,7 @@ impl Server {
         reason = "bus monitor needs file state, swarm state, sessions, queues, and event history sinks"
     )]
     async fn monitor_bus(
-        file_touches: Arc<RwLock<HashMap<PathBuf, Vec<FileAccess>>>>,
-        files_touched_by_session: Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
+        file_touch: FileTouchService,
         swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
         swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
         _swarm_plans: Arc<RwLock<HashMap<String, VersionedPlan>>>,
@@ -1495,23 +1492,7 @@ impl Server {
         loop {
             // Periodic cleanup of expired file touches
             if last_cleanup.elapsed() > CLEANUP_INTERVAL {
-                let mut touches = file_touches.write().await;
-                let now = Instant::now();
-                touches.retain(|_, accesses| {
-                    accesses.retain(|a| now.duration_since(a.timestamp) < TOUCH_EXPIRY);
-                    !accesses.is_empty()
-                });
-                let mut rebuilt_reverse_index: HashMap<String, HashSet<PathBuf>> = HashMap::new();
-                for (path, accesses) in touches.iter() {
-                    for access in accesses {
-                        rebuilt_reverse_index
-                            .entry(access.session_id.clone())
-                            .or_default()
-                            .insert(path.clone());
-                    }
-                }
-                drop(touches);
-                *files_touched_by_session.write().await = rebuilt_reverse_index;
+                file_touch.expire_older_than(TOUCH_EXPIRY).await;
                 last_cleanup = Instant::now();
             }
 
@@ -1521,26 +1502,20 @@ impl Server {
                     let session_id = touch.session_id.clone();
 
                     // Record this touch
-                    {
-                        let mut touches = file_touches.write().await;
-                        let accesses = touches.entry(path.clone()).or_insert_with(Vec::new);
-                        accesses.push(FileAccess {
-                            session_id: session_id.clone(),
-                            op: touch.op.clone(),
-                            timestamp: Instant::now(),
-                            absolute_time: std::time::SystemTime::now(),
-                            intent: touch.intent.clone(),
-                            summary: touch.summary.clone(),
-                            detail: touch.detail.clone(),
-                        });
-                    }
-                    {
-                        let mut reverse_index = files_touched_by_session.write().await;
-                        reverse_index
-                            .entry(session_id.clone())
-                            .or_default()
-                            .insert(path.clone());
-                    }
+                    file_touch
+                        .record_touch(
+                            path.clone(),
+                            FileAccess {
+                                session_id: session_id.clone(),
+                                op: touch.op.clone(),
+                                timestamp: Instant::now(),
+                                absolute_time: std::time::SystemTime::now(),
+                                intent: touch.intent.clone(),
+                                summary: touch.summary.clone(),
+                                detail: touch.detail.clone(),
+                            },
+                        )
+                        .await;
 
                     // Record event for subscription
                     {
@@ -1603,12 +1578,11 @@ impl Server {
                         ));
                     }
                     let previous_touches: Vec<FileAccess> = if is_modification {
-                        let touches = file_touches.read().await;
-                        if let Some(accesses) = touches.get(&path) {
+                        if let Some(accesses) = file_touch.accesses_for_path(&path).await {
                             let swarm_session_ids_set: HashSet<String> =
                                 swarm_session_ids.iter().cloned().collect();
                             let result =
-                                latest_peer_touches(accesses, &session_id, &swarm_session_ids_set);
+                                latest_peer_touches(&accesses, &session_id, &swarm_session_ids_set);
                             crate::logging::info(&format!(
                                 "[file-activity] {} prior peer touches ({} total accesses)",
                                 result.len(),

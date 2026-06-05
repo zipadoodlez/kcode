@@ -1,19 +1,16 @@
 use super::{
-    ClientConnectionInfo, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan,
-    broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
+    ClientConnectionInfo, FileTouchService, SwarmEvent, SwarmEventType, SwarmMember, SwarmState,
+    VersionedPlan, broadcast_swarm_plan, persist_swarm_state_for, record_swarm_event,
 };
 use crate::agent::Agent;
 use crate::protocol::{
     AgentStatusSnapshot, NotificationType, PlanGraphStatus, ServerEvent, SessionActivitySnapshot,
 };
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
-
-type SessionFilesTouched = Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>;
 
 pub(super) struct CommResyncPlanContext<'a> {
     pub(super) client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
@@ -255,7 +252,7 @@ pub(super) async fn handle_comm_status(
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
-    files_touched_by_session: &SessionFilesTouched,
+    file_touch: &FileTouchService,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     if !ensure_same_swarm_access(
@@ -281,17 +278,7 @@ pub(super) async fn handle_comm_status(
             return;
         };
 
-        let files_touched = {
-            let touches = files_touched_by_session.read().await;
-            let mut files: Vec<String> = touches
-                .get(&target_session)
-                .into_iter()
-                .flat_map(|paths| paths.iter())
-                .map(|path| path.display().to_string())
-                .collect();
-            files.sort();
-            files
-        };
+        let files_touched = file_touch.sorted_file_strings_for_session(&target_session).await;
 
         let activity = {
             let connections = client_connections.read().await;
