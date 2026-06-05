@@ -2154,6 +2154,34 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
     }
 
     let mut client = crate::server::Client::connect().await?;
+
+    // Before asking the (possibly older) daemon to reload, repair a stale
+    // `shared-server` channel from the client side. The running server resolves
+    // its reload target from that channel; if it still points at the server's
+    // own old binary (the "current client, stale server" state, e.g. after a
+    // no-op `/update`), a forced reload would just re-exec the same old binary.
+    // Repointing shared-server -> stable when stable is strictly newer gives the
+    // reload a newer binary to exec into. Never downgrades; preserves a fresher
+    // self-dev pin. Best-effort: a failure here must not block the reload.
+    match crate::build::repair_stale_shared_server_channel() {
+        Ok(crate::build::SharedServerRepair::Repaired {
+            repaired_to,
+            previous,
+        }) => {
+            crate::logging::info(&format!(
+                "server reload: repaired stale shared-server channel {:?} -> {} before reload",
+                previous, repaired_to
+            ));
+        }
+        Ok(crate::build::SharedServerRepair::AlreadyCurrent) => {}
+        Err(err) => {
+            crate::logging::warn(&format!(
+                "server reload: shared-server channel repair failed (continuing): {}",
+                err
+            ));
+        }
+    }
+
     let request_id = client.reload_with_force(force).await?;
 
     let mut reloading = false;
