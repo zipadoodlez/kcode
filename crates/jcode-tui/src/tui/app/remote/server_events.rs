@@ -398,6 +398,15 @@ pub(in crate::tui::app) fn handle_server_event(
             if app.record_completed_stream_cache_usage() {
                 app.total_input_tokens = app.total_input_tokens.saturating_add(input);
                 app.total_output_tokens = app.total_output_tokens.saturating_add(output);
+                // The server only reports tokens, never a dollar cost, so the
+                // remote client prices each completed call itself. This is the
+                // first usage snapshot for this call, so bill the full counts.
+                app.accrue_remote_call_cost(
+                    input,
+                    output,
+                    app.streaming_cache_read_tokens.unwrap_or(0),
+                    app.streaming_cache_creation_tokens.unwrap_or(0),
+                );
                 app.last_api_completed = Some(Instant::now());
                 app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
                 app.last_api_completed_model = Some(<App as TuiState>::provider_model(app));
@@ -409,6 +418,19 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.total_output_tokens = app
                     .total_output_tokens
                     .saturating_add(output.saturating_sub(previous_output));
+                // Bill only the new tokens since the previous snapshot for this
+                // same call, so a call that reports usage multiple times while
+                // streaming is billed exactly once overall.
+                app.accrue_remote_call_cost(
+                    input.saturating_sub(previous_input),
+                    output.saturating_sub(previous_output),
+                    app.streaming_cache_read_tokens
+                        .unwrap_or(0)
+                        .saturating_sub(previous_cache_read.unwrap_or(0)),
+                    app.streaming_cache_creation_tokens
+                        .unwrap_or(0)
+                        .saturating_sub(previous_cache_creation.unwrap_or(0)),
+                );
 
                 let had_cache_telemetry =
                     previous_cache_read.is_some() || previous_cache_creation.is_some();
