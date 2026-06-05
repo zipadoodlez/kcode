@@ -153,7 +153,14 @@ pub struct VertexGenerateContentRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiContent {
+    // Requests always set `role` (see `build_contents`), but `generateContent`
+    // responses occasionally omit it on a candidate's `content` (observed on
+    // Antigravity/Cloud Code Gemini-3 turns). The response-side value is never
+    // read, so default it rather than failing the whole decode with
+    // "missing field `role`".
+    #[serde(default)]
     pub role: String,
+    #[serde(default)]
     pub parts: Vec<GeminiPart>,
 }
 
@@ -464,5 +471,55 @@ mod tests {
                 "gemini-3-flash-preview".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn candidate_content_decodes_without_role() {
+        // Antigravity/Cloud Code Gemini-3 responses occasionally omit `role` on
+        // a candidate's `content` (and sometimes `parts` entirely). The whole
+        // generateContent decode used to fail with "missing field `role`",
+        // which aborted the turn; assert the response now decodes and the
+        // function call survives.
+        let raw = json!({
+            "response": {
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "functionCall": {"name": "read", "args": {"file_path": "/tmp/x"}},
+                            "thoughtSignature": "SIG_XYZ"
+                        }]
+                    },
+                    "finishReason": "STOP"
+                }]
+            }
+        })
+        .to_string();
+
+        let decoded: CodeAssistGenerateResponse =
+            serde_json::from_str(&raw).expect("decode response with role-less content");
+        let candidates = decoded.response.unwrap().candidates.unwrap();
+        let part = &candidates[0].content.as_ref().unwrap().parts[0];
+        assert_eq!(part.function_call.as_ref().unwrap().name, "read");
+        assert_eq!(part.thought_signature.as_deref(), Some("SIG_XYZ"));
+    }
+
+    #[test]
+    fn candidate_content_decodes_without_parts() {
+        // A bare `content: {}` (no `role`, no `parts`) must not abort the decode.
+        let raw = json!({
+            "response": {
+                "candidates": [{ "content": {}, "finishReason": "STOP" }]
+            }
+        })
+        .to_string();
+
+        let decoded: CodeAssistGenerateResponse =
+            serde_json::from_str(&raw).expect("decode response with empty content");
+        let content = decoded.response.unwrap().candidates.unwrap()[0]
+            .content
+            .clone()
+            .unwrap();
+        assert!(content.role.is_empty());
+        assert!(content.parts.is_empty());
     }
 }
