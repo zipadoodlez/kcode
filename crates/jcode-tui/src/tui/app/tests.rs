@@ -407,6 +407,52 @@ fn version_command_shows_remote_server_identity_and_update_status() {
 }
 
 #[test]
+fn skills_command_lists_loaded_and_endorsed_skills() {
+    let mut app = create_test_app();
+
+    assert!(super::state_ui::handle_info_command(&mut app, "/skills"));
+    let content = app.display_messages().last().unwrap().content.clone();
+
+    assert!(content.contains("Loaded skills"), "{content}");
+    assert!(
+        content.contains("Endorsed skills (recommended by jcode)"),
+        "{content}"
+    );
+    // Every endorsed skill should appear with an install status marker.
+    for endorsed in crate::skill::endorsed_skills() {
+        assert!(
+            content.contains(&format!("/{}", endorsed.name)),
+            "expected endorsed skill /{} in:\n{content}",
+            endorsed.name
+        );
+    }
+    assert!(
+        content.contains("[installed]") || content.contains("[not installed]"),
+        "{content}"
+    );
+    assert_eq!(
+        app.display_messages().last().unwrap().title.as_deref(),
+        Some("Skills")
+    );
+}
+
+#[test]
+fn skills_command_marks_active_skill_in_remote_mode() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_skills = vec!["optimization".to_string(), "firefox-browser".to_string()];
+    app.active_skill = Some("optimization".to_string());
+
+    assert!(super::state_ui::handle_info_command(&mut app, "/skills"));
+    let content = app.display_messages().last().unwrap().content.clone();
+
+    assert!(content.contains("- /optimization (active)"), "{content}");
+    assert!(content.contains("- /firefox-browser\n"), "{content}");
+    // Endorsed list should mark remote-installed skills as installed.
+    assert!(content.contains("/firefox-browser [installed]"), "{content}");
+}
+
+#[test]
 fn update_command_reloads_stale_remote_server_before_client_update_check() {
     use tokio::io::AsyncBufReadExt;
 
