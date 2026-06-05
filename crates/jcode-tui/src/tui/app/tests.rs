@@ -430,6 +430,20 @@ fn skills_command_lists_loaded_and_endorsed_skills() {
         content.contains("[installed]") || content.contains("[not installed]"),
         "{content}"
     );
+    // NVIDIA CUDA-X skills are grouped under their own category with install hints.
+    assert!(content.contains("NVIDIA CUDA-X"), "{content}");
+    assert!(
+        content.contains("/cuopt-numerical-optimization-api-python"),
+        "{content}"
+    );
+    assert!(
+        content.contains("install: npx skills add nvidia/skills"),
+        "{content}"
+    );
+    assert!(
+        content.contains("https://github.com/NVIDIA/skills"),
+        "{content}"
+    );
     assert_eq!(
         app.display_messages().last().unwrap().title.as_deref(),
         Some("Skills")

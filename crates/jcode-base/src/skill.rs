@@ -429,28 +429,179 @@ pub struct EndorsedSkill {
     pub name: &'static str,
     /// One-line description of what the skill does.
     pub description: &'static str,
+    /// Grouping label used to organize the endorsed list (e.g. "jcode",
+    /// "NVIDIA CUDA-X").
+    pub category: &'static str,
     /// Where users can get the skill (repo path, URL, or short note).
     pub source: &'static str,
+    /// Optional install command/hint shown when the skill is not installed.
+    pub install: Option<&'static str>,
 }
 
 /// Curated list of skills endorsed by jcode. Used by the `/skills` command to
 /// show users which recommended skills they have installed and which they are
 /// missing. This is the single source of truth for endorsed skills.
+///
+/// The NVIDIA CUDA-X entries mirror the official NVIDIA-verified catalog at
+/// <https://github.com/NVIDIA/skills>; install them with
+/// `npx skills add nvidia/skills --skill <name> --yes`.
 pub const ENDORSED_SKILLS: &[EndorsedSkill] = &[
     EndorsedSkill {
         name: "optimization",
         description: "Improve performance, latency, throughput, memory usage, or general efficiency by defining metrics, measuring, attributing bottlenecks, and prioritizing macro-optimizations.",
+        category: "jcode",
         source: "bundled in jcode repo (.jcode/skills/optimization)",
+        install: None,
     },
     EndorsedSkill {
         name: "todo-planning-skill",
         description: "Create thorough, well-structured todo lists for long tasks, including reflection, static analysis, verification, and next-step updates.",
+        category: "jcode",
         source: "bundled with jcode / Claude Code skills",
+        install: None,
     },
     EndorsedSkill {
         name: "firefox-browser",
         description: "Control the user's Firefox browser with their logins and cookies intact to browse, fill forms, click, screenshot, and read authenticated pages.",
+        category: "jcode",
         source: "bundled with jcode / Claude Code skills",
+        install: None,
+    },
+    // NVIDIA CUDA-X / GPU accelerated-computing skills from the official
+    // NVIDIA-verified catalog (github.com/NVIDIA/skills).
+    EndorsedSkill {
+        name: "cuopt-developer",
+        description: "Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI) — solver internals, PRs, DCO, and code conventions.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-developer --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-install",
+        description: "Install NVIDIA cuOpt for Python, C, or server via pip, conda, or Docker, and verify the install.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-install --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-api-c",
+        description: "Solve LP, MILP, and QP (beta) with the cuOpt C API for embedding optimization in C/C++.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-api-c --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-api-cli",
+        description: "Solve LP, MILP, and QP (beta) with cuOpt from MPS files via the cuopt_cli command line.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-api-cli --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-api-python",
+        description: "Solve LP, MILP, and QP (beta) with the cuOpt Python API — linear/quadratic objectives, integer variables, scheduling, portfolio, and least squares.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-api-python --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-formulation",
+        description: "LP, MILP, and QP concepts and formulation patterns (parameters, constraints, decisions, objective). Concepts only; no API.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-formulation --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-routing-api-python",
+        description: "Solve vehicle routing (VRP, TSP, PDP) with the cuOpt Python API.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-routing-api-python --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-routing-formulation",
+        description: "Vehicle routing (VRP, TSP, PDP) problem types and data requirements. Domain concepts; no API or interface.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-routing-formulation --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-server-api-python",
+        description: "Run the cuOpt REST server — start it, call endpoints, and use Python/curl client examples.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-server-api-python --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-server-common",
+        description: "Understand what the cuOpt REST server does and how requests flow. Concepts only; no deploy or client code.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-server-common --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-user-rules",
+        description: "Base rules for end users calling NVIDIA cuOpt (routing/LP/MILP/QP/install/server).",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-user-rules --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-install",
+        description: "Install and verify NVIDIA cuPyNumeric (NumPy/SciPy on multi-node multi-GPU) for Python — requirements, commands, and verification.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-install --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-migration-readiness",
+        description: "Assess NumPy code before porting to cuPyNumeric — which patterns scale on GPU, what must be refactored, and a READY/REFACTOR/NOT-RECOMMENDED verdict.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-migration-readiness --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-hdf5",
+        description: "Read and write large cuPyNumeric arrays to HDF5 with Legate's parallel, distributed HDF5 I/O (legate.io.hdf5), including GPUDirect Storage.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-hdf5 --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-parallel-data-load",
+        description: "Load sharded on-disk datasets (.npy, Parquet/Arrow, raw binary, sharded HDF5) into a distributed cuPyNumeric ndarray via manual partition + leaf task launch.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-parallel-data-load --yes"),
+    },
+    EndorsedSkill {
+        name: "accelerated-computing-cudf",
+        description: "Official NVIDIA guidance for cuDF GPU DataFrames, pandas acceleration, dask-cuDF, ETL, joins, groupby, CSV/Parquet I/O, and multi-GPU DataFrame workloads.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill accelerated-computing-cudf --yes"),
+    },
+    EndorsedSkill {
+        name: "cudaq-guide",
+        description: "NVIDIA CUDA-Q (CUDA Quantum) onboarding guide for installation, test programs, GPU simulation, QPU hardware, and quantum applications.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cudaq-guide --yes"),
+    },
+    EndorsedSkill {
+        name: "tilegym-adding-cutile-kernel",
+        description: "Add a new cuTile GPU kernel operator to NVIDIA TileGym — dispatch registration, cuTile backend implementation, exports, tests, and benchmarks.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill tilegym-adding-cutile-kernel --yes"),
     },
 ];
 
@@ -612,6 +763,11 @@ mod tests {
                 skill.name
             );
             assert!(
+                !skill.category.is_empty(),
+                "endorsed skill {} needs a category",
+                skill.name
+            );
+            assert!(
                 !skill.source.is_empty(),
                 "endorsed skill {} needs a source",
                 skill.name
@@ -620,10 +776,43 @@ mod tests {
                 !skill.name.starts_with('/'),
                 "endorsed skill name should not include the leading slash"
             );
+            if let Some(install) = skill.install {
+                assert!(
+                    install.contains(skill.name),
+                    "endorsed skill {} install hint should reference its name",
+                    skill.name
+                );
+            }
             assert!(
                 seen.insert(skill.name),
                 "duplicate endorsed skill name: {}",
                 skill.name
+            );
+        }
+    }
+
+    #[test]
+    fn endorsed_skills_include_nvidia_cuda_x_catalog() {
+        let endorsed = endorsed_skills();
+        // Spot-check representative NVIDIA CUDA-X skills sourced from the
+        // official NVIDIA/skills catalog.
+        for expected in [
+            "cuopt-numerical-optimization-api-python",
+            "cupynumeric-install",
+            "accelerated-computing-cudf",
+            "cudaq-guide",
+            "tilegym-adding-cutile-kernel",
+        ] {
+            let skill = endorsed
+                .iter()
+                .find(|s| s.name == expected)
+                .unwrap_or_else(|| panic!("expected endorsed NVIDIA skill {expected}"));
+            assert_eq!(skill.category, "NVIDIA CUDA-X");
+            assert!(
+                skill
+                    .install
+                    .is_some_and(|cmd| cmd.contains("nvidia/skills")),
+                "NVIDIA skill {expected} should have an nvidia/skills install hint"
             );
         }
     }

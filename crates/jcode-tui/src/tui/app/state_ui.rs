@@ -1514,19 +1514,50 @@ fn build_skills_report(app: &App) -> String {
                 .collect()
         };
     out.push_str("\nEndorsed skills (recommended by jcode)\n");
+    // Group by category, preserving first-seen category order.
+    let mut category_order: Vec<&str> = Vec::new();
     for endorsed in crate::skill::endorsed_skills() {
-        let status = if installed.contains(endorsed.name) {
-            "installed"
-        } else {
-            "not installed"
-        };
-        out.push_str(&format!("- /{} [{}]\n", endorsed.name, status));
-        out.push_str(&format!("    {}\n", endorsed.description));
-        out.push_str(&format!("    source: {}\n", endorsed.source));
+        if !category_order.contains(&endorsed.category) {
+            category_order.push(endorsed.category);
+        }
+    }
+    for category in category_order {
+        let installed_in_category = crate::skill::endorsed_skills()
+            .iter()
+            .filter(|e| e.category == category && installed.contains(e.name))
+            .count();
+        let total_in_category = crate::skill::endorsed_skills()
+            .iter()
+            .filter(|e| e.category == category)
+            .count();
+        out.push_str(&format!(
+            "\n  {} ({}/{} installed)\n",
+            category, installed_in_category, total_in_category
+        ));
+        for endorsed in crate::skill::endorsed_skills()
+            .iter()
+            .filter(|e| e.category == category)
+        {
+            let is_installed = installed.contains(endorsed.name);
+            let status = if is_installed {
+                "installed"
+            } else {
+                "not installed"
+            };
+            out.push_str(&format!("  - /{} [{}]\n", endorsed.name, status));
+            out.push_str(&format!("      {}\n", endorsed.description));
+            out.push_str(&format!("      source: {}\n", endorsed.source));
+            if !is_installed && let Some(install) = endorsed.install {
+                out.push_str(&format!("      install: {}\n", install));
+            }
+        }
     }
 
     out.push_str("\nActivate a skill by typing its slash command (e.g. /optimization).\n");
     out.push_str("Manage skills with the skill_manage tool (list/load/read/reload).\n");
+    out.push_str(
+        "NVIDIA CUDA-X skills come from the official catalog at https://github.com/NVIDIA/skills.\n",
+    );
 
     out.trim_end().to_string()
 }
