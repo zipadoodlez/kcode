@@ -2670,6 +2670,11 @@ pub fn load_sessions_grouped() -> Result<(Vec<ServerGroup>, Vec<SessionInfo>)> {
 /// jcode snapshot, the other CLIs, and listing servers) is wasted there. This
 /// scoped loader keeps onboarding responsive by touching only the relevant
 /// transcripts.
+///
+/// The live onboarding flow now uses [`load_external_cli_sessions_grouped_multi`]
+/// (it shows every logged-in CLI together), so this single-CLI variant is kept
+/// only as a focused test helper.
+#[cfg(test)]
 pub(crate) fn load_external_cli_sessions_grouped(
     cli: crate::tui::app::onboarding_flow::ExternalCli,
 ) -> (Vec<ServerGroup>, Vec<SessionInfo>) {
@@ -2679,6 +2684,39 @@ pub(crate) fn load_external_cli_sessions_grouped(
         ExternalCli::Codex => load_external_codex_sessions(scan_limit),
         ExternalCli::ClaudeCode => load_external_claude_code_sessions(scan_limit),
     };
+    (Vec::new(), sessions)
+}
+
+/// Load sessions for several external CLIs at once (Codex and/or Claude Code),
+/// returned as a single combined orphan list compatible with
+/// `SessionPicker::new_grouped`.
+///
+/// First-run onboarding's "continue where you left off" picker shows every
+/// external CLI the user is logged into, not just one, so it loads all of them
+/// here. Each CLI is still scoped to its own transcripts (no jcode snapshots /
+/// servers), keeping onboarding responsive. The picker sorts the merged result
+/// by recency, so the newest session across all CLIs floats to the top.
+pub(crate) fn load_external_cli_sessions_grouped_multi(
+    clis: &[crate::tui::app::onboarding_flow::ExternalCli],
+) -> (Vec<ServerGroup>, Vec<SessionInfo>) {
+    use crate::tui::app::onboarding_flow::ExternalCli;
+    let scan_limit = session_scan_limit();
+    let mut sessions = Vec::new();
+    let mut seen_codex = false;
+    let mut seen_claude = false;
+    for cli in clis {
+        match cli {
+            ExternalCli::Codex if !seen_codex => {
+                seen_codex = true;
+                sessions.extend(load_external_codex_sessions(scan_limit));
+            }
+            ExternalCli::ClaudeCode if !seen_claude => {
+                seen_claude = true;
+                sessions.extend(load_external_claude_code_sessions(scan_limit));
+            }
+            _ => {}
+        }
+    }
     (Vec::new(), sessions)
 }
 

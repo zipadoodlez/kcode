@@ -411,7 +411,7 @@ fn no_external_transcripts_lands_on_suggestions_without_autosubmit() {
         // Temp home has no Codex transcripts, so opening the picker should land
         // the user on the clean new-session suggestion cards rather than
         // auto-submitting a "search for my last session" turn.
-        app.onboarding_open_transcript_picker(ExternalCli::Codex);
+        app.onboarding_open_transcript_picker(&[ExternalCli::Codex]);
         assert!(matches!(
             app.onboarding_phase(),
             Some(OnboardingPhase::Suggestions)
@@ -430,6 +430,72 @@ fn onboarding_picker_mode_carries_cli() {
     };
     assert!(matches!(mode, SessionPickerMode::Onboarding { .. }));
     assert_ne!(mode, SessionPickerMode::Resume);
+}
+
+#[test]
+fn onboarding_picker_shows_both_codex_and_claude_transcripts() {
+    use std::fs;
+    with_temp_jcode_home(|| {
+        // Seed one Codex transcript and one Claude Code transcript under the
+        // sandbox-aware external home ($JCODE_HOME/external/...), mirroring a
+        // user who is logged into BOTH CLIs.
+        let home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME");
+        let external = std::path::Path::new(&home).join("external");
+
+        let codex_dir = external.join(".codex/sessions/2026/04/05");
+        fs::create_dir_all(&codex_dir).expect("codex dir");
+        fs::write(
+            codex_dir.join("rollout-2026-04-05T19-00-00-codextest.jsonl"),
+            concat!(
+                "{\"timestamp\":\"2026-04-05T19:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"019d-codex-both\",\"timestamp\":\"2026-04-05T18:59:00Z\",\"cwd\":\"/tmp/codex-demo\",\"source\":\"cli\"}}\n",
+                "{\"timestamp\":\"2026-04-05T19:00:03Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"CODEX_MARKER fix the widget\"}]}}\n",
+            ),
+        )
+        .expect("write codex transcript");
+
+        let claude_dir = external.join(".claude/projects/demo-project");
+        fs::create_dir_all(&claude_dir).expect("claude dir");
+        fs::write(
+            claude_dir.join("claude-session-both.jsonl"),
+            concat!(
+                "{\"type\":\"user\",\"uuid\":\"u1\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"CLAUDE_MARKER fix the flaky test\"}]}}\n",
+                "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"done\"}]}}\n"
+            ),
+        )
+        .expect("write claude transcript");
+
+        let mut app = onboarding_test_app();
+        // Open the combined picker for BOTH detected CLIs.
+        app.onboarding_open_transcript_picker(&[ExternalCli::Codex, ExternalCli::ClaudeCode]);
+
+        // The picker overlay should be up with both CLIs' sessions visible
+        // (not just one).
+        let picker_cell = app
+            .session_picker_overlay
+            .as_ref()
+            .expect("picker overlay should be open");
+        let picker = picker_cell.borrow();
+        assert!(
+            picker.visible_session_count() >= 2,
+            "combined picker should list both CLIs' sessions, got {}",
+            picker.visible_session_count()
+        );
+
+        let mut saw_codex = false;
+        let mut saw_claude = false;
+        for session in picker.visible_session_iter_for_test() {
+            match session.source {
+                jcode_tui_session_picker::SessionSource::Codex => saw_codex = true,
+                jcode_tui_session_picker::SessionSource::ClaudeCode => saw_claude = true,
+                _ => {}
+            }
+        }
+        assert!(saw_codex, "Codex session should be present in combined picker");
+        assert!(
+            saw_claude,
+            "Claude Code session should be present in combined picker"
+        );
+    });
 }
 
 #[test]

@@ -34,7 +34,7 @@ mod render;
 #[cfg(test)]
 use loading::collect_recent_session_stems;
 pub(crate) use loading::latest_external_cli_session_secs;
-pub(crate) use loading::load_external_cli_sessions_grouped;
+pub(crate) use loading::load_external_cli_sessions_grouped_multi;
 use loading::{build_messages_preview, build_search_index, crashed_sessions_from_all_sessions};
 pub use loading::{
     invalidate_session_list_cache, load_cached_sessions_grouped, load_servers, load_sessions,
@@ -523,6 +523,16 @@ impl SessionPicker {
         self.visible_sessions
             .iter()
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
+    }
+
+    /// Test-only accessor: the source classification of every currently visible
+    /// session. Used by onboarding tests to assert the combined external-CLI
+    /// picker surfaces both Codex and Claude Code transcripts.
+    #[cfg(test)]
+    pub(crate) fn visible_session_iter_for_test(
+        &self,
+    ) -> impl Iterator<Item = &SessionInfo> + '_ {
+        self.visible_session_iter()
     }
 
     fn load_preview_for_target(
