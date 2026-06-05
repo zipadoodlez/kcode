@@ -859,6 +859,15 @@ impl Provider for GeminiProvider {
                             pending_signature = Some(signature);
                         }
                     }
+                    // A thought signature not consumed by a following function
+                    // call (e.g. a pure-text reasoning turn) is still an opaque
+                    // reasoning signal. Surface it as a ThinkingSignatureDelta
+                    // instead of dropping it.
+                    if let Some(signature) = pending_signature.take() {
+                        let _ = tx
+                            .send(Ok(StreamEvent::ThinkingSignatureDelta(signature)))
+                            .await;
+                    }
                 }
             }
 

@@ -1084,6 +1084,16 @@ impl Provider for AntigravityProvider {
                         pending_signature = Some(signature);
                     }
                 }
+                // A thought signature that was never consumed by a following
+                // function call (e.g. a pure-text reasoning turn) is still an
+                // opaque reasoning signal. Surface it as a ThinkingSignatureDelta
+                // rather than dropping it, so reasoning-aware consumers (and the
+                // provider-doctor reasoning probe) can see the model reasoned.
+                if let Some(signature) = pending_signature.take() {
+                    let _ = tx
+                        .send(Ok(StreamEvent::ThinkingSignatureDelta(signature)))
+                        .await;
+                }
             }
 
             let _ = tx
