@@ -262,7 +262,7 @@ impl App {
             seven_day_resets_at: None,
             spark: None,
             spark_resets_at: None,
-            total_cost: self.total_cost,
+            total_cost: self.cost.total_cost,
             input_tokens: self.token_accounting.total_input_tokens,
             output_tokens: self.token_accounting.total_output_tokens,
             cache_read_tokens: self.streaming.streaming_cache_read_tokens,

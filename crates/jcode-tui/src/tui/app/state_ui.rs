@@ -1217,16 +1217,16 @@ fn format_cache_stats(app: &App) -> String {
         "- client_observed_completed_output_tokens: {}",
         bold_count(app.token_accounting.total_output_tokens)
     ));
-    lines.push(format!("- total_cost_usd: {:.6}", app.total_cost));
+    lines.push(format!("- total_cost_usd: {:.6}", app.cost.total_cost));
     lines.push(format!(
         "- cached_prompt_price_per_1m: {}",
-        app.cached_prompt_price
+        app.cost.cached_prompt_price
             .map(|price| format!("{:.6}", price))
             .unwrap_or_else(|| "None".to_string())
     ));
     lines.push(format!(
         "- cached_completion_price_per_1m: {}",
-        app.cached_completion_price
+        app.cost.cached_completion_price
             .map(|price| format!("{:.6}", price))
             .unwrap_or_else(|| "None".to_string())
     ));

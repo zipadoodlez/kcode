@@ -780,7 +780,7 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         app.update_cost_impl();
 
         assert!(
-            app.total_cost > 0.0,
+            app.cost.total_cost > 0.0,
             "{runtime_provider} should accrue token cost"
         );
 
@@ -807,7 +807,7 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     app.token_accounting.total_input_tokens = 12_000;
     app.token_accounting.total_output_tokens = 3_400;
     app.update_cost_impl();
-    assert_eq!(app.total_cost, 0.0);
+    assert_eq!(app.cost.total_cost, 0.0);
 
     let data = crate::tui::TuiState::info_widget_data(&app);
     assert_eq!(
@@ -824,7 +824,7 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     app.token_accounting.total_input_tokens = 12_000;
     app.token_accounting.total_output_tokens = 3_400;
     app.update_cost_impl();
-    assert_eq!(app.total_cost, 0.0);
+    assert_eq!(app.cost.total_cost, 0.0);
 
     let data = crate::tui::TuiState::info_widget_data(&app);
     assert_eq!(

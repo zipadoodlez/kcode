@@ -619,6 +619,24 @@ struct StreamingProgress {
     streaming_tps_observed_elapsed: Duration,
 }
 
+/// Accumulated session cost and cached per-model pricing.
+///
+/// Grouped out of [`App`]. `total_cost` accrues across the session; the cached
+/// price fields memoize the active model's pricing so they are re-resolved only
+/// when `cached_price_model` no longer matches the current model.
+#[derive(Clone, Debug, Default)]
+struct CostState {
+    // Total cost in USD (for API-key providers)
+    total_cost: f32,
+    // Cached pricing (input $/1M tokens, output $/1M tokens)
+    cached_prompt_price: Option<f32>,
+    cached_completion_price: Option<f32>,
+    // Cached cache-read pricing ($/1M tokens), when known for the active model.
+    cached_cache_read_price: Option<f32>,
+    // Model the cached_*_price values were resolved for, so we re-resolve on switch.
+    cached_price_model: Option<String>,
+}
+
 /// State for an in-progress OAuth/API-key login flow triggered by `/login`.
 /// TUI Application state
 pub struct App {
@@ -658,15 +676,8 @@ pub struct App {
     token_accounting: TokenAccounting,
     // KV cache baseline tracking + per-turn miss attribution.
     kv_cache: KvCacheState,
-    // Total cost in USD (for API-key providers)
-    total_cost: f32,
-    // Cached pricing (input $/1M tokens, output $/1M tokens)
-    cached_prompt_price: Option<f32>,
-    cached_completion_price: Option<f32>,
-    // Cached cache-read pricing ($/1M tokens), when known for the active model.
-    cached_cache_read_price: Option<f32>,
-    // Model the cached_*_price values were resolved for, so we re-resolve on switch.
-    cached_price_model: Option<String>,
+    // Accumulated session cost + cached per-model pricing.
+    cost: CostState,
     // Context limit tracking (for compaction warning)
     context_limit: u64,
     context_warning_shown: bool,
