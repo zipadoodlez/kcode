@@ -1632,9 +1632,17 @@ pub(crate) fn copy_pane_vertical_edge_point(
     let zone = edge_autoscroll_zone_rows(area.height);
     let top_trigger = area.y.saturating_add(zone);
     let bottom_trigger = last_row.saturating_sub(zone);
-    let (edge_row, upward) = if row <= top_trigger {
+    // Only engage the hot zone when there is actually more transcript to pull in
+    // that direction. Otherwise dragging into the bottom band while the view is
+    // already pinned to the end (the common case) would snap the selection to the
+    // last visible line and fight precise highlighting of the bottom rows. When
+    // there is nothing to scroll, fall through (`None`) so the caller extends the
+    // selection to the exact cell under the cursor instead.
+    let can_scroll_up = snapshot.scroll > 0;
+    let can_scroll_down = snapshot.visible_end < snapshot.wrapped_plain_line_count();
+    let (edge_row, upward) = if row <= top_trigger && can_scroll_up {
         (area.y, true)
-    } else if row >= bottom_trigger {
+    } else if row >= bottom_trigger && can_scroll_down {
         (last_row, false)
     } else {
         return None;

@@ -979,6 +979,118 @@ fn test_copy_selection_drag_near_top_edge_keeps_auto_scrolling() {
 }
 
 #[test]
+fn test_copy_selection_drag_to_bottom_edge_when_pinned_does_not_snap_or_autoscroll() {
+    // Regression: when the transcript is already pinned to the bottom (the common
+    // case), dragging a selection into the bottom edge "hot zone" used to always
+    // snap the cursor to the very last visible line and arm a downward autoscroll,
+    // even though there is nothing more below to scroll into. That made it
+    // impossible to precisely highlight the bottom rows: the selection kept
+    // jumping to the end. With nothing to scroll, the edge band must stay inert so
+    // the selection lands on the exact line under the cursor.
+    let _render_lock = scroll_render_test_lock();
+    let mut app = create_test_app();
+
+    // Tall transcript pinned to the bottom: the bottom rows of the pane are
+    // filled with real content, and there is nothing below to scroll into.
+    let lines = (1..=200)
+        .map(|idx| format!("line {idx:03}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    app.display_messages = vec![DisplayMessage {
+        role: "assistant".to_string(),
+        content: lines,
+        tool_calls: vec![],
+        duration_secs: None,
+        title: None,
+        tool_data: None,
+    }];
+    app.bump_display_messages_version();
+    app.scroll_offset = 0;
+    app.auto_scroll_paused = false;
+    app.is_processing = false;
+    app.streaming_text.clear();
+    app.status = ProcessingStatus::Idle;
+
+    let backend = ratatui::backend::TestBackend::new(60, 16);
+    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
+    render_and_snap(&app, &mut terminal);
+
+    app.handle_key(KeyCode::Char('y'), KeyModifiers::ALT)
+        .unwrap();
+
+    let (visible_start, visible_end) =
+        crate::tui::ui::copy_viewport_visible_range().expect("visible copy range");
+    let line_count = crate::tui::ui::copy_viewport_line_count().expect("line count");
+    assert_eq!(
+        visible_end, line_count,
+        "test precondition: view must be pinned to the bottom with no content below"
+    );
+    assert!(
+        visible_start > 0,
+        "test precondition: tall transcript must have content scrolled above the view"
+    );
+
+    let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
+    let area = layout.messages_area;
+    let col = area.x + 1;
+
+    // Pick a real content line near (but not at) the bottom to target.
+    let target_line = visible_end.saturating_sub(2);
+    assert!(target_line >= visible_start, "need a visible target line");
+    let target_row = area.y + (target_line - visible_start) as u16;
+    // The bottom edge band covers the last few rows; target_row must sit inside
+    // it for this regression to be meaningful.
+    let last_row = area.y + area.height - 1;
+    assert!(
+        target_row >= last_row.saturating_sub(2),
+        "target line must fall within the bottom edge hot zone"
+    );
+
+    // Anchor higher up in the viewport.
+    let anchor_row = area.y + 1;
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: col,
+        row: anchor_row,
+        modifiers: KeyModifiers::empty(),
+    });
+    let before_scroll = app.scroll_offset();
+
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
+        column: col,
+        row: target_row,
+        modifiers: KeyModifiers::empty(),
+    });
+
+    // No autoscroll should be armed: there is nothing below to pull in.
+    assert!(
+        !crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app),
+        "edge autoscroll must not arm when pinned to the bottom with no content below"
+    );
+    assert_eq!(
+        app.scroll_offset(),
+        before_scroll,
+        "dragging into the bottom band while pinned must not scroll"
+    );
+
+    // The selection end should land on the exact line under the cursor, not snap
+    // to the very last line of the transcript.
+    let range = app.normalized_copy_selection().expect("normalized range");
+    assert_eq!(
+        range.end.abs_line, target_line,
+        "selection should extend to the line under the cursor, not snap to the last line"
+    );
+
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: col,
+        row: target_row,
+        modifiers: KeyModifiers::empty(),
+    });
+}
+
+#[test]
 fn test_alt_a_copies_chat_viewport_with_context_when_input_empty() {
     let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
