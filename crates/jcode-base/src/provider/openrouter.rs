@@ -1046,6 +1046,45 @@ impl OpenRouterProvider {
         self.supports_provider_features
     }
 
+    /// Human-facing label for the runtime backing this provider instance.
+    ///
+    /// Unlike the env-var based [`crate::provider_catalog::runtime_provider_display_name`],
+    /// this reads the instance's own `profile_id`/`api_base`, so it stays correct
+    /// after a runtime `/model` switch to a different OpenAI-compatible profile
+    /// (e.g. NVIDIA NIM) even though `name()` is fixed at `"openrouter"`.
+    pub(crate) fn runtime_display_name(&self) -> String {
+        // Direct OpenAI-compatible profile (NVIDIA NIM, DeepSeek, Z.AI, ...).
+        if let Some(profile_id) = self.profile_id.as_deref() {
+            if let Some(profile) = openai_compatible_profile_by_id(profile_id) {
+                return profile.display_name.to_string();
+            }
+            return profile_id.to_string();
+        }
+
+        // Non-aggregator endpoint without a known profile id: classify by base
+        // URL so custom OpenAI-compatible endpoints don't masquerade as the
+        // public OpenRouter aggregator.
+        if !self.supports_provider_features {
+            if let Some(profile_id) =
+                crate::provider_catalog::openai_compatible_profile_id_for_api_base(&self.api_base)
+                && let Some(profile) = openai_compatible_profile_by_id(profile_id)
+            {
+                return profile.display_name.to_string();
+            }
+            if std::env::var("JCODE_RUNTIME_PROVIDER")
+                .ok()
+                .is_some_and(|value| value.trim().eq_ignore_ascii_case("azure-openai"))
+            {
+                return "Azure OpenAI".to_string();
+            }
+            if !self.api_base.contains("openrouter.ai") {
+                return "OpenAI-compatible".to_string();
+            }
+        }
+
+        "OpenRouter".to_string()
+    }
+
     pub(crate) fn direct_openai_compatible_route_parts(&self) -> Option<(String, String, String)> {
         if self.supports_provider_features {
             return None;

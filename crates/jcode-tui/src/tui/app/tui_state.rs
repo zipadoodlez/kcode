@@ -459,9 +459,9 @@ impl crate::tui::TuiState for App {
         if self.is_remote {
             self.remote_header_provider_name().unwrap_or_default()
         } else {
-            self.remote_provider_name.clone().unwrap_or_else(|| {
-                crate::provider_catalog::runtime_provider_display_name(self.provider.name())
-            })
+            self.remote_provider_name
+                .clone()
+                .unwrap_or_else(|| self.provider.display_name())
         }
     }
 
@@ -1285,9 +1285,9 @@ impl crate::tui::TuiState for App {
             provider_name: if uses_remote_widget_metadata {
                 self.remote_provider_name
                     .clone()
-                    .or_else(|| Some(self.provider.name().to_string()))
+                    .or_else(|| Some(self.provider.display_name()))
             } else {
-                Some(self.provider.name().to_string())
+                Some(self.provider.display_name())
             },
             auth_method,
             upstream_provider: self.upstream_provider.clone(),

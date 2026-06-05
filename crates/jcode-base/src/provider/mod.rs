@@ -1040,6 +1040,19 @@ impl Provider for MultiProvider {
         }
     }
 
+    fn display_name(&self) -> String {
+        // The OpenRouter slot multiplexes the public aggregator and every
+        // direct OpenAI-compatible profile (NVIDIA NIM, DeepSeek, ...). Ask the
+        // active execution runtime for its own label so the UI reflects the
+        // profile selected at runtime rather than the fixed "OpenRouter" name.
+        if matches!(self.active_provider(), ActiveProvider::OpenRouter)
+            && let Some(execution) = self.active_openrouter_execution_provider()
+        {
+            return execution.runtime_display_name();
+        }
+        self.name().to_string()
+    }
+
     fn model(&self) -> String {
         match self.active_provider() {
             ActiveProvider::Claude => {

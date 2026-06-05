@@ -45,9 +45,22 @@ pub(crate) fn capitalize(s: &str) -> String {
     }
 }
 
-fn format_model_name(short: &str) -> String {
+fn format_model_name(short: &str, provider_name: &str) -> String {
     if short.contains('/') {
-        return format!("OpenRouter: {}", short);
+        // Slashed model ids (e.g. `nvidia/nemotron-...`) are served by the
+        // OpenRouter slot, which also fronts direct OpenAI-compatible profiles
+        // such as NVIDIA NIM or DeepSeek. Label the line with the active
+        // provider's display name instead of hard-coding "OpenRouter" so the
+        // header matches the profile the user actually selected.
+        let label = {
+            let trimmed = provider_name.trim();
+            if trimmed.is_empty() {
+                "OpenRouter".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        return format!("{}: {}", label, short);
     }
     if short.contains("opus") {
         if short.contains("4.5") {
@@ -389,7 +402,7 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     let short_model = shorten_model_name(&model);
     let icon = connection_type_icon(app.connection_type().as_deref())
         .unwrap_or_else(|| crate::id::session_icon(&session_name));
-    let nice_model = format_model_name(&short_model);
+    let nice_model = format_model_name(&short_model, &app.provider_name());
     let build_info = binary_age().unwrap_or_else(|| "unknown".to_string());
     let align = Alignment::Center;
     let mut lines: Vec<Line> = Vec::new();
@@ -1027,5 +1040,27 @@ mod tests {
     fn auth_status_line_is_empty_when_nothing_was_attempted() {
         let line = build_auth_status_line(&AuthStatus::default(), 120);
         assert!(line.spans.is_empty(), "line should be empty: {line:?}");
+    }
+
+    #[test]
+    fn format_model_name_labels_slashed_models_with_active_provider() {
+        // Regression for issue #329: a NVIDIA NIM model must be labeled with the
+        // active provider's display name, not the fixed "OpenRouter" aggregator.
+        assert_eq!(
+            format_model_name("nvidia/nemotron-3-super-120b-a12b", "NVIDIA NIM"),
+            "NVIDIA NIM: nvidia/nemotron-3-super-120b-a12b"
+        );
+        // The public aggregator still reads "OpenRouter".
+        assert_eq!(
+            format_model_name("anthropic/claude-sonnet-4", "OpenRouter"),
+            "OpenRouter: anthropic/claude-sonnet-4"
+        );
+        // Missing provider name falls back to "OpenRouter" rather than an empty label.
+        assert_eq!(
+            format_model_name("deepseek/deepseek-chat", ""),
+            "OpenRouter: deepseek/deepseek-chat"
+        );
+        // Non-slashed models are unaffected by the provider label.
+        assert_eq!(format_model_name("claude-opus-4-6", "OpenRouter"), "Claude Opus");
     }
 }

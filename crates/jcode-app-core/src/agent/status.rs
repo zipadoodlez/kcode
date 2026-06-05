@@ -134,7 +134,9 @@ impl Agent {
     }
 
     pub fn provider_name(&self) -> String {
-        crate::provider_catalog::runtime_provider_display_name(self.provider.name())
+        // `display_name()` resolves the active runtime profile (e.g. NVIDIA NIM)
+        // for the OpenRouter slot; for all other providers it equals `name()`.
+        self.provider.display_name()
     }
 
     pub fn provider_model(&self) -> String {

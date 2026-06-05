@@ -74,7 +74,24 @@ pub trait Provider: Send + Sync {
     }
 
     /// Get the provider name.
+    ///
+    /// This is the stable, machine-facing identifier (e.g. `"openrouter"`,
+    /// `"claude"`). Several surfaces key billing and routing decisions off this
+    /// value, so it must stay constant for a given provider class even when the
+    /// underlying runtime is a specific OpenAI-compatible profile. Use
+    /// [`Provider::display_name`] for anything shown to the user.
     fn name(&self) -> &str;
+
+    /// Human-facing provider label for the *current runtime selection*.
+    ///
+    /// Defaults to [`Provider::name`]. Provider orchestrators that multiplex
+    /// several backends behind one `name()` (notably the OpenRouter slot, which
+    /// also serves direct OpenAI-compatible profiles such as NVIDIA NIM or
+    /// DeepSeek) override this so the UI reflects the profile the user actually
+    /// selected at runtime instead of a fixed aggregator label.
+    fn display_name(&self) -> String {
+        self.name().to_string()
+    }
 
     /// Get the model identifier being used.
     fn model(&self) -> String {
@@ -823,7 +840,7 @@ impl ModelCatalogSnapshot {
 
     pub fn from_provider(provider: &dyn Provider) -> Self {
         Self::new(
-            Some(provider.name().to_string()),
+            Some(provider.display_name()),
             Some(provider.model()),
             provider.available_models_display(),
             provider.model_routes(),
