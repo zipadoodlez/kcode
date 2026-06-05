@@ -1172,6 +1172,20 @@ impl OpenRouterProvider {
         jcode_provider_openrouter::is_kimi_model(model)
     }
 
+    /// Return true when this request targets Moonshot's dedicated Kimi coding
+    /// endpoint (`https://api.kimi.com/coding/v1`, default model
+    /// `kimi-for-coding`). That endpoint enables thinking server-side and
+    /// rejects any assistant tool-call message that lacks `reasoning_content`
+    /// (issue #322). The endpoint's own model id (`kimi-for-coding`) is not
+    /// caught by `is_kimi_model`, so detect it by profile/api-base/model.
+    fn is_kimi_coding_endpoint(&self, model: &str) -> bool {
+        self.profile_id
+            .as_deref()
+            .is_some_and(|id| id.eq_ignore_ascii_case("kimi"))
+            || is_kimi_coding_api_base(&self.api_base)
+            || is_kimi_model_name(model)
+    }
+
     /// Parse thinking override from env. Values: "enabled"/"disabled"/"auto".
     /// Returns Some(true)=force enable, Some(false)=force disable, None=auto.
     fn thinking_override() -> Option<bool> {
