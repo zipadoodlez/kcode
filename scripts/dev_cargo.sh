@@ -264,14 +264,16 @@ cpu_count() {
 # all assuming the full core count and tripping earlyoom/OOM.
 #
 # After the monolith was split into the jcode-base/app-core/tui/cli crate DAG,
-# the largest single rustc unit now peaks at ~1.28 GiB RSS (measured VmHWM,
-# selfdev profile), down from the old 2.5-3 GiB monolith. We budget ~1.5 GiB of
-# currently-available memory per job: comfortably above the measured peak yet
-# low enough to use every core on an idle 15 GiB machine (the old 2 GiB budget
-# needlessly capped such a box at 6 jobs). Clamp into [1, cpus]. When the
-# machine is idle this uses every core; under memory pressure a fresh build
-# backs off. An explicit CARGO_BUILD_JOBS / JCODE_BUILD_JOBS always wins, and
-# non-Linux hosts fall back to the cargo/.cargo default.
+# the largest single rustc unit is jcode-base, which has grown back to a
+# measured ~1.6 GiB RSS peak (selfdev profile, sampled VmRSS while building the
+# lib), down from the old 2.5-3 GiB monolith but above the original ~1.28 GiB
+# post-split figure. We budget ~1.75 GiB of currently-available memory per job:
+# a deliberate cushion above the measured peak (rustc's true VmHWM can exceed a
+# coarse sample, and jcode-base keeps growing) so a fresh build under load backs
+# off before earlyoom SIGTERMs it. Clamp into [1, cpus]. On an idle 15 GiB
+# machine this still uses ~7 of 8 cores; under memory pressure a fresh build
+# backs off further. An explicit CARGO_BUILD_JOBS / JCODE_BUILD_JOBS always
+# wins, and non-Linux hosts fall back to the cargo/.cargo default.
 select_build_jobs() {
   # Respect an explicit override from either env var.
   local override="${JCODE_BUILD_JOBS:-${CARGO_BUILD_JOBS:-}}"
@@ -298,10 +300,11 @@ select_build_jobs() {
   mem_available_kib=$(meminfo_kib MemAvailable)
   [[ -n "$mem_available_kib" && "$mem_available_kib" =~ ^[0-9]+$ ]] || mem_available_kib=0
 
-  # Per-job memory budget (MiB). Sized just above the largest measured rustc
-  # unit (~1.28 GiB after the crate decomposition) so an idle machine uses every
-  # core while a memory-pressured one still backs off. Tunable per host.
-  mib_per_job_default=1536
+  # Per-job memory budget (MiB). Sized with a cushion above the largest measured
+  # rustc unit (jcode-base, ~1.6 GiB RSS sampled) so an idle machine uses nearly
+  # every core while a memory-pressured one backs off before earlyoom kills a
+  # build. Tunable per host via JCODE_BUILD_MIB_PER_JOB.
+  mib_per_job_default=1792
   mib_per_job="${JCODE_BUILD_MIB_PER_JOB:-$mib_per_job_default}"
   [[ "$mib_per_job" =~ ^[0-9]+$ && "$mib_per_job" -ge 256 ]] || mib_per_job="$mib_per_job_default"
 
