@@ -1041,7 +1041,7 @@ fn test_copy_selection_drag_to_bottom_edge_when_pinned_does_not_snap_or_autoscro
     app.scroll_offset = 0;
     app.auto_scroll_paused = false;
     app.is_processing = false;
-    app.streaming_text.clear();
+    app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
 
     let backend = ratatui::backend::TestBackend::new(60, 16);
@@ -1150,7 +1150,7 @@ fn test_copy_selection_drag_below_last_line_fully_selects_last_line() {
     app.scroll_offset = 0;
     app.auto_scroll_paused = false;
     app.is_processing = false;
-    app.streaming_text.clear();
+    app.streaming.streaming_text.clear();
     app.status = ProcessingStatus::Idle;
 
     // Tall terminal so there is empty space below the content-sized chat pane.
