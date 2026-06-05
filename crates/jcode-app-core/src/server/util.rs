@@ -758,7 +758,7 @@ mod newest_reload_candidate_integration_tests {
     //! a temp `JCODE_HOME`. This reproduces the field "/update -> new client,
     //! stale server" state and proves the fix: a self-dev daemon now reloads into
     //! the freshly installed release instead of its old pinned binary.
-    use super::newest_reload_candidate;
+    use super::{canonicalize_or, newer_binary_available, newest_reload_candidate};
     use crate::build;
     use std::path::Path;
     use std::time::{Duration, SystemTime};
@@ -859,6 +859,82 @@ mod newest_reload_candidate_integration_tests {
         } else {
             crate::env::remove_var("JCODE_HOME");
         }
+    }
+
+    /// Re-implements `server_has_newer_binary`'s decision against an *injected*
+    /// running-daemon path + mtime, so a test can model "the daemon is still the
+    /// OLD binary" without spawning a real process. It scans the exact same
+    /// candidate set (both flavors) and uses the same `newer_binary_available`
+    /// core the production function uses.
+    fn daemon_reports_update(running: &Path, running_mtime: SystemTime) -> bool {
+        let running_canonical = canonicalize_or(running.to_path_buf());
+        let mut candidates = std::collections::HashSet::new();
+        for is_selfdev in [false, true] {
+            if let Some((candidate, _label)) = super::server_update_candidate(is_selfdev) {
+                candidates.insert(canonicalize_or(candidate));
+            }
+        }
+        let with_mtimes = candidates.into_iter().map(|candidate| {
+            let m = std::fs::metadata(&candidate)
+                .ok()
+                .and_then(|m| m.modified().ok());
+            (candidate, m)
+        });
+        newer_binary_available(
+            Some(running_mtime),
+            Some(running_canonical.as_path()),
+            with_mtimes,
+        )
+    }
+
+    /// The question that matters for shipped users: after a NORMAL (non-self-dev)
+    /// `/update`, does the long-lived daemon actually advertise + apply the
+    /// upgrade on reconnect?
+    ///
+    /// Models a normal install: `shared-server` was tracking `stable`, the daemon
+    /// is running the old release, and `/update` installs a newer release and
+    /// advances stable/current/shared-server. We then drive the REAL
+    /// update-detection core and reload-target resolver and assert both:
+    /// (1) the daemon reports `server_has_update = true`, and
+    /// (2) the binary it reloads into is the freshly installed release.
+    #[test]
+    fn normal_user_daemon_detects_and_targets_update_after_update() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let prev_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let old_release = "0.14.3";
+        let new_release = "0.15.0";
+        let old_path = install_versioned_binary(old_release, base);
+        install_versioned_binary(new_release, base + Duration::from_secs(60));
+
+        // Pre-update state: every channel on the old release (shared-server
+        // tracking stable). This is the steady state for a normal user.
+        build::update_stable_symlink(old_release).expect("stable old");
+        build::update_current_symlink(old_release).expect("current old");
+        build::update_shared_server_symlink(old_release).expect("shared old");
+
+        // `/update` installs the new release and advances the channels. Because
+        // shared-server was tracking stable, it advances too.
+        build::advance_shared_server_if_tracking_stable(new_release).expect("advance shared");
+        build::update_stable_symlink(new_release).expect("stable new");
+        build::update_current_symlink(new_release).expect("current new");
+
+        // (1) The daemon (still the OLD binary) must now SEE the update so it
+        // reports server_has_update = true to reconnecting clients.
+        assert!(
+            daemon_reports_update(&old_path, base),
+            "normal-user daemon should report a server update after /update advanced the channels"
+        );
+
+        // (2) The binary it reloads into must be the freshly installed release.
+        assert_eq!(
+            candidate_version_for(false).as_deref(),
+            Some(new_release),
+            "normal-user daemon should reload into the freshly installed release"
+        );
     }
 }
 
