@@ -99,7 +99,7 @@ fn session_picker_enter_queues_current_terminal_resume_and_closes_overlay() {
 
     assert!(app.session_picker_overlay.is_none());
     assert_eq!(
-        crate::tui::workspace_client::take_pending_resume_session().as_deref(),
+        app.workspace_client.take_pending_resume_session().as_deref(),
         Some("session_here_123")
     );
 }

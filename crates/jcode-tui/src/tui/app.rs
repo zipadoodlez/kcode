@@ -1180,6 +1180,9 @@ pub struct App {
     productivity_refreshing: bool,
     /// Last time the passive overnight progress card polled its run files.
     last_overnight_card_refresh: Option<Instant>,
+    /// Per-client Niri-style workspace navigation state. Previously a process
+    /// global; now owned per App instance.
+    workspace_client: super::workspace_client::WorkspaceClientState,
 }
 
 /// Inert provider used by runtime modes whose output is supplied by another source.

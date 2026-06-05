@@ -1230,13 +1230,13 @@ impl crate::tui::TuiState for App {
             Vec::new()
         };
 
-        let workspace_rows = if crate::tui::workspace_client::is_enabled() {
+        let workspace_rows = if self.workspace_client.is_enabled() {
             let session_id = if self.is_remote {
                 self.remote_session_id.as_deref()
             } else {
                 Some(self.session.id.as_str())
             };
-            crate::tui::workspace_client::visible_rows(5, session_id, self.is_processing)
+            self.workspace_client.visible_rows(5, session_id, self.is_processing)
         } else {
             Vec::new()
         };
@@ -1314,7 +1314,7 @@ impl crate::tui::TuiState for App {
     }
 
     fn workspace_mode_enabled(&self) -> bool {
-        crate::tui::workspace_client::is_enabled()
+        self.workspace_client.is_enabled()
     }
 
     fn workspace_map_rows(&self) -> Vec<crate::tui::workspace_map::VisibleWorkspaceRow> {
@@ -1323,7 +1323,7 @@ impl crate::tui::TuiState for App {
         } else {
             Some(self.session.id.as_str())
         };
-        crate::tui::workspace_client::visible_rows(5, session_id, self.is_processing)
+        self.workspace_client.visible_rows(5, session_id, self.is_processing)
     }
 
     fn workspace_animation_tick(&self) -> u64 {

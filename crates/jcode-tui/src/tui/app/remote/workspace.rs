@@ -10,7 +10,7 @@ pub(super) async fn handle_workspace_navigation_key(
     modifiers: KeyModifiers,
     remote: &mut RemoteConnection,
 ) -> Result<bool> {
-    if !crate::tui::workspace_client::is_enabled() {
+    if !app.workspace_client.is_enabled() {
         return Ok(false);
     }
 
@@ -19,10 +19,10 @@ pub(super) async fn handle_workspace_navigation_key(
     };
 
     let target = match direction {
-        WorkspaceNavigationDirection::Left => crate::tui::workspace_client::navigate_left(),
-        WorkspaceNavigationDirection::Right => crate::tui::workspace_client::navigate_right(),
-        WorkspaceNavigationDirection::Up => crate::tui::workspace_client::navigate_up(),
-        WorkspaceNavigationDirection::Down => crate::tui::workspace_client::navigate_down(),
+        WorkspaceNavigationDirection::Left => app.workspace_client.navigate_left(),
+        WorkspaceNavigationDirection::Right => app.workspace_client.navigate_right(),
+        WorkspaceNavigationDirection::Up => app.workspace_client.navigate_up(),
+        WorkspaceNavigationDirection::Down => app.workspace_client.navigate_down(),
     };
 
     if app.is_processing {
@@ -60,20 +60,20 @@ pub(super) async fn handle_workspace_command(
     match trimmed {
         "/workspace" | "/workspace status" => {
             app.push_display_message(DisplayMessage::system(
-                crate::tui::workspace_client::status_summary(),
+                app.workspace_client.status_summary(),
             ));
             return Ok(true);
         }
         "/workspace on" | "/workspace import" => {
-            crate::tui::workspace_client::enable(current_session, &app.remote_sessions);
+            app.workspace_client.enable(current_session, &app.remote_sessions);
             app.set_status_notice("Workspace mode enabled");
             app.push_display_message(DisplayMessage::system(
-                crate::tui::workspace_client::status_summary(),
+                app.workspace_client.status_summary(),
             ));
             return Ok(true);
         }
         "/workspace off" => {
-            crate::tui::workspace_client::disable();
+            app.workspace_client.disable();
             app.set_status_notice("Workspace mode disabled");
             app.push_display_message(DisplayMessage::system("Workspace mode: off".to_string()));
             return Ok(true);
@@ -91,8 +91,8 @@ pub(super) async fn handle_workspace_command(
     };
 
     if let Some(target) = target {
-        crate::tui::workspace_client::enable(current_session, &app.remote_sessions);
-        crate::tui::workspace_client::queue_split_target(target);
+        app.workspace_client.enable(current_session, &app.remote_sessions);
+        app.workspace_client.queue_split_target(target);
         app.pending_split_label = Some("Workspace".to_string());
         if app.is_processing {
             app.pending_split_request = true;

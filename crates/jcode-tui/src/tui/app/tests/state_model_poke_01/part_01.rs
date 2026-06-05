@@ -911,9 +911,9 @@ fn test_pinned_diagram_not_shown_when_terminal_too_narrow() {
 #[test]
 fn test_workspace_info_widget_appears_in_visual_debug_frame_when_enabled() {
     let _render_lock = scroll_render_test_lock();
-    crate::tui::workspace_client::reset_for_tests();
 
     let mut app = create_test_app();
+    app.workspace_client.reset_for_tests();
     app.centered = true;
     app.display_messages = vec![
         DisplayMessage::system("Workspace widget render test".to_string()),
@@ -922,7 +922,7 @@ fn test_workspace_info_widget_appears_in_visual_debug_frame_when_enabled() {
     app.bump_display_messages_version();
 
     let current_session = app.session.id.clone();
-    crate::tui::workspace_client::enable(
+    app.workspace_client.enable(
         Some(current_session.as_str()),
         &[current_session.clone(), "workspace_peer".to_string()],
     );
@@ -963,7 +963,7 @@ fn test_workspace_info_widget_appears_in_visual_debug_frame_when_enabled() {
     );
 
     crate::tui::visual_debug::disable();
-    crate::tui::workspace_client::reset_for_tests();
+    app.workspace_client.reset_for_tests();
 }
 
 #[test]

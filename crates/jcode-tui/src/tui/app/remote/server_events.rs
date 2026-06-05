@@ -1166,7 +1166,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     totals.cache_creation_input_tokens
                 ));
             }
-            crate::tui::workspace_client::sync_after_history(&session_id, &app.remote_sessions);
+            app.workspace_client.sync_after_history(&session_id, &app.remote_sessions);
 
             if server_has_update == Some(true) && !app.pending_server_reload {
                 app.pending_server_reload = true;
@@ -1870,7 +1870,7 @@ pub(in crate::tui::app) fn handle_server_event(
             new_session_name,
             ..
         } => {
-            if crate::tui::workspace_client::handle_split_response(&new_session_id) {
+            if app.workspace_client.handle_split_response(&new_session_id) {
                 finish_remote_split_launch(app);
                 app.pending_split_request = false;
                 app.pending_split_startup_message = None;

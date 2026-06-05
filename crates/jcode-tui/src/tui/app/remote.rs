@@ -123,7 +123,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
             }
         }
 
-        if let Some(target_session) = crate::tui::workspace_client::take_pending_resume_session() {
+        if let Some(target_session) = app.workspace_client.take_pending_resume_session() {
             match remote.resume_session(&target_session).await {
                 Ok(()) => {
                     let label = crate::id::extract_session_name(&target_session)
