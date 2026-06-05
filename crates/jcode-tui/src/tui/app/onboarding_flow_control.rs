@@ -603,17 +603,12 @@ impl App {
             ExternalCli::ClaudeCode => SessionFilterMode::ClaudeCode,
         };
 
-        let (server_groups, orphan_sessions) = match session_picker::load_sessions_grouped() {
-            Ok(loaded) => loaded,
-            Err(err) => {
-                crate::logging::error(&format!(
-                    "onboarding: failed to load {} sessions: {err}",
-                    cli.label()
-                ));
-                self.onboarding_fallback_to_session_search(cli);
-                return;
-            }
-        };
+        // The onboarding picker only ever shows this one external CLI's
+        // transcripts, so load just those instead of paying the full
+        // `load_sessions_grouped` cost (parsing every jcode snapshot, the other
+        // CLIs, and listing servers). This keeps first-run onboarding snappy.
+        let (server_groups, orphan_sessions) =
+            session_picker::load_external_cli_sessions_grouped(cli);
 
         let mut picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
         picker.activate_external_cli_filter(filter);

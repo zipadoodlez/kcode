@@ -783,3 +783,122 @@ fn benchmark_resume_loading_reports_timings() {
         sessions.len()
     );
 }
+
+#[test]
+fn onboarding_scoped_loader_returns_only_codex_sessions() {
+    use crate::tui::app::onboarding_flow::ExternalCli;
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+
+    // A Codex transcript that the onboarding picker should surface.
+    let codex_dir = temp.path().join("external/.codex/sessions/2026/05/01");
+    std::fs::create_dir_all(&codex_dir).expect("create codex dir");
+    std::fs::write(
+        codex_dir.join("rollout-2026-05-01T10-00-00-test.jsonl"),
+        "{\"timestamp\":\"2026-05-01T10:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"codex-onboarding-test\",\"timestamp\":\"2026-05-01T09:59:00Z\",\"cwd\":\"/tmp/codex-onboard\"}}\n",
+    )
+    .expect("write codex transcript");
+
+    // A jcode session that must NOT appear in the scoped Codex view (the whole
+    // point of the scoped loader is to skip parsing these on onboarding).
+    let mut jcode_session = Session::create_with_id(
+        "session_onboarding_jcode_1780000000000".to_string(),
+        Some("/tmp/jcode-onboard".to_string()),
+        Some("Jcode Onboarding".to_string()),
+    );
+    jcode_session.append_stored_message(crate::session::StoredMessage {
+        id: "msg-1".to_string(),
+        role: crate::message::Role::User,
+        content: vec![crate::message::ContentBlock::Text {
+            text: "should not show in codex onboarding view".to_string(),
+            cache_control: None,
+        }],
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    jcode_session.save().expect("save jcode session");
+
+    let (groups, orphans) = load_external_cli_sessions_grouped(ExternalCli::Codex);
+    assert!(groups.is_empty(), "scoped loader produces only orphans");
+    assert!(
+        orphans
+            .iter()
+            .any(|s| s.id == "codex:codex-onboarding-test"),
+        "expected codex transcript in scoped onboarding load: {:?}",
+        orphans.iter().map(|s| &s.id).collect::<Vec<_>>()
+    );
+    assert!(
+        orphans
+            .iter()
+            .all(|s| matches!(s.resume_target, ResumeTarget::CodexSession { .. })),
+        "scoped Codex load must not include jcode/other-CLI sessions"
+    );
+}
+
+#[test]
+fn parallel_fill_skips_many_recent_empty_sessions_to_reach_scan_limit() {
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _scan_limit = EnvVarGuard::set_str("JCODE_SESSION_PICKER_MAX_SESSIONS", "50");
+
+    let sessions_dir = temp.path().join("sessions");
+    std::fs::create_dir_all(&sessions_dir).expect("create sessions dir");
+
+    let push_message = |session: &mut Session, text: &str| {
+        session.append_stored_message(crate::session::StoredMessage {
+            id: format!("msg-{text}"),
+            role: crate::message::Role::User,
+            content: vec![crate::message::ContentBlock::Text {
+                text: text.to_string(),
+                cache_control: None,
+            }],
+            display_role: None,
+            timestamp: None,
+            tool_duration_ms: None,
+            token_usage: None,
+        });
+    };
+
+    // Many recent but empty sessions (no visible messages) that the parallel
+    // two-phase fill must skip while still collecting `scan_limit` real ones.
+    for idx in 0..200 {
+        let mut session = Session::create_with_id(
+            format!("session_empty_{}", 1_790_000_000_000u64 + idx as u64),
+            Some(format!("/tmp/empty-{idx:03}")),
+            Some(format!("Empty {idx:03}")),
+        );
+        session.save().expect("save empty session");
+    }
+    // Older but non-empty sessions that should fill the list despite being less
+    // recent than the empty stubs above.
+    for idx in 0..60 {
+        let mut session = Session::create_with_id(
+            format!("session_full_{}", 1_780_000_000_000u64 + idx as u64),
+            Some(format!("/tmp/full-{idx:03}")),
+            Some(format!("Full {idx:03}")),
+        );
+        push_message(&mut session, &format!("real content {idx:03}"));
+        session.save().expect("save full session");
+    }
+
+    invalidate_session_list_cache();
+    let sessions = load_sessions().expect("load sessions");
+    let visible: Vec<&SessionInfo> = sessions
+        .iter()
+        .filter(|s| s.id.starts_with("session_full_"))
+        .collect();
+    assert_eq!(
+        visible.len(),
+        50,
+        "expected exactly scan_limit non-empty sessions, got {}",
+        visible.len()
+    );
+    assert!(
+        !sessions.iter().any(|s| s.id.starts_with("session_empty_")),
+        "empty sessions must be filtered out of the loaded list"
+    );
+}

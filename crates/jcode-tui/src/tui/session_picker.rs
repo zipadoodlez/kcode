@@ -34,6 +34,7 @@ mod render;
 #[cfg(test)]
 use loading::collect_recent_session_stems;
 pub(crate) use loading::latest_external_cli_session_secs;
+pub(crate) use loading::load_external_cli_sessions_grouped;
 use loading::{build_messages_preview, build_search_index, crashed_sessions_from_all_sessions};
 pub use loading::{
     invalidate_session_list_cache, load_cached_sessions_grouped, load_servers, load_sessions,
