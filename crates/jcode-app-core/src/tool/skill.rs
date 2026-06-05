@@ -21,7 +21,8 @@ impl SkillTool {
 
 #[derive(Deserialize)]
 struct SkillInput {
-    /// Action to perform: load (default), list, reload, reload_all, read
+    /// Action to perform: load (default), list, reload, reload_all, read.
+    /// `list` shows both loaded skills and the jcode-endorsed catalog.
     #[serde(default = "default_action")]
     action: String,
     /// Skill name (required for load, reload, read)
@@ -119,36 +120,41 @@ impl SkillTool {
 
     async fn list_skills(&self) -> Result<ToolOutput> {
         let registry = self.registry.read().await;
-        let skills = registry.list();
+        let mut skills = registry.list();
+        skills.sort_by(|a, b| a.name.cmp(&b.name));
 
-        if skills.is_empty() {
-            return Ok(ToolOutput::new(
-                "No skills available.\n\n\
-                Skills are loaded from:\n\
-                - ~/.claude/skills/<skill-name>/SKILL.md\n\
-                - ./.claude/skills/<skill-name>/SKILL.md\n\n\
-                Create a SKILL.md file with YAML frontmatter:\n\
-                ---\n\
-                name: my-skill\n\
-                description: What this skill does\n\
-                allowed-tools: bash, read, write\n\
-                ---\n\n\
-                # Skill content here",
-            )
-            .with_title("Skills: None available"));
-        }
+        let installed: std::collections::HashSet<&str> =
+            skills.iter().map(|s| s.name.as_str()).collect();
 
-        let mut output = format!("Available skills: {}\n\n", skills.len());
-
-        for skill in skills {
-            output.push_str(&format!("## /{}\n", skill.name));
-            output.push_str(&format!("  {}\n", skill.description));
-            output.push_str(&format!("  Path: {}\n", skill.path.display()));
-            if let Some(ref tools) = skill.allowed_tools {
-                output.push_str(&format!("  Tools: {}\n", tools.join(", ")));
+        let mut output = if skills.is_empty() {
+            "No skills loaded.\n\n\
+            Skills are loaded from:\n\
+            - ~/.jcode/skills/<skill-name>/SKILL.md (global)\n\
+            - ./.jcode/skills/<skill-name>/SKILL.md (project-local)\n\
+            - ./.claude/skills/<skill-name>/SKILL.md (compatibility)\n\n\
+            Create a SKILL.md file with YAML frontmatter:\n\
+            ---\n\
+            name: my-skill\n\
+            description: What this skill does\n\
+            allowed-tools: bash, read, write\n\
+            ---\n\n\
+            # Skill content here\n"
+                .to_string()
+        } else {
+            let mut output = format!("Loaded skills: {}\n\n", skills.len());
+            for skill in &skills {
+                output.push_str(&format!("## /{}\n", skill.name));
+                output.push_str(&format!("  {}\n", skill.description));
+                output.push_str(&format!("  Path: {}\n", skill.path.display()));
+                if let Some(ref tools) = skill.allowed_tools {
+                    output.push_str(&format!("  Tools: {}\n", tools.join(", ")));
+                }
+                output.push('\n');
             }
-            output.push('\n');
-        }
+            output
+        };
+
+        append_endorsed_skills(&mut output, &installed);
 
         Ok(ToolOutput::new(output).with_title("Skills: List"))
     }
@@ -243,6 +249,61 @@ impl SkillTool {
     }
 }
 
+/// Append the curated jcode-endorsed skill catalog to `output`, grouped by
+/// category and marked with installed/not-installed status. `installed` is the
+/// set of skill names currently loaded in the registry.
+fn append_endorsed_skills(output: &mut String, installed: &std::collections::HashSet<&str>) {
+    let endorsed = crate::skill::endorsed_skills();
+    if endorsed.is_empty() {
+        return;
+    }
+
+    output.push_str("\nEndorsed skills (recommended by jcode)\n");
+
+    // Group by category, preserving first-seen order.
+    let mut category_order: Vec<&str> = Vec::new();
+    for skill in endorsed {
+        if !category_order.contains(&skill.category) {
+            category_order.push(skill.category);
+        }
+    }
+
+    for category in category_order {
+        let in_category: Vec<_> = endorsed.iter().filter(|e| e.category == category).collect();
+        let installed_count = in_category
+            .iter()
+            .filter(|e| installed.contains(e.name))
+            .count();
+        output.push_str(&format!(
+            "\n  {} ({}/{} installed)\n",
+            category,
+            installed_count,
+            in_category.len()
+        ));
+        for skill in in_category {
+            let is_installed = installed.contains(skill.name);
+            let status = if is_installed {
+                "installed"
+            } else {
+                "not installed"
+            };
+            output.push_str(&format!("  - /{} [{}]\n", skill.name, status));
+            output.push_str(&format!("      {}\n", skill.description));
+            output.push_str(&format!("      source: {}\n", skill.source));
+            if !is_installed && let Some(install) = skill.install {
+                output.push_str(&format!("      install: {}\n", install));
+            }
+        }
+    }
+
+    output.push_str(
+        "\nActivate a loaded skill by loading it with skill_manage (action=load) or typing its slash command.\n",
+    );
+    output.push_str(
+        "NVIDIA CUDA-X skills come from the official catalog at https://github.com/NVIDIA/skills.\n",
+    );
+}
+
 fn normalize_skill_name(name: Option<String>, action: &str) -> Result<String> {
     let name = name.ok_or_else(|| anyhow::anyhow!("'name' is required for {} action", action))?;
     let trimmed = name.trim().trim_start_matches('/').to_string();
@@ -318,7 +379,29 @@ mod tests {
         let input = json!({"action": "list"});
 
         let result = tool.execute(input, ctx).await.unwrap();
-        assert!(result.output.contains("No skills available"));
+        assert!(result.output.contains("No skills loaded"));
+        // Even with no skills loaded, the endorsed catalog should be listed.
+        assert!(result.output.contains("Endorsed skills"));
+    }
+
+    #[tokio::test]
+    async fn test_list_includes_endorsed_skills() {
+        let tool = create_test_tool();
+        let ctx = create_test_context();
+        let input = json!({"action": "list"});
+
+        let result = tool.execute(input, ctx).await.unwrap();
+        // Every endorsed skill should appear with an install-status marker.
+        for endorsed in crate::skill::endorsed_skills() {
+            assert!(
+                result.output.contains(&format!("/{}", endorsed.name)),
+                "expected endorsed skill /{} in:\n{}",
+                endorsed.name,
+                result.output
+            );
+        }
+        // No skills are loaded in this tool, so they should be "not installed".
+        assert!(result.output.contains("[not installed]"));
     }
 
     #[tokio::test]
