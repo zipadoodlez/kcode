@@ -1059,7 +1059,7 @@ fn test_render_messages_honors_system_display_role_override() {
 
 #[test]
 fn test_render_messages_renders_persisted_reasoning() {
-    use jcode_tui_markdown::REASONING_SENTINEL;
+    use jcode_render_core::REASONING_SENTINEL;
 
     let mut session = Session::create_with_id(
         "session_render_reasoning_test".to_string(),
@@ -1104,7 +1104,7 @@ fn test_render_messages_renders_persisted_reasoning() {
 
 #[test]
 fn test_render_messages_renders_legacy_reasoning_variant() {
-    use jcode_tui_markdown::REASONING_SENTINEL;
+    use jcode_render_core::REASONING_SENTINEL;
 
     let mut session = Session::create_with_id(
         "session_render_legacy_reasoning_test".to_string(),

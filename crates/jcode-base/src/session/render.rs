@@ -22,7 +22,7 @@ fn format_reasoning_markup(text: &str) -> String {
     }
     let mut out = String::new();
     for line in text.split('\n') {
-        out.push_str(&jcode_tui_markdown::reasoning_line_markup(line));
+        out.push_str(&jcode_render_core::reasoning_line_markup(line));
     }
     // Blank line terminates the reasoning block.
     out.push('\n');

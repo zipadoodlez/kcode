@@ -80,30 +80,25 @@ jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
 jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
 jcode-provider-gemini = { path = "../jcode-provider-gemini" }
-jcode-tui-markdown = { path = "../jcode-tui-markdown" }
-jcode-tui-messages = { path = "../jcode-tui-messages" }
-jcode-tui-core = { path = "../jcode-tui-core" }
-jcode-tui-mermaid = { path = "../jcode-tui-mermaid" }
-jcode-tui-account-picker = { path = "../jcode-tui-account-picker" }
-jcode-tui-render = { path = "../jcode-tui-render" }
-jcode-tui-session-picker = { path = "../jcode-tui-session-picker", features = ["serde"] }
-jcode-tui-style = { path = "../jcode-tui-style" }
-jcode-tui-tool-display = { path = "../jcode-tui-tool-display" }
-jcode-tui-usage-overlay = { path = "../jcode-tui-usage-overlay" }
+# NOTE: this foundation layer intentionally does NOT depend on any `jcode-tui-*`
+# crate. The two pure-data/string symbols it used to reach for (`ResumeTarget`,
+# `reasoning_line_markup`) were moved to `jcode-session-types` and
+# `jcode-render-core` respectively, so the layering inversion (foundation
+# depending on presentation) is gone.
+jcode-render-core = { path = "../jcode-render-core" }
 jcode-update-core = { path = "../jcode-update-core" }
 jcode-terminal-launch = { path = "../jcode-terminal-launch" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }
-jcode-tui-workspace = { path = "../jcode-tui-workspace" }
 jcode-usage-types = { path = "../jcode-usage-types" }
 
 # Streaming
 tokio-stream = "0.1"
 bytes = "1"
 
-# TUI
-ratatui = "0.30"
+# Terminal I/O (event stream for interactive auth/secret prompts). NOTE: the
+# heavier presentation deps (ratatui widgets, arboard clipboard) were dropped
+# from this foundation layer; they are unused here and live only in `jcode-tui`.
 crossterm = { version = "0.29", features = ["event-stream"] }
-arboard = "3"              # Clipboard support
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }  # Only PNG/JPEG (skip avif/rav1e, exr, gif, tiff, etc)
 
 # Markdown & syntax highlighting

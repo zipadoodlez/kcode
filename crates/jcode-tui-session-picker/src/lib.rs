@@ -24,40 +24,11 @@ impl SessionSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ResumeTarget {
-    JcodeSession {
-        session_id: String,
-    },
-    ClaudeCodeSession {
-        session_id: String,
-        session_path: String,
-    },
-    CodexSession {
-        session_id: String,
-        session_path: String,
-    },
-    PiSession {
-        session_path: String,
-    },
-    OpenCodeSession {
-        session_id: String,
-        session_path: String,
-    },
-}
-
-impl ResumeTarget {
-    pub fn stable_id(&self) -> &str {
-        match self {
-            Self::JcodeSession { session_id } => session_id,
-            Self::ClaudeCodeSession { session_id, .. } => session_id,
-            Self::CodexSession { session_id, .. } => session_id,
-            Self::PiSession { session_path } => session_path,
-            Self::OpenCodeSession { session_id, .. } => session_id,
-        }
-    }
-}
+// `ResumeTarget` is pure data and now lives in `jcode-session-types` so the
+// foundation/import layer can use it without depending on this UI crate. It is
+// re-exported here so existing `jcode_tui_session_picker::ResumeTarget` paths
+// keep working.
+pub use jcode_session_types::ResumeTarget;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

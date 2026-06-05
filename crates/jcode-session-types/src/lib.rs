@@ -3,6 +3,44 @@ use jcode_message_types::{ContentBlock, Message, Role, ToolCall};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+/// Identifies a session to resume, across the agent backends jcode can import
+/// from. This is pure data (only ids/paths) with no UI dependency; it lives in
+/// `jcode-session-types` so the foundation/import layer can match on it without
+/// depending on any `jcode-tui-*` crate. The session-picker UI re-exports it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ResumeTarget {
+    JcodeSession {
+        session_id: String,
+    },
+    ClaudeCodeSession {
+        session_id: String,
+        session_path: String,
+    },
+    CodexSession {
+        session_id: String,
+        session_path: String,
+    },
+    PiSession {
+        session_path: String,
+    },
+    OpenCodeSession {
+        session_id: String,
+        session_path: String,
+    },
+}
+
+impl ResumeTarget {
+    pub fn stable_id(&self) -> &str {
+        match self {
+            Self::JcodeSession { session_id } => session_id,
+            Self::ClaudeCodeSession { session_id, .. } => session_id,
+            Self::CodexSession { session_id, .. } => session_id,
+            Self::PiSession { session_path } => session_path,
+            Self::OpenCodeSession { session_id, .. } => session_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderedMessage {
     pub role: String,
