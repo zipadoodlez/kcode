@@ -160,6 +160,14 @@ impl Agent {
         self.session.provider_key.clone()
     }
 
+    /// API method/runtime route used to select the active model (e.g.
+    /// "openai-api", "claude-oauth", "openai-compatible:nvidia-nim"). Spawned
+    /// swarm agents inherit this so they reconstruct the coordinator's exact
+    /// auth route instead of falling back to the config default.
+    pub fn session_route_api_method(&self) -> Option<String> {
+        self.session.route_api_method.clone()
+    }
+
     /// The credential the active provider will use for the next request, when
     /// the provider distinguishes OAuth (subscription) from API key (cost).
     /// Resolved authoritatively here so remote clients can render billing/usage
