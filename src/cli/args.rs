@@ -478,6 +478,18 @@ pub(crate) enum Command {
         #[command(subcommand)]
         action: RestartCommand,
     },
+
+    /// Show a live macOS menu bar indicator with running/streaming session counts
+    #[command(alias = "menu-bar", alias = "statusbar")]
+    Menubar {
+        /// Print the current counts once as text and exit (no menu bar item)
+        #[arg(long)]
+        once: bool,
+
+        /// Emit the current counts as JSON and exit
+        #[arg(long, conflicts_with = "once")]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

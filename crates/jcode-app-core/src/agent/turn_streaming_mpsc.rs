@@ -104,6 +104,9 @@ impl Agent {
         event_tx: mpsc::UnboundedSender<ServerEvent>,
     ) -> Result<()> {
         self.set_log_context();
+        // Mark this session as actively streaming for presence UIs (e.g. the
+        // macOS menu bar indicator). Cleared automatically on every exit path.
+        let _streaming_guard = crate::session::StreamingGuard::new(self.session.id.clone());
         let trace = trace_enabled();
         let mut context_limit_retries = 0u32;
         let mut incomplete_continuations = 0u32;
