@@ -704,9 +704,14 @@ pub struct App {
     thinking_prefix_emitted: bool,
     // Whether we are currently streaming reasoning (dim+italic) text
     reasoning_streaming: bool,
-    // Incomplete trailing reasoning line awaiting a newline before it is emitted as
-    // a complete italic+dim line (reasoning is wrapped per whole line).
+    // Incomplete trailing reasoning line awaiting a newline. Rendered live as the
+    // streaming buffer's tail (dim+italic) so reasoning trickles in token-by-token;
+    // promoted to a committed line once its newline arrives.
     reasoning_pending_line: String,
+    // Byte length of the live partial-reasoning markup currently appended to
+    // `streaming_text` (the rendered tail of `reasoning_pending_line`). Truncated
+    // and re-appended on each delta so the in-progress line updates in place.
+    reasoning_partial_len: usize,
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec

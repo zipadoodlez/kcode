@@ -13,8 +13,7 @@ use std::collections::HashMap;
 pub const DEFAULT_VISIBLE_COMPACTED_HISTORY_MESSAGES: usize = 64;
 
 /// Format persisted reasoning/thinking text into the dim+italic markdown used
-/// by the live streaming path (see `reasoning_format::ReasoningStreamFormatter`).
-/// Each line is wrapped via the shared `reasoning_line_markup` so resumed
+/// by the live streaming path. Each line is wrapped via the shared `reasoning_line_markup` so resumed
 /// sessions render reasoning identically to how it streamed, terminated by a
 /// blank line so following answer text renders as a normal paragraph.
 fn format_reasoning_markup(text: &str) -> String {

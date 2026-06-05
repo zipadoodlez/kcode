@@ -161,6 +161,24 @@ pub fn reasoning_line_markup(line: &str) -> String {
     }
 }
 
+/// Wrap the in-progress (not yet newline-terminated) reasoning line as dim+italic
+/// markdown, identical to [`reasoning_line_markup`] but *without* the trailing
+/// newline so it renders as the live tail of the streaming buffer. Callers
+/// truncate and re-emit this tail on each streamed delta so reasoning trickles in
+/// token-by-token instead of one whole line at a time. An empty line yields an
+/// empty string (nothing to render yet).
+pub fn reasoning_partial_markup(line: &str) -> String {
+    if line.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "*{0}{1}{0}*",
+            REASONING_SENTINEL,
+            escape_reasoning_inline_markdown(line)
+        )
+    }
+}
+
 use render_support::{
     highlight_code_cached, line_plain_text, placeholder_code_block, ranges_overlap, render_table,
 };

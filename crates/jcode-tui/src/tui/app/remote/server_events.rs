@@ -220,6 +220,8 @@ pub(in crate::tui::app) fn handle_server_event(
         &event,
         ServerEvent::TextDelta { .. }
             | ServerEvent::TextReplace { .. }
+            | ServerEvent::ReasoningDelta { .. }
+            | ServerEvent::ReasoningDone { .. }
             | ServerEvent::ToolStart { .. }
             | ServerEvent::ToolInput { .. }
             | ServerEvent::ToolExec { .. }
@@ -276,6 +278,31 @@ pub(in crate::tui::app) fn handle_server_event(
             app.replace_streaming_text(text);
             app.resume_streaming_tps();
             true
+        }
+        ServerEvent::ReasoningDelta { text } => {
+            // Reasoning streams live (dim+italic) before the answer. Flush any
+            // buffered normal text first so ordering is preserved, then render the
+            // in-progress reasoning line token-by-token.
+            if let Some(chunk) = app.stream_buffer.flush() {
+                app.append_streaming_text(&chunk);
+            }
+            if matches!(
+                app.status,
+                ProcessingStatus::Sending
+                    | ProcessingStatus::Connecting(_)
+                    | ProcessingStatus::Thinking(_)
+            ) || (app.is_processing && matches!(app.status, ProcessingStatus::Idle))
+            {
+                app.status = ProcessingStatus::Streaming;
+            }
+            app.resume_streaming_tps();
+            app.append_reasoning_text(&text);
+            app.last_stream_activity = Some(Instant::now());
+            eager_stream_redraw
+        }
+        ServerEvent::ReasoningDone { .. } => {
+            app.close_reasoning_region(None);
+            eager_stream_redraw
         }
         ServerEvent::ToolStart { id, name } => {
             // Tool-call JSON is provider-generated output and is included in output-token

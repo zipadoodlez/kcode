@@ -6,6 +6,10 @@
 // (Both ends so whitespace at the line edges can't break CommonMark emphasis.) The
 // region auto-closes when real output or a tool call begins so the final answer
 // renders as normal (non-italic) text.
+//
+// The in-progress (not yet newline-terminated) line renders live as a partial
+// `*…*` tail so reasoning trickles in token-by-token; that tail is rebuilt in
+// place on each delta and promoted to a committed line when its newline arrives.
 
 #[test]
 fn reasoning_region_emits_dim_italic_lines_no_gutter_header_or_footer() {
@@ -163,4 +167,104 @@ fn strip_reasoning_lines_reasoning_only_becomes_empty() {
     content.push_str(&jcode_tui_markdown::reasoning_line_markup("only thinking"));
     let stripped = strip_reasoning_lines(&content);
     assert!(stripped.trim().is_empty(), "got: {stripped:?}");
+}
+
+#[test]
+fn reasoning_partial_line_renders_live_before_newline() {
+    // The in-progress line (no trailing newline) must render immediately as a
+    // dim+italic partial tail so reasoning streams token-by-token.
+    let mut app = create_test_app();
+    let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("partial thou");
+
+    let text = app.streaming_text();
+    assert!(
+        text.contains(&format!("*{sentinel}partial thou{sentinel}*")),
+        "partial line should render live: {text:?}"
+    );
+}
+
+#[test]
+fn reasoning_partial_tail_grows_in_place_without_duplication() {
+    // Successive deltas of the same line replace the live tail (truncate + rebuild)
+    // rather than appending duplicate fragments.
+    let mut app = create_test_app();
+    let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("one ");
+    app.append_reasoning_text("two ");
+    app.append_reasoning_text("three");
+
+    let text = app.streaming_text();
+    assert!(
+        text.contains(&format!("*{sentinel}one two three{sentinel}*")),
+        "tail should grow in place: {text:?}"
+    );
+    // The earlier partial fragments must not linger as separate runs.
+    assert!(
+        !text.contains(&format!("*{sentinel}one {sentinel}*")),
+        "stale partial tail should be replaced, not duplicated: {text:?}"
+    );
+    assert_eq!(
+        text.matches(sentinel).count(),
+        2,
+        "exactly one live emphasis run (two sentinels) expected: {text:?}"
+    );
+}
+
+#[test]
+fn reasoning_partial_promotes_to_committed_line_on_newline() {
+    // When the newline arrives, the live tail becomes a committed line and a fresh
+    // (empty) tail follows; no duplicate copies of the completed line remain.
+    let mut app = create_test_app();
+    let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("growing line");
+    app.append_reasoning_text("\nnext");
+
+    let text = app.streaming_text();
+    // Committed first line (newline-terminated) and a live second-line tail.
+    assert!(
+        text.contains(&format!("*{sentinel}growing line{sentinel}*\n")),
+        "first line should be committed with a newline: {text:?}"
+    );
+    assert!(
+        text.contains(&format!("*{sentinel}next{sentinel}*")),
+        "second line should render live: {text:?}"
+    );
+    // The completed line must appear exactly once (no partial+committed duplication).
+    assert_eq!(
+        text.matches(&format!("*{sentinel}growing line{sentinel}*"))
+            .count(),
+        1,
+        "completed line must not be duplicated: {text:?}"
+    );
+}
+
+#[test]
+fn reasoning_close_promotes_pending_partial_line() {
+    // Closing the region with an in-progress (no-newline) partial promotes it to a
+    // committed line exactly once.
+    let mut app = create_test_app();
+    let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("final thought");
+    app.close_reasoning_region(None);
+
+    let text = app.streaming_text();
+    assert_eq!(
+        text.matches(&format!("*{sentinel}final thought{sentinel}*"))
+            .count(),
+        1,
+        "pending partial promoted exactly once on close: {text:?}"
+    );
+    assert!(
+        text.ends_with("\n\n"),
+        "region terminated with blank line: {text:?}"
+    );
 }
