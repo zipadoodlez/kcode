@@ -467,6 +467,14 @@ pub const ENDORSED_SKILLS: &[EndorsedSkill] = &[
         source: "bundled with jcode / Claude Code skills",
         install: None,
     },
+    // Anthropic official skills (github.com/anthropics/skills, Apache-2.0).
+    EndorsedSkill {
+        name: "frontend-design",
+        description: "Create distinctive, production-grade frontend interfaces with high design quality (web components, pages, apps). Generates creative, polished code that avoids generic AI aesthetics.",
+        category: "Anthropic Design",
+        source: "anthropics/skills (official Anthropic catalog)",
+        install: Some("npx skills add anthropics/skills --skill frontend-design --yes (or Claude Code: /plugin marketplace add anthropics/skills)"),
+    },
     // NVIDIA CUDA-X / GPU accelerated-computing skills from the official
     // NVIDIA-verified catalog (github.com/NVIDIA/skills).
     EndorsedSkill {
@@ -815,6 +823,23 @@ mod tests {
                 "NVIDIA skill {expected} should have an nvidia/skills install hint"
             );
         }
+    }
+
+    #[test]
+    fn endorsed_skills_include_anthropic_frontend_design() {
+        let skill = endorsed_skills()
+            .iter()
+            .find(|s| s.name == "frontend-design")
+            .expect("expected endorsed Anthropic frontend-design skill");
+        assert_eq!(skill.category, "Anthropic Design");
+        assert!(
+            skill.source.contains("anthropics/skills"),
+            "frontend-design should be sourced from anthropics/skills"
+        );
+        assert!(
+            skill.install.is_some_and(|cmd| cmd.contains("anthropics/skills")),
+            "frontend-design should have an anthropics/skills install hint"
+        );
     }
 
     #[test]
