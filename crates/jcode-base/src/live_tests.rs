@@ -13,7 +13,7 @@ const DEFAULT_RETEST_DAYS: i64 = 14;
 const LEDGER_ENV: &str = "JCODE_LIVE_TEST_LEDGER";
 const COVERAGE_ENV: &str = "JCODE_LIVE_TEST_COVERAGE";
 
-pub const CHECKPOINT_TAXONOMY_VERSION: u32 = 2;
+pub const CHECKPOINT_TAXONOMY_VERSION: u32 = 3;
 
 pub mod checkpoints {
     pub const AUTH_UX_KEY_ENTRY: &str = "auth_ux_key_entry";
@@ -30,6 +30,10 @@ pub mod checkpoints {
     pub const TOOL_EXECUTION_LOOP: &str = "tool_execution_loop";
     pub const TOOL_RESULT_FOLLOWUP: &str = "tool_result_followup";
     pub const REAL_JCODE_TOOL_SMOKE: &str = "real_jcode_tool_smoke";
+    /// Observe-only: did the model expose its reasoning (`streamed`), hide it
+    /// behind an opaque signal (`opaque`, e.g. Gemini-3 / OpenAI), or emit none
+    /// (`none`)? Never required for user-readiness; hiding reasoning is a pass.
+    pub const REASONING_CAPABILITY: &str = "reasoning_capability";
     pub const RESTART_PERSISTENCE: &str = "restart_persistence";
     pub const NEGATIVE_ERROR_UX: &str = "negative_error_ux";
     pub const MODEL_CAPABILITY_MATRIX: &str = "model_capability_matrix";
@@ -158,6 +162,16 @@ const END_TO_END_CHECKPOINTS: &[LiveVerificationCheckpointDefinition] = &[
         required_for_user_ready: true,
         spends_balance: true,
         description: "A normal Jcode agent turn uses the real streamed parser, advertised tool schema, registry execution, tool-result followup, and transcript validation without malformed tool calls.",
+    },
+    LiveVerificationCheckpointDefinition {
+        id: checkpoints::REASONING_CAPABILITY,
+        label: "Reasoning capability",
+        category: "reasoning",
+        // Observe-only: a provider that hides its reasoning (opaque) or emits
+        // none is still fully user-ready, so this must never gate readiness.
+        required_for_user_ready: false,
+        spends_balance: true,
+        description: "Records whether the model streams reasoning text, hides it behind an opaque signal (thought_signature/reasoning item/reasoning tokens), or emits none. Passes as long as the reasoning turn completes cleanly; absence of reasoning is recorded, not failed.",
     },
     LiveVerificationCheckpointDefinition {
         id: checkpoints::RESTART_PERSISTENCE,
@@ -2514,6 +2528,7 @@ mod tests {
             checkpoints::TOOL_EXECUTION_LOOP,
             checkpoints::TOOL_RESULT_FOLLOWUP,
             checkpoints::REAL_JCODE_TOOL_SMOKE,
+            checkpoints::REASONING_CAPABILITY,
             checkpoints::RESTART_PERSISTENCE,
             checkpoints::NEGATIVE_ERROR_UX,
             checkpoints::MODEL_CAPABILITY_MATRIX,
@@ -2526,6 +2541,24 @@ mod tests {
                 .iter()
                 .any(|checkpoint| checkpoint.spends_balance),
             "taxonomy should identify balance-spending checkpoints"
+        );
+
+        // The reasoning_capability checkpoint is observe-only: it records what
+        // the model exposed (streamed/opaque/none) but a provider that hides its
+        // reasoning is still fully user-ready, so it must never gate readiness or
+        // strict coverage.
+        let reasoning = end_to_end_checkpoint_definitions()
+            .iter()
+            .find(|checkpoint| checkpoint.id == checkpoints::REASONING_CAPABILITY)
+            .expect("reasoning_capability checkpoint must exist in the taxonomy");
+        assert!(
+            !reasoning.required_for_user_ready,
+            "reasoning_capability must not be required for user-readiness"
+        );
+        assert!(
+            !STRICT_PROVIDER_MODEL_COVERAGE_CHECKPOINTS
+                .contains(&checkpoints::REASONING_CAPABILITY),
+            "reasoning_capability must not be a strict-required checkpoint"
         );
     }
 
