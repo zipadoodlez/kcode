@@ -114,8 +114,8 @@ mouse_capture = true
 # Enable debug socket for external control/testing (default: false)
 debug_socket = false
 
-# Show thinking/reasoning content (default: false)
-show_thinking = false
+# Show thinking/reasoning content (default: true)
+show_thinking = true
 
 # How to display reasoning/thinking content: "off", "full", or "current".
 #   off     - never show reasoning
@@ -123,7 +123,7 @@ show_thinking = false
 #   current - show only the live reasoning; collapse it once the model commits
 #             an assistant message or runs a tool, then show the next one
 # When unset, falls back to show_thinking (true => full, false => off).
-# reasoning_display = "current"
+reasoning_display = "current"
 
 # Markdown spacing style: "compact" (chat/TUI) or "document" (docs-like)
 # markdown_spacing = "compact"

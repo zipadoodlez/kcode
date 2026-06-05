@@ -592,7 +592,7 @@ pub struct DisplayConfig {
     pub debug_socket: bool,
     /// Center all content (default: false)
     pub centered: bool,
-    /// Show thinking/reasoning content by default (default: false)
+    /// Show thinking/reasoning content by default (default: true)
     pub show_thinking: bool,
     /// How to display reasoning/thinking content (off/full/current).
     /// When unset, falls back to `show_thinking` (true => full, false => off).
@@ -638,8 +638,8 @@ impl Default for DisplayConfig {
             mouse_capture: true,
             debug_socket: false,
             centered: false,
-            show_thinking: false,
-            reasoning_display: None,
+            show_thinking: true,
+            reasoning_display: Some(ReasoningDisplayMode::Current),
             diagram_mode: DiagramDisplayMode::default(),
             markdown_spacing: MarkdownSpacingMode::default(),
             idle_animation: true,
