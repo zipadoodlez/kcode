@@ -487,6 +487,54 @@ fn resolve_swarm_spawn_model_keeps_provider_key_when_config_matches_coordinator(
 }
 
 #[test]
+fn resolve_swarm_spawn_model_openai_api_prefix_pins_api_route_over_coordinator() {
+    // `agents.swarm_model = "openai-api:gpt-5.5"` must spawn agents on GPT-5.5
+    // via the OpenAI API key route, regardless of the coordinator's model/auth.
+    let selection = resolve_swarm_spawn_selection(
+        Some("openai-api:gpt-5.5".to_string()),
+        &coordinator_identity(
+            Some("claude-opus-4-8"),
+            Some("claude-oauth"),
+            Some("claude-oauth"),
+        ),
+    );
+
+    assert_eq!(selection.model.as_deref(), Some("gpt-5.5"));
+    assert_eq!(selection.provider_key.as_deref(), Some("openai-api-key"));
+    assert_eq!(selection.route_api_method.as_deref(), Some("openai-api-key"));
+}
+
+#[test]
+fn resolve_swarm_spawn_model_auth_route_prefixes_pin_expected_routes() {
+    for (configured, expected_model, expected_key) in [
+        ("openai-api:gpt-5.5", "gpt-5.5", "openai-api-key"),
+        ("openai-oauth:gpt-5.5", "gpt-5.5", "openai-oauth"),
+        ("claude-api:claude-opus-4-8", "claude-opus-4-8", "anthropic-api-key"),
+        ("claude-oauth:claude-opus-4-8", "claude-opus-4-8", "claude-oauth"),
+    ] {
+        let selection = resolve_swarm_spawn_selection(
+            Some(configured.to_string()),
+            &coordinator_identity(Some("some-other-model"), Some("some-key"), Some("some-route")),
+        );
+        assert_eq!(
+            selection.model.as_deref(),
+            Some(expected_model),
+            "configured {configured:?} model",
+        );
+        assert_eq!(
+            selection.provider_key.as_deref(),
+            Some(expected_key),
+            "configured {configured:?} provider_key",
+        );
+        assert_eq!(
+            selection.route_api_method.as_deref(),
+            Some(expected_key),
+            "configured {configured:?} route_api_method",
+        );
+    }
+}
+
+#[test]
 fn resolve_swarm_spawn_model_inherit_sentinel_uses_coordinator_model() {
     for sentinel in ["inherit", "INHERIT", "coordinator", " inherit ", ""] {
         let selection = resolve_swarm_spawn_selection(

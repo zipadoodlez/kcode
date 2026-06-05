@@ -226,6 +226,43 @@ async fn resolve_coordinator_spawn_identity(
     }
 }
 
+/// Split a configured swarm model that carries an explicit auth-route prefix
+/// (`openai-api:`, `openai-oauth:`, `claude-api:`, `claude-oauth:`) into a
+/// structured selection so spawned sessions pin the exact provider + auth
+/// method instead of guessing from the bare model name.
+///
+/// Example: `agents.swarm_model = "openai-api:gpt-5.5"` resolves to
+/// `model = gpt-5.5`, `provider_key = openai-api-key`,
+/// `route_api_method = openai-api-key`, which makes every spawned agent use
+/// GPT-5.5 on the OpenAI API key route regardless of the coordinator's model.
+///
+/// Returns `None` for models without such a prefix, or for prefixes that carry
+/// no API-vs-OAuth decision (bare provider aliases, OpenRouter, Copilot, ...).
+/// Those keep their prefixed model and route correctly via the existing
+/// session-restore path.
+fn explicit_route_for_configured_model(model: &str) -> Option<SwarmSpawnSelection> {
+    let (_, prefix, bare) = crate::provider::explicit_model_provider_prefix(model)?;
+    let bare = bare.trim();
+    if bare.is_empty() {
+        return None;
+    }
+    // Stable route ids that `ModelRouteApiMethod::parse` round-trips back into
+    // the exact auth method when the spawned session is restored (see
+    // `MultiProvider::model_switch_request_for_session_route`).
+    let route_id = match prefix {
+        "openai-api:" => "openai-api-key",
+        "openai-oauth:" => "openai-oauth",
+        "claude-api:" => "anthropic-api-key",
+        "claude-oauth:" => "claude-oauth",
+        _ => return None,
+    };
+    Some(SwarmSpawnSelection {
+        model: Some(bare.to_string()),
+        provider_key: Some(route_id.to_string()),
+        route_api_method: Some(route_id.to_string()),
+    })
+}
+
 fn resolve_swarm_spawn_selection(
     configured_swarm_model: Option<String>,
     coordinator: &CoordinatorSpawnIdentity,
@@ -244,6 +281,14 @@ fn resolve_swarm_spawn_selection(
 
     match configured_swarm_model {
         Some(model) => {
+            // A configured model may pin an explicit provider + auth route via a
+            // prefix (e.g. "openai-api:gpt-5.5"). Honor it directly so spawned
+            // agents do NOT inherit the coordinator's model/auth and instead use
+            // the requested model on the requested API route.
+            if let Some(selection) = explicit_route_for_configured_model(&model) {
+                return selection;
+            }
+
             // A concrete configured model only inherits the coordinator's
             // provider_key/route when it targets the same model; otherwise the
             // route would point at the wrong provider/auth mode.
