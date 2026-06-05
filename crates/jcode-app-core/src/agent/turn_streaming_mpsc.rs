@@ -1,5 +1,47 @@
 use super::*;
 
+/// Largest byte index `<= index` that is a UTF-8 char boundary in `text`.
+/// Equivalent to the unstable `str::floor_char_boundary`, reimplemented so the
+/// incremental marker scan can clamp its scan-window start onto a valid
+/// boundary without re-scanning the whole accumulated response.
+fn floor_char_boundary(text: &str, index: usize) -> usize {
+    if index >= text.len() {
+        return text.len();
+    }
+    let mut boundary = index;
+    while boundary > 0 && !text.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
+}
+
+/// The wrapped-tool-call markers emitted by some models inside plain text.
+const WRAP_TOOL_MARKERS: [&str; 2] = ["to=functions.", "+#+#"];
+
+/// Find the first wrapped-tool-call marker in `accumulated`, scanning only the
+/// newly appended `delta` plus a short overlap from the previous tail (so a
+/// marker straddling the append boundary is still found).
+///
+/// This avoids re-scanning the entire accumulated response on every streamed
+/// delta, which was O(response) per token and O(response^2) over a full answer.
+fn find_wrap_marker_incremental(accumulated: &str, appended_len: usize) -> Option<usize> {
+    let max_marker_len = WRAP_TOOL_MARKERS
+        .iter()
+        .map(|marker| marker.len())
+        .max()
+        .unwrap_or(0);
+    let scan_start = accumulated
+        .len()
+        .saturating_sub(appended_len + max_marker_len.saturating_sub(1));
+    let scan_start = floor_char_boundary(accumulated, scan_start);
+    let window = &accumulated[scan_start..];
+    WRAP_TOOL_MARKERS
+        .iter()
+        .filter_map(|marker| window.find(marker))
+        .min()
+        .map(|rel_idx| scan_start + rel_idx)
+}
+
 fn reload_interrupted_tool_result(tc: &ToolCall, elapsed_secs: f64) -> (String, bool) {
     if tc.name == "selfdev" {
         return ("Reload initiated. Process restarting...".to_string(), false);
@@ -401,9 +443,11 @@ impl Agent {
                         }
                         text_content.push_str(&text);
                         if !text_wrapped_detected {
-                            if let Some(marker_idx) = text_content
-                                .find("to=functions.")
-                                .or_else(|| text_content.find("+#+#"))
+                            // Scan only the new delta (plus a short overlap for
+                            // markers straddling the boundary) instead of the
+                            // whole accumulated response on every token.
+                            if let Some(marker_idx) =
+                                find_wrap_marker_incremental(&text_content, text.len())
                             {
                                 text_wrapped_detected = true;
                                 let clean_prefix =
@@ -1331,5 +1375,75 @@ mod tests {
 
         assert!(is_error);
         assert!(message.contains("interrupted by server reload"));
+    }
+
+    /// Reference O(n) full scan, preserving the original precedence: the
+    /// `to=functions.` marker is checked before `+#+#`.
+    fn find_wrap_marker_full(text: &str) -> Option<usize> {
+        text.find("to=functions.").or_else(|| text.find("+#+#"))
+    }
+
+    /// Simulate streaming `full` in arbitrary deltas and assert the incremental
+    /// scan finds the first marker position, matching a full rescan each step.
+    fn assert_incremental_matches(full: &str, chunk: usize) {
+        let mut acc = String::new();
+        let mut incremental_hit: Option<usize> = None;
+        let bytes = full.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let mut end = (i + chunk).min(bytes.len());
+            while end < bytes.len() && !full.is_char_boundary(end) {
+                end += 1;
+            }
+            let delta = &full[i..end];
+            acc.push_str(delta);
+            if incremental_hit.is_none() {
+                incremental_hit = find_wrap_marker_incremental(&acc, delta.len());
+            }
+            i = end;
+        }
+        // The earliest of either marker in the full text.
+        let fn_pos = full.find("to=functions.");
+        let plus_pos = full.find("+#+#");
+        let expected = match (fn_pos, plus_pos) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        assert_eq!(
+            incremental_hit, expected,
+            "incremental scan mismatch for {full:?} chunk={chunk}"
+        );
+    }
+
+    #[test]
+    fn wrap_marker_incremental_detects_markers_across_chunk_sizes() {
+        let cases = [
+            "plain answer with no marker at all",
+            "answer then to=functions.foo({})",
+            "answer then +#+# wrapped",
+            "prefix +#+# and later to=functions.bar",
+            "unicode 🔄 résumé then to=functions.baz",
+            "",
+            "to=functions.first",
+            "+#+#",
+        ];
+        for case in cases {
+            for chunk in [1usize, 2, 3, 5, 7, 100] {
+                assert_incremental_matches(case, chunk);
+            }
+        }
+    }
+
+    #[test]
+    fn wrap_marker_incremental_finds_marker_straddling_delta_boundary() {
+        // Feed "to=functions." split right in the middle so the marker only
+        // exists once both halves are appended; the overlap window must catch it.
+        let mut acc = String::new();
+        acc.push_str("answer to=fun");
+        assert_eq!(find_wrap_marker_incremental(&acc, "answer to=fun".len()), None);
+        acc.push_str("ctions.tool");
+        let hit = find_wrap_marker_incremental(&acc, "ctions.tool".len());
+        assert_eq!(hit, find_wrap_marker_full(&acc));
+        assert_eq!(hit, Some("answer ".len()));
     }
 }
