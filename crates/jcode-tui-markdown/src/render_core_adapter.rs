@@ -25,45 +25,7 @@ use crate::{
 /// Decorative framing (blockquote bars, code-block borders) is reproduced to
 /// match the legacy renderer.
 pub fn document_to_lines(doc: &Document) -> Vec<Line<'static>> {
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    for (idx, block) in doc.blocks.iter().enumerate() {
-        if idx > 0 {
-            lines.push(Line::default());
-        }
-        match &block.kind {
-            BlockKind::CodeBlock { language } => {
-                push_code_block(&mut lines, block, language.as_deref());
-            }
-            BlockKind::MathDisplay => {
-                push_math_display(&mut lines, block);
-            }
-            BlockKind::Table => {
-                // Layout is width-dependent; defer to the legacy table renderer
-                // for exact parity. Unbounded width here (callers that wrap pass
-                // a width via the wrapped variant).
-                lines.extend(crate::render_support::render_table(&block.table, None));
-            }
-            BlockKind::ThematicBreak => {
-                lines.push(Line::from(Span::styled(
-                    "─".repeat(crate::RULE_LEN),
-                    Style::default().fg(md_dim_color()),
-                )));
-            }
-            BlockKind::BlockQuote => {
-                // The quote gutter (`│ ` per nesting level) is baked into the
-                // stored lines by the parser, so render spans verbatim.
-                for sl in &block.lines {
-                    lines.push(styled_line_to_line(sl, &block.kind));
-                }
-            }
-            _ => {
-                for sl in &block.lines {
-                    lines.push(styled_line_to_line(sl, &block.kind));
-                }
-            }
-        }
-    }
-    lines
+    document_to_lines_with_width(doc, None)
 }
 
 /// Render a code block with the legacy frame: `┌─ lang`, `│ ` gutter per line,
@@ -163,55 +125,70 @@ fn role_color(role: StyleRole, kind: &BlockKind) -> ratatui::style::Color {
 
 /// Parse markdown and render it to ratatui lines through the shared core.
 pub fn render_markdown_via_core(text: &str) -> Vec<Line<'static>> {
-    document_to_lines(&jcode_render_core::parse_markdown(text))
+    document_to_lines_with_width(&jcode_render_core::parse_markdown(text), None)
 }
 
-/// Like [`render_markdown_via_core`] but wraps each block's lines to `width`
-/// columns using the shared wrapper. Decorated blocks (code, math, tables,
-/// blockquotes) use their decoration-aware rendering; tables additionally get
-/// the width constraint.
-pub fn render_markdown_via_core_wrapped(text: &str, width: usize) -> Vec<Line<'static>> {
-    use jcode_render_core::{ColumnWidth, wrap_lines};
-    let doc = jcode_render_core::parse_markdown(text);
-    let mut out: Vec<Line<'static>> = Vec::new();
+/// Like [`document_to_lines`] but lays out width-dependent blocks (tables,
+/// thematic breaks) to `width` columns when one is supplied. Text is *not*
+/// reflowed here; callers wrap separately (mirroring how the legacy
+/// `render_markdown_with_width` + `wrap_lines` pipeline is structured).
+pub fn document_to_lines_with_width(doc: &Document, width: Option<usize>) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
     for (idx, block) in doc.blocks.iter().enumerate() {
         if idx > 0 {
-            out.push(Line::default());
+            lines.push(Line::default());
         }
         match &block.kind {
-            // Source layout preserved (not reflowed).
             BlockKind::CodeBlock { language } => {
-                push_code_block(&mut out, block, language.as_deref());
+                push_code_block(&mut lines, block, language.as_deref());
             }
             BlockKind::MathDisplay => {
-                push_math_display(&mut out, block);
+                push_math_display(&mut lines, block);
             }
             BlockKind::Table => {
-                out.extend(crate::render_support::render_table(&block.table, Some(width)));
+                lines.extend(crate::render_support::render_table(&block.table, width));
             }
             BlockKind::ThematicBreak => {
-                // Legacy fills the available width when one is known.
-                out.push(Line::from(Span::styled(
-                    "─".repeat(width),
+                lines.push(Line::from(Span::styled(
+                    "─".repeat(rule_width(width)),
                     Style::default().fg(md_dim_color()),
                 )));
             }
             BlockKind::BlockQuote => {
-                // Gutter prefix is baked in; render verbatim (no reflow) to keep
-                // it aligned, matching the legacy line-per-source-line behavior.
+                // The quote gutter (`│ ` per nesting level) is baked into the
+                // stored lines by the parser, so render spans verbatim.
                 for sl in &block.lines {
-                    out.push(styled_line_to_line(sl, &block.kind));
+                    lines.push(styled_line_to_line(sl, &block.kind));
                 }
             }
             _ => {
-                let wrapped = wrap_lines(&block.lines, width, &ColumnWidth);
-                for sl in &wrapped {
-                    out.push(styled_line_to_line(sl, &block.kind));
+                for sl in &block.lines {
+                    lines.push(styled_line_to_line(sl, &block.kind));
                 }
             }
         }
     }
-    out
+    lines
+}
+
+/// Thematic-break width: legacy fills the available width when known and clamps
+/// to `RULE_LEN` (24) when centering, otherwise uses `RULE_LEN`.
+fn rule_width(width: Option<usize>) -> usize {
+    match width {
+        Some(w) if crate::center_code_blocks() => w.min(crate::RULE_LEN),
+        Some(w) => w,
+        None => crate::RULE_LEN,
+    }
+}
+
+/// Like [`render_markdown_via_core`] but produces the wrapped layout used in
+/// production: width-aware blocks are laid out, then the whole document is
+/// reflowed with the authoritative legacy wrapper (which keeps words intact
+/// across span boundaries and repeats code/quote gutters).
+pub fn render_markdown_via_core_wrapped(text: &str, width: usize) -> Vec<Line<'static>> {
+    let doc = jcode_render_core::parse_markdown(text);
+    let lines = document_to_lines_with_width(&doc, Some(width));
+    crate::wrap_lines(lines, width)
 }
 
 #[cfg(test)]

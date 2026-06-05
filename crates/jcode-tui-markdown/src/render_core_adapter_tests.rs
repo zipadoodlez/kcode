@@ -249,3 +249,290 @@ fn fuzz_visible_text_parity() {
         );
     }
 }
+
+// ------------------------------------------------------------------------
+// Randomized differential fuzzing.
+//
+// A tiny xorshift PRNG drives a recursive markdown generator. Each generated
+// document is rendered by both the shared core and the legacy renderer; their
+// flattened visible text must match. Iteration count is controlled by the
+// JCODE_MD_FUZZ_ITERS env var (default 5000) so CI stays fast while local deep
+// runs can crank it up.
+
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -> Self {
+        Rng(seed | 1)
+    }
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.0 = x;
+        x
+    }
+    fn below(&mut self, n: usize) -> usize {
+        (self.next_u64() % n as u64) as usize
+    }
+    fn chance(&mut self, n: usize) -> bool {
+        self.below(n) == 0
+    }
+    fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
+        &items[self.below(items.len())]
+    }
+}
+
+const WORDS: &[&str] = &[
+    "alpha", "beta", "gamma", "delta", "x", "y", "z", "the", "quick", "brown",
+    "fox", "中文", "데이터", "emoji", "lorem", "ipsum", "a", "I", "we", "code",
+];
+
+fn gen_words(rng: &mut Rng, max: usize) -> String {
+    let n = 1 + rng.below(max);
+    (0..n).map(|_| *rng.pick(WORDS)).collect::<Vec<_>>().join(" ")
+}
+
+/// Generate an inline fragment (no leading/trailing block structure).
+fn gen_inline(rng: &mut Rng, depth: usize) -> String {
+    match rng.below(if depth > 3 { 4 } else { 9 }) {
+        0 => gen_words(rng, 4),
+        1 => format!("**{}**", gen_words(rng, 3)),
+        2 => format!("_{}_", gen_words(rng, 3)),
+        3 => format!("`{}`", gen_words(rng, 2)),
+        4 => format!("~~{}~~", gen_words(rng, 2)),
+        5 => format!("[{}](http://example.com/{})", gen_words(rng, 2), rng.below(99)),
+        6 => format!("${}+{}$", rng.pick(WORDS), rng.pick(WORDS)),
+        7 => format!("${}", rng.below(999)), // currency
+        _ => format!(
+            "{} {} {}",
+            gen_words(rng, 2),
+            gen_inline(rng, depth + 1),
+            gen_words(rng, 2)
+        ),
+    }
+}
+
+/// Generate a block-level fragment.
+fn gen_block(rng: &mut Rng, depth: usize) -> String {
+    match rng.below(if depth > 2 { 6 } else { 11 }) {
+        0 => gen_inline(rng, 0),
+        1 => {
+            let level = 1 + rng.below(3);
+            format!("{} {}", "#".repeat(level), gen_inline(rng, 0))
+        }
+        2 => {
+            // unordered list
+            let n = 1 + rng.below(3);
+            (0..n)
+                .map(|_| format!("- {}", gen_inline(rng, 0)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        3 => {
+            // ordered list
+            let n = 1 + rng.below(3);
+            (0..n)
+                .map(|i| format!("{}. {}", i + 1, gen_inline(rng, 0)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        4 => {
+            // fenced code block
+            let lang = if rng.chance(2) { "rust" } else { "" };
+            let n = 1 + rng.below(3);
+            let body = (0..n)
+                .map(|_| format!("let {} = {};", rng.pick(WORDS), rng.below(99)))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!("```{lang}\n{body}\n```")
+        }
+        5 => "---".to_string(),
+        6 => {
+            // table
+            let cols = 1 + rng.below(3);
+            let header: Vec<String> = (0..cols).map(|_| gen_words(rng, 1)).collect();
+            let sep: Vec<&str> = (0..cols).map(|_| "---").collect();
+            let rows = 1 + rng.below(3);
+            let mut out = format!("| {} |\n| {} |", header.join(" | "), sep.join(" | "));
+            for _ in 0..rows {
+                let cells: Vec<String> = (0..cols).map(|_| gen_words(rng, 2)).collect();
+                out.push_str(&format!("\n| {} |", cells.join(" | ")));
+            }
+            out
+        }
+        7 => {
+            // blockquote (possibly nested / multiline)
+            let n = 1 + rng.below(3);
+            (0..n)
+                .map(|_| {
+                    let prefix = "> ".repeat(1 + rng.below(2));
+                    format!("{}{}", prefix, gen_inline(rng, 0))
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        8 => {
+            // task list
+            let n = 1 + rng.below(3);
+            (0..n)
+                .map(|_| {
+                    let mark = if rng.chance(2) { "x" } else { " " };
+                    format!("- [{}] {}", mark, gen_inline(rng, 0))
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        9 => {
+            // definition list
+            format!("{}\n: {}", gen_words(rng, 2), gen_inline(rng, 0))
+        }
+        _ => {
+            // footnote
+            format!(
+                "{}[^{n}]\n\n[^{n}]: {}",
+                gen_inline(rng, 0),
+                gen_inline(rng, 0),
+                n = rng.below(50)
+            )
+        }
+    }
+}
+
+fn gen_document(rng: &mut Rng) -> String {
+    let n = 1 + rng.below(5);
+    (0..n)
+        .map(|_| gen_block(rng, 0))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+#[test]
+fn fuzz_random_documents_parity() {
+    let iters: u64 = std::env::var("JCODE_MD_FUZZ_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
+    let base_seed: u64 = std::env::var("JCODE_MD_FUZZ_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0x9E3779B97F4A7C15);
+
+    let mut failures = Vec::new();
+    for i in 0..iters {
+        let mut rng = Rng::new(base_seed.wrapping_add(i.wrapping_mul(0x100000001B3)));
+        let md = gen_document(&mut rng);
+        let core = flattened(&render_markdown_via_core(&md));
+        let legacy = flattened(&render_markdown(&md));
+        if core != legacy {
+            failures.push((i, md, core, legacy));
+            if failures.len() >= 5 {
+                break;
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "random-document parity mismatches ({} shown):\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .map(|(i, md, core, legacy)| format!(
+                "--- iter {i} ---\nINPUT:\n{md}\nCORE:   {core:?}\nLEGACY: {legacy:?}"
+            ))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+}
+
+/// Stricter than `flattened`: compares the per-line visible text (trimmed,
+/// blanks dropped) so line-structure/break divergences are caught, not just
+/// whitespace-collapsed content.
+#[test]
+fn fuzz_random_documents_line_structure() {
+    let iters: u64 = std::env::var("JCODE_MD_FUZZ_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
+    let base_seed: u64 = std::env::var("JCODE_MD_FUZZ_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0x1234_5678_9ABC_DEF0);
+
+    let mut failures = Vec::new();
+    for i in 0..iters {
+        let mut rng = Rng::new(base_seed.wrapping_add(i.wrapping_mul(0x100000001B3)));
+        let md = gen_document(&mut rng);
+        let core = nonblank_texts(&render_markdown_via_core(&md));
+        let legacy = nonblank_texts(&render_markdown(&md));
+        if core != legacy {
+            failures.push((i, md, core, legacy));
+            if failures.len() >= 5 {
+                break;
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "line-structure parity mismatches ({} shown):\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .map(|(i, md, core, legacy)| format!(
+                "--- iter {i} ---\nINPUT:\n{md}\nCORE:   {core:#?}\nLEGACY: {legacy:#?}"
+            ))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+}
+
+#[test]
+fn fuzz_random_documents_wrapped_parity() {
+    use crate::render_markdown_via_core_wrapped;
+    let iters: u64 = std::env::var("JCODE_MD_FUZZ_ITERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3000);
+    let base_seed: u64 = std::env::var("JCODE_MD_FUZZ_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0xCAFE_F00D_DEAD_BEEF);
+
+    let widths = [20usize, 40, 80];
+    let mut failures = Vec::new();
+    'outer: for i in 0..iters {
+        for &w in &widths {
+            let mut rng = Rng::new(base_seed.wrapping_add(i.wrapping_mul(0x100000001B3)));
+            let md = gen_document(&mut rng);
+            let core = nonblank_texts(&render_markdown_via_core_wrapped(&md, w));
+            let legacy = nonblank_texts(&crate::wrap_lines(
+                crate::render_markdown_with_width(&md, Some(w)),
+                w,
+            ));
+            if core != legacy {
+                failures.push((i, w, md, core, legacy));
+                if failures.len() >= 5 {
+                    break 'outer;
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "wrapped parity mismatches ({} shown):\n{}",
+        failures.len(),
+        failures
+            .iter()
+            .map(|(i, w, md, core, legacy)| format!(
+                "--- iter {i} width {w} ---\nINPUT:\n{md}\nCORE:   {core:?}\nLEGACY: {legacy:?}"
+            ))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+}
+
+
+
+
+

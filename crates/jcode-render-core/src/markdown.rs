@@ -46,6 +46,72 @@ impl InlineStyle {
 struct ListFrame {
     ordered: bool,
     next_number: u64,
+    /// Block index in `doc.blocks` where this list's content begins, used to
+    /// right-align ordered markers once the list's width is known.
+    start_block: usize,
+    /// Nesting depth of this list (0 = outermost).
+    depth: usize,
+}
+
+/// Right-align ordered-list markers within a single list level, mirroring the
+/// legacy renderer: when the list has multi-digit item numbers, shorter markers
+/// are padded with leading spaces so the `.` separators line up and wrapped
+/// continuation lines indent consistently.
+///
+/// Only markers at exactly `depth` indentation are touched, so nested lists
+/// (which carry deeper indentation) are aligned by their own `End(List)`.
+fn align_ordered_markers(doc: &mut Document, start_block: usize, depth: usize) {
+    let indent = "  ".repeat(depth);
+
+    // First pass: find the widest digit run among this level's markers.
+    let mut max_digits = 0usize;
+    for block in doc.blocks.iter().skip(start_block) {
+        if let Some(d) = ordered_marker_digits(block, &indent) {
+            max_digits = max_digits.max(d);
+        }
+    }
+    if max_digits <= 1 {
+        return;
+    }
+
+    // Second pass: pad shorter markers.
+    for block in doc.blocks.iter_mut().skip(start_block) {
+        let Some(d) = ordered_marker_digits(block, &indent) else {
+            continue;
+        };
+        let extra = max_digits - d;
+        if extra == 0 {
+            continue;
+        }
+        if let Some(first_span) = block
+            .lines
+            .first_mut()
+            .and_then(|line| line.spans.first_mut())
+        {
+            // Insert padding right after the indent, before the digits.
+            let rest = &first_span.text[indent.len()..];
+            first_span.text = format!("{indent}{}{rest}", " ".repeat(extra));
+        }
+    }
+}
+
+/// If `block`'s first span is an ordered-list marker at exactly `indent`
+/// (i.e. `{indent}{digits}. `), return the digit count.
+fn ordered_marker_digits(block: &Block, indent: &str) -> Option<usize> {
+    let text = &block.lines.first()?.spans.first()?.text;
+    let rest = text.strip_prefix(indent)?;
+    // Reject deeper-nested markers (extra leading spaces) and non-markers.
+    if rest.starts_with(' ') {
+        return None;
+    }
+    let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 {
+        return None;
+    }
+    if !rest[digits..].starts_with(". ") {
+        return None;
+    }
+    Some(digits)
 }
 
 /// The block kind that inline content flushed in the current context belongs
@@ -165,9 +231,12 @@ pub fn parse_markdown(text: &str) -> Document {
             }
             Event::Start(Tag::List(first)) => {
                 flush_paragraph(&mut doc, &mut spans, current_kind(blockquote_depth, &list_stack), Alignment::Left, blockquote_depth, &mut bq_lines);
+                let depth = list_stack.len();
                 list_stack.push(ListFrame {
                     ordered: first.is_some(),
                     next_number: first.unwrap_or(1),
+                    start_block: doc.blocks.len(),
+                    depth,
                 });
             }
             Event::Start(Tag::Item) => {
@@ -446,7 +515,11 @@ pub fn parse_markdown(text: &str) -> Document {
                 pending_item_marker = None;
             }
             Event::End(TagEnd::List(_)) => {
-                list_stack.pop();
+                if let Some(frame) = list_stack.pop() {
+                    if frame.ordered {
+                        align_ordered_markers(&mut doc, frame.start_block, frame.depth);
+                    }
+                }
             }
             Event::End(TagEnd::BlockQuote(_)) => {
                 blockquote_depth = blockquote_depth.saturating_sub(1);
