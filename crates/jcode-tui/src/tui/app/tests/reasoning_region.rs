@@ -227,10 +227,10 @@ fn reasoning_partial_promotes_to_committed_line_on_newline() {
     app.append_reasoning_text("\nnext");
 
     let text = app.streaming_text();
-    // Committed first line (newline-terminated) and a live second-line tail.
+    // Committed first line (hard-break terminated) and a live second-line tail.
     assert!(
-        text.contains(&format!("*{sentinel}growing line{sentinel}*\n")),
-        "first line should be committed with a newline: {text:?}"
+        text.contains(&format!("*{sentinel}growing line{sentinel}*  \n")),
+        "first line should be committed with a hard break: {text:?}"
     );
     assert!(
         text.contains(&format!("*{sentinel}next{sentinel}*")),
