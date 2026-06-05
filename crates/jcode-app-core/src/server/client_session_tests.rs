@@ -9,7 +9,7 @@ use crate::message::{Message, ToolDefinition};
 use crate::protocol::ServerEvent;
 use crate::provider::{EventStream, Provider};
 use crate::server::{
-    ClientConnectionInfo, ClientDebugState, FileAccess, SessionInterruptQueues, SwarmEvent,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionInterruptQueues, SwarmEvent,
     SwarmMember, VersionedPlan,
 };
 use crate::tool::Registry;
@@ -17,7 +17,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use jcode_agent_runtime::InterruptSignal;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};

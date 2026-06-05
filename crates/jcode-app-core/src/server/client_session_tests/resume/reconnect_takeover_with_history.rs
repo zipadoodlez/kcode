@@ -71,9 +71,7 @@ async fn handle_resume_session_allows_reconnect_takeover_with_local_history() ->
     let client_debug_state = Arc::new(RwLock::new(ClientDebugState::default()));
     let swarm_members = Arc::new(RwLock::new(HashMap::<String, SwarmMember>::new()));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
-    let file_touches = Arc::new(RwLock::new(HashMap::<PathBuf, Vec<FileAccess>>::new()));
-    let files_touched_by_session =
-        Arc::new(RwLock::new(HashMap::<String, HashSet<PathBuf>>::new()));
+    let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::<
         String,
         HashMap<String, HashSet<String>>,
@@ -114,8 +112,7 @@ async fn handle_resume_session_allows_reconnect_takeover_with_local_history() ->
         &client_debug_state,
         &swarm_members,
         &swarms_by_id,
-        &file_touches,
-        &files_touched_by_session,
+        &file_touch,
         &channel_subscriptions,
         &channel_subscriptions_by_session,
         &swarm_plans,

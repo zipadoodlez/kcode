@@ -645,8 +645,7 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
     let shared_context = Arc::new(RwLock::new(HashMap::new()));
     let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
-    let file_touches = Arc::new(RwLock::new(HashMap::new()));
-    let files_touched_by_session = Arc::new(RwLock::new(HashMap::new()));
+    let file_touch = FileTouchService::new();
     let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
     let channel_subscriptions_by_session = Arc::new(RwLock::new(HashMap::new()));
     let client_debug_state = Arc::new(RwLock::new(ClientDebugState::default()));
@@ -674,8 +673,7 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
         shared_context,
         swarm_plans,
         swarm_coordinators,
-        file_touches,
-        files_touched_by_session,
+        file_touch,
         channel_subscriptions,
         channel_subscriptions_by_session,
         client_debug_state,

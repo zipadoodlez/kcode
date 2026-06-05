@@ -402,7 +402,7 @@ async fn comm_list_includes_member_status_and_detail() {
         swarm_id,
         HashSet::from([requester_id.clone(), peer_id.clone()]),
     )])));
-    let file_touches = Arc::new(RwLock::new(HashMap::new()));
+    let file_touch = crate::server::FileTouchService::new();
     let sessions = Arc::new(RwLock::new(HashMap::from([
         (requester_id.clone(), requester.clone()),
         (peer_id.clone(), peer.clone()),
@@ -415,7 +415,7 @@ async fn comm_list_includes_member_status_and_detail() {
         &client_event_tx,
         &swarm_members,
         &swarms_by_id,
-        &file_touches,
+        &file_touch,
         &sessions,
         &client_connections,
     )
