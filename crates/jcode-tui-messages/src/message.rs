@@ -175,6 +175,20 @@ impl DisplayMessage {
         }
     }
 
+    /// Create a display-only collapsing reasoning trace ("current" mode). The
+    /// content is sentinel-wrapped dim/italic markup; this message height-collapses
+    /// toward a one-line summary and is excluded from provider/model context.
+    pub fn reasoning(content: impl Into<String>) -> Self {
+        Self {
+            role: "reasoning".to_string(),
+            content: content.into(),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: None,
+        }
+    }
+
     /// Convert the shared session renderer output into the TUI transcript model.
     pub fn from_rendered_message(item: RenderedMessage) -> Self {
         Self {

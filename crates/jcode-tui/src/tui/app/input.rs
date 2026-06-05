@@ -50,6 +50,48 @@ pub(super) fn strip_reasoning_lines(content: &str) -> String {
     result.trim_end().to_string()
 }
 
+/// Total duration of the "current reasoning collapses away" height animation.
+pub(super) const REASONING_COLLAPSE_DURATION: Duration = Duration::from_millis(280);
+
+/// Split a just-closed reasoning block (sentinel-wrapped dim/italic line markup,
+/// as produced by [`jcode_tui_markdown::reasoning_line_markup`]) into one markup
+/// string per visible reasoning line. Blank separator lines are dropped so the
+/// collapse animates over real thought lines only.
+pub(super) fn reasoning_block_line_markups(block: &str) -> Vec<String> {
+    block
+        .split_inclusive('\n')
+        .filter(|segment| segment.contains(jcode_tui_markdown::REASONING_SENTINEL))
+        .map(|segment| segment.to_string())
+        .collect()
+}
+
+/// One-line dim summary the collapsed reasoning folds into. Includes a `▸` marker
+/// and the thinking duration when known (e.g. `▸ thought for 12s`).
+pub(super) fn reasoning_summary_markup(line_count: usize, elapsed: Option<Duration>) -> String {
+    let label = match elapsed {
+        Some(d) if d.as_secs() >= 1 => format!("▸ thought for {}s", d.as_secs()),
+        Some(_) => "▸ thought".to_string(),
+        None if line_count == 1 => "▸ thought (1 line)".to_string(),
+        None => format!("▸ thought ({} lines)", line_count),
+    };
+    jcode_tui_markdown::reasoning_line_markup(&label)
+}
+
+/// Build the transcript content for a collapsing `"reasoning"` message: the last
+/// `remaining` reasoning lines, or just the summary line once fully collapsed.
+pub(super) fn reasoning_message_content(
+    summary_markup: &str,
+    line_markups: &[String],
+    remaining: usize,
+) -> String {
+    if remaining == 0 || line_markups.is_empty() {
+        return summary_markup.to_string();
+    }
+    let remaining = remaining.min(line_markups.len());
+    let start = line_markups.len() - remaining;
+    line_markups[start..].concat()
+}
+
 pub(super) fn edit_input_in_external_editor(app: &mut App) {
     match edit_text_in_external_editor(&app.input) {
         Ok(edited) => {
@@ -2400,6 +2442,11 @@ impl App {
         self.reasoning_streaming = true;
         self.reasoning_pending_line.clear();
         self.reasoning_partial_len = 0;
+        // Remember where this reasoning block starts in the stream so `current`
+        // mode can later slice it out (without disturbing any preceding answer
+        // text) and hand it to the collapse animation.
+        self.reasoning_block_start = Some(self.streaming_text.len());
+        self.reasoning_block_started_at = Some(Instant::now());
     }
 
     /// Remove the live partial-reasoning tail (the rendered, not-yet-committed
@@ -2465,6 +2512,17 @@ impl App {
                 .push_str(&jcode_tui_markdown::reasoning_line_markup(&pending));
         }
         self.reasoning_streaming = false;
+
+        // In `current` mode, animate the block away instead of leaving it in the
+        // stream to be stripped wholesale at commit time.
+        if matches!(
+            crate::config::config().display.reasoning_display(),
+            crate::config::ReasoningDisplayMode::Current
+        ) {
+            self.begin_reasoning_collapse();
+            return;
+        }
+
         // Terminate the reasoning block with a blank line so following output
         // renders as a normal paragraph.
         if !self.streaming_text.ends_with("\n\n") {
@@ -2475,6 +2533,147 @@ impl App {
             }
         }
         self.refresh_split_view_if_needed();
+    }
+
+    /// Slice the just-closed reasoning block out of `streaming_text` and move it
+    /// into a dedicated `"reasoning"` display message, then start (or replace) the
+    /// height-collapse animation. Any answer text streamed *before* the reasoning
+    /// block is left untouched so ordering is preserved. With decorative
+    /// animations disabled (reduced motion / low-power tiers) the block is
+    /// finalized straight to its summary line.
+    pub(super) fn begin_reasoning_collapse(&mut self) {
+        let block_start = self.reasoning_block_start.take().unwrap_or(0);
+        let started_at = self.reasoning_block_started_at.take();
+        // Finalize any previous collapse first so its message snaps to its summary
+        // instead of being orphaned mid-animation.
+        self.finalize_reasoning_collapse();
+
+        let block_start = block_start.min(self.streaming_text.len());
+
+        // Everything from the block start onward is reasoning markup (plus the
+        // separators inserted by open/close). Take it out of the live stream.
+        let block: String = self.streaming_text.split_off(block_start);
+        // Drop a trailing separator the answer-side path would otherwise add.
+        while self.streaming_text.ends_with('\n') {
+            self.streaming_text.pop();
+        }
+        self.refresh_split_view_if_needed();
+
+        let line_markups = reasoning_block_line_markups(&block);
+        if line_markups.is_empty() {
+            // Nothing to show (e.g. empty reasoning); just clear state.
+            self.reasoning_collapse = None;
+            return;
+        }
+
+        let elapsed = started_at.map(|t| t.elapsed());
+        let summary_markup = reasoning_summary_markup(line_markups.len(), elapsed);
+
+        // Build the committed message content: every reasoning line, then the
+        // summary as the final line. The renderer reveals a shrinking suffix.
+        let content =
+            reasoning_message_content(&summary_markup, &line_markups, line_markups.len());
+
+        let msg_index = self.display_messages.len();
+        self.push_display_message(DisplayMessage::reasoning(content));
+
+        let decorative = crate::perf::tui_policy().enable_decorative_animations;
+        if !decorative {
+            // Reduced motion: snap straight to the one-line summary.
+            self.replace_display_message_content(
+                msg_index,
+                reasoning_message_content(&summary_markup, &line_markups, 0),
+            );
+            self.reasoning_collapse = None;
+            return;
+        }
+
+        self.reasoning_collapse = Some(super::ReasoningCollapse {
+            msg_index,
+            summary_markup,
+            line_markups,
+            started_at: Instant::now(),
+        });
+    }
+
+    /// Advance the active reasoning-collapse animation. Returns `true` when the
+    /// transcript changed (so the caller should request a redraw). Finalizes to
+    /// the summary line once the animation completes.
+    pub(super) fn advance_reasoning_collapse(&mut self) -> bool {
+        let Some(collapse) = self.reasoning_collapse.as_ref() else {
+            return false;
+        };
+
+        // If the target message moved or was replaced (compaction/rewind), drop the
+        // animation rather than risk mutating an unrelated message.
+        if self
+            .display_messages
+            .get(collapse.msg_index)
+            .map(|m| m.role.as_str())
+            != Some("reasoning")
+        {
+            self.reasoning_collapse = None;
+            return false;
+        }
+
+        let total = collapse.line_markups.len();
+        let elapsed = collapse.started_at.elapsed();
+        let progress =
+            (elapsed.as_secs_f32() / REASONING_COLLAPSE_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+        // Ease-out cubic so the block decelerates as it folds away.
+        let eased = 1.0 - (1.0 - progress).powi(3);
+        // Number of reasoning lines still visible above the summary. Counts down
+        // from `total` to 0 (only the summary remains).
+        let remaining = ((total as f32) * (1.0 - eased)).round() as usize;
+        let remaining = remaining.min(total);
+
+        let msg_index = collapse.msg_index;
+        let content =
+            reasoning_message_content(&collapse.summary_markup, &collapse.line_markups, remaining);
+        let changed = self.replace_display_message_content(msg_index, content);
+
+        if progress >= 1.0 {
+            self.reasoning_collapse = None;
+        }
+        changed
+    }
+
+    /// Whether a reasoning-collapse animation is currently running.
+    pub(super) fn reasoning_collapse_active(&self) -> bool {
+        self.reasoning_collapse.is_some()
+    }
+
+    /// Test hook: backdate the active collapse's start so `advance_*` observes a
+    /// specific elapsed fraction, and return the number of source reasoning lines.
+    #[cfg(test)]
+    pub(super) fn backdate_reasoning_collapse_for_test(
+        &mut self,
+        elapsed: std::time::Duration,
+    ) -> Option<usize> {
+        let collapse = self.reasoning_collapse.as_mut()?;
+        collapse.started_at = Instant::now()
+            .checked_sub(elapsed)
+            .unwrap_or_else(Instant::now);
+        Some(collapse.line_markups.len())
+    }
+
+    /// Finalize any in-flight reasoning collapse immediately (snap to summary).
+    /// Used when the turn ends or state is reset so no animation is left dangling.
+    pub(super) fn finalize_reasoning_collapse(&mut self) {
+        if let Some(collapse) = self.reasoning_collapse.take() {
+            if self
+                .display_messages
+                .get(collapse.msg_index)
+                .map(|m| m.role.as_str())
+                == Some("reasoning")
+            {
+                let content =
+                    reasoning_message_content(&collapse.summary_markup, &collapse.line_markups, 0);
+                self.replace_display_message_content(collapse.msg_index, content);
+            }
+        }
+        self.reasoning_block_start = None;
+        self.reasoning_block_started_at = None;
     }
 
     pub(super) fn append_streaming_text(&mut self, text: &str) {
@@ -2510,6 +2709,10 @@ impl App {
         self.reasoning_streaming = false;
         self.reasoning_pending_line.clear();
         self.reasoning_partial_len = 0;
+        // The stream (and any block offset into it) is gone; a running collapse
+        // targets a separate display message and is left to finish on its own.
+        self.reasoning_block_start = None;
+        self.reasoning_block_started_at = None;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();
@@ -2521,6 +2724,8 @@ impl App {
         self.reasoning_streaming = false;
         self.reasoning_pending_line.clear();
         self.reasoning_partial_len = 0;
+        self.reasoning_block_start = None;
+        self.reasoning_block_started_at = None;
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();

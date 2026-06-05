@@ -596,6 +596,10 @@ impl crate::tui::TuiState for App {
         self.mouse_scroll_queue != 0
     }
 
+    fn reasoning_collapse_animating(&self) -> bool {
+        self.reasoning_collapse_active()
+    }
+
     fn total_session_tokens(&self) -> Option<(u64, u64)> {
         // In remote mode, use tokens from server
         // Independent mode doesn't currently track total tokens

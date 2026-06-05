@@ -918,6 +918,20 @@ pub(super) fn prepare_body_incremental(
                     new_line_copy_offsets.push(0);
                 }
             }
+            "reasoning" => {
+                let content_width = width.saturating_sub(4);
+                let cached = get_cached_message_lines(
+                    msg,
+                    content_width,
+                    app.diff_mode(),
+                    render_reasoning_message,
+                );
+                for line in cached {
+                    new_lines.push(align_if_unset(line, align));
+                    new_line_raw_overrides.push(None);
+                    new_line_copy_offsets.push(0);
+                }
+            }
             "background_task" => {
                 let content_width = width.saturating_sub(4);
                 let cached = get_cached_message_lines(
@@ -1381,6 +1395,20 @@ pub(super) fn prepare_body(
                     content_width,
                     app.diff_mode(),
                     render_system_message,
+                );
+                for line in cached {
+                    lines.push(align_if_unset(line, align));
+                    line_raw_overrides.push(None);
+                    line_copy_offsets.push(0);
+                }
+            }
+            "reasoning" => {
+                let content_width = width.saturating_sub(4);
+                let cached = get_cached_message_lines(
+                    msg,
+                    content_width,
+                    app.diff_mode(),
+                    render_reasoning_message,
                 );
                 for line in cached {
                     lines.push(align_if_unset(line, align));

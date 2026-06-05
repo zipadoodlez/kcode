@@ -268,6 +268,8 @@ impl App {
                         if let Some(chunk) = self.stream_buffer.flush_smooth_frame() {
                             self.append_streaming_text(&chunk);
                         }
+                        // Advance the "current reasoning collapses away" animation.
+                        self.advance_reasoning_collapse();
                         // Poll for background compaction completion during streaming
                         self.poll_compaction_completion();
                         status_spinner_renderer.draw_full(self, terminal)?;

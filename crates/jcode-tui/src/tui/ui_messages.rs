@@ -71,6 +71,23 @@ pub(crate) fn render_assistant_message(
     lines
 }
 
+/// Render a collapsed/collapsing reasoning trace ("current" mode). The content is
+/// sentinel-wrapped dim+italic markup (reasoning lines and/or a `▸ thought for Xs`
+/// summary), so it reuses the standard markdown path that styles those runs dim.
+pub(crate) fn render_reasoning_message(
+    msg: &DisplayMessage,
+    width: u16,
+    _diff_mode: crate::config::DiffDisplayMode,
+) -> Vec<Line<'static>> {
+    let centered = markdown::center_code_blocks();
+    let wrap_width = centered_wrap_width(width, centered, 96);
+    let mut lines = markdown::render_markdown_with_width(&msg.content, Some(wrap_width));
+    if centered {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    lines
+}
+
 fn render_assistant_tool_call_lines(
     tool_calls: &[String],
     width: usize,

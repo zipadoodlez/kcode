@@ -738,3 +738,60 @@ fn test_render_tool_message_batch_subcall_lines_alignment_unset() {
     }
     crate::tui::markdown::set_center_code_blocks(false);
 }
+
+#[test]
+fn test_prepare_messages_renders_reasoning_role_dim_italic_without_sentinel() {
+    let _guard = crate::storage::lock_test_env();
+    clear_test_render_state_for_tests();
+
+    // A collapsing reasoning message carries sentinel-wrapped dim/italic markup.
+    let mut content = String::new();
+    content.push_str(&jcode_tui_markdown::reasoning_line_markup("weighing the options"));
+    content.push_str(&jcode_tui_markdown::reasoning_line_markup("▸ thought for 3s"));
+
+    let state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("hi"),
+            DisplayMessage::reasoning(content),
+        ],
+        ..Default::default()
+    };
+
+    let prepared = prepare::prepare_messages(&state, 100, 30);
+    let lines = prepared.materialize_all_lines();
+
+    // The visible reasoning body is present, dim+italic, and sentinel-free.
+    let body = lines
+        .iter()
+        .find(|l| {
+            let joined: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+            joined.contains("weighing the options")
+        })
+        .expect("reasoning body line present");
+    let rendered: String = body.spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(
+        !rendered.contains(jcode_tui_markdown::REASONING_SENTINEL),
+        "sentinel must be stripped from visible reasoning: {rendered:?}"
+    );
+    let span = body
+        .spans
+        .iter()
+        .find(|s| s.content.as_ref().contains("weighing"))
+        .expect("body span");
+    assert!(
+        span.style
+            .add_modifier
+            .contains(ratatui::style::Modifier::ITALIC),
+        "reasoning body should be italic: {:?}",
+        span.style
+    );
+
+    // The summary line is present too.
+    assert!(
+        lines.iter().any(|l| {
+            let joined: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
+            joined.contains("thought for 3s")
+        }),
+        "summary line should render"
+    );
+}

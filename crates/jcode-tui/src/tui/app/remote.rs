@@ -75,6 +75,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
             .is_some_and(|state| state.kind == crate::tui::PickerKind::Model),
     });
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
+    needs_redraw |= app.advance_reasoning_collapse();
     app.maybe_capture_runtime_memory_heartbeat();
     needs_redraw |= app.progress_copy_selection_edge_autoscroll();
     app.progress_mouse_scroll_animation();

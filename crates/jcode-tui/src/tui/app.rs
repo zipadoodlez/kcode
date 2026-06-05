@@ -340,6 +340,28 @@ pub enum ProcessingStatus {
     RunningTool(String),
 }
 
+/// Live "collapse the current reasoning" animation state.
+///
+/// In `current` reasoning-display mode the model's reasoning streams live as
+/// dim+italic lines, then must disappear once the answer commits or a tool runs.
+/// Instead of deleting every reasoning line in a single frame (a jarring upward
+/// jump), the closed reasoning block is moved into a dedicated `"reasoning"`
+/// display message that height-collapses toward a one-line summary over a short
+/// ease-out, leaving a `▸ thought for Xs` trace behind.
+#[derive(Clone, Debug)]
+pub(crate) struct ReasoningCollapse {
+    /// Index into `display_messages` of the `"reasoning"` message being collapsed.
+    pub(crate) msg_index: usize,
+    /// One-line dim summary the block collapses down to (markup for
+    /// "▸ thought for Xs"), always shown at the top of the message.
+    pub(crate) summary_markup: String,
+    /// Per-line dim+italic markup for each reasoning line, in order. The block
+    /// shrinks by dropping leading lines until only `summary_markup` remains.
+    pub(crate) line_markups: Vec<String>,
+    /// When the collapse animation started.
+    pub(crate) started_at: Instant,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum RemoteStartupPhase {
     StartingServer,
@@ -712,6 +734,18 @@ pub struct App {
     // `streaming_text` (the rendered tail of `reasoning_pending_line`). Truncated
     // and re-appended on each delta so the in-progress line updates in place.
     reasoning_partial_len: usize,
+    // Byte offset in `streaming_text` where the current reasoning block began
+    // (recorded by `open_reasoning_region`). Used in `current` mode to slice the
+    // closed reasoning block out of the stream and hand it to the collapse
+    // animation while keeping any answer text that preceded it in order.
+    reasoning_block_start: Option<usize>,
+    // Wall-clock instant the current reasoning region opened, used to label the
+    // collapsed summary ("▸ thought for Xs").
+    reasoning_block_started_at: Option<Instant>,
+    // Active "collapse the current reasoning" animation (current mode only). While
+    // set, a `"reasoning"` display message height-collapses toward its one-line
+    // summary; the redraw loop advances it each frame and finalizes on completion.
+    reasoning_collapse: Option<ReasoningCollapse>,
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec

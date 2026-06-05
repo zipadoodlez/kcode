@@ -74,6 +74,8 @@ impl App {
 
     pub(super) fn replace_display_messages(&mut self, mut messages: Vec<DisplayMessage>) {
         compact_display_messages_for_storage(&mut messages);
+        // Indices the collapse animation targets no longer apply to the new list.
+        self.reasoning_collapse = None;
         self.display_messages = messages;
         self.sync_compacted_history_lazy_from_display_messages();
         self.bump_display_messages_version();
@@ -336,6 +338,12 @@ impl App {
 
     pub(super) fn clear_display_messages(&mut self) {
         self.compacted_history_lazy = CompactedHistoryLazyState::default();
+        // The transcript (and the index the collapse animation targets) is about
+        // to be discarded; drop any in-flight collapse so it can't mutate a stale
+        // or unrelated message.
+        self.reasoning_collapse = None;
+        self.reasoning_block_start = None;
+        self.reasoning_block_started_at = None;
         if !self.display_messages.is_empty() {
             self.display_messages.clear();
             self.bump_display_messages_version();
