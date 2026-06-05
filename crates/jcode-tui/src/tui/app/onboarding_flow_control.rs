@@ -585,6 +585,13 @@ impl App {
                     return;
                 }
             };
+            // Auto-import bypasses the manual `pending_login` path, so record
+            // `auth_success` here for each imported provider. Without this the
+            // onboarding activation funnel undercounts every imported login
+            // (the happy path of the guided first-run flow).
+            for (provider, method) in &outcome.imported_auth_labels {
+                crate::telemetry::record_auth_success(provider, method);
+            }
             crate::bus::Bus::global().publish(crate::bus::BusEvent::LoginCompleted(
                 crate::bus::LoginCompleted {
                     provider: "auto-import".to_string(),

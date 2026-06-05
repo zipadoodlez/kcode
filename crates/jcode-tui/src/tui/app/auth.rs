@@ -2281,6 +2281,13 @@ impl App {
                     .await
                     {
                         Ok(outcome) => {
+                            // Auto-import bypasses the manual `pending_login`
+                            // telemetry path, so record `auth_success` for each
+                            // imported provider to keep the activation funnel
+                            // accurate.
+                            for (provider, method) in &outcome.imported_auth_labels {
+                                crate::telemetry::record_auth_success(provider, method);
+                            }
                             Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
                                 provider: "auto-import".to_string(),
                                 success: outcome.imported > 0,
