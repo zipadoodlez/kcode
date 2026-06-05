@@ -1,6 +1,17 @@
 use anyhow::Result;
 use serde_json::{Map, Value};
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Hard cap on a single reload-trace file. Reload tracing is meant to capture a
+/// handful of lifecycle events per reload; a healthy trace is a few KB. A stuck
+/// reload loop (e.g. a hung e2e harness re-receiving the same signal) can
+/// otherwise append `signal_received` lines without bound and, because the test
+/// home lives on a RAM-backed tmpfs, balloon a single `.jsonl` to multiple GiB,
+/// starving the machine of memory and throttling concurrent builds. Capping the
+/// file keeps a runaway emitter from taking down the host; once the cap is hit
+/// we stop appending and log once per path.
+const MAX_TRACE_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 fn sanitize_file_component(value: &str) -> String {
     let sanitized: String = value
@@ -50,6 +61,26 @@ pub(super) fn record(reload_id: &str, phase: &str, mut fields: Map<String, Value
             parent.display(),
             error
         ));
+        return;
+    }
+
+    // Guard against a runaway emitter (e.g. a stuck reload loop) growing a
+    // single trace file without bound. Tracing on a RAM-backed test tmpfs can
+    // otherwise consume multiple GiB of memory and starve the host. Once a file
+    // exceeds the cap, stop appending and warn a single time for that path.
+    if let Ok(metadata) = std::fs::metadata(&path)
+        && metadata.len() >= MAX_TRACE_FILE_BYTES
+    {
+        static WARNED: AtomicBool = AtomicBool::new(false);
+        if !WARNED.swap(true, Ordering::Relaxed) {
+            crate::logging::warn(&format!(
+                "reload trace: dropping events for reload_id={} phase={} path={}; file reached {} byte cap (possible stuck reload loop)",
+                reload_id,
+                phase,
+                path.display(),
+                MAX_TRACE_FILE_BYTES
+            ));
+        }
         return;
     }
 
@@ -145,6 +176,38 @@ mod tests {
         assert_eq!(event["session_id"], "session-1");
         assert_eq!(event["ok"], true);
         assert_eq!(event["schema_version"], 1);
+
+        if let Some(prev_home) = prev_home {
+            crate::env::set_var("JCODE_HOME", prev_home);
+        } else {
+            crate::env::remove_var("JCODE_HOME");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn record_value_stops_appending_past_size_cap() -> anyhow::Result<()> {
+        let _guard = crate::storage::lock_test_env();
+        let temp_home = tempfile::TempDir::new()?;
+        let prev_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp_home.path());
+
+        let reload_id = "reload-cap-test";
+        let path = trace_path(reload_id)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        // Pre-fill the trace file beyond the cap so the next append is dropped.
+        std::fs::write(&path, vec![b'x'; MAX_TRACE_FILE_BYTES as usize + 1])?;
+        let size_before = std::fs::metadata(&path)?.len();
+
+        record_value(reload_id, "should_be_dropped", json!({"n": 1}));
+
+        let size_after = std::fs::metadata(&path)?.len();
+        assert_eq!(
+            size_before, size_after,
+            "appending past the cap must not grow the file"
+        );
 
         if let Some(prev_home) = prev_home {
             crate::env::set_var("JCODE_HOME", prev_home);
