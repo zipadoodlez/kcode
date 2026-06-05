@@ -676,6 +676,7 @@ impl AntigravityProvider {
         tools: &[ToolDefinition],
         system: &str,
         resume_session_id: Option<&str>,
+        force_function_call: bool,
     ) -> Result<CodeAssistGenerateResponse> {
         let mut tokens = antigravity_auth::load_or_refresh_tokens().await?;
         let project = match tokens
@@ -714,13 +715,23 @@ impl AntigravityProvider {
             user_prompt_id: Uuid::new_v4().to_string(),
             request: VertexGenerateContentRequest {
                 contents: super::gemini::build_contents(messages),
-                system_instruction: super::gemini::build_system_instruction(system),
+                system_instruction: super::gemini::build_system_instruction_with_tool_guard(
+                    system,
+                    !tools_is_empty,
+                ),
                 tools,
                 tool_config: if tools_is_empty {
                     None
                 } else {
+                    // On a transparent retry after a MALFORMED_FUNCTION_CALL, force
+                    // function-calling mode `ANY` so the model must emit a real
+                    // functionCall instead of the Python-style pseudo-code that
+                    // triggered the malformed turn (the proven recovery for this
+                    // failure mode). Normal turns use `AUTO`.
                     Some(GeminiToolConfig {
-                        function_calling_config: GeminiFunctionCallingConfig { mode: "AUTO" },
+                        function_calling_config: GeminiFunctionCallingConfig {
+                            mode: if force_function_call { "ANY" } else { "AUTO" },
+                        },
                     })
                 },
                 session_id: resume_session_id
@@ -803,6 +814,51 @@ impl AntigravityProvider {
 /// Whether a resolved Antigravity model id targets an Anthropic Claude model.
 fn model_is_claude(model: &str) -> bool {
     model.trim().to_ascii_lowercase().contains("claude")
+}
+
+/// Whether a `generateContent` response is an abnormal turn that produced no
+/// usable output (no text, no function call). This is the shape Gemini-3
+/// "thinking" models intermittently return when they emit Python-style
+/// pseudo-code instead of a clean functionCall: `finish_reason ==
+/// MALFORMED_FUNCTION_CALL` (or another non-terminal reason) with empty content.
+/// Such a turn is worth one transparent retry before surfacing an error.
+///
+/// Normal terminal reasons (`STOP`, `MAX_TOKENS`, unspecified) are never treated
+/// as retryable here, even with empty content, so a legitimately empty answer is
+/// not retried in a loop.
+fn is_retryable_empty_turn(response: &CodeAssistGenerateResponse) -> bool {
+    let Some(candidate) = response
+        .response
+        .as_ref()
+        .and_then(|r| r.candidates.as_ref())
+        .and_then(|c| c.first())
+    else {
+        // No candidate at all is handled separately (hard error), not retried here.
+        return false;
+    };
+    let produced_output = candidate
+        .content
+        .as_ref()
+        .map(|content| {
+            content.parts.iter().any(|part| {
+                part.function_call.is_some()
+                    || part.text.as_deref().is_some_and(|text| !text.is_empty())
+            })
+        })
+        .unwrap_or(false);
+    if produced_output {
+        return false;
+    }
+    candidate
+        .finish_reason
+        .as_deref()
+        .map(|reason| {
+            !matches!(
+                reason.to_ascii_uppercase().as_str(),
+                "STOP" | "MAX_TOKENS" | "FINISH_REASON_UNSPECIFIED" | ""
+            )
+        })
+        .unwrap_or(false)
 }
 
 /// Remap model ids that the Antigravity catalog advertises but the
@@ -996,6 +1052,7 @@ impl Provider for AntigravityProvider {
                     &tools,
                     &system,
                     resume_session_id.as_deref(),
+                    false,
                 )
                 .await
             {
@@ -1005,6 +1062,36 @@ impl Provider for AntigravityProvider {
                     return;
                 }
             };
+            // Gemini-3 thinking models intermittently return an empty
+            // `MALFORMED_FUNCTION_CALL` turn (pseudo-code instead of a clean
+            // functionCall). It is transient, so transparently re-request a few
+            // times before surfacing it; this turns a frequent hard failure into a
+            // near-always-successful turn without the agent loop seeing the blip.
+            // The retries force function-calling mode `ANY` so the model must emit
+            // a real functionCall rather than the pseudo-code that failed.
+            let mut response = response;
+            let mut malformed_retries = 0u8;
+            const MAX_MALFORMED_RETRIES: u8 = 2;
+            while is_retryable_empty_turn(&response) && malformed_retries < MAX_MALFORMED_RETRIES {
+                malformed_retries += 1;
+                match provider
+                    .generate_content(
+                        &model,
+                        &messages,
+                        &tools,
+                        &system,
+                        resume_session_id.as_deref(),
+                        true,
+                    )
+                    .await
+                {
+                    Ok(retried) => response = retried,
+                    Err(err) => {
+                        let _ = tx.send(Err(err)).await;
+                        return;
+                    }
+                }
+            }
             let _ = tx
                 .send(Ok(StreamEvent::ConnectionPhase {
                     phase: ConnectionPhase::Streaming,
@@ -1036,6 +1123,13 @@ impl Provider for AntigravityProvider {
                     .await;
                 return;
             };
+            // Track whether this candidate produced any usable output (text or a
+            // tool call). Gemini-3 thinking models intermittently emit Python-style
+            // pseudo-code instead of a clean functionCall and finish with
+            // `MALFORMED_FUNCTION_CALL` (or a bare `OTHER`) and empty content. If we
+            // silently end the turn the agent loop looks like it stalled with no
+            // answer, so we surface an actionable error below instead.
+            let mut produced_output = false;
             if let Some(content) = candidate.content {
                 // Gemini 3 attaches a `thoughtSignature` to function-call parts
                 // (and occasionally to a standalone preceding part). Emit tool
@@ -1052,9 +1146,11 @@ impl Provider for AntigravityProvider {
                         .filter(|sig| !sig.is_empty())
                         .cloned();
                     if let Some(text) = part.text.filter(|text| !text.is_empty()) {
+                        produced_output = true;
                         let _ = tx.send(Ok(StreamEvent::TextDelta(text))).await;
                     }
                     if let Some(function_call) = part.function_call {
+                        produced_output = true;
                         let signature = part_signature.clone().or_else(|| pending_signature.take());
                         let raw_call_id = function_call
                             .id
@@ -1093,6 +1189,40 @@ impl Provider for AntigravityProvider {
                     let _ = tx
                         .send(Ok(StreamEvent::ThinkingSignatureDelta(signature)))
                         .await;
+                }
+            }
+
+            // An abnormal finish (typically Gemini-3's intermittent
+            // `MALFORMED_FUNCTION_CALL`, where the model writes pseudo-code rather
+            // than a valid functionCall) that yielded no text and no tool call is a
+            // dead turn: surface it as a retryable error instead of a silent empty
+            // `MessageEnd` that looks like the agent gave up. `STOP`/`MAX_TOKENS`
+            // are normal terminal reasons and are left to flow through as usual.
+            if !produced_output {
+                let abnormal = candidate
+                    .finish_reason
+                    .as_deref()
+                    .map(|reason| {
+                        !matches!(
+                            reason.to_ascii_uppercase().as_str(),
+                            "STOP" | "MAX_TOKENS" | "FINISH_REASON_UNSPECIFIED" | ""
+                        )
+                    })
+                    .unwrap_or(false);
+                if abnormal {
+                    let reason = candidate.finish_reason.as_deref().unwrap_or("unknown");
+                    let detail = candidate
+                        .finish_message
+                        .as_deref()
+                        .filter(|msg| !msg.trim().is_empty())
+                        .map(|msg| format!(": {}", crate::util::truncate_str(msg.trim(), 300)))
+                        .unwrap_or_default();
+                    let _ = tx
+                        .send(Err(anyhow::anyhow!(
+                            "Antigravity returned no usable output (finish_reason={reason}){detail}"
+                        )))
+                        .await;
+                    return;
                 }
             }
 

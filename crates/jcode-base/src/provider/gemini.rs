@@ -512,7 +512,10 @@ impl GeminiProvider {
             user_prompt_id: Uuid::new_v4().to_string(),
             request: VertexGenerateContentRequest {
                 contents: build_contents(messages),
-                system_instruction: build_system_instruction(system),
+                system_instruction: build_system_instruction_with_tool_guard(
+                    system,
+                    !tools.is_empty(),
+                ),
                 tools: build_tools(tools),
                 tool_config: if tools.is_empty() {
                     None
@@ -809,6 +812,12 @@ impl Provider for GeminiProvider {
                         .await;
                     return;
                 }
+                // Track whether this candidate produced any usable output (text or
+                // a tool call). Gemini-3 thinking models intermittently emit
+                // Python-style pseudo-code instead of a clean functionCall and
+                // finish with `MALFORMED_FUNCTION_CALL` and empty content; surface
+                // that as a retryable error below rather than a silent empty turn.
+                let mut produced_output = false;
                 if let Some(content) = candidate.content {
                     // Gemini 3 attaches a `thoughtSignature` to function-call
                     // parts (and occasionally to a standalone preceding part).
@@ -826,9 +835,11 @@ impl Provider for GeminiProvider {
                         if let Some(text) = part.text
                             && !text.is_empty()
                         {
+                            produced_output = true;
                             let _ = tx.send(Ok(StreamEvent::TextDelta(text))).await;
                         }
                         if let Some(function_call) = part.function_call {
+                            produced_output = true;
                             let signature =
                                 part_signature.clone().or_else(|| pending_signature.take());
                             let raw_call_id = function_call
@@ -867,6 +878,38 @@ impl Provider for GeminiProvider {
                         let _ = tx
                             .send(Ok(StreamEvent::ThinkingSignatureDelta(signature)))
                             .await;
+                    }
+                }
+
+                // An abnormal finish (typically Gemini-3's intermittent
+                // `MALFORMED_FUNCTION_CALL`) that yielded no text and no tool call
+                // is a dead turn: surface it as a retryable error instead of a
+                // silent empty `MessageEnd`. `STOP`/`MAX_TOKENS` are normal.
+                if !produced_output {
+                    let abnormal = candidate
+                        .finish_reason
+                        .as_deref()
+                        .map(|reason| {
+                            !matches!(
+                                reason.to_ascii_uppercase().as_str(),
+                                "STOP" | "MAX_TOKENS" | "FINISH_REASON_UNSPECIFIED" | ""
+                            )
+                        })
+                        .unwrap_or(false);
+                    if abnormal {
+                        let reason = candidate.finish_reason.as_deref().unwrap_or("unknown");
+                        let detail = candidate
+                            .finish_message
+                            .as_deref()
+                            .filter(|msg| !msg.trim().is_empty())
+                            .map(|msg| format!(": {}", crate::util::truncate_str(msg.trim(), 300)))
+                            .unwrap_or_default();
+                        let _ = tx
+                            .send(Err(anyhow::anyhow!(
+                                "Gemini returned no usable output (finish_reason={reason}){detail}"
+                            )))
+                            .await;
+                        return;
                     }
                 }
             }
@@ -1025,6 +1068,35 @@ pub(crate) fn build_system_instruction(system: &str) -> Option<GeminiContent> {
             }],
         })
     }
+}
+
+/// Prevention guidance appended to the Gemini system prompt when tools are
+/// advertised. Gemini-3 "thinking" models intermittently emit Python-style
+/// pseudo-code (e.g. `print(default_api.read(...))`) instead of a clean
+/// `functionCall`, which the backend rejects with `MALFORMED_FUNCTION_CALL` and
+/// empty content. Explicitly forbidding code/namespaces measurably reduces that
+/// failure mode at no latency cost (see the Gemini function-calling guidance and
+/// field reports of this exact behavior).
+const GEMINI_FUNCTION_CALL_GUARD: &str = "\n\n## Function calling\n\
+     - When you call a tool, emit a native function call, not code. Never write \
+     Python (or any language) that calls the tool, and never wrap a call in \
+     print(...) or a code block.\n\
+     - Use the function name exactly as defined. Do not prepend `default_api.` \
+     or any other namespace to the function name.";
+
+/// Build the Gemini `system_instruction`, appending [`GEMINI_FUNCTION_CALL_GUARD`]
+/// when tools are advertised so the model is steered away from the
+/// `MALFORMED_FUNCTION_CALL` pseudo-code failure mode.
+pub(crate) fn build_system_instruction_with_tool_guard(
+    system: &str,
+    has_tools: bool,
+) -> Option<GeminiContent> {
+    if !has_tools {
+        return build_system_instruction(system);
+    }
+    let mut combined = system.trim().to_string();
+    combined.push_str(GEMINI_FUNCTION_CALL_GUARD);
+    build_system_instruction(&combined)
 }
 
 pub(crate) fn build_contents(messages: &[Message]) -> Vec<GeminiContent> {
