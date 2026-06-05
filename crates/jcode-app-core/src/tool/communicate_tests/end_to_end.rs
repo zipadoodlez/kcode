@@ -357,3 +357,110 @@ async fn communicate_spawn_with_prompt_and_summary_work_end_to_end() {
 
     server_task.abort();
 }
+
+/// `message` routes by the fields supplied (DM when `to_session` is set,
+/// broadcast otherwise), while `broadcast` always targets the whole swarm.
+/// Regression test for the bug where `message` and `broadcast` were identical
+/// because the tool discarded `to_session`/`channel` for both.
+#[tokio::test]
+async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
+    let _env_lock = crate::storage::lock_test_env();
+    let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
+    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let socket_path = runtime_dir.path().join("jcode.sock");
+    let _runtime = EnvGuard::set("JCODE_RUNTIME_DIR", runtime_dir.path());
+    let _socket = EnvGuard::set("JCODE_SOCKET", &socket_path);
+    let _debug = EnvGuard::set("JCODE_DEBUG_CONTROL", "1");
+
+    let provider: Arc<dyn Provider> = Arc::new(DelayedTestProvider {
+        delay: Duration::from_millis(100),
+    });
+    let server = Arc::new(Server::new(provider));
+    let mut server_task = {
+        let server = Arc::clone(&server);
+        tokio::spawn(async move { server.run().await })
+    };
+
+    wait_for_server_socket(&socket_path, &mut server_task)
+        .await
+        .expect("server socket should be ready");
+
+    let mut sender = RawClient::connect(&socket_path)
+        .await
+        .expect("sender should connect");
+    let mut peer = RawClient::connect(&socket_path)
+        .await
+        .expect("peer should connect");
+    sender
+        .subscribe(&repo_dir)
+        .await
+        .expect("sender subscribe");
+    peer.subscribe(&repo_dir).await.expect("peer subscribe");
+
+    let sender_session = sender.session_id().await.expect("sender session id");
+    let peer_session = peer.session_id().await.expect("peer session id");
+
+    // Ensure both sessions are part of the same swarm before messaging.
+    wait_for_member_presence(&mut sender, &sender_session, &peer_session)
+        .await
+        .expect("peer should join the swarm");
+
+    let tool = CommunicateTool::new();
+    let ctx = test_ctx(&sender_session, &repo_dir);
+
+    // `message` with a `to_session` should arrive at the peer scoped as a DM.
+    let dm_output = tool
+        .execute(
+            json!({
+                "action": "message",
+                "message": "ping-dm",
+                "to_session": peer_session.clone()
+            }),
+            ctx.clone(),
+        )
+        .await
+        .expect("message with to_session should succeed");
+    assert!(
+        dm_output.output.contains("Direct message sent to"),
+        "message with to_session should report a DM, got: {}",
+        dm_output.output
+    );
+    let dm_scope = peer
+        .next_message_notification(Duration::from_secs(5))
+        .await
+        .expect("peer should receive the targeted message");
+    assert_eq!(
+        dm_scope.as_deref(),
+        Some("dm"),
+        "message with to_session should be delivered with dm scope"
+    );
+
+    // `broadcast` should reach the peer scoped as a broadcast even though no
+    // explicit target is supplied.
+    let broadcast_output = tool
+        .execute(
+            json!({
+                "action": "broadcast",
+                "message": "ping-all"
+            }),
+            ctx.clone(),
+        )
+        .await
+        .expect("broadcast should succeed");
+    assert!(
+        broadcast_output.output.contains("Broadcast sent to all agents"),
+        "broadcast should report a group send, got: {}",
+        broadcast_output.output
+    );
+    let broadcast_scope = peer
+        .next_message_notification(Duration::from_secs(5))
+        .await
+        .expect("peer should receive the broadcast");
+    assert_eq!(
+        broadcast_scope.as_deref(),
+        Some("broadcast"),
+        "broadcast should be delivered with broadcast scope"
+    );
+
+    server_task.abort();
+}

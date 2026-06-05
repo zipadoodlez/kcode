@@ -7,8 +7,8 @@ use super::{
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::{
-    AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, HistoryMessage, Request, ServerEvent,
-    SessionActivitySnapshot, ToolCallSummary,
+    AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, HistoryMessage, NotificationType, Request,
+    ServerEvent, SessionActivitySnapshot, ToolCallSummary,
 };
 use crate::provider::{EventStream, Provider};
 use crate::server::Server;
@@ -560,6 +560,29 @@ impl RawClient {
                 ServerEvent::CommStatusResponse { snapshot, .. } => Ok(snapshot),
                 other => anyhow::bail!("unexpected comm_status response: {other:?}"),
             }
+    }
+
+    /// Wait for the next `Message` notification and return its scope
+    /// ("dm", "channel", or "broadcast"). Other events are skipped.
+    async fn next_message_notification(&mut self, timeout: Duration) -> Result<Option<String>> {
+        match self
+            .read_until(timeout, |event| {
+                matches!(
+                    event,
+                    ServerEvent::Notification {
+                        notification_type: NotificationType::Message { .. },
+                        ..
+                    }
+                )
+            })
+            .await?
+        {
+            ServerEvent::Notification {
+                notification_type: NotificationType::Message { scope, .. },
+                ..
+            } => Ok(scope),
+            other => anyhow::bail!("unexpected notification response: {other:?}"),
+        }
     }
 }
 
