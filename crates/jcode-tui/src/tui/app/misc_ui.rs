@@ -132,21 +132,60 @@ impl App {
         let completion_price = *self.cached_completion_price.get_or_insert(60.0);
         let cache_read_price = self.cached_cache_read_price;
 
-        // Cache-read tokens are billed at the (cheaper) cache-read rate when we
-        // know it; otherwise treat them as regular input tokens.
         let cache_read_tokens = self.streaming_cache_read_tokens.unwrap_or(0);
-        let full_input_tokens = self
-            .streaming_input_tokens
-            .saturating_sub(cache_read_tokens.min(self.streaming_input_tokens));
+        let cache_creation_tokens = self.streaming_cache_creation_tokens.unwrap_or(0);
+        let reported_input_tokens = self.streaming_input_tokens;
 
-        let prompt_cost = (full_input_tokens as f32 * prompt_price) / 1_000_000.0;
+        // Providers report usage with two different conventions:
+        //   - Split accounting (Anthropic): `input_tokens` already EXCLUDES the
+        //     cache-read and cache-creation counts, which are reported
+        //     separately. Subtracting cache-read from input again would double
+        //     count it and bill fresh input at ~$0 on cache-hit turns.
+        //   - Subset accounting (OpenAI-style): cached tokens are counted INSIDE
+        //     `input_tokens`, so we subtract the cache-read portion to bill it at
+        //     the cheaper cache rate.
+        // Mirror the heuristic the cache/context paths use (see
+        // `effective_prompt_tokens` and `effective_context_tokens_from_usage`).
+        let split_accounting = is_anthropic
+            || cache_creation_tokens > 0
+            || cache_read_tokens > reported_input_tokens;
+
+        let fresh_input_tokens = if split_accounting {
+            reported_input_tokens
+        } else {
+            reported_input_tokens.saturating_sub(cache_read_tokens.min(reported_input_tokens))
+        };
+
+        let prompt_cost = (fresh_input_tokens as f32 * prompt_price) / 1_000_000.0;
         let completion_cost =
             (self.streaming_output_tokens as f32 * completion_price) / 1_000_000.0;
+        // Cache-read tokens are billed at the (cheaper) cache-read rate when we
+        // know it; otherwise treat them as regular input tokens.
         let cache_read_cost = match cache_read_price {
             Some(price) => (cache_read_tokens as f32 * price) / 1_000_000.0,
             None => (cache_read_tokens as f32 * prompt_price) / 1_000_000.0,
         };
-        self.total_cost += prompt_cost + completion_cost + cache_read_cost;
+        // Cache *writes* (cache-creation) are billed at a premium over the base
+        // input rate. Anthropic charges 1.25x for the 5-minute TTL and 2x for the
+        // 1-hour TTL; other split-accounting providers we approximate at the base
+        // input rate. Subset-accounting providers fold writes into `input_tokens`
+        // (and rarely report a creation count), so we only add this for split
+        // accounting to avoid double counting.
+        let cache_write_cost = if split_accounting && cache_creation_tokens > 0 {
+            let multiplier = if is_anthropic {
+                if crate::provider::anthropic::is_cache_ttl_1h() {
+                    2.0
+                } else {
+                    1.25
+                }
+            } else {
+                1.0
+            };
+            (cache_creation_tokens as f32 * prompt_price * multiplier) / 1_000_000.0
+        } else {
+            0.0
+        };
+        self.total_cost += prompt_cost + completion_cost + cache_read_cost + cache_write_cost;
     }
 
     /// Resolve and cache per-model pricing for the active provider. For
