@@ -170,6 +170,67 @@ fn test_remove_display_message_bumps_version() {
 }
 
 #[test]
+fn test_incremental_display_message_counts_match_full_recompute() {
+    let mut app = create_test_app();
+
+    // Interleave user, assistant, and edit-tool messages via the public append
+    // path, which now maintains the counters incrementally instead of
+    // rescanning the whole transcript.
+    for i in 0..50 {
+        app.push_display_message(DisplayMessage::user(format!("prompt {i}")));
+        app.push_display_message(DisplayMessage::assistant(format!("reply {i}")));
+        if i % 3 == 0 {
+            app.push_display_message(DisplayMessage {
+                role: "tool".to_string(),
+                content: format!("edited file {i}"),
+                tool_calls: vec![],
+                duration_secs: None,
+                title: None,
+                tool_data: Some(crate::message::ToolCall {
+                    id: format!("edit-{i}"),
+                    name: "edit".to_string(),
+                    input: serde_json::json!({"file_path": format!("src/file_{i}.rs")}),
+                    intent: None,
+                    thought_signature: None,
+                }),
+            });
+        }
+    }
+
+    // Remove a few messages to exercise the decrement path.
+    app.remove_display_message(0);
+    app.remove_display_message(5);
+
+    let incremental_user = app.display_user_message_count;
+    let incremental_edit = app.display_edit_tool_message_count;
+
+    let expected_user = app
+        .display_messages
+        .iter()
+        .filter(|m| m.effective_role() == "user")
+        .count();
+    let expected_edit = app
+        .display_messages
+        .iter()
+        .filter(|m| {
+            m.tool_data
+                .as_ref()
+                .map(|tool| crate::tui::ui::tools_ui::is_edit_tool_name(&tool.name))
+                .unwrap_or(false)
+        })
+        .count();
+
+    assert_eq!(
+        incremental_user, expected_user,
+        "incrementally-maintained user count should match a full recompute"
+    );
+    assert_eq!(
+        incremental_edit, expected_edit,
+        "incrementally-maintained edit-tool count should match a full recompute"
+    );
+}
+
+#[test]
 fn test_handle_remote_disconnect_retryable_pending_schedules_retry() {
     let mut app = create_test_app();
     app.is_processing = true;

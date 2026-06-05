@@ -34,14 +34,35 @@ impl App {
         self.display_edit_tool_message_count = self
             .display_messages
             .iter()
-            .filter(|message| {
-                message
-                    .tool_data
-                    .as_ref()
-                    .map(|tool| tools_ui::is_edit_tool_name(&tool.name))
-                    .unwrap_or(false)
-            })
+            .filter(|message| Self::display_message_is_edit_tool(message))
             .count();
+    }
+
+    /// Whether a single display message counts as an edit-tool message for the
+    /// incrementally-maintained `display_edit_tool_message_count`.
+    fn display_message_is_edit_tool(message: &DisplayMessage) -> bool {
+        message
+            .tool_data
+            .as_ref()
+            .map(|tool| tools_ui::is_edit_tool_name(&tool.name))
+            .unwrap_or(false)
+    }
+
+    /// Fold a single message into the cached display-message counters with the
+    /// given sign (+1 when added, -1 when removed). This keeps the counters
+    /// O(1) per mutation instead of rescanning the whole transcript via
+    /// `recompute_display_message_stats`, which made appending M messages one at
+    /// a time cumulatively O(M^2).
+    pub(super) fn adjust_display_message_stats(&mut self, message: &DisplayMessage, added: bool) {
+        let delta: isize = if added { 1 } else { -1 };
+        if message.effective_role() == "user" {
+            self.display_user_message_count =
+                (self.display_user_message_count as isize + delta).max(0) as usize;
+        }
+        if Self::display_message_is_edit_tool(message) {
+            self.display_edit_tool_message_count =
+                (self.display_edit_tool_message_count as isize + delta).max(0) as usize;
+        }
     }
 
     pub(super) fn active_client_session_id(&self) -> Option<&str> {
@@ -85,6 +106,13 @@ impl App {
 
     pub(super) fn bump_display_messages_version(&mut self) {
         self.recompute_display_message_stats();
+        self.bump_display_messages_version_no_stats();
+    }
+
+    /// Bump the display-messages version without rescanning the transcript to
+    /// recompute counters. Callers that have already maintained the cached
+    /// counters incrementally (e.g. a single append) use this to stay O(1).
+    pub(super) fn bump_display_messages_version_no_stats(&mut self) {
         self.display_messages_version = self.display_messages_version.wrapping_add(1);
         self.bump_context_revision();
         self.refresh_split_view_if_needed();
