@@ -751,10 +751,13 @@ pub(super) fn prepare_body_incremental(
     let pending_count = input_ui::pending_prompt_count(app);
     let prompt_number_offset = app.compacted_hidden_user_prompts();
 
-    let mut prompt_num = messages[..prev_msg_count]
-        .iter()
-        .filter(|m| m.effective_role() == "user")
-        .count();
+    // The number of user prompts already rendered equals the number of cached
+    // user prompt texts. Re-counting `messages[..prev_msg_count]` here on every
+    // incremental append rescans the whole prior transcript, making a session
+    // that grows one message at a time O(n^2). `prev.user_prompt_texts` is
+    // extended in lockstep with each rendered user message, so its length is the
+    // exact prior prompt count.
+    let mut prompt_num = prev.user_prompt_texts.len();
 
     let mut new_lines: Vec<Line> = Vec::new();
     let mut new_user_line_indices: Vec<usize> = Vec::new();
