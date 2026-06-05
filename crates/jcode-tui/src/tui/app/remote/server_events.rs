@@ -61,9 +61,20 @@ fn server_release_is_older_than_client(server_version: Option<&str>, client_vers
 /// attached to is not running the binary we expect.
 ///
 /// Precedence:
+/// - The client independently measured the server's release version as strictly
+///   older than its own clean release version -> defer. This wins even over the
+///   server's own `server_has_update: Some(false)` self-report, because a stale
+///   long-lived daemon legitimately reports "no newer binary to reload into"
+///   (its `shared-server` channel still points at its own old build) while the
+///   client can plainly see it is an older release. Trusting the server here is
+///   exactly what left "current client, stale server" stuck (the daemon's reload
+///   decision runs old code that can never drag itself forward). The newer
+///   client is authoritative, so it defers and repairs the channel before
+///   reloading.
 /// - `Some(true)`: the server self-reported a newer binary on disk -> defer.
 /// - `Some(false)`: the server is new enough to self-assess and found nothing
-///   newer to reload into -> trust it, do not fight it with a forced reload.
+///   newer to reload into, AND the client could not prove it is older -> trust
+///   it, do not fight it with a forced reload.
 /// - `None`: the server is too old to self-report. Fall back to our own
 ///   client-side release-version comparison, which is the only signal that can
 ///   catch a pre-self-heal daemon.
@@ -75,10 +86,16 @@ fn should_defer_history_for_runtime_identity_with_allow(
     if allow_mismatch {
         return false;
     }
+    // A client-proven-older server always wins: never let an old daemon's
+    // (locally correct but globally wrong) "no update" self-report veto the
+    // client's own release-order comparison.
+    if client_detected_stale {
+        return true;
+    }
     match server_has_update {
         Some(true) => true,
         Some(false) => false,
-        None => client_detected_stale,
+        None => false,
     }
 }
 
@@ -147,19 +164,29 @@ mod runtime_identity_tests {
     }
 
     #[test]
-    fn client_detection_only_applies_when_server_cannot_self_report() {
+    fn client_detected_older_server_always_defers() {
         // Ancient server (server_has_update: None) that the client independently
         // measured as older -> defer. This is the issue #295 macOS case where a
         // pre-self-heal daemon can never set server_has_update itself.
         assert!(should_defer_history_for_runtime_identity_with_allow(
             None, true, false
         ));
-        // A server new enough to self-assess and report "no newer binary" is
-        // trusted, even if a naive version compare disagrees: forcing a reload
-        // would only loop against a server that has nothing newer to exec into.
-        assert!(!should_defer_history_for_runtime_identity_with_allow(
+        // A server that self-reports "no newer binary" (Some(false)) but that the
+        // client can PROVE is an older release -> still defer. The daemon's
+        // self-report is locally correct (its own shared-server channel points at
+        // its old build) but globally wrong; the newer client is authoritative.
+        // This is the "current client, stale server" report: trusting Some(false)
+        // here is exactly what left the server stuck on the old version forever.
+        assert!(should_defer_history_for_runtime_identity_with_allow(
             Some(false),
             true,
+            false
+        ));
+        // Same-release/newer server (client could not prove it is older) that
+        // self-reports "no newer binary" -> trust it, do not force a reload loop.
+        assert!(!should_defer_history_for_runtime_identity_with_allow(
+            Some(false),
+            false,
             false
         ));
     }
@@ -320,7 +347,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 id,
                 name,
                 input: serde_json::Value::Null,
-                intent: None, thought_signature: None, });
+                intent: None,
+                thought_signature: None,
+            });
             eager_stream_redraw
         }
         ServerEvent::ToolInput { delta } => {
@@ -337,7 +366,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 id: id.clone(),
                 name: name.clone(),
                 input: parsed_input.clone(),
-                intent: ToolCall::intent_from_input(&parsed_input), thought_signature: None, };
+                intent: ToolCall::intent_from_input(&parsed_input),
+                thought_signature: None,
+            };
             if let Some(key) = App::experimental_feature_key_for_tool(&tool_call) {
                 app.note_experimental_feature_use(key);
             }
@@ -583,14 +614,14 @@ pub(in crate::tui::app) fn handle_server_event(
                 let content = app.take_streaming_text();
                 let content = app.collapse_reasoning_for_commit(content);
                 if !content.trim().is_empty() {
-                app.push_display_message(DisplayMessage {
-                    role: "assistant".to_string(),
-                    content,
-                    tool_calls: Vec::new(),
-                    duration_secs: app.display_turn_duration_secs(),
-                    title: None,
-                    tool_data: None,
-                });
+                    app.push_display_message(DisplayMessage {
+                        role: "assistant".to_string(),
+                        content,
+                        tool_calls: Vec::new(),
+                        duration_secs: app.display_turn_duration_secs(),
+                        title: None,
+                        tool_data: None,
+                    });
                 }
             }
             app.clear_streaming_render_state();
@@ -658,14 +689,14 @@ pub(in crate::tui::app) fn handle_server_event(
                     let content = app.take_streaming_text();
                     let content = app.collapse_reasoning_for_commit(content);
                     if !content.trim().is_empty() {
-                    app.push_display_message(DisplayMessage {
-                        role: "assistant".to_string(),
-                        content,
-                        tool_calls: vec![],
-                        duration_secs: duration,
-                        title: None,
-                        tool_data: None,
-                    });
+                        app.push_display_message(DisplayMessage {
+                            role: "assistant".to_string(),
+                            content,
+                            tool_calls: vec![],
+                            duration_secs: duration,
+                            title: None,
+                            tool_data: None,
+                        });
                     }
                     app.push_turn_footer(duration);
                 } else if app.has_streaming_footer_stats() {
@@ -946,7 +977,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 server_has_update,
                 server_version.as_deref(),
             ) {
-                let client_detected_stale = server_has_update.is_none();
+                let client_detected_stale = server_release_is_older_than_client(
+                    server_version.as_deref(),
+                    &client_release_version(),
+                );
                 app.remote_server_version = server_version;
                 app.remote_server_short_name = server_name.clone();
                 app.remote_server_icon = server_icon.clone();
@@ -954,11 +988,29 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.pending_server_reload = true;
                 app.clear_remote_startup_phase();
                 if client_detected_stale {
-                    // The server was too old to self-report an update
-                    // (server_has_update: None), but we independently measured
-                    // its release version as older than ours. This is the
-                    // issue #295 case: a pre-self-heal daemon that would
-                    // otherwise reject newer protocol requests (e.g. set_route).
+                    // The client independently measured the server's release as
+                    // older than its own. This covers both a pre-self-heal daemon
+                    // (server_has_update: None) AND a daemon that self-reports
+                    // "no update" because its own shared-server channel still
+                    // points at its old binary (the "current client, stale
+                    // server" report). Repair the channel client-side so the
+                    // forced reload below has a strictly-newer binary to exec
+                    // into instead of re-execing the same old build.
+                    match crate::build::repair_stale_shared_server_channel() {
+                        Ok(crate::build::SharedServerRepair::Repaired { repaired_to, .. }) => {
+                            crate::logging::info(&format!(
+                                "stale-server repair: repointed shared-server channel to {} before reloading older server",
+                                repaired_to
+                            ));
+                        }
+                        Ok(crate::build::SharedServerRepair::AlreadyCurrent) => {}
+                        Err(err) => {
+                            crate::logging::warn(&format!(
+                                "stale-server repair: failed to repoint shared-server channel: {}",
+                                err
+                            ));
+                        }
+                    }
                     app.set_status_notice(
                         "Connected server is an older release; reloading it before attach",
                     );
@@ -1627,14 +1679,14 @@ pub(in crate::tui::app) fn handle_server_event(
                 let flushed = app.take_streaming_text();
                 let flushed = app.collapse_reasoning_for_commit(flushed);
                 if !flushed.trim().is_empty() {
-                app.push_display_message(DisplayMessage {
-                    role: "assistant".to_string(),
-                    content: flushed,
-                    tool_calls: vec![],
-                    duration_secs: duration,
-                    title: None,
-                    tool_data: None,
-                });
+                    app.push_display_message(DisplayMessage {
+                        role: "assistant".to_string(),
+                        content: flushed,
+                        tool_calls: vec![],
+                        duration_secs: duration,
+                        title: None,
+                        tool_data: None,
+                    });
                 }
                 app.push_turn_footer(duration);
             }
