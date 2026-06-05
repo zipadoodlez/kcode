@@ -810,13 +810,27 @@ impl Provider for GeminiProvider {
                     return;
                 }
                 if let Some(content) = candidate.content {
+                    // Gemini 3 attaches a `thoughtSignature` to function-call
+                    // parts (and occasionally to a standalone preceding part).
+                    // Replay it via a ToolUseSignature event so it is persisted
+                    // on the ToolUse block and resent on later turns; the API
+                    // rejects follow-up turns whose functionCall omits it
+                    // ("Function call is missing a thought_signature").
+                    let mut pending_signature: Option<String> = None;
                     for part in content.parts {
+                        let part_signature = part
+                            .thought_signature
+                            .as_ref()
+                            .filter(|sig| !sig.is_empty())
+                            .cloned();
                         if let Some(text) = part.text
                             && !text.is_empty()
                         {
                             let _ = tx.send(Ok(StreamEvent::TextDelta(text))).await;
                         }
                         if let Some(function_call) = part.function_call {
+                            let signature =
+                                part_signature.clone().or_else(|| pending_signature.take());
                             let raw_call_id = function_call
                                 .id
                                 .clone()
@@ -834,6 +848,15 @@ impl Provider for GeminiProvider {
                                 )))
                                 .await;
                             let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;
+                            if let Some(signature) = signature {
+                                let _ = tx
+                                    .send(Ok(StreamEvent::ToolUseSignature(signature)))
+                                    .await;
+                            }
+                        } else if let Some(signature) = part_signature {
+                            // Standalone signature part; remember it for the next
+                            // function call in this candidate.
+                            pending_signature = Some(signature);
                         }
                     }
                 }
@@ -1109,11 +1132,30 @@ pub(crate) fn build_tools(tools: &[ToolDefinition]) -> Option<Vec<GeminiTool>> {
     }])
 }
 
+/// JSON Schema keywords the Gemini Code Assist `generateContent` endpoint
+/// rejects outright (HTTP 400 "Unknown name ... Cannot find field"). Gemini
+/// accepts only an OpenAPI 3.0 subset for `function_declarations.parameters`,
+/// so these draft-style keywords must be stripped before sending.
+const GEMINI_UNSUPPORTED_SCHEMA_KEYS: &[&str] = &[
+    "additionalProperties",
+    "$schema",
+    "$id",
+    "$ref",
+    "$defs",
+    "definitions",
+    "$comment",
+];
+
 fn gemini_compatible_schema(schema: &Value) -> Value {
     match schema {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
             for (key, value) in map {
+                // Drop draft-JSON-Schema keywords the Gemini API does not model;
+                // leaving them in fails the whole request with HTTP 400.
+                if GEMINI_UNSUPPORTED_SCHEMA_KEYS.contains(&key.as_str()) {
+                    continue;
+                }
                 if key == "const" {
                     out.insert(
                         "enum".to_string(),
