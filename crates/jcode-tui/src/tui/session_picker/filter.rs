@@ -223,43 +223,41 @@ impl SessionPicker {
         }
 
         if !self.all_server_groups.is_empty() {
-            let grouped_sections: Vec<(String, String, String, Vec<SessionRef>)> = self
-                .all_server_groups
-                .iter()
-                .enumerate()
-                .filter_map(|(group_idx, group)| {
-                    let visible: Vec<SessionRef> = filtered_refs
-                        .iter()
-                        .copied()
-                        .filter(|session_ref| match session_ref {
-                            SessionRef::Group {
-                                group_idx: ref_group_idx,
-                                session_idx,
-                            } => {
-                                if *ref_group_idx != group_idx {
-                                    return false;
-                                }
-                                group
-                                    .sessions
-                                    .get(*session_idx)
-                                    .is_some_and(|session| !saved_ids.contains(&session.id))
-                            }
-                            _ => false,
-                        })
-                        .collect();
+            // Partition the filtered refs by group in a single pass instead of
+            // rescanning every filtered ref once per group. The previous code
+            // was O(groups * filtered_refs); with many remote/server groups and
+            // many sessions this scaled poorly on every search keystroke. One
+            // bucketing pass is O(filtered_refs), then emitting is O(groups).
+            let mut group_buckets: Vec<Vec<SessionRef>> =
+                vec![Vec::new(); self.all_server_groups.len()];
+            for session_ref in filtered_refs.iter().copied() {
+                if let SessionRef::Group {
+                    group_idx,
+                    session_idx,
+                } = session_ref
+                    && let Some(group) = self.all_server_groups.get(group_idx)
+                    && group
+                        .sessions
+                        .get(session_idx)
+                        .is_some_and(|session| !saved_ids.contains(&session.id))
+                {
+                    group_buckets[group_idx].push(session_ref);
+                }
+            }
 
-                    if visible.is_empty() {
-                        None
-                    } else {
-                        Some((
-                            group.name.clone(),
-                            group.icon.clone(),
-                            group.version.clone(),
-                            visible,
-                        ))
-                    }
-                })
-                .collect();
+            let mut grouped_sections: Vec<(String, String, String, Vec<SessionRef>)> = Vec::new();
+            for (group_idx, group) in self.all_server_groups.iter().enumerate() {
+                let visible = std::mem::take(&mut group_buckets[group_idx]);
+                if visible.is_empty() {
+                    continue;
+                }
+                grouped_sections.push((
+                    group.name.clone(),
+                    group.icon.clone(),
+                    group.version.clone(),
+                    visible,
+                ));
+            }
 
             for (name, icon, version, visible) in grouped_sections {
                 self.items.push(PickerItem::ServerHeader {
