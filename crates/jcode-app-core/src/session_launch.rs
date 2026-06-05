@@ -12,6 +12,23 @@ use anyhow::Result;
 
 use crate::{id, server};
 
+/// Map a persisted session/runtime provider key (e.g. `anthropic-api-key`,
+/// `claude-oauth`) to the value the resumed process accepts for `--provider`
+/// (the CLI `ProviderChoice` vocabulary, e.g. `anthropic-api`, `claude`).
+///
+/// The two vocabularies are not identical, so passing the raw runtime key
+/// straight through makes clap reject it (`invalid value 'anthropic-api-key'`)
+/// and the freshly spawned window exits immediately before the TUI starts.
+/// Returns `None` when the key has no clean standalone CLI provider value; the
+/// flag is then omitted and the persisted session reconstructs the route on
+/// resume.
+fn resume_provider_arg(provider_key: Option<&str>) -> Option<&'static str> {
+    provider_key
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(crate::provider::cli_provider_arg_for_session_key)
+}
+
 /// Compute the window/terminal title used when (re)launching a session.
 pub fn resumed_window_title(session_id: &str) -> String {
     let session_name = crate::process_title::session_name(session_id);
@@ -65,9 +82,9 @@ pub fn spawn_resume_in_new_terminal_with_provider(
 ) -> Result<bool> {
     let title = resumed_window_title(session_id);
     let mut args = vec!["--fresh-spawn".to_string()];
-    if let Some(provider_key) = provider_key.filter(|value| !value.trim().is_empty()) {
+    if let Some(provider_arg) = resume_provider_arg(provider_key) {
         args.push("--provider".to_string());
-        args.push(provider_key.to_string());
+        args.push(provider_arg.to_string());
     }
     args.extend(["--resume".to_string(), session_id.to_string()]);
     let command = crate::terminal_launch::TerminalCommand::new(exe, args)
@@ -94,9 +111,9 @@ pub fn spawn_selfdev_in_new_terminal_with_provider(
 ) -> Result<bool> {
     let selfdev_title = format!("{} [self-dev]", resumed_window_title(session_id));
     let mut args = vec!["--fresh-spawn".to_string()];
-    if let Some(provider_key) = provider_key.filter(|value| !value.trim().is_empty()) {
+    if let Some(provider_arg) = resume_provider_arg(provider_key) {
         args.push("--provider".to_string());
-        args.push(provider_key.to_string());
+        args.push(provider_arg.to_string());
     }
     args.extend([
         "--resume".to_string(),
@@ -206,9 +223,9 @@ pub fn spawn_resume_in_new_terminal_with_provider(
     use std::process::{Command, Stdio};
 
     let mut jcode_args: Vec<String> = Vec::new();
-    if let Some(provider_key) = provider_key.filter(|value| !value.trim().is_empty()) {
+    if let Some(provider_arg) = resume_provider_arg(provider_key) {
         jcode_args.push("--provider".to_string());
-        jcode_args.push(provider_key.to_string());
+        jcode_args.push(provider_arg.to_string());
     }
     jcode_args.push("--resume".to_string());
     jcode_args.push(session_id.to_string());
@@ -304,9 +321,9 @@ pub fn spawn_selfdev_in_new_terminal_with_provider(
     use std::process::{Command, Stdio};
 
     let mut jcode_args: Vec<String> = Vec::new();
-    if let Some(provider_key) = provider_key.filter(|value| !value.trim().is_empty()) {
+    if let Some(provider_arg) = resume_provider_arg(provider_key) {
         jcode_args.push("--provider".to_string());
-        jcode_args.push(provider_key.to_string());
+        jcode_args.push(provider_arg.to_string());
     }
     jcode_args.extend([
         "--resume".to_string(),

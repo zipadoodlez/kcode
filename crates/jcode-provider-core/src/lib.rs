@@ -26,9 +26,10 @@ pub use models::{
     provider_for_model_with_hint as core_provider_for_model_with_hint, provider_key_from_hint,
 };
 pub use selection::{
-    ActiveProvider, ProviderAvailability, auto_default_provider, dedupe_model_routes,
-    explicit_model_provider_prefix, fallback_sequence, model_name_for_provider,
-    parse_provider_hint, provider_from_model_key, provider_key, provider_label,
+    ActiveProvider, ProviderAvailability, auto_default_provider,
+    cli_provider_arg_for_session_key, dedupe_model_routes, explicit_model_provider_prefix,
+    fallback_sequence, model_name_for_provider, parse_provider_hint, provider_from_model_key,
+    provider_key, provider_label,
 };
 
 use anyhow::Result;
