@@ -3888,8 +3888,16 @@ dependencies = [
 name = "jcode-provider-openai"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "jcode-core",
+ "jcode-logging",
  "jcode-message-types",
  "jcode-provider-core",
+ "reqwest 0.12.28",
+ "serde",
  "serde_json",
 ]
 

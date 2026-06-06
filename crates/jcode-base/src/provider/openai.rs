@@ -13,7 +13,6 @@ use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, LazyLock, RwLock as StdRwLock};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
@@ -98,9 +97,6 @@ const WEBSOCKET_MODEL_COOLDOWN_BASE_SECS: u64 = 60;
 /// Maximum websocket cooldown after repeated fallback streaks.
 const WEBSOCKET_MODEL_COOLDOWN_MAX_SECS: u64 = 600;
 const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 32_768;
-static FALLBACK_TOOL_CALL_COUNTER: AtomicU64 = AtomicU64::new(1);
-static RECOVERED_TEXT_WRAPPED_TOOL_CALLS: AtomicU64 = AtomicU64::new(0);
-static NORMALIZED_NULL_TOOL_ARGUMENTS: AtomicU64 = AtomicU64::new(0);
 static WEBSOCKET_COOLDOWNS: LazyLock<Arc<RwLock<HashMap<String, Instant>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 static WEBSOCKET_FAILURE_STREAKS: LazyLock<Arc<RwLock<HashMap<String, u32>>>> =
@@ -1008,9 +1004,7 @@ impl OpenAIProvider {
 
 mod stream;
 
-use self::openai_stream_runtime::{
-    PersistentWsResult, extract_error_with_retry, is_retryable_error, openai_access_token,
-};
+use self::openai_stream_runtime::{PersistentWsResult, is_retryable_error, openai_access_token};
 
 use self::stream::{OpenAIResponsesStream, parse_openai_response_event};
 #[cfg(test)]
@@ -1029,10 +1023,9 @@ use self::websocket_health::{
     set_websocket_cooldown, websocket_cooldown_for_streak, websocket_remaining_timeout_secs,
 };
 use self::websocket_health::{
-    classify_websocket_fallback_reason, is_stream_activity_event, is_structured_response_event,
-    is_websocket_activity_payload, is_websocket_fallback_notice,
-    is_websocket_first_activity_payload, record_websocket_fallback, record_websocket_success,
-    summarize_websocket_fallback_reason, websocket_activity_timeout_kind,
+    classify_websocket_fallback_reason, is_stream_activity_event, is_websocket_activity_payload,
+    is_websocket_fallback_notice, is_websocket_first_activity_payload, record_websocket_fallback,
+    record_websocket_success, summarize_websocket_fallback_reason, websocket_activity_timeout_kind,
     websocket_cooldown_remaining, websocket_next_activity_timeout_secs,
 };
 
