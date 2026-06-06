@@ -2100,6 +2100,12 @@ fn process_sse_event(
                 *input_tokens = usage.input_tokens.map(|t| t as u64);
                 *cache_read_input_tokens = usage.cache_read_input_tokens.map(|t| t as u64);
                 *cache_creation_input_tokens = usage.cache_creation_input_tokens.map(|t| t as u64);
+                if let Some(tier) = usage.service_tier.as_deref() {
+                    crate::logging::info(&format!("Anthropic granted service_tier={}", tier));
+                    if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+                        eprintln!("[anthropic] granted service_tier={tier}");
+                    }
+                }
             }
         }
         "content_block_start" => {
@@ -2597,6 +2603,7 @@ struct UsageInfo {
     output_tokens: Option<u32>,
     cache_read_input_tokens: Option<u32>,
     cache_creation_input_tokens: Option<u32>,
+    service_tier: Option<String>,
 }
 
 #[cfg(test)]
