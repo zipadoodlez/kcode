@@ -32,8 +32,12 @@ class CrateStats:
     async_trait_count: int
     derive_count: int
     glob_reexports: list[str]
-    direct_workspace_deps: list[str]
-    direct_external_deps: list[str]
+    normal_workspace_deps: list[str]
+    normal_external_deps: list[str]
+    dev_workspace_deps: list[str]
+    dev_external_deps: list[str]
+    build_workspace_deps: list[str]
+    build_external_deps: list[str]
 
 
 def run_metadata() -> dict[str, Any]:
@@ -100,14 +104,15 @@ def collect_stats(package: dict[str, Any], workspace_names: set[str]) -> CrateSt
                 rel = path.relative_to(ROOT)
                 glob_reexports.append(f"{rel}:{line_number}: {stripped}")
 
-    workspace_deps: list[str] = []
-    external_deps: list[str] = []
+    workspace_deps_by_kind: dict[str, list[str]] = {"normal": [], "dev": [], "build": []}
+    external_deps_by_kind: dict[str, list[str]] = {"normal": [], "dev": [], "build": []}
     for dep in package.get("dependencies", []):
         dep_name = dep["name"]
-        if dep_name in workspace_names:
-            workspace_deps.append(dep_name)
-        else:
-            external_deps.append(dep_name)
+        dep_kind = dep.get("kind") or "normal"
+        if dep_kind not in workspace_deps_by_kind:
+            dep_kind = "normal"
+        buckets = workspace_deps_by_kind if dep_name in workspace_names else external_deps_by_kind
+        buckets[dep_kind].append(dep_name)
 
     return CrateStats(
         name=package["name"],
@@ -120,8 +125,12 @@ def collect_stats(package: dict[str, Any], workspace_names: set[str]) -> CrateSt
         async_trait_count=async_trait_count,
         derive_count=derive_count,
         glob_reexports=glob_reexports,
-        direct_workspace_deps=sorted(workspace_deps),
-        direct_external_deps=sorted(external_deps),
+        normal_workspace_deps=sorted(workspace_deps_by_kind["normal"]),
+        normal_external_deps=sorted(external_deps_by_kind["normal"]),
+        dev_workspace_deps=sorted(workspace_deps_by_kind["dev"]),
+        dev_external_deps=sorted(external_deps_by_kind["dev"]),
+        build_workspace_deps=sorted(workspace_deps_by_kind["build"]),
+        build_external_deps=sorted(external_deps_by_kind["build"]),
     )
 
 
@@ -129,16 +138,16 @@ def target_state_violations(stats_by_name: dict[str, CrateStats]) -> list[str]:
     violations: list[str] = []
 
     tui = stats_by_name.get("jcode-tui")
-    if tui and "jcode-app-core" in tui.direct_workspace_deps:
+    if tui and "jcode-app-core" in tui.normal_workspace_deps:
         violations.append("target-state: jcode-tui still directly depends on jcode-app-core")
 
     app_core = stats_by_name.get("jcode-app-core")
-    if app_core and "jcode-base" in app_core.direct_workspace_deps:
+    if app_core and "jcode-base" in app_core.normal_workspace_deps:
         violations.append("target-state: jcode-app-core still directly depends on jcode-base")
 
     base = stats_by_name.get("jcode-base")
     if base:
-        for dep in base.direct_workspace_deps:
+        for dep in base.normal_workspace_deps:
             if dep in {
                 "jcode-azure-auth",
                 "jcode-provider-gemini",
@@ -148,7 +157,7 @@ def target_state_violations(stats_by_name: dict[str, CrateStats]) -> list[str]:
                 "jcode-build-support",
             }:
                 violations.append(f"target-state: jcode-base still depends on leaf/runtime crate {dep}")
-        for dep in base.direct_external_deps:
+        for dep in base.normal_external_deps:
             if dep.startswith("aws-") or dep in {"aws-types"}:
                 violations.append(f"target-state: jcode-base still depends directly on AWS crate {dep}")
 
@@ -208,7 +217,18 @@ def main() -> int:
             crate = stats_by_name.get(name)
             if not crate:
                 continue
-            print(f"  - {name}: {crate.loc} LOC, workspace deps={len(crate.direct_workspace_deps)}, external deps={len(crate.direct_external_deps)}")
+            print(
+                f"  - {name}: {crate.loc} LOC, "
+                f"normal workspace deps={len(crate.normal_workspace_deps)}, "
+                f"normal external deps={len(crate.normal_external_deps)}"
+            )
+            if crate.dev_workspace_deps or crate.dev_external_deps or crate.build_workspace_deps or crate.build_external_deps:
+                print(
+                    f"    non-normal deps: dev workspace={len(crate.dev_workspace_deps)}, "
+                    f"dev external={len(crate.dev_external_deps)}, "
+                    f"build workspace={len(crate.build_workspace_deps)}, "
+                    f"build external={len(crate.build_external_deps)}"
+                )
             if crate.glob_reexports:
                 print("    glob re-exports:")
                 for glob in crate.glob_reexports[:8]:
