@@ -1019,8 +1019,9 @@ use self::websocket_health::{
 };
 #[cfg(test)]
 use self::websocket_health::{
-    WebsocketFallbackReason, clear_websocket_cooldown, normalize_transport_model,
-    set_websocket_cooldown, websocket_cooldown_for_streak, websocket_remaining_timeout_secs,
+    WEBSOCKET_MODEL_COOLDOWN_BASE_SECS, WEBSOCKET_MODEL_COOLDOWN_MAX_SECS, WebsocketFallbackReason,
+    clear_websocket_cooldown, normalize_transport_model, set_websocket_cooldown,
+    websocket_cooldown_for_streak, websocket_remaining_timeout_secs,
 };
 
 #[cfg(test)]
