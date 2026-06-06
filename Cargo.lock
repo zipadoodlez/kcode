@@ -3518,13 +3518,6 @@ dependencies = [
  "agentgrep",
  "anyhow",
  "async-trait",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-bedrock",
- "aws-sdk-bedrockruntime",
- "aws-sdk-sts",
- "aws-smithy-types",
- "aws-types",
  "base64 0.22.1",
  "bytes",
  "chrono",
@@ -3555,6 +3548,7 @@ dependencies = [
  "jcode-message-types",
  "jcode-plan",
  "jcode-protocol",
+ "jcode-provider-bedrock",
  "jcode-provider-core",
  "jcode-provider-env",
  "jcode-provider-gemini",
@@ -3826,6 +3820,35 @@ dependencies = [
  "rand 0.9.3",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "jcode-provider-bedrock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-bedrock",
+ "aws-sdk-bedrockruntime",
+ "aws-sdk-sts",
+ "aws-smithy-types",
+ "aws-types",
+ "base64 0.22.1",
+ "chrono",
+ "futures",
+ "jcode-core",
+ "jcode-logging",
+ "jcode-message-types",
+ "jcode-provider-core",
+ "jcode-provider-env",
+ "jcode-storage",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
