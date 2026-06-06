@@ -34,7 +34,7 @@ fn format_reasoning_markup(text: &str) -> String {
         ReasoningDisplayMode::Off => return String::new(),
         ReasoningDisplayMode::Current => {
             let line_count = text.lines().filter(|l| !l.trim().is_empty()).count();
-            let mut out = jcode_tui_markdown::reasoning_summary_line_markup(line_count);
+            let mut out = jcode_render_core::reasoning_summary_line_markup(line_count);
             // Blank line terminates the reasoning block.
             out.push('\n');
             return out;
@@ -43,7 +43,7 @@ fn format_reasoning_markup(text: &str) -> String {
     }
     let mut out = String::new();
     for line in text.split('\n') {
-        out.push_str(&jcode_tui_markdown::reasoning_line_markup(line));
+        out.push_str(&jcode_render_core::reasoning_line_markup(line));
     }
     // Blank line terminates the reasoning block.
     out.push('\n');

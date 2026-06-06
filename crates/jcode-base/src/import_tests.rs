@@ -420,7 +420,7 @@ fn test_resolve_resume_target_to_jcode_imports_codex_session() {
         .unwrap();
 
     let resolved =
-        resolve_resume_target_to_jcode(&jcode_tui_session_picker::ResumeTarget::CodexSession {
+        resolve_resume_target_to_jcode(&jcode_session_types::ResumeTarget::CodexSession {
             session_id: "codex-resolve-test".to_string(),
             session_path: codex_dir
                 .join("rollout.jsonl")
@@ -431,7 +431,7 @@ fn test_resolve_resume_target_to_jcode_imports_codex_session() {
 
     assert_eq!(
         resolved,
-        jcode_tui_session_picker::ResumeTarget::JcodeSession {
+        jcode_session_types::ResumeTarget::JcodeSession {
             session_id: imported_codex_session_id("codex-resolve-test"),
         }
     );

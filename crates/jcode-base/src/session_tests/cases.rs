@@ -1059,7 +1059,7 @@ fn test_render_messages_honors_system_display_role_override() {
 
 #[test]
 fn test_render_messages_renders_persisted_reasoning() {
-    use jcode_tui_markdown::REASONING_SENTINEL;
+    use jcode_render_core::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("JCODE_REASONING_DISPLAY", "full");
@@ -1108,7 +1108,7 @@ fn test_render_messages_renders_persisted_reasoning() {
 
 #[test]
 fn test_render_messages_renders_legacy_reasoning_variant() {
-    use jcode_tui_markdown::REASONING_SENTINEL;
+    use jcode_render_core::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("JCODE_REASONING_DISPLAY", "full");
@@ -1140,7 +1140,7 @@ fn test_render_messages_renders_legacy_reasoning_variant() {
 
 #[test]
 fn test_render_messages_collapses_persisted_reasoning_in_current_mode() {
-    use jcode_tui_markdown::REASONING_SENTINEL;
+    use jcode_render_core::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("JCODE_REASONING_DISPLAY", "current");
@@ -1184,7 +1184,7 @@ fn test_render_messages_collapses_persisted_reasoning_in_current_mode() {
 
 #[test]
 fn test_render_messages_hides_persisted_reasoning_in_off_mode() {
-    use jcode_tui_markdown::REASONING_SENTINEL;
+    use jcode_render_core::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
     let _mode = EnvVarGuard::set("JCODE_REASONING_DISPLAY", "off");
