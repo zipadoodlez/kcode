@@ -37,9 +37,6 @@ serde_json = { version = "1", features = ["raw_value"] }
 serde_yaml = "0.9"
 toml = "0.8"
 
-# CLI
-clap = { version = "4", features = ["derive"] }
-
 # File operations
 glob = "0.3"
 ignore = "0.4"           # gitignore-aware file walking
@@ -49,7 +46,6 @@ similar = "2"            # diffing for edits
 # Utilities
 dirs = "5"               # home directory
 anyhow = "1"
-thiserror = "1"
 libc = "0.2"             # Unix system calls (flock)
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
@@ -73,7 +69,6 @@ open = "5"               # Open URLs in browser
 jcode-auth-types = { path = "../jcode-auth-types" }
 jcode-azure-auth = { path = "../jcode-azure-auth" }
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
-jcode-ambient-types = { path = "../jcode-ambient-types" }
 jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
@@ -85,7 +80,6 @@ jcode-provider-gemini = { path = "../jcode-provider-gemini" }
 # `jcode-render-core` respectively, so the layering inversion (foundation
 # depending on presentation) is gone.
 jcode-render-core = { path = "../jcode-render-core" }
-jcode-update-core = { path = "../jcode-update-core" }
 jcode-terminal-launch = { path = "../jcode-terminal-launch" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }
 jcode-usage-types = { path = "../jcode-usage-types" }
@@ -100,9 +94,6 @@ bytes = "1"
 crossterm = { version = "0.29", features = ["event-stream"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }  # Only PNG/JPEG (skip avif/rav1e, exr, gif, tiff, etc)
 
-# Markdown & syntax highlighting
-unicode-width = "0.2"   # Unicode character display width
-
 # NOTE: PDF text extraction (jcode-pdf) lives in the upper jcode-app-core crate
 # (tool/read.rs), not here.
 jcode-background-types = { path = "../jcode-background-types" }
@@ -113,9 +104,7 @@ jcode-config-types = { path = "../jcode-config-types" }
 jcode-core = { path = "../jcode-core" }
 jcode-memory-types = { path = "../jcode-memory-types" }
 jcode-message-types = { path = "../jcode-message-types" }
-jcode-overnight-core = { path = "../jcode-overnight-core" }
 jcode-plan = { path = "../jcode-plan" }
-jcode-swarm-core = { path = "../jcode-swarm-core" }
 jcode-protocol = { path = "../jcode-protocol" }
 jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-session-types = { path = "../jcode-session-types" }
@@ -125,9 +114,8 @@ jcode-tool-core = { path = "../jcode-tool-core" }
 jcode-tool-types = { path = "../jcode-tool-types" }
 jcode-side-panel-types = { path = "../jcode-side-panel-types" }
 
-# Archive extraction (for auto-update)
+# Gzip decoding (used by provider import/helpers)
 flate2 = "1"
-tar = "0.4"
 tempfile = "3"
 agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.2" }
 qrcode = { version = "0.14.1", default-features = false }
