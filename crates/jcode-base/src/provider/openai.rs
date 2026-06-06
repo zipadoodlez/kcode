@@ -183,14 +183,26 @@ pub(crate) enum OpenAICredentialMode {
 
 impl OpenAICredentialMode {
     fn from_runtime_env() -> Self {
-        match std::env::var("JCODE_RUNTIME_PROVIDER")
-            .ok()
-            .map(|value| value.trim().to_ascii_lowercase())
-            .as_deref()
-        {
-            Some("openai-api") => Self::ApiKey,
-            Some("openai") => Self::OAuth,
-            _ => Self::Auto,
+        // Canonical parse: recognizes every runtime/route/CLI/prefix alias for
+        // the OpenAI OAuth-vs-API decision in one place, so this can never drift
+        // from the other vocabularies (see jcode_provider_core::auth_mode).
+        match jcode_provider_core::runtime_env_pinned_mode(
+            jcode_provider_core::DualAuthProvider::OpenAI,
+        ) {
+            Some(jcode_provider_core::AuthMode::ApiKey) => Self::ApiKey,
+            Some(jcode_provider_core::AuthMode::Oauth) => Self::OAuth,
+            None => Self::Auto,
+        }
+    }
+
+    /// The canonical dual-auth route this explicit mode pins, if any.
+    /// `Auto` has no explicit pin and returns `None`.
+    pub(crate) fn auth_route(self) -> Option<jcode_provider_core::AuthRoute> {
+        use jcode_provider_core::{AuthMode, AuthRoute};
+        match self {
+            Self::Auto => None,
+            Self::OAuth => Some(AuthRoute::openai(AuthMode::Oauth)),
+            Self::ApiKey => Some(AuthRoute::openai(AuthMode::ApiKey)),
         }
     }
 
@@ -688,14 +700,8 @@ impl OpenAIProvider {
         // Keep the runtime provider identity in sync with the explicit credential
         // choice so UI surfaces report the auth method requests will actually use.
         // `Auto` leaves the existing identity untouched.
-        match mode {
-            OpenAICredentialMode::OAuth => {
-                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai");
-            }
-            OpenAICredentialMode::ApiKey => {
-                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-api");
-            }
-            OpenAICredentialMode::Auto => {}
+        if let Some(route) = mode.auth_route() {
+            crate::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         Ok(())
     }

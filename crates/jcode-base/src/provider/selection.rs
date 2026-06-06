@@ -211,13 +211,13 @@ impl MultiProvider {
     /// child/forked session) still reconstructs the Anthropic API-key route
     /// instead of falling through to Auto (which prefers OAuth).
     pub(crate) fn canonical_session_provider_key(provider_key: &str) -> &str {
-        match provider_key.trim() {
-            "claude-oauth" => "claude",
-            "anthropic-api-key" => "claude-api",
-            "openai-oauth" => "openai",
-            "openai-api-key" => "openai-api",
-            other => other,
+        // Fold any dual-auth (Anthropic/OpenAI OAuth-vs-API) alias onto its
+        // canonical session key via the single shared parser, so this never
+        // drifts from the route/runtime vocabularies. Non-dual keys pass through.
+        if let Some(route) = jcode_provider_core::AuthRoute::parse(provider_key) {
+            return route.session_provider_key();
         }
+        provider_key.trim()
     }
 
     fn explicit_session_provider_key_for_model_request(model_request: &str) -> Option<String> {
@@ -225,13 +225,12 @@ impl MultiProvider {
         if let Some((prefix, rest)) = model_request.split_once(':') {
             let prefix = prefix.trim();
             if !prefix.is_empty() && !rest.trim().is_empty() {
+                // Dual-auth (Anthropic/OpenAI) prefixes fold onto their canonical
+                // session key via the single shared parser.
+                if let Some(route) = jcode_provider_core::AuthRoute::parse(prefix) {
+                    return Some(route.session_provider_key().to_string());
+                }
                 match prefix {
-                    "claude-api" => return Some("claude-api".to_string()),
-                    "claude-oauth" | "claude" | "anthropic" => {
-                        return Some("claude".to_string());
-                    }
-                    "openai-api" => return Some("openai-api".to_string()),
-                    "openai-oauth" | "openai" => return Some("openai".to_string()),
                     "copilot" | "antigravity" | "gemini" | "cursor" | "bedrock" | "openrouter" => {
                         return Some(prefix.to_string());
                     }
@@ -376,11 +375,13 @@ impl MultiProvider {
         // forked/child session that inherited it without `route_api_method`).
         let provider_key = Self::canonical_session_provider_key(provider_key);
 
+        // Dual-auth keys map to their canonical model prefix via the single
+        // shared parser, keeping the emitted prefix in lockstep with the parsers.
+        if let Some(route) = jcode_provider_core::AuthRoute::parse(provider_key) {
+            return format!("{}:{model}", route.model_prefix());
+        }
+
         match provider_key {
-            "claude-api" => format!("claude-api:{model}"),
-            "claude-oauth" | "claude" | "anthropic" => format!("claude-oauth:{model}"),
-            "openai-api" => format!("openai-api:{model}"),
-            "openai-oauth" | "openai" => format!("openai-oauth:{model}"),
             "copilot" | "antigravity" | "gemini" | "cursor" | "bedrock" | "openrouter" => {
                 format!("{provider_key}:{model}")
             }

@@ -72,33 +72,32 @@ pub fn resolve_dual_credential_auth(
     auth: &AuthStatus,
     runtime_provider: Option<&str>,
 ) -> Option<ResolvedProviderAuth> {
-    let runtime = runtime_provider.map(|value| value.trim().to_ascii_lowercase());
+    // Map the execution slot onto the canonical dual-auth provider. Anything
+    // without an OAuth-vs-API decision (Copilot, Gemini, ...) returns None.
+    let dual = jcode_provider_core::DualAuthProvider::from_active_provider(provider)?;
 
-    let (has_oauth, has_api_key, forced) = match provider {
-        ActiveProvider::Claude => {
+    // A single canonical parser decides whether `runtime_provider` explicitly
+    // pins OAuth or API key for *this* provider. This replaces the per-provider
+    // hand-written alias matches that used to drift apart.
+    let forced = jcode_provider_core::pinned_mode_for(dual, runtime_provider).map(|mode| match mode
+    {
+        jcode_provider_core::AuthMode::Oauth => ActiveCredential::OAuth,
+        jcode_provider_core::AuthMode::ApiKey => ActiveCredential::ApiKey,
+    });
+
+    let (has_oauth, has_api_key) = match dual {
+        jcode_provider_core::DualAuthProvider::Anthropic => {
             let has_oauth = auth.anthropic.has_oauth;
             // `has_api_key` already folds in the ANTHROPIC_API_KEY env var via the
             // auth probe, but re-check defensively so an env-only key set after the
             // cached snapshot still reports honestly.
-            let has_api_key = auth.anthropic.has_api_key || std::env::var("ANTHROPIC_API_KEY").is_ok();
-            let forced = match runtime.as_deref() {
-                Some("claude-api" | "anthropic-api") => Some(ActiveCredential::ApiKey),
-                Some("claude" | "anthropic") => Some(ActiveCredential::OAuth),
-                _ => None,
-            };
-            (has_oauth, has_api_key, forced)
+            let has_api_key =
+                auth.anthropic.has_api_key || std::env::var("ANTHROPIC_API_KEY").is_ok();
+            (has_oauth, has_api_key)
         }
-        ActiveProvider::OpenAI => {
-            let has_oauth = auth.openai_has_oauth;
-            let has_api_key = auth.openai_has_api_key;
-            let forced = match runtime.as_deref() {
-                Some("openai-api") => Some(ActiveCredential::ApiKey),
-                Some("openai") => Some(ActiveCredential::OAuth),
-                _ => None,
-            };
-            (has_oauth, has_api_key, forced)
+        jcode_provider_core::DualAuthProvider::OpenAI => {
+            (auth.openai_has_oauth, auth.openai_has_api_key)
         }
-        _ => return None,
     };
 
     let active = match forced {

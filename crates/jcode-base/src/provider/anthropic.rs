@@ -415,14 +415,26 @@ pub(crate) enum AnthropicCredentialMode {
 
 impl AnthropicCredentialMode {
     fn from_runtime_env() -> Self {
-        match std::env::var("JCODE_RUNTIME_PROVIDER")
-            .ok()
-            .map(|value| value.trim().to_ascii_lowercase())
-            .as_deref()
-        {
-            Some("claude-api" | "anthropic-api") => Self::ApiKey,
-            Some("claude" | "anthropic") => Self::OAuth,
-            _ => Self::Auto,
+        // Canonical parse: recognizes every runtime/route/CLI/prefix alias for
+        // the Anthropic OAuth-vs-API decision in one place, so this can never
+        // drift from the other vocabularies (see jcode_provider_core::auth_mode).
+        match jcode_provider_core::runtime_env_pinned_mode(
+            jcode_provider_core::DualAuthProvider::Anthropic,
+        ) {
+            Some(jcode_provider_core::AuthMode::ApiKey) => Self::ApiKey,
+            Some(jcode_provider_core::AuthMode::Oauth) => Self::OAuth,
+            None => Self::Auto,
+        }
+    }
+
+    /// The canonical dual-auth route this explicit mode pins, if any.
+    /// `Auto` has no explicit pin and returns `None`.
+    pub(crate) fn auth_route(self) -> Option<jcode_provider_core::AuthRoute> {
+        use jcode_provider_core::{AuthMode, AuthRoute};
+        match self {
+            Self::Auto => None,
+            Self::OAuth => Some(AuthRoute::anthropic(AuthMode::Oauth)),
+            Self::ApiKey => Some(AuthRoute::anthropic(AuthMode::ApiKey)),
         }
     }
 }
@@ -844,14 +856,8 @@ impl AnthropicProvider {
         // choice so UI surfaces (model picker, header widget) report the auth
         // method that requests will actually use, instead of inferring it from
         // credential presence. `Auto` leaves the existing identity untouched.
-        match mode {
-            AnthropicCredentialMode::OAuth => {
-                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "claude");
-            }
-            AnthropicCredentialMode::ApiKey => {
-                crate::env::set_var("JCODE_RUNTIME_PROVIDER", "claude-api");
-            }
-            AnthropicCredentialMode::Auto => {}
+        if let Some(route) = mode.auth_route() {
+            crate::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         Ok(())
     }

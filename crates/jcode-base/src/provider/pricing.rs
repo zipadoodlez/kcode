@@ -111,21 +111,39 @@ pub(crate) fn cheapness_for_route(
     provider: &str,
     api_method: &str,
 ) -> Option<RouteCheapnessEstimate> {
-    match api_method {
-        "claude-oauth" => Some(anthropic_oauth_pricing(model)),
-        "api-key" | "claude-api" | "anthropic-api-key" if provider == "Anthropic" => {
-            anthropic_api_pricing(model)
-        }
-        "openai-api-key" => {
-            Some(openai_api_pricing(model).unwrap_or_else(|| openai_oauth_pricing(model)))
-        }
-        "openai-oauth" => {
-            if openai_effective_auth_mode() == "api-key" {
-                Some(openai_api_pricing(model).unwrap_or_else(|| openai_oauth_pricing(model)))
-            } else {
-                Some(openai_oauth_pricing(model))
+    use jcode_provider_core::{AuthMode, AuthRoute, DualAuthProvider};
+
+    // Dual-auth (Anthropic/OpenAI OAuth-vs-API) methods are recognized through
+    // the single shared parser so pricing never disagrees with the routing
+    // layer about whether a route is subscription (OAuth) or metered (API key).
+    if let Some(route) = AuthRoute::parse(api_method) {
+        return match (route.provider, route.mode) {
+            (DualAuthProvider::Anthropic, AuthMode::Oauth) => Some(anthropic_oauth_pricing(model)),
+            (DualAuthProvider::Anthropic, AuthMode::ApiKey) => {
+                // Bare `api-key` only means Anthropic when the route's provider
+                // label says so; otherwise fall through to the non-dual arms.
+                if provider == "Anthropic" {
+                    anthropic_api_pricing(model)
+                } else {
+                    None
+                }
             }
-        }
+            (DualAuthProvider::OpenAI, AuthMode::ApiKey) => {
+                Some(openai_api_pricing(model).unwrap_or_else(|| openai_oauth_pricing(model)))
+            }
+            (DualAuthProvider::OpenAI, AuthMode::Oauth) => {
+                // An "OAuth" route still bills per token when only an API key is
+                // actually configured, so honor the live effective auth mode.
+                if openai_effective_auth_mode() == "api-key" {
+                    Some(openai_api_pricing(model).unwrap_or_else(|| openai_oauth_pricing(model)))
+                } else {
+                    Some(openai_oauth_pricing(model))
+                }
+            }
+        };
+    }
+
+    match api_method {
         "copilot" => Some(copilot_pricing(model)),
         "openrouter" => {
             let model_id = if model.contains('/') {

@@ -160,14 +160,22 @@ impl App {
         let runtime_provider = active_runtime_provider_key();
         let auth_status = crate::auth::AuthStatus::check_fast();
 
-        let is_explicit_anthropic_api = matches!(
+        let pinned_anthropic = jcode_provider_core::pinned_mode_for(
+            jcode_provider_core::DualAuthProvider::Anthropic,
             runtime_provider.as_deref(),
-            Some("claude-api" | "anthropic-api")
         );
+        let pinned_openai = jcode_provider_core::pinned_mode_for(
+            jcode_provider_core::DualAuthProvider::OpenAI,
+            runtime_provider.as_deref(),
+        );
+        let is_explicit_anthropic_api =
+            matches!(pinned_anthropic, Some(jcode_provider_core::AuthMode::ApiKey));
         let is_explicit_anthropic_oauth =
-            matches!(runtime_provider.as_deref(), Some("claude" | "anthropic"));
-        let is_explicit_openai_api = matches!(runtime_provider.as_deref(), Some("openai-api"));
-        let is_explicit_openai_oauth = matches!(runtime_provider.as_deref(), Some("openai"));
+            matches!(pinned_anthropic, Some(jcode_provider_core::AuthMode::Oauth));
+        let is_explicit_openai_api =
+            matches!(pinned_openai, Some(jcode_provider_core::AuthMode::ApiKey));
+        let is_explicit_openai_oauth =
+            matches!(pinned_openai, Some(jcode_provider_core::AuthMode::Oauth));
 
         let is_anthropic = provider_name.contains("anthropic") || provider_name.contains("claude");
         let is_openai = provider_name.contains("openai");

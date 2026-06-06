@@ -141,11 +141,12 @@ pub fn cli_provider_arg_for_session_key(key: &str) -> Option<&'static str> {
         .split_once(':')
         .map(|(prefix, _rest)| prefix)
         .unwrap_or(normalized.as_str());
+    // Dual-auth (Anthropic/OpenAI OAuth-vs-API) keys share one canonical alias
+    // table, so the CLI arg never drifts from the route/runtime vocabularies.
+    if let Some(route) = crate::auth_mode::AuthRoute::parse(base) {
+        return Some(route.cli_provider_arg());
+    }
     match base {
-        "claude" | "claude-oauth" | "anthropic" => Some("claude"),
-        "anthropic-api-key" | "claude-api" | "api-key" | "anthropic-api" => Some("anthropic-api"),
-        "openai" | "openai-oauth" => Some("openai"),
-        "openai-api-key" | "openai-api" => Some("openai-api"),
         "openrouter" => Some("openrouter"),
         "copilot" => Some("copilot"),
         "gemini" => Some("gemini"),

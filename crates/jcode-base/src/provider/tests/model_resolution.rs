@@ -1073,8 +1073,10 @@ fn test_anthropic_auth_mode_prefixed_model_switch_changes_credentials() {
         assert_eq!(
             rt.block_on(anthropic.test_access_token_and_oauth_mode())
                 .expect("default token"),
-            ("sk-ant-test-api-key".to_string(), false),
-            "default Anthropic credentials should keep existing API-key-first behavior"
+            ("oauth-access-token".to_string(), true),
+            "default (Auto) Anthropic credentials prefer OAuth/subscription when an \
+             OAuth account is available, matching the canonical OAuth-first Auto \
+             behavior shared with the OpenAI provider and resolve_dual_credential_auth"
         );
 
         provider
