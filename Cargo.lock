@@ -4032,7 +4032,11 @@ dependencies = [
 name = "jcode-tui-account-picker"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "crossterm",
+ "ratatui",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
