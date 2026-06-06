@@ -446,6 +446,17 @@ impl SessionPicker {
             border_dim
         };
 
+        // Measure total rendered rows and per-item heights so we can show a
+        // native scrollbar when the list overflows. `List` renders each item at
+        // its own line count (no wrapping), so summing item heights gives the
+        // exact content height, and a prefix sum maps the scroll offset (first
+        // visible item index) to a rendered-row offset for the scrollbar thumb.
+        let item_heights: Vec<usize> = items.iter().map(|item| item.height().max(1)).collect();
+        let total_item_rows: usize = item_heights.iter().sum();
+        let inner_height = area.height.saturating_sub(2) as usize;
+        let show_scrollbar =
+            super::super::ui::native_scrollbar_visible(true, total_item_rows, inner_height);
+
         let list = List::new(items)
             .block(
                 Block::default()
@@ -469,6 +480,28 @@ impl SessionPicker {
             });
 
         frame.render_stateful_widget(list, area, &mut self.list_state);
+
+        // Draw the scrollbar inside the right border, after the list has updated
+        // its scroll offset for this frame. Translate the first-visible item index
+        // to a rendered-row offset so the thumb tracks long, multi-line items.
+        if show_scrollbar && area.width > 2 {
+            let offset_item = self.list_state.offset().min(item_heights.len());
+            let row_offset: usize = item_heights[..offset_item].iter().sum();
+            let scrollbar_area = Rect {
+                x: area.x + area.width.saturating_sub(1),
+                y: area.y + 1,
+                width: 1,
+                height: area.height.saturating_sub(2),
+            };
+            super::super::ui::render_native_scrollbar(
+                frame,
+                scrollbar_area,
+                row_offset,
+                total_item_rows,
+                inner_height,
+                self.focus == PaneFocus::Sessions,
+            );
+        }
     }
 
     pub(super) fn render_crash_banner(&self, frame: &mut Frame, area: Rect) {
