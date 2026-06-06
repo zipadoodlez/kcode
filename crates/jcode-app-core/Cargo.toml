@@ -69,15 +69,11 @@ hex = "0.4"
 url = "2"
 open = "5"               # Open URLs in browser
 jcode-auth-types = { path = "../jcode-auth-types" }
-jcode-azure-auth = { path = "../jcode-azure-auth" }
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
 jcode-ambient-types = { path = "../jcode-ambient-types" }
 jcode-notify-email = { path = "../jcode-notify-email" }
 jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 jcode-provider-core = { path = "../jcode-provider-core" }
-jcode-provider-openai = { path = "../jcode-provider-openai" }
-jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
-jcode-provider-gemini = { path = "../jcode-provider-gemini" }
 # NOTE: jcode-app-core does NOT depend on any jcode-tui-* crate. They were
 # unused dead dependency edges here (the TUI declares them itself). Removing
 # them stops a jcode-tui-* edit from cascading a recompile through app-core.
