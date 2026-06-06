@@ -248,7 +248,8 @@ pub(super) fn format_tokens(tokens: u64) -> String {
     }
 }
 
-/// Copy text to clipboard, trying wl-copy first (Wayland), then arboard as fallback.
+/// Copy text to clipboard, trying wl-copy first (Wayland), then OSC 52 (works
+/// over SSH / Docker / tmux), then arboard as a final fallback.
 pub(super) fn copy_to_clipboard(text: &str) -> bool {
     if let Ok(mut child) = std::process::Command::new("wl-copy")
         .stdin(std::process::Stdio::piped())
@@ -261,12 +262,35 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
             && stdin.write_all(text.as_bytes()).is_ok()
         {
             drop(child.stdin.take());
-            return child.wait().map(|s| s.success()).unwrap_or(false);
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return true;
+            }
         }
+    }
+    if copy_to_clipboard_osc52(text) {
+        return true;
     }
     arboard::Clipboard::new()
         .and_then(|mut cb| cb.set_text(text.to_string()))
         .is_ok()
+}
+
+/// Copy to clipboard using the OSC 52 terminal escape sequence. This asks the
+/// terminal emulator to set the system clipboard without needing a local
+/// display server, making it work over SSH, inside Docker, and under tmux
+/// (with `set -g set-clipboard on`). Returns false if stdout is not a TTY.
+fn copy_to_clipboard_osc52(text: &str) -> bool {
+    use base64::Engine as _;
+    use std::io::{IsTerminal, Write};
+
+    let mut out = std::io::stdout();
+    if !out.is_terminal() {
+        return false;
+    }
+    let encoded = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+    // OSC 52: ESC ] 52 ; c ; <base64> BEL
+    let seq = format!("\x1b]52;c;{}\x07", encoded);
+    out.write_all(seq.as_bytes()).is_ok() && out.flush().is_ok()
 }
 
 pub(super) fn effort_display_label(effort: &str) -> &str {
