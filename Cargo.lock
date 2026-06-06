@@ -4011,6 +4011,7 @@ dependencies = [
  "jcode-tui-style",
  "jcode-tui-tool-display",
  "jcode-tui-usage-overlay",
+ "jcode-tui-visual-debug",
  "jcode-tui-workspace",
  "libc",
  "open",
@@ -4132,6 +4133,18 @@ version = "0.1.0"
 dependencies = [
  "ratatui",
  "serde",
+]
+
+[[package]]
+name = "jcode-tui-visual-debug"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "jcode-logging",
+ "ratatui",
+ "regex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

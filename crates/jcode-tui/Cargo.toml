@@ -75,6 +75,7 @@ jcode-tui-core = { path = "../jcode-tui-core" }
 jcode-tui-mermaid = { path = "../jcode-tui-mermaid" }
 jcode-tui-account-picker = { path = "../jcode-tui-account-picker" }
 jcode-tui-render = { path = "../jcode-tui-render" }
+jcode-tui-visual-debug = { path = "../jcode-tui-visual-debug" }
 jcode-tui-session-picker = { path = "../jcode-tui-session-picker", features = ["serde"] }
 jcode-tui-style = { path = "../jcode-tui-style" }
 jcode-tui-tool-display = { path = "../jcode-tui-tool-display" }

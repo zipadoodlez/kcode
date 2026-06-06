@@ -55,6 +55,7 @@ members = [
     "crates/jcode-tui-account-picker",
     "crates/jcode-tui-anim",
     "crates/jcode-tui-render",
+    "crates/jcode-tui-visual-debug",
     "crates/jcode-tui-session-picker",
     "crates/jcode-tui-style",
     "crates/jcode-tui-tool-display",
