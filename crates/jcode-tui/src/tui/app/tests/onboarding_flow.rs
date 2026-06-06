@@ -575,6 +575,27 @@ fn startup_check_is_noop_once_committed() {
 }
 
 #[test]
+fn startup_check_skips_selfdev_canary_session() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = false;
+        // Self-dev / canary sessions (e.g. the niri `jcode self-dev` hotkey) take
+        // a launch path that never bumps `launch_count`, so without this guard the
+        // new-user heuristic would re-onboard on every spawn.
+        app.session.is_canary = true;
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        assert!(app.onboarding_startup_checked);
+        assert!(
+            app.onboarding_flow.is_none(),
+            "self-dev/canary sessions must never auto-start onboarding"
+        );
+    });
+}
+
+#[test]
 fn model_validation_success_appends_single_ready_line() {
     let mut app = create_test_app();
     let session_id = app.session.id.clone();

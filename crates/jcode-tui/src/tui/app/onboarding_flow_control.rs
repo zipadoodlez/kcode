@@ -40,7 +40,9 @@ impl App {
             self.onboarding_after_login();
             return;
         }
-        if !self.onboarding_preview_mode && !self.is_new_user_for_onboarding() {
+        if !self.onboarding_preview_mode
+            && (self.is_selfdev_canary_session() || !self.is_new_user_for_onboarding())
+        {
             return;
         }
         self.begin_onboarding_flow();
@@ -83,6 +85,14 @@ impl App {
             self.onboarding_startup_checked = true;
             return;
         }
+        // Self-dev / canary sessions are explicitly not first-run users: they are
+        // spawned by developers (e.g. the niri `jcode self-dev` hotkey) and that
+        // launch path never increments `launch_count`, so the new-user heuristic
+        // would otherwise re-onboard on every spawn. Skip onboarding for them.
+        if self.is_selfdev_canary_session() {
+            self.onboarding_startup_checked = true;
+            return;
+        }
         if !self.is_new_user_for_onboarding() {
             self.onboarding_startup_checked = true;
             return;
@@ -109,6 +119,21 @@ impl App {
             .and_then(|v| v.get("launch_count")?.as_u64())
             .map(|count| count <= 5)
             .unwrap_or(true)
+    }
+
+    /// Whether this is a self-dev / canary session.
+    ///
+    /// These are launched by developers working on jcode itself (for example the
+    /// niri `jcode self-dev` hotkey). That launch path bypasses
+    /// `maybe_show_setup_hints`, so `launch_count` never advances and the
+    /// new-user heuristic above would otherwise treat every spawn as a first run.
+    /// Such sessions should never auto-start the guided onboarding flow.
+    fn is_selfdev_canary_session(&self) -> bool {
+        if self.is_remote {
+            self.remote_is_canary.unwrap_or(self.session.is_canary)
+        } else {
+            self.session.is_canary
+        }
     }
 
     /// Begin the guided post-login flow. Called once auth becomes available on a
