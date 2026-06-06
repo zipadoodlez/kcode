@@ -39,8 +39,11 @@ impl SessionPicker {
 
         let can_narrow_cached = !self.cached_search_query.is_empty()
             && normalized.starts_with(&self.cached_search_query);
+        // When narrowing, reuse the previous match set in place via mem::take
+        // instead of cloning it into `candidates` and then cloning the new
+        // matches back into the cache (two full-list clones per keystroke).
         let candidates = if can_narrow_cached {
-            self.cached_search_refs.clone()
+            std::mem::take(&mut self.cached_search_refs)
         } else {
             self.all_session_refs()
         };
