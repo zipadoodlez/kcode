@@ -440,8 +440,19 @@ impl AnthropicCredentialMode {
 }
 
 pub(crate) fn load_anthropic_api_key() -> Result<String> {
-    crate::provider_catalog::load_api_key_from_env_or_config("ANTHROPIC_API_KEY", "anthropic.env")
-        .context("No Anthropic API key found")
+    let key = crate::provider_catalog::load_api_key_from_env_or_config(
+        "ANTHROPIC_API_KEY",
+        "anthropic.env",
+    )
+    .context("No Anthropic API key found")?;
+    if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+        let prefix: String = key.chars().take(14).collect();
+        eprintln!(
+            "[anthropic] resolved API key prefix={prefix}... (len={})",
+            key.len()
+        );
+    }
+    Ok(key)
 }
 
 pub(crate) fn has_anthropic_api_key() -> bool {
@@ -1073,7 +1084,9 @@ impl AnthropicProvider {
                         signature: signature.clone(),
                     });
                 }
-                ContentBlock::ToolUse { id, name, input, .. } => {
+                ContentBlock::ToolUse {
+                    id, name, input, ..
+                } => {
                     result.push(ApiContentBlock::ToolUse {
                         id: crate::message::sanitize_tool_id(id),
                         name: if is_oauth {
