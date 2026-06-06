@@ -99,6 +99,7 @@ fn todos_widgets_show_item_and_aggregate_confidence() {
     let data = InfoWidgetData {
         todos: vec![
             crate::todo::TodoItem {
+                group: None,
                 id: "todo-1".to_string(),
                 content: "Validate confidence UI".to_string(),
                 status: "in_progress".to_string(),
@@ -109,6 +110,7 @@ fn todos_widgets_show_item_and_aggregate_confidence() {
                 assigned_to: None,
             },
             crate::todo::TodoItem {
+                group: None,
                 id: "todo-2".to_string(),
                 content: "Ship completed item".to_string(),
                 status: "completed".to_string(),
@@ -137,8 +139,67 @@ fn todos_widgets_show_item_and_aggregate_confidence() {
 }
 
 #[test]
+fn todos_widgets_render_group_headers_when_groups_present() {
+    let mk = |group: Option<&str>, id: &str, status: &str| crate::todo::TodoItem {
+        group: group.map(|g| g.to_string()),
+        id: id.to_string(),
+        content: format!("task {id}"),
+        status: status.to_string(),
+        priority: "medium".to_string(),
+        confidence: Some(80),
+        completion_confidence: None,
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    };
+    let data = InfoWidgetData {
+        todos: vec![
+            mk(Some("optimize rendering"), "a", "completed"),
+            mk(Some("optimize rendering"), "b", "in_progress"),
+            mk(Some("fix scrollback"), "c", "pending"),
+            mk(None, "d", "pending"),
+        ],
+        ..Default::default()
+    };
+
+    let expanded = lines_text(&render_todos_expanded(&data, Rect::new(0, 0, 80, 14)));
+    // Group headers appear with per-group progress counters, first-seen order,
+    // and the ungrouped bucket renders under "Other".
+    assert!(expanded.contains("optimize rendering"), "{expanded}");
+    assert!(expanded.contains("1/2"), "{expanded}");
+    assert!(expanded.contains("fix scrollback"), "{expanded}");
+    assert!(expanded.contains("Other"), "{expanded}");
+    let opt_idx = expanded.find("optimize rendering").unwrap();
+    let fix_idx = expanded.find("fix scrollback").unwrap();
+    let other_idx = expanded.find("Other").unwrap();
+    assert!(opt_idx < fix_idx, "first-seen group order: {expanded}");
+    assert!(fix_idx < other_idx, "ungrouped bucket last: {expanded}");
+}
+
+#[test]
+fn todos_widgets_stay_flat_without_groups() {
+    let mk = |id: &str, status: &str| crate::todo::TodoItem {
+        group: None,
+        id: id.to_string(),
+        content: format!("task {id}"),
+        status: status.to_string(),
+        priority: "medium".to_string(),
+        confidence: Some(80),
+        completion_confidence: None,
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    };
+    let data = InfoWidgetData {
+        todos: vec![mk("a", "completed"), mk("b", "pending")],
+        ..Default::default()
+    };
+    let expanded = lines_text(&render_todos_expanded(&data, Rect::new(0, 0, 80, 14)));
+    assert!(!expanded.contains("Other"), "no group bucket: {expanded}");
+}
+
+#[test]
 fn todos_widget_renders_exact_pips_for_small_lists() {
     let mk = |status: &str| crate::todo::TodoItem {
+        group: None,
         id: status.to_string(),
         content: format!("item {status}"),
         status: status.to_string(),
@@ -991,6 +1052,7 @@ fn placements_never_include_border_only_widgets() {
             ..Default::default()
         }),
         todos: vec![crate::todo::TodoItem {
+            group: None,
             content: "ship patch".to_string(),
             status: "in_progress".to_string(),
             priority: "high".to_string(),

@@ -200,6 +200,11 @@ pub struct TodoItem {
     pub status: String,
     pub priority: String,
     pub id: String,
+    /// Optional group label. Todos that share a group are displayed together
+    /// under a single header. Use one group per coherent goal; when work is
+    /// steered into a new area, start a new group instead of renaming.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// Forward-looking confidence, from 0-100, that this todo can be completed correctly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<u8>,

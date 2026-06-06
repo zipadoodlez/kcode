@@ -2700,11 +2700,22 @@ impl App {
     }
 
     pub(super) fn picker_fuzzy_score(pattern: &str, text: &str) -> Option<i32> {
-        let pat: Vec<char> = pattern
+        let pat = Self::picker_fuzzy_pattern(pattern);
+        Self::picker_fuzzy_score_with_pattern(&pat, text)
+    }
+
+    /// Normalize a fuzzy-match pattern (lowercase, drop whitespace) into chars.
+    /// Hoist this out of per-entry scoring so a filter pass over N entries
+    /// normalizes the pattern once instead of N times per keystroke.
+    pub(super) fn picker_fuzzy_pattern(pattern: &str) -> Vec<char> {
+        pattern
             .to_lowercase()
             .chars()
             .filter(|c| !c.is_whitespace())
-            .collect();
+            .collect()
+    }
+
+    pub(super) fn picker_fuzzy_score_with_pattern(pat: &[char], text: &str) -> Option<i32> {
         let txt: Vec<char> = text.to_lowercase().chars().collect();
         if pat.is_empty() {
             return Some(0);
@@ -2750,13 +2761,16 @@ impl App {
         if picker.filter.is_empty() {
             picker.filtered = (0..picker.entries.len()).collect();
         } else {
+            // Normalize the filter pattern once per keystroke instead of once per
+            // entry inside picker_fuzzy_score.
+            let pat = Self::picker_fuzzy_pattern(&picker.filter);
             let mut scored: Vec<(usize, i32)> = picker
                 .entries
                 .iter()
                 .enumerate()
                 .filter_map(|(i, m)| {
                     let filter_text = picker.filter_text(m);
-                    Self::picker_fuzzy_score(&picker.filter, &filter_text).map(|s| {
+                    Self::picker_fuzzy_score_with_pattern(&pat, &filter_text).map(|s| {
                         let usage_bonus = m.usage_score.min(i32::MAX as u32) as i32;
                         let bonus = usage_bonus + if m.recommended { 5 } else { 0 };
                         (i, s + bonus)

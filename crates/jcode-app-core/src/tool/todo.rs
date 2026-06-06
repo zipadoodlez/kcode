@@ -57,6 +57,10 @@ impl Tool for TodoTool {
                                 "type": "string",
                                 "description": "ID."
                             },
+                            "group": {
+                                "type": "string",
+                                "description": "Optional group label. Todos sharing a group render together under one header. Use one group per coherent goal (e.g. 'optimize rendering'). When the user steers into new work, start a new group instead of renaming the existing one. Omit for an ungrouped flat list."
+                            },
                             "confidence": {
                                 "type": "integer",
                                 "minimum": 0,

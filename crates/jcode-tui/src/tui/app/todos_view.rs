@@ -275,6 +275,29 @@ fn build_todos_view_markdown(session_id: Option<&str>, todos: &[TodoItem]) -> St
         ("cancelled", "Cancelled"),
     ];
 
+    if let Some(groups) = grouped_todos_view(todos) {
+        for (group, items) in groups {
+            let group_name = group.as_deref().unwrap_or("Other");
+            let group_total = items.len();
+            let group_done = items.iter().filter(|t| t.status == "completed").count();
+            markdown.push_str(&format!(
+                "\n## {} ({}/{})\n",
+                group_name, group_done, group_total
+            ));
+            for (status, heading) in sections {
+                let status_items = sorted_group_items_for_status(&items, status);
+                if status_items.is_empty() {
+                    continue;
+                }
+                markdown.push_str(&format!("\n### {}\n\n", heading));
+                for todo in status_items {
+                    markdown.push_str(&format_todo_markdown(todo));
+                }
+            }
+        }
+        return markdown;
+    }
+
     for (status, heading) in sections {
         let items = sorted_todos_for_status(todos, status);
         if items.is_empty() {
@@ -287,6 +310,49 @@ fn build_todos_view_markdown(session_id: Option<&str>, todos: &[TodoItem]) -> St
     }
 
     markdown
+}
+
+/// Group key for the side-panel view, treating empty/whitespace as ungrouped.
+fn todo_group_key(todo: &TodoItem) -> Option<String> {
+    todo.group
+        .as_deref()
+        .map(str::trim)
+        .filter(|group| !group.is_empty())
+        .map(|group| group.to_string())
+}
+
+/// Partition todos into ordered groups (first-seen order, ungrouped last).
+/// Returns `None` when no todo declares a group so callers keep the flat layout.
+fn grouped_todos_view(todos: &[TodoItem]) -> Option<Vec<(Option<String>, Vec<&TodoItem>)>> {
+    if !todos.iter().any(|todo| todo_group_key(todo).is_some()) {
+        return None;
+    }
+    let mut groups: Vec<(Option<String>, Vec<&TodoItem>)> = Vec::new();
+    for todo in todos {
+        let key = todo_group_key(todo);
+        if let Some(entry) = groups.iter_mut().find(|(existing, _)| *existing == key) {
+            entry.1.push(todo);
+        } else {
+            groups.push((key, vec![todo]));
+        }
+    }
+    groups.sort_by_key(|(key, _)| key.is_none());
+    Some(groups)
+}
+
+fn sorted_group_items_for_status<'a>(items: &[&'a TodoItem], status: &str) -> Vec<&'a TodoItem> {
+    let mut filtered: Vec<&TodoItem> = items
+        .iter()
+        .copied()
+        .filter(|todo| todo.status == status)
+        .collect();
+    filtered.sort_by(|a, b| {
+        priority_rank(&a.priority)
+            .cmp(&priority_rank(&b.priority))
+            .then_with(|| a.content.cmp(&b.content))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    filtered
 }
 
 fn sorted_todos_for_status<'a>(todos: &'a [TodoItem], status: &str) -> Vec<&'a TodoItem> {
@@ -405,6 +471,7 @@ fn hash_todos_payload(session_id: Option<&str>, todos: &[TodoItem]) -> u64 {
         todo.content.hash(&mut hasher);
         todo.status.hash(&mut hasher);
         todo.priority.hash(&mut hasher);
+        todo.group.hash(&mut hasher);
         todo.confidence.hash(&mut hasher);
         todo.completion_confidence.hash(&mut hasher);
         todo.blocked_by.hash(&mut hasher);
@@ -441,6 +508,7 @@ mod tests {
             content: content.to_string(),
             status: status.to_string(),
             priority: priority.to_string(),
+            group: None,
             confidence,
             completion_confidence,
             blocked_by: Vec::new(),
@@ -493,6 +561,42 @@ mod tests {
         todos[0].confidence = Some(81);
         let after = hash_todos_payload(Some("session_test"), &todos);
 
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn todos_view_markdown_groups_items_under_group_headers() {
+        let mut grouped_a = todo("g1", "Cut frame allocs", "in_progress", "high", Some(80), None);
+        grouped_a.group = Some("optimize rendering".to_string());
+        let mut grouped_b = todo("g2", "Batch draw calls", "completed", "medium", Some(70), Some(90));
+        grouped_b.group = Some("optimize rendering".to_string());
+        let mut other = todo("o1", "Fix scrollback", "pending", "low", Some(60), None);
+        other.group = Some("scrollback".to_string());
+        let ungrouped = todo("u1", "Misc cleanup", "pending", "low", Some(60), None);
+
+        let markdown = build_todos_view_markdown(
+            Some("session_test"),
+            &[grouped_a, grouped_b, other, ungrouped],
+        );
+
+        assert!(markdown.contains("## optimize rendering (1/2)"), "{markdown}");
+        assert!(markdown.contains("## scrollback (0/1)"), "{markdown}");
+        assert!(markdown.contains("## Other (0/1)"), "{markdown}");
+        // Status sub-headings nest under groups.
+        assert!(markdown.contains("### In progress"), "{markdown}");
+        // First-seen group order, ungrouped bucket last.
+        let opt = markdown.find("## optimize rendering").unwrap();
+        let scroll = markdown.find("## scrollback").unwrap();
+        let other_idx = markdown.find("## Other").unwrap();
+        assert!(opt < scroll && scroll < other_idx, "{markdown}");
+    }
+
+    #[test]
+    fn todos_view_hash_changes_when_group_changes() {
+        let mut todos = vec![todo("g", "Group hash", "pending", "high", Some(80), None)];
+        let before = hash_todos_payload(Some("session_test"), &todos);
+        todos[0].group = Some("rendering".to_string());
+        let after = hash_todos_payload(Some("session_test"), &todos);
         assert_ne!(before, after);
     }
 }

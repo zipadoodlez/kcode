@@ -1023,6 +1023,7 @@ impl crate::tui::TuiState for App {
                     status: item.status.clone(),
                     priority: item.priority.clone(),
                     id: item.id.clone(),
+                    group: None,
                     blocked_by: item.blocked_by.clone(),
                     assigned_to: item.assigned_to.clone(),
                     confidence: None,
