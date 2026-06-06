@@ -3556,6 +3556,7 @@ dependencies = [
  "jcode-plan",
  "jcode-protocol",
  "jcode-provider-core",
+ "jcode-provider-env",
  "jcode-provider-gemini",
  "jcode-provider-metadata",
  "jcode-provider-openai",
@@ -3839,6 +3840,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "jcode-provider-env"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jcode-core",
+ "jcode-logging",
+ "jcode-provider-metadata",
+ "jcode-storage",
+ "tempfile",
 ]
 
 [[package]]
