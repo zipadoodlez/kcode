@@ -185,6 +185,19 @@ pub fn reasoning_partial_markup(line: &str) -> String {
     }
 }
 
+/// One-line collapsed reasoning summary markup (e.g. `▸ thought (3 lines)`),
+/// styled dim+italic like the live reasoning lines. Used to fold a persisted
+/// reasoning block down to a single trace line when the transcript is
+/// re-rendered from history in `current` reasoning-display mode (so reloaded /
+/// resumed sessions match the live collapse instead of replaying every line).
+pub fn reasoning_summary_line_markup(line_count: usize) -> String {
+    let label = match line_count {
+        0 | 1 => "▸ thought".to_string(),
+        n => format!("▸ thought ({} lines)", n),
+    };
+    reasoning_line_markup(&label)
+}
+
 use render_support::{
     highlight_code_cached, line_plain_text, placeholder_code_block, ranges_overlap, render_table,
 };

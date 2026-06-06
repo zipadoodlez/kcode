@@ -1,5 +1,6 @@
 use super::{Session, StoredDisplayRole};
 use crate::message::{ContentBlock, Role, ToolCall};
+use jcode_config_types::ReasoningDisplayMode;
 pub use jcode_session_types::{
     RenderedCompactedHistoryInfo, RenderedImage, RenderedImageSource, RenderedMessage,
 };
@@ -16,9 +17,29 @@ pub const DEFAULT_VISIBLE_COMPACTED_HISTORY_MESSAGES: usize = 64;
 /// by the live streaming path. Each line is wrapped via the shared `reasoning_line_markup` so resumed
 /// sessions render reasoning identically to how it streamed, terminated by a
 /// blank line so following answer text renders as a normal paragraph.
+///
+/// Honors the active `reasoning_display` mode so re-rendered history (reload,
+/// resume, remote sync, compaction-window expand) matches the live behavior:
+/// - `Off`: persisted reasoning is hidden entirely.
+/// - `Current`: the block folds down to a single `▸ thought (N lines)` trace,
+///   matching the live collapse animation's end state rather than replaying the
+///   full reasoning back into the transcript on every reload.
+/// - `Full`: every reasoning line is shown (classic behavior).
 fn format_reasoning_markup(text: &str) -> String {
     if text.trim().is_empty() {
         return String::new();
+    }
+    let mode = crate::config::config().display.reasoning_display();
+    match mode {
+        ReasoningDisplayMode::Off => return String::new(),
+        ReasoningDisplayMode::Current => {
+            let line_count = text.lines().filter(|l| !l.trim().is_empty()).count();
+            let mut out = jcode_tui_markdown::reasoning_summary_line_markup(line_count);
+            // Blank line terminates the reasoning block.
+            out.push('\n');
+            return out;
+        }
+        ReasoningDisplayMode::Full => {}
     }
     let mut out = String::new();
     for line in text.split('\n') {
