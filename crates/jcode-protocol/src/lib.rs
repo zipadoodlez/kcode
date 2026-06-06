@@ -198,7 +198,7 @@ pub struct ContextEntry {
 }
 
 /// Info about an agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentInfo {
     pub session_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -229,6 +229,36 @@ pub struct AgentInfo {
     /// Seconds since the last status change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_age_secs: Option<u64>,
+    /// Live activity (whether processing + current tool name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<SessionActivitySnapshot>,
+    /// Provider name (e.g. "anthropic").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_name: Option<String>,
+    /// Provider model id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_model: Option<String>,
+    /// Number of turns the agent has run this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_count: Option<u64>,
+    /// Tokens churned (total, including cache) within the recent lookback window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_total_tokens: Option<u64>,
+    /// Output tokens produced within the recent lookback window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_output_tokens: Option<u64>,
+    /// Width of the recent-token lookback window, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recent_window_secs: Option<u64>,
+    /// Cumulative total tokens observed for the session lifetime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cumulative_total_tokens: Option<u64>,
+    /// Number of completed todos for this agent's session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todos_completed: Option<usize>,
+    /// Total number of todos for this agent's session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todos_total: Option<usize>,
 }
 
 /// Lightweight status snapshot for a swarm member.

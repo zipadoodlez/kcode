@@ -204,6 +204,8 @@ pub(super) async fn handle_lightweight_control_request(
                 swarm_members,
                 swarms_by_id,
                 files_touched_by_session,
+                sessions,
+                client_connections,
             )
             .await;
         }

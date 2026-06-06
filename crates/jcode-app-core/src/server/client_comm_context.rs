@@ -2,6 +2,7 @@ use super::{
     SharedContext, SwarmEvent, SwarmEventType, SwarmMember, fanout_session_event,
     record_swarm_event,
 };
+use super::debug::ClientConnectionInfo;
 use crate::protocol::{AgentInfo, ContextEntry, NotificationType, ServerEvent};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -187,6 +188,10 @@ pub(super) async fn handle_comm_read(
     let _ = client_event_tx.send(ServerEvent::CommContext { id, entries });
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "comm list joins swarm membership, file touches, live sessions, and connection activity"
+)]
 pub(super) async fn handle_comm_list(
     id: u64,
     req_session_id: String,
@@ -194,6 +199,8 @@ pub(super) async fn handle_comm_list(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     files_touched_by_session: &Arc<RwLock<HashMap<String, HashSet<PathBuf>>>>,
+    sessions: &super::SessionAgents,
+    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
 ) {
     let swarm_id = swarm_id_for_session(&req_session_id, swarm_members).await;
 
@@ -206,37 +213,89 @@ pub(super) async fn handle_comm_list(
                 .unwrap_or_default()
         };
 
-        let members = swarm_members.read().await;
-        let touches = files_touched_by_session.read().await;
+        // Snapshot the static member fields first, releasing the members lock
+        // before gathering per-session runtime extras (which briefly lock
+        // individual agents and read the connection map).
+        struct MemberStatic {
+            session_id: String,
+            friendly_name: Option<String>,
+            files: Vec<String>,
+            status: String,
+            detail: Option<String>,
+            role: String,
+            is_headless: bool,
+            report_back_to_session_id: Option<String>,
+            latest_completion_report: Option<String>,
+            live_attachments: usize,
+            status_age_secs: u64,
+        }
 
-        let member_list: Vec<AgentInfo> = swarm_session_ids
-            .iter()
-            .filter_map(|sid| {
-                members.get(sid).map(|member| {
-                    let mut files: Vec<String> = touches
-                        .get(sid)
-                        .into_iter()
-                        .flat_map(|paths| paths.iter())
-                        .map(|path| path.display().to_string())
-                        .collect();
-                    files.sort();
-
-                    AgentInfo {
-                        session_id: sid.clone(),
-                        friendly_name: member.friendly_name.clone(),
-                        files_touched: files,
-                        status: Some(member.status.clone()),
-                        detail: member.detail.clone(),
-                        role: Some(member.role.clone()),
-                        is_headless: Some(member.is_headless),
-                        report_back_to_session_id: member.report_back_to_session_id.clone(),
-                        latest_completion_report: member.latest_completion_report.clone(),
-                        live_attachments: Some(member.event_txs.len()),
-                        status_age_secs: Some(member.last_status_change.elapsed().as_secs()),
-                    }
+        let statics: Vec<MemberStatic> = {
+            let members = swarm_members.read().await;
+            let touches = files_touched_by_session.read().await;
+            swarm_session_ids
+                .iter()
+                .filter_map(|sid| {
+                    members.get(sid).map(|member| {
+                        let mut files: Vec<String> = touches
+                            .get(sid)
+                            .into_iter()
+                            .flat_map(|paths| paths.iter())
+                            .map(|path| path.display().to_string())
+                            .collect();
+                        files.sort();
+                        MemberStatic {
+                            session_id: sid.clone(),
+                            friendly_name: member.friendly_name.clone(),
+                            files,
+                            status: member.status.clone(),
+                            detail: member.detail.clone(),
+                            role: member.role.clone(),
+                            is_headless: member.is_headless,
+                            report_back_to_session_id: member.report_back_to_session_id.clone(),
+                            latest_completion_report: member.latest_completion_report.clone(),
+                            live_attachments: member.event_txs.len(),
+                            status_age_secs: member.last_status_change.elapsed().as_secs(),
+                        }
+                    })
                 })
-            })
-            .collect();
+                .collect()
+        };
+
+        let mut member_list: Vec<AgentInfo> = Vec::with_capacity(statics.len());
+        for m in statics {
+            let extras = super::comm_sync::member_runtime_extras(
+                &m.session_id,
+                m.status == "running",
+                sessions,
+                client_connections,
+            )
+            .await;
+
+            member_list.push(AgentInfo {
+                session_id: m.session_id,
+                friendly_name: m.friendly_name,
+                files_touched: m.files,
+                status: Some(m.status),
+                detail: m.detail,
+                role: Some(m.role),
+                is_headless: Some(m.is_headless),
+                report_back_to_session_id: m.report_back_to_session_id,
+                latest_completion_report: m.latest_completion_report,
+                live_attachments: Some(m.live_attachments),
+                status_age_secs: Some(m.status_age_secs),
+                activity: extras.activity,
+                provider_name: extras.provider_name,
+                provider_model: extras.provider_model,
+                turn_count: extras.turn_count,
+                recent_total_tokens: extras.recent_total_tokens,
+                recent_output_tokens: extras.recent_output_tokens,
+                recent_window_secs: extras.recent_window_secs,
+                cumulative_total_tokens: extras.cumulative_total_tokens,
+                todos_completed: extras.todos_completed,
+                todos_total: extras.todos_total,
+            });
+        }
 
         let _ = client_event_tx.send(ServerEvent::CommMembers {
             id,

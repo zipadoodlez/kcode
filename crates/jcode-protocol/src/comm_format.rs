@@ -152,6 +152,71 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
             } else {
                 String::new()
             };
+
+            // Status line: lifecycle + detail, then a contextual age label.
+            // For an idle/ready agent the "age" is how long it has been idle;
+            // for a running agent it is how long the current turn has run.
+            let detail_suffix = member
+                .detail
+                .as_deref()
+                .map(|detail| format!(" — {}", detail))
+                .unwrap_or_default();
+            let age_suffix = match member.status_age_secs {
+                Some(age) if status == "ready" || status == "idle" => {
+                    format!(" · idle {}", format_secs(age))
+                }
+                Some(age) if status == "running" => format!(" · {}", format_secs(age)),
+                Some(age) => format!(" · {} ago", format_secs(age)),
+                None => String::new(),
+            };
+
+            // Live activity: what the agent is doing right now.
+            let activity_suffix = match member.activity.as_ref() {
+                Some(activity) if activity.is_processing => {
+                    match activity.current_tool_name.as_deref() {
+                        Some(tool) => format!("\n    Activity: working ({})", tool),
+                        None => "\n    Activity: thinking".to_string(),
+                    }
+                }
+                _ => String::new(),
+            };
+
+            // Progress: todos completed / total.
+            let progress_suffix = match (member.todos_completed, member.todos_total) {
+                (Some(done), Some(total)) if total > 0 => {
+                    format!("\n    Progress: {}/{} todos", done, total)
+                }
+                _ => String::new(),
+            };
+
+            // Live work signal: recent token churn + cumulative + turns.
+            let mut work_meta = Vec::new();
+            if let (Some(recent), Some(window)) =
+                (member.recent_total_tokens, member.recent_window_secs)
+                && recent > 0
+            {
+                work_meta.push(format!("{} tok/{}s", format_count(recent), window));
+            }
+            if let Some(turns) = member.turn_count.filter(|turns| *turns > 0) {
+                work_meta.push(format!("{} turns", turns));
+            }
+            if let Some(total) = member.cumulative_total_tokens.filter(|total| *total > 0) {
+                work_meta.push(format!("{} tok total", format_count(total)));
+            }
+            let work_suffix = if work_meta.is_empty() {
+                String::new()
+            } else {
+                format!("\n    Work: {}", work_meta.join(" · "))
+            };
+
+            // Model line.
+            let model_suffix = match (member.provider_name.as_deref(), member.provider_model.as_deref())
+            {
+                (Some(provider), Some(model)) => format!("\n    Model: {}/{}", provider, model),
+                (None, Some(model)) => format!("\n    Model: {}", model),
+                _ => String::new(),
+            };
+
             let mut extra_meta = Vec::new();
             if member.is_headless == Some(true) {
                 extra_meta.push("headless".to_string());
@@ -166,34 +231,76 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
             if let Some(attachments) = member.live_attachments {
                 extra_meta.push(format!("attachments={attachments}"));
             }
-            if let Some(age_secs) = member.status_age_secs {
-                extra_meta.push(format!("status_age={}s", age_secs));
-            }
             let meta_suffix = if extra_meta.is_empty() {
                 String::new()
             } else {
                 format!("\n    Meta: {}", extra_meta.join(" · "))
             };
+
+            // Completion report when the agent has finished.
+            let report_suffix = match member.latest_completion_report.as_deref() {
+                Some(report) if !report.trim().is_empty() => {
+                    format!("\n    Report: {}", truncate_report(report))
+                }
+                _ => String::new(),
+            };
+
             output.push_str(&format!(
-                "  {}{} ({})\n    Status: {}{}{}{}\n",
+                "  {}{} ({})\n    Status: {}{}{}{}{}{}{}{}{}{}\n",
                 name,
                 role_label,
                 if is_me { "you" } else { session },
                 status,
-                member
-                    .detail
-                    .as_deref()
-                    .map(|detail| format!(" — {}", detail))
-                    .unwrap_or_default(),
+                detail_suffix,
+                age_suffix,
+                activity_suffix,
+                progress_suffix,
+                work_suffix,
+                model_suffix,
                 if files.is_empty() {
                     String::new()
                 } else {
                     format!("\n    Files: {}", files)
                 },
-                meta_suffix
+                meta_suffix,
+                report_suffix,
             ));
         }
         output
+    }
+}
+
+/// Format a duration in seconds into a compact human label (e.g. `45s`, `3m`, `2h`).
+fn format_secs(secs: u64) -> String {
+    if secs < 60 {
+        format!("{}s", secs)
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else {
+        format!("{}h", secs / 3600)
+    }
+}
+
+/// Format a token count compactly (e.g. `850`, `12.3k`, `1.2M`).
+fn format_count(count: u64) -> String {
+    if count < 1_000 {
+        count.to_string()
+    } else if count < 1_000_000 {
+        format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    }
+}
+
+/// Truncate a completion report to a single compact line for the roster view.
+fn truncate_report(report: &str) -> String {
+    const MAX: usize = 120;
+    let one_line: String = report.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one_line.chars().count() > MAX {
+        let truncated: String = one_line.chars().take(MAX).collect();
+        format!("{}…", truncated)
+    } else {
+        one_line
     }
 }
 

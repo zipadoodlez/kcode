@@ -126,6 +126,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
         AgentInfo {
             session_id: "worker-queued".to_string(),
@@ -139,6 +140,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
         AgentInfo {
             session_id: "worker-ready".to_string(),
@@ -152,6 +154,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
     ];
 

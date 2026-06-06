@@ -9,6 +9,7 @@ impl Agent {
 
     pub(super) async fn run_turn(&mut self, print_output: bool) -> Result<String> {
         self.set_log_context();
+        crate::session_metrics::record_turn(&self.session.id);
         let mut final_text = String::new();
         let trace = trace_enabled();
         let mut context_limit_retries = 0u32;

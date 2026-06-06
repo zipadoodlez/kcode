@@ -403,6 +403,11 @@ async fn comm_list_includes_member_status_and_detail() {
         HashSet::from([requester_id.clone(), peer_id.clone()]),
     )])));
     let file_touches = Arc::new(RwLock::new(HashMap::new()));
+    let sessions = Arc::new(RwLock::new(HashMap::from([
+        (requester_id.clone(), requester.clone()),
+        (peer_id.clone(), peer.clone()),
+    ])));
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
 
     handle_comm_list(
         1,
@@ -411,6 +416,8 @@ async fn comm_list_includes_member_status_and_detail() {
         &swarm_members,
         &swarms_by_id,
         &file_touches,
+        &sessions,
+        &client_connections,
     )
     .await;
 

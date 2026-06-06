@@ -813,6 +813,14 @@ impl Agent {
                     usage_cache_read,
                     usage_cache_creation,
                 );
+
+                let input = usage_input.unwrap_or(0);
+                let output = usage_output.unwrap_or(0);
+                let total = input
+                    .saturating_add(output)
+                    .saturating_add(usage_cache_read.unwrap_or(0))
+                    .saturating_add(usage_cache_creation.unwrap_or(0));
+                crate::session_metrics::record_token_usage(&self.session.id, total, output);
             }
 
             if usage_input.is_some()

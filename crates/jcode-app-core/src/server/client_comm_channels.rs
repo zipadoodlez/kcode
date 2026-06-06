@@ -93,6 +93,7 @@ pub(super) async fn handle_comm_channel_members(
                     latest_completion_report: member.latest_completion_report.clone(),
                     live_attachments: Some(member.event_txs.len()),
                     status_age_secs: Some(member.last_status_change.elapsed().as_secs()),
+                    ..Default::default()
                 })
             })
             .collect();

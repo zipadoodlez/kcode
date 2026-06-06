@@ -63,6 +63,7 @@ pub mod safety;
 pub mod secret_input;
 pub mod session;
 pub mod session_list_cache;
+pub mod session_metrics;
 pub mod side_panel;
 pub mod sidecar;
 pub mod skill;

@@ -92,6 +92,7 @@ fn cleanup_candidates_default_to_owned_terminal_workers() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
         AgentInfo {
             session_id: "owned-done".to_string(),
@@ -105,6 +106,7 @@ fn cleanup_candidates_default_to_owned_terminal_workers() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
         AgentInfo {
             session_id: "user-created".to_string(),
@@ -118,6 +120,7 @@ fn cleanup_candidates_default_to_owned_terminal_workers() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
         AgentInfo {
             session_id: "owned-running".to_string(),
@@ -131,6 +134,7 @@ fn cleanup_candidates_default_to_owned_terminal_workers() {
             latest_completion_report: None,
             live_attachments: None,
             status_age_secs: None,
+            ..Default::default()
         },
     ];
     let statuses = default_cleanup_target_statuses();
@@ -197,15 +201,17 @@ fn format_members_includes_status_and_detail() {
             latest_completion_report: None,
             live_attachments: Some(0),
             status_age_secs: Some(12),
+            ..Default::default()
         }],
     );
 
     assert!(output.output.contains("Status: running — working on tests"));
+    assert!(output.output.contains("· 12s"));
     assert!(output.output.contains("Files: src/main.rs"));
     assert!(
         output
             .output
-            .contains("Meta: headless · owned_by_you · attachments=0 · status_age=12s")
+            .contains("Meta: headless · owned_by_you · attachments=0")
     );
 }
 
@@ -230,6 +236,7 @@ fn format_members_disambiguates_duplicate_friendly_names() {
                 latest_completion_report: None,
                 live_attachments: None,
                 status_age_secs: None,
+                ..Default::default()
             },
             AgentInfo {
                 session_id: "session_shark_1234567890_bbbbbbbbbbbb0002".to_string(),
@@ -243,6 +250,7 @@ fn format_members_disambiguates_duplicate_friendly_names() {
                 latest_completion_report: None,
                 live_attachments: None,
                 status_age_secs: None,
+                ..Default::default()
             },
         ],
     );
