@@ -116,6 +116,39 @@ fn test_copy_selection_select_all_uses_rendered_chat_text_without_copy_badges() 
 }
 
 #[test]
+fn test_copy_selection_metrics_match_built_selection_text() {
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, mut terminal) = create_copy_test_app();
+
+    render_and_snap(&app, &mut terminal);
+    app.handle_key(KeyCode::Char('y'), KeyModifiers::ALT)
+        .unwrap();
+    assert!(app.select_all_in_copy_mode());
+
+    // The allocation-free metrics path used by the status line must agree with
+    // the char/line counts of the actually-built selection text.
+    let range = app
+        .normalized_copy_selection()
+        .expect("normalized selection range");
+    let text = app
+        .current_copy_selection_text()
+        .expect("selection text for full transcript");
+    let (chars, lines) =
+        crate::tui::ui::copy_selection_metrics(range).expect("selection metrics");
+
+    assert_eq!(
+        chars,
+        text.chars().count(),
+        "metrics char count should match built selection text"
+    );
+    assert_eq!(
+        lines,
+        text.lines().count().max(1),
+        "metrics line count should match built selection text"
+    );
+}
+
+#[test]
 fn test_copy_selection_full_user_prompt_line_skips_prompt_chrome() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_copy_test_app();

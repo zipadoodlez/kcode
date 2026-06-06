@@ -1884,6 +1884,72 @@ pub(crate) fn copy_selection_text(range: crate::tui::CopySelectionRange) -> Opti
     Some(out)
 }
 
+/// Compute `(char_count, line_count)` for the current copy selection without
+/// allocating the full joined selection string. Mirrors `copy_selection_text`
+/// so the status line "N chars · M lines" matches what would be copied, but is
+/// allocation-free so it can run cheaply on every render frame / drag move.
+pub(crate) fn copy_selection_metrics(
+    range: crate::tui::CopySelectionRange,
+) -> Option<(usize, usize)> {
+    if range.start.pane != range.end.pane {
+        return None;
+    }
+    let snapshot = copy_snapshot_for_pane(range.start.pane)?;
+    let (start, end) =
+        if (range.start.abs_line, range.start.column) <= (range.end.abs_line, range.end.column) {
+            (range.start, range.end)
+        } else {
+            (range.end, range.start)
+        };
+
+    if start.abs_line >= snapshot.wrapped_plain_line_count()
+        || end.abs_line >= snapshot.wrapped_plain_line_count()
+    {
+        return None;
+    }
+
+    if let Some(metrics) =
+        copy_selection::copy_selection_metrics_from_raw_lines(&snapshot, start, end)
+    {
+        return Some(metrics);
+    }
+
+    let mut chars = 0usize;
+    let mut lines = 0usize;
+    for abs_line in start.abs_line..=end.abs_line {
+        if abs_line > start.abs_line {
+            chars += 1; // joining '\n'
+        }
+        lines += 1;
+        let text = snapshot.wrapped_plain_line(abs_line)?;
+        if abs_line != start.abs_line && abs_line != end.abs_line {
+            let copy_start = snapshot.wrapped_copy_offset(abs_line).unwrap_or(0);
+            if copy_start == 0 {
+                chars += text.chars().count();
+                continue;
+            }
+        }
+        let line_width = line_display_width(&text);
+        let copy_start = snapshot.wrapped_copy_offset(abs_line).unwrap_or(0);
+        let start_col = if abs_line == start.abs_line {
+            clamp_display_col(&text, start.column).max(copy_start)
+        } else {
+            copy_start
+        };
+        let end_col = if abs_line == end.abs_line {
+            clamp_display_col(&text, end.column).max(copy_start)
+        } else {
+            line_width
+        };
+        if end_col < start_col {
+            continue;
+        }
+        chars += display_col_slice(&text, start_col, end_col).chars().count();
+    }
+
+    Some((chars, lines.max(1)))
+}
+
 pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
     let point = copy_point_from_screen(column, row)?;
     let snapshot = copy_snapshot_for_pane(point.pane)?;

@@ -1496,19 +1496,22 @@ impl crate::tui::TuiState for App {
             return None;
         }
 
-        let text = self.current_copy_selection_text().unwrap_or_default();
-        let has_selection = !text.is_empty();
+        // Compute selection metrics without building the full selected string,
+        // which previously re-allocated the entire selection on every render
+        // frame and drag move (O(selection) per frame; a "select all" rebuilt
+        // the whole transcript text repeatedly).
+        let (selected_chars, selected_lines) = self
+            .normalized_copy_selection()
+            .and_then(crate::tui::ui::copy_selection_metrics)
+            .unwrap_or((0, 0));
+        let has_selection = selected_chars > 0;
         Some(crate::tui::CopySelectionStatus {
             pane: self
                 .current_copy_selection_pane()
                 .unwrap_or(crate::tui::CopySelectionPane::Chat),
             has_action: has_selection,
-            selected_chars: text.chars().count(),
-            selected_lines: if has_selection {
-                text.lines().count().max(1)
-            } else {
-                0
-            },
+            selected_chars,
+            selected_lines: if has_selection { selected_lines.max(1) } else { 0 },
             dragging: self.copy_selection_dragging,
         })
     }
