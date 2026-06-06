@@ -108,7 +108,6 @@ unicode-width = "0.2"   # Unicode character display width
 # (tool/read.rs), not here.
 jcode-background-types = { path = "../jcode-background-types" }
 jcode-batch-types = { path = "../jcode-batch-types" }
-jcode-build-support = { path = "../jcode-build-support" }
 jcode-build-meta = { path = "../jcode-build-meta" }
 jcode-compaction-core = { path = "../jcode-compaction-core" }
 jcode-config-types = { path = "../jcode-config-types" }

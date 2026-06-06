@@ -20,7 +20,6 @@
 pub mod auth;
 pub mod background;
 pub mod browser;
-pub mod build;
 pub mod bus;
 pub mod cache_tracker;
 pub mod client_input;

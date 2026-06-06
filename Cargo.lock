@@ -3546,7 +3546,6 @@ dependencies = [
  "jcode-background-types",
  "jcode-batch-types",
  "jcode-build-meta",
- "jcode-build-support",
  "jcode-compaction-core",
  "jcode-config-types",
  "jcode-core",
