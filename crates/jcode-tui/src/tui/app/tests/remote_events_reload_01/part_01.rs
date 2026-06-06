@@ -1132,3 +1132,56 @@ fn test_handle_server_event_mcp_status_updates_tools_without_status_notice() {
     assert_eq!(app.mcp_server_names, vec![("agentcard".to_string(), 8)]);
     assert_eq!(app.status_notice(), None);
 }
+
+#[test]
+fn test_handle_server_event_reasoning_delta_shows_thinking_status() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_processing = true;
+    // Server emits ConnectionPhase::Streaming when reasoning starts (to kick the
+    // TPS timer), so the status arrives as Streaming.
+    app.status = ProcessingStatus::Streaming;
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ReasoningDelta {
+            text: "weighing options".to_string(),
+        },
+        &mut remote,
+    );
+
+    // Live reasoning should read as "thinking", not "streaming".
+    assert!(matches!(app.status, ProcessingStatus::Thinking(_)));
+
+    // Real output text flips the status back to streaming.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::TextDelta {
+            text: "Here is the answer".to_string(),
+        },
+        &mut remote,
+    );
+    assert!(matches!(app.status, ProcessingStatus::Streaming));
+}
+
+#[test]
+fn test_handle_server_event_reasoning_delta_keeps_tool_status() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_processing = true;
+    app.status = ProcessingStatus::RunningTool("bash".to_string());
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ReasoningDelta {
+            text: "post-tool reflection".to_string(),
+        },
+        &mut remote,
+    );
+
+    // A running tool must not be masked by reasoning text.
+    assert!(matches!(app.status, ProcessingStatus::RunningTool(_)));
+}
