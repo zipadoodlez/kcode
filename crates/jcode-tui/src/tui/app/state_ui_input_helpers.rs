@@ -1425,7 +1425,45 @@ struct ExternalCliSuggestionCandidate {
     context: Option<String>,
 }
 
+/// How long a scan of the external-CLI session directories is reused before we
+/// re-scan. The onboarding welcome screen animates a donut, so it redraws at
+/// animation FPS and calls [`latest_external_cli_continuation_prompt`] multiple
+/// times per frame. Scanning `~/.codex/sessions` / `~/.claude/projects` (reading
+/// and JSON-parsing the newest transcripts) can cost hundreds of milliseconds
+/// for users with large histories, which would otherwise make first-run
+/// onboarding extremely laggy. A short TTL keeps the suggestion fresh while
+/// reducing the cost to a single scan per window.
+const EXTERNAL_CLI_PROMPT_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Cached result of the external-CLI continuation-prompt scan, with the time it
+/// was computed. `None` value means "scanned, but nothing found".
+static EXTERNAL_CLI_PROMPT_CACHE: std::sync::LazyLock<
+    std::sync::RwLock<Option<(Option<String>, std::time::Instant)>>,
+> = std::sync::LazyLock::new(|| std::sync::RwLock::new(None));
+
+/// Cached front-end for [`latest_external_cli_continuation_prompt_uncached`].
+///
+/// See [`EXTERNAL_CLI_PROMPT_CACHE_TTL`] for why this is cached: the uncached
+/// scan reads and parses the newest external transcripts, which is expensive for
+/// large histories and would otherwise run several times per onboarding frame.
 fn latest_external_cli_continuation_prompt() -> Option<String> {
+    if let Ok(cache) = EXTERNAL_CLI_PROMPT_CACHE.read()
+        && let Some((ref value, ref when)) = *cache
+        && when.elapsed() < EXTERNAL_CLI_PROMPT_CACHE_TTL
+    {
+        return value.clone();
+    }
+
+    let value = latest_external_cli_continuation_prompt_uncached();
+
+    if let Ok(mut cache) = EXTERNAL_CLI_PROMPT_CACHE.write() {
+        *cache = Some((value.clone(), std::time::Instant::now()));
+    }
+
+    value
+}
+
+fn latest_external_cli_continuation_prompt_uncached() -> Option<String> {
     let home = std::env::var_os("HOME").map(PathBuf::from)?;
     let mut candidates = Vec::new();
     candidates.extend(latest_jsonl_suggestion_candidates(
@@ -1644,6 +1682,40 @@ fn compact_suggestion_text(text: &str, max_chars: usize) -> String {
 mod external_cli_suggestion_tests {
     use super::*;
     use std::io::Write;
+
+    /// Faithful, real-home measurement of the per-frame onboarding cost.
+    /// Ignored by default (depends on local ~/.codex and ~/.claude contents).
+    /// Run with:
+    ///   cargo test -p jcode-tui --lib onboarding_suggestion_scan_cost -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn onboarding_suggestion_scan_cost() {
+        use std::time::Instant;
+
+        // Cold: the uncached scan that reads + JSON-parses the newest external
+        // transcripts. This is the work that used to run several times per frame.
+        let cold_start = Instant::now();
+        let cold = latest_external_cli_continuation_prompt_uncached();
+        let cold_ms = cold_start.elapsed().as_secs_f64() * 1000.0;
+
+        // Warm: the cached front-end the onboarding screen actually calls. Prime
+        // the cache once, then measure repeated calls (as a redrawing frame does).
+        let _ = latest_external_cli_continuation_prompt();
+        let runs = 1000;
+        let warm_start = Instant::now();
+        let mut warm = None;
+        for _ in 0..runs {
+            warm = latest_external_cli_continuation_prompt();
+        }
+        let warm_ms = warm_start.elapsed().as_secs_f64() * 1000.0 / runs as f64;
+
+        eprintln!(
+            "external-cli continuation prompt: cold(uncached)={cold_ms:.1} ms, \
+             warm(cached, avg of {runs})={warm_ms:.4} ms; cold_some={}, warm_some={}",
+            cold.is_some(),
+            warm.is_some()
+        );
+    }
 
     #[test]
     fn parses_claude_code_jsonl_with_session_path_and_context() {
