@@ -4135,8 +4135,13 @@ dependencies = [
 name = "jcode-tui-usage-overlay"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "jcode-usage-types",
  "ratatui",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
