@@ -3727,7 +3727,7 @@ name = "jcode-memory-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "jcode-core",
+ "rand 0.9.3",
  "serde",
  "serde_json",
 ]
