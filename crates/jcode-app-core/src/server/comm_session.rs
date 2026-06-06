@@ -307,9 +307,10 @@ fn resolve_swarm_spawn_selection(
         }
         None => SwarmSpawnSelection {
             model: coordinator.model.clone(),
-            provider_key: coordinator.provider_key.clone().or_else(|| {
-                provider_key_for_spawn_model(coordinator.model.as_deref(), None)
-            }),
+            provider_key: coordinator
+                .provider_key
+                .clone()
+                .or_else(|| provider_key_for_spawn_model(coordinator.model.as_deref(), None)),
             route_api_method: coordinator.route_api_method.clone(),
         },
     }

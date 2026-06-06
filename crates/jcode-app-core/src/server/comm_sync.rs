@@ -139,7 +139,6 @@ pub(super) async fn member_runtime_extras(
     }
 }
 
-
 async fn ensure_same_swarm_access(
     id: u64,
     req_session_id: &str,
@@ -278,7 +277,9 @@ pub(super) async fn handle_comm_status(
             return;
         };
 
-        let files_touched = file_touch.sorted_file_strings_for_session(&target_session).await;
+        let files_touched = file_touch
+            .sorted_file_strings_for_session(&target_session)
+            .await;
 
         let activity = {
             let connections = client_connections.read().await;

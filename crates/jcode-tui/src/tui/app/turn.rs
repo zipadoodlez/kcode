@@ -717,6 +717,17 @@ impl App {
                                     }
                                     StreamEvent::ThinkingDelta(thinking_text) => {
                                         self.resume_streaming_tps();
+                                        // Reflect active reasoning in the status line even when the
+                                        // provider streams reasoning deltas without an explicit
+                                        // ThinkingStart (e.g. OpenRouter, Bedrock) or when the
+                                        // reasoning text itself is hidden by config.
+                                        let thinking_start =
+                                            *self.thinking_start.get_or_insert_with(Instant::now);
+                                        let entered_thinking =
+                                            !matches!(self.status, ProcessingStatus::Thinking(_));
+                                        if entered_thinking {
+                                            self.status = ProcessingStatus::Thinking(thinking_start);
+                                        }
                                         // Buffer thinking content for status/debug accounting.
                                         self.thinking_buffer.push_str(&thinking_text);
                                         // Flush any pending real output before reasoning text.
@@ -732,6 +743,12 @@ impl App {
                                         // persisted as a history-only trace, regardless
                                         // of provider replay support.
                                         reasoning_content.push_str(&thinking_text);
+                                        // When reasoning text is hidden, the status flip to
+                                        // "thinking…" is the only visible signal, so repaint
+                                        // promptly on the first delta.
+                                        if entered_thinking && eager_stream_redraw {
+                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                        }
                                     }
                                     StreamEvent::ThinkingEnd => {
                                         self.pause_streaming_tps(true);

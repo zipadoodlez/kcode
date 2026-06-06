@@ -274,15 +274,9 @@ mod tests {
         // the recovery directory or collide with sibling paths.
         assert_eq!(sanitize_session_id("../../etc/passwd"), "______etc_passwd");
         assert_eq!(sanitize_session_id("a/b\\c"), "a_b_c");
-        assert_eq!(
-            sanitize_session_id("sess.with space"),
-            "sess_with_space"
-        );
+        assert_eq!(sanitize_session_id("sess.with space"), "sess_with_space");
         // Already-safe ids are preserved verbatim.
-        assert_eq!(
-            sanitize_session_id("session-abc_123"),
-            "session-abc_123"
-        );
+        assert_eq!(sanitize_session_id("session-abc_123"), "session-abc_123");
     }
 
     #[test]
@@ -360,8 +354,7 @@ mod tests {
         // Reading the directive (for History payloads) must leave the durable
         // intent pending so a lost frame can be retried after reconnect.
         for _ in 0..3 {
-            let directive =
-                pending_directive_for_session(session_id)?.expect("directive present");
+            let directive = pending_directive_for_session(session_id)?.expect("directive present");
             assert_eq!(directive.continuation_message, "continue please");
             assert!(has_pending_for_session(session_id));
         }

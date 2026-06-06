@@ -438,8 +438,9 @@ impl Agent {
                         // answer renders as a normal paragraph rather than as reasoning.
                         if reasoning_open && !text.trim().is_empty() {
                             reasoning_open = false;
-                            let _ = event_tx
-                                .send(ServerEvent::ReasoningDone { duration_secs: None });
+                            let _ = event_tx.send(ServerEvent::ReasoningDone {
+                                duration_secs: None,
+                            });
                         }
                         text_content.push_str(&text);
                         if !text_wrapped_detected {
@@ -474,8 +475,9 @@ impl Agent {
                     StreamEvent::ToolUseStart { id, name } => {
                         if reasoning_open {
                             reasoning_open = false;
-                            let _ = event_tx
-                                .send(ServerEvent::ReasoningDone { duration_secs: None });
+                            let _ = event_tx.send(ServerEvent::ReasoningDone {
+                                duration_secs: None,
+                            });
                         }
                         let _ = event_tx.send(ServerEvent::ToolStart {
                             id: id.clone(),
@@ -631,8 +633,9 @@ impl Agent {
                         // step) so the client flushes its live partial line.
                         if reasoning_open {
                             reasoning_open = false;
-                            let _ = event_tx
-                                .send(ServerEvent::ReasoningDone { duration_secs: None });
+                            let _ = event_tx.send(ServerEvent::ReasoningDone {
+                                duration_secs: None,
+                            });
                         }
                         if reason.is_some() {
                             stop_reason = reason;
@@ -891,7 +894,9 @@ impl Agent {
                 content_blocks.push(ContentBlock::ToolUse {
                     id: tc.id.clone(),
                     name: tc.name.clone(),
-                    input: tc.input.clone(), thought_signature: None, });
+                    input: tc.input.clone(),
+                    thought_signature: None,
+                });
             }
 
             let assistant_message_id = if !content_blocks.is_empty() {
@@ -1448,7 +1453,10 @@ mod tests {
         // exists once both halves are appended; the overlap window must catch it.
         let mut acc = String::new();
         acc.push_str("answer to=fun");
-        assert_eq!(find_wrap_marker_incremental(&acc, "answer to=fun".len()), None);
+        assert_eq!(
+            find_wrap_marker_incremental(&acc, "answer to=fun".len()),
+            None
+        );
         acc.push_str("ctions.tool");
         let hit = find_wrap_marker_incremental(&acc, "ctions.tool".len());
         assert_eq!(hit, find_wrap_marker_full(&acc));

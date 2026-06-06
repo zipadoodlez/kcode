@@ -58,9 +58,8 @@ use self::runtime::ServerRuntime;
 use self::swarm::{
     broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
     record_swarm_event, record_swarm_event_for_session, refresh_swarm_task_staleness,
-    remove_plan_participant, remove_session_from_swarm,
-    rename_plan_participant, run_swarm_message, update_member_status,
-    update_member_status_with_report,
+    remove_plan_participant, remove_session_from_swarm, rename_plan_participant, run_swarm_message,
+    update_member_status, update_member_status_with_report,
 };
 use self::swarm_channels::{
     remove_session_channel_subscriptions, subscribe_session_to_channel,

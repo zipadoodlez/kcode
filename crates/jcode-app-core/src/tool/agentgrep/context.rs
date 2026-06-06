@@ -112,7 +112,9 @@ fn collect_tool_exposures(session: &Session) -> Vec<ToolExposureObservation> {
     for (message_index, msg) in session.messages.iter().enumerate() {
         for block in &msg.content {
             match block {
-                ContentBlock::ToolUse { id, name, input, .. } => {
+                ContentBlock::ToolUse {
+                    id, name, input, ..
+                } => {
                     tool_map.insert(
                         id.clone(),
                         ToolCall {

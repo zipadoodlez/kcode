@@ -152,6 +152,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
             }) {
                 Ok(path) => {
                     update::print_centered(&format!("✓ Installed {}", release.tag_name));
+                    reload_server_after_update("installed update");
 
                     let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
                     let exe = build::client_update_candidate(is_selfdev)
@@ -180,6 +181,9 @@ pub fn hot_update(session_id: &str) -> Result<()> {
             }
         }
         Ok(None) => {
+            if repair_stale_shared_server_after_update_check() {
+                reload_server_after_update("repaired stale server target");
+            }
             update::print_centered(&format!(
                 "Already up to date ({})",
                 jcode_build_meta::VERSION
@@ -317,9 +321,13 @@ pub fn run_update() -> Result<()> {
                         ));
                     })?;
                 update::print_centered(&format!("✅ Updated to {}", release.tag_name));
+                reload_server_after_update("installed update");
                 update::print_centered("Restart jcode to use the new version.");
             }
             Ok(None) => {
+                if repair_stale_shared_server_after_update_check() {
+                    reload_server_after_update("repaired stale server target");
+                }
                 update::print_centered(&format!(
                     "Already up to date ({})",
                     jcode_build_meta::VERSION
@@ -363,4 +371,67 @@ pub fn run_update() -> Result<()> {
     update::print_centered(&format!("Successfully updated to {}", hash.trim()));
 
     Ok(())
+}
+
+fn repair_stale_shared_server_after_update_check() -> bool {
+    match build::repair_stale_shared_server_channel() {
+        Ok(build::SharedServerRepair::Repaired {
+            previous,
+            repaired_to,
+        }) => {
+            crate::logging::info(&format!(
+                "update: repaired stale shared-server channel {:?} -> {}",
+                previous, repaired_to
+            ));
+            update::print_centered(&format!(
+                "Repaired stale server reload target: {}",
+                repaired_to
+            ));
+            true
+        }
+        Ok(build::SharedServerRepair::AlreadyCurrent) => false,
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "update: failed to repair stale shared-server channel: {}",
+                error
+            ));
+            false
+        }
+    }
+}
+
+fn reload_server_after_update(reason: &str) {
+    let exe = build::client_update_candidate(false)
+        .map(|(path, _)| path)
+        .or_else(|| std::env::current_exe().ok());
+    let Some(exe) = exe else {
+        crate::logging::warn("update: could not find jcode binary to reload stale server");
+        return;
+    };
+
+    let output = ProcessCommand::new(&exe)
+        .args(["--no-update", "server", "reload", "--force"])
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            crate::logging::info(&format!(
+                "update: requested server reload after {} via {:?}",
+                reason, exe
+            ));
+        }
+        Ok(output) => {
+            crate::logging::warn(&format!(
+                "update: server reload after {} failed with status {:?}: {}",
+                reason,
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "update: failed to request server reload after {} via {:?}: {}",
+                reason, exe, error
+            ));
+        }
+    }
 }

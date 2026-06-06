@@ -36,10 +36,7 @@ const MAX_RETRIES: u32 = 3;
 /// Base delay for exponential backoff (in milliseconds)
 const RETRY_BASE_DELAY_MS: u64 = 1000;
 const WEBSOCKET_UPGRADE_REQUIRED_ERROR: StatusCode = StatusCode::UPGRADE_REQUIRED;
-const WEBSOCKET_FALLBACK_NOTICE: &str = "falling back from websockets to https transport";
 const WEBSOCKET_CONNECT_TIMEOUT_SECS: u64 = 8;
-const WEBSOCKET_FIRST_EVENT_TIMEOUT_SECS: u64 = 8;
-const WEBSOCKET_COMPLETION_TIMEOUT_SECS: u64 = 300;
 /// Maximum age of a persistent WebSocket connection before forcing reconnect
 const WEBSOCKET_PERSISTENT_MAX_AGE_SECS: u64 = 3000; // 50 min (server limit is 60 min)
 /// Default idle window after which we reconnect instead of reusing the socket.
@@ -91,11 +88,6 @@ static WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS: LazyLock<Option<u64>> = LazyLoc
     }
 });
 const WEBSOCKET_PERSISTENT_HEALTHCHECK_TIMEOUT_MS: u64 = 1500;
-/// Base websocket cooldown after a fallback in auto mode.
-/// Keep this short so one flaky attempt does not pin the TUI to HTTPS for a long time.
-const WEBSOCKET_MODEL_COOLDOWN_BASE_SECS: u64 = 60;
-/// Maximum websocket cooldown after repeated fallback streaks.
-const WEBSOCKET_MODEL_COOLDOWN_MAX_SECS: u64 = 600;
 const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 32_768;
 static WEBSOCKET_COOLDOWNS: LazyLock<Arc<RwLock<HashMap<String, Instant>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
@@ -1017,16 +1009,18 @@ mod openai_stream_runtime;
 
 mod websocket_health;
 
+use self::websocket_health::{
+    WEBSOCKET_COMPLETION_TIMEOUT_SECS, WEBSOCKET_FALLBACK_NOTICE,
+    WEBSOCKET_FIRST_EVENT_TIMEOUT_SECS, classify_websocket_fallback_reason,
+    is_stream_activity_event, is_websocket_activity_payload, is_websocket_fallback_notice,
+    is_websocket_first_activity_payload, record_websocket_fallback, record_websocket_success,
+    summarize_websocket_fallback_reason, websocket_activity_timeout_kind,
+    websocket_cooldown_remaining, websocket_next_activity_timeout_secs,
+};
 #[cfg(test)]
 use self::websocket_health::{
     WebsocketFallbackReason, clear_websocket_cooldown, normalize_transport_model,
     set_websocket_cooldown, websocket_cooldown_for_streak, websocket_remaining_timeout_secs,
-};
-use self::websocket_health::{
-    classify_websocket_fallback_reason, is_stream_activity_event, is_websocket_activity_payload,
-    is_websocket_fallback_notice, is_websocket_first_activity_payload, record_websocket_fallback,
-    record_websocket_success, summarize_websocket_fallback_reason, websocket_activity_timeout_kind,
-    websocket_cooldown_remaining, websocket_next_activity_timeout_secs,
 };
 
 #[cfg(test)]

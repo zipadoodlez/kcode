@@ -313,14 +313,16 @@ pub(in crate::tui::app) fn handle_server_event(
             if let Some(chunk) = app.stream_buffer.flush() {
                 app.append_streaming_text(&chunk);
             }
-            if matches!(
-                app.status,
-                ProcessingStatus::Sending
-                    | ProcessingStatus::Connecting(_)
-                    | ProcessingStatus::Thinking(_)
-            ) || (app.is_processing && matches!(app.status, ProcessingStatus::Idle))
-            {
-                app.status = ProcessingStatus::Streaming;
+            // Surface active reasoning in the status line. The server emits a
+            // `ConnectionPhase::Streaming` when reasoning starts (to kick off the
+            // client TPS timer), so the status arrives here as `Streaming`; flip it
+            // to `Thinking` while reasoning deltas flow. The next `TextDelta` moves
+            // it back to `Streaming`.
+            if !matches!(app.status, ProcessingStatus::RunningTool(_)) {
+                let thinking_start = *app.thinking_start.get_or_insert_with(Instant::now);
+                if !matches!(app.status, ProcessingStatus::Thinking(_)) {
+                    app.status = ProcessingStatus::Thinking(thinking_start);
+                }
             }
             app.resume_streaming_tps();
             app.append_reasoning_text(&text);
@@ -328,6 +330,7 @@ pub(in crate::tui::app) fn handle_server_event(
             eager_stream_redraw
         }
         ServerEvent::ReasoningDone { .. } => {
+            app.thinking_start = None;
             app.close_reasoning_region(None);
             eager_stream_redraw
         }

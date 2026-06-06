@@ -1,6 +1,6 @@
 use super::{
-    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService,
-    ServerIdentity, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember, VersionedPlan,
+    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService, ServerIdentity,
+    SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember, VersionedPlan,
 };
 use crate::agent::Agent;
 use anyhow::Result;

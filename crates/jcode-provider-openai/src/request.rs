@@ -258,7 +258,9 @@ pub fn build_responses_input_with_logger(
                             }
                             items.push(item);
                         }
-                        ContentBlock::ToolUse { id, name, input, .. } => {
+                        ContentBlock::ToolUse {
+                            id, name, input, ..
+                        } => {
                             let arguments = if input.is_object() {
                                 serde_json::to_string(&input).unwrap_or_default()
                             } else {
