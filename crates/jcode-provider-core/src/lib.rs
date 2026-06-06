@@ -2,6 +2,7 @@ pub mod anthropic;
 pub mod auth_mode;
 pub mod catalog_refresh;
 pub mod failover;
+pub mod fingerprint;
 pub mod models;
 pub mod openai_schema;
 pub mod pricing;
@@ -23,6 +24,7 @@ pub use failover::{
     FailoverDecision, ProviderFailoverPrompt, classify_failover_error_message,
     parse_failover_prompt_message,
 };
+pub use fingerprint::{log_provider_canonical_input, stable_hash_json, stable_hash_str};
 pub use models::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, DEFAULT_CONTEXT_LIMIT, ModelCapabilities,
     context_limit_for_model, context_limit_for_model_with_provider,
@@ -31,10 +33,10 @@ pub use models::{
     provider_for_model_with_hint as core_provider_for_model_with_hint, provider_key_from_hint,
 };
 pub use selection::{
-    ActiveProvider, ProviderAvailability, auto_default_provider,
-    cli_provider_arg_for_session_key, dedupe_model_routes, explicit_model_provider_prefix,
-    fallback_sequence, model_name_for_provider, parse_provider_hint, provider_from_model_key,
-    provider_key, provider_label,
+    ActiveProvider, ProviderAvailability, auto_default_provider, cli_provider_arg_for_session_key,
+    dedupe_model_routes, explicit_model_provider_prefix, fallback_sequence,
+    model_name_for_provider, parse_provider_hint, provider_from_model_key, provider_key,
+    provider_label,
 };
 
 use anyhow::Result;
