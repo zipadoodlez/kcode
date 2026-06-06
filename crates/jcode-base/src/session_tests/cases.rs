@@ -1139,7 +1139,7 @@ fn test_render_messages_renders_legacy_reasoning_variant() {
 }
 
 #[test]
-fn test_render_messages_collapses_persisted_reasoning_in_current_mode() {
+fn test_render_messages_hides_persisted_reasoning_in_current_mode() {
     use jcode_render_core::REASONING_SENTINEL;
 
     let _env_lock = lock_env();
@@ -1168,17 +1168,20 @@ fn test_render_messages_collapses_persisted_reasoning_in_current_mode() {
     let rendered = render_messages(&session);
     assert_eq!(rendered.len(), 1);
     let content = &rendered[0].content;
-    // In `current` mode re-rendered history folds the whole reasoning block down
-    // to a single dim/italic trace line, matching the live collapse end state.
+    // In `current` mode only the *live* reasoning block is ever shown; it streams
+    // then is discarded once the model answers. Re-rendered history therefore
+    // shows no past reasoning at all (no trace line, no lines, no sentinel).
     assert!(
-        content.contains(&format!("*{0}▸ thought (3 lines){0}*", REASONING_SENTINEL)),
-        "expected collapsed reasoning summary, got: {content:?}"
+        !content.contains(REASONING_SENTINEL),
+        "no reasoning markup expected in current mode on reload: {content:?}"
     );
     assert!(
-        !content.contains("step one") && !content.contains("step two"),
-        "individual reasoning lines must not be replayed in current mode: {content:?}"
+        !content.contains("step one")
+            && !content.contains("step two")
+            && !content.contains("thought"),
+        "individual reasoning lines/trace must not be replayed in current mode: {content:?}"
     );
-    // The answer text is preserved and follows the collapsed trace.
+    // The answer text is preserved.
     assert!(content.contains("Here is the answer."));
 }
 

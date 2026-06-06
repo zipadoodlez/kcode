@@ -21,9 +21,9 @@ pub const DEFAULT_VISIBLE_COMPACTED_HISTORY_MESSAGES: usize = 64;
 /// Honors the active `reasoning_display` mode so re-rendered history (reload,
 /// resume, remote sync, compaction-window expand) matches the live behavior:
 /// - `Off`: persisted reasoning is hidden entirely.
-/// - `Current`: the block folds down to a single `▸ thought (N lines)` trace,
-///   matching the live collapse animation's end state rather than replaying the
-///   full reasoning back into the transcript on every reload.
+/// - `Current`: only the *live* reasoning block is ever shown, so historical
+///   reasoning is hidden on re-render (the live block already streamed and was
+///   discarded once the model answered), matching the ephemeral live behavior.
 /// - `Full`: every reasoning line is shown (classic behavior).
 fn format_reasoning_markup(text: &str) -> String {
     if text.trim().is_empty() {
@@ -31,14 +31,10 @@ fn format_reasoning_markup(text: &str) -> String {
     }
     let mode = crate::config::config().display.reasoning_display();
     match mode {
-        ReasoningDisplayMode::Off => return String::new(),
-        ReasoningDisplayMode::Current => {
-            let line_count = text.lines().filter(|l| !l.trim().is_empty()).count();
-            let mut out = jcode_render_core::reasoning_summary_line_markup(line_count);
-            // Blank line terminates the reasoning block.
-            out.push('\n');
-            return out;
-        }
+        // In both `Off` and `Current` modes persisted reasoning is not re-rendered:
+        // `Current` only ever shows the live block, which is discarded once the
+        // model answers, so reloaded history shows no past reasoning.
+        ReasoningDisplayMode::Off | ReasoningDisplayMode::Current => return String::new(),
         ReasoningDisplayMode::Full => {}
     }
     let mut out = String::new();
