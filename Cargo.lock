@@ -3538,6 +3538,7 @@ dependencies = [
  "jcode-plan",
  "jcode-protocol",
  "jcode-provider-anthropic",
+ "jcode-provider-antigravity",
  "jcode-provider-bedrock",
  "jcode-provider-core",
  "jcode-provider-env",
@@ -3819,6 +3820,16 @@ dependencies = [
  "jcode-logging",
  "jcode-message-types",
  "jcode-provider-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "jcode-provider-antigravity"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jcode-provider-gemini",
  "serde",
  "serde_json",
 ]

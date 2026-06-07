@@ -44,6 +44,7 @@ members = [
     "crates/jcode-provider-core",
     "crates/jcode-provider-bedrock",
     "crates/jcode-provider-anthropic",
+    "crates/jcode-provider-antigravity",
     "crates/jcode-provider-openrouter",
     "crates/jcode-provider-openai",
     "crates/jcode-provider-gemini",
