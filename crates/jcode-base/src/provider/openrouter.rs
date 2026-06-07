@@ -23,8 +23,7 @@ use crate::provider_catalog::{
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 pub use jcode_provider_openrouter::{
     EndpointInfo, ModelInfo, ModelPricing, ModelTimestampIndex, ProviderRouting,
     all_model_timestamps, load_endpoints_disk_cache_public, load_model_pricing_disk_cache_public,
@@ -40,11 +39,8 @@ use reqwest::Client;
 use reqwest::header::HeaderName;
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::pin::Pin;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::task::{Context as TaskContext, Poll};
-use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 

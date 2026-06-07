@@ -3906,7 +3906,14 @@ dependencies = [
 name = "jcode-provider-openrouter"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "bytes",
  "dirs",
+ "futures",
+ "jcode-core",
+ "jcode-logging",
+ "jcode-message-types",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
 ]
