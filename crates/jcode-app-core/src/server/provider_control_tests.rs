@@ -147,20 +147,40 @@ fn lock_env() -> StdMutexGuard<'static, ()> {
 
 struct EnvGuard {
     saved: Vec<(&'static str, Option<String>)>,
+    _temp_home: tempfile::TempDir,
     _lock: StdMutexGuard<'static, ()>,
 }
 
 impl EnvGuard {
+    /// Save and clear the given env vars, and redirect `JCODE_HOME` to a fresh
+    /// empty temp dir for the lifetime of the guard.
+    ///
+    /// The temp home keeps these tests hermetic: provider activation reads
+    /// on-disk model catalog caches (`~/.jcode/cache/<profile>_models.json`) to
+    /// pick a profile's newest default model, so without an isolated home the
+    /// host's real caches leak in and a stale or non-chat model (e.g. Groq's
+    /// `canopylabs/orpheus-*` TTS) can be auto-selected, breaking the test on
+    /// developer machines while passing on clean CI.
     fn save(keys: &[&'static str]) -> Self {
         let lock = lock_env();
-        let saved = keys
+        let mut all_keys: Vec<&'static str> = keys.to_vec();
+        if !all_keys.contains(&"JCODE_HOME") {
+            all_keys.push("JCODE_HOME");
+        }
+        let saved = all_keys
             .iter()
             .map(|key| (*key, std::env::var(key).ok()))
             .collect();
-        for key in keys {
+        for key in &all_keys {
             crate::env::remove_var(key);
         }
-        Self { saved, _lock: lock }
+        let temp_home = tempfile::tempdir().expect("create temp JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp_home.path());
+        Self {
+            saved,
+            _temp_home: temp_home,
+            _lock: lock,
+        }
     }
 }
 

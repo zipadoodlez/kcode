@@ -132,7 +132,15 @@ fn newest_released_model_for_resolved_openai_compatible_profile(
         .filter_map(|(index, model)| {
             let id = model.id.trim().to_string();
             let created = model.created?;
-            (!id.is_empty()).then_some((created, std::cmp::Reverse(index), id))
+            // Never auto-select an obviously non-chat model (TTS/speech/embeddings/
+            // rerankers/image/etc.) as a profile's default. Catalogs like Groq,
+            // NVIDIA NIM, and Chutes expose their entire model list, and the
+            // newest-released entry is frequently a non-chat model (e.g. Groq's
+            // `canopylabs/orpheus-*` TTS), which must not become the chat default.
+            if id.is_empty() || !crate::provider::is_listable_model_name(&id) {
+                return None;
+            }
+            Some((created, std::cmp::Reverse(index), id))
         })
         .max_by_key(|(created, reverse_index, _)| (*created, *reverse_index))
         .map(|(_, _, id)| id)
