@@ -130,6 +130,20 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// The credential the active dual-auth provider (Anthropic / OpenAI) will
+    /// use *when the user has explicitly pinned one* (OAuth or API key), without
+    /// resolving "auto".
+    ///
+    /// Unlike [`Provider::active_resolved_credential`], this never touches disk
+    /// or env to resolve an auto/default choice: it returns `Some` only for an
+    /// explicit in-memory pin and `None` for auto mode (or providers with no
+    /// OAuth-vs-API-key ambiguity). UI surfaces that rebuild every frame (the
+    /// info widget) use it to reflect an explicit OAuth<->API switch instantly
+    /// while leaving the cheap cached heuristic to handle the auto case.
+    fn active_explicit_credential(&self) -> Option<ResolvedCredential> {
+        None
+    }
+
     /// Whether this provider path can safely receive `ContentBlock::Image` inputs.
     fn supports_image_input(&self) -> bool {
         false

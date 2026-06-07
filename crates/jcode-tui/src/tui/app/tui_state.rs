@@ -162,8 +162,16 @@ impl App {
     ///
     /// * Remote sessions use [`App::remote_resolved_credential`], which the
     ///   server resolved authoritatively from its live credentials.
-    /// * Local sessions use [`resolve_dual_credential_auth`], shared with the
-    ///   header tag and model-switch line so all surfaces agree.
+    /// * Local sessions prefer the provider's *explicitly pinned* credential
+    ///   ([`Provider::active_explicit_credential`]) so the widget reflects the
+    ///   credential the next request will actually use the instant the user
+    ///   switches OAuth<->API (model picker, `/account`, header toggle). That
+    ///   read is in-memory and cache-free, so it never lingers on a stale
+    ///   [`AuthStatus`] snapshot (cached up to 60s) or a `JCODE_RUNTIME_PROVIDER`
+    ///   pin that drifted out of sync with the provider. When the provider is in
+    ///   auto mode (no explicit pin) it falls back to
+    ///   [`resolve_dual_credential_auth`] -- shared with the header tag and
+    ///   model-switch line -- which is cheap (cached probe, no per-frame I/O).
     ///
     /// Returns `None` when neither transport can determine the credential (e.g.
     /// the server didn't report one, or no credentials are configured locally).
@@ -174,6 +182,19 @@ impl App {
     ) -> Option<crate::auth::ActiveCredential> {
         if route.is_remote {
             return self.remote_resolved_credential.map(Into::into);
+        }
+
+        // Authoritative, cache-free answer from the live provider whenever the
+        // user has explicitly pinned a credential. This reflects exactly what the
+        // next request will use, so an explicit OAuth<->API switch is visible on
+        // the very next frame. For local sessions the requested `provider` always
+        // matches the live active provider (the widget route is derived from
+        // `self.provider.name()`), and remote sessions returned above, so the
+        // pin maps onto the right dual-auth provider. Explicit reads do no disk
+        // I/O, so the common per-frame path stays cheap; auto mode returns `None`
+        // here and falls through to the cached heuristic below.
+        if let Some(resolved) = self.provider.active_explicit_credential() {
+            return Some(resolved.into());
         }
 
         let auth_status = crate::auth::AuthStatus::check_fast();

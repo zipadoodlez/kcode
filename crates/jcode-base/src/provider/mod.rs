@@ -1136,6 +1136,27 @@ impl Provider for MultiProvider {
         }
     }
 
+    fn active_explicit_credential(&self) -> Option<jcode_provider_core::ResolvedCredential> {
+        use jcode_provider_core::ResolvedCredential;
+        // Only report an *explicit* in-memory pin. Auto mode returns `None` so
+        // callers fall back to their cheaper cached heuristic without forcing
+        // a disk read on every frame. This stays in lockstep with
+        // `active_resolved_credential`'s explicit arms above.
+        match self.active_provider() {
+            ActiveProvider::Claude => match self.anthropic_provider()?.credential_mode_snapshot() {
+                anthropic::AnthropicCredentialMode::OAuth => Some(ResolvedCredential::Oauth),
+                anthropic::AnthropicCredentialMode::ApiKey => Some(ResolvedCredential::ApiKey),
+                anthropic::AnthropicCredentialMode::Auto => None,
+            },
+            ActiveProvider::OpenAI => match self.openai_provider()?.credential_mode_snapshot() {
+                openai::OpenAICredentialMode::OAuth => Some(ResolvedCredential::Oauth),
+                openai::OpenAICredentialMode::ApiKey => Some(ResolvedCredential::ApiKey),
+                openai::OpenAICredentialMode::Auto => None,
+            },
+            _ => None,
+        }
+    }
+
     fn supports_image_input(&self) -> bool {
         match self.active_provider() {
             ActiveProvider::Claude => self

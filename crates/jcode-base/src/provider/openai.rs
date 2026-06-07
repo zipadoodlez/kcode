@@ -691,6 +691,11 @@ impl OpenAIProvider {
         if let Some(route) = mode.auth_route() {
             crate::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
+        // Drop any cached auth snapshot so surfaces that still consult the cheap
+        // cached probe (auto-mode resolution, usage availability, account labels)
+        // re-derive from the new credential choice on their next read instead of
+        // lingering on a snapshot taken before the switch.
+        crate::auth::AuthStatus::invalidate_cache();
         Ok(())
     }
 
