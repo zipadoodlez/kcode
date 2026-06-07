@@ -1121,6 +1121,12 @@ pub struct App {
     command_suggestion_selected: usize,
     // Time when app started (for startup animations)
     app_started: Instant,
+    // Whether the client terminal currently has focus. When the terminal window
+    // or tab is backgrounded (FocusLost), decorative animations and periodic
+    // idle redraws are paused so a swarm of background sessions does not burn
+    // CPU animating screens nobody is looking at. Defaults to true because not
+    // every terminal reports focus events.
+    client_focused: bool,
     // Optional client runtime memory logger for low-overhead attribution journaling.
     runtime_memory_log: Option<RuntimeMemoryLogController>,
     // Binary modification time when client started (for smart reload detection)

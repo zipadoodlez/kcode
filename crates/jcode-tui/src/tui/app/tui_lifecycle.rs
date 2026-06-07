@@ -524,6 +524,7 @@ impl App {
             tab_completion_state: None,
             command_suggestion_selected: 0,
             app_started: Instant::now(),
+            client_focused: true,
             runtime_memory_log,
             client_binary_mtime: std::env::current_exe()
                 .ok()
@@ -898,6 +899,7 @@ impl App {
             tab_completion_state: None,
             command_suggestion_selected: 0,
             app_started: Instant::now(),
+            client_focused: true,
             runtime_memory_log,
             client_binary_mtime: std::env::current_exe()
                 .ok()

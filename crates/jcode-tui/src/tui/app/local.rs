@@ -346,7 +346,12 @@ fn apply_terminal_event(
 ) -> Result<bool> {
     match event {
         Some(Ok(Event::FocusGained)) => {
+            let redraw = app.set_client_focused(true);
             app.note_client_focus(true);
+            Ok(redraw)
+        }
+        Some(Ok(Event::FocusLost)) => {
+            app.set_client_focused(false);
             Ok(false)
         }
         Some(Ok(Event::Key(key))) => {

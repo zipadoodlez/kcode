@@ -58,6 +58,62 @@ fn reload_handoff_active_when_server_flag_is_set() {
 }
 
 #[test]
+fn client_focus_defaults_to_true() {
+    let app = create_test_app();
+    assert!(
+        app.client_focused(),
+        "a freshly created client should start focused so terminals that never \
+         report focus events still animate/redraw normally"
+    );
+}
+
+#[test]
+fn idle_donut_pauses_while_unfocused() {
+    let mut app = create_test_app();
+
+    // Whether the donut runs while focused depends on the machine's perf tier
+    // and `display.idle_animation` config, so we do not assert the focused case
+    // absolutely. We only assert the invariant that matters for the swarm CPU
+    // regression: it must never run while the terminal is unfocused.
+    let redraw = app.set_client_focused(false);
+    assert!(!redraw, "losing focus should not request an immediate redraw");
+    assert!(!app.client_focused());
+    assert!(
+        !crate::tui::idle_donut_active(&app),
+        "idle animation must pause while the terminal is unfocused"
+    );
+
+    // Regaining focus requests a full repaint so the window is not stuck on the
+    // last paused frame.
+    let redraw = app.set_client_focused(true);
+    assert!(redraw, "regaining focus should request a redraw");
+    assert!(app.client_focused());
+}
+
+#[test]
+fn unfocused_redraw_warranted_tracks_live_activity() {
+    let mut app = create_test_app();
+    // `unfocused_redraw_warranted` is only consulted while unfocused, and the
+    // decorative donut is force-disabled when unfocused, so evaluate it in that
+    // state to mirror the run loop.
+    app.set_client_focused(false);
+
+    // Idle empty session: no live output to paint while unfocused.
+    assert!(
+        !app.unfocused_redraw_warranted(),
+        "an idle unfocused session has nothing changing worth a full-rate redraw"
+    );
+
+    // A streaming/processing session keeps painting even while unfocused so a
+    // visible-but-unfocused window in a tiling WM still shows live progress.
+    app.is_processing = true;
+    assert!(
+        app.unfocused_redraw_warranted(),
+        "a processing session should keep redrawing while unfocused"
+    );
+}
+
+#[test]
 fn auth_provider_hint_maps_openai_compatible_login_providers() {
     assert_eq!(
         auth_provider_hint_for_login_provider("Azure OpenAI"),

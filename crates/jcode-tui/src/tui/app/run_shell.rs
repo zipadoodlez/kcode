@@ -341,6 +341,12 @@ impl App {
         let mut status_spinner_interval = status_spinner_interval();
         let mut status_spinner_renderer = StatusSpinnerRenderer::default();
         let mut needs_redraw = true;
+        // While unfocused and idle, redraws are throttled to this interval so a
+        // backgrounded session does not repaint at full rate on shared-server bus
+        // chatter. `None` means "no throttled frame drawn yet since losing focus".
+        const UNFOCUSED_IDLE_REDRAW_MIN_INTERVAL: std::time::Duration =
+            std::time::Duration::from_millis(1000);
+        let mut last_unfocused_draw: Option<std::time::Instant> = None;
         let mut handterm_native_scroll =
             super::handterm_native_scroll::HandtermNativeScrollClient::connect_from_env();
         let mut remote_state = remote::RemoteRunState::default();
@@ -406,12 +412,32 @@ impl App {
                 }
 
                 if needs_redraw {
-                    status_spinner_renderer.draw_full(&mut self, &mut terminal)?;
-                    reset_status_spinner_interval(&mut status_spinner_interval, &self);
-                    if let Some(native) = handterm_native_scroll.as_mut() {
-                        native.sync_from_app(&self);
+                    // Throttle idle full-frame renders while the terminal is
+                    // backgrounded (FocusLost). An unfocused, idle session has
+                    // nothing changing worth a 60fps repaint, so it should not
+                    // repaint at full rate just because other sessions on the
+                    // shared server broadcast bus updates -- that is what made a
+                    // swarm of background windows saturate the CPU. We keep full-
+                    // rate redraws while streaming/processing so visible-but-
+                    // unfocused windows in a tiling WM still show live progress,
+                    // and set_client_focused(true) forces a full repaint on refocus.
+                    let allow_redraw = self.client_focused()
+                        || self.unfocused_redraw_warranted()
+                        || last_unfocused_draw
+                            .map(|t| t.elapsed() >= UNFOCUSED_IDLE_REDRAW_MIN_INTERVAL)
+                            .unwrap_or(true);
+                    if allow_redraw {
+                        status_spinner_renderer.draw_full(&mut self, &mut terminal)?;
+                        reset_status_spinner_interval(&mut status_spinner_interval, &self);
+                        if let Some(native) = handterm_native_scroll.as_mut() {
+                            native.sync_from_app(&self);
+                        }
+                        last_unfocused_draw =
+                            (!self.client_focused()).then(std::time::Instant::now);
+                        needs_redraw = false;
                     }
-                    needs_redraw = false;
+                    // When unfocused and throttled, leave needs_redraw set so the
+                    // pending update is coalesced into the next allowed frame.
                 }
 
                 if self.should_quit {
