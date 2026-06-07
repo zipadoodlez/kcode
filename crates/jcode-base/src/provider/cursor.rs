@@ -20,13 +20,15 @@ use uuid::Uuid;
 const DIRECT_CHAT_URL: &str =
     "https://api2.cursor.sh/aiserver.v1.ChatService/StreamUnifiedChatWithTools";
 const MODELS_API_URL: &str = "https://api.cursor.com/v0/models";
-const DEFAULT_MODEL: &str = "composer-1.5";
+// Cursor deprecated `composer-1.5` ("no longer available; use Composer 2.5").
+// Default to a model Cursor currently serves; the live catalog overrides this
+// whenever it is reachable.
+const DEFAULT_MODEL: &str = "composer-2.5";
 const MAX_PROMPT_CHARS: usize = 120_000;
 pub(crate) const AVAILABLE_MODELS: &[&str] = &[
+    "composer-2.5",
     "composer-2-fast",
     "composer-2",
-    "composer-1.5",
-    "composer-1",
     "gpt-5.4-high",
     "gpt-5.4-medium",
     "gpt-5.4-low",

@@ -1086,7 +1086,7 @@ impl Provider for MultiProvider {
             ActiveProvider::Cursor => self
                 .cursor_provider()
                 .map(|o| o.model())
-                .unwrap_or_else(|| "composer-1.5".to_string()),
+                .unwrap_or_else(|| "composer-2.5".to_string()),
             ActiveProvider::Bedrock => self
                 .bedrock_provider()
                 .map(|o| o.model())

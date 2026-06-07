@@ -524,10 +524,10 @@ fn test_session_route_restore_request_matrix_preserves_runtime_identity() {
             "copilot:claude-sonnet-4",
         ),
         (
-            "composer-1.5",
+            "composer-2.5",
             Some("cursor"),
             Some("cursor"),
-            "cursor:composer-1.5",
+            "cursor:composer-2.5",
         ),
         (
             "anthropic.claude-3-5-sonnet-20241022-v2:0",
