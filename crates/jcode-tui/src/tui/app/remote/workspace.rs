@@ -65,7 +65,8 @@ pub(super) async fn handle_workspace_command(
             return Ok(true);
         }
         "/workspace on" | "/workspace import" => {
-            app.workspace_client.enable(current_session, &app.remote_sessions);
+            app.workspace_client
+                .enable(current_session, &app.remote_sessions);
             app.set_status_notice("Workspace mode enabled");
             app.push_display_message(DisplayMessage::system(
                 app.workspace_client.status_summary(),
@@ -91,7 +92,8 @@ pub(super) async fn handle_workspace_command(
     };
 
     if let Some(target) = target {
-        app.workspace_client.enable(current_session, &app.remote_sessions);
+        app.workspace_client
+            .enable(current_session, &app.remote_sessions);
         app.workspace_client.queue_split_target(target);
         app.pending_split_label = Some("Workspace".to_string());
         if app.is_processing {

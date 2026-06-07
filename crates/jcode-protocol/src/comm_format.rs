@@ -210,8 +210,10 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
             };
 
             // Model line.
-            let model_suffix = match (member.provider_name.as_deref(), member.provider_model.as_deref())
-            {
+            let model_suffix = match (
+                member.provider_name.as_deref(),
+                member.provider_model.as_deref(),
+            ) {
                 (Some(provider), Some(model)) => format!("\n    Model: {}/{}", provider, model),
                 (None, Some(model)) => format!("\n    Model: {}", model),
                 _ => String::new(),

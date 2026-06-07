@@ -112,7 +112,9 @@ fn tool_call_preserves_invalid_streamed_json_as_validation_error() {
         id: "call_invalid_json".to_string(),
         name: "bash".to_string(),
         input,
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
 
     assert_eq!(
         call.validation_error().as_deref(),
@@ -126,7 +128,9 @@ fn tool_call_validation_rejects_empty_name_and_non_object_input() {
         id: "call_1".to_string(),
         name: "".to_string(),
         input: serde_json::json!({}),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
     assert_eq!(
         empty_name.validation_error().as_deref(),
         Some("Invalid tool call: tool name must not be empty.")
@@ -136,7 +140,9 @@ fn tool_call_validation_rejects_empty_name_and_non_object_input() {
         id: "call_2".to_string(),
         name: "read".to_string(),
         input: serde_json::json!(20),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
     assert_eq!(
         primitive_args.validation_error().as_deref(),
         Some("Invalid tool call for 'read': arguments must be a JSON object, got number.")
@@ -146,7 +152,9 @@ fn tool_call_validation_rejects_empty_name_and_non_object_input() {
         id: "call_3".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"path":"README.md"}),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
     assert_eq!(valid.validation_error(), None);
 }
 
@@ -365,7 +373,9 @@ fn ends_with_fresh_user_turn_rejects_trailing_tool_result() {
             content: vec![ContentBlock::ToolUse {
                 id: "call_1".to_string(),
                 name: "bash".to_string(),
-                input: serde_json::json!({}), thought_signature: None, }],
+                input: serde_json::json!({}),
+                thought_signature: None,
+            }],
             timestamp: Some(Utc::now()),
             tool_duration_ms: None,
         },
@@ -669,11 +679,20 @@ fn push_reasoning_blocks_always_captures_history() {
 #[test]
 fn push_reasoning_blocks_anthropic_signed_replay() {
     let mut blocks = Vec::new();
-    push_reasoning_blocks(&mut blocks, "anthropic", "signed thought", Some("sig"), true);
+    push_reasoning_blocks(
+        &mut blocks,
+        "anthropic",
+        "signed thought",
+        Some("sig"),
+        true,
+    );
     // Signed thinking is replayable AND readable, so no extra trace is needed.
     assert_eq!(blocks.len(), 1);
     match &blocks[0] {
-        ContentBlock::AnthropicThinking { thinking, signature } => {
+        ContentBlock::AnthropicThinking {
+            thinking,
+            signature,
+        } => {
             assert_eq!(thinking, "signed thought");
             assert_eq!(signature, "sig");
         }

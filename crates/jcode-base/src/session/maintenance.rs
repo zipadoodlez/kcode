@@ -101,7 +101,10 @@ mod tests {
 
         assert!(!old_bak.exists(), "old .bak should be pruned");
         assert!(recent_bak.exists(), "recent .bak must survive");
-        assert!(old_json.exists(), "old .json transcript must never be removed");
+        assert!(
+            old_json.exists(),
+            "old .json transcript must never be removed"
+        );
         assert!(recent_json.exists(), "recent .json transcript must survive");
         assert!(journal.exists(), "journals are out of scope");
 

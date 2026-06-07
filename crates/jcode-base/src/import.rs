@@ -351,7 +351,9 @@ fn convert_content_blocks(content: &ClaudeCodeContent) -> Vec<ContentBlock> {
                     Some(ContentBlock::ToolUse {
                         id: id.clone(),
                         name: name.clone(),
-                        input: input.clone(), thought_signature: None, })
+                        input: input.clone(),
+                        thought_signature: None,
+                    })
                 }
                 ClaudeCodeContentBlock::ToolResult {
                     tool_use_id,
@@ -378,9 +380,7 @@ pub fn imported_session_id_for_target(
     target: &jcode_session_types::ResumeTarget,
 ) -> Option<String> {
     match target {
-        jcode_session_types::ResumeTarget::JcodeSession { session_id } => {
-            Some(session_id.clone())
-        }
+        jcode_session_types::ResumeTarget::JcodeSession { session_id } => Some(session_id.clone()),
         jcode_session_types::ResumeTarget::ClaudeCodeSession { session_id, .. } => {
             Some(imported_claude_code_session_id(session_id))
         }

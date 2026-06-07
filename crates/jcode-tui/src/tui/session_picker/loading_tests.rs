@@ -354,14 +354,28 @@ fn load_codex_preview_reads_only_tail_of_large_transcript() {
 
     let preview = load_codex_preview_from_path(&transcript_path).expect("preview");
     // Preview is capped at 20 messages.
-    assert!(preview.len() <= 20, "preview should be capped, got {}", preview.len());
+    assert!(
+        preview.len() <= 20,
+        "preview should be capped, got {}",
+        preview.len()
+    );
     // The most-recent markers must be present.
     let last_two = &preview[preview.len().saturating_sub(2)..];
-    assert!(last_two.iter().any(|m| m.content.contains("RECENT_USER_MARKER")));
-    assert!(last_two.iter().any(|m| m.content.contains("RECENT_ASSISTANT_MARKER")));
+    assert!(
+        last_two
+            .iter()
+            .any(|m| m.content.contains("RECENT_USER_MARKER"))
+    );
+    assert!(
+        last_two
+            .iter()
+            .any(|m| m.content.contains("RECENT_ASSISTANT_MARKER"))
+    );
     // The head padding must have been skipped (not parsed from the tail slice).
     assert!(
-        !preview.iter().any(|m| m.content.contains("old padding message 0 ")),
+        !preview
+            .iter()
+            .any(|m| m.content.contains("old padding message 0 ")),
         "head messages should not appear when only the tail is read"
     );
 }
@@ -390,12 +404,26 @@ fn load_claude_code_preview_reads_only_tail_of_large_transcript() {
     std::fs::write(&transcript_path, &contents).expect("write big transcript");
 
     let preview = load_claude_code_preview_from_path(&transcript_path).expect("preview");
-    assert!(preview.len() <= 20, "preview should be capped, got {}", preview.len());
-    let last_two = &preview[preview.len().saturating_sub(2)..];
-    assert!(last_two.iter().any(|m| m.content.contains("RECENT_USER_MARKER")));
-    assert!(last_two.iter().any(|m| m.content.contains("RECENT_ASSISTANT_MARKER")));
     assert!(
-        !preview.iter().any(|m| m.content.contains("old padding message 0 ")),
+        preview.len() <= 20,
+        "preview should be capped, got {}",
+        preview.len()
+    );
+    let last_two = &preview[preview.len().saturating_sub(2)..];
+    assert!(
+        last_two
+            .iter()
+            .any(|m| m.content.contains("RECENT_USER_MARKER"))
+    );
+    assert!(
+        last_two
+            .iter()
+            .any(|m| m.content.contains("RECENT_ASSISTANT_MARKER"))
+    );
+    assert!(
+        !preview
+            .iter()
+            .any(|m| m.content.contains("old padding message 0 ")),
         "head messages should not appear when only the tail is read"
     );
 }

@@ -510,7 +510,9 @@ fn test_safe_cutoff_preserves_tool_pairs() {
             content: vec![ContentBlock::ToolUse {
                 id: "tool_1".to_string(),
                 name: "bash".to_string(),
-                input: serde_json::json!({"command": "ls"}), thought_signature: None, }],
+                input: serde_json::json!({"command": "ls"}),
+                thought_signature: None,
+            }],
             timestamp: None,
             tool_duration_ms: None,
         },
@@ -559,7 +561,9 @@ fn test_safe_cutoff_handles_chained_tool_dependencies_without_rescan() {
             content: vec![ContentBlock::ToolUse {
                 id: "tool_a".to_string(),
                 name: "read".to_string(),
-                input: serde_json::json!({"file": "a.txt"}), thought_signature: None, }],
+                input: serde_json::json!({"file": "a.txt"}),
+                thought_signature: None,
+            }],
             timestamp: None,
             tool_duration_ms: None,
         },
@@ -575,7 +579,9 @@ fn test_safe_cutoff_handles_chained_tool_dependencies_without_rescan() {
                 ContentBlock::ToolUse {
                     id: "tool_b".to_string(),
                     name: "grep".to_string(),
-                    input: serde_json::json!({"pattern": "foo"}), thought_signature: None, },
+                    input: serde_json::json!({"pattern": "foo"}),
+                    thought_signature: None,
+                },
             ],
             timestamp: None,
             tool_duration_ms: None,
@@ -613,7 +619,9 @@ fn test_emergency_truncate_large_tool_results() {
             content: vec![ContentBlock::ToolUse {
                 id: "tool_1".to_string(),
                 name: "bash".to_string(),
-                input: serde_json::json!({"command": "cat bigfile"}), thought_signature: None, }],
+                input: serde_json::json!({"command": "cat bigfile"}),
+                thought_signature: None,
+            }],
             timestamp: None,
             tool_duration_ms: None,
         },
@@ -1038,7 +1046,9 @@ fn test_recover_within_budget_truncates_when_tail_still_too_large() {
             content: vec![ContentBlock::ToolUse {
                 id: id.clone(),
                 name: "bash".to_string(),
-                input: serde_json::json!({ "command": "cat big.log" }), thought_signature: None, }],
+                input: serde_json::json!({ "command": "cat big.log" }),
+                thought_signature: None,
+            }],
             timestamp: None,
             tool_duration_ms: None,
         });

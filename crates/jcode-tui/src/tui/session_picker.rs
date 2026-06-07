@@ -529,9 +529,7 @@ impl SessionPicker {
     /// session. Used by onboarding tests to assert the combined external-CLI
     /// picker surfaces both Codex and Claude Code transcripts.
     #[cfg(test)]
-    pub(crate) fn visible_session_iter_for_test(
-        &self,
-    ) -> impl Iterator<Item = &SessionInfo> + '_ {
+    pub(crate) fn visible_session_iter_for_test(&self) -> impl Iterator<Item = &SessionInfo> + '_ {
         self.visible_session_iter()
     }
 
@@ -1053,7 +1051,11 @@ impl SessionPicker {
             match msg.role.as_str() {
                 "user" => {
                     prompt_num += 1;
-                    user_prompt_markers.push((lines.len(), prompt_num, display_msg.content.clone()));
+                    user_prompt_markers.push((
+                        lines.len(),
+                        prompt_num,
+                        display_msg.content.clone(),
+                    ));
                     lines.push(
                         Line::from(vec![
                             Span::styled(
@@ -1338,14 +1340,15 @@ impl SessionPicker {
         align: Alignment,
     ) {
         // The last prompt whose wrapped start index is above the current scroll.
-        let Some((_, prompt_num, text)) = user_prompt_markers
-            .iter()
-            .rev()
-            .find(|(prewrap_idx, _, _)| {
-                prewrap_to_wrapped
-                    .get(*prewrap_idx)
-                    .is_some_and(|wrapped_start| *wrapped_start < scroll)
-            })
+        let Some((_, prompt_num, text)) =
+            user_prompt_markers
+                .iter()
+                .rev()
+                .find(|(prewrap_idx, _, _)| {
+                    prewrap_to_wrapped
+                        .get(*prewrap_idx)
+                        .is_some_and(|wrapped_start| *wrapped_start < scroll)
+                })
         else {
             return;
         };

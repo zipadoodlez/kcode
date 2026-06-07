@@ -1177,7 +1177,14 @@ fn test_preview_pane_shows_scrollbar_when_overflowing() {
 fn test_session_list_shows_scrollbar_when_overflowing() {
     // Many sessions so the left list overflows a short viewport.
     let sessions: Vec<SessionInfo> = (0..40)
-        .map(|i| make_session(&format!("list_scroll_{i}"), &format!("s{i}"), false, SessionStatus::Closed))
+        .map(|i| {
+            make_session(
+                &format!("list_scroll_{i}"),
+                &format!("s{i}"),
+                false,
+                SessionStatus::Closed,
+            )
+        })
         .collect();
     let mut picker = SessionPicker::new(sessions);
     picker.focus = PaneFocus::Sessions;
@@ -1221,7 +1228,11 @@ fn test_preview_sticky_prompt_header_appears_after_scrolling() {
     );
     // The header marker is a prompt number followed by the chevron.
     assert!(
-        header_row.trim_start().chars().next().is_some_and(|c| c.is_ascii_digit()),
+        header_row
+            .trim_start()
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit()),
         "sticky header should begin with a prompt number:\nrow={header_row:?}"
     );
 }

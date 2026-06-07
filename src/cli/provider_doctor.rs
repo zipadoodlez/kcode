@@ -30,9 +30,8 @@ pub async fn run_provider_doctor_command(
             Some("claude") => run_claude_native_e2e(provider, model, tier).await?,
             Some("antigravity") => run_antigravity_native_e2e(provider, model, tier).await?,
             Some(other) => {
-                let kind = NativeProviderKind::from_normalized(other).ok_or_else(|| {
-                    anyhow!("`{provider}` has no native provider-doctor driver")
-                })?;
+                let kind = NativeProviderKind::from_normalized(other)
+                    .ok_or_else(|| anyhow!("`{provider}` has no native provider-doctor driver"))?;
                 run_generic_native_e2e(kind, model, tier).await?
             }
             None => anyhow::bail!("`{provider}` has no native provider-doctor driver"),

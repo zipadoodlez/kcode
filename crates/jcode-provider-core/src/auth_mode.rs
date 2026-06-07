@@ -137,9 +137,7 @@ impl AuthRoute {
             // Bare `api-key` historically resolves to Anthropic in the route
             // vocabulary (see `ModelRouteApiMethod::parse`), so keep that.
             "claude-api" | "anthropic-api" | "anthropic-api-key" | "claude-api-key"
-            | "anthropic-key" | "claude-key" | "api-key" => {
-                Some(Self::anthropic(AuthMode::ApiKey))
-            }
+            | "anthropic-key" | "claude-key" | "api-key" => Some(Self::anthropic(AuthMode::ApiKey)),
             // OpenAI -- OAuth / ChatGPT-Codex login.
             "openai" | "openai-oauth" => Some(Self::openai(AuthMode::Oauth)),
             // OpenAI -- direct API key.
@@ -338,7 +336,15 @@ mod tests {
 
     #[test]
     fn non_dual_and_unknown_tokens_are_none() {
-        for token in ["", "openrouter", "copilot", "gemini", "bedrock", "jcode", "nonsense"] {
+        for token in [
+            "",
+            "openrouter",
+            "copilot",
+            "gemini",
+            "bedrock",
+            "jcode",
+            "nonsense",
+        ] {
             assert_eq!(AuthRoute::parse(token), None, "{token:?} must be None");
         }
     }
@@ -383,7 +389,10 @@ mod tests {
             pinned_mode_for(DualAuthProvider::Anthropic, Some("openai")),
             None
         );
-        assert_eq!(pinned_mode_for(DualAuthProvider::OpenAI, Some("claude")), None);
+        assert_eq!(
+            pinned_mode_for(DualAuthProvider::OpenAI, Some("claude")),
+            None
+        );
         assert_eq!(pinned_mode_for(DualAuthProvider::OpenAI, None), None);
     }
 

@@ -394,7 +394,9 @@ mod tests {
                 id: "call-1".to_string(),
                 name: "read".to_string(),
                 input,
-                intent: None, thought_signature: None, }),
+                intent: None,
+                thought_signature: None,
+            }),
         }
     }
 

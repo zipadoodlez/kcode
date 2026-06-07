@@ -473,7 +473,9 @@ pub const ENDORSED_SKILLS: &[EndorsedSkill] = &[
         description: "Create distinctive, production-grade frontend interfaces with high design quality (web components, pages, apps). Generates creative, polished code that avoids generic AI aesthetics.",
         category: "Anthropic Design",
         source: "anthropics/skills (official Anthropic catalog)",
-        install: Some("npx skills add anthropics/skills --skill frontend-design --yes (or Claude Code: /plugin marketplace add anthropics/skills)"),
+        install: Some(
+            "npx skills add anthropics/skills --skill frontend-design --yes (or Claude Code: /plugin marketplace add anthropics/skills)",
+        ),
     },
     // NVIDIA CUDA-X / GPU accelerated-computing skills from the official
     // NVIDIA-verified catalog (github.com/NVIDIA/skills).
@@ -837,7 +839,9 @@ mod tests {
             "frontend-design should be sourced from anthropics/skills"
         );
         assert!(
-            skill.install.is_some_and(|cmd| cmd.contains("anthropics/skills")),
+            skill
+                .install
+                .is_some_and(|cmd| cmd.contains("anthropics/skills")),
             "frontend-design should have an anthropics/skills install hint"
         );
     }

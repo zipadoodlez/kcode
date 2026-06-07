@@ -112,9 +112,7 @@ pub struct SessionMetricsSnapshot {
 
 impl SessionMetricsSnapshot {
     pub fn has_activity(&self) -> bool {
-        self.recent_total_tokens > 0
-            || self.cumulative_total_tokens > 0
-            || self.turns > 0
+        self.recent_total_tokens > 0 || self.cumulative_total_tokens > 0 || self.turns > 0
     }
 }
 

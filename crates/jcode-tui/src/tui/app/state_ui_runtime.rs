@@ -44,7 +44,10 @@ impl App {
     }
 
     pub fn streaming_tokens(&self) -> (u64, u64) {
-        (self.streaming.streaming_input_tokens, self.streaming.streaming_output_tokens)
+        (
+            self.streaming.streaming_input_tokens,
+            self.streaming.streaming_output_tokens,
+        )
     }
 
     pub(super) fn build_turn_footer(&self, duration: Option<f32>) -> Option<String> {
@@ -138,7 +141,8 @@ impl App {
             let output_tokens = self.streaming.streaming_output_tokens;
 
             // Format as Option to distinguish None vs Some(0)
-            let cache_creation_dbg = format!("{:?}", self.streaming.streaming_cache_creation_tokens);
+            let cache_creation_dbg =
+                format!("{:?}", self.streaming.streaming_cache_creation_tokens);
             let cache_read_dbg = format!("{:?}", self.streaming.streaming_cache_read_tokens);
 
             // Count message types in conversation

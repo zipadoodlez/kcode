@@ -79,11 +79,11 @@ pub fn resolve_dual_credential_auth(
     // A single canonical parser decides whether `runtime_provider` explicitly
     // pins OAuth or API key for *this* provider. This replaces the per-provider
     // hand-written alias matches that used to drift apart.
-    let forced = jcode_provider_core::pinned_mode_for(dual, runtime_provider).map(|mode| match mode
-    {
-        jcode_provider_core::AuthMode::Oauth => ActiveCredential::OAuth,
-        jcode_provider_core::AuthMode::ApiKey => ActiveCredential::ApiKey,
-    });
+    let forced =
+        jcode_provider_core::pinned_mode_for(dual, runtime_provider).map(|mode| match mode {
+            jcode_provider_core::AuthMode::Oauth => ActiveCredential::OAuth,
+            jcode_provider_core::AuthMode::ApiKey => ActiveCredential::ApiKey,
+        });
 
     let (has_oauth, has_api_key) = match dual {
         jcode_provider_core::DualAuthProvider::Anthropic => {
@@ -153,7 +153,8 @@ mod tests {
     fn anthropic_explicit_selection_wins_over_auto() {
         let auth = anthropic(true, true);
         let resolved =
-            resolve_dual_credential_auth(ActiveProvider::Claude, &auth, Some("claude-api")).unwrap();
+            resolve_dual_credential_auth(ActiveProvider::Claude, &auth, Some("claude-api"))
+                .unwrap();
         assert_eq!(resolved.active, ActiveCredential::ApiKey);
         assert!(resolved.explicit);
         let resolved =

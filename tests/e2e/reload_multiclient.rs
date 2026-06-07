@@ -160,7 +160,10 @@ async fn reload_notifies_successor_after_session_takeover() -> Result<()> {
         assert!(
             b_saw,
             "the live successor connection must be told the server is reloading; saw: {:?}",
-            b_events.iter().map(|e| format!("{e:?}")).collect::<Vec<_>>()
+            b_events
+                .iter()
+                .map(|e| format!("{e:?}"))
+                .collect::<Vec<_>>()
         );
 
         // The superseded original connection must end (disconnect) rather than

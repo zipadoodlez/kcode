@@ -286,7 +286,8 @@ impl App {
                 cache_read_tokens: None,
                 cache_write_tokens: None,
                 output_tps,
-                available: self.token_accounting.total_input_tokens > 0 || self.token_accounting.total_output_tokens > 0,
+                available: self.token_accounting.total_input_tokens > 0
+                    || self.token_accounting.total_output_tokens > 0,
             }),
             WidgetProviderKind::Anthropic => {
                 if matches!(
@@ -505,7 +506,10 @@ impl crate::tui::TuiState for App {
     }
 
     fn streaming_tokens(&self) -> (u64, u64) {
-        (self.streaming.streaming_input_tokens, self.streaming.streaming_output_tokens)
+        (
+            self.streaming.streaming_input_tokens,
+            self.streaming.streaming_output_tokens,
+        )
     }
 
     fn streaming_cache_tokens(&self) -> (Option<u64>, Option<u64>) {
@@ -1199,29 +1203,35 @@ impl crate::tui::TuiState for App {
             None
         };
 
-        let cache_hit_info = (self.token_accounting.total_cache_reported_input_tokens > 0).then(|| {
-            crate::tui::info_widget::CacheHitInfo {
-                reported_input_tokens: self.token_accounting.total_cache_reported_input_tokens,
-                read_tokens: self.token_accounting.total_cache_read_tokens,
-                creation_tokens: self.token_accounting.total_cache_creation_tokens,
-                optimal_input_tokens: self.token_accounting.total_cache_optimal_input_tokens,
-                last_reported_input_tokens: self.token_accounting.last_cache_reported_input_tokens,
-                last_read_tokens: self.token_accounting.last_cache_read_tokens,
-                last_creation_tokens: self.token_accounting.last_cache_creation_tokens,
-                last_optimal_input_tokens: self.token_accounting.last_cache_optimal_input_tokens,
-                miss_attributions: self
-                    .kv_cache.kv_cache_miss_samples
-                    .iter()
-                    .rev()
-                    .map(|sample| crate::tui::info_widget::CacheMissAttribution {
-                        turn_number: sample.turn_number,
-                        call_index: sample.call_index,
-                        missed_tokens: sample.missed_tokens,
-                        reason: sample.reason.label().to_string(),
-                    })
-                    .collect(),
-            }
-        });
+        let cache_hit_info =
+            (self.token_accounting.total_cache_reported_input_tokens > 0).then(|| {
+                crate::tui::info_widget::CacheHitInfo {
+                    reported_input_tokens: self.token_accounting.total_cache_reported_input_tokens,
+                    read_tokens: self.token_accounting.total_cache_read_tokens,
+                    creation_tokens: self.token_accounting.total_cache_creation_tokens,
+                    optimal_input_tokens: self.token_accounting.total_cache_optimal_input_tokens,
+                    last_reported_input_tokens: self
+                        .token_accounting
+                        .last_cache_reported_input_tokens,
+                    last_read_tokens: self.token_accounting.last_cache_read_tokens,
+                    last_creation_tokens: self.token_accounting.last_cache_creation_tokens,
+                    last_optimal_input_tokens: self
+                        .token_accounting
+                        .last_cache_optimal_input_tokens,
+                    miss_attributions: self
+                        .kv_cache
+                        .kv_cache_miss_samples
+                        .iter()
+                        .rev()
+                        .map(|sample| crate::tui::info_widget::CacheMissAttribution {
+                            turn_number: sample.turn_number,
+                            call_index: sample.call_index,
+                            missed_tokens: sample.missed_tokens,
+                            reason: sample.reason.label().to_string(),
+                        })
+                        .collect(),
+                }
+            });
 
         // Get active mermaid diagrams - only for margin mode (pinned mode uses dedicated pane)
         let diagrams = if self.diagram_mode == crate::config::DiagramDisplayMode::Margin {
@@ -1236,7 +1246,8 @@ impl crate::tui::TuiState for App {
             } else {
                 Some(self.session.id.as_str())
             };
-            self.workspace_client.visible_rows(5, session_id, self.is_processing)
+            self.workspace_client
+                .visible_rows(5, session_id, self.is_processing)
         } else {
             Vec::new()
         };
@@ -1323,7 +1334,8 @@ impl crate::tui::TuiState for App {
         } else {
             Some(self.session.id.as_str())
         };
-        self.workspace_client.visible_rows(5, session_id, self.is_processing)
+        self.workspace_client
+            .visible_rows(5, session_id, self.is_processing)
     }
 
     fn workspace_animation_tick(&self) -> u64 {
@@ -1507,7 +1519,11 @@ impl crate::tui::TuiState for App {
                 .unwrap_or(crate::tui::CopySelectionPane::Chat),
             has_action: has_selection,
             selected_chars,
-            selected_lines: if has_selection { selected_lines.max(1) } else { 0 },
+            selected_lines: if has_selection {
+                selected_lines.max(1)
+            } else {
+                0
+            },
             dragging: self.copy_selection_dragging,
         })
     }

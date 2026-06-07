@@ -413,8 +413,7 @@ pub fn render_messages_and_images_with_compacted_history(
                         tool_data,
                     });
                 }
-                ContentBlock::Reasoning { text: t }
-                | ContentBlock::ReasoningTrace { text: t } => {
+                ContentBlock::Reasoning { text: t } | ContentBlock::ReasoningTrace { text: t } => {
                     text.push_str(&format_reasoning_markup(t));
                 }
                 ContentBlock::AnthropicThinking { .. } | ContentBlock::OpenAIReasoning { .. } => {}

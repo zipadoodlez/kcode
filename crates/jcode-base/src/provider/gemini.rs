@@ -860,9 +860,7 @@ impl Provider for GeminiProvider {
                                 .await;
                             let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;
                             if let Some(signature) = signature {
-                                let _ = tx
-                                    .send(Ok(StreamEvent::ToolUseSignature(signature)))
-                                    .await;
+                                let _ = tx.send(Ok(StreamEvent::ToolUseSignature(signature))).await;
                             }
                         } else if let Some(signature) = part_signature {
                             // Standalone signature part; remember it for the next

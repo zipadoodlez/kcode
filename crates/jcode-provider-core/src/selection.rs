@@ -362,16 +362,25 @@ mod tests {
             Some("anthropic-api")
         );
         // Anthropic OAuth -> claude.
-        assert_eq!(cli_provider_arg_for_session_key("claude-oauth"), Some("claude"));
+        assert_eq!(
+            cli_provider_arg_for_session_key("claude-oauth"),
+            Some("claude")
+        );
         assert_eq!(cli_provider_arg_for_session_key("claude"), Some("claude"));
         // OpenAI variants.
-        assert_eq!(cli_provider_arg_for_session_key("openai-oauth"), Some("openai"));
+        assert_eq!(
+            cli_provider_arg_for_session_key("openai-oauth"),
+            Some("openai")
+        );
         assert_eq!(
             cli_provider_arg_for_session_key("openai-api-key"),
             Some("openai-api")
         );
         // Passthrough providers.
-        assert_eq!(cli_provider_arg_for_session_key("openrouter"), Some("openrouter"));
+        assert_eq!(
+            cli_provider_arg_for_session_key("openrouter"),
+            Some("openrouter")
+        );
         assert_eq!(cli_provider_arg_for_session_key("copilot"), Some("copilot"));
         assert_eq!(cli_provider_arg_for_session_key("gemini"), Some("gemini"));
         assert_eq!(cli_provider_arg_for_session_key("bedrock"), Some("bedrock"));

@@ -120,14 +120,18 @@ impl WorkspaceClientState {
         if !self.enabled || !self.map.move_left() {
             return None;
         }
-        self.map.current_focused_session_id().map(ToString::to_string)
+        self.map
+            .current_focused_session_id()
+            .map(ToString::to_string)
     }
 
     pub(crate) fn navigate_right(&mut self) -> Option<String> {
         if !self.enabled || !self.map.move_right() {
             return None;
         }
-        self.map.current_focused_session_id().map(ToString::to_string)
+        self.map
+            .current_focused_session_id()
+            .map(ToString::to_string)
     }
 
     pub(crate) fn navigate_up(&mut self) -> Option<String> {

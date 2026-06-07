@@ -219,18 +219,39 @@ pub fn parse_markdown(text: &str) -> Document {
         match event {
             // ---- block starts ----
             Event::Start(Tag::Heading { level, .. }) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 heading_level = Some(level as u8);
             }
             Event::Start(Tag::Paragraph) => {
                 // marker (if any) is emitted lazily on first text
             }
             Event::Start(Tag::BlockQuote(_)) => {
-                flush_paragraph(&mut doc, &mut spans, current_kind(blockquote_depth, &list_stack), Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    current_kind(blockquote_depth, &list_stack),
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 blockquote_depth += 1;
             }
             Event::Start(Tag::List(first)) => {
-                flush_paragraph(&mut doc, &mut spans, current_kind(blockquote_depth, &list_stack), Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    current_kind(blockquote_depth, &list_stack),
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 let depth = list_stack.len();
                 list_stack.push(ListFrame {
                     ordered: first.is_some(),
@@ -256,7 +277,14 @@ pub fn parse_markdown(text: &str) -> Document {
                 pending_item_marker = Some(marker);
             }
             Event::Start(Tag::CodeBlock(kind)) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 in_code_block = true;
                 code_buf.clear();
                 code_lang = match kind {
@@ -278,27 +306,69 @@ pub fn parse_markdown(text: &str) -> Document {
 
             // ---- footnote definitions ----
             Event::Start(Tag::FootnoteDefinition(label)) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 spans.push(StyledSpan::new(format!("[^{label}]: "), StyleRole::Dim));
             }
             Event::End(TagEnd::FootnoteDefinition) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
             }
 
             // ---- definition lists ----
             Event::Start(Tag::DefinitionListTitle) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 spans.push(StyledSpan::new("• ".to_string(), StyleRole::Dim));
             }
             Event::End(TagEnd::DefinitionListTitle) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
             }
             Event::Start(Tag::DefinitionListDefinition) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 spans.push(StyledSpan::new("  -> ".to_string(), StyleRole::Dim));
             }
             Event::End(TagEnd::DefinitionListDefinition) => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
             }
 
             // ---- tables ----
@@ -332,7 +402,8 @@ pub fn parse_markdown(text: &str) -> Document {
             Event::End(TagEnd::Table) => {
                 in_table = false;
                 if !table_rows.is_empty() {
-                    doc.blocks.push(Block::table(std::mem::take(&mut table_rows)));
+                    doc.blocks
+                        .push(Block::table(std::mem::take(&mut table_rows)));
                 }
             }
 
@@ -474,7 +545,14 @@ pub fn parse_markdown(text: &str) -> Document {
                 }
             }
             Event::Rule => {
-                flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    BlockKind::Paragraph,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
                 push_block(
                     &mut doc,
                     BlockKind::ThematicBreak,
@@ -504,13 +582,27 @@ pub fn parse_markdown(text: &str) -> Document {
             }
             Event::End(TagEnd::Paragraph) => {
                 let kind = current_kind(blockquote_depth, &list_stack);
-                flush_paragraph(&mut doc, &mut spans, kind, Alignment::Left, blockquote_depth, &mut bq_lines);
+                flush_paragraph(
+                    &mut doc,
+                    &mut spans,
+                    kind,
+                    Alignment::Left,
+                    blockquote_depth,
+                    &mut bq_lines,
+                );
             }
             Event::End(TagEnd::Item) => {
                 // Item with no paragraph child (tight list): flush inline buffer.
                 if !spans.is_empty() {
                     let kind = current_kind(blockquote_depth, &list_stack);
-                    flush_paragraph(&mut doc, &mut spans, kind, Alignment::Left, blockquote_depth, &mut bq_lines);
+                    flush_paragraph(
+                        &mut doc,
+                        &mut spans,
+                        kind,
+                        Alignment::Left,
+                        blockquote_depth,
+                        &mut bq_lines,
+                    );
                 }
                 pending_item_marker = None;
             }
@@ -524,7 +616,11 @@ pub fn parse_markdown(text: &str) -> Document {
             Event::End(TagEnd::BlockQuote(_)) => {
                 blockquote_depth = blockquote_depth.saturating_sub(1);
                 if blockquote_depth == 0 && !bq_lines.is_empty() {
-                    push_block(&mut doc, BlockKind::BlockQuote, std::mem::take(&mut bq_lines));
+                    push_block(
+                        &mut doc,
+                        BlockKind::BlockQuote,
+                        std::mem::take(&mut bq_lines),
+                    );
                 }
             }
             Event::End(TagEnd::CodeBlock) => {
@@ -584,7 +680,14 @@ pub fn parse_markdown(text: &str) -> Document {
     }
 
     // Trailing inline buffer.
-    flush_paragraph(&mut doc, &mut spans, BlockKind::Paragraph, Alignment::Left, blockquote_depth, &mut bq_lines);
+    flush_paragraph(
+        &mut doc,
+        &mut spans,
+        BlockKind::Paragraph,
+        Alignment::Left,
+        blockquote_depth,
+        &mut bq_lines,
+    );
 
     doc
 }

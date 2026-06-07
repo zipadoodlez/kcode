@@ -995,9 +995,7 @@ fn flatten_schema_combiners(schema: &Value) -> Value {
             }
             Value::Object(out)
         }
-        Value::Array(items) => {
-            Value::Array(items.iter().map(flatten_schema_combiners).collect())
-        }
+        Value::Array(items) => Value::Array(items.iter().map(flatten_schema_combiners).collect()),
         _ => schema.clone(),
     }
 }
@@ -1170,9 +1168,7 @@ impl Provider for AntigravityProvider {
                             .await;
                         let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;
                         if let Some(signature) = signature {
-                            let _ = tx
-                                .send(Ok(StreamEvent::ToolUseSignature(signature)))
-                                .await;
+                            let _ = tx.send(Ok(StreamEvent::ToolUseSignature(signature))).await;
                         }
                     } else if let Some(signature) = part_signature {
                         // Standalone signature part; remember it for the next

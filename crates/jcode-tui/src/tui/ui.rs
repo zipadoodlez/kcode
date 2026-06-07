@@ -1706,22 +1706,23 @@ pub(crate) fn copy_pane_drag_point(
         return Some(crate::tui::CopySelectionPoint {
             pane,
             abs_line: first_visible_line,
-            column: snapshot.wrapped_copy_offset(first_visible_line).unwrap_or(0),
+            column: snapshot
+                .wrapped_copy_offset(first_visible_line)
+                .unwrap_or(0),
         });
     }
 
     // Interior row that maps to no line (e.g. a blank gap row between/after
     // content within the visible band): fall back to the boundary-clamped point.
-    copy_point_from_snapshot(
-        &snapshot,
-        clamped_col,
-        row.clamp(area.y, last_row),
-    )
-    .or(Some(crate::tui::CopySelectionPoint {
-        pane,
-        abs_line: last_visible_line,
-        column: line_display_width(snapshot.wrapped_plain_line(last_visible_line).unwrap_or("")),
-    }))
+    copy_point_from_snapshot(&snapshot, clamped_col, row.clamp(area.y, last_row)).or(Some(
+        crate::tui::CopySelectionPoint {
+            pane,
+            abs_line: last_visible_line,
+            column: line_display_width(
+                snapshot.wrapped_plain_line(last_visible_line).unwrap_or(""),
+            ),
+        },
+    ))
 }
 
 /// Edge point for tick-driven continuous auto-scroll, where there is no live

@@ -50,7 +50,6 @@ pub(super) fn strip_reasoning_lines(content: &str) -> String {
     result.trim_end().to_string()
 }
 
-
 pub(super) fn edit_input_in_external_editor(app: &mut App) {
     match edit_text_in_external_editor(&app.input) {
         Ok(edited) => {
@@ -2413,7 +2412,8 @@ impl App {
     fn strip_reasoning_partial_tail(&mut self) {
         if self.reasoning_partial_len > 0 {
             let new_len = self
-                .streaming.streaming_text
+                .streaming
+                .streaming_text
                 .len()
                 .saturating_sub(self.reasoning_partial_len);
             self.streaming.streaming_text.truncate(new_len);
@@ -2466,7 +2466,8 @@ impl App {
         self.strip_reasoning_partial_tail();
         let pending = std::mem::take(&mut self.reasoning_pending_line);
         if !pending.is_empty() {
-            self.streaming.streaming_text
+            self.streaming
+                .streaming_text
                 .push_str(&jcode_tui_markdown::reasoning_line_markup(&pending));
         }
         self.reasoning_streaming = false;

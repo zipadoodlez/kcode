@@ -762,7 +762,8 @@ mod tests {
                         if depth > z_buf[idx] {
                             z_buf[idx] = depth;
                             let (rnx, rny, rnz) = ref_rotate_xyz(nx, ny, nz, rot_x, rot_y, rot_z);
-                            let lum = (rnx * 0.45 + rny * 0.35 + rnz * 0.20 + 0.20).clamp(-1.0, 1.0);
+                            let lum =
+                                (rnx * 0.45 + rny * 0.35 + rnz * 0.20 + 0.20).clamp(-1.0, 1.0);
                             lum_map[idx] = lum;
                             hit[idx] = true;
                         }
@@ -794,11 +795,18 @@ mod tests {
         let rings = [
             (0u8, 2.35f32, 0.10f32, 0.32f32, 0.0f32),
             (1u8, 1.78f32, 0.11f32, 0.26f32, std::f32::consts::TAU / 3.0),
-            (2u8, 1.22f32, 0.09f32, 0.20f32, 2.0 * std::f32::consts::TAU / 3.0),
+            (
+                2u8,
+                1.22f32,
+                0.09f32,
+                0.20f32,
+                2.0 * std::f32::consts::TAU / 3.0,
+            ),
             (1u8, 2.70f32, 0.08f32, 0.36f32, std::f32::consts::TAU / 6.0),
         ];
 
-        for (ring_idx, &(axis, major_r, tube_r, orbit_r, phase_offset)) in rings.iter().enumerate() {
+        for (ring_idx, &(axis, major_r, tube_r, orbit_r, phase_offset)) in rings.iter().enumerate()
+        {
             let phase = elapsed * (0.30 + ring_idx as f32 * 0.10) + phase_offset;
             let center_x = orbit_r * phase.cos() * 0.55;
             let center_y = orbit_r * (phase * 0.7).sin() * 0.30;

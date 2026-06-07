@@ -38,9 +38,8 @@ impl ResolvedTokenPricing {
         cache_read_tokens: u64,
         cache_creation_tokens: u64,
     ) -> f32 {
-        let split_accounting = self.is_anthropic
-            || cache_creation_tokens > 0
-            || cache_read_tokens > input_tokens;
+        let split_accounting =
+            self.is_anthropic || cache_creation_tokens > 0 || cache_read_tokens > input_tokens;
 
         let fresh_input_tokens = if split_accounting {
             input_tokens
@@ -92,7 +91,8 @@ impl App {
     }
 
     pub(super) fn snapshot_streaming_tps(&mut self) {
-        self.streaming.streaming_tps_observed_output_tokens = self.streaming.streaming_total_output_tokens;
+        self.streaming.streaming_tps_observed_output_tokens =
+            self.streaming.streaming_total_output_tokens;
         self.streaming.streaming_tps_observed_elapsed = self.current_streaming_tps_elapsed();
     }
 
@@ -168,8 +168,10 @@ impl App {
             jcode_provider_core::DualAuthProvider::OpenAI,
             runtime_provider.as_deref(),
         );
-        let is_explicit_anthropic_api =
-            matches!(pinned_anthropic, Some(jcode_provider_core::AuthMode::ApiKey));
+        let is_explicit_anthropic_api = matches!(
+            pinned_anthropic,
+            Some(jcode_provider_core::AuthMode::ApiKey)
+        );
         let is_explicit_anthropic_oauth =
             matches!(pinned_anthropic, Some(jcode_provider_core::AuthMode::Oauth));
         let is_explicit_openai_api =
@@ -286,8 +288,7 @@ impl App {
 
         let model = <Self as TuiState>::provider_model(self);
         let provider_name = <Self as TuiState>::provider_name(self).to_lowercase();
-        let is_anthropic =
-            provider_name.contains("anthropic") || provider_name.contains("claude");
+        let is_anthropic = provider_name.contains("anthropic") || provider_name.contains("claude");
         let is_openai = provider_name.contains("openai");
 
         // The server resolves the active credential authoritatively; only bill

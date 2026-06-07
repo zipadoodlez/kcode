@@ -114,7 +114,11 @@ fn parses_blockquote() {
 #[test]
 fn parses_thematic_break() {
     let doc = parse_markdown("a\n\n---\n\nb");
-    assert!(doc.blocks.iter().any(|b| b.kind == BlockKind::ThematicBreak));
+    assert!(
+        doc.blocks
+            .iter()
+            .any(|b| b.kind == BlockKind::ThematicBreak)
+    );
 }
 
 #[test]
@@ -128,7 +132,11 @@ fn wrap_preserves_styling_and_width() {
     assert!(wrapped.len() > 1);
     // Every produced line is within the width budget.
     for l in &wrapped {
-        assert!(ColumnWidth.measure(&l.plain_text()) <= 8, "line too wide: {:?}", l.plain_text());
+        assert!(
+            ColumnWidth.measure(&l.plain_text()) <= 8,
+            "line too wide: {:?}",
+            l.plain_text()
+        );
     }
     // The bold word retains its styling across the wrap (it may be split).
     let has_bold = wrapped

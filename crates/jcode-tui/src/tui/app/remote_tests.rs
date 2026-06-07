@@ -670,8 +670,7 @@ fn remote_history_watchdog_rerequests_history_when_stuck() {
         assert_eq!(app.remote_history_recovery_attempts, 0);
 
         // Simulate the connection having been stuck past the recovery delay.
-        app.remote_history_wait_started =
-            Instant::now().checked_sub(Duration::from_secs(60));
+        app.remote_history_wait_started = Instant::now().checked_sub(Duration::from_secs(60));
 
         let redraw = super::recover_stuck_remote_history(&mut app, &mut remote).await;
         reader
@@ -682,7 +681,10 @@ fn remote_history_watchdog_rerequests_history_when_stuck() {
     });
 
     assert!(redraw, "re-requesting history should trigger a redraw");
-    assert_eq!(attempts, 1, "watchdog should have re-requested history once");
+    assert_eq!(
+        attempts, 1,
+        "watchdog should have re-requested history once"
+    );
     assert!(matches!(
         serde_json::from_str::<crate::protocol::Request>(&line)
             .expect("history re-request should deserialize"),

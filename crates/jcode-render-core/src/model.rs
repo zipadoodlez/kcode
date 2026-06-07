@@ -158,10 +158,17 @@ impl StyledLine {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockKind {
     Paragraph,
-    Heading { level: u8 },
-    CodeBlock { language: Option<String> },
+    Heading {
+        level: u8,
+    },
+    CodeBlock {
+        language: Option<String>,
+    },
     BlockQuote,
-    ListItem { ordered: bool, depth: usize },
+    ListItem {
+        ordered: bool,
+        depth: usize,
+    },
     /// GFM table. The raw cell text per row is carried in [`Block::table`]
     /// (the first row is the header); column layout/wrapping is width-dependent
     /// and therefore performed by each front-end adapter.

@@ -362,7 +362,9 @@ mod tests {
                 "file_path": "demo.txt",
                 "content": "first line\nsecond line\n"
             }),
-            intent: None, thought_signature: None, };
+            intent: None,
+            thought_signature: None,
+        };
 
         assert_eq!(diff_change_counts_for_tool(&tool, ""), (2, 0));
     }
@@ -379,7 +381,9 @@ mod tests {
                     {"old_string": "three\n", "new_string": "THREE\n"}
                 ]
             }),
-            intent: None, thought_signature: None, };
+            intent: None,
+            thought_signature: None,
+        };
 
         assert_eq!(diff_change_counts_for_tool(&tool, ""), (2, 2));
     }

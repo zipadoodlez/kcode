@@ -600,11 +600,7 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
 fn provider_route_counts(routes: &[ModelRoute]) -> std::collections::BTreeMap<String, usize> {
     let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for route in routes {
-        let key = route
-            .provider
-            .trim()
-            .to_ascii_lowercase()
-            .replace(' ', "_");
+        let key = route.provider.trim().to_ascii_lowercase().replace(' ', "_");
         let key = if key.is_empty() {
             "unknown".to_string()
         } else {
@@ -648,7 +644,9 @@ fn log_model_routes_summary(
             ("routes_before_filter", routes_before_filter.to_string()),
             (
                 "routes_dropped",
-                routes_before_filter.saturating_sub(routes.len()).to_string(),
+                routes_before_filter
+                    .saturating_sub(routes.len())
+                    .to_string(),
             ),
             ("anthropic_oauth", anthropic_oauth.to_string()),
             ("anthropic_api", anthropic_api_key.to_string()),
@@ -668,7 +666,6 @@ fn log_model_routes_summary(
         ],
     );
 }
-
 
 pub fn remote_model_routes_fallback(
     remote_provider_name: Option<&str>,

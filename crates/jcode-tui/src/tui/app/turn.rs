@@ -1031,7 +1031,9 @@ impl App {
                 content_blocks.push(ContentBlock::ToolUse {
                     id: tc.id.clone(),
                     name: tc.name.clone(),
-                    input: tc.input.clone(), thought_signature: None, });
+                    input: tc.input.clone(),
+                    thought_signature: None,
+                });
             }
 
             let assistant_message_id = if !content_blocks.is_empty() {
@@ -1082,16 +1084,17 @@ impl App {
                 // Had tool calls - only display text that came AFTER the last tool
                 // (text before each tool was already committed in ToolUseEnd handler)
                 if !self.streaming.streaming_text.is_empty() {
-                    let content = self.collapse_reasoning_for_commit(self.streaming.streaming_text.clone());
+                    let content =
+                        self.collapse_reasoning_for_commit(self.streaming.streaming_text.clone());
                     if !content.trim().is_empty() {
-                    self.push_display_message(DisplayMessage {
-                        role: "assistant".to_string(),
-                        content,
-                        tool_calls: vec![],
-                        duration_secs: duration,
-                        title: None,
-                        tool_data: None,
-                    });
+                        self.push_display_message(DisplayMessage {
+                            role: "assistant".to_string(),
+                            content,
+                            tool_calls: vec![],
+                            duration_secs: duration,
+                            title: None,
+                            tool_data: None,
+                        });
                     }
                 }
                 if self.has_streaming_footer_stats() {

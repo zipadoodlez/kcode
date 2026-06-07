@@ -219,10 +219,7 @@ fn push_group_header(
     let total = items.len();
     let completed = items.iter().filter(|t| t.status == "completed").count();
     let counter = format!(" {}/{}", completed, total);
-    let max_name = inner
-        .width
-        .saturating_sub(counter.len() as u16)
-        .max(4) as usize;
+    let max_name = inner.width.saturating_sub(counter.len() as u16).max(4) as usize;
     let highlight = items.iter().any(|t| t.status == "in_progress");
     let name_style = if highlight {
         Style::default().fg(rgb(255, 210, 130)).bold()
@@ -342,7 +339,6 @@ fn render_grouped_todo_lines(
     }
     (lines, shown)
 }
-
 
 /// Render todos widget content
 pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {

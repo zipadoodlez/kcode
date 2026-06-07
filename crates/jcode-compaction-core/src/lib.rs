@@ -609,7 +609,9 @@ mod tests {
             content: vec![ContentBlock::ToolUse {
                 id: "call_1".to_string(),
                 name: "read".to_string(),
-                input: serde_json::json!({"file":"src/lib.rs"}), thought_signature: None, }],
+                input: serde_json::json!({"file":"src/lib.rs"}),
+                thought_signature: None,
+            }],
             timestamp: None,
             tool_duration_ms: None,
         };
@@ -711,7 +713,9 @@ mod tests {
                 content: vec![ContentBlock::ToolUse {
                     id: "call_1".to_string(),
                     name: "read".to_string(),
-                    input: serde_json::json!({"file":"src/lib.rs"}), thought_signature: None, }],
+                    input: serde_json::json!({"file":"src/lib.rs"}),
+                    thought_signature: None,
+                }],
                 timestamp: None,
                 tool_duration_ms: None,
             },

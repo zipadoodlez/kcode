@@ -369,7 +369,9 @@ mod tests {
                 ContentBlock::ToolUse {
                     id: "tool_1".to_string(),
                     name: "bash".to_string(),
-                    input: serde_json::json!({"command": "printf 'hello'"}), thought_signature: None, },
+                    input: serde_json::json!({"command": "printf 'hello'"}),
+                    thought_signature: None,
+                },
                 ContentBlock::ToolResult {
                     tool_use_id: "tool_1".to_string(),
                     content: "hello from tool".to_string(),

@@ -207,7 +207,9 @@ impl App {
                             "old_string": old_string,
                             "new_string": new_string,
                         }),
-                        intent: None, thought_signature: None, },
+                        intent: None,
+                        thought_signature: None,
+                    },
                 ),
             ];
             self.bump_display_messages_version();

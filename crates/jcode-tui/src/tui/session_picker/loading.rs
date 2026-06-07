@@ -105,9 +105,8 @@ where
     let mut results: Vec<(usize, Vec<R>)> = std::thread::scope(|scope| {
         let mut handles = Vec::with_capacity(chunks.len());
         for (start, chunk) in chunks {
-            handles.push(scope.spawn(move || {
-                (start, chunk.into_iter().map(f).collect::<Vec<R>>())
-            }));
+            handles
+                .push(scope.spawn(move || (start, chunk.into_iter().map(f).collect::<Vec<R>>())));
         }
         handles
             .into_iter()
@@ -2357,10 +2356,12 @@ fn load_external_opencode_sessions(scan_limit: usize) -> Vec<SessionInfo> {
     }
 
     let paths = collect_recent_files_recursive(&root, "json", scan_limit);
-    parallel_map(paths, |path| load_opencode_session_stub(&path).ok().flatten())
-        .into_iter()
-        .flatten()
-        .collect()
+    parallel_map(paths, |path| {
+        load_opencode_session_stub(&path).ok().flatten()
+    })
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 pub(super) fn load_opencode_preview_from_path(path: &Path) -> Option<Vec<PreviewMessage>> {

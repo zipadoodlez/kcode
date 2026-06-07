@@ -1061,6 +1061,9 @@ mod tests {
             "OpenRouter: deepseek/deepseek-chat"
         );
         // Non-slashed models are unaffected by the provider label.
-        assert_eq!(format_model_name("claude-opus-4-6", "OpenRouter"), "Claude Opus");
+        assert_eq!(
+            format_model_name("claude-opus-4-6", "OpenRouter"),
+            "Claude Opus"
+        );
     }
 }

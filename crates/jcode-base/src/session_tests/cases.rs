@@ -129,7 +129,9 @@ fn test_debug_memory_profile_reports_messages_and_provider_cache() {
             ContentBlock::ToolUse {
                 id: "tool_1".to_string(),
                 name: "bash".to_string(),
-                input: serde_json::json!({"command": "echo hi"}), thought_signature: None, },
+                input: serde_json::json!({"command": "echo hi"}),
+                thought_signature: None,
+            },
             ContentBlock::ToolResult {
                 tool_use_id: "tool_1".to_string(),
                 content: "hi".to_string(),
@@ -691,7 +693,9 @@ fn test_save_persists_full_session_content() -> Result<()> {
             name: "bash".to_string(),
             input: serde_json::json!({
                 "command": "echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"
-            }), thought_signature: None, }],
+            }),
+            thought_signature: None,
+        }],
     );
 
     session.save()?;
@@ -911,7 +915,9 @@ fn test_redacted_for_export_redacts_tool_result_and_tool_input() -> Result<()> {
             name: "bash".to_string(),
             input: serde_json::json!({
                 "command": "echo ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123"
-            }), thought_signature: None, }],
+            }),
+            thought_signature: None,
+        }],
     );
 
     let persisted = session.redacted_for_export();
@@ -1025,7 +1031,9 @@ fn test_summarize_tool_calls_includes_tool_only_assistant_messages() {
             name: "bash".to_string(),
             input: serde_json::json!({
                 "command": "pwd"
-            }), thought_signature: None, }],
+            }),
+            thought_signature: None,
+        }],
     );
 
     let summaries = summarize_tool_calls(&session, 10);
@@ -1596,7 +1604,9 @@ fn test_render_messages_and_images_share_tool_resolution_and_labels() {
             ContentBlock::ToolUse {
                 id: "tool_img_1".to_string(),
                 name: "view_image".to_string(),
-                input: serde_json::json!({"file_path": "/tmp/screenshot.png"}), thought_signature: None, },
+                input: serde_json::json!({"file_path": "/tmp/screenshot.png"}),
+                thought_signature: None,
+            },
             ContentBlock::ToolResult {
                 tool_use_id: "tool_img_1".to_string(),
                 content: "rendered image".to_string(),

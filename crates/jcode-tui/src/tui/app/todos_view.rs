@@ -566,9 +566,23 @@ mod tests {
 
     #[test]
     fn todos_view_markdown_groups_items_under_group_headers() {
-        let mut grouped_a = todo("g1", "Cut frame allocs", "in_progress", "high", Some(80), None);
+        let mut grouped_a = todo(
+            "g1",
+            "Cut frame allocs",
+            "in_progress",
+            "high",
+            Some(80),
+            None,
+        );
         grouped_a.group = Some("optimize rendering".to_string());
-        let mut grouped_b = todo("g2", "Batch draw calls", "completed", "medium", Some(70), Some(90));
+        let mut grouped_b = todo(
+            "g2",
+            "Batch draw calls",
+            "completed",
+            "medium",
+            Some(70),
+            Some(90),
+        );
         grouped_b.group = Some("optimize rendering".to_string());
         let mut other = todo("o1", "Fix scrollback", "pending", "low", Some(60), None);
         other.group = Some("scrollback".to_string());
@@ -579,7 +593,10 @@ mod tests {
             &[grouped_a, grouped_b, other, ungrouped],
         );
 
-        assert!(markdown.contains("## optimize rendering (1/2)"), "{markdown}");
+        assert!(
+            markdown.contains("## optimize rendering (1/2)"),
+            "{markdown}"
+        );
         assert!(markdown.contains("## scrollback (0/1)"), "{markdown}");
         assert!(markdown.contains("## Other (0/1)"), "{markdown}");
         // Status sub-headings nest under groups.

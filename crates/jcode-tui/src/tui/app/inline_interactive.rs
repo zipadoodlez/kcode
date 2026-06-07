@@ -1197,7 +1197,9 @@ impl App {
                     ("remote", self.is_remote.to_string()),
                     (
                         "simplified",
-                        crate::perf::tui_policy().simplified_model_picker.to_string(),
+                        crate::perf::tui_policy()
+                            .simplified_model_picker
+                            .to_string(),
                     ),
                     ("routes_in", routes.len().to_string()),
                     ("models", model_order.len().to_string()),
@@ -2629,10 +2631,7 @@ impl App {
                                             ("spec", spec.clone()),
                                             ("active_model", active_model),
                                             ("provider", self.provider.name().to_string()),
-                                            (
-                                                "api_method",
-                                                route_selection.api_method.clone(),
-                                            ),
+                                            ("api_method", route_selection.api_method.clone()),
                                         ],
                                     );
                                 }
@@ -2642,10 +2641,7 @@ impl App {
                                         vec![
                                             ("spec", spec.clone()),
                                             ("provider", route.provider.clone()),
-                                            (
-                                                "api_method",
-                                                route_selection.api_method.clone(),
-                                            ),
+                                            ("api_method", route_selection.api_method.clone()),
                                             ("error", error.to_string()),
                                         ],
                                     );

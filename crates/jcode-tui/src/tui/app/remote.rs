@@ -740,14 +740,14 @@ pub(super) fn handle_disconnect(
         let content = app.take_streaming_text();
         let content = app.collapse_reasoning_for_commit(content);
         if !content.trim().is_empty() {
-        app.push_display_message(DisplayMessage {
-            role: "assistant".to_string(),
-            content,
-            tool_calls: vec![],
-            duration_secs: None,
-            title: None,
-            tool_data: None,
-        });
+            app.push_display_message(DisplayMessage {
+                role: "assistant".to_string(),
+                content,
+                tool_calls: vec![],
+                duration_secs: None,
+                title: None,
+                tool_data: None,
+            });
         }
     }
     app.clear_streaming_render_state();
@@ -1253,14 +1253,14 @@ async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
                 let content = app.take_streaming_text();
                 let content = app.collapse_reasoning_for_commit(content);
                 if !content.trim().is_empty() {
-                app.push_display_message(DisplayMessage {
-                    role: "assistant".to_string(),
-                    content,
-                    tool_calls: vec![],
-                    duration_secs: None,
-                    title: None,
-                    tool_data: None,
-                });
+                    app.push_display_message(DisplayMessage {
+                        role: "assistant".to_string(),
+                        content,
+                        tool_calls: vec![],
+                        duration_secs: None,
+                        title: None,
+                        tool_data: None,
+                    });
                 }
             }
             if !app.schedule_pending_remote_retry(

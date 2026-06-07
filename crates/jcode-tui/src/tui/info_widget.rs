@@ -419,7 +419,11 @@ pub struct CacheMissAttribution {
 impl CacheHitInfo {
     /// Effective total prompt tokens across the session (read denominator).
     fn effective_reported_tokens(&self) -> u64 {
-        effective_prompt_tokens(self.reported_input_tokens, self.read_tokens, self.creation_tokens)
+        effective_prompt_tokens(
+            self.reported_input_tokens,
+            self.read_tokens,
+            self.creation_tokens,
+        )
     }
 
     /// Fraction of the session's prompt tokens that were served from cache.

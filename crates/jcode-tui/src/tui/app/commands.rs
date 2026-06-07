@@ -643,7 +643,9 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
             "session_id": spec.session_id,
             "command": "/subagent",
         }),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
 
     app.push_display_message(DisplayMessage {
         role: "tool".to_string(),
@@ -657,7 +659,9 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
     let content_blocks = vec![ContentBlock::ToolUse {
         id: tool_call.id.clone(),
         name: tool_call.name.clone(),
-        input: tool_call.input.clone(), thought_signature: None, }];
+        input: tool_call.input.clone(),
+        thought_signature: None,
+    }];
     app.add_provider_message(Message {
         role: Role::Assistant,
         content: content_blocks.clone(),
