@@ -117,6 +117,7 @@ jcode-swarm-core = { path = "../jcode-swarm-core" }
 jcode-protocol = { path = "../jcode-protocol" }
 jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-session-types = { path = "../jcode-session-types" }
+jcode-setup-hints = { path = "../jcode-setup-hints" }
 jcode-storage = { path = "../jcode-storage" }
 jcode-task-types = { path = "../jcode-task-types" }
 jcode-tool-core = { path = "../jcode-tool-core" }

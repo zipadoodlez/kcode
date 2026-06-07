@@ -3321,6 +3321,7 @@ dependencies = [
  "jcode-provider-openrouter",
  "jcode-selfdev-types",
  "jcode-session-types",
+ "jcode-setup-hints",
  "jcode-side-panel-types",
  "jcode-storage",
  "jcode-swarm-core",
@@ -3438,6 +3439,7 @@ dependencies = [
  "jcode-provider-metadata",
  "jcode-selfdev-types",
  "jcode-session-types",
+ "jcode-setup-hints",
  "jcode-side-panel-types",
  "jcode-storage",
  "jcode-swarm-core",
@@ -3978,6 +3980,19 @@ dependencies = [
  "chrono",
  "jcode-message-types",
  "serde",
+]
+
+[[package]]
+name = "jcode-setup-hints"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "jcode-build-meta",
+ "jcode-logging",
+ "jcode-storage",
+ "serde",
+ "tempfile",
 ]
 
 [[package]]
