@@ -3537,6 +3537,7 @@ dependencies = [
  "jcode-message-types",
  "jcode-plan",
  "jcode-protocol",
+ "jcode-provider-anthropic",
  "jcode-provider-bedrock",
  "jcode-provider-core",
  "jcode-provider-env",
@@ -3807,6 +3808,17 @@ dependencies = [
  "jcode-session-types",
  "jcode-side-panel-types",
  "rand 0.9.3",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "jcode-provider-anthropic"
+version = "0.1.0"
+dependencies = [
+ "jcode-logging",
+ "jcode-message-types",
+ "jcode-provider-core",
  "serde",
  "serde_json",
 ]

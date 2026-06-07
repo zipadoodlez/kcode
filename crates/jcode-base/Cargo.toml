@@ -72,6 +72,7 @@ jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 jcode-provider-env = { path = "../jcode-provider-env" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-provider-bedrock = { path = "../jcode-provider-bedrock" }
+jcode-provider-anthropic = { path = "../jcode-provider-anthropic" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
 jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
 jcode-provider-gemini = { path = "../jcode-provider-gemini" }
