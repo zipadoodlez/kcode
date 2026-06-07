@@ -1,6 +1,7 @@
 use anyhow::Result;
+use jcode_message_types::{ContentBlock, Message, Role, ToolCall, ToolDefinition};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashSet;
 
 pub const DEFAULT_MODEL: &str = "gemini-2.5-pro";
@@ -204,6 +205,204 @@ pub struct GeminiFunctionResponse {
     pub response: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+}
+
+pub fn build_system_instruction(system: &str) -> Option<GeminiContent> {
+    let trimmed = system.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(GeminiContent {
+            role: "user".to_string(),
+            parts: vec![GeminiPart {
+                text: Some(trimmed.to_string()),
+                ..Default::default()
+            }],
+        })
+    }
+}
+
+/// Prevention guidance appended to the Gemini system prompt when tools are
+/// advertised. Gemini-3 "thinking" models intermittently emit Python-style
+/// pseudo-code (e.g. `print(default_api.read(...))`) instead of a clean
+/// `functionCall`, which the backend rejects with `MALFORMED_FUNCTION_CALL` and
+/// empty content. Explicitly forbidding code/namespaces measurably reduces that
+/// failure mode at no latency cost (see the Gemini function-calling guidance and
+/// field reports of this exact behavior).
+const GEMINI_FUNCTION_CALL_GUARD: &str = "\n\n## Function calling\n\
+     - When you call a tool, emit a native function call, not code. Never write \
+     Python (or any language) that calls the tool, and never wrap a call in \
+     print(...) or a code block.\n\
+     - Use the function name exactly as defined. Do not prepend `default_api.` \
+     or any other namespace to the function name.";
+
+/// Build the Gemini `system_instruction`, appending [`GEMINI_FUNCTION_CALL_GUARD`]
+/// when tools are advertised so the model is steered away from the
+/// `MALFORMED_FUNCTION_CALL` pseudo-code failure mode.
+pub fn build_system_instruction_with_tool_guard(
+    system: &str,
+    has_tools: bool,
+) -> Option<GeminiContent> {
+    if !has_tools {
+        return build_system_instruction(system);
+    }
+    let mut combined = system.trim().to_string();
+    combined.push_str(GEMINI_FUNCTION_CALL_GUARD);
+    build_system_instruction(&combined)
+}
+
+pub fn build_contents(messages: &[Message]) -> Vec<GeminiContent> {
+    messages
+        .iter()
+        .filter_map(|message| {
+            let role = match message.role {
+                Role::User => "user",
+                Role::Assistant => "model",
+            };
+            let mut parts = Vec::new();
+            for block in &message.content {
+                match block {
+                    ContentBlock::Text { text, .. } => {
+                        parts.push(GeminiPart {
+                            text: Some(text.clone()),
+                            ..Default::default()
+                        });
+                    }
+                    ContentBlock::Reasoning { .. }
+                    | ContentBlock::ReasoningTrace { .. }
+                    | ContentBlock::AnthropicThinking { .. }
+                    | ContentBlock::OpenAIReasoning { .. } => {}
+                    ContentBlock::ToolUse {
+                        id,
+                        name,
+                        input,
+                        thought_signature,
+                    } => {
+                        parts.push(GeminiPart {
+                            function_call: Some(GeminiFunctionCall {
+                                name: name.clone(),
+                                args: ToolCall::input_as_object(input),
+                                id: Some(id.clone()),
+                            }),
+                            thought_signature: thought_signature
+                                .as_ref()
+                                .filter(|sig| !sig.is_empty())
+                                .cloned(),
+                            ..Default::default()
+                        });
+                    }
+                    ContentBlock::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
+                        parts.push(GeminiPart {
+                            function_response: Some(GeminiFunctionResponse {
+                                name: tool_name_from_tool_result(tool_use_id, messages),
+                                response: if is_error.unwrap_or(false) {
+                                    json!({ "error": content })
+                                } else {
+                                    json!({ "content": content })
+                                },
+                                id: Some(tool_use_id.clone()),
+                            }),
+                            ..Default::default()
+                        });
+                    }
+                    ContentBlock::Image { media_type, data } => {
+                        parts.push(GeminiPart {
+                            inline_data: Some(InlineData {
+                                mime_type: media_type.clone(),
+                                data: data.clone(),
+                            }),
+                            ..Default::default()
+                        });
+                    }
+                    ContentBlock::OpenAICompaction { .. } => {}
+                }
+            }
+            if parts.is_empty() {
+                None
+            } else {
+                Some(GeminiContent {
+                    role: role.to_string(),
+                    parts,
+                })
+            }
+        })
+        .collect()
+}
+
+fn tool_name_from_tool_result(tool_use_id: &str, messages: &[Message]) -> String {
+    for message in messages.iter().rev() {
+        for block in &message.content {
+            if let ContentBlock::ToolUse { id, name, .. } = block
+                && id == tool_use_id
+            {
+                return name.clone();
+            }
+        }
+    }
+    "tool".to_string()
+}
+
+pub fn build_tools(tools: &[ToolDefinition]) -> Option<Vec<GeminiTool>> {
+    if tools.is_empty() {
+        return None;
+    }
+
+    Some(vec![GeminiTool {
+        function_declarations: tools
+            .iter()
+            .map(|tool| GeminiFunctionDeclaration {
+                name: tool.name.clone(),
+                // Prompt-visible. Approximate token cost for this field:
+                // tool.description_token_estimate().
+                description: tool.description.clone(),
+                parameters: gemini_compatible_schema(&tool.input_schema),
+            })
+            .collect(),
+    }])
+}
+
+/// JSON Schema keywords the Gemini Code Assist `generateContent` endpoint
+/// rejects outright (HTTP 400 "Unknown name ... Cannot find field"). Gemini
+/// accepts only an OpenAPI 3.0 subset for `function_declarations.parameters`,
+/// so these draft-style keywords must be stripped before sending.
+const GEMINI_UNSUPPORTED_SCHEMA_KEYS: &[&str] = &[
+    "additionalProperties",
+    "$schema",
+    "$id",
+    "$ref",
+    "$defs",
+    "definitions",
+    "$comment",
+];
+
+fn gemini_compatible_schema(schema: &Value) -> Value {
+    match schema {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (key, value) in map {
+                // Drop draft-JSON-Schema keywords the Gemini API does not model;
+                // leaving them in fails the whole request with HTTP 400.
+                if GEMINI_UNSUPPORTED_SCHEMA_KEYS.contains(&key.as_str()) {
+                    continue;
+                }
+                if key == "const" {
+                    out.insert(
+                        "enum".to_string(),
+                        Value::Array(vec![gemini_compatible_schema(value)]),
+                    );
+                } else {
+                    out.insert(key.clone(), gemini_compatible_schema(value));
+                }
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(gemini_compatible_schema).collect()),
+        _ => schema.clone(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
