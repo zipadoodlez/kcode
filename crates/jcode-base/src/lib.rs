@@ -50,6 +50,7 @@ pub mod memory_types;
 pub mod message;
 pub mod plan;
 pub mod platform;
+pub mod power_inhibit;
 pub mod process_memory;
 pub mod process_title;
 pub mod prompt;

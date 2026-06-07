@@ -1052,6 +1052,11 @@ impl Server {
             }
         });
 
+        // Keep the machine awake while any session is actively streaming/processing.
+        // This watches the same "running" member signal Waybar surfaces as
+        // "N streaming" and toggles a best-effort OS power inhibitor accordingly.
+        Self::spawn_power_inhibitor(Arc::clone(&self.swarm_state.members));
+
         // Initialize the memory agent early so it's ready for all sessions
         if crate::config::config().features.memory {
             tokio::spawn(async {
@@ -1463,6 +1468,70 @@ impl Server {
                 let _ = registry.save().await;
             }
         });
+    }
+
+    /// Spawn the background loop that keeps the machine awake while any session
+    /// is actively streaming/processing.
+    ///
+    /// The shared daemon owns every session, so a single inhibitor here covers
+    /// all of them. We poll the swarm-member map (the authoritative "running"
+    /// signal that also drives Waybar's "N streaming" indicator) on a short
+    /// interval and reconcile a best-effort OS power inhibitor against it. The
+    /// inhibitor only blocks system suspend / lid sleep; the display can still
+    /// turn off. When no session is running the helper is killed so normal power
+    /// management resumes immediately.
+    fn spawn_power_inhibitor(swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>) {
+        // Reconcile interval. Short enough that the inhibitor engages promptly
+        // when a turn starts and releases promptly when work finishes, but cheap
+        // (a read lock + a scan) so it adds no meaningful load.
+        const RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
+
+        let mut inhibitor = crate::power_inhibit::PowerInhibitor::new();
+        if !inhibitor.is_available() {
+            // Disabled via the legacy env escape hatch, or unsupported platform.
+            crate::logging::info(
+                "power_inhibit: unavailable (unsupported platform or JCODE_DISABLE_POWER_INHIBIT set); not monitoring",
+            );
+            return;
+        }
+
+        crate::logging::info(
+            "power_inhibit: monitoring active sessions to prevent sleep while streaming",
+        );
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(RECONCILE_INTERVAL);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut last_active: Option<bool> = None;
+            loop {
+                interval.tick().await;
+
+                // Re-evaluate the config each tick so toggling it at runtime
+                // takes effect without restarting the daemon.
+                let enabled = crate::config::config().power.prevent_sleep_while_streaming;
+
+                let active = enabled && Self::any_session_streaming(&swarm_members).await;
+                if last_active != Some(active) {
+                    crate::logging::info(&format!(
+                        "power_inhibit: {} (streaming sessions {})",
+                        if active { "engaging" } else { "releasing" },
+                        if active { "present" } else { "absent" },
+                    ));
+                    last_active = Some(active);
+                }
+                inhibitor.set_active(active);
+            }
+        });
+    }
+
+    /// Whether at least one session is currently in the "running" state, i.e.
+    /// actively streaming/processing a turn. This is the same signal that drives
+    /// the Waybar "N streaming" indicator.
+    async fn any_session_streaming(
+        swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    ) -> bool {
+        let members = swarm_members.read().await;
+        members.values().any(|member| member.status == "running")
     }
 
     /// Monitor the global Bus for FileTouch events and detect conflicts

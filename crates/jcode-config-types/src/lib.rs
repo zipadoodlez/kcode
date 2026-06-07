@@ -1017,3 +1017,24 @@ impl Default for GatewayConfig {
         }
     }
 }
+
+/// Power-management configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PowerConfig {
+    /// Prevent the machine from going to sleep (idle/lid suspend) while any
+    /// jcode session is actively streaming/processing. The display is still
+    /// allowed to sleep; only system suspend is inhibited. Default: true.
+    ///
+    /// Honored by the shared `jcode serve` daemon. The `JCODE_DISABLE_POWER_INHIBIT`
+    /// environment variable forces this off regardless of the config value.
+    pub prevent_sleep_while_streaming: bool,
+}
+
+impl Default for PowerConfig {
+    fn default() -> Self {
+        Self {
+            prevent_sleep_while_streaming: true,
+        }
+    }
+}

@@ -309,6 +309,13 @@ port = 7643
 # Bind address (0.0.0.0 for LAN/Tailscale reachability)
 bind_addr = "0.0.0.0"
 
+[power]
+# Prevent the machine from suspending (idle/lid sleep) while any jcode session
+# is actively streaming/processing. The display can still sleep; only system
+# suspend is inhibited, and only for as long as work is in flight. (default: true)
+# Set JCODE_DISABLE_POWER_INHIBIT=1 to force-disable regardless of this setting.
+prevent_sleep_while_streaming = true
+
 [safety]
 # Notification settings for ambient mode events
 

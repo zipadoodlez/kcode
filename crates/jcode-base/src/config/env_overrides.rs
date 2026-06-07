@@ -535,6 +535,13 @@ impl Config {
             }
         }
 
+        // Power management
+        if let Ok(v) = std::env::var("JCODE_PREVENT_SLEEP_WHILE_STREAMING") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.power.prevent_sleep_while_streaming = parsed;
+            }
+        }
+
         // Provider
         if let Ok(v) = std::env::var("JCODE_MODEL") {
             self.provider.default_model = Some(v);
