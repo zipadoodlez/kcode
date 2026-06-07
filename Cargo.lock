@@ -3540,6 +3540,7 @@ dependencies = [
  "jcode-provider-anthropic",
  "jcode-provider-antigravity",
  "jcode-provider-bedrock",
+ "jcode-provider-copilot",
  "jcode-provider-core",
  "jcode-provider-env",
  "jcode-provider-gemini",
@@ -3861,6 +3862,15 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
+]
+
+[[package]]
+name = "jcode-provider-copilot"
+version = "0.1.0"
+dependencies = [
+ "jcode-message-types",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
