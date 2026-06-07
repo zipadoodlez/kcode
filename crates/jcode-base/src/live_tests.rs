@@ -881,6 +881,12 @@ pub struct LiveProviderModelCoverageSummary {
 pub struct ProviderMonitorEntry {
     pub provider_id: String,
     pub display_name: String,
+    /// Human label for how this provider authenticates (e.g. "OAuth",
+    /// "API key"). Lets the roster disambiguate sibling providers that share a
+    /// backend but differ by credential path -- e.g. `claude` (OAuth /
+    /// subscription) vs `anthropic-api` (direct API key).
+    #[serde(default)]
+    pub auth_method: String,
     /// True when `jcode provider-doctor <id>` can drive this provider today
     /// (OpenAI-compatible profile exists for the id).
     pub doctor_drivable: bool,
@@ -1183,6 +1189,20 @@ fn provider_test_coverage_icon(status: &LiveVerificationStageStatus) -> &'static
     }
 }
 
+/// Stable lowercase token for a checkpoint verdict, used to build the dedup
+/// signature so two runs recording the same checkpoint ids with different
+/// verdicts hash distinctly. Mirrors the serde representation but is computed
+/// directly so it never depends on `Serialize` formatting.
+fn checkpoint_status_token(status: &LiveVerificationStageStatus) -> &'static str {
+    match status {
+        LiveVerificationStageStatus::Passed => "passed",
+        LiveVerificationStageStatus::Failed => "failed",
+        LiveVerificationStageStatus::Blocked => "blocked",
+        LiveVerificationStageStatus::Skipped => "skipped",
+        LiveVerificationStageStatus::NotRun => "notrun",
+    }
+}
+
 fn provider_test_coverage_checkpoint_label(checkpoint: &str) -> String {
     match checkpoint {
         checkpoints::AUTH_CREDENTIAL_LOADED => "Credential loaded".to_string(),
@@ -1463,16 +1483,25 @@ fn latest_coverage_entries_by_provider_model_test(
             .filter(|model| !model.is_empty())
             .unwrap_or("*")
             .to_string();
-        let checkpoint_ids = entry
+        // Key on the full checkpoint *status* signature, not just the checkpoint
+        // names. Two runs of the same command can record the identical set of
+        // checkpoint ids with different verdicts -- e.g. a full-tier doctor run
+        // that actually exercises chat/streaming/tool stages (Passed) vs a later
+        // lighter-tier re-run that records those same stages as Skipped. Keying
+        // on names alone would let the newer-but-weaker run evict the older
+        // passing run, hiding real READY evidence before the status-aware merge
+        // in `ProviderModelCoverageBuilder` ever sees it. Including the verdicts
+        // keeps both signatures alive so the merge can promote the best evidence.
+        let checkpoint_signature = entry
             .checkpoint_statuses
-            .keys()
-            .cloned()
+            .iter()
+            .map(|(id, status)| format!("{id}={}", checkpoint_status_token(status)))
             .collect::<Vec<_>>();
         let target_key = (
             provider_identity.0,
             model,
             entry.test_name.clone(),
-            checkpoint_ids,
+            checkpoint_signature,
         );
         let replace = latest_by_target_and_checkpoints
             .get(&target_key)
@@ -1772,6 +1801,7 @@ fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<Provi
         .map(|(provider_id, display_name)| {
             let doctor_drivable = doctor_supports_provider(&provider_id);
             let has_credential = provider_has_credential(&provider_id);
+            let auth_method = provider_auth_method_label(&provider_id);
             let ready_pairs = ready.get(&provider_id).copied().unwrap_or(0);
             let observed_pairs = observed.get(&provider_id).copied().unwrap_or(0);
             let status = if ready_pairs > 0 {
@@ -1789,6 +1819,7 @@ fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<Provi
             ProviderMonitorEntry {
                 provider_id,
                 display_name,
+                auth_method,
                 doctor_drivable,
                 has_credential,
                 ready_pairs,
@@ -1797,6 +1828,22 @@ fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<Provi
             }
         })
         .collect()
+}
+
+/// Human-readable label for how a provider authenticates, used to disambiguate
+/// sibling providers that share a backend but differ by credential path. Falls
+/// back to the login-provider catalog's `auth_kind`, and finally to a generic
+/// "API key" for OpenAI-compatible profiles (which are all key-based).
+fn provider_auth_method_label(provider_id: &str) -> String {
+    if let Some(provider) = crate::provider_catalog::resolve_login_provider(provider_id) {
+        return provider.auth_kind.label().to_string();
+    }
+    if crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some() {
+        return crate::provider_catalog::LoginProviderAuthKind::ApiKey
+            .label()
+            .to_string();
+    }
+    String::new()
 }
 
 pub fn format_strict_live_provider_model_coverage_summary(
@@ -2008,31 +2055,47 @@ pub fn format_strict_live_provider_model_coverage_summary(
             .max()
             .unwrap_or(8)
             .max(8);
+        let auth_width = rows
+            .iter()
+            .map(|e| e.auth_method.len())
+            .max()
+            .unwrap_or(4)
+            .max(4);
         out.push_str(&format!(
-            "  {:<id_width$}  {:<18}  {:<7}  {:<4}  {}\n",
+            "  {:<id_width$}  {:<auth_width$}  {:<18}  {:<7}  {:<4}  {}\n",
             "provider",
+            "auth",
             "status",
             "doctor",
             "key",
             "ready/seen pairs",
-            id_width = id_width
+            id_width = id_width,
+            auth_width = auth_width,
         ));
         for entry in rows {
             let doctor = if entry.doctor_drivable { "yes" } else { "no" };
             let key = if entry.has_credential { "yes" } else { "-" };
+            let auth = if entry.auth_method.is_empty() {
+                "-"
+            } else {
+                entry.auth_method.as_str()
+            };
             out.push_str(&format!(
-                "  {:<id_width$}  {:<18}  {:<7}  {:<4}  {}/{}\n",
+                "  {:<id_width$}  {:<auth_width$}  {:<18}  {:<7}  {:<4}  {}/{}\n",
                 entry.provider_id,
+                auth,
                 entry.status,
                 doctor,
                 key,
                 entry.ready_pairs,
                 entry.observed_pairs,
-                id_width = id_width
+                id_width = id_width,
+                auth_width = auth_width,
             ));
         }
         out.push_str(
-            "  Legend: doctor=`provider-doctor` can drive it; key=credential present;\n  \
+            "  Legend: auth=credential path (OAuth/subscription vs direct API key, etc.);\n  \
+             doctor=`provider-doctor` can drive it; key=credential present;\n  \
              ready/seen pairs = READY pairs / pairs seen in the ledger (e.g. 1/3 = 1 of 3 ready).\n\n",
         );
     }
@@ -2721,6 +2784,93 @@ mod tests {
     }
 
     #[test]
+    fn strict_coverage_keeps_passing_run_when_newer_run_skips_same_checkpoints() {
+        // Regression: a full-tier doctor run records the strict checkpoints as
+        // Passed; a later lighter-tier re-run records the *same* checkpoint ids
+        // but with the API-dependent stages Skipped. The newer run must not
+        // evict the older passing evidence during dedup, or the pair silently
+        // drops out of READY even though it genuinely passed everything.
+        let mut passing = coverage_entry(
+            "anthropic-api",
+            "Anthropic API",
+            Some("claude-opus-4-8"),
+            strict_statuses(&[]),
+        );
+        passing.recorded_at = Utc::now() - Duration::hours(2);
+
+        // Newer run: identical checkpoint id set, but API stages skipped.
+        let mut skipped = coverage_entry(
+            "anthropic-api",
+            "Anthropic API",
+            Some("claude-opus-4-8"),
+            strict_statuses(&[
+                (
+                    checkpoints::NON_STREAMING_CHAT_COMPLETION,
+                    LiveVerificationStageStatus::Skipped,
+                ),
+                (
+                    checkpoints::STREAMING_CHAT_COMPLETION,
+                    LiveVerificationStageStatus::Skipped,
+                ),
+                (
+                    checkpoints::TOOL_CALL_PARSE,
+                    LiveVerificationStageStatus::Skipped,
+                ),
+                (
+                    checkpoints::TOOL_EXECUTION_LOOP,
+                    LiveVerificationStageStatus::Skipped,
+                ),
+                (
+                    checkpoints::TOOL_RESULT_FOLLOWUP,
+                    LiveVerificationStageStatus::Skipped,
+                ),
+                (
+                    checkpoints::REAL_JCODE_TOOL_SMOKE,
+                    LiveVerificationStageStatus::Skipped,
+                ),
+            ]),
+        );
+        skipped.recorded_at = Utc::now();
+
+        let mut latest = BTreeMap::new();
+        latest.insert("anthropic-api::claude-opus-4-8::passing".to_string(), passing);
+        latest.insert("anthropic-api::claude-opus-4-8::skipped".to_string(), skipped);
+        let coverage = LiveVerificationCoverage {
+            schema_version: SCHEMA_VERSION,
+            updated_at: Utc::now(),
+            checkpoint_taxonomy_version: CHECKPOINT_TAXONOMY_VERSION,
+            checkpoint_taxonomy: checkpoint_catalog_metadata(),
+            latest,
+        };
+
+        let summary = strict_live_provider_model_coverage_summary(&coverage, "unit");
+        assert_eq!(
+            summary.covered_provider_model_pairs, 1,
+            "the passing full-tier run must still promote the pair to READY"
+        );
+        assert_eq!(summary.covered_pairs[0].provider_id, "anthropic-api");
+        assert_eq!(summary.covered_pairs[0].model, "claude-opus-4-8");
+
+        // And the monitoring roster reflects it as READY with the OAuth/API-key
+        // auth method recorded (anthropic-api is the direct API-key path).
+        let entry = summary
+            .provider_roster
+            .iter()
+            .find(|e| e.provider_id == "anthropic-api")
+            .expect("anthropic-api should appear in the provider roster");
+        assert_eq!(entry.status, "READY");
+        assert_eq!(entry.auth_method, "API key");
+
+        // The native OAuth Claude provider is labeled distinctly from the API one.
+        let claude = summary
+            .provider_roster
+            .iter()
+            .find(|e| e.provider_id == "claude")
+            .expect("claude should appear in the provider roster");
+        assert_eq!(claude.auth_method, "OAuth");
+    }
+
+    #[test]
     fn strict_live_provider_model_coverage_report_names_required_e2e_checkpoints() {
         let coverage = LiveVerificationCoverage {
             schema_version: SCHEMA_VERSION,
@@ -2895,23 +3045,23 @@ mod tests {
                 Fail,
             ),
             (
-                "  cerebras             READY               yes      yes   1/3",
+                "  cerebras             API key  READY               yes      yes   1/3",
                 Pass,
             ),
             (
-                "  gemini               in progress         no       -     0/3",
+                "  gemini               OAuth    in progress         no       -     0/3",
                 Warn,
             ),
             (
-                "  302ai                no key              yes      -     0/0",
+                "  302ai                API key  no key              yes      -     0/0",
                 Warn,
             ),
             (
-                "  openai-compatible    untested            yes      yes   0/0",
+                "  openai-compatible    API key  untested            yes      yes   0/0",
                 Dim,
             ),
             (
-                "  bedrock              needs native suite  no       -     0/0",
+                "  bedrock              API key  needs native suite  no       -     0/0",
                 Dim,
             ),
             ("  [#223] xiaomi-mimo / mimo-v2.5: READY", Pass),
