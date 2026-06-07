@@ -10,10 +10,7 @@
 //! - Manual pinning: Set JCODE_OPENROUTER_PROVIDER or use model@Provider syntax
 
 use super::{EventStream, Provider};
-use crate::message::{
-    CacheControl, ContentBlock, Message, Role, StreamEvent, TOOL_OUTPUT_MISSING_TEXT,
-    ToolDefinition,
-};
+use crate::message::{CacheControl, ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use crate::provider_catalog::{
     OPENAI_COMPAT_PROFILE, is_safe_env_file_name, is_safe_env_key_name,
     load_api_key_from_env_or_config, normalize_api_base, openai_compatible_profile_by_id,
