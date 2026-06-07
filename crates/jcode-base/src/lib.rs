@@ -72,7 +72,9 @@ pub mod stdin_detect;
 pub mod storage;
 pub mod subscription_catalog;
 pub mod telegram;
-pub mod telemetry;
+pub mod telemetry {
+    pub use jcode_telemetry_core::*;
+}
 pub mod terminal_launch;
 pub mod todo;
 pub mod transport;
