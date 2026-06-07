@@ -2472,16 +2472,19 @@ impl App {
         }
         self.reasoning_streaming = false;
 
-        // In `current` mode, reasoning is ephemeral: only the *current* (live)
-        // block is ever shown. Once it closes (the model starts answering or runs
-        // a tool), slice it straight back out of the stream in place. This keeps
-        // any answer text that preceded it in order and never accumulates a
-        // separate trace message for past reasoning.
-        if matches!(
-            crate::config::config().display.reasoning_display(),
-            crate::config::ReasoningDisplayMode::Current
-        ) {
-            self.discard_current_reasoning_block();
+        // In `current` mode, reasoning is ephemeral: it is never written to the
+        // persistent transcript. Historically the closed block was sliced straight
+        // back out of the live stream, so it vanished the instant the model moved
+        // on. With decorative animations we instead *retain* the just-closed trace
+        // on screen (as its own dim section above the live stream) until the next
+        // trace is fully done, then shrink the previous one away. Tiers without
+        // decorative animations keep the original instant-discard behavior.
+        if self.reasoning_current_mode() {
+            if self.reasoning_animations_enabled() {
+                self.retain_current_reasoning_block();
+            } else {
+                self.discard_current_reasoning_block();
+            }
             return;
         }
 
@@ -2497,10 +2500,110 @@ impl App {
         self.refresh_split_view_if_needed();
     }
 
+    /// True when the active reasoning-display mode is `current` (live-only,
+    /// ephemeral reasoning).
+    pub(super) fn reasoning_current_mode(&self) -> bool {
+        matches!(
+            crate::config::config().display.reasoning_display(),
+            crate::config::ReasoningDisplayMode::Current
+        )
+    }
+
+    /// True when the retain-then-shrink reasoning animation should drive the
+    /// `current`-mode collapse. Disabled on tiers without decorative animations
+    /// (SSH/WSL/Minimal), which fall back to instant discard.
+    pub(super) fn reasoning_animations_enabled(&self) -> bool {
+        crate::perf::tui_policy().enable_decorative_animations
+    }
+
+    /// Slice the just-closed reasoning block out of `streaming_text` and keep it as
+    /// the retained trace. Any previously retained trace begins its shrink-away
+    /// animation (it is "fully done" now that a newer trace has closed). Used in
+    /// `current` mode when decorative animations are enabled.
+    pub(super) fn retain_current_reasoning_block(&mut self) {
+        let block_start = self
+            .reasoning_block_start
+            .take()
+            .unwrap_or(0)
+            .min(self.streaming.streaming_text.len());
+        // Everything from the block start onward is the reasoning markup. Split it
+        // off so the preceding answer text (if any) stays in the live stream.
+        let block = self.streaming.streaming_text.split_off(block_start);
+        // Drop the separator the open path added before the reasoning block so the
+        // surrounding answer text rejoins cleanly.
+        while self.streaming.streaming_text.ends_with('\n') {
+            self.streaming.streaming_text.pop();
+        }
+        let block = block.trim_matches('\n').to_string();
+        if block.is_empty() {
+            self.refresh_split_view_if_needed();
+            return;
+        }
+        // The previously retained trace is now superseded: fold it away.
+        if let Some(prev) = self.reasoning_retained.take() {
+            self.start_reasoning_collapse(prev);
+        }
+        self.reasoning_retained = Some(block);
+        self.refresh_split_view_if_needed();
+    }
+
+    /// Begin (or restart) the shrink-away animation for a retained reasoning trace.
+    fn start_reasoning_collapse(&mut self, markup: String) {
+        if markup.trim().is_empty() {
+            return;
+        }
+        self.reasoning_collapse = Some(crate::tui::app::ReasoningCollapse {
+            markup,
+            started: std::time::Instant::now(),
+        });
+    }
+
+    /// Drive the reasoning retain/collapse animation forward by one tick. Folds the
+    /// last retained trace away once the turn is over, finishes any in-progress
+    /// shrink, and reports whether a redraw is still needed. Cheap no-op when no
+    /// reasoning animation is active.
+    pub(super) fn tick_reasoning_collapse(&mut self) -> bool {
+        let mut redraw = false;
+        if let Some(collapse) = &self.reasoning_collapse {
+            redraw = true;
+            if collapse.started.elapsed() >= crate::tui::app::REASONING_COLLAPSE_DURATION {
+                self.reasoning_collapse = None;
+            }
+        }
+        // Once the turn finishes, the final retained trace has no successor to wait
+        // on, so fold it away too (keeping `current` mode ephemeral).
+        if !self.is_processing && self.reasoning_retained.is_some() {
+            if let Some(trace) = self.reasoning_retained.take() {
+                self.start_reasoning_collapse(trace);
+            }
+            redraw = true;
+        }
+        if redraw {
+            self.refresh_split_view_if_needed();
+        }
+        redraw
+    }
+
+    /// Whether a retained or collapsing reasoning trace needs animation frames.
+    pub(super) fn reasoning_animation_active(&self) -> bool {
+        self.reasoning_collapse.is_some()
+            || (self.reasoning_retained.is_some() && !self.is_processing)
+    }
+
+    /// Drop any retained/collapsing reasoning trace immediately (new turn / reset).
+    pub(super) fn clear_retained_reasoning(&mut self) {
+        let had = self.reasoning_retained.is_some() || self.reasoning_collapse.is_some();
+        self.reasoning_retained = None;
+        self.reasoning_collapse = None;
+        if had {
+            self.refresh_split_view_if_needed();
+        }
+    }
+
     /// Slice the just-closed reasoning block out of `streaming_text` in place,
     /// leaving any answer text that streamed *before* it untouched and in order.
-    /// Used in `current` mode so only the live reasoning block is ever visible and
-    /// no per-block trace is left behind.
+    /// Used in `current` mode (animations disabled) so only the live reasoning
+    /// block is ever visible and no per-block trace is left behind.
     pub(super) fn discard_current_reasoning_block(&mut self) {
         let block_start = self
             .reasoning_block_start
@@ -2816,6 +2919,7 @@ impl App {
         self.is_processing = true;
         self.status = ProcessingStatus::Sending;
         self.clear_streaming_render_state();
+        self.clear_retained_reasoning();
         self.stream_buffer.clear();
         self.thought_line_inserted = false;
         self.thinking_prefix_emitted = false;

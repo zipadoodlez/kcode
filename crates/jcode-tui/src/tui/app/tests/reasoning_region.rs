@@ -373,3 +373,122 @@ fn multiple_reasoning_blocks_do_not_accumulate() {
         app.streaming_text()
     );
 }
+
+#[test]
+fn retained_reasoning_keeps_trace_out_of_stream_until_superseded() {
+    // Retaining a closed reasoning block slices it out of the live stream (so the
+    // stream itself stays clean) but keeps it as the retained trace to render
+    // above the stream. A *second* retain supersedes the first: the first begins
+    // its shrink-away collapse while the second becomes the retained trace.
+    let mut app = create_test_app();
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("first trace\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+
+    // Stream is clean; the trace is retained, nothing is collapsing yet.
+    assert!(
+        !app.streaming_text()
+            .contains(jcode_tui_markdown::REASONING_SENTINEL),
+        "retained reasoning must leave the live stream: {:?}",
+        app.streaming_text()
+    );
+    let retained = app
+        .reasoning_retained_markup()
+        .expect("first trace retained");
+    assert!(retained.contains("first trace"), "got: {retained:?}");
+    assert!(
+        app.reasoning_collapse_state().is_none(),
+        "nothing should be collapsing after a single trace"
+    );
+
+    // A second trace supersedes the first.
+    app.open_reasoning_region();
+    app.append_reasoning_text("second trace\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+
+    let retained = app
+        .reasoning_retained_markup()
+        .expect("second trace retained");
+    assert!(retained.contains("second trace"), "got: {retained:?}");
+    let (collapsing, progress) = app
+        .reasoning_collapse_state()
+        .expect("first trace now collapsing");
+    assert!(collapsing.contains("first trace"), "got: {collapsing:?}");
+    assert!(
+        (0.0..=1.0).contains(&progress),
+        "collapse progress in range: {progress}"
+    );
+    // The retained/collapsing traces never become persistent messages.
+    assert!(
+        !app.display_messages.iter().any(|m| m.role == "reasoning"),
+        "retained reasoning must not create a persistent message"
+    );
+}
+
+#[test]
+fn retained_reasoning_folds_away_after_turn_finishes() {
+    // The final retained trace has no successor to wait on, so once the turn is no
+    // longer processing it folds away (begins collapsing) on the next tick.
+    let mut app = create_test_app();
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("last trace\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+    app.is_processing = true;
+
+    // While still processing, the retained trace stays put (waiting for a successor).
+    app.tick_reasoning_collapse();
+    assert!(
+        app.reasoning_retained_markup().is_some(),
+        "retained trace should persist while the turn is processing"
+    );
+    assert!(app.reasoning_collapse_state().is_none());
+
+    // Turn finishes: the retained trace folds into the collapse animation.
+    app.is_processing = false;
+    let redraw = app.tick_reasoning_collapse();
+    assert!(redraw, "folding the trace away should request a redraw");
+    assert!(
+        app.reasoning_retained_markup().is_none(),
+        "retained trace should hand off to the collapse animation"
+    );
+    let (collapsing, _) = app
+        .reasoning_collapse_state()
+        .expect("final trace now collapsing");
+    assert!(collapsing.contains("last trace"), "got: {collapsing:?}");
+
+    // After the animation duration elapses the trace is fully gone.
+    std::thread::sleep(crate::tui::app::REASONING_COLLAPSE_DURATION + std::time::Duration::from_millis(20));
+    app.tick_reasoning_collapse();
+    assert!(
+        !app.reasoning_animation_active(),
+        "collapse must complete and clear all reasoning animation state"
+    );
+    assert!(app.reasoning_collapse_state().is_none());
+}
+
+#[test]
+fn clear_retained_reasoning_drops_trace_and_collapse() {
+    // Starting a new turn (or resetting the transcript) drops any retained or
+    // collapsing reasoning immediately.
+    let mut app = create_test_app();
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("trace\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+    assert!(app.reasoning_retained_markup().is_some());
+
+    app.clear_retained_reasoning();
+    assert!(app.reasoning_retained_markup().is_none());
+    assert!(app.reasoning_collapse_state().is_none());
+    assert!(!app.reasoning_animation_active());
+}

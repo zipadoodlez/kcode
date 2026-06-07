@@ -515,6 +515,7 @@ pub(super) fn prepare_messages(
         streaming_text_len: app.streaming_text().len(),
         streaming_text_hash: super::hash_text_for_cache(app.streaming_text()),
         batch_progress_hash: active_batch_progress_hash(app),
+        reasoning_trace_hash: reasoning_trace_hash(app),
     };
 
     super::note_full_prep_request();
@@ -579,10 +580,21 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     let batch_ms = batch_start.elapsed().as_secs_f64() * 1000.0;
 
     let streaming_start = Instant::now();
+    let has_reasoning_trace =
+        app.reasoning_retained_markup().is_some() || app.reasoning_collapse_state().is_some();
+    let reasoning_prefix_blank = has_reasoning_trace
+        && (!body_prepared.wrapped_lines.is_empty()
+            || !batch_progress_prepared.wrapped_lines.is_empty());
+    let reasoning_prepared = if has_reasoning_trace {
+        Arc::new(prepare_reasoning_trace(app, width, reasoning_prefix_blank))
+    } else {
+        Arc::new(empty_prepared_messages())
+    };
     let has_streaming = app.is_processing() && !app.streaming_text().is_empty();
     let stream_prefix_blank = has_streaming
         && (!body_prepared.wrapped_lines.is_empty()
-            || !batch_progress_prepared.wrapped_lines.is_empty());
+            || !batch_progress_prepared.wrapped_lines.is_empty()
+            || !reasoning_prepared.wrapped_lines.is_empty());
     let streaming_prepared = if has_streaming {
         Arc::new(prepare_streaming_cached(app, width, stream_prefix_blank))
     } else {
@@ -593,7 +605,8 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     let is_initial_empty = app.onboarding_preview_mode()
         || (app.display_messages().is_empty()
             && !app.is_processing()
-            && app.streaming_text().is_empty());
+            && app.streaming_text().is_empty()
+            && !has_reasoning_trace);
 
     if is_initial_empty {
         let compose_start = Instant::now();
@@ -693,6 +706,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
         (PreparedSectionKind::Header, header_prepared),
         (PreparedSectionKind::Body, body_prepared),
         (PreparedSectionKind::BatchProgress, batch_progress_prepared),
+        (PreparedSectionKind::Reasoning, reasoning_prepared),
         (PreparedSectionKind::Streaming, streaming_prepared),
     ]);
     super::note_full_prep_phase_metrics(super::FullPrepPhaseMetrics {
@@ -1249,6 +1263,90 @@ fn prepare_streaming_cached(
     }
     for line in md_lines {
         lines.push(align_if_unset(line, align));
+    }
+
+    wrap_lines(lines, &[], &[], &[], width)
+}
+
+/// Hash of the retained/collapsing reasoning trace so the full-prep and viewport
+/// caches invalidate as the trace shrinks (a coarse height bucket keeps the
+/// animation smooth without rebuilding on every sub-pixel change).
+pub(super) fn reasoning_trace_hash(app: &dyn TuiState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    if let Some(markup) = app.reasoning_retained_markup() {
+        0u8.hash(&mut hasher);
+        markup.hash(&mut hasher);
+    }
+    if let Some((markup, progress)) = app.reasoning_collapse_state() {
+        1u8.hash(&mut hasher);
+        markup.hash(&mut hasher);
+        // Bucket the shrink fraction so we rebuild per visible-row change, not per
+        // frame; the collapse is short so ~40 buckets is plenty smooth.
+        ((progress * 40.0) as u32).hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+/// Build the retained / collapsing reasoning trace section that renders just above
+/// the live stream in `current` reasoning-display mode. The retained trace renders
+/// at full height; a collapsing trace shrinks vertically by dropping its top rows
+/// (so it appears to slide up and shrink away) as `progress` advances to 1.0.
+fn prepare_reasoning_trace(app: &dyn TuiState, width: u16, prefix_blank: bool) -> PreparedMessages {
+    let centered = app.centered_mode();
+    markdown::set_center_code_blocks(centered);
+    let display_width = width.saturating_sub(4) as usize;
+    let content_width = if centered {
+        display_width.clamp(1, 96)
+    } else {
+        display_width
+    };
+    let align = if centered {
+        ratatui::layout::Alignment::Center
+    } else {
+        ratatui::layout::Alignment::Left
+    };
+
+    let render_block = |markup: &str| -> Vec<Line<'static>> {
+        let mut md = markdown::render_markdown_with_width(markup, Some(content_width));
+        if centered {
+            markdown::recenter_structured_blocks_for_display(&mut md, display_width);
+        }
+        md
+    };
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // The retained trace (waiting for its successor) renders at full height.
+    if let Some(markup) = app.reasoning_retained_markup() {
+        for line in render_block(markup) {
+            lines.push(align_if_unset(line, align));
+        }
+    }
+
+    // The collapsing trace shrinks: keep only the bottom `keep` rows so it appears
+    // to fold upward into nothing. At progress 1.0 nothing remains.
+    if let Some((markup, progress)) = app.reasoning_collapse_state() {
+        let block = render_block(markup);
+        let total = block.len();
+        if total > 0 && progress < 1.0 {
+            let keep = ((total as f32) * (1.0 - progress)).ceil() as usize;
+            let keep = keep.min(total);
+            if keep > 0 {
+                let drop = total - keep;
+                for line in block.into_iter().skip(drop) {
+                    lines.push(align_if_unset(line, align));
+                }
+            }
+        }
+    }
+
+    if lines.is_empty() {
+        return empty_prepared_messages();
+    }
+
+    if prefix_blank {
+        lines.insert(0, Line::from(""));
     }
 
     wrap_lines(lines, &[], &[], &[], width)

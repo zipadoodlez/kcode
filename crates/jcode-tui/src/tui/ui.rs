@@ -933,6 +933,7 @@ struct FullPrepCacheKey {
     streaming_text_len: usize,
     streaming_text_hash: u64,
     batch_progress_hash: u64,
+    reasoning_trace_hash: u64,
 }
 
 #[derive(Clone)]

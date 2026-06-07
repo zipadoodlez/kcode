@@ -130,6 +130,19 @@ struct PendingLocalTransfer {
     receiver: mpsc::Receiver<anyhow::Result<PreparedTransferSession>>,
 }
 
+/// A reasoning trace that is animating out of view in `current` display mode. Its
+/// rendered height shrinks from full to zero over [`REASONING_COLLAPSE_DURATION`],
+/// after which it is dropped entirely. `markup` is the sentinel-wrapped dim+italic
+/// block exactly as it last rendered live.
+#[derive(Debug, Clone)]
+struct ReasoningCollapse {
+    markup: String,
+    started: Instant,
+}
+
+/// Duration of the reasoning-trace shrink-away animation (`current` mode).
+pub(crate) const REASONING_COLLAPSE_DURATION: Duration = Duration::from_millis(220);
+
 #[derive(Debug, Clone)]
 struct LocalRewindUndoSnapshot {
     messages: Vec<StoredMessage>,
@@ -761,6 +774,17 @@ pub struct App {
     // closed reasoning block back out of the stream in place, keeping any answer
     // text that preceded it in order.
     reasoning_block_start: Option<usize>,
+    // `current` reasoning-display mode keeps the *most recently closed* reasoning
+    // trace on screen (sliced out of the live stream but rendered as its own dim
+    // section just above the stream) until the next trace finishes. Holds the
+    // sentinel-wrapped dim+italic markup of that retained block, or `None` when
+    // nothing is retained.
+    reasoning_retained: Option<String>,
+    // A previously-retained reasoning trace that is now animating away: it shrinks
+    // vertically (its visible height interpolates from full down to zero) and is
+    // dropped once the animation completes. Holds the block markup plus the
+    // animation start instant.
+    reasoning_collapse: Option<ReasoningCollapse>,
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec

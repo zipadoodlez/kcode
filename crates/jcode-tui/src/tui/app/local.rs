@@ -59,6 +59,7 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     needs_redraw |= app.progress_copy_selection_edge_autoscroll();
     app.progress_mouse_scroll_animation();
     needs_redraw |= app.update_chat_overscroll();
+    needs_redraw |= app.tick_reasoning_collapse();
     needs_redraw |= app.update_pinned_images_auto_hide();
     if app.submit_input_on_startup && !app.is_processing {
         app.submit_input_on_startup = false;

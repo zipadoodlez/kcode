@@ -294,6 +294,23 @@ pub trait TuiState {
     /// Render streaming text using incremental markdown renderer
     /// This is more efficient than re-rendering on every frame
     fn render_streaming_markdown(&self, width: usize) -> Vec<Line<'static>>;
+    /// Sentinel-wrapped dim+italic markup of the reasoning trace that is currently
+    /// *retained* on screen above the live stream in `current` display mode (kept
+    /// until the next trace finishes), or `None` when nothing is retained.
+    fn reasoning_retained_markup(&self) -> Option<&str> {
+        None
+    }
+    /// Markup and shrink progress (0.0 = full height, 1.0 = fully gone) of the
+    /// reasoning trace that is currently animating away, or `None` when no collapse
+    /// animation is running.
+    fn reasoning_collapse_state(&self) -> Option<(&str, f32)> {
+        None
+    }
+    /// Whether a retained or collapsing reasoning trace still needs animation
+    /// frames (drives `periodic_redraw_required` / `redraw_interval`).
+    fn reasoning_animation_active(&self) -> bool {
+        false
+    }
     /// Whether centered mode is enabled
     fn centered_mode(&self) -> bool;
     /// Authentication status for all supported providers
@@ -1276,6 +1293,16 @@ pub(crate) fn redraw_interval_with_policy(
     let animation_interval = fps_to_duration(policy.animation_fps);
     let fast_interval = fps_to_duration(policy.redraw_fps);
 
+    // A retained/collapsing reasoning trace shrinks away even when the turn is no
+    // longer processing, so it needs a smooth animation cadence and must skip the
+    // deep-idle short-circuits below.
+    if state.reasoning_animation_active() {
+        return match policy.tier {
+            crate::perf::PerformanceTier::Minimal => fast_interval,
+            _ => animation_interval,
+        };
+    }
+
     // While the terminal is backgrounded (FocusLost), an idle session has nothing
     // worth a fast tick: decorative animations are paused and the run loop only
     // repaints throttled idle frames. Use the slow deep-idle interval so the
@@ -1380,6 +1407,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
     if deep_idle
         && !state.is_processing()
         && state.streaming_text().is_empty()
+        && !state.reasoning_animation_active()
         && !state.has_pending_mouse_scroll_animation()
         && !state.copy_selection_edge_autoscroll_active()
         && !state.remote_startup_phase_active()
@@ -1400,6 +1428,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
 
     if state.is_processing()
         || !state.streaming_text().is_empty()
+        || state.reasoning_animation_active()
         || state.status_notice().is_some()
         || state.has_pending_mouse_scroll_animation()
         || state.copy_selection_edge_autoscroll_active()

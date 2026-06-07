@@ -1373,6 +1373,28 @@ impl crate::tui::TuiState for App {
         renderer.update(&self.streaming.streaming_text)
     }
 
+    fn reasoning_retained_markup(&self) -> Option<&str> {
+        self.reasoning_retained.as_deref()
+    }
+
+    fn reasoning_collapse_state(&self) -> Option<(&str, f32)> {
+        let collapse = self.reasoning_collapse.as_ref()?;
+        let elapsed = collapse.started.elapsed().as_secs_f32();
+        let dur = crate::tui::app::REASONING_COLLAPSE_DURATION.as_secs_f32();
+        let t = if dur <= 0.0 {
+            1.0
+        } else {
+            (elapsed / dur).clamp(0.0, 1.0)
+        };
+        // Ease-in-out so the shrink starts and ends gently.
+        let progress = t * t * (3.0 - 2.0 * t);
+        Some((collapse.markup.as_str(), progress))
+    }
+
+    fn reasoning_animation_active(&self) -> bool {
+        App::reasoning_animation_active(self)
+    }
+
     fn centered_mode(&self) -> bool {
         self.centered
     }

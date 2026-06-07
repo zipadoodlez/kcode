@@ -70,6 +70,9 @@ pub enum PreparedSectionKind {
     Body,
     Header,
     BatchProgress,
+    /// Retained / collapsing reasoning trace shown just above the live stream in
+    /// `current` reasoning-display mode.
+    Reasoning,
     Streaming,
 }
 
