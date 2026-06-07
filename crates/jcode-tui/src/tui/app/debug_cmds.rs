@@ -533,6 +533,9 @@ impl App {
         } else if cmd == "scroll-suite" || cmd.starts_with("scroll-suite:") {
             let raw = cmd.strip_prefix("scroll-suite:");
             self.run_scroll_suite(raw)
+        } else if cmd == "widget-stability" || cmd.starts_with("widget-stability:") {
+            let raw = cmd.strip_prefix("widget-stability:");
+            self.run_widget_stability(raw)
         } else if cmd == "side-panel-latency" || cmd.starts_with("side-panel-latency:") {
             let raw = cmd.strip_prefix("side-panel-latency:");
             self.run_side_panel_latency_bench(raw)
@@ -718,6 +721,7 @@ impl App {
                  - scroll:<up|down|top|bottom> - control scroll\n\
                  - scroll-test[:<json>] - run offscreen scroll+diagram test\n\
                  - scroll-suite[:<json>] - run scroll+diagram test suite\n\
+                 - widget-stability[:<json>] - quantify info-widget movement while scrolling current transcript\n\
                  - side-panel-latency[:<json>] - benchmark headless side-panel input->frame latency\n\
                  - keys:<keyspec> - inject key events (e.g. keys:ctrl+r)\n\
                  - input - get current input buffer\n\

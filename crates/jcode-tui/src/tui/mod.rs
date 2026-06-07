@@ -19,6 +19,7 @@ use jcode_terminal_image::metadata as image_metadata;
 pub mod info_widget;
 mod info_widget_layout;
 mod info_widget_overview;
+pub mod info_widget_stability;
 mod keybind;
 mod layout_utils;
 pub mod login_picker;

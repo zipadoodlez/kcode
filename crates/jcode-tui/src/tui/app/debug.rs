@@ -202,6 +202,15 @@ pub(super) struct ScrollSuiteConfig {
     require_no_anomalies: Option<bool>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(super) struct WidgetStabilityConfig {
+    width: Option<u16>,
+    height: Option<u16>,
+    step: Option<usize>,
+    max_frames: Option<usize>,
+    include_frames: Option<bool>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct SidePanelLatencyConfig {
     width: Option<u16>,
