@@ -524,6 +524,39 @@ fn session_matches_resume_title(session: &Session, normalized_query: &str) -> bo
         .is_some_and(|title| title == normalized_query || title.contains(normalized_query))
 }
 
+/// Given a *bare* external provider id, return the id of a locally-imported
+/// snapshot (`imported_<tool>_<id>`) if one already exists on disk.
+///
+/// External CLI sessions (OpenCode, Codex, Claude Code) are imported into the
+/// jcode store under a stable `imported_<tool>_<provider_id>` stem. Resuming the
+/// full imported id always works, but a *bare* provider id (e.g. the OpenCode
+/// `ses_...` shown in the resume picker / reload handoff) previously only
+/// resolved by re-importing from the external tool's own storage. Once the user
+/// removed or reinstalled that tool, the re-import failed and resume hard-exited
+/// with "No session found matching 'ses_...'" even though the imported snapshot
+/// was still sitting in `~/.jcode/sessions` (issue #336).
+///
+/// Pi sessions are intentionally excluded: their imported id is a hash of the
+/// session *path*, not the provider id, so there is no bare-id mapping.
+fn resolve_imported_snapshot_id(provider_id: &str) -> Option<String> {
+    // Don't double-prefix an id that is already an imported stem.
+    if provider_id.starts_with("imported_") {
+        return None;
+    }
+
+    for candidate in [
+        crate::import::imported_opencode_session_id(provider_id),
+        crate::import::imported_codex_session_id(provider_id),
+        crate::import::imported_claude_code_session_id(provider_id),
+    ] {
+        if session_exists(&candidate) {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
 /// Find a session by ID, memorable name, generated title, or custom rename.
 /// If the input doesn't load as a full session ID, scan recent session snapshots
 /// and return the newest matching short name/title.
@@ -543,6 +576,15 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
                 );
             }
         }
+    }
+
+    // A *bare* external provider id (e.g. an OpenCode `ses_...` or a Codex/Claude
+    // session id) may already have a locally-imported snapshot stored under an
+    // `imported_<tool>_<id>` stem. Resolve to that snapshot before falling back to
+    // re-importing from the external tool's storage, which fails outright once the
+    // user has removed/reinstalled that tool (issue #336).
+    if let Some(imported_id) = resolve_imported_snapshot_id(name_or_id) {
+        return Ok(imported_id);
     }
 
     // Otherwise, search for a session with matching short name or title.
@@ -659,6 +701,54 @@ mod batch_crash_tests {
 
         let resolved = find_session_by_name_or_id(imported_id)?;
         assert_eq!(resolved, imported_id);
+
+        crate::env::remove_var("JCODE_HOME");
+        Ok(())
+    }
+
+    /// Regression test for issue #336: resuming a *bare* external provider id
+    /// (e.g. an OpenCode `ses_...`) must resolve to its already-imported local
+    /// snapshot even when the external tool's storage has been removed, instead
+    /// of hard-failing with "No session found matching 'ses_...'".
+    #[test]
+    fn find_session_by_name_or_id_resolves_bare_opencode_id_to_imported_snapshot()
+    -> anyhow::Result<()> {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir()?;
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let provider_id = "ses_2c72f8f4cffee6Qh7GId7D81Se";
+        let imported_id = crate::import::imported_opencode_session_id(provider_id);
+        let mut session = Session::create_with_id(
+            imported_id.clone(),
+            None,
+            Some("Analyzing /provider routing".to_string()),
+        );
+        session.status = SessionStatus::Closed;
+        session.provider_session_id = Some(provider_id.to_string());
+        session.provider_key = Some("opencode".to_string());
+        session.save()?;
+
+        // No external OpenCode store exists under JCODE_HOME/external, so the only
+        // way to resolve the bare id is via the local imported snapshot.
+        let resolved = find_session_by_name_or_id(provider_id)?;
+        assert_eq!(resolved, imported_id);
+
+        crate::env::remove_var("JCODE_HOME");
+        Ok(())
+    }
+
+    /// A bare provider id that has *no* imported snapshot on disk must still fail
+    /// (so the caller can fall back to external re-import or surface an error).
+    #[test]
+    fn find_session_by_name_or_id_bare_id_without_snapshot_still_errors() -> anyhow::Result<()> {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir()?;
+        crate::env::set_var("JCODE_HOME", temp.path());
+        std::fs::create_dir_all(temp.path().join("sessions"))?;
+
+        let err = find_session_by_name_or_id("ses_does_not_exist_anywhere");
+        assert!(err.is_err(), "expected unknown bare id to error");
 
         crate::env::remove_var("JCODE_HOME");
         Ok(())
