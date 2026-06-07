@@ -81,3 +81,44 @@ fn empty_input_is_safe() {
     assert_eq!(report.steps, 0);
     assert!(report.widgets.is_empty());
 }
+
+/// Demonstration / quantification harness. Run with:
+///   cargo test -p jcode-tui info_widget_stability::tests::demo_quantify -- --ignored --nocapture
+#[test]
+#[ignore]
+fn demo_quantify() {
+    fn profile(name: &str, content: &[u16]) {
+        let report = measure_scroll(content, 100, 24, &sample_data());
+        println!(
+            "{:<22} steps={:<4} travel/100={:>7.1} flicker/100={:>6.1} distraction/100={:>7.1} unstable={:>5.1}% worst={}",
+            name,
+            report.steps,
+            report.travel_per_100_lines,
+            report.flicker_per_100_lines,
+            report.distraction_per_100_lines,
+            report.unstable_step_fraction * 100.0,
+            report.worst_widget.as_deref().unwrap_or("-"),
+        );
+    }
+
+    println!("\n=== info-widget scroll-stability quantification (100x24 viewport) ===");
+    profile("flat narrow", &vec![20; 300]);
+    profile(
+        "long line every 7",
+        &(0..300)
+            .map(|i| if i % 7 == 0 { 95 } else { 28 })
+            .collect::<Vec<_>>(),
+    );
+    profile(
+        "long line every 3",
+        &(0..300)
+            .map(|i| if i % 3 == 0 { 90 } else { 30 })
+            .collect::<Vec<_>>(),
+    );
+    profile(
+        "code-like (ragged)",
+        &(0..300)
+            .map(|i| 20 + ((i * 37) % 70) as u16)
+            .collect::<Vec<_>>(),
+    );
+}
