@@ -1646,6 +1646,38 @@ impl App {
         server_groups: Vec<session_picker::ServerGroup>,
         orphan_sessions: Vec<session_picker::SessionInfo>,
     ) -> bool {
+        // When a picker overlay is already on screen (the common case: the cached
+        // list rendered instantly and this is the async full-refresh landing),
+        // reseed it in place so the user's selection, scroll, search, focus, and
+        // multi-select survive the swap. Rebuilding a fresh picker here used to
+        // yank the view out from under the user a second or two after they opened
+        // `/resume`, which felt like a lag/jump.
+        let has_overlay = self.session_picker_overlay.is_some();
+        if has_overlay {
+            let notice = match self.session_picker_mode {
+                SessionPickerMode::Resume => {
+                    if let Some(existing) = self.session_picker_overlay.as_ref() {
+                        existing
+                            .borrow_mut()
+                            .reseed_grouped(server_groups, orphan_sessions);
+                    }
+                    "Sessions loaded"
+                }
+                SessionPickerMode::CatchUp => {
+                    if let Some(existing) = self.session_picker_overlay.as_ref() {
+                        let mut picker = existing.borrow_mut();
+                        // Keep the catch-up filter active; reseed preserves it.
+                        picker.activate_catchup_filter();
+                        picker.reseed_grouped(server_groups, orphan_sessions);
+                    }
+                    "Catch Up sessions loaded"
+                }
+                SessionPickerMode::Onboarding { .. } => return false,
+            };
+            self.set_status_notice(notice);
+            return true;
+        }
+
         match self.session_picker_mode {
             SessionPickerMode::Resume => {
                 let picker = SessionPicker::new_grouped(server_groups, orphan_sessions);

@@ -348,6 +348,96 @@ impl SessionPicker {
         self.rebuild_items();
     }
 
+    /// Replace the backing session data in place while preserving the user's
+    /// current view state: the highlighted session (by id), preview scroll, list
+    /// scroll, search query/mode, filter, focused pane, test-session visibility,
+    /// and multi-select set. Used by the background `/resume` refresh so the
+    /// freshly loaded list does not yank the picker out from under the user
+    /// (which previously reset their selection, scroll, and search every time the
+    /// async load completed a second or two after opening).
+    pub fn reseed_grouped(
+        &mut self,
+        server_groups: Vec<ServerGroup>,
+        orphan_sessions: Vec<SessionInfo>,
+    ) {
+        // Remember what the user was looking at so we can restore it after the
+        // data swap + item rebuild.
+        let selected_id = self.selected_session().map(|session| session.id.clone());
+        let preview_scroll = self.scroll_offset;
+        let list_offset = self.list_state.offset();
+
+        let hidden_test_count: usize = server_groups
+            .iter()
+            .flat_map(|g| g.sessions.iter())
+            .chain(orphan_sessions.iter())
+            .filter(|s| s.is_debug)
+            .count();
+
+        let all_for_crash: Vec<SessionInfo> = server_groups
+            .iter()
+            .flat_map(|g| g.sessions.iter())
+            .chain(orphan_sessions.iter())
+            .cloned()
+            .collect();
+        self.crashed_sessions = crashed_sessions_from_all_sessions(&all_for_crash);
+        self.crashed_session_ids = self
+            .crashed_sessions
+            .as_ref()
+            .map(|info| info.session_ids.iter().cloned().collect())
+            .unwrap_or_default();
+
+        let (all_sessions, all_orphan_sessions) = if server_groups.is_empty() {
+            (orphan_sessions, Vec::new())
+        } else {
+            (Vec::new(), orphan_sessions)
+        };
+        self.all_sessions = all_sessions;
+        self.all_server_groups = server_groups;
+        self.all_orphan_sessions = all_orphan_sessions;
+        self.hidden_test_count = hidden_test_count;
+        self.loading_message = None;
+        // Invalidate the cached search pass so the rebuild re-evaluates matches
+        // against the new data instead of stale session refs.
+        self.cached_search_query.clear();
+        self.cached_search_refs.clear();
+        // Clear the stale selection/items before rebuilding: the old
+        // `visible_sessions` refs index into the just-replaced backing arrays, so
+        // `rebuild_items`' own "preserve selection" lookup would resolve them
+        // against mismatched data (causing index drift when the refreshed list is
+        // reordered). We restore the selection explicitly, by id, afterwards.
+        self.list_state.select(None);
+        self.items.clear();
+        self.visible_sessions.clear();
+        self.item_to_session.clear();
+
+        self.rebuild_items();
+
+        // Restore the highlighted session by id (not index) so it follows the
+        // session across a reordered/extended refresh.
+        let restored = selected_id
+            .as_deref()
+            .and_then(|id| self.find_item_index_for_session_id(id));
+        if let Some(idx) = restored {
+            self.list_state.select(Some(idx));
+        } else {
+            self.list_state
+                .select(self.item_to_session.iter().position(|x| x.is_some()));
+        }
+
+        // Restore the user's scroll position only when their selection survived
+        // the refresh so the view feels stable; otherwise fall back to the
+        // rebuild's defaults.
+        let still_selected = selected_id
+            .as_deref()
+            .and_then(|id| self.selected_session().map(|s| s.id == id))
+            .unwrap_or(false);
+        if still_selected {
+            self.scroll_offset = preview_scroll;
+            self.auto_scroll_preview = false;
+            *self.list_state.offset_mut() = list_offset;
+        }
+    }
+
     /// Restrict the picker to a single external CLI source (onboarding flow:
     /// "continue where you left off" in Codex or Claude Code).
     pub fn activate_external_cli_filter(&mut self, mode: SessionFilterMode) {

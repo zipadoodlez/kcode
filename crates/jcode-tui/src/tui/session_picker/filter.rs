@@ -330,7 +330,7 @@ impl SessionPicker {
         self.auto_scroll_preview = true;
     }
 
-    fn find_item_index_for_session_id(&self, session_id: &str) -> Option<usize> {
+    pub(super) fn find_item_index_for_session_id(&self, session_id: &str) -> Option<usize> {
         self.item_to_session
             .iter()
             .enumerate()

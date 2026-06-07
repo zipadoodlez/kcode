@@ -246,7 +246,16 @@ fn test_session_item_uses_single_primary_title_line() {
     let rows = picker.render_session_item_lines(&session, false);
     let text_rows: Vec<String> = rows.iter().map(line_text).collect();
 
-    assert_eq!(text_rows.len(), 4);
+    // The title must appear on exactly one row (the primary line); other rows
+    // (stats, prompt preview, created/dir) must not repeat it.
+    assert_eq!(
+        text_rows
+            .iter()
+            .filter(|row| row.contains("Generated release planning"))
+            .count(),
+        1,
+        "title should render on exactly one row: {text_rows:?}"
+    );
     assert!(text_rows[0].contains("Generated release planning"));
     assert!(
         text_rows[1..]
@@ -1234,5 +1243,105 @@ fn test_preview_sticky_prompt_header_appears_after_scrolling() {
             .next()
             .is_some_and(|c| c.is_ascii_digit()),
         "sticky header should begin with a prompt number:\nrow={header_row:?}"
+    );
+}
+
+#[test]
+fn test_reseed_grouped_preserves_selection_and_search() {
+    // Build a picker with several sessions, then simulate the user navigating to
+    // a specific session and typing a search. A background refresh that reseeds
+    // the same data must keep the highlighted session and the active search.
+    let sessions: Vec<SessionInfo> = (0..6)
+        .map(|i| {
+            make_session(
+                &format!("session_reseed_{i}"),
+                &format!("reseed{i}"),
+                false,
+                SessionStatus::Closed,
+            )
+        })
+        .collect();
+    let mut picker = SessionPicker::new(sessions.clone());
+
+    // Move selection to the third visible session.
+    picker.next();
+    picker.next();
+    let selected_before = picker
+        .selected_session()
+        .map(|s| s.id.clone())
+        .expect("a session should be selected");
+
+    // Activate a search that matches only one session id.
+    picker.search_query = "reseed4".to_string();
+    picker.search_active = true;
+    picker.focus = PaneFocus::Preview;
+    picker.rebuild_items();
+    let search_selected = picker
+        .selected_session()
+        .map(|s| s.id.clone())
+        .expect("search should leave a selection");
+
+    // Reseed with the same data (as the async refresh would).
+    picker.reseed_grouped(Vec::new(), sessions);
+
+    // Search query, search mode, focus, and the matched selection survive.
+    assert_eq!(picker.search_query, "reseed4");
+    assert!(picker.search_active);
+    assert_eq!(picker.focus, PaneFocus::Preview);
+    assert_eq!(
+        picker.selected_session().map(|s| s.id.clone()),
+        Some(search_selected)
+    );
+
+    // Clearing the search restores the full list; the originally highlighted
+    // session is still resolvable in the reseeded data.
+    picker.search_query.clear();
+    picker.search_active = false;
+    picker.rebuild_items();
+    assert!(
+        picker
+            .visible_session_iter_for_test()
+            .any(|s| s.id == selected_before),
+        "previously selected session should still be present after reseed"
+    );
+}
+
+#[test]
+fn test_reseed_grouped_keeps_selection_when_list_changes() {
+    // The highlighted session must follow its id even when the refreshed list has
+    // a different order / additional sessions (the realistic refresh case).
+    let initial: Vec<SessionInfo> = (0..4)
+        .map(|i| {
+            make_session(
+                &format!("session_keep_{i}"),
+                &format!("keep{i}"),
+                false,
+                SessionStatus::Closed,
+            )
+        })
+        .collect();
+    let mut picker = SessionPicker::new(initial.clone());
+    picker.next(); // select session_keep_1
+    let target = picker
+        .selected_session()
+        .map(|s| s.id.clone())
+        .expect("selection");
+
+    // Refreshed list: prepend a brand-new session and keep the rest, changing
+    // indices so a naive index-based selection would drift.
+    let mut refreshed = vec![make_session(
+        "session_keep_new",
+        "keepnew",
+        false,
+        SessionStatus::Closed,
+    )];
+    refreshed.extend(initial);
+
+    picker.reseed_grouped(Vec::new(), refreshed);
+
+    assert_eq!(
+        picker.selected_session().map(|s| s.id.clone()),
+        Some(target),
+        "selection should follow the session id across a reordered refresh"
     );
 }
