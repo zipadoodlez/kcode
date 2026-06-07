@@ -78,6 +78,7 @@ jcode-tui-render = { path = "../jcode-tui-render" }
 jcode-tui-visual-debug = { path = "../jcode-tui-visual-debug" }
 jcode-tui-session-picker = { path = "../jcode-tui-session-picker", features = ["serde"] }
 jcode-tui-style = { path = "../jcode-tui-style" }
+jcode-tui-permissions = { path = "../jcode-tui-permissions" }
 jcode-tui-tool-display = { path = "../jcode-tui-tool-display" }
 jcode-tui-usage-overlay = { path = "../jcode-tui-usage-overlay" }
 jcode-terminal-image = { path = "../jcode-terminal-image" }

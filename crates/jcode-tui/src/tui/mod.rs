@@ -25,7 +25,9 @@ pub mod login_picker;
 pub mod markdown;
 mod memory_profile;
 pub mod mermaid;
-pub mod permissions;
+pub mod permissions {
+    pub use jcode_tui_permissions::*;
+}
 mod remote_diff;
 pub mod screenshot;
 pub mod session_picker;

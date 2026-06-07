@@ -4121,6 +4121,7 @@ dependencies = [
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
  "jcode-tui-messages",
+ "jcode-tui-permissions",
  "jcode-tui-render",
  "jcode-tui-session-picker",
  "jcode-tui-style",
@@ -4209,6 +4210,20 @@ dependencies = [
  "jcode-message-types",
  "jcode-session-types",
  "jcode-tui-markdown",
+ "ratatui",
+ "serde_json",
+]
+
+[[package]]
+name = "jcode-tui-permissions"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "jcode-base",
+ "jcode-core",
+ "jcode-tui-style",
  "ratatui",
  "serde_json",
 ]
