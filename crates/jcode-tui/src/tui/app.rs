@@ -73,8 +73,8 @@ mod model_context;
 mod navigation;
 mod observe;
 pub(crate) mod onboarding_flow;
-mod productivity;
 mod onboarding_flow_control;
+mod productivity;
 mod remote;
 mod remote_notifications;
 mod replay;
@@ -851,6 +851,13 @@ pub struct App {
     remote_server_has_update: Option<bool>,
     // Auto-reload server when stale (set on first connect if server_has_update)
     pending_server_reload: bool,
+    // Real session id captured from a History event whose payload we deferred
+    // because of a server/runtime version mismatch. The deferral returns before
+    // `remote_session_id` is assigned, so without stashing the id here the
+    // subsequent client reload handoff has no session to resume and would
+    // fabricate a bogus `ses_<ts>_<rand>` id, producing
+    // "No session found matching ..." on the next launch (issue #328).
+    pending_reload_session_id: Option<String>,
     // Defense-in-depth circuit breaker for issue #277: count how many times this
     // client has auto-reloaded the server. A healthy reload happens at most once
     // (afterwards the server is up to date), so repeated auto-reloads indicate a
@@ -1257,7 +1264,11 @@ impl App {
             .count()
             .max(1);
         if self.kv_cache.kv_cache_turn_number == Some(turn_number) {
-            self.kv_cache.kv_cache_turn_call_index = self.kv_cache.kv_cache_turn_call_index.saturating_add(1).max(1);
+            self.kv_cache.kv_cache_turn_call_index = self
+                .kv_cache
+                .kv_cache_turn_call_index
+                .saturating_add(1)
+                .max(1);
         } else {
             self.kv_cache.kv_cache_turn_number = Some(turn_number);
             self.kv_cache.kv_cache_turn_call_index = 1;
@@ -1302,7 +1313,11 @@ impl App {
             .count()
             .max(1);
         if self.kv_cache.kv_cache_turn_number == Some(turn_number) {
-            self.kv_cache.kv_cache_turn_call_index = self.kv_cache.kv_cache_turn_call_index.saturating_add(1).max(1);
+            self.kv_cache.kv_cache_turn_call_index = self
+                .kv_cache
+                .kv_cache_turn_call_index
+                .saturating_add(1)
+                .max(1);
         } else {
             self.kv_cache.kv_cache_turn_number = Some(turn_number);
             self.kv_cache.kv_cache_turn_call_index = 1;
@@ -1421,7 +1436,8 @@ impl App {
             ));
 
         let request = self
-            .kv_cache.pending_kv_cache_request
+            .kv_cache
+            .pending_kv_cache_request
             .take()
             .unwrap_or_else(|| self.fallback_pending_kv_cache_request());
         self.kv_cache.current_api_usage_recorded = true;
@@ -1444,22 +1460,29 @@ impl App {
         }
 
         self.token_accounting.total_cache_reported_input_tokens = self
-            .token_accounting.total_cache_reported_input_tokens
+            .token_accounting
+            .total_cache_reported_input_tokens
             .saturating_add(self.streaming.streaming_input_tokens);
         if let Some(optimal) = optimal_input_tokens {
             self.token_accounting.total_cache_optimal_input_tokens = self
-                .token_accounting.total_cache_optimal_input_tokens
+                .token_accounting
+                .total_cache_optimal_input_tokens
                 .saturating_add(optimal);
         }
         self.token_accounting.total_cache_read_tokens = self
-            .token_accounting.total_cache_read_tokens
+            .token_accounting
+            .total_cache_read_tokens
             .saturating_add(self.streaming.streaming_cache_read_tokens.unwrap_or(0));
         self.token_accounting.total_cache_creation_tokens = self
-            .token_accounting.total_cache_creation_tokens
+            .token_accounting
+            .total_cache_creation_tokens
             .saturating_add(self.streaming.streaming_cache_creation_tokens.unwrap_or(0));
-        self.token_accounting.last_cache_reported_input_tokens = Some(self.streaming.streaming_input_tokens);
-        self.token_accounting.last_cache_read_tokens = Some(self.streaming.streaming_cache_read_tokens.unwrap_or(0));
-        self.token_accounting.last_cache_creation_tokens = Some(self.streaming.streaming_cache_creation_tokens.unwrap_or(0));
+        self.token_accounting.last_cache_reported_input_tokens =
+            Some(self.streaming.streaming_input_tokens);
+        self.token_accounting.last_cache_read_tokens =
+            Some(self.streaming.streaming_cache_read_tokens.unwrap_or(0));
+        self.token_accounting.last_cache_creation_tokens =
+            Some(self.streaming.streaming_cache_creation_tokens.unwrap_or(0));
         self.token_accounting.last_cache_optimal_input_tokens = optimal_input_tokens;
 
         self.log_kv_cache_usage_summary(&request, optimal_input_tokens);
@@ -1491,7 +1514,8 @@ impl App {
             self.token_accounting.total_cache_read_tokens,
             self.token_accounting.total_cache_reported_input_tokens,
         );
-        let session_optimal_read_pct = if self.token_accounting.total_cache_optimal_input_tokens > 0 {
+        let session_optimal_read_pct = if self.token_accounting.total_cache_optimal_input_tokens > 0
+        {
             Some(ratio_pct(
                 self.token_accounting.total_cache_read_tokens,
                 self.token_accounting.total_cache_optimal_input_tokens,
@@ -1500,7 +1524,8 @@ impl App {
             None
         };
         let miss = self
-            .kv_cache.kv_cache_miss_samples
+            .kv_cache
+            .kv_cache_miss_samples
             .last()
             .filter(|sample| {
                 sample.turn_number == request.turn_number && sample.call_index == request.call_index
@@ -1715,7 +1740,8 @@ impl App {
             reason,
         });
         if self.kv_cache.kv_cache_miss_samples.len() > Self::KV_CACHE_MAX_MISS_SAMPLES {
-            let overflow = self.kv_cache.kv_cache_miss_samples.len() - Self::KV_CACHE_MAX_MISS_SAMPLES;
+            let overflow =
+                self.kv_cache.kv_cache_miss_samples.len() - Self::KV_CACHE_MAX_MISS_SAMPLES;
             self.kv_cache.kv_cache_miss_samples.drain(0..overflow);
         }
     }

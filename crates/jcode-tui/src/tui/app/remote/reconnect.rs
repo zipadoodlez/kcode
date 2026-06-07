@@ -601,10 +601,11 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
             terminal
                 .draw(|frame| crate::tui::ui::draw(frame, app))
                 .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            let session_id = app
-                .remote_session_id
-                .clone()
-                .unwrap_or_else(|| crate::id::new_id("ses"));
+            // Resolve the real session id (see `reload_handoff_session_id`):
+            // prefer the live id, then a deferred-history id, then the launch
+            // resume target, and only fabricate as a last resort. Fabricating
+            // eagerly here was the root cause of issue #328.
+            let session_id = app.reload_handoff_session_id();
             if (has_reload_ctx_for_session || !app.reload_info.is_empty())
                 && let Ok(jcode_dir) = crate::storage::jcode_dir()
             {

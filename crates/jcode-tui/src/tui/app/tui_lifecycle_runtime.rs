@@ -117,6 +117,31 @@ impl App {
             .or_else(|| self.resume_session_id.clone())
     }
 
+    /// Resolve the session id to resume across a client reload re-exec.
+    ///
+    /// Prefers the live `remote_session_id`, then the id captured from a
+    /// History payload that was deferred for a version mismatch
+    /// (`pending_reload_session_id`), then the resume target the client was
+    /// launched with. Only when none of those is known do we fabricate a fresh
+    /// `ses_*` id. Fabricating eagerly is what caused issue #328: the re-exec
+    /// would `jcode --resume <bogus-id>` and crash with "No session found
+    /// matching ..." after an auto-update, because the version-mismatch defer
+    /// path returns before `remote_session_id` is ever assigned.
+    pub(super) fn reload_handoff_session_id(&self) -> String {
+        self.remote_session_id
+            .clone()
+            .or_else(|| self.pending_reload_session_id.clone())
+            .or_else(|| self.resume_session_id.clone())
+            .unwrap_or_else(|| {
+                let fabricated = crate::id::new_id("ses");
+                crate::logging::warn(&format!(
+                    "Reload handoff has no known session id (remote_session_id, pending reload id, and resume target all empty); fabricating {} for re-exec",
+                    fabricated
+                ));
+                fabricated
+            })
+    }
+
     pub fn runtime_mode(&self) -> AppRuntimeMode {
         self.runtime_mode
     }

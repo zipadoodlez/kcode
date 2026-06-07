@@ -430,10 +430,14 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.streaming.streaming_cache_creation_tokens = cache_creation_input;
             }
             if app.record_completed_stream_cache_usage() {
-                app.token_accounting.total_input_tokens =
-                    app.token_accounting.total_input_tokens.saturating_add(input);
-                app.token_accounting.total_output_tokens =
-                    app.token_accounting.total_output_tokens.saturating_add(output);
+                app.token_accounting.total_input_tokens = app
+                    .token_accounting
+                    .total_input_tokens
+                    .saturating_add(input);
+                app.token_accounting.total_output_tokens = app
+                    .token_accounting
+                    .total_output_tokens
+                    .saturating_add(output);
                 // The server only reports tokens, never a dollar cost, so the
                 // remote client prices each completed call itself. This is the
                 // first usage snapshot for this call, so bill the full counts.
@@ -449,10 +453,12 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.last_turn_input_tokens = (input > 0).then_some(input);
             } else if was_recorded && app.kv_cache.current_api_usage_recorded {
                 app.token_accounting.total_input_tokens = app
-                    .token_accounting.total_input_tokens
+                    .token_accounting
+                    .total_input_tokens
                     .saturating_add(input.saturating_sub(previous_input));
                 app.token_accounting.total_output_tokens = app
-                    .token_accounting.total_output_tokens
+                    .token_accounting
+                    .total_output_tokens
                     .saturating_add(output.saturating_sub(previous_output));
                 // Bill only the new tokens since the previous snapshot for this
                 // same call, so a call that reports usage multiple times while
@@ -460,10 +466,12 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.accrue_remote_call_cost(
                     input.saturating_sub(previous_input),
                     output.saturating_sub(previous_output),
-                    app.streaming.streaming_cache_read_tokens
+                    app.streaming
+                        .streaming_cache_read_tokens
                         .unwrap_or(0)
                         .saturating_sub(previous_cache_read.unwrap_or(0)),
-                    app.streaming.streaming_cache_creation_tokens
+                    app.streaming
+                        .streaming_cache_creation_tokens
                         .unwrap_or(0)
                         .saturating_sub(previous_cache_creation.unwrap_or(0)),
                 );
@@ -479,21 +487,28 @@ pub(in crate::tui::app) fn handle_server_event(
                         input
                     };
                     app.token_accounting.total_cache_reported_input_tokens = app
-                        .token_accounting.total_cache_reported_input_tokens
+                        .token_accounting
+                        .total_cache_reported_input_tokens
                         .saturating_add(reported_delta);
-                    app.token_accounting.total_cache_read_tokens = app.token_accounting.total_cache_read_tokens.saturating_add(
-                        app.streaming.streaming_cache_read_tokens
-                            .unwrap_or(0)
-                            .saturating_sub(previous_cache_read.unwrap_or(0)),
-                    );
-                    app.token_accounting.total_cache_creation_tokens =
-                        app.token_accounting.total_cache_creation_tokens.saturating_add(
-                            app.streaming.streaming_cache_creation_tokens
+                    app.token_accounting.total_cache_read_tokens =
+                        app.token_accounting.total_cache_read_tokens.saturating_add(
+                            app.streaming
+                                .streaming_cache_read_tokens
+                                .unwrap_or(0)
+                                .saturating_sub(previous_cache_read.unwrap_or(0)),
+                        );
+                    app.token_accounting.total_cache_creation_tokens = app
+                        .token_accounting
+                        .total_cache_creation_tokens
+                        .saturating_add(
+                            app.streaming
+                                .streaming_cache_creation_tokens
                                 .unwrap_or(0)
                                 .saturating_sub(previous_cache_creation.unwrap_or(0)),
                         );
                     app.token_accounting.last_cache_reported_input_tokens = Some(input);
-                    app.token_accounting.last_cache_read_tokens = Some(app.streaming.streaming_cache_read_tokens.unwrap_or(0));
+                    app.token_accounting.last_cache_read_tokens =
+                        Some(app.streaming.streaming_cache_read_tokens.unwrap_or(0));
                     app.token_accounting.last_cache_creation_tokens =
                         Some(app.streaming.streaming_cache_creation_tokens.unwrap_or(0));
                 }
@@ -991,6 +1006,17 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.remote_server_icon = server_icon.clone();
                 app.remote_server_has_update = server_has_update;
                 app.pending_server_reload = true;
+                // Remember the session the server told us about *before* bailing
+                // out. We deliberately return below without assigning
+                // `app.remote_session_id` (history stays deferred until after the
+                // server reloads), but the client reload handoff still needs a
+                // real session id to resume. Without this, the handoff falls back
+                // to a freshly fabricated `ses_<ts>_<rand>` id that no store can
+                // ever resolve, leaving the user at a "No session found matching
+                // ..." shell prompt after an auto-update (issue #328).
+                if !session_id.is_empty() {
+                    app.pending_reload_session_id = Some(session_id.clone());
+                }
                 app.clear_remote_startup_phase();
                 if client_detected_stale {
                     // The client independently measured the server's release as
@@ -1169,7 +1195,8 @@ pub(in crate::tui::app) fn handle_server_event(
                     totals.cache_creation_input_tokens
                 ));
             }
-            app.workspace_client.sync_after_history(&session_id, &app.remote_sessions);
+            app.workspace_client
+                .sync_after_history(&session_id, &app.remote_sessions);
 
             if server_has_update == Some(true) && !app.pending_server_reload {
                 app.pending_server_reload = true;
