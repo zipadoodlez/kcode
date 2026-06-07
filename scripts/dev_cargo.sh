@@ -408,6 +408,116 @@ maybe_configure_low_memory_selfdev() {
   log "using low-memory selfdev overrides (${selfdev_low_memory_status#enabled:})"
 }
 
+# Enable rustc's parallel front-end (`-Zthreads`) for iterative dev/selfdev/test
+# builds. The jcode monoliths (jcode-base/app-core/tui) are ~80% single-threaded
+# front-end (type-check + borrow-check + monomorphization collection); at
+# opt-level 0 that front-end, not codegen, dominates wall time. The parallel
+# front-end is a nightly-only `-Z` flag, so this is gated on a nightly toolchain
+# being available and only applies to the unoptimized iteration profiles.
+#
+# Measured on this repo (Intel Ultra 7, 8 logical cores, selfdev profile):
+#   jcode-base clean recompile  25.3s -> 12.7s   (-Zthreads=4)
+#   base-edit full-chain rebuild  ~16s -> ~10s
+# Cranelift was tried too and was *slower* here (16.5s) because the bottleneck is
+# the front-end, not codegen, so we deliberately do not enable it.
+#
+# Controls:
+#   JCODE_PARALLEL_FRONTEND=auto|0|1   (default auto)
+#   JCODE_FRONTEND_THREADS=<n>         (default 4; diminishing returns past 4)
+#   JCODE_DEV_TOOLCHAIN=<name>         (default: nightly when present)
+parallel_frontend_status="disabled"
+parallel_frontend_toolchain=""
+
+dev_nightly_toolchain() {
+  # Prefer an explicit override, else a `+toolchain` already on the argv, else
+  # the first installed nightly toolchain.
+  if [[ -n "${JCODE_DEV_TOOLCHAIN:-}" ]]; then
+    printf '%s\n' "$JCODE_DEV_TOOLCHAIN"
+    return 0
+  fi
+  local tc
+  tc=$(rustup toolchain list 2>/dev/null | awk '/^nightly/ {print $1; exit}')
+  tc=${tc%% *}
+  [[ -n "$tc" ]] && printf '%s\n' "$tc"
+}
+
+configure_parallel_frontend() {
+  local requested="${JCODE_PARALLEL_FRONTEND:-auto}"
+  local forced="false"
+  case "$requested" in
+    0|false|no|off)
+      parallel_frontend_status="disabled-by-env"
+      return 0
+      ;;
+    1|true|yes|on|force) forced="true" ;;
+    auto) ;;
+    *)
+      parallel_frontend_status="disabled-bad-env:${requested}"
+      return 0
+      ;;
+  esac
+
+  # Only worth it for the unoptimized iteration profiles where the front-end is
+  # the bottleneck; release/release-lto keep their own (codegen-bound) path.
+  #
+  # By default (`auto`) we restrict to the `selfdev` profile: it builds into the
+  # isolated `target/selfdev` dir that only this script + `selfdev build` use, so
+  # adding `-Zthreads` to RUSTFLAGS (which changes cargo's unit fingerprint)
+  # cannot thrash rust-analyzer's `target/debug` cache. Forcing the flag on
+  # (`JCODE_PARALLEL_FRONTEND=1`) opts dev/test in too, accepting that potential
+  # cache contention.
+  local profile
+  profile=$(selected_profile "$@")
+  case "$profile" in
+    selfdev) ;;
+    dev|test)
+      if [[ "$forced" != "true" ]]; then
+        parallel_frontend_status="skipped-profile-shared-target:${profile}"
+        return 0
+      fi
+      ;;
+    *)
+      parallel_frontend_status="skipped-profile:${profile}"
+      return 0
+      ;;
+  esac
+
+  # If the caller already pinned a toolchain via `cargo +foo`, don't override it.
+  for arg in "$@"; do
+    case "$arg" in
+      +*)
+        parallel_frontend_status="skipped-explicit-toolchain:${arg}"
+        return 0
+        ;;
+    esac
+  done
+
+  command -v rustup >/dev/null 2>&1 || {
+    parallel_frontend_status="skipped-no-rustup"
+    return 0
+  }
+  local tc
+  tc=$(dev_nightly_toolchain)
+  if [[ -z "$tc" ]]; then
+    parallel_frontend_status="skipped-no-nightly"
+    return 0
+  fi
+  # Confirm the toolchain actually resolves (installed, not just configured).
+  if ! rustup run "$tc" rustc --version >/dev/null 2>&1; then
+    parallel_frontend_status="skipped-nightly-unavailable:${tc}"
+    return 0
+  fi
+
+  local threads="${JCODE_FRONTEND_THREADS:-4}"
+  [[ "$threads" =~ ^[0-9]+$ && "$threads" -ge 1 ]] || threads=4
+
+  parallel_frontend_toolchain="$tc"
+  export RUSTUP_TOOLCHAIN="$tc"
+  append_rustflags "-Zthreads=${threads}"
+  parallel_frontend_status="enabled:${tc}:threads=${threads}"
+  log "using parallel rustc front-end (${tc}, -Zthreads=${threads})"
+}
+
 configure_linux_linker() {
   local requested_mode="${JCODE_FAST_LINKER:-auto}"
   local mode="$requested_mode"
@@ -465,6 +575,7 @@ os=$(uname -s)
 arch=$(uname -m)
 sccache_status=$sccache_status
 selfdev_low_memory_status=$selfdev_low_memory_status
+parallel_frontend_status=$parallel_frontend_status
 build_jobs_status=$build_jobs_status
 cargo_build_jobs=${CARGO_BUILD_JOBS:-<unset>}
 feature_profile_status=$feature_profile_status
@@ -727,6 +838,7 @@ validate_feature_profile
 export_git_build_metadata
 maybe_configure_low_memory_selfdev "$@"
 maybe_enable_sccache "$@"
+configure_parallel_frontend "$@"
 select_build_jobs
 
 if [[ "$(uname -s)" == "Linux" ]] && [[ "$(uname -m)" == "x86_64" ]]; then
