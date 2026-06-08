@@ -845,18 +845,18 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/resumeall" || trimmed == "/resume-all" {
+                if trimmed == "/continue" || trimmed == "/resumeall" || trimmed == "/resume-all" {
                     app.push_display_message(DisplayMessage::system(
-                        "Resuming all interrupted sessions...".to_string(),
+                        "Continuing all interrupted sessions...".to_string(),
                     ));
                     match remote.resume_all_sessions().await {
-                        Ok(_) => app.set_status_notice("Resuming interrupted sessions..."),
+                        Ok(_) => app.set_status_notice("Continuing interrupted sessions..."),
                         Err(error) => {
                             app.push_display_message(DisplayMessage::error(format!(
-                                "Failed to resume sessions: {}",
+                                "Failed to continue sessions: {}",
                                 error
                             )));
-                            app.set_status_notice("Resume all failed");
+                            app.set_status_notice("Continue all failed");
                         }
                     }
                     return Ok(());

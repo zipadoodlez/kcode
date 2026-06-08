@@ -314,7 +314,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         lines.push(help_entry("/client-reload", "Force reload client binary"));
         lines.push(help_entry("/server-reload", "Force reload server binary"));
         lines.push(help_entry(
-            "/resumeall",
+            "/continue",
             "Continue every interrupted live session that would auto-resume",
         ));
     }

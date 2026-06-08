@@ -150,9 +150,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::remote("/client-reload", "Force reload client binary"),
     RegisteredCommand::remote("/server-reload", "Force reload server binary"),
     RegisteredCommand::remote(
-        "/resumeall",
+        "/continue",
         "Continue every interrupted live session that would auto-resume",
     ),
+    RegisteredCommand::remote("/resumeall", "Alias for /continue"),
     RegisteredCommand::hidden("/z", "Secret premium-mode command"),
     RegisteredCommand::hidden("/zz", "Secret premium-mode command"),
     RegisteredCommand::hidden("/zzz", "Secret premium-mode command"),
