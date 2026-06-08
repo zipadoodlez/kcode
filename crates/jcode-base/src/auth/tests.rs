@@ -781,3 +781,57 @@ fn configured_api_key_source_rejects_invalid_values() {
         crate::env::remove_var(file_var);
     }
 }
+
+#[test]
+fn anthropic_api_provider_reports_api_key_independently_of_oauth() {
+    // Regression: the `anthropic-api` (API-key) login provider used to share the
+    // OAuth/subscription credential's availability via `auth_state_key::Anthropic`.
+    // That made it claim "available / OAuth + API key" even with zero API key
+    // configured, then fail at request time (API-key mode never falls back to
+    // OAuth). It must report purely on the presence of an Anthropic API key.
+    let _lock = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().expect("create temp dir");
+    let home = temp.path().join("home");
+    let xdg = temp.path().join("xdg");
+    std::fs::create_dir_all(&home).expect("create temp home");
+    std::fs::create_dir_all(&xdg).expect("create temp xdg config");
+    let saved = ["JCODE_HOME", "XDG_CONFIG_HOME", "HOME", "ANTHROPIC_API_KEY"]
+        .into_iter()
+        .map(|key| (key, std::env::var_os(key)))
+        .collect::<Vec<_>>();
+
+    crate::env::set_var("JCODE_HOME", temp.path().join("jcode-home"));
+    crate::env::set_var("XDG_CONFIG_HOME", &xdg);
+    crate::env::set_var("HOME", &home);
+    crate::env::remove_var("ANTHROPIC_API_KEY");
+    AuthStatus::invalidate_cache();
+
+    // No API key anywhere: the API-key provider must be NotConfigured, even if
+    // OAuth credentials happen to exist for the separate `claude` provider.
+    let status = AuthStatus::check_fast();
+    let api = status.assessment_for_provider(crate::provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER);
+    assert_eq!(
+        api.state,
+        AuthState::NotConfigured,
+        "anthropic-api must not borrow OAuth availability"
+    );
+    assert_eq!(api.method_detail, "not configured");
+
+    // With an API key present (env here; config-file path is covered separately),
+    // the API-key provider becomes available and names ANTHROPIC_API_KEY honestly.
+    crate::env::set_var("ANTHROPIC_API_KEY", "sk-ant-api-test-key");
+    AuthStatus::invalidate_cache();
+    let status = AuthStatus::check_fast();
+    let api = status.assessment_for_provider(crate::provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER);
+    assert_eq!(api.state, AuthState::Available);
+    assert!(
+        api.method_detail.contains("ANTHROPIC_API_KEY"),
+        "method detail should name the API key env: {}",
+        api.method_detail
+    );
+
+    for (key, value) in saved {
+        restore_env_var(key, value);
+    }
+    AuthStatus::invalidate_cache();
+}

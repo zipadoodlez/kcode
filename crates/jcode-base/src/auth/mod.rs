@@ -342,8 +342,15 @@ impl AuthStatus {
                     AuthState::NotConfigured
                 }
             }
-            crate::provider_catalog::LoginProviderTarget::Azure => {
-                if crate::auth::azure::has_configuration() {
+            // The `anthropic-api` login provider is the *API-key* path. It must
+            // report on the presence of an Anthropic API key alone, never borrow
+            // the OAuth/subscription credential's availability (that is the
+            // separate `claude` provider). Sharing `auth_state_key::Anthropic`
+            // previously made this provider claim "available / OAuth + API key"
+            // even with zero API key configured, which then failed at request
+            // time because API-key mode never falls back to OAuth.
+            crate::provider_catalog::LoginProviderTarget::ClaudeApiKey => {
+                if api_key_available("ANTHROPIC_API_KEY", "anthropic.env") {
                     AuthState::Available
                 } else {
                     AuthState::NotConfigured
@@ -407,9 +414,9 @@ impl AuthStatus {
                     "not configured".to_string()
                 }
             }
-            crate::provider_catalog::LoginProviderTarget::Azure => {
+            crate::provider_catalog::LoginProviderTarget::ClaudeApiKey => {
                 if self.state_for_provider(provider) == AuthState::Available {
-                    crate::auth::azure::method_detail()
+                    "API key (`ANTHROPIC_API_KEY`)".to_string()
                 } else {
                     "not configured".to_string()
                 }
@@ -578,6 +585,29 @@ impl AuthStatus {
                     env_source("OPENAI_API_KEY"),
                     config_source("OPENAI_API_KEY", "openai.env", "~/.config/jcode/openai.env"),
                     external_api_key_source("OPENAI_API_KEY"),
+                ]);
+                (
+                    source,
+                    detail,
+                    AuthExpiryConfidence::NotApplicable,
+                    AuthRefreshSupport::NotApplicable,
+                    AuthValidationMethod::PresenceCheck,
+                )
+            }
+            crate::provider_catalog::LoginProviderTarget::ClaudeApiKey => {
+                // The Anthropic API key is most commonly stored in the app
+                // config file (`~/.config/jcode/anthropic.env`), *not* an env
+                // var and *not* `~/.jcode/auth.json` (which holds the separate
+                // OAuth accounts). List every place it can live so the real
+                // source is always discoverable instead of looking "absent".
+                let (source, detail) = summarize_sources(vec![
+                    env_source("ANTHROPIC_API_KEY"),
+                    config_source(
+                        "ANTHROPIC_API_KEY",
+                        "anthropic.env",
+                        "~/.config/jcode/anthropic.env",
+                    ),
+                    external_api_key_source("ANTHROPIC_API_KEY"),
                 ]);
                 (
                     source,
@@ -914,6 +944,11 @@ fn assessment_for_key(
             let (source, detail) = summarize_sources(vec![
                 anthropic_oauth_source(status),
                 env_source("ANTHROPIC_API_KEY"),
+                config_source(
+                    "ANTHROPIC_API_KEY",
+                    "anthropic.env",
+                    "~/.config/jcode/anthropic.env",
+                ),
             ]);
             (
                 source,

@@ -9,3 +9,5 @@ ios_simulator_screenshot.png
 /.tmp/
 /.jcode/generated-images/
 /telemetry-worker/backups/
+target-ttest/
+target-ttest*/

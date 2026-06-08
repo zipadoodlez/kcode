@@ -44,6 +44,17 @@ pub fn format_record_label(record: &ProviderValidationRecord) -> String {
     } else {
         "validation failed"
     };
+
+    // A cached validation record describes the *last* probe, not the live
+    // credential. Once it ages past the staleness window we must not present it
+    // as current truth: a long-expired "validation failed" record routinely
+    // misled both humans and agents into believing a working credential was
+    // broken (e.g. an OAuth token that has since auto-refreshed). Mark stale
+    // records explicitly so every surface re-checks instead of trusting them.
+    if crate::auth::doctor::validation_is_stale(record.checked_at_ms) {
+        return format!("{} (stale, last checked {}; re-validate)", base, age);
+    }
+
     format!("{} ({})", base, age)
 }
 
@@ -85,5 +96,42 @@ mod tests {
             summary: "provider smoke failed".to_string(),
         };
         assert!(format_record_label(&record).starts_with("validation failed"));
+    }
+
+    #[test]
+    fn format_record_label_marks_stale_records() {
+        // A record older than the staleness window must not be presented as a
+        // current fact: it should be explicitly flagged so surfaces re-validate
+        // instead of trusting an outdated pass/fail verdict.
+        let stale_ms = chrono::Utc::now().timestamp_millis()
+            - crate::auth::doctor::VALIDATION_STALE_AFTER_MS
+            - 1;
+        let failed = ProviderValidationRecord {
+            checked_at_ms: stale_ms,
+            success: false,
+            provider_smoke_ok: Some(false),
+            tool_smoke_ok: Some(false),
+            summary: "auth status is expired".to_string(),
+        };
+        let label = format_record_label(&failed);
+        assert!(label.contains("stale"), "stale label missing: {label}");
+        assert!(
+            label.contains("re-validate"),
+            "stale label should prompt re-validation: {label}"
+        );
+
+        let passed = ProviderValidationRecord {
+            checked_at_ms: stale_ms,
+            success: true,
+            provider_smoke_ok: Some(true),
+            tool_smoke_ok: Some(true),
+            summary: "ok".to_string(),
+        };
+        let label = format_record_label(&passed);
+        assert!(
+            label.starts_with("runtime + tool validated"),
+            "stale-but-passing record should keep its verdict prefix: {label}"
+        );
+        assert!(label.contains("stale"), "stale label missing: {label}");
     }
 }
