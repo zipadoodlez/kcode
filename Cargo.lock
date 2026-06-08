@@ -3405,6 +3405,7 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
+ "core-graphics",
  "crossterm",
  "dirs",
  "flate2",
