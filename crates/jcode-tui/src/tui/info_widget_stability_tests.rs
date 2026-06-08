@@ -253,3 +253,61 @@ fn demo_info_tradeoff() {
         &(0..300).map(|i| 20 + ((i * 37) % 70) as u16).collect::<Vec<_>>(),
     );
 }
+
+/// Tune the look-ahead window `W`: for each profile, compare anchored (W=0) with
+/// LookAhead(W) across a sweep, reporting flicker, coverage, and per-kind
+/// visibility so we can pick the smallest W that kills the blink without
+/// sacrificing too much coverage. Run with:
+///   cargo test -p jcode-tui info_widget_stability::tests::demo_lookahead_sweep -- --ignored --nocapture
+#[test]
+#[ignore]
+fn demo_lookahead_sweep() {
+    fn line(label: &str, r: &super::StabilityReport) {
+        println!(
+            "  {:<14} vis={:.2} cells={:>5.0} kinds={} keepVis={:>3.0}% flicker/100={:>5.1} travel/100={:>5.1} overlap={}",
+            label,
+            r.avg_widgets_visible,
+            r.avg_visible_cells,
+            r.distinct_kinds_seen,
+            r.mean_kind_visibility * 100.0,
+            r.flicker_per_100_lines,
+            r.travel_per_100_lines,
+            r.overlap_frames,
+        );
+    }
+
+    let profiles: Vec<(&str, Vec<u16>)> = vec![
+        ("flat narrow", vec![20; 300]),
+        (
+            "long line /7",
+            (0..300).map(|i| if i % 7 == 0 { 95 } else { 28 }).collect(),
+        ),
+        (
+            "long line /14",
+            (0..300).map(|i| if i % 14 == 0 { 95 } else { 28 }).collect(),
+        ),
+        (
+            "code-like",
+            (0..300).map(|i| 20 + ((i * 37) % 70) as u16).collect(),
+        ),
+    ];
+
+    println!("\n=== look-ahead window sweep (100x24, rich widget set) ===");
+    for (name, content) in &profiles {
+        println!("{name}:");
+        line(
+            "greedy",
+            &measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::Greedy),
+        );
+        line(
+            "anchored(W=0)",
+            &measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::Anchored),
+        );
+        for w in [2u16, 4, 6, 8, 12] {
+            line(
+                &format!("lookahead({w})"),
+                &measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::LookAhead(w)),
+            );
+        }
+    }
+}

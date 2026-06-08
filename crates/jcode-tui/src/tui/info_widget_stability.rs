@@ -367,6 +367,45 @@ pub enum SimMode {
     /// memory, so every frame independently fills the largest available pockets.
     /// This is the greedy ideal the stable layout is measured against.
     Greedy,
+    /// Anchored carry PLUS look-ahead sizing: each row's free width is the minimum
+    /// over a `±window` band of content lines, so a docked widget is pre-sized to
+    /// clear long lines before they scroll under it. Eliminates the resize/blink.
+    LookAhead(u16),
+}
+
+/// Build the per-row free-width profile for `scroll`. When `window > 0`, each row's
+/// value is the *minimum* free width over the content lines `[line-window,
+/// line+window]`, i.e. the width that stays safe across `±window` scroll steps.
+/// `window == 0` reproduces the instantaneous profile.
+fn right_widths_for_scroll(
+    content_widths: &[u16],
+    area_width: u16,
+    scroll: usize,
+    view: usize,
+    window: u16,
+) -> Vec<u16> {
+    let w = window as usize;
+    let total = content_widths.len();
+    let used_at = |line: usize| -> u16 {
+        content_widths
+            .get(line)
+            .copied()
+            .unwrap_or(0)
+            .min(area_width)
+    };
+    let mut right = Vec::with_capacity(view);
+    for row in 0..view {
+        let center = scroll + row;
+        // Worst-case (max) used width across the look-ahead band -> min free width.
+        let lo = center.saturating_sub(w);
+        let hi = (center + w).min(total.saturating_sub(1));
+        let mut max_used = 0u16;
+        for line in lo..=hi {
+            max_used = max_used.max(used_at(line));
+        }
+        right.push(area_width.saturating_sub(max_used));
+    }
+    right
 }
 
 /// Like [`simulate_scroll`] but lets the caller pick the placement strategy so the
@@ -387,22 +426,19 @@ pub fn simulate_scroll_mode(
     let view = viewport_height as usize;
     let max_scroll = total_lines.saturating_sub(view);
     let area = Rect::new(0, 0, area_width, viewport_height);
+    let window = match mode {
+        SimMode::LookAhead(w) => w,
+        _ => 0,
+    };
+    let greedy = mode == SimMode::Greedy;
 
     // Carry anchors across frames exactly like the live renderer does, so the
     // HUD pinning / hide-in-place behaviour is exercised identically.
     let mut anchors: Vec<WidgetAnchor> = Vec::new();
 
     for scroll in 0..=max_scroll {
-        let mut right_widths: Vec<u16> = Vec::with_capacity(view);
-        for row in 0..view {
-            let line = scroll + row;
-            let used = content_widths
-                .get(line)
-                .copied()
-                .unwrap_or(0)
-                .min(area_width);
-            right_widths.push(area_width.saturating_sub(used));
-        }
+        let right_widths =
+            right_widths_for_scroll(content_widths, area_width, scroll, view, window);
         let margins = Margins {
             right_widths,
             left_widths: Vec::new(),
@@ -410,11 +446,7 @@ pub fn simulate_scroll_mode(
         };
         // Greedy mode forgets all anchors each frame, so every frame independently
         // maximizes coverage (the old "fill the biggest pocket now" philosophy).
-        let prev: &[WidgetAnchor] = if mode == SimMode::Greedy {
-            &[]
-        } else {
-            &anchors
-        };
+        let prev: &[WidgetAnchor] = if greedy { &[] } else { &anchors };
         let outcome = calculate_placements_anchored(area, &margins, data, true, prev);
         frames.push(
             outcome
