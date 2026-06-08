@@ -1163,6 +1163,329 @@ fn buffer_text(picker: &mut SessionPicker, w: u16, h: u16) -> String {
     buffer.content().iter().map(|cell| cell.symbol()).collect()
 }
 
+// ---------------------------------------------------------------------------
+// Developer benchmarks: profile the operations exercised by the `/resume`
+// overlay. These are `#[ignore]`d so they never run in CI; run them with:
+//
+//   cargo test -p jcode-tui --lib --release -- --ignored --nocapture benchmark_resume_op
+//
+// They print human-readable timing lines to stderr. They use synthetic
+// sessions so they are deterministic and independent of the user's session
+// store.
+// ---------------------------------------------------------------------------
+
+/// Build a synthetic preview message list that mimics a realistic conversation:
+/// alternating user prompts and multi-paragraph markdown assistant replies. The
+/// assistant content includes markdown (headers, lists, code) so it exercises
+/// the same markdown render + wrap path as the real preview.
+fn bench_preview_messages(turns: usize, assistant_paragraphs: usize) -> Vec<PreviewMessage> {
+    let mut preview = Vec::with_capacity(turns * 2);
+    for turn in 0..turns {
+        preview.push(PreviewMessage {
+            role: "user".to_string(),
+            content: format!(
+                "Prompt {turn}: can you refactor the session picker so that the preview \
+                 pane does not rebuild and re-wrap every line on every single frame?"
+            ),
+            tool_calls: Vec::new(),
+            tool_data: None,
+            timestamp: None,
+        });
+
+        let mut body = String::new();
+        body.push_str(&format!("## Response {turn}\n\n"));
+        for para in 0..assistant_paragraphs {
+            body.push_str(&format!(
+                "Here is paragraph {para} of a longer answer that wraps across several \
+                 terminal columns and therefore costs real work to lay out. It mentions \
+                 `render_preview`, `wrap_lines`, and the scroll offset so the markdown \
+                 renderer has inline code spans to style.\n\n"
+            ));
+            body.push_str("- a bullet point that also needs wrapping and styling\n");
+            body.push_str("- another bullet with `inline_code` to style\n\n");
+        }
+        body.push_str("```rust\nlet scroll = self.scroll_offset as usize; // cached?\n```\n");
+        preview.push(PreviewMessage {
+            role: "assistant".to_string(),
+            content: body,
+            tool_calls: Vec::new(),
+            tool_data: None,
+            timestamp: None,
+        });
+    }
+    preview
+}
+
+/// A session whose preview is large enough to overflow the viewport and require
+/// scrolling (the case the user reported as slow).
+fn bench_large_session(id: &str, turns: usize, assistant_paragraphs: usize) -> SessionInfo {
+    let mut session = make_session(id, id, false, SessionStatus::Closed);
+    let preview = bench_preview_messages(turns, assistant_paragraphs);
+    session.first_user_prompt = preview.first().map(|m| m.content.clone());
+    session.estimated_tokens = 4_000 * turns;
+    session.message_count = (turns * 2) as u32;
+    session.user_message_count = turns as u32;
+    session.assistant_message_count = turns as u32;
+    session.messages_preview = preview;
+    session
+}
+
+fn bench_render_full(picker: &mut SessionPicker, w: u16, h: u16) -> std::time::Duration {
+    let backend = ratatui::backend::TestBackend::new(w, h);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    let start = std::time::Instant::now();
+    terminal
+        .draw(|frame| picker.render(frame))
+        .expect("render picker");
+    start.elapsed()
+}
+
+fn bench_render_preview_only(picker: &mut SessionPicker, area: Rect) -> std::time::Duration {
+    let backend = ratatui::backend::TestBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    let start = std::time::Instant::now();
+    terminal
+        .draw(|frame| picker.render_preview(frame, area))
+        .expect("render preview");
+    start.elapsed()
+}
+
+fn bench_render_list_only(picker: &mut SessionPicker, area: Rect) -> std::time::Duration {
+    let backend = ratatui::backend::TestBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    let start = std::time::Instant::now();
+    terminal
+        .draw(|frame| picker.render_session_list(frame, area))
+        .expect("render list");
+    start.elapsed()
+}
+
+fn bench_median(mut samples: Vec<std::time::Duration>) -> std::time::Duration {
+    samples.sort();
+    samples[samples.len() / 2]
+}
+
+/// Profile the cost of a single preview-scroll frame. This is the operation the
+/// user reported as slow: after scrolling, every frame rebuilds + re-wraps the
+/// entire preview. We render once to warm any lazy state, then time repeated
+/// scroll-and-render ticks and attribute time to the preview vs the (unchanged)
+/// session list.
+#[test]
+#[ignore = "developer benchmark: profiles /resume preview scroll frame cost"]
+fn benchmark_resume_op_preview_scroll_frame_cost() {
+    const W: u16 = 120;
+    const H: u16 = 40;
+    let main_area = Rect::new(0, 0, W, H);
+    // Mirrors render(): list = 40%, preview = 60% of the width.
+    let list_area = Rect::new(0, 0, (W as f32 * 0.40) as u16, H);
+    let preview_area = Rect::new(list_area.width, 0, W - list_area.width, H);
+
+    for &(turns, paras) in &[(20usize, 2usize), (80, 3), (200, 4)] {
+        let session = bench_large_session("scroll_bench", turns, paras);
+        let preview_len = session.messages_preview.len();
+        let mut picker = SessionPicker::new(vec![session]);
+        picker.focus = PaneFocus::Preview;
+
+        // Warm render (auto-scrolls to bottom, builds wrap state once).
+        let _ = bench_render_full(&mut picker, W, H);
+
+        const ITERS: usize = 60;
+        let mut full_samples = Vec::with_capacity(ITERS);
+        let mut preview_samples = Vec::with_capacity(ITERS);
+        let mut list_samples = Vec::with_capacity(ITERS);
+        for i in 0..ITERS {
+            // Alternate scroll direction so we exercise both bounds.
+            if i % 2 == 0 {
+                picker.scroll_preview_up(1);
+            } else {
+                picker.scroll_preview_down(1);
+            }
+            full_samples.push(bench_render_full(&mut picker, W, H));
+            preview_samples.push(bench_render_preview_only(&mut picker, preview_area));
+            list_samples.push(bench_render_list_only(&mut picker, list_area));
+        }
+
+        let full = bench_median(full_samples);
+        let preview = bench_median(preview_samples);
+        let list = bench_median(list_samples);
+        eprintln!(
+            "preview scroll frame: turns={turns} paras={paras} preview_msgs={preview_len} \
+             area={}x{} | full_frame={:>6.0}us preview_only={:>6.0}us list_only={:>6.0}us \
+             (preview is {:.0}% of frame)",
+            main_area.width,
+            main_area.height,
+            full.as_nanos() as f64 / 1000.0,
+            preview.as_nanos() as f64 / 1000.0,
+            list.as_nanos() as f64 / 1000.0,
+            preview.as_nanos() as f64 / full.as_nanos().max(1) as f64 * 100.0,
+        );
+    }
+}
+
+/// Profile how list rendering scales with the number of sessions. Because
+/// `render_session_list` rebuilds a `ListItem` for *every* session each frame
+/// (not just the visible window), this should grow ~linearly with N even though
+/// only ~H rows are visible. Relevant to scroll because the list is redrawn on
+/// every preview-scroll frame too.
+#[test]
+#[ignore = "developer benchmark: profiles /resume session-list render scaling vs N"]
+fn benchmark_resume_op_list_render_scaling() {
+    const W: u16 = 48;
+    const H: u16 = 40;
+    let list_area = Rect::new(0, 0, W, H);
+
+    for &n in &[50usize, 200, 1000, 3000] {
+        let sessions: Vec<SessionInfo> = (0..n)
+            .map(|i| {
+                make_session(
+                    &format!("scale_{i}"),
+                    &format!("session {i}"),
+                    false,
+                    SessionStatus::Closed,
+                )
+            })
+            .collect();
+        let mut picker = SessionPicker::new(sessions);
+        picker.focus = PaneFocus::Sessions;
+        let _ = bench_render_list_only(&mut picker, list_area);
+
+        const ITERS: usize = 30;
+        let mut samples = Vec::with_capacity(ITERS);
+        for _ in 0..ITERS {
+            samples.push(bench_render_list_only(&mut picker, list_area));
+        }
+        let m = bench_median(samples);
+        eprintln!(
+            "list render scaling: N={n:>5} visible_rows~={} | list_render={:>7.0}us \
+             ({:.1}us/session)",
+            H.saturating_sub(2),
+            m.as_nanos() as f64 / 1000.0,
+            m.as_nanos() as f64 / 1000.0 / n as f64,
+        );
+    }
+}
+
+/// Profile a search keystroke (`rebuild_items` + the cached search narrowing)
+/// as the query grows, plus the cost of clearing the query (the non-prefix /
+/// backspace path that cannot reuse the narrowing cache).
+#[test]
+#[ignore = "developer benchmark: profiles /resume search keystroke cost"]
+fn benchmark_resume_op_search_keystroke() {
+    for &n in &[200usize, 1000, 3000] {
+        let sessions: Vec<SessionInfo> = (0..n)
+            .map(|i| {
+                make_session(
+                    &format!("search_{i}"),
+                    &format!("session about topic {} number {i}", i % 17),
+                    false,
+                    SessionStatus::Closed,
+                )
+            })
+            .collect();
+        let mut picker = SessionPicker::new(sessions);
+
+        // Progressive typing: each keystroke appends one char and rebuilds.
+        let query = "session about topic 3";
+        let mut typed = String::new();
+        let mut keystroke_samples = Vec::new();
+        for ch in query.chars() {
+            typed.push(ch);
+            picker.search_query = typed.clone();
+            picker.search_active = true;
+            let start = std::time::Instant::now();
+            picker.rebuild_items();
+            keystroke_samples.push(start.elapsed());
+        }
+        let typed_median = bench_median(keystroke_samples.clone());
+        let typed_worst = keystroke_samples.iter().copied().max().unwrap();
+
+        // Clearing the search (full re-scan, no narrowing cache reuse).
+        picker.search_query.clear();
+        picker.search_active = false;
+        let clear_start = std::time::Instant::now();
+        picker.rebuild_items();
+        let clear_elapsed = clear_start.elapsed();
+
+        eprintln!(
+            "search keystroke: N={n:>5} | per_keystroke_median={:>6.0}us worst={:>6.0}us \
+             clear_query={:>6.0}us",
+            typed_median.as_nanos() as f64 / 1000.0,
+            typed_worst.as_nanos() as f64 / 1000.0,
+            clear_elapsed.as_nanos() as f64 / 1000.0,
+        );
+    }
+}
+
+/// Profile navigating the session list (next/previous) followed by a re-render,
+/// across list sizes. Navigation resets preview scroll and triggers a full
+/// re-render of both panes.
+#[test]
+#[ignore = "developer benchmark: profiles /resume list navigation frame cost"]
+fn benchmark_resume_op_nav_frame_cost() {
+    const W: u16 = 120;
+    const H: u16 = 40;
+
+    for &n in &[50usize, 500, 2000] {
+        let sessions: Vec<SessionInfo> = (0..n)
+            .map(|i| bench_large_session(&format!("nav_{i}"), 6, 2))
+            .collect();
+        let mut picker = SessionPicker::new(sessions);
+        picker.focus = PaneFocus::Sessions;
+        let _ = bench_render_full(&mut picker, W, H);
+
+        const ITERS: usize = 40;
+        let mut samples = Vec::with_capacity(ITERS);
+        for i in 0..ITERS {
+            if i % 2 == 0 {
+                picker.next();
+            } else {
+                picker.previous();
+            }
+            samples.push(bench_render_full(&mut picker, W, H));
+        }
+        let m = bench_median(samples);
+        eprintln!(
+            "nav frame: N={n:>5} | nav+full_render_median={:>7.0}us",
+            m.as_nanos() as f64 / 1000.0,
+        );
+    }
+}
+
+/// Profile constructing the picker (`new`) and the initial `rebuild_items`
+/// across list sizes, isolating the non-IO construction cost that runs
+/// synchronously when `/resume` opens.
+#[test]
+#[ignore = "developer benchmark: profiles /resume picker construction cost vs N"]
+fn benchmark_resume_op_construction_cost() {
+    for &n in &[200usize, 1000, 5000] {
+        let sessions: Vec<SessionInfo> = (0..n)
+            .map(|i| {
+                make_session(
+                    &format!("ctor_{i}"),
+                    &format!("session {i}"),
+                    false,
+                    SessionStatus::Closed,
+                )
+            })
+            .collect();
+
+        const ITERS: usize = 20;
+        let mut samples = Vec::with_capacity(ITERS);
+        for _ in 0..ITERS {
+            let clone = sessions.clone();
+            let start = std::time::Instant::now();
+            let _picker = SessionPicker::new(clone);
+            samples.push(start.elapsed());
+        }
+        let m = bench_median(samples);
+        eprintln!(
+            "construction: N={n:>5} | new()+rebuild_items_median={:>7.0}us ({:.2}us/session)",
+            m.as_nanos() as f64 / 1000.0,
+            m.as_nanos() as f64 / 1000.0 / n as f64,
+        );
+    }
+}
+
 /// Any of the native scrollbar thumb glyphs (see `render_native_scrollbar`).
 fn contains_scrollbar_glyph(text: &str) -> bool {
     text.contains('•') || text.contains('╷') || text.contains('╵') || text.contains('│')
