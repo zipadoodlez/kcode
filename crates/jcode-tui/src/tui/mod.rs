@@ -647,12 +647,10 @@ pub enum OnboardingWelcomeKind {
     /// When `None`, there was nothing to import and the card points the user at
     /// the provider picker.
     Login { import: Option<LoginImportPrompt> },
-    /// Ask whether to share prompt/transcript content with telemetry, with a
-    /// live decision countdown. `yes_highlighted` reflects the current choice.
-    TelemetryConsent {
-        yes_highlighted: bool,
-        seconds_left: u64,
-    },
+    /// Ask the user whether to log in to OpenAI (no detected imports). A
+    /// highlightable Yes/No selector; `yes_highlighted` reflects the current
+    /// choice. Yes starts the OpenAI sign-in, No opens the provider picker.
+    LoginOpenAi { yes_highlighted: bool },
     /// "Continue where you left off in <cli>?" with a highlightable Yes/No
     /// selector and a live decision countdown (seconds remaining).
     ContinuePrompt {

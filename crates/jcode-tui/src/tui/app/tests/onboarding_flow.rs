@@ -36,7 +36,7 @@ fn onboarding_can_begin_at_login_phase() {
     app.begin_onboarding_flow_at_login();
     assert!(matches!(
         app.onboarding_phase(),
-        Some(OnboardingPhase::Login { .. })
+        Some(OnboardingPhase::Login { .. }) | Some(OnboardingPhase::LoginOpenAi { .. })
     ));
     // begin_at_login is idempotent: a second call does not reset the phase.
     if let Some(flow) = app.onboarding_flow.as_mut() {
@@ -123,120 +123,100 @@ fn import_review_highlight_navigation() {
 }
 
 #[test]
-fn login_phase_advances_to_telemetry_consent_then_model_select() {
+fn login_phase_advances_to_model_select_without_telemetry_prompt() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.onboarding_flow = None;
+        // Force the bare Login phase (the recovery/import path) so we exercise
+        // onboarding_after_login directly regardless of host logins.
         app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
         assert!(matches!(
             app.onboarding_phase(),
             Some(OnboardingPhase::Login { .. })
         ));
-        // After login we ask for telemetry consent first.
+        // After login we no longer ask a telemetry-consent question; we advance
+        // straight to model selection and leave content sharing off.
         app.onboarding_after_login();
         assert!(matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::TelemetryConsent {
-                yes_highlighted: false,
-                ..
+            Some(OnboardingPhase::ModelSelect) | Some(OnboardingPhase::Suggestions)
+        ));
+        assert!(!crate::telemetry::content_sharing_enabled());
+    });
+}
+
+#[test]
+fn login_openai_phase_is_default_when_no_imports() {
+    use crate::tui::OnboardingWelcomeKind;
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        // Fresh temp home has no importable logins, so begin_at_login lands on
+        // the "Log in to OpenAI?" Yes/No prompt (not the bare provider picker).
+        app.begin_onboarding_flow_at_login();
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::LoginOpenAi {
+                yes_highlighted: true
             })
         ));
-        // onboarding_after_login is a no-op once we're past the Login phase.
-        app.onboarding_after_login();
         assert!(matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::TelemetryConsent { .. })
+            app.onboarding_welcome_kind(),
+            OnboardingWelcomeKind::LoginOpenAi {
+                yes_highlighted: true
+            }
         ));
-        // Declining advances to model select and does not opt in.
-        app.onboarding_answer_telemetry_consent(false);
-        assert!(matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::ModelSelect)
-        ));
-        assert!(!crate::telemetry::content_sharing_enabled());
     });
 }
 
 #[test]
-fn telemetry_consent_opt_in_persists_and_advances() {
+fn login_openai_no_opens_provider_picker() {
     with_temp_jcode_home(|| {
-        // Ensure base telemetry isn't globally disabled in the test env, so the
-        // content-sharing opt-in is observable.
-        let saved = (
-            std::env::var_os("JCODE_NO_TELEMETRY"),
-            std::env::var_os("DO_NOT_TRACK"),
-        );
-        crate::env::remove_var("JCODE_NO_TELEMETRY");
-        crate::env::remove_var("DO_NOT_TRACK");
-
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow_at_login();
         if let Some(flow) = app.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::TelemetryConsent {
-                yes_highlighted: false,
-                shown_at: std::time::Instant::now(),
-            };
-        }
-        // Right highlights Yes, Enter commits -> opt in.
-        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Right));
-        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
-        assert!(matches!(
-            app.onboarding_phase(),
-            Some(OnboardingPhase::ModelSelect)
-        ));
-        assert!(crate::telemetry::content_sharing_enabled());
-        // Re-running the flow and declining clears the opt-in.
-        if let Some(flow) = app.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::TelemetryConsent {
+            flow.phase = OnboardingPhase::LoginOpenAi {
                 yes_highlighted: true,
-                shown_at: std::time::Instant::now(),
             };
         }
+        assert!(app.inline_interactive_state.is_none());
+        // 'n' opens the full provider picker so the user can choose another.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
-        assert!(!crate::telemetry::content_sharing_enabled());
-
-        if let Some(v) = saved.0 {
-            crate::env::set_var("JCODE_NO_TELEMETRY", v);
-        }
-        if let Some(v) = saved.1 {
-            crate::env::set_var("DO_NOT_TRACK", v);
-        }
+        assert!(app.inline_interactive_state.is_some());
     });
 }
 
 #[test]
-fn telemetry_consent_y_key_opts_in() {
+fn login_openai_arrows_toggle_highlight() {
     with_temp_jcode_home(|| {
-        let saved = (
-            std::env::var_os("JCODE_NO_TELEMETRY"),
-            std::env::var_os("DO_NOT_TRACK"),
-        );
-        crate::env::remove_var("JCODE_NO_TELEMETRY");
-        crate::env::remove_var("DO_NOT_TRACK");
-
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow_at_login();
         if let Some(flow) = app.onboarding_flow.as_mut() {
-            flow.phase = OnboardingPhase::TelemetryConsent {
-                yes_highlighted: false,
-                shown_at: std::time::Instant::now(),
+            flow.phase = OnboardingPhase::LoginOpenAi {
+                yes_highlighted: true,
             };
         }
-        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('y')));
-        assert!(crate::telemetry::content_sharing_enabled());
+        // Right highlights No, Left highlights Yes; nothing commits yet.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Right));
         assert!(matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::ModelSelect)
+            Some(OnboardingPhase::LoginOpenAi {
+                yes_highlighted: false
+            })
         ));
-
-        if let Some(v) = saved.0 {
-            crate::env::set_var("JCODE_NO_TELEMETRY", v);
-        }
-        if let Some(v) = saved.1 {
-            crate::env::set_var("DO_NOT_TRACK", v);
-        }
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Left));
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::LoginOpenAi {
+                yes_highlighted: true
+            })
+        ));
+        assert!(app.inline_interactive_state.is_none());
     });
 }
 
@@ -540,7 +520,7 @@ fn startup_check_ignores_synthetic_scaffolding_messages() {
         assert!(app.onboarding_startup_checked);
         assert!(matches!(
             app.onboarding_phase(),
-            Some(OnboardingPhase::Login { .. })
+            Some(OnboardingPhase::Login { .. }) | Some(OnboardingPhase::LoginOpenAi { .. })
         ));
     });
 }

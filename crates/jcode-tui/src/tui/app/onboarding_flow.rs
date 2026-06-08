@@ -153,15 +153,16 @@ pub(crate) enum OnboardingPhase {
     /// When `None`, there was nothing to import and we prompt the user to pick a
     /// provider manually (Enter opens the login picker).
     Login { import: Option<ImportReview> },
-    /// Ask whether to share prompt/transcript content with telemetry. Shown
-    /// right after a successful login/import. Yes/No with a [`DECISION_TIMEOUT`]
-    /// countdown; the default (and timeout choice) is "No" since sharing
-    /// content is sensitive and opt-in.
-    TelemetryConsent {
-        /// Which option is highlighted (true = "Yes, share").
+    /// Ask the user whether to log in to OpenAI. Shown on a fresh install when
+    /// no importable external logins were detected. A highlightable Yes/No
+    /// selector (default "Yes") matching the import walkthrough: Yes starts the
+    /// OpenAI sign-in, No opens the full provider picker so the user can choose
+    /// a different provider. Unlike the import/telemetry prompts this one has no
+    /// auto-timeout: logging in is a required first step, so we wait for the
+    /// user rather than opening a browser on a countdown.
+    LoginOpenAi {
+        /// Which option is highlighted (true = "Yes, log in to OpenAI").
         yes_highlighted: bool,
-        /// When the prompt was shown, for the countdown.
-        shown_at: Instant,
     },
     /// Legacy phase kept for compatibility with older replay/test fixtures.
     /// New onboarding skips explicit model selection and uses the default route;
@@ -169,8 +170,8 @@ pub(crate) enum OnboardingPhase {
     ModelSelect,
     /// "Continue where you left off in <cli>?" Yes/No with a
     /// [`DECISION_TIMEOUT`] countdown. Highlightable Yes/No selector to match
-    /// the import and telemetry-consent prompts; the default (and timeout
-    /// choice) is "Yes" so the resume menu opens unless the user declines.
+    /// the import prompt; the default (and timeout choice) is "Yes" so the
+    /// resume menu opens unless the user declines.
     ContinuePrompt {
         cli: ExternalCli,
         /// Which option is highlighted (true = "Yes, continue").
@@ -237,11 +238,19 @@ impl OnboardingFlow {
 
     /// Start the flow at the login phase (no working credentials yet).
     /// `import` is the per-candidate import walkthrough when external logins
-    /// were detected, or `None` to prompt for a manual provider login.
+    /// were detected. When no logins were detected (`import` is `None`) we ask a
+    /// simple "Log in to OpenAI?" Yes/No instead of dropping straight to the
+    /// provider picker.
     pub(crate) fn begin_at_login(import: Option<ImportReview>) -> Self {
-        Self {
-            phase: OnboardingPhase::Login { import },
-        }
+        let phase = match import {
+            Some(review) => OnboardingPhase::Login {
+                import: Some(review),
+            },
+            None => OnboardingPhase::LoginOpenAi {
+                yes_highlighted: true,
+            },
+        };
+        Self { phase }
     }
 
     /// Whether the flow is actively driving the UI.
@@ -250,17 +259,12 @@ impl OnboardingFlow {
     }
 
     /// Seconds remaining on the longer [`DECISION_TIMEOUT`] yes/no phases
-    /// (login import walkthrough, telemetry consent), if one is active.
+    /// (login import walkthrough, continue prompt), if one is active.
     pub(crate) fn decision_seconds_remaining(&self) -> Option<u64> {
         match &self.phase {
             OnboardingPhase::Login {
                 import: Some(review),
             } => Some(review.seconds_remaining()),
-            OnboardingPhase::TelemetryConsent { shown_at, .. } => Some(
-                DECISION_TIMEOUT
-                    .saturating_sub(shown_at.elapsed())
-                    .as_secs(),
-            ),
             OnboardingPhase::ContinuePrompt { shown_at, .. } => Some(
                 DECISION_TIMEOUT
                     .saturating_sub(shown_at.elapsed())
@@ -277,9 +281,6 @@ impl OnboardingFlow {
             OnboardingPhase::Login {
                 import: Some(review),
             } => review.timed_out(),
-            OnboardingPhase::TelemetryConsent { shown_at, .. } => {
-                shown_at.elapsed() >= DECISION_TIMEOUT
-            }
             OnboardingPhase::ContinuePrompt { shown_at, .. } => {
                 shown_at.elapsed() >= DECISION_TIMEOUT
             }

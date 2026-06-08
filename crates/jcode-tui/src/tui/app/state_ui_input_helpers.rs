@@ -149,6 +149,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/record", "Record a demo capture"),
     RegisteredCommand::remote("/client-reload", "Force reload client binary"),
     RegisteredCommand::remote("/server-reload", "Force reload server binary"),
+    RegisteredCommand::remote(
+        "/resumeall",
+        "Continue every interrupted live session that would auto-resume",
+    ),
     RegisteredCommand::hidden("/z", "Secret premium-mode command"),
     RegisteredCommand::hidden("/zz", "Secret premium-mode command"),
     RegisteredCommand::hidden("/zzz", "Secret premium-mode command"),
@@ -1158,15 +1162,9 @@ impl App {
                 });
                 OnboardingWelcomeKind::Login { import: prompt }
             }
-            Some(OnboardingPhase::TelemetryConsent {
-                yes_highlighted,
-                shown_at,
-            }) => {
-                let total = crate::tui::app::onboarding_flow::DECISION_TIMEOUT.as_secs();
-                let seconds_left = total.saturating_sub(shown_at.elapsed().as_secs());
-                OnboardingWelcomeKind::TelemetryConsent {
+            Some(OnboardingPhase::LoginOpenAi { yes_highlighted }) => {
+                OnboardingWelcomeKind::LoginOpenAi {
                     yes_highlighted: *yes_highlighted,
-                    seconds_left,
                 }
             }
             Some(OnboardingPhase::ModelSelect) => OnboardingWelcomeKind::Suggestions,
@@ -1188,15 +1186,15 @@ impl App {
     }
 
     /// Whether the guided onboarding flow is in a phase that should take over
-    /// the welcome screen body (login, telemetry, or continue prompt). The
-    /// transcript-pick phase uses the session-picker overlay instead, and the
-    /// suggestions phase is the default welcome body.
+    /// the welcome screen body (login, OpenAI-login prompt, or continue prompt).
+    /// The transcript-pick phase uses the session-picker overlay instead, and
+    /// the suggestions phase is the default welcome body.
     fn onboarding_flow_drives_welcome(&self) -> bool {
         use crate::tui::app::onboarding_flow::OnboardingPhase;
         matches!(
             self.onboarding_phase(),
             Some(OnboardingPhase::Login { .. })
-                | Some(OnboardingPhase::TelemetryConsent { .. })
+                | Some(OnboardingPhase::LoginOpenAi { .. })
                 | Some(OnboardingPhase::ContinuePrompt { .. })
         )
     }

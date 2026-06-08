@@ -71,13 +71,30 @@ fn onboarding_golden_walks_every_phase() {
     let width = 80u16;
     let height = 30u16;
 
-    // 1. Login with no detected imports.
+    // 1. No detected imports: "Log in to OpenAI?" Yes/No prompt.
+    {
+        let app = app_in_phase(OnboardingPhase::LoginOpenAi {
+            yes_highlighted: true,
+        });
+        let text = render_onboarding_text(&app, width, height);
+        dump("LoginOpenAi (no imports)", &text);
+        assert!(text.contains("First, log in to get started."), "{text}");
+        assert!(text.contains("Log in to OpenAI?"), "{text}");
+        assert!(
+            text.contains("Choose \"No\" to pick a different provider."),
+            "{text}"
+        );
+        assert!(text.contains("Yes") && text.contains("No"), "{text}");
+    }
+
+    // 1b. Recovery fallback: bare Login phase with no import (import declined or
+    // failed) points the user at the provider picker.
     {
         let app = app_in_phase(OnboardingPhase::Login { import: None });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (no imports)", &text);
+        dump("Login (no imports, recovery)", &text);
         assert!(text.contains("First, log in to get started."), "{text}");
-        assert!(text.contains("Press Enter to log in to OpenAI."), "{text}");
+        assert!(text.contains("Press Enter to choose a provider."), "{text}");
     }
 
     // 2. Login with detected imports (per-candidate review).
@@ -120,26 +137,6 @@ fn onboarding_golden_walks_every_phase() {
             "singular count: {text}"
         );
         assert!(text.contains("Login 1 of 1"), "{text}");
-    }
-
-    // 3. Telemetry consent.
-    {
-        let app = app_in_phase(OnboardingPhase::TelemetryConsent {
-            shown_at: std::time::Instant::now(),
-            yes_highlighted: false,
-        });
-        let text = render_onboarding_text(&app, width, height);
-        dump("TelemetryConsent", &text);
-        assert!(text.contains("Help improve jcode?"), "{text}");
-        assert!(
-            text.contains("Share your prompts and transcripts so we can improve the product."),
-            "{text}"
-        );
-        assert!(
-            text.contains("This is optional and off by default. You can change it later."),
-            "{text}"
-        );
-        assert!(text.contains("Declines automatically in"), "countdown: {text}");
     }
 
     // 4. Continue prompt (resume an external session).
