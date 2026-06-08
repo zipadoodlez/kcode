@@ -426,7 +426,7 @@ impl SessionPicker {
         let help = if self.loading_message.is_some() {
             " Esc cancel "
         } else if self.search_active {
-            " type to filter, Esc cancel "
+            " type to filter · Ctrl+J/K or ↑↓ nav · Ctrl+W word-del · Esc cancel "
         } else {
             match crate::config::config().keybindings.session_picker_enter {
                 crate::config::SessionPickerResumeAction::CurrentTerminal => {

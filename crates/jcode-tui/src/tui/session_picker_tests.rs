@@ -1672,3 +1672,110 @@ fn test_reseed_grouped_keeps_selection_when_list_changes() {
         "selection should follow the session id across a reordered refresh"
     );
 }
+
+#[test]
+fn test_search_mode_ctrl_j_k_navigate_session_list() {
+    let mut newer = make_session("session_newer", "newer", false, SessionStatus::Closed);
+    let mut older = make_session("session_older", "older", false, SessionStatus::Closed);
+    newer.last_message_time = Utc::now();
+    older.last_message_time = Utc::now() - ChronoDuration::minutes(1);
+    let mut picker = SessionPicker::new(vec![older, newer]);
+
+    // Enter search mode (both visible sessions still match the empty query).
+    picker
+        .handle_overlay_key(KeyCode::Char('/'), KeyModifiers::empty())
+        .unwrap();
+    assert!(picker.search_active);
+    let first = picker
+        .selected_session()
+        .map(|s| s.id.clone())
+        .expect("a session is selected on entering search");
+
+    // Ctrl+J moves down the list without typing 'j' into the query.
+    picker
+        .handle_overlay_key(KeyCode::Char('j'), KeyModifiers::CONTROL)
+        .unwrap();
+    assert!(picker.search_query.is_empty(), "Ctrl+J must not type into search");
+    let second = picker
+        .selected_session()
+        .map(|s| s.id.clone())
+        .expect("a session is selected after Ctrl+J");
+    assert_ne!(first, second, "Ctrl+J should move the selection down");
+
+    // Ctrl+K moves back up to the original selection.
+    picker
+        .handle_overlay_key(KeyCode::Char('k'), KeyModifiers::CONTROL)
+        .unwrap();
+    assert!(picker.search_query.is_empty(), "Ctrl+K must not type into search");
+    assert_eq!(
+        picker.selected_session().map(|s| s.id.clone()),
+        Some(first),
+        "Ctrl+K should move the selection back up"
+    );
+}
+
+#[test]
+fn test_search_mode_ctrl_backspace_deletes_word() {
+    let mut picker = SessionPicker::new(vec![make_session(
+        "session_a",
+        "a",
+        false,
+        SessionStatus::Closed,
+    )]);
+    picker
+        .handle_overlay_key(KeyCode::Char('/'), KeyModifiers::empty())
+        .unwrap();
+    for c in "hello world".chars() {
+        picker
+            .handle_overlay_key(KeyCode::Char(c), KeyModifiers::empty())
+            .unwrap();
+    }
+    assert_eq!(picker.search_query, "hello world");
+
+    // Ctrl+Backspace deletes the trailing word.
+    picker
+        .handle_overlay_key(KeyCode::Backspace, KeyModifiers::CONTROL)
+        .unwrap();
+    assert_eq!(picker.search_query, "hello ");
+
+    // The \u{8} alias some terminals send for Ctrl+Backspace also deletes a word.
+    picker
+        .handle_overlay_key(KeyCode::Char('\u{8}'), KeyModifiers::empty())
+        .unwrap();
+    assert_eq!(picker.search_query, "");
+
+    // Plain Backspace still deletes a single character.
+    for c in "abc".chars() {
+        picker
+            .handle_overlay_key(KeyCode::Char(c), KeyModifiers::empty())
+            .unwrap();
+    }
+    picker
+        .handle_overlay_key(KeyCode::Backspace, KeyModifiers::empty())
+        .unwrap();
+    assert_eq!(picker.search_query, "ab");
+}
+
+#[test]
+fn test_search_mode_ctrl_u_clears_query() {
+    let mut picker = SessionPicker::new(vec![make_session(
+        "session_a",
+        "a",
+        false,
+        SessionStatus::Closed,
+    )]);
+    picker
+        .handle_overlay_key(KeyCode::Char('/'), KeyModifiers::empty())
+        .unwrap();
+    for c in "needle".chars() {
+        picker
+            .handle_overlay_key(KeyCode::Char(c), KeyModifiers::empty())
+            .unwrap();
+    }
+    assert_eq!(picker.search_query, "needle");
+    picker
+        .handle_overlay_key(KeyCode::Char('u'), KeyModifiers::CONTROL)
+        .unwrap();
+    assert_eq!(picker.search_query, "");
+    assert!(picker.search_active, "Ctrl+U clears text but stays in search");
+}

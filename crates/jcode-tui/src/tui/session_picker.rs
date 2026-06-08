@@ -774,6 +774,106 @@ impl SessionPicker {
         }
     }
 
+    /// Delete the word immediately before the (implicit) end-of-line cursor in
+    /// the search query. Used for Ctrl+W / Ctrl+Backspace inside the search bar.
+    fn delete_search_word_back(&mut self) {
+        let query = &self.search_query;
+        let mut end = query.len();
+        // Skip trailing whitespace.
+        while end > 0 {
+            let prev = super::core::prev_char_boundary(query, end);
+            let ch = query[prev..].chars().next().unwrap_or(' ');
+            if !ch.is_whitespace() {
+                break;
+            }
+            end = prev;
+        }
+        // Skip the word characters.
+        while end > 0 {
+            let prev = super::core::prev_char_boundary(query, end);
+            let ch = query[prev..].chars().next().unwrap_or(' ');
+            if ch.is_whitespace() {
+                break;
+            }
+            end = prev;
+        }
+        self.search_query.truncate(end);
+    }
+
+    /// Shared handling for key events while the search bar is active. Used by
+    /// both the overlay (`handle_overlay_key`) and the standalone `run` loop so
+    /// the editing and navigation keybindings stay consistent.
+    fn handle_search_key(
+        &mut self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> Result<OverlayAction> {
+        let ctrl = modifiers.contains(KeyModifiers::CONTROL);
+        match code {
+            KeyCode::Esc => {
+                self.search_active = false;
+                self.search_query.clear();
+                self.rebuild_items();
+            }
+            KeyCode::Enter => {
+                self.search_active = false;
+                if self.visible_sessions.is_empty() {
+                    self.search_query.clear();
+                    self.rebuild_items();
+                } else {
+                    let targets = self.selection_or_current_targets();
+                    if !targets.is_empty() {
+                        return Ok(OverlayAction::Selected(
+                            self.selection_result_for_enter(targets, modifiers),
+                        ));
+                    }
+                }
+            }
+            // Ctrl+W / Ctrl+Backspace (and the \u{8} BS alias some terminals
+            // send for Ctrl+Backspace) delete the previous word in the query.
+            KeyCode::Backspace if ctrl => {
+                self.delete_search_word_back();
+                self.rebuild_items();
+            }
+            KeyCode::Char('\u{8}') => {
+                self.delete_search_word_back();
+                self.rebuild_items();
+            }
+            KeyCode::Backspace => {
+                self.search_query.pop();
+                self.rebuild_items();
+            }
+            // Ctrl+U clears the whole query (like readline's kill-to-start).
+            KeyCode::Char('u') if ctrl => {
+                self.search_query.clear();
+                self.rebuild_items();
+            }
+            // Vim-style / readline navigation that keeps working while typing.
+            KeyCode::Char('j') | KeyCode::Char('n') if ctrl => self.next(),
+            KeyCode::Char('k') | KeyCode::Char('p') if ctrl => self.previous(),
+            KeyCode::Char('w') if ctrl => {
+                self.delete_search_word_back();
+                self.rebuild_items();
+            }
+            KeyCode::Char(c) => {
+                if ctrl && c == 'c' {
+                    return Ok(OverlayAction::Close);
+                }
+                // Ignore other control-modified characters so they don't get
+                // inserted as literal text in the search bar.
+                if ctrl {
+                    return Ok(OverlayAction::Continue);
+                }
+                self.search_query.push(c);
+                self.rebuild_items();
+            }
+            KeyCode::Down => self.next(),
+            KeyCode::Up => self.previous(),
+            _ => {}
+        }
+        Ok(OverlayAction::Continue)
+    }
+
     /// Handle a key event when used as an overlay inside the main TUI.
     /// Returns:
     /// - `Some(PickerResult::Selected(targets))` if user selected one or more sessions
@@ -796,42 +896,7 @@ impl SessionPicker {
         }
 
         if self.search_active {
-            match code {
-                KeyCode::Esc => {
-                    self.search_active = false;
-                    self.search_query.clear();
-                    self.rebuild_items();
-                }
-                KeyCode::Enter => {
-                    self.search_active = false;
-                    if self.visible_sessions.is_empty() {
-                        self.search_query.clear();
-                        self.rebuild_items();
-                    } else {
-                        let targets = self.selection_or_current_targets();
-                        if !targets.is_empty() {
-                            return Ok(OverlayAction::Selected(
-                                self.selection_result_for_enter(targets, modifiers),
-                            ));
-                        }
-                    }
-                }
-                KeyCode::Backspace => {
-                    self.search_query.pop();
-                    self.rebuild_items();
-                }
-                KeyCode::Char(c) => {
-                    if modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                        return Ok(OverlayAction::Close);
-                    }
-                    self.search_query.push(c);
-                    self.rebuild_items();
-                }
-                KeyCode::Down => self.next(),
-                KeyCode::Up => self.previous(),
-                _ => {}
-            }
-            return Ok(OverlayAction::Continue);
+            return self.handle_search_key(code, modifiers);
         }
 
         match code {
@@ -1701,42 +1766,10 @@ impl SessionPicker {
 
                         // Search mode: capture typed characters
                         if self.search_active {
-                            match key.code {
-                                KeyCode::Esc => {
-                                    self.search_active = false;
-                                    self.search_query.clear();
-                                    self.rebuild_items();
-                                }
-                                KeyCode::Enter => {
-                                    self.search_active = false;
-                                    if self.visible_sessions.is_empty() {
-                                        // No results - clear search and return to full list
-                                        self.search_query.clear();
-                                        self.rebuild_items();
-                                    } else {
-                                        let targets = self.selection_or_current_targets();
-                                        if targets.is_empty() {
-                                            break Ok(None);
-                                        }
-                                        break Ok(Some(
-                                            self.selection_result_for_enter(targets, key.modifiers),
-                                        ));
-                                    }
-                                }
-                                KeyCode::Backspace => {
-                                    self.search_query.pop();
-                                    self.rebuild_items();
-                                }
-                                KeyCode::Char(c) => {
-                                    if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                                        break Ok(None);
-                                    }
-                                    self.search_query.push(c);
-                                    self.rebuild_items();
-                                }
-                                KeyCode::Down => self.next(),
-                                KeyCode::Up => self.previous(),
-                                _ => {}
+                            match self.handle_search_key(key.code, key.modifiers)? {
+                                OverlayAction::Continue => {}
+                                OverlayAction::Close => break Ok(None),
+                                OverlayAction::Selected(result) => break Ok(Some(result)),
                             }
                             continue;
                         }
