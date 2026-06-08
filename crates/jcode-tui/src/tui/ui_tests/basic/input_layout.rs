@@ -225,6 +225,8 @@ fn test_copy_badge_reserves_right_margin_for_info_widgets() {
         right_widths: vec![30, 30, 30],
         left_widths: vec![0, 0, 0],
         centered: false,
+        right_reliable: Vec::new(),
+        left_reliable: Vec::new(),
     };
     let copy_badge_ui = crate::tui::app::CopyBadgeUiState::default();
 
