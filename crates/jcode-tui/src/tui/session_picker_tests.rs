@@ -1574,6 +1574,92 @@ fn test_preview_sticky_prompt_header_appears_after_scrolling() {
 }
 
 #[test]
+fn preview_render_cache_is_reused_across_scroll_and_rebuilt_on_selection_change() {
+    // The preview pane caches its fully-wrapped content keyed by a content hash
+    // and pane geometry, so scrolling reuses the cache instead of re-rendering
+    // and re-wrapping every line. Navigating to another session must invalidate
+    // it (different content hash).
+    let a = make_session_with_many_turns("cache_a", 60);
+    let b = make_session_with_many_turns("cache_b", 60);
+    let mut picker = SessionPicker::new(vec![a, b]);
+    picker.focus = PaneFocus::Preview;
+
+    let w = 100u16;
+    let h = 16u16;
+    let render = |picker: &mut SessionPicker| {
+        let backend = ratatui::backend::TestBackend::new(w, h);
+        let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+        terminal
+            .draw(|frame| picker.render(frame))
+            .expect("render picker");
+    };
+
+    // First render builds the cache for the selected session.
+    render(&mut picker);
+    let key_after_build = picker
+        .preview_cache
+        .as_ref()
+        .map(|c| c.key.clone())
+        .expect("preview cache built on first render");
+    let wrapped_len = picker
+        .preview_cache
+        .as_ref()
+        .map(|c| c.wrapped_lines.len())
+        .unwrap();
+    assert!(wrapped_len > h as usize, "preview should overflow viewport");
+
+    // Scrolling several times must not change the cache key (content unchanged):
+    // the cache is reused and only the scroll offset + visible slice move.
+    for _ in 0..5 {
+        picker.scroll_preview_up(1);
+        render(&mut picker);
+        let key_now = picker.preview_cache.as_ref().map(|c| c.key.clone()).unwrap();
+        assert!(
+            key_now == key_after_build,
+            "scrolling must reuse the cached wrapped preview"
+        );
+    }
+
+    // Navigating to a different session changes the content hash, so the cache
+    // is rebuilt for the new selection.
+    picker.next();
+    render(&mut picker);
+    let key_after_nav = picker.preview_cache.as_ref().map(|c| c.key.clone()).unwrap();
+    assert!(
+        key_after_nav != key_after_build,
+        "selecting a different session must invalidate the preview cache"
+    );
+}
+
+#[test]
+fn preview_visible_slice_matches_scroll_position() {
+    // The renderer materializes only the visible window of wrapped lines. Confirm
+    // that scrolling actually changes what is drawn (i.e. the slice tracks the
+    // scroll offset rather than always showing the bottom).
+    let session = make_session_with_many_turns("slice", 60);
+    let mut picker = SessionPicker::new(vec![session]);
+    picker.focus = PaneFocus::Preview;
+
+    let w = 100u16;
+    let h = 16u16;
+    let render_text = |picker: &mut SessionPicker| -> String { buffer_text(picker, w, h) };
+
+    // First render auto-scrolls to the bottom.
+    let bottom = render_text(&mut picker);
+    let bottom_scroll = picker.scroll_offset;
+    assert!(bottom_scroll > 0, "long preview should be scrolled down");
+
+    // Scroll to the very top; the rendered content must differ from the bottom.
+    picker.scroll_preview_up(bottom_scroll);
+    let top = render_text(&mut picker);
+    assert_eq!(picker.scroll_offset, 0);
+    assert_ne!(
+        top, bottom,
+        "scrolling to the top should render different content than the bottom"
+    );
+}
+
+#[test]
 fn test_reseed_grouped_preserves_selection_and_search() {
     // Build a picker with several sessions, then simulate the user navigating to
     // a specific session and typing a search. A background refresh that reseeds
