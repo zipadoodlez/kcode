@@ -1415,7 +1415,11 @@ async fn run_stream_with_retries(
         {
             Ok(()) => return, // Success
             Err(e) => {
-                let error_str = e.to_string().to_lowercase();
+                // Use the full anyhow source chain ({:#}) rather than just the top
+                // context. The underlying cause (e.g. the HTTP/2 "stream error" or
+                // a connection reset) lives deeper than "Failed to send request to
+                // Anthropic API", and the retry classifier needs to see it.
+                let error_str = format!("{e:#}").to_lowercase();
 
                 // OAuth auth failures: force refresh and retry once immediately.
                 if is_oauth && is_oauth_auth_error(&error_str) && !attempted_forced_refresh {

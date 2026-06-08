@@ -30,6 +30,19 @@ pub(crate) fn is_transient_transport_error(error_str: &str) -> bool {
         || lower.contains("no route to host")
         || lower.contains("network is unreachable")
         || lower.contains("host is unreachable")
+        // HTTP/2 transport faults on reused/multiplexed connections. These are
+        // transient: a fresh connection on retry typically succeeds. Seen as
+        // "http2 error: stream error received: unspecific protocol error detected"
+        // or RST_STREAM / GOAWAY frames from the server or an intermediary.
+        || lower.contains("http2 error")
+        || lower.contains("stream error")
+        || lower.contains("protocol error")
+        || lower.contains("refused_stream")
+        || lower.contains("refused stream")
+        || lower.contains("enhance_your_calm")
+        || lower.contains("goaway")
+        || lower.contains("go away")
+        || lower.contains("sendrequest")
 }
 
 pub(crate) fn anthropic_oauth_route_availability(model: &str) -> (bool, String) {
@@ -47,5 +60,31 @@ pub(crate) fn anthropic_api_key_route_availability(model: &str) -> (bool, String
         (false, "requires extra usage".to_string())
     } else {
         (true, String::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_transient_transport_error;
+
+    #[test]
+    fn http2_stream_protocol_error_is_transient() {
+        // Exact shape reqwest/h2 surfaces for a reset on a reused HTTP/2 connection.
+        let msg = "error sending request for url (https://api.anthropic.com/v1/messages): \
+                   client error (SendRequest): http2 error: stream error received: \
+                   unspecific protocol error detected";
+        assert!(is_transient_transport_error(msg));
+    }
+
+    #[test]
+    fn http2_goaway_and_refused_stream_are_transient() {
+        assert!(is_transient_transport_error("http2 error: GOAWAY received"));
+        assert!(is_transient_transport_error("stream error: REFUSED_STREAM"));
+    }
+
+    #[test]
+    fn auth_errors_are_not_transient() {
+        assert!(!is_transient_transport_error("401 unauthorized"));
+        assert!(!is_transient_transport_error("invalid x-api-key"));
     }
 }

@@ -464,6 +464,14 @@ pub fn shared_http_client() -> reqwest::Client {
                 .user_agent(JCODE_USER_AGENT)
                 .connect_timeout(Duration::from_secs(15))
                 .tcp_keepalive(Some(Duration::from_secs(30)))
+                // Proactively detect half-dead pooled HTTP/2 connections before we
+                // reuse them. Without keepalive pings, a stale multiplexed connection
+                // (common behind NAT/VPN/proxy or flaky Wi-Fi) surfaces as
+                // "http2 error: stream error received: unspecific protocol error".
+                // Pinging while idle lets reqwest drop the connection instead.
+                .http2_keep_alive_interval(Some(Duration::from_secs(30)))
+                .http2_keep_alive_timeout(Duration::from_secs(15))
+                .http2_keep_alive_while_idle(true)
                 .pool_idle_timeout(Duration::from_secs(90))
                 .pool_max_idle_per_host(8)
                 .build()
