@@ -280,6 +280,49 @@ fn test_resume_session_defaults_sync_flags() -> Result<()> {
 }
 
 #[test]
+fn test_resume_all_sessions_request_roundtrip() -> Result<()> {
+    let req = Request::ResumeAllSessions { id: 451 };
+    let json = serde_json::to_string(&req)?;
+    assert!(json.contains("\"type\":\"resume_all_sessions\""));
+    let decoded = parse_request_json(&json)?;
+    let Request::ResumeAllSessions { id } = decoded else {
+        return Err(anyhow!("expected ResumeAllSessions"));
+    };
+    assert_eq!(id, 451);
+    Ok(())
+}
+
+#[test]
+fn test_resume_all_result_event_roundtrip() -> Result<()> {
+    let event = ServerEvent::ResumeAllResult {
+        id: 451,
+        resumed: 2,
+        skipped: 1,
+        resumed_sessions: vec!["fox".to_string(), "owl".to_string()],
+        message: "Resuming 2 interrupted sessions: fox, owl.".to_string(),
+    };
+    let json = serde_json::to_string(&event)?;
+    assert!(json.contains("\"type\":\"resume_all_result\""));
+    let decoded = parse_event_json(&json)?;
+    let ServerEvent::ResumeAllResult {
+        id,
+        resumed,
+        skipped,
+        resumed_sessions,
+        message,
+    } = decoded
+    else {
+        return Err(anyhow!("expected ResumeAllResult"));
+    };
+    assert_eq!(id, 451);
+    assert_eq!(resumed, 2);
+    assert_eq!(skipped, 1);
+    assert_eq!(resumed_sessions, vec!["fox".to_string(), "owl".to_string()]);
+    assert_eq!(message, "Resuming 2 interrupted sessions: fox, owl.");
+    Ok(())
+}
+
+#[test]
 fn test_message_request_roundtrip_preserves_images_and_system_reminder() -> Result<()> {
     let req = Request::Message {
         id: 88,

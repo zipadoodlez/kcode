@@ -918,6 +918,152 @@ pub(super) async fn handle_transfer(
 #[path = "client_actions_tests.rs"]
 mod tests;
 
+/// Decide whether an idle live session still owes the model a continuation.
+///
+/// This is the live-session analog of `restored_session_was_interrupted`: a
+/// session "would continue if resumed" when it has a pending reload-recovery
+/// directive, when it carries reload-interruption markers, or when its last
+/// model-visible message is a user/tool turn the assistant never answered
+/// (e.g. the turn errored or the process was interrupted mid-generation).
+fn live_session_owes_continuation(agent: &Agent) -> bool {
+    // Never continue an empty/fresh session.
+    if agent.visible_conversation_message_count() == 0 {
+        return false;
+    }
+
+    if super::reload_recovery::peek_for_session(agent.session_id())
+        .ok()
+        .flatten()
+        .map(|record| record.status == super::reload_recovery::ReloadRecoveryStatus::Pending)
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
+    if super::client_session::session_was_interrupted_by_reload(agent) {
+        return true;
+    }
+
+    matches!(
+        agent.last_visible_conversation_role(),
+        Some(crate::message::Role::User)
+    )
+}
+
+/// Continue every live, idle session that would auto-resume on a reload.
+///
+/// This is the on-demand equivalent of the post-reload recovery sweep: it walks
+/// the currently-live sessions, and for each idle one that still owes the model
+/// a continuation, injects the standard "continue where you left off" reminder
+/// so the session picks back up without the user having to open each one.
+pub(super) async fn handle_resume_all_sessions(
+    id: u64,
+    sessions: &SessionAgents,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    // Snapshot live sessions (those with at least one live client attachment).
+    let live_session_ids: Vec<String> = {
+        let members = swarm_members.read().await;
+        members
+            .iter()
+            .filter(|(_, member)| !member.event_txs.is_empty() || !member.event_tx.is_closed())
+            .map(|(session_id, _)| session_id.clone())
+            .collect()
+    };
+
+    let mut resumed_sessions: Vec<String> = Vec::new();
+    let mut skipped = 0usize;
+
+    for session_id in live_session_ids {
+        let agent = {
+            let guard = sessions.read().await;
+            guard.get(&session_id).cloned()
+        };
+        let Some(agent) = agent else {
+            continue;
+        };
+
+        // Only act on idle sessions; a busy session is already making progress.
+        let Ok(agent_guard) = agent.try_lock() else {
+            skipped += 1;
+            continue;
+        };
+
+        if !live_session_owes_continuation(&agent_guard) {
+            drop(agent_guard);
+            skipped += 1;
+            continue;
+        }
+
+        let reminder = match super::reload_recovery::pending_directive_for_session(&session_id) {
+            Ok(Some(directive)) => directive.continuation_message,
+            _ => crate::tool::selfdev::ReloadContext::interrupted_session_continuation_message(),
+        };
+        let display_name = agent_guard
+            .session_short_name()
+            .map(str::to_string)
+            .unwrap_or_else(|| session_id[..8.min(session_id.len())].to_string());
+        drop(agent_guard);
+
+        // Best-effort: record that the durable recovery intent was delivered.
+        if let Err(error) = super::reload_recovery::mark_delivered_if_matching_continuation(
+            &session_id,
+            &reminder,
+            "resume_all_sessions",
+        ) {
+            crate::logging::warn(&format!(
+                "resume_all_sessions: failed to mark recovery intent delivered for {}: {}",
+                session_id, error
+            ));
+        }
+
+        let event_tx = session_event_fanout_sender(session_id.clone(), Arc::clone(swarm_members));
+        let task_agent = Arc::clone(&agent);
+        let task_session_id = session_id.clone();
+        tokio::spawn(async move {
+            if let Err(error) =
+                process_message_streaming_mpsc(task_agent, "", vec![], Some(reminder), event_tx)
+                    .await
+            {
+                crate::logging::error(&format!(
+                    "resume_all_sessions: failed to continue live session {}: {}",
+                    task_session_id, error
+                ));
+            }
+        });
+
+        resumed_sessions.push(display_name);
+    }
+
+    let resumed = resumed_sessions.len();
+    let message = if resumed == 0 {
+        "No interrupted sessions to resume. All live sessions are idle or already complete."
+            .to_string()
+    } else if resumed == 1 {
+        format!("Resuming 1 interrupted session: {}.", resumed_sessions[0])
+    } else {
+        format!(
+            "Resuming {} interrupted sessions: {}.",
+            resumed,
+            resumed_sessions.join(", ")
+        )
+    };
+
+    crate::logging::info(&format!(
+        "resume_all_sessions: resumed={} skipped={} sessions={:?}",
+        resumed, skipped, resumed_sessions
+    ));
+
+    let _ = client_event_tx.send(ServerEvent::ResumeAllResult {
+        id,
+        resumed,
+        skipped,
+        resumed_sessions,
+        message,
+    });
+}
+
 pub(super) fn handle_compact(
     id: u64,
     agent: &Arc<Mutex<Agent>>,

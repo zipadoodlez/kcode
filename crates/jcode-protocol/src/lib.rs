@@ -419,6 +419,7 @@ impl Request {
             Request::GetCompactedHistory { id, .. } => *id,
             Request::Reload { id, .. } => *id,
             Request::ResumeSession { id, .. } => *id,
+            Request::ResumeAllSessions { id } => *id,
             Request::NotifySession { id, .. } => *id,
             Request::Transcript { id, .. } => *id,
             Request::InputShell { id, .. } => *id,

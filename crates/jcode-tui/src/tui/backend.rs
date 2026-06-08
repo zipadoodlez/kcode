@@ -531,6 +531,16 @@ impl RemoteConnection {
         self.send_request(request).await
     }
 
+    /// Ask the server to continue every live session that was interrupted and
+    /// would auto-resume on a reload. Returns the request id so the client can
+    /// correlate the `ResumeAllResult` event.
+    pub async fn resume_all_sessions(&mut self) -> Result<u64> {
+        let id = self.next_request_id;
+        self.next_request_id += 1;
+        self.send_request(Request::ResumeAllSessions { id }).await?;
+        Ok(id)
+    }
+
     /// Re-request the session history payload from the server.
     ///
     /// Used by the client-side history-recovery watchdog: if the bootstrap

@@ -1538,6 +1538,16 @@ pub(super) async fn handle_client(
                 }
             }
 
+            Request::ResumeAllSessions { id } => {
+                super::client_actions::handle_resume_all_sessions(
+                    id,
+                    &sessions,
+                    &swarm_members,
+                    &client_event_tx,
+                )
+                .await;
+            }
+
             Request::CycleModel { id, direction } => {
                 handle_cycle_model(id, direction, &agent, &client_event_tx).await;
             }

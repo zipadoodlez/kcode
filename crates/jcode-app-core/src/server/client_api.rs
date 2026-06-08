@@ -226,6 +226,19 @@ impl Client {
         Ok(id)
     }
 
+    /// Ask the server to continue every live session that was interrupted and
+    /// would auto-resume on a reload. Returns the request id so callers can
+    /// correlate the `ResumeAllResult` event.
+    pub async fn resume_all_sessions(&mut self) -> Result<u64> {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        let request = Request::ResumeAllSessions { id };
+        let json = serde_json::to_string(&request)? + "\n";
+        self.writer.write_all(json.as_bytes()).await?;
+        Ok(id)
+    }
+
     pub async fn send_transcript(
         &mut self,
         text: &str,
