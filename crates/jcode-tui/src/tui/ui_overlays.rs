@@ -313,6 +313,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     if app.is_remote_mode() {
         lines.push(help_entry("/client-reload", "Force reload client binary"));
         lines.push(help_entry("/server-reload", "Force reload server binary"));
+        lines.push(help_entry(
+            "/resumeall",
+            "Continue every interrupted live session that would auto-resume",
+        ));
     }
     lines.push(help_entry(
         "/debug-visual",

@@ -177,6 +177,9 @@ impl App {
             "server-reload" if self.is_remote => {
                 "/server-reload\nForce server binary reload in remote mode."
             }
+            "resumeall" | "resume-all" if self.is_remote => {
+                "/resumeall\nContinue every interrupted live session that would auto-resume on a reload.\n\nThe server walks all currently-live sessions and, for each idle one that still owes the model a reply (a turn that errored or was interrupted mid-generation), injects the standard \"continue where you left off\" reminder so it picks back up. Sessions that are busy, fresh, or already complete are left untouched."
+            }
             _ => return None,
         };
         Some(help.to_string())
