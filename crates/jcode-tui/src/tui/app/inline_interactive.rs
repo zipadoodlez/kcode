@@ -1459,7 +1459,7 @@ impl App {
             return Ok(false);
         }
         let is_default =
-            modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'd');
+            modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'b');
         let is_favorite =
             modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'f');
         let is_cycle_favorite =
@@ -2393,7 +2393,7 @@ impl App {
                 }
             }
             code if modifiers.contains(KeyModifiers::CONTROL)
-                && key_char_eq_ignore_ascii_case(code, 'd') =>
+                && key_char_eq_ignore_ascii_case(code, 'b') =>
             {
                 if let Some(ref picker) = self.inline_interactive_state {
                     if !picker_is_runtime_model_picker(picker) {

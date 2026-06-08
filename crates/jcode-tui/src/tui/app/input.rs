@@ -2067,9 +2067,9 @@ impl App {
         }
 
         // While the model picker preview is visible, route its favorite/default
-        // hotkeys (Ctrl+D, Ctrl+F, Alt+F) to the focused picker handler before the
-        // global control shortcuts can claim them (e.g. Ctrl+D as quit). This makes
-        // the hotkeys work directly in the preview list the user always sees.
+        // hotkeys (Ctrl+B, Ctrl+F, Alt+F) to the focused picker handler before the
+        // global control shortcuts can claim them. This makes the hotkeys work
+        // directly in the preview list the user always sees.
         if self.model_picker_preview_hotkey(code, modifiers)? {
             return Ok(());
         }

@@ -217,7 +217,7 @@ tool_profile = "acp"
 
 [provider]
 # Default model (optional, uses provider default if not set)
-# Set via /model picker with Ctrl+D to save as default
+# Set via /model picker with Ctrl+B to save as default
 # default_model = "claude-opus-4-6"
 # Default provider (optional: claude|anthropic-api|openai|openai-api|copilot|openrouter|...)
 # When set, this provider is preferred on startup if available.
