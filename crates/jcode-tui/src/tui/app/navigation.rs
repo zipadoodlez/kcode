@@ -74,7 +74,12 @@ fn is_mouse_scroll_kind(kind: MouseEventKind) -> bool {
 
 impl App {
     const MOUSE_SCROLL_INTENT_LINES: i16 = 3;
-    const MOUSE_SCROLL_MAX_QUEUE: i16 = 24;
+    /// Upper bound on lines enqueued per wheel notch after velocity
+    /// acceleration, so even the hardest flick stays controllable.
+    const MOUSE_SCROLL_MAX_INTENT_LINES: i16 = 12;
+    /// Maximum accumulated scroll momentum. Larger than a single accelerated
+    /// notch so a fast flick of several notches builds a longer, smoother glide.
+    const MOUSE_SCROLL_MAX_QUEUE: i16 = 60;
     /// How long the overscroll status line stays revealed after the last
     /// downward overscroll tick before it rebounds away.
     const OVERSCROLL_DWELL: std::time::Duration = std::time::Duration::from_millis(600);
@@ -578,8 +583,20 @@ impl App {
             self.mouse_scroll_queue = 0;
         }
 
-        self.last_mouse_scroll = Some(Instant::now());
-        let delta = direction * Self::MOUSE_SCROLL_INTENT_LINES;
+        // Velocity-based acceleration: infer how hard the wheel was flicked from
+        // the gap since the previous wheel event (the terminal does not report a
+        // physical force). Rapid consecutive notches (a fast flick) advance more
+        // lines per notch; deliberate single notches stay at the base intent so
+        // fine positioning is still precise. Shared by the chat viewport and the
+        // /resume preview since both enqueue here.
+        let now = Instant::now();
+        let multiplier = self
+            .last_mouse_scroll
+            .map(|last| Self::scroll_acceleration_multiplier(now.saturating_duration_since(last)))
+            .unwrap_or(1);
+        self.last_mouse_scroll = Some(now);
+        let intent = Self::scroll_intent_lines(multiplier);
+        let delta = direction * intent;
         self.mouse_scroll_queue = self
             .mouse_scroll_queue
             .saturating_add(delta)
@@ -591,6 +608,7 @@ impl App {
                     ("target", format!("{:?}", target)),
                     ("direction", direction.to_string()),
                     ("delta", delta.to_string()),
+                    ("multiplier", multiplier.to_string()),
                     ("before_queue", before_queue.to_string()),
                     ("before_target", format!("{:?}", before_target)),
                     ("after_queue", self.mouse_scroll_queue.to_string()),
@@ -601,16 +619,39 @@ impl App {
         self.drain_mouse_scroll_animation(Self::MOUSE_SCROLL_INTENT_LINES as usize);
     }
 
-    fn mouse_scroll_drain_amount(&self) -> usize {
-        let queued = self.mouse_scroll_queue.unsigned_abs() as usize;
-
-        if queued >= 6 {
+    /// Map the gap between consecutive wheel events to an intent multiplier. A
+    /// shorter gap means a faster flick (more "force"), so the wheel covers more
+    /// lines per notch. Thresholds are in milliseconds; a slow, deliberate notch
+    /// (or the first notch after a pause) stays at 1x for precise positioning.
+    pub(super) fn scroll_acceleration_multiplier(gap: std::time::Duration) -> i16 {
+        let ms = gap.as_millis();
+        if ms <= 25 {
+            4
+        } else if ms <= 50 {
             3
-        } else if queued >= 3 {
+        } else if ms <= 100 {
             2
         } else {
             1
         }
+    }
+
+    /// Lines enqueued per wheel notch for a given velocity multiplier, capped so
+    /// even the hardest flick stays controllable.
+    pub(super) fn scroll_intent_lines(multiplier: i16) -> i16 {
+        (Self::MOUSE_SCROLL_INTENT_LINES * multiplier).min(Self::MOUSE_SCROLL_MAX_INTENT_LINES)
+    }
+
+    pub(super) fn mouse_scroll_drain_amount(&self) -> usize {
+        // Ease out proportionally to the remaining momentum: a large queue (a
+        // hard flick) glides several lines per frame, decelerating to 1 line as
+        // it empties. This keeps motion smooth while letting strong scrolls cover
+        // distance quickly. ~1/4 of the queue per frame gives a natural decay.
+        let queued = self.mouse_scroll_queue.unsigned_abs() as usize;
+        if queued == 0 {
+            return 0;
+        }
+        queued.div_ceil(4).clamp(1, 8)
     }
 
     fn drain_mouse_scroll_animation(&mut self, max_steps: usize) {
