@@ -176,23 +176,39 @@ pub(super) fn compute_visible_margins(
                 used = used.saturating_add(1).min(area.width);
             }
 
+            // Compute the true free space on each side from the line's *rendered*
+            // alignment. This matters even in left-aligned mode: the header lines
+            // (`server:`/`client:`/model/version, auth status, mcp list, changelog
+            // box, etc.) are always centered regardless of mode, so a centered line
+            // of width `used` leaves only ~half the slack on the right. Reporting
+            // the full `area.width - used` here would let a right-side info widget
+            // overlap the centered header text.
+            let total_margin = area.width.saturating_sub(used);
+            let default_alignment = if centered {
+                Alignment::Center
+            } else {
+                Alignment::Left
+            };
+            let effective_alignment = lines[row].alignment.unwrap_or(default_alignment);
+            let (left_margin, right_margin) = match effective_alignment {
+                Alignment::Left => (0, total_margin),
+                Alignment::Center => {
+                    let left = total_margin / 2;
+                    let right = total_margin.saturating_sub(left);
+                    (left, right)
+                }
+                Alignment::Right => (total_margin, 0),
+            };
+
             if centered {
-                let total_margin = area.width.saturating_sub(used);
-                let effective_alignment = lines[row].alignment.unwrap_or(Alignment::Center);
-                let (left_margin, right_margin) = match effective_alignment {
-                    Alignment::Left => (0, total_margin),
-                    Alignment::Center => {
-                        let left = total_margin / 2;
-                        let right = total_margin.saturating_sub(left);
-                        (left, right)
-                    }
-                    Alignment::Right => (total_margin, 0),
-                };
                 left_widths.push(left_margin);
                 right_widths.push(right_margin);
             } else {
+                // Left-aligned mode never places left-side widgets (content is
+                // flush-left), so the left gap is reported as 0; the right gap
+                // still respects per-line alignment so widgets clear the header.
                 left_widths.push(0);
-                right_widths.push(area.width.saturating_sub(used));
+                right_widths.push(right_margin);
             }
         } else if centered {
             let half = area.width / 2;

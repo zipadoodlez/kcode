@@ -92,3 +92,98 @@ pub(super) fn rect_within_bounds(rect: Rect, bounds: Rect) -> bool {
     let bounds_bottom = bounds.y.saturating_add(bounds.height);
     rect.x >= bounds.x && rect.y >= bounds.y && right <= bounds_right && bottom <= bounds_bottom
 }
+
+/// Detect whether an info-widget placement intrudes into used content rather
+/// than sitting in the free margin the layout reported.
+///
+/// Info widgets are *expected* to live inside the messages rectangle, so a plain
+/// `rects_overlap(widget, messages_area)` is always true and tells us nothing.
+/// The meaningful invariant is per-row: for each row the widget covers, the
+/// reported free width on the widget's side must be large enough to hold it. If
+/// the widget extends past the free margin into the content column (e.g. over a
+/// centered header line), that is the real anomaly.
+pub(super) fn widget_overlaps_content(
+    placement: &info_widget::WidgetPlacement,
+    messages_area: Rect,
+    margins: &info_widget::Margins,
+) -> bool {
+    use info_widget::Side;
+
+    let rect = placement.rect;
+    if rect.width == 0 || rect.height == 0 {
+        return false;
+    }
+
+    let widths = match placement.side {
+        Side::Right => &margins.right_widths,
+        Side::Left => &margins.left_widths,
+    };
+
+    let row_start = rect.y.saturating_sub(messages_area.y) as usize;
+    let row_end = row_start + rect.height as usize;
+    for row in row_start..row_end {
+        // A row outside the margin table means we have no slack recorded for it,
+        // so any widget coverage there is intrusion.
+        let free = widths.get(row).copied().unwrap_or(0);
+        if rect.width > free {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tui::info_widget::{Margins, Side, WidgetKind, WidgetPlacement};
+
+    fn placement(side: Side, x: u16, y: u16, w: u16, h: u16) -> WidgetPlacement {
+        WidgetPlacement {
+            kind: WidgetKind::Overview,
+            rect: Rect::new(x, y, w, h),
+            side,
+        }
+    }
+
+    #[test]
+    fn widget_fitting_in_reported_margin_is_not_flagged() {
+        let area = Rect::new(0, 0, 80, 5);
+        let margins = Margins {
+            right_widths: vec![30; 5],
+            left_widths: vec![0; 5],
+            centered: false,
+        };
+        // 30-wide widget pinned to the right edge, fully inside the 30-col gap.
+        let p = placement(Side::Right, 50, 0, 30, 5);
+        assert!(!widget_overlaps_content(&p, area, &margins));
+    }
+
+    #[test]
+    fn widget_wider_than_free_margin_intrudes() {
+        let area = Rect::new(0, 0, 80, 5);
+        // A centered header line on row 2 shrinks the right gap; a widget that was
+        // sized off a stale/over-reported margin would intrude here.
+        let margins = Margins {
+            right_widths: vec![30, 30, 12, 30, 30],
+            left_widths: vec![0; 5],
+            centered: false,
+        };
+        let p = placement(Side::Right, 50, 0, 30, 5);
+        assert!(widget_overlaps_content(&p, area, &margins));
+    }
+
+    #[test]
+    fn widget_on_row_without_recorded_margin_intrudes() {
+        let area = Rect::new(0, 0, 80, 5);
+        let margins = Margins {
+            right_widths: vec![30, 30],
+            left_widths: vec![0, 0],
+            centered: false,
+        };
+        // Rows 2..5 have no recorded slack, so coverage there is intrusion.
+        let p = placement(Side::Right, 50, 0, 30, 5);
+        assert!(widget_overlaps_content(&p, area, &margins));
+    }
+}
+
+

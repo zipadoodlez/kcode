@@ -173,6 +173,30 @@ fn test_wrapped_input_line_count_respects_two_digit_prompt_width() {
 }
 
 #[test]
+fn test_compute_visible_margins_left_aligned_respects_centered_header() {
+    // Regression: the header lines are always centered even in left-aligned mode.
+    // The right margin reported for a centered line must be the true right pad
+    // (~half the slack), not the full `width - used`, otherwise a right-side info
+    // widget is placed on top of the centered header text.
+    let lines = vec![
+        ratatui::text::Line::from("centered header").centered(),
+        ratatui::text::Line::from("left body").left_aligned(),
+    ];
+    let area = Rect::new(0, 0, 40, 2);
+    let margins = compute_visible_margins(&lines, &[], area, false);
+
+    // centered: used=15 => total_margin=25 => left=12, right=13. Left-aligned mode
+    // never places left-side widgets, so left is reported as 0, but the right gap
+    // must stay at the true 13 columns so widgets clear the centered text.
+    assert_eq!(margins.left_widths[0], 0);
+    assert_eq!(margins.right_widths[0], 13);
+
+    // left-aligned body is unchanged: full slack on the right.
+    assert_eq!(margins.left_widths[1], 0);
+    assert_eq!(margins.right_widths[1], 31);
+}
+
+#[test]
 fn test_compute_visible_margins_centered_respects_line_alignment() {
     let lines = vec![
         ratatui::text::Line::from("centered").centered(),
