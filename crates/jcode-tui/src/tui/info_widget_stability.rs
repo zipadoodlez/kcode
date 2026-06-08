@@ -16,7 +16,7 @@
 //!   width profile, one scroll line at a time, producing the frame sequence.
 
 use super::info_widget::{InfoWidgetData, WidgetPlacement};
-use super::info_widget_layout::{Margins, calculate_placements};
+use super::info_widget_layout::{Margins, WidgetAnchor, calculate_placements_anchored};
 use ratatui::layout::Rect;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -260,9 +260,9 @@ pub fn simulate_scroll(
     let max_scroll = total_lines.saturating_sub(view);
     let area = Rect::new(0, 0, area_width, viewport_height);
 
-    // Carry placements across frames exactly like the live renderer does, so the
-    // sticky pass behaves identically.
-    let mut prev: Vec<WidgetPlacement> = Vec::new();
+    // Carry anchors across frames exactly like the live renderer does, so the
+    // HUD pinning / hide-in-place behaviour is exercised identically.
+    let mut anchors: Vec<WidgetAnchor> = Vec::new();
 
     for scroll in 0..=max_scroll {
         let mut right_widths: Vec<u16> = Vec::with_capacity(view);
@@ -280,9 +280,15 @@ pub fn simulate_scroll(
             left_widths: Vec::new(),
             centered: false,
         };
-        let placements = calculate_placements(area, &margins, data, true, &prev);
-        frames.push(placements.iter().map(PlacedRect::from_placement).collect());
-        prev = placements;
+        let outcome = calculate_placements_anchored(area, &margins, data, true, &anchors);
+        frames.push(
+            outcome
+                .visible
+                .iter()
+                .map(PlacedRect::from_placement)
+                .collect(),
+        );
+        anchors = outcome.anchors;
     }
 
     frames

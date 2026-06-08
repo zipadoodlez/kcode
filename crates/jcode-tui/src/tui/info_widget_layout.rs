@@ -11,8 +11,31 @@ const MIN_WIDGET_WIDTH: u16 = 24;
 const MAX_WIDGET_WIDTH: u16 = 40;
 /// Minimum height needed to show the widget.
 const MIN_WIDGET_HEIGHT: u16 = 5;
-/// How much width shrinkage to tolerate before forcing a widget to reposition.
-const STICKY_WIDTH_TOLERANCE: u16 = 4;
+/// Hysteresis band for width changes. A kept widget only *grows* its width back
+/// when at least this much extra space has reopened, which prevents 1-column
+/// left-edge jitter as ragged content scrolls past on the right side.
+const WIDTH_GROW_HYSTERESIS: u16 = 4;
+/// How many consecutive frames a widget may stay hidden-in-place before its
+/// anchor is abandoned and Phase 2 is allowed to re-home it elsewhere. This keeps
+/// a momentary wide line from teleporting the widget, while still letting it find
+/// a new home if the user parks on a region that permanently covers its slot.
+const MAX_HIDDEN_FRAMES: u16 = 60;
+
+/// Persistent memory of where a widget lives, so it can hold a fixed screen slot
+/// across frames (HUD-style) instead of being re-solved from scratch each frame.
+#[derive(Debug, Clone)]
+pub(crate) struct WidgetAnchor {
+    pub placement: WidgetPlacement,
+    /// Consecutive frames this anchor has been retained but not rendered.
+    pub hidden_frames: u16,
+}
+
+/// Result of a placement pass: what to render now, plus the anchor memory to feed
+/// back in next frame.
+pub(crate) struct PlacementOutcome {
+    pub visible: Vec<WidgetPlacement>,
+    pub anchors: Vec<WidgetAnchor>,
+}
 
 /// Margin information for layout calculation.
 #[derive(Debug, Clone)]
@@ -43,16 +66,44 @@ pub(crate) fn calculate_placements(
     enabled: bool,
     prev_placements: &[WidgetPlacement],
 ) -> Vec<WidgetPlacement> {
+    // Back-compat shim: derive throwaway anchors from the previous visible set.
+    let prev_anchors: Vec<WidgetAnchor> = prev_placements
+        .iter()
+        .cloned()
+        .map(|placement| WidgetAnchor {
+            placement,
+            hidden_frames: 0,
+        })
+        .collect();
+    calculate_placements_anchored(messages_area, margins, data, enabled, &prev_anchors).visible
+}
+
+/// Anchor-aware placement. Widgets behave like a pinned HUD: each holds the exact
+/// screen slot recorded in its anchor for as long as that slot can show it, only
+/// shrinking (with hysteresis) or hiding-in-place when a wide line scrolls under
+/// it, and only re-homing via Phase 2 after the slot has been unusable for
+/// [`MAX_HIDDEN_FRAMES`]. This is what stops widgets from jumping while scrolling.
+pub(crate) fn calculate_placements_anchored(
+    messages_area: Rect,
+    margins: &Margins,
+    data: &InfoWidgetData,
+    enabled: bool,
+    prev_anchors: &[WidgetAnchor],
+) -> PlacementOutcome {
     if !enabled || messages_area.height == 0 || messages_area.width == 0 {
-        return Vec::new();
+        return PlacementOutcome {
+            visible: Vec::new(),
+            anchors: Vec::new(),
+        };
     }
 
     let available = data.available_widgets();
     if available.is_empty() {
-        return Vec::new();
+        return PlacementOutcome {
+            visible: Vec::new(),
+            anchors: Vec::new(),
+        };
     }
-    let overview_requested = available.contains(&WidgetKind::Overview);
-
     let mut margin_spaces: Vec<MarginSpace> = Vec::new();
     if !margins.right_widths.is_empty() {
         margin_spaces.push(MarginSpace {
@@ -84,42 +135,105 @@ pub(crate) fn calculate_placements(
     }
 
     let mut placements: Vec<WidgetPlacement> = Vec::new();
+    // Anchors to carry into the next frame, keyed by widget kind.
+    let mut next_anchors: Vec<WidgetAnchor> = Vec::new();
     let mut kept: HashSet<WidgetKind> = HashSet::new();
+    // Widgets whose anchor is still alive (visible or hidden-in-place) and which
+    // therefore must NOT be re-homed by Phase 2 this frame.
+    let mut anchored: HashSet<WidgetKind> = HashSet::new();
+    // Overview "merges" several smaller widgets (model, context, ...). Those
+    // mergeable widgets must be suppressed only when Overview is *actually shown*
+    // this frame, not merely requested. While Overview is hidden-in-place (its slot
+    // is temporarily covered by a wide line) the small widgets are NOT the right
+    // fallback either, because Overview will pop back; but if Overview never had a
+    // slot at all, the small widgets are the real content and must anchor normally.
+    // We process the Overview anchor first so this flag is known before the small
+    // widgets are considered.
+    let mut overview_active = false;
 
-    // Phase 1: keep prior placements where the current margins still support them.
-    for prev in prev_placements {
+    // Order anchors so Overview is resolved before any mergeable widget.
+    let mut ordered_anchors: Vec<&WidgetAnchor> = prev_anchors.iter().collect();
+    ordered_anchors.sort_by_key(|a| match a.placement.kind {
+        WidgetKind::Overview => 0,
+        _ => 1,
+    });
+
+    // Phase 1: hold each anchored widget in its exact recorded slot.
+    //
+    // The viewport's free-width profile churns line-by-line as ragged content
+    // scrolls under fixed screen rows. The old code bailed as soon as the content
+    // under a widget grew a few columns, which sent the widget to Phase 2 where it
+    // teleported into whatever the largest empty pocket happened to be that frame -
+    // the distracting jump. Instead, a placed widget now holds its exact screen
+    // slot as long as that slot can still show it at >= MIN_WIDGET_WIDTH, so it
+    // never moves for width reasons. Width only *shrinks* immediately when the slot
+    // narrows and *grows back* with hysteresis, so the left edge does not jitter.
+    for anchor in ordered_anchors {
+        let prev = &anchor.placement;
         if !available.contains(&prev.kind) || prev.rect.height <= 2 {
             continue;
         }
-        if overview_requested && is_overview_mergeable(prev.kind) {
+        if overview_active && is_overview_mergeable(prev.kind) {
+            continue;
+        }
+        if kept.contains(&prev.kind) || anchored.contains(&prev.kind) {
+            // Already handled (duplicate anchor for the same kind).
             continue;
         }
 
         let row_start = prev.rect.y.saturating_sub(messages_area.y) as usize;
-        let row_end = row_start + prev.rect.height as usize;
+        let height = prev.rect.height as usize;
+        let row_end = row_start + height;
         let widths = match prev.side {
             Side::Right => &margins.right_widths,
             Side::Left => &margins.left_widths,
         };
-
-        let still_fits = row_end <= widths.len()
-            && (row_start..row_end)
-                .all(|row| widths[row] + STICKY_WIDTH_TOLERANCE >= prev.rect.width);
-        if !still_fits {
+        if height == 0 || row_end > widths.len() {
             continue;
         }
 
-        let actual_fit_width = widths[row_start..row_end]
+        // Widest the widget can be without overrunning the text on any of its rows.
+        let fit_width = widths[row_start..row_end]
             .iter()
             .copied()
             .min()
             .unwrap_or(0)
             .min(MAX_WIDGET_WIDTH);
-        if actual_fit_width < MIN_WIDGET_WIDTH {
+        let renderable = fit_width >= MIN_WIDGET_WIDTH;
+
+        // Width hysteresis: shrink immediately when the slot narrows, but only grow
+        // back once enough headroom has reopened, to avoid left-edge oscillation.
+        let kept_width = if !renderable {
+            prev.rect.width
+        } else if fit_width < prev.rect.width {
+            fit_width
+        } else if fit_width >= prev.rect.width + WIDTH_GROW_HYSTERESIS {
+            fit_width
+        } else {
+            prev.rect.width.min(fit_width)
+        };
+
+        if !renderable || kept_width < MIN_WIDGET_WIDTH {
+            // The slot can't show the widget this frame (a wide line scrolled under
+            // it). Keep the anchor and hide in place so it returns to the same spot
+            // when the wide line passes - unless it has been hidden too long, in
+            // which case we abandon the anchor and let Phase 2 re-home it.
+            let hidden_frames = anchor.hidden_frames.saturating_add(1);
+            if hidden_frames <= MAX_HIDDEN_FRAMES {
+                anchored.insert(prev.kind);
+                next_anchors.push(WidgetAnchor {
+                    placement: prev.clone(),
+                    hidden_frames,
+                });
+                // Overview will pop back into its slot, so keep suppressing its
+                // mergeable widgets while it is only transiently hidden.
+                if prev.kind == WidgetKind::Overview {
+                    overview_active = true;
+                }
+            }
             continue;
         }
 
-        let kept_width = prev.rect.width.min(actual_fit_width);
         let kept_x = match prev.side {
             Side::Right => messages_area
                 .x
@@ -127,12 +241,21 @@ pub(crate) fn calculate_placements(
                 .saturating_sub(kept_width),
             Side::Left => messages_area.x,
         };
-        placements.push(WidgetPlacement {
+        let placement = WidgetPlacement {
             kind: prev.kind,
             rect: Rect::new(kept_x, prev.rect.y, kept_width, prev.rect.height),
             side: prev.side,
+        };
+        placements.push(placement.clone());
+        next_anchors.push(WidgetAnchor {
+            placement,
+            hidden_frames: 0,
         });
         kept.insert(prev.kind);
+        anchored.insert(prev.kind);
+        if prev.kind == WidgetKind::Overview {
+            overview_active = true;
+        }
 
         for rect in all_rects.iter_mut() {
             if rect.2 == 0 || rect.0 != prev.side {
@@ -157,9 +280,18 @@ pub(crate) fn calculate_placements(
     }
 
     // Phase 2: greedily place remaining widgets.
-    let mut overview_placed = placements.iter().any(|p| p.kind == WidgetKind::Overview);
+    //
+    // `overview_active` already covers the case where Overview is shown OR only
+    // hidden-in-place; in both cases its mergeable widgets (model/context/...) are
+    // suppressed so they don't pop in at a *different* location while Overview is
+    // momentarily covered. `overview_placed` additionally covers a brand-new
+    // Overview placed within this very Phase 2 pass.
+    let mut overview_placed = overview_active;
     for kind in available {
-        if kept.contains(&kind) || (overview_placed && is_overview_mergeable(kind)) {
+        if kept.contains(&kind)
+            || anchored.contains(&kind)
+            || (overview_placed && is_overview_mergeable(kind))
+        {
             continue;
         }
 
@@ -193,10 +325,15 @@ pub(crate) fn calculate_placements(
             continue;
         }
 
-        placements.push(WidgetPlacement {
+        let placement = WidgetPlacement {
             kind,
             rect: Rect::new(x, messages_area.y + top, width, widget_height),
             side,
+        };
+        placements.push(placement.clone());
+        next_anchors.push(WidgetAnchor {
+            placement,
+            hidden_frames: 0,
         });
         if kind == WidgetKind::Overview {
             overview_placed = true;
@@ -232,7 +369,10 @@ pub(crate) fn calculate_placements(
         };
     }
 
-    placements
+    PlacementOutcome {
+        visible: placements,
+        anchors: next_anchors,
+    }
 }
 
 /// Find all valid empty rectangles in the margin.

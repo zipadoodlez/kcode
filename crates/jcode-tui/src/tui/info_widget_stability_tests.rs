@@ -82,6 +82,31 @@ fn empty_input_is_safe() {
     assert!(report.widgets.is_empty());
 }
 
+/// Regression guard for the HUD-pinning fix: when content has occasional long
+/// lines (the common chat/markdown shape), widgets must hold their screen slot -
+/// i.e. *zero positional travel* - instead of jumping to a new pocket each frame.
+/// Before the fix this profile produced ~544 travel/100 lines; after it is 0.
+#[test]
+fn occasional_long_lines_do_not_move_widgets() {
+    // Periods chosen so the gaps between long lines are tall enough to actually
+    // hold a widget (very dense periods leave no placeable region at all).
+    for period in [7usize, 9, 11, 13] {
+        let content: Vec<u16> = (0..240)
+            .map(|i| if i % period == 0 { 95 } else { 28 })
+            .collect();
+        let report = measure_scroll(&content, 100, 24, &sample_data());
+        assert!(
+            report.widgets.iter().any(|w| w.frames_present > 0),
+            "period {period}: expected a widget to be placed: {report:#?}"
+        );
+        assert_eq!(
+            report.total_travel, 0,
+            "period {period}: widgets should not slide/jump, got {} travel: {:#?}",
+            report.total_travel, report
+        );
+    }
+}
+
 /// Demonstration / quantification harness. Run with:
 ///   cargo test -p jcode-tui info_widget_stability::tests::demo_quantify -- --ignored --nocapture
 #[test]

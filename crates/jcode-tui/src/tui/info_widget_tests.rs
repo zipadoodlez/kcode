@@ -706,6 +706,7 @@ fn overview_widget_is_placed_when_space_allows() {
         if let Some(state) = guard.as_mut() {
             state.enabled = true;
             state.placements.clear();
+            state.anchors.clear();
             state.widget_states.clear();
         }
     }
@@ -734,6 +735,7 @@ fn workspace_widget_has_high_priority_when_enabled() {
         if let Some(state) = guard.as_mut() {
             state.enabled = true;
             state.placements.clear();
+            state.anchors.clear();
             state.widget_states.clear();
         }
     }
@@ -979,6 +981,7 @@ fn sticky_placement_clamps_width_to_current_margin() {
         if let Some(state) = guard.as_mut() {
             state.enabled = true;
             state.placements.clear();
+            state.anchors.clear();
             state.widget_states.clear();
         }
     }
@@ -1039,6 +1042,7 @@ fn placements_never_include_border_only_widgets() {
         if let Some(state) = guard.as_mut() {
             state.enabled = true;
             state.placements.clear();
+            state.anchors.clear();
             state.widget_states.clear();
         }
     }
