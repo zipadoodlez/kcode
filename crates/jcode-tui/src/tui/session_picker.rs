@@ -185,6 +185,10 @@ pub struct SessionPicker {
     item_to_session: Vec<Option<usize>>,
     list_state: ListState,
     scroll_offset: u16,
+    /// Last rendered maximum preview scroll offset (total wrapped lines minus
+    /// the visible height). Lets scroll handlers clamp without re-wrapping and
+    /// lets the shared mouse-momentum know when it has reached the bottom.
+    preview_max_scroll: u16,
     auto_scroll_preview: bool,
     /// Crashed sessions pending batch restore
     crashed_sessions: Option<CrashedSessionsInfo>,
@@ -249,6 +253,7 @@ impl SessionPicker {
             item_to_session: Vec::new(),
             list_state: ListState::default(),
             scroll_offset: 0,
+            preview_max_scroll: 0,
             auto_scroll_preview: true,
             crashed_sessions,
             crashed_session_ids,
@@ -287,6 +292,7 @@ impl SessionPicker {
             item_to_session: Vec::new(),
             list_state: ListState::default(),
             scroll_offset: 0,
+            preview_max_scroll: 0,
             auto_scroll_preview: true,
             crashed_sessions: None,
             crashed_session_ids: HashSet::new(),
@@ -358,6 +364,7 @@ impl SessionPicker {
             item_to_session: Vec::new(),
             list_state: ListState::default(),
             scroll_offset: 0,
+            preview_max_scroll: 0,
             auto_scroll_preview: true,
             crashed_sessions,
             crashed_session_ids,
@@ -1125,6 +1132,7 @@ impl SessionPicker {
             super::ui::split_native_scrollbar_area(inner, show_scrollbar);
 
         let max_scroll = total_lines.saturating_sub(visible_height) as u16;
+        self.preview_max_scroll = max_scroll;
         if self.auto_scroll_preview {
             self.scroll_offset = max_scroll;
             self.auto_scroll_preview = false;

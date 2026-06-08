@@ -730,6 +730,12 @@ impl App {
                 });
                 true
             }
+            MouseScrollTarget::SessionPickerPreview => {
+                let Some(picker_cell) = self.session_picker_overlay.as_ref() else {
+                    return false;
+                };
+                picker_cell.borrow_mut().apply_preview_scroll_step(direction)
+            }
         }
     }
 
@@ -1144,7 +1150,31 @@ impl App {
         }
 
         if let Some(ref picker_cell) = self.session_picker_overlay {
-            picker_cell.borrow_mut().handle_overlay_mouse(mouse);
+            // Route wheel events over the preview pane through the shared
+            // scroll-momentum queue so the picker scrolls with the same smooth
+            // easing as the main chat viewport. List-pane wheels step the
+            // (discrete) selection immediately; other mouse events are ignored.
+            let direction = match mouse.kind {
+                MouseEventKind::ScrollUp => Some(-1i16),
+                MouseEventKind::ScrollDown => Some(1i16),
+                _ => None,
+            };
+            if let Some(direction) = direction {
+                let (over_preview, over_list) = {
+                    let picker = picker_cell.borrow();
+                    (
+                        picker.mouse_over_preview(mouse.column, mouse.row),
+                        picker.mouse_over_list(mouse.column, mouse.row),
+                    )
+                };
+                if over_preview {
+                    self.enqueue_mouse_scroll(MouseScrollTarget::SessionPickerPreview, direction);
+                    finish_mouse_event!(true, "session_picker_preview_scroll");
+                } else if over_list {
+                    picker_cell.borrow_mut().step_list_selection(direction);
+                    finish_mouse_event!(false, "session_picker_list_step");
+                }
+            }
             finish_mouse_event!(false, "session_picker_overlay");
         }
         if let Some(ref picker_cell) = self.login_picker_overlay {

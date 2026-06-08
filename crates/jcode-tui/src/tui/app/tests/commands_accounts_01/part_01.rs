@@ -307,6 +307,119 @@ fn slash_provider_test_coverage_overlay_scrolls_with_mouse_wheel() {
 }
 
 #[test]
+fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
+    use crate::tui::session_picker::{PreviewMessage, SessionInfo, SessionSource};
+    // Build a session whose preview overflows a small pane so it can scroll.
+    let mut messages = Vec::new();
+    for i in 0..40 {
+        messages.push(PreviewMessage {
+            role: "user".to_string(),
+            content: format!("prompt line {i}"),
+            tool_calls: Vec::new(),
+            tool_data: None,
+            timestamp: None,
+        });
+        messages.push(PreviewMessage {
+            role: "assistant".to_string(),
+            content: format!("assistant reply {i}"),
+            tool_calls: Vec::new(),
+            tool_data: None,
+            timestamp: None,
+        });
+    }
+    let session = SessionInfo {
+        id: "session_scroll".to_string(),
+        parent_id: None,
+        short_name: "scroll".to_string(),
+        icon: "s".to_string(),
+        title: "Scroll".to_string(),
+        message_count: messages.len(),
+        user_message_count: 40,
+        assistant_message_count: 40,
+        created_at: chrono::Utc::now(),
+        last_message_time: chrono::Utc::now(),
+        last_active_at: None,
+        working_dir: None,
+        model: None,
+        provider_key: None,
+        is_canary: false,
+        is_debug: false,
+        saved: false,
+        save_label: None,
+        status: crate::session::SessionStatus::Closed,
+        needs_catchup: false,
+        estimated_tokens: 0,
+        first_user_prompt: Some("prompt line 0".to_string()),
+        messages_preview: messages,
+        search_index: "scroll".to_string(),
+        server_name: None,
+        server_icon: None,
+        source: SessionSource::Jcode,
+        resume_target: crate::tui::session_picker::ResumeTarget::JcodeSession {
+            session_id: "session_scroll".to_string(),
+        },
+        external_path: None,
+    };
+
+    let mut picker = crate::tui::session_picker::SessionPicker::new(vec![session]);
+    // Render once so the preview pane area + max scroll are populated, and the
+    // auto-scroll-to-bottom completes (so a wheel up has room to move). Wheel
+    // routing is coordinate-based, so pane focus does not matter here.
+    let backend = ratatui::backend::TestBackend::new(120, 20);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| picker.render(frame))
+        .expect("render picker");
+
+    let mut app = create_test_app();
+    app.session_picker_mode = SessionPickerMode::Resume;
+    app.session_picker_overlay = Some(RefCell::new(picker));
+
+    let scroll_before = app
+        .session_picker_overlay
+        .as_ref()
+        .unwrap()
+        .borrow()
+        .preview_scroll_offset_for_test();
+    assert!(
+        scroll_before > 0,
+        "long preview should auto-scroll to the bottom on first render"
+    );
+
+    // A wheel up over the preview pane (right ~60% of width) routes through the
+    // shared mouse-scroll momentum (enqueue + drain) instead of an instant jump,
+    // and actually moves the preview offset.
+    let scroll_only = app.handle_mouse_event(crossterm::event::MouseEvent {
+        kind: crossterm::event::MouseEventKind::ScrollUp,
+        column: 90,
+        row: 10,
+        modifiers: crossterm::event::KeyModifiers::empty(),
+    });
+    assert!(
+        scroll_only,
+        "preview wheel should be classified as scroll-only"
+    );
+    // Drain any remaining queued momentum so the move completes.
+    for _ in 0..32 {
+        app.progress_mouse_scroll_animation();
+    }
+    let scroll_after = app
+        .session_picker_overlay
+        .as_ref()
+        .unwrap()
+        .borrow()
+        .preview_scroll_offset_for_test();
+    assert!(
+        scroll_after < scroll_before,
+        "wheel up should scroll the preview toward the top (before={scroll_before}, after={scroll_after})"
+    );
+    assert!(
+        !app.has_pending_mouse_scroll_animation(),
+        "momentum queue should drain to empty"
+    );
+}
+
+#[test]
 fn test_help_topic_shows_btw_command_details() {
     let mut app = create_test_app();
     app.input = "/help btw".to_string();

@@ -511,6 +511,8 @@ pub(super) enum MouseScrollTarget {
     HelpOverlay,
     ChangelogOverlay,
     ModelStatusOverlay,
+    /// The right-hand preview pane of the /resume session picker overlay.
+    SessionPickerPreview,
 }
 
 #[derive(Debug, Clone, Default)]
