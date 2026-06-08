@@ -736,6 +736,10 @@ async fn run_default_command(args: Args) -> Result<()> {
     };
     startup_profile::mark("setup_hints");
 
+    // Best-effort: make sure the macOS menu bar session-count indicator is
+    // running so it shows up automatically for every macOS user.
+    commands::ensure_menubar_helper_running();
+
     if args.resume.is_none() {
         terminal::show_crash_resume_hint();
     }
