@@ -417,6 +417,55 @@ fn test_scroll_down_past_bottom_does_not_accumulate_phantom_offset() {
 }
 
 #[test]
+fn test_scroll_acceleration_multiplier_scales_with_flick_speed() {
+    use std::time::Duration;
+    // A fast flick (short gap between wheel events) covers more lines per notch;
+    // a slow, deliberate notch stays at 1x for precise positioning.
+    assert_eq!(App::scroll_acceleration_multiplier(Duration::from_millis(10)), 4);
+    assert_eq!(App::scroll_acceleration_multiplier(Duration::from_millis(40)), 3);
+    assert_eq!(App::scroll_acceleration_multiplier(Duration::from_millis(80)), 2);
+    assert_eq!(App::scroll_acceleration_multiplier(Duration::from_millis(200)), 1);
+    assert_eq!(App::scroll_acceleration_multiplier(Duration::from_secs(5)), 1);
+}
+
+#[test]
+fn test_fast_flick_enqueues_more_lines_than_a_slow_notch() {
+    use std::time::Duration;
+    // "Scroll power": the lines committed per wheel notch scale with flick speed
+    // (shorter inter-event gap => bigger multiplier => more lines), capped so the
+    // hardest flick stays controllable. Shared by the chat and /resume preview.
+    let fast = App::scroll_intent_lines(App::scroll_acceleration_multiplier(Duration::from_millis(10)));
+    let medium =
+        App::scroll_intent_lines(App::scroll_acceleration_multiplier(Duration::from_millis(80)));
+    let slow =
+        App::scroll_intent_lines(App::scroll_acceleration_multiplier(Duration::from_millis(400)));
+    assert!(fast > medium, "fast flick commits more lines ({fast} > {medium})");
+    assert!(medium > slow, "medium flick commits more than a slow notch ({medium} > {slow})");
+    assert_eq!(slow, 3, "a deliberate notch uses the base intent");
+    // Even a maximum-velocity multiplier stays within the controllable cap.
+    assert!(App::scroll_intent_lines(8) <= 12, "intent is capped");
+}
+
+#[test]
+fn test_momentum_drain_decelerates_to_one_line() {
+    // The drain rate eases out: a large queue glides several lines per frame,
+    // decelerating to a single line as it empties (natural momentum decay).
+    let mut app = create_test_app();
+    app.mouse_scroll_queue = 40;
+    let big = app.mouse_scroll_drain_amount();
+    app.mouse_scroll_queue = 4;
+    let small = app.mouse_scroll_drain_amount();
+    app.mouse_scroll_queue = 1;
+    let tail = app.mouse_scroll_drain_amount();
+    app.mouse_scroll_queue = 0;
+    let empty = app.mouse_scroll_drain_amount();
+
+    assert!(big > small, "large momentum should drain faster ({big} > {small})");
+    assert_eq!(tail, 1, "the last line should drain one at a time");
+    assert_eq!(empty, 0, "an empty queue drains nothing");
+}
+
+#[test]
 fn test_queued_wheel_down_at_bottom_does_not_accumulate_phantom_scroll() {
     // Touchpad/mouse momentum can queue many downward wheel steps. If they keep
     // "succeeding" against the already-pinned bottom, the queue (or offset) would
