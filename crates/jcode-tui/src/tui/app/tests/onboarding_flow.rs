@@ -683,3 +683,26 @@ fn model_validation_ignores_stale_session_result() {
         "stale result appends nothing"
     );
 }
+
+#[test]
+fn remote_post_login_validation_waits_for_catalog_refresh() {
+    use crate::tui::app::onboarding_flow::OnboardingPendingValidation;
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.is_remote = true;
+        // Simulate the state right after a remote login: a pending validation
+        // armed to wait for the catalog generation to advance past 3.
+        app.remote_model_catalog_generation = 3;
+        app.onboarding_pending_model_validation = Some(
+            OnboardingPendingValidation::awaiting_catalog_refresh(app.session.id.clone(), 3),
+        );
+
+        // Catalog hasn't refreshed yet (generation unchanged): not ready to fire.
+        assert!(!app.onboarding_pending_validation_ready_to_fire());
+
+        // The server pushes the post-login catalog (generation advances): now
+        // the validation is ready to fire with the freshly-selected model.
+        app.remote_model_catalog_generation = 4;
+        assert!(app.onboarding_pending_validation_ready_to_fire());
+    });
+}

@@ -810,6 +810,20 @@ impl App {
         if !crate::auth::AuthStatus::check_fast().has_any_available() {
             return;
         }
+        // Remote mode after a login: the server pushes a fresh model catalog a
+        // moment later (e.g. switching the route to gpt-5.5 after an OpenAI
+        // login). The pre-login default (e.g. Claude Opus) is already a concrete
+        // id, so validating immediately would report the *stale* model. Defer
+        // until the catalog generation advances (or a short timeout) so the
+        // readiness line names the freshly-selected model.
+        if self.is_remote && self.recent_authenticated_provider.is_some() {
+            self.onboarding_pending_model_validation =
+                Some(OnboardingPendingValidation::awaiting_catalog_refresh(
+                    self.session.id.clone(),
+                    self.remote_model_catalog_generation,
+                ));
+            return;
+        }
         // If we already know a concrete model (typically local mode), run it
         // right away; otherwise defer to the tick loop until the server reports
         // the live model id.
@@ -882,12 +896,34 @@ impl App {
             self.onboarding_pending_model_validation = None;
             return false;
         }
-        if self.onboarding_default_model_id_is_concrete() || pending.resolve_timed_out() {
-            self.onboarding_pending_model_validation = None;
-            self.onboarding_spawn_model_validation();
-            return true;
+        if !self.onboarding_pending_validation_ready_to_fire() {
+            return false;
         }
-        false
+        self.onboarding_pending_model_validation = None;
+        self.onboarding_spawn_model_validation();
+        true
+    }
+
+    /// Whether the currently-pending validation should fire this tick. Pure
+    /// decision logic (no side effects) so it can be unit-tested without the
+    /// `tokio::spawn` in `onboarding_spawn_model_validation`.
+    ///
+    /// When waiting for the post-login catalog refresh (remote mode), hold until
+    /// the catalog generation advances past the value captured at request time,
+    /// so we validate the freshly-selected model rather than the stale pre-login
+    /// default. The resolve timeout is always a backstop so the line eventually
+    /// appears even if no refresh arrives.
+    pub(super) fn onboarding_pending_validation_ready_to_fire(&self) -> bool {
+        let Some(pending) = self.onboarding_pending_model_validation.as_ref() else {
+            return false;
+        };
+        let timed_out = pending.resolve_timed_out();
+        if pending.await_catalog_refresh {
+            let refreshed =
+                self.remote_model_catalog_generation > pending.catalog_generation_at_request;
+            return refreshed || timed_out;
+        }
+        self.onboarding_default_model_id_is_concrete() || timed_out
     }
 
     /// Build the provider used for the onboarding model-validation ping.

@@ -192,6 +192,12 @@ pub(crate) enum OnboardingPhase {
 /// mode the live model is reported by the server asynchronously, so the
 /// onboarding tick polls until a real id (not "unknown") is available, then
 /// runs the lightweight validation ping.
+///
+/// When the validation is requested right after a login (remote mode), the
+/// server also pushes a fresh model catalog a moment later (e.g. switching the
+/// route to gpt-5.5 after an OpenAI login). We capture the catalog "generation"
+/// at request time and wait for it to advance so the readiness line reports the
+/// freshly-selected model rather than the stale pre-login default.
 #[derive(Clone, Debug)]
 pub(crate) struct OnboardingPendingValidation {
     /// Session the validation belongs to; stale requests are ignored.
@@ -199,6 +205,12 @@ pub(crate) struct OnboardingPendingValidation {
     /// When the request was created, so we can give up after a short wait
     /// (and validate whatever default we have) rather than spinning forever.
     pub(crate) requested_at: Instant,
+    /// Whether to wait for the server's post-login catalog refresh to land
+    /// before firing (remote mode after a login).
+    pub(crate) await_catalog_refresh: bool,
+    /// Remote catalog generation observed when the request was created. The
+    /// post-login refresh has landed once the live generation moves past this.
+    pub(crate) catalog_generation_at_request: u64,
 }
 
 impl OnboardingPendingValidation {
@@ -210,6 +222,19 @@ impl OnboardingPendingValidation {
         Self {
             session_id,
             requested_at: Instant::now(),
+            await_catalog_refresh: false,
+            catalog_generation_at_request: 0,
+        }
+    }
+
+    /// Variant that also waits for the remote catalog generation to advance
+    /// past `catalog_generation` (the post-login refresh) before firing.
+    pub(crate) fn awaiting_catalog_refresh(session_id: String, catalog_generation: u64) -> Self {
+        Self {
+            session_id,
+            requested_at: Instant::now(),
+            await_catalog_refresh: true,
+            catalog_generation_at_request: catalog_generation,
         }
     }
 
