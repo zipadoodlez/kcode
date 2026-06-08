@@ -1612,7 +1612,8 @@ impl App {
     }
 
     pub(super) fn open_session_picker(&mut self) {
-        let (picker, status) = if let Some((server_groups, orphan_sessions)) =
+        let current_dir = self.session.working_dir.clone();
+        let (mut picker, status) = if let Some((server_groups, orphan_sessions)) =
             session_picker::load_cached_sessions_grouped()
         {
             (
@@ -1622,6 +1623,7 @@ impl App {
         } else {
             (SessionPicker::loading(), "Loading sessions...")
         };
+        picker.set_current_dir(current_dir);
         self.session_picker_overlay = Some(RefCell::new(picker));
         self.session_picker_mode = SessionPickerMode::Resume;
         self.set_status_notice(status);
@@ -1680,7 +1682,8 @@ impl App {
 
         match self.session_picker_mode {
             SessionPickerMode::Resume => {
-                let picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
+                let mut picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
+                picker.set_current_dir(self.session.working_dir.clone());
                 self.session_picker_overlay = Some(RefCell::new(picker));
                 self.set_status_notice("Sessions loaded");
                 true
@@ -1688,6 +1691,7 @@ impl App {
             SessionPickerMode::CatchUp => {
                 let mut picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
                 picker.activate_catchup_filter();
+                picker.set_current_dir(self.session.working_dir.clone());
                 self.session_picker_overlay = Some(RefCell::new(picker));
                 self.set_status_notice("Catch Up sessions loaded");
                 true

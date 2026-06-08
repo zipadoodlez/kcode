@@ -1865,3 +1865,45 @@ fn test_search_mode_ctrl_u_clears_query() {
     assert_eq!(picker.search_query, "");
     assert!(picker.search_active, "Ctrl+U clears text but stays in search");
 }
+
+#[test]
+fn test_current_dir_highlight_marks_matching_sessions() {
+    let mut same = make_session("same_dir", "same", false, SessionStatus::Closed);
+    same.working_dir = Some("/home/jeremy/project".to_string());
+    let mut other = make_session("other_dir", "other", false, SessionStatus::Closed);
+    other.working_dir = Some("/home/jeremy/elsewhere".to_string());
+
+    let mut picker = SessionPicker::new(vec![same.clone(), other.clone()]);
+    // Trailing slash on the current dir should still match (normalization).
+    picker.set_current_dir(Some("/home/jeremy/project/".to_string()));
+
+    assert!(picker.session_in_current_dir(&same));
+    assert!(!picker.session_in_current_dir(&other));
+
+    let rows = picker.render_session_item_lines(&same, false);
+    let text: String = rows.iter().map(line_text).collect::<Vec<_>>().join("\n");
+    assert!(
+        text.contains("here"),
+        "matching session should show the `here` marker: {text}"
+    );
+
+    let other_rows = picker.render_session_item_lines(&other, false);
+    let other_text: String = other_rows
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !other_text.contains("▸ here"),
+        "non-matching session should not show the marker: {other_text}"
+    );
+}
+
+#[test]
+fn test_current_dir_highlight_absent_without_current_dir() {
+    let mut session = make_session("s", "s", false, SessionStatus::Closed);
+    session.working_dir = Some("/home/jeremy/project".to_string());
+    let picker = SessionPicker::new(vec![session.clone()]);
+    // No current_dir set: nothing is highlighted.
+    assert!(!picker.session_in_current_dir(&session));
+}

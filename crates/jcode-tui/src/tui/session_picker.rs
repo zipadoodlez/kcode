@@ -75,6 +75,19 @@ fn safe_truncate(s: &str, max_chars: usize) -> &str {
         .unwrap_or(s)
 }
 
+/// Normalize a working directory string for equality comparison: trim trailing
+/// slashes (except root) and surrounding whitespace so `/foo/bar` and
+/// `/foo/bar/` match.
+fn normalize_dir(dir: &str) -> String {
+    let trimmed = dir.trim();
+    let stripped = trimmed.trim_end_matches('/');
+    if stripped.is_empty() {
+        trimmed.to_string()
+    } else {
+        stripped.to_string()
+    }
+}
+
 /// Format duration since a time in a human-readable way
 fn format_time_ago(time: chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
@@ -232,6 +245,10 @@ pub struct SessionPicker {
     /// re-wrap the whole preview every frame. Invalidated by content hash and
     /// pane geometry (see [`PreviewCacheKey`]).
     preview_cache: Option<PreviewRenderCache>,
+    /// Working directory `/resume` was opened from. Sessions whose `working_dir`
+    /// matches this are highlighted so the user can quickly spot sessions from
+    /// the same project they are currently in.
+    current_dir: Option<String>,
 }
 
 impl SessionPicker {
@@ -275,6 +292,7 @@ impl SessionPicker {
             onboarding_banner: None,
             onboarding_start_new_highlighted: false,
             preview_cache: None,
+            current_dir: None,
         };
         picker.rebuild_items();
         picker
@@ -314,6 +332,7 @@ impl SessionPicker {
             onboarding_banner: None,
             onboarding_start_new_highlighted: false,
             preview_cache: None,
+            current_dir: None,
         }
     }
 
@@ -386,6 +405,7 @@ impl SessionPicker {
             onboarding_banner: None,
             onboarding_start_new_highlighted: false,
             preview_cache: None,
+            current_dir: None,
         };
         picker.rebuild_items();
         picker
@@ -394,6 +414,21 @@ impl SessionPicker {
     pub fn activate_catchup_filter(&mut self) {
         self.filter_mode = SessionFilterMode::CatchUp;
         self.rebuild_items();
+    }
+
+    /// Record the working directory `/resume` was opened from so sessions that
+    /// share it can be visually highlighted in the list.
+    pub fn set_current_dir(&mut self, dir: Option<String>) {
+        self.current_dir = dir.map(|d| normalize_dir(&d));
+    }
+
+    /// Whether the given session's working directory matches the directory the
+    /// picker was opened from.
+    pub(super) fn session_in_current_dir(&self, session: &SessionInfo) -> bool {
+        match (self.current_dir.as_deref(), session.working_dir.as_deref()) {
+            (Some(current), Some(dir)) => normalize_dir(dir) == current,
+            _ => false,
+        }
     }
 
     /// Replace the backing session data in place while preserving the user's
