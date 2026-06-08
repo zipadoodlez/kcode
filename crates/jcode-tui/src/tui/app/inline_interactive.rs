@@ -3033,6 +3033,38 @@ mod tests {
     }
 
     #[test]
+    fn model_picker_default_route_marks_anthropic_api_config_provider() {
+        // Regression: config `default_provider = "anthropic-api"` is the
+        // dual-auth spelling of the route keyed `anthropic-api-key`. The picker
+        // must still mark the Anthropic API-key route as the default ★ even
+        // though the two spellings normalize differently, and must NOT mark the
+        // OAuth route for the same model.
+        let api_route = picker_option_with_method("Anthropic", "anthropic-api-key");
+        let oauth_route = picker_option_with_method("Anthropic", "claude-oauth");
+
+        assert!(model_picker_route_is_default(
+            "claude-opus-4-8",
+            &api_route,
+            Some("claude-opus-4-8"),
+            Some("anthropic-api"),
+        ));
+        assert!(!model_picker_route_is_default(
+            "claude-opus-4-8",
+            &oauth_route,
+            Some("claude-opus-4-8"),
+            Some("anthropic-api"),
+        ));
+
+        // The equivalent `claude-api` spelling behaves identically.
+        assert!(model_picker_route_is_default(
+            "claude-opus-4-8",
+            &api_route,
+            Some("claude-opus-4-8"),
+            Some("claude-api"),
+        ));
+    }
+
+    #[test]
     fn model_picker_default_route_honors_provider_prefixed_model_specs() {
         let openai_route = picker_option_with_method("OpenAI", "openai-oauth");
         let copilot_route = picker_option_with_method("Copilot", "copilot");

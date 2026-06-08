@@ -801,6 +801,33 @@ pub fn model_route_provider_matches_key(
     if desired_provider.is_empty() {
         return false;
     }
+    // Fold the dual-auth (Anthropic/OpenAI OAuth-vs-API) vocabularies onto their
+    // canonical session key first, so a config `default_provider =
+    // "anthropic-api"` matches a route whose key is `claude-api` -- while still
+    // keeping the API-vs-OAuth distinction (`claude-api` must NOT match
+    // `claude-oauth`/`claude`). Without this fold the two spellings of the same
+    // route normalize differently ("anthropicapi" != "claudeapi") and the model
+    // picker fails to mark the user's actual default route.
+    //
+    // Only the explicit-credential desired keys (`claude-api`, `openai-oauth`,
+    // ...) get this strict treatment. A bare desired alias (`claude`,
+    // `anthropic`, `openai`) pins no credential, so it keeps the historical
+    // auth-method-agnostic label match below and can light up either route.
+    let desired_pins_credential = AuthRoute::parse_explicit_credential_prefix(desired_provider);
+    if let Some(desired_route) = desired_pins_credential {
+        let desired_key = desired_route.session_provider_key();
+        if let Some(route_provider_key) = route_provider_key {
+            let route_folded = AuthRoute::parse(route_provider_key)
+                .map(|route| route.session_provider_key())
+                .unwrap_or(route_provider_key);
+            return normalize_model_route_provider_label(route_folded)
+                == normalize_model_route_provider_label(desired_key);
+        }
+        // No structured route key to compare against: the bare label cannot
+        // distinguish OAuth from API, so a credential-pinned default cannot be
+        // confirmed for this route.
+        return false;
+    }
     if let Some(route_provider_key) = route_provider_key
         && normalize_model_route_provider_label(route_provider_key)
             == normalize_model_route_provider_label(desired_provider)
@@ -1149,6 +1176,55 @@ mod tests {
             Some("cerebras"),
             "Cerebras",
             "groq"
+        ));
+    }
+
+    #[test]
+    fn model_route_provider_key_matching_folds_dual_auth_vocabularies() {
+        // `default_provider = "anthropic-api"` and a route keyed `claude-api`
+        // are two spellings of the same Anthropic API-key route, so they must
+        // match even though their raw forms normalize differently.
+        assert!(model_route_provider_matches_key(
+            Some("claude-api"),
+            "Anthropic",
+            "anthropic-api",
+        ));
+        assert!(model_route_provider_matches_key(
+            Some("anthropic-api-key"),
+            "Anthropic",
+            "claude-api",
+        ));
+        assert!(model_route_provider_matches_key(
+            Some("openai-api"),
+            "OpenAI",
+            "openai-api-key",
+        ));
+
+        // The fold must NOT collapse the OAuth-vs-API distinction: an API-key
+        // default must not light up the OAuth route (and vice versa).
+        assert!(!model_route_provider_matches_key(
+            Some("claude-oauth"),
+            "Anthropic",
+            "anthropic-api",
+        ));
+        assert!(!model_route_provider_matches_key(
+            Some("openai-oauth"),
+            "OpenAI",
+            "openai-api",
+        ));
+
+        // A bare provider default pins no credential, so it keeps the historical
+        // auth-method-agnostic behavior: it matches either dual-auth route via
+        // the label fallback (model identity still narrows the picker default).
+        assert!(model_route_provider_matches_key(
+            Some("claude-oauth"),
+            "Anthropic",
+            "claude",
+        ));
+        assert!(model_route_provider_matches_key(
+            Some("claude-api"),
+            "Anthropic",
+            "claude",
         ));
     }
 
