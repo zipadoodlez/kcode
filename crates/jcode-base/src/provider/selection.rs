@@ -456,7 +456,16 @@ impl MultiProvider {
             return Some(ConfigProviderSelection::NamedProfile(trimmed.to_string()));
         }
 
-        Self::parse_provider_hint(trimmed).map(ConfigProviderSelection::BuiltIn)
+        // Accept the dual-auth `--provider` vocabulary (`anthropic-api`,
+        // `claude-api`, `openai-api`, `claude-oauth`, ...) in addition to the
+        // bare provider hints. Without this, a config `default_provider =
+        // "anthropic-api"` is rejected as "Unknown default_provider" and the
+        // OAuth-vs-API routing decision it encodes is silently dropped.
+        Self::parse_provider_hint(trimmed)
+            .or_else(|| {
+                jcode_provider_core::AuthRoute::parse(trimmed).map(|route| route.active_provider())
+            })
+            .map(ConfigProviderSelection::BuiltIn)
     }
 }
 

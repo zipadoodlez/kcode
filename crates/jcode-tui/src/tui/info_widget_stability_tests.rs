@@ -147,3 +147,19 @@ fn demo_quantify() {
             .collect::<Vec<_>>(),
     );
 }
+
+#[test]
+#[ignore]
+fn demo_trace_rich14() {
+    use super::{SimMode, simulate_scroll_mode};
+    let content: Vec<u16> = (0..40).map(|i| if i % 14 == 0 { 95 } else { 26 }).collect();
+    for mode in [SimMode::Greedy, SimMode::Anchored] {
+        println!("--- {:?} ---", mode);
+        let frames = simulate_scroll_mode(&content, 100, 24, &rich_data(), mode);
+        for (i, f) in frames.iter().enumerate().take(16) {
+            let mut s = format!("f{:>2}: ", i);
+            for r in f { s.push_str(&format!("[{} y={} h={}] ", r.kind, r.y, r.height)); }
+            println!("{}", s);
+        }
+    }
+}

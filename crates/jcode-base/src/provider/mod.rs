@@ -924,7 +924,49 @@ impl MultiProvider {
         }) && let Some(selection) =
             Self::resolve_config_provider_selection(pref, crate::config::config())
         {
-            return self.set_model_on_provider(selection.active_provider(), model);
+            // A dual-auth config provider key (`anthropic-api`, `claude-oauth`,
+            // `openai-api`, ...) also pins the OAuth-vs-API credential. Carry
+            // that through so the active credential -- and every surface that
+            // reads it (header auth tag, model picker) -- matches the route the
+            // user configured, instead of leaving the provider in Auto mode
+            // (which prefers OAuth) and silently mislabeling an API default.
+            //
+            // Bare provider keys (`claude`, `anthropic`, `openai`) intentionally
+            // do NOT pin a credential: they keep Auto mode (so an API-only user
+            // with `default_provider = "claude"` still resolves their key
+            // instead of failing to load absent OAuth credentials).
+            let pinned = jcode_provider_core::AuthRoute::parse_explicit_credential_prefix(pref);
+            let anthropic_credential_mode = pinned.and_then(|route| {
+                matches!(
+                    route.provider,
+                    jcode_provider_core::DualAuthProvider::Anthropic
+                )
+                .then(|| match route.mode {
+                    jcode_provider_core::AuthMode::ApiKey => {
+                        anthropic::AnthropicCredentialMode::ApiKey
+                    }
+                    jcode_provider_core::AuthMode::Oauth => {
+                        anthropic::AnthropicCredentialMode::OAuth
+                    }
+                })
+            });
+            let openai_credential_mode = pinned.and_then(|route| {
+                matches!(route.provider, jcode_provider_core::DualAuthProvider::OpenAI)
+                    .then(|| match route.mode {
+                        jcode_provider_core::AuthMode::ApiKey => {
+                            openai::OpenAICredentialMode::ApiKey
+                        }
+                        jcode_provider_core::AuthMode::Oauth => {
+                            openai::OpenAICredentialMode::OAuth
+                        }
+                    })
+            });
+            return self.set_model_on_provider_with_credential_modes(
+                selection.active_provider(),
+                model,
+                openai_credential_mode,
+                anthropic_credential_mode,
+            );
         }
 
         self.set_model(model)
