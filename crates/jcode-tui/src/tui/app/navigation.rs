@@ -75,11 +75,12 @@ fn is_mouse_scroll_kind(kind: MouseEventKind) -> bool {
 impl App {
     const MOUSE_SCROLL_INTENT_LINES: i16 = 3;
     /// Upper bound on lines enqueued per wheel notch after velocity
-    /// acceleration, so even the hardest flick stays controllable.
-    const MOUSE_SCROLL_MAX_INTENT_LINES: i16 = 12;
-    /// Maximum accumulated scroll momentum. Larger than a single accelerated
-    /// notch so a fast flick of several notches builds a longer, smoother glide.
-    const MOUSE_SCROLL_MAX_QUEUE: i16 = 60;
+    /// acceleration. Kept close to the base intent so the boost is only a subtle
+    /// nudge on fast flicks rather than a large jump.
+    const MOUSE_SCROLL_MAX_INTENT_LINES: i16 = 5;
+    /// Maximum accumulated scroll momentum. Slightly above the original so a fast
+    /// flick still glides a touch, without long runaway momentum.
+    const MOUSE_SCROLL_MAX_QUEUE: i16 = 30;
     /// How long the overscroll status line stays revealed after the last
     /// downward overscroll tick before it rebounds away.
     const OVERSCROLL_DWELL: std::time::Duration = std::time::Duration::from_millis(600);
@@ -620,20 +621,13 @@ impl App {
     }
 
     /// Map the gap between consecutive wheel events to an intent multiplier. A
-    /// shorter gap means a faster flick (more "force"), so the wheel covers more
-    /// lines per notch. Thresholds are in milliseconds; a slow, deliberate notch
-    /// (or the first notch after a pause) stays at 1x for precise positioning.
+    /// shorter gap means a faster flick (more "force"), so the wheel covers a
+    /// little more ground. The boost is intentionally subtle: at most a modest
+    /// bump on rapid flicks, with deliberate notches staying at 1x for precise
+    /// positioning.
     pub(super) fn scroll_acceleration_multiplier(gap: std::time::Duration) -> i16 {
         let ms = gap.as_millis();
-        if ms <= 25 {
-            4
-        } else if ms <= 50 {
-            3
-        } else if ms <= 100 {
-            2
-        } else {
-            1
-        }
+        if ms <= 30 { 2 } else { 1 }
     }
 
     /// Lines enqueued per wheel notch for a given velocity multiplier, capped so
@@ -643,15 +637,18 @@ impl App {
     }
 
     pub(super) fn mouse_scroll_drain_amount(&self) -> usize {
-        // Ease out proportionally to the remaining momentum: a large queue (a
-        // hard flick) glides several lines per frame, decelerating to 1 line as
-        // it empties. This keeps motion smooth while letting strong scrolls cover
-        // distance quickly. ~1/4 of the queue per frame gives a natural decay.
+        // Gentle ease-out: drain a few lines per frame for a fresh flick,
+        // decelerating to one line as the queue empties. Kept close to the
+        // original feel so momentum does not glide far.
         let queued = self.mouse_scroll_queue.unsigned_abs() as usize;
-        if queued == 0 {
-            return 0;
+
+        if queued >= 6 {
+            3
+        } else if queued >= 3 {
+            2
+        } else {
+            1
         }
-        queued.div_ceil(4).clamp(1, 8)
     }
 
     fn drain_mouse_scroll_animation(&mut self, max_steps: usize) {
