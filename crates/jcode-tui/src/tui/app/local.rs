@@ -68,6 +68,9 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     needs_redraw |= app.update_chat_overscroll();
     needs_redraw |= app.tick_reasoning_collapse();
     needs_redraw |= app.update_pinned_images_auto_hide();
+    // Adopt the resolved scroll position once a frame containing newly loaded
+    // older history has rendered, so manual scrolling resumes seamlessly.
+    needs_redraw |= app.reconcile_history_anchor();
     if app.submit_input_on_startup && !app.is_processing {
         app.submit_input_on_startup = false;
         app.submit_input();

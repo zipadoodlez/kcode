@@ -1459,6 +1459,21 @@ impl App {
     pub(super) fn scroll_up(&mut self, amount: usize) -> bool {
         // Scrolling up cancels any pending overscroll rebound line immediately.
         self.chat_overscroll_last = None;
+        // While older compacted history is still settling on screen, the renderer
+        // is anchored to a distance-from-bottom rather than `scroll_offset`. Keep
+        // scrolling continuous by moving the anchor itself instead of a stale
+        // offset the renderer is currently ignoring.
+        if let Some(mut anchor) = self.pending_history_anchor {
+            let total = super::super::ui::last_total_wrapped_lines();
+            anchor.lines_from_bottom = anchor
+                .lines_from_bottom
+                .saturating_add(amount)
+                .min(total.max(anchor.lines_from_bottom));
+            self.pending_history_anchor = Some(anchor);
+            self.auto_scroll_paused = true;
+            self.maybe_queue_compacted_history_load();
+            return true;
+        }
         let before = (self.scroll_offset, self.auto_scroll_paused);
         let max = self.scroll_max_estimate();
         if !self.auto_scroll_paused {
@@ -1472,7 +1487,15 @@ impl App {
             self.scroll_offset = self.scroll_offset.saturating_sub(amount);
         }
         self.auto_scroll_paused = true;
-        self.maybe_queue_compacted_history_load();
+        // If the upward scroll bottomed out against the top of the currently
+        // loaded content, fold the unsatisfied intent into the prefetch as
+        // overshoot so the newly loaded history scrolls into view smoothly.
+        let overshoot = if self.scroll_offset == 0 {
+            amount
+        } else {
+            0
+        };
+        self.maybe_queue_compacted_history_load_with_overshoot(overshoot);
         before != (self.scroll_offset, self.auto_scroll_paused)
     }
 
@@ -1494,6 +1517,18 @@ impl App {
     /// `false`, so the mouse-wheel queue does not accumulate phantom scroll
     /// that would later have to be undone before scrolling up moves the view.
     pub(super) fn scroll_down(&mut self, amount: usize) -> bool {
+        // Mirror `scroll_up`: while an older-history prepend is still settling,
+        // the renderer is anchored to distance-from-bottom, so move the anchor
+        // toward the bottom instead of a stale `scroll_offset`.
+        if let Some(mut anchor) = self.pending_history_anchor {
+            if anchor.lines_from_bottom == 0 {
+                self.register_chat_overscroll();
+                return false;
+            }
+            anchor.lines_from_bottom = anchor.lines_from_bottom.saturating_sub(amount);
+            self.pending_history_anchor = Some(anchor);
+            return true;
+        }
         if !self.auto_scroll_paused {
             // Already pinned to the bottom: a further downward scroll is an
             // "overscroll". Reveal the elastic status line and keep it dwelling.
@@ -1529,6 +1564,7 @@ impl App {
     }
 
     pub(super) fn follow_chat_bottom(&mut self) {
+        self.pending_history_anchor = None;
         self.scroll_offset = 0;
         self.auto_scroll_paused = false;
     }

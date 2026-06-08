@@ -284,12 +284,27 @@ pub(super) fn draw_messages(
     super::set_last_max_scroll(max_scroll);
     update_user_prompt_positions(wrapped_user_prompt_starts);
 
+    // When older compacted history is being loaded in, the app hands us the
+    // reader's distance-from-bottom instead of an absolute offset. Distance from
+    // the bottom is invariant under a top-side prepend, so resolving it against
+    // the *current* total keeps the same content under the reader and the load
+    // is seamless (no jump to the new absolute top).
+    let anchored_scroll = app
+        .pending_history_anchor_lines_from_bottom()
+        .map(|lines_from_bottom| total_lines.saturating_sub(lines_from_bottom).min(max_scroll));
     let user_scroll = app.scroll_offset().min(max_scroll);
-    let scroll = if app.auto_scroll_paused() {
+    let scroll = if let Some(anchored) = anchored_scroll {
+        anchored
+    } else if app.auto_scroll_paused() {
         user_scroll.min(max_scroll)
     } else {
         max_scroll
     };
+
+    // Publish the resolved geometry so scroll handlers and the anchor-reconcile
+    // tick can adopt the exact on-screen position after a prepend.
+    super::set_last_total_wrapped_lines(total_lines);
+    super::set_last_resolved_chat_scroll(scroll);
 
     let prompt_preview_lines = if crate::config::config().display.prompt_preview && scroll > 0 {
         compute_prompt_preview_line_count(

@@ -150,6 +150,13 @@ pub trait TuiState {
     fn scroll_offset(&self) -> usize;
     /// Whether auto-scroll to bottom is paused (user scrolled up during streaming)
     fn auto_scroll_paused(&self) -> bool;
+    /// When older compacted history is being loaded in, this is the reader's
+    /// captured distance (in wrapped lines) from the bottom of the transcript.
+    /// The renderer uses it to keep the viewport anchored to the same content as
+    /// older messages are prepended above, instead of snapping to the new top.
+    fn pending_history_anchor_lines_from_bottom(&self) -> Option<usize> {
+        None
+    }
     /// Whether the elastic overscroll status line (revealed by scrolling past
     /// the bottom of the transcript) is currently shown.
     fn chat_overscroll_active(&self) -> bool {

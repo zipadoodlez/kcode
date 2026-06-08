@@ -296,6 +296,8 @@ impl App {
         if positions.is_empty() {
             return;
         }
+        // An explicit jump should win over a still-settling history prepend.
+        self.pending_history_anchor = None;
 
         let current = self.scroll_offset;
 
@@ -321,8 +323,16 @@ impl App {
 
         if let Some(pos) = target {
             self.scroll_offset = pos;
+        } else {
+            // No earlier prompt is loaded. If older compacted history exists,
+            // pull it in (anchored) and jump to the very top so the next press
+            // continues into the freshly loaded prompts instead of stalling.
+            if self.compacted_history_has_remaining() {
+                self.scroll_offset = 0;
+                self.auto_scroll_paused = true;
+                self.maybe_queue_compacted_history_load();
+            }
         }
-        // If no prompt above, stay where we are
     }
 
     /// Scroll to the next user prompt (scroll down - later in conversation)
@@ -331,6 +341,7 @@ impl App {
         if positions.is_empty() || !self.auto_scroll_paused {
             return;
         }
+        self.pending_history_anchor = None;
 
         let current = self.scroll_offset;
 
@@ -357,6 +368,7 @@ impl App {
         if positions.is_empty() {
             return;
         }
+        self.pending_history_anchor = None;
 
         // positions are in document order (top to bottom), we want most-recent first
         let target_idx = positions.len().saturating_sub(rank);

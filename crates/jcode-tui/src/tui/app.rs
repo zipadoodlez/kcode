@@ -526,6 +526,23 @@ pub(super) struct CompactedHistoryLazyState {
     pub pending_request_visible: Option<usize>,
 }
 
+/// Pending viewport anchor used to keep the chat stable when older compacted
+/// history is loaded in. Older messages are prepended above the current view,
+/// which would otherwise teleport the reader to the new absolute top. We instead
+/// remember the reader's distance from the bottom (which is invariant under a
+/// top-side prepend) and let the next render resolve it into an absolute offset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct HistoryScrollAnchor {
+    /// Wrapped lines between the top of the viewport and the bottom of the
+    /// transcript at the moment the load was requested. Invariant across the
+    /// prepend, so `new_total - lines_from_bottom` reproduces the same view.
+    pub lines_from_bottom: usize,
+    /// Total wrapped line count of the frame this anchor was captured from. Used
+    /// to detect when a frame with the newly-loaded content has rendered (its
+    /// total differs), so the anchor can be reconciled into `scroll_offset`.
+    pub base_total: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct OvernightAutoPokeFingerprint {
     pub run_id: String,
@@ -666,6 +683,10 @@ pub struct App {
     display_user_message_count: usize,
     display_edit_tool_message_count: usize,
     compacted_history_lazy: CompactedHistoryLazyState,
+    /// When older compacted history has just been loaded, this anchors the
+    /// viewport to the content the reader was looking at so the prepend does not
+    /// visibly jump. Resolved into `scroll_offset` by the next render frame.
+    pending_history_anchor: Option<HistoryScrollAnchor>,
     input: String,
     command_candidates_cache: RefCell<Option<CommandCandidatesCache>>,
     cursor_pos: usize,
