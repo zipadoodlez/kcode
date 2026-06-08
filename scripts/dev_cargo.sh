@@ -524,10 +524,14 @@ configure_linux_linker() {
 
   case "$mode" in
     auto)
-      if command -v ld.lld >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
-        mode="lld"
-      elif command -v mold >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
+      # Prefer mold over lld: on this repo's large statically-linked binary
+      # (~300 MB .text), mold links the jcode bin in ~2.0s vs lld's ~2.9s
+      # (measured, warm, selfdev profile). The bin relinks on every build, so
+      # that ~0.8s is a per-build win. Both need clang as the linker driver.
+      if command -v mold >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
         mode="mold"
+      elif command -v ld.lld >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
+        mode="lld"
       else
         mode="system"
       fi
