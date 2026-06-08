@@ -1223,9 +1223,9 @@ fn bench_large_session(id: &str, turns: usize, assistant_paragraphs: usize) -> S
     let preview = bench_preview_messages(turns, assistant_paragraphs);
     session.first_user_prompt = preview.first().map(|m| m.content.clone());
     session.estimated_tokens = 4_000 * turns;
-    session.message_count = (turns * 2) as u32;
-    session.user_message_count = turns as u32;
-    session.assistant_message_count = turns as u32;
+    session.message_count = turns * 2;
+    session.user_message_count = turns;
+    session.assistant_message_count = turns;
     session.messages_preview = preview;
     session
 }
@@ -1241,6 +1241,9 @@ fn bench_render_full(picker: &mut SessionPicker, w: u16, h: u16) -> std::time::D
 }
 
 fn bench_render_preview_only(picker: &mut SessionPicker, area: Rect) -> std::time::Duration {
+    // Render into a backend sized exactly to the area, placing it at the origin
+    // (the preview/list rendering only depends on width/height, not x/y).
+    let area = Rect::new(0, 0, area.width, area.height);
     let backend = ratatui::backend::TestBackend::new(area.width, area.height);
     let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
     let start = std::time::Instant::now();
@@ -1251,6 +1254,7 @@ fn bench_render_preview_only(picker: &mut SessionPicker, area: Rect) -> std::tim
 }
 
 fn bench_render_list_only(picker: &mut SessionPicker, area: Rect) -> std::time::Duration {
+    let area = Rect::new(0, 0, area.width, area.height);
     let backend = ratatui::backend::TestBackend::new(area.width, area.height);
     let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
     let start = std::time::Instant::now();
