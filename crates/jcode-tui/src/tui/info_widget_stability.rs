@@ -371,6 +371,9 @@ pub enum SimMode {
     /// over a `±window` band of content lines, so a docked widget is pre-sized to
     /// clear long lines before they scroll under it. Eliminates the resize/blink.
     LookAhead(u16),
+    /// Look-ahead sizing with NO anchor carry (re-solve each frame). Isolates how
+    /// much stability comes from the smoothed profile alone vs the anchor logic.
+    LookAheadFresh(u16),
 }
 
 /// Build the per-row free-width profile for `scroll`. When `window > 0`, each row's
@@ -427,22 +430,28 @@ pub fn simulate_scroll_mode(
     let max_scroll = total_lines.saturating_sub(view);
     let area = Rect::new(0, 0, area_width, viewport_height);
     let window = match mode {
-        SimMode::LookAhead(w) => w,
+        SimMode::LookAhead(w) | SimMode::LookAheadFresh(w) => w,
         _ => 0,
     };
-    let greedy = mode == SimMode::Greedy;
+    let greedy = matches!(mode, SimMode::Greedy | SimMode::LookAheadFresh(_));
 
     // Carry anchors across frames exactly like the live renderer does, so the
     // HUD pinning / hide-in-place behaviour is exercised identically.
     let mut anchors: Vec<WidgetAnchor> = Vec::new();
 
     for scroll in 0..=max_scroll {
-        let right_widths =
-            right_widths_for_scroll(content_widths, area_width, scroll, view, window);
+        let right_widths = right_widths_for_scroll(content_widths, area_width, scroll, view, 0);
+        let right_reliable = if window > 0 {
+            right_widths_for_scroll(content_widths, area_width, scroll, view, window)
+        } else {
+            Vec::new()
+        };
         let margins = Margins {
             right_widths,
             left_widths: Vec::new(),
             centered: false,
+            right_reliable,
+            left_reliable: Vec::new(),
         };
         // Greedy mode forgets all anchors each frame, so every frame independently
         // maximizes coverage (the old "fill the biggest pocket now" philosophy).

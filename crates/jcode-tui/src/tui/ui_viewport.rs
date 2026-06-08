@@ -224,6 +224,7 @@ pub(super) fn compute_visible_margins(
         right_widths,
         left_widths,
         centered,
+        ..Default::default()
     }
 }
 
@@ -365,6 +366,7 @@ pub(super) fn draw_messages(
         right_widths: vec![0; prompt_preview_lines as usize],
         left_widths: vec![0; prompt_preview_lines as usize],
         centered: content_margins.centered,
+        ..Default::default()
     };
     margins
         .right_widths
@@ -899,7 +901,40 @@ pub(super) fn draw_messages(
         );
     }
 
+    // Derive the look-ahead "reliable" width profile that gates where *new* info
+    // widgets may dock, so a freshly placed widget won't be covered by a wide line
+    // one scroll line later. We use a small windowed minimum over the assembled
+    // per-row free widths (the rows already on screen above/below each candidate
+    // row), which keeps it cheap and needs no off-screen line materialization.
+    // Pinned widgets still size to the instantaneous widths for full coverage.
+    margins.right_reliable = windowed_min(&margins.right_widths, INFO_WIDGET_LOOKAHEAD_ROWS);
+    if margins.centered {
+        margins.left_reliable = windowed_min(&margins.left_widths, INFO_WIDGET_LOOKAHEAD_ROWS);
+    }
+
     margins
+}
+
+/// Look-ahead window (in rows) used to compute the "reliable" margin profile that
+/// gates where new info widgets may dock. Small by design: it only needs to cover
+/// the distance content travels in the few frames between a widget being placed and
+/// a nearby long line scrolling into its rows.
+const INFO_WIDGET_LOOKAHEAD_ROWS: usize = 2;
+
+/// Per-index minimum over `[i-window, i+window]`. Returns an empty vec for empty
+/// input (callers treat empty reliable profiles as "no look-ahead").
+fn windowed_min(widths: &[u16], window: usize) -> Vec<u16> {
+    if widths.is_empty() {
+        return Vec::new();
+    }
+    let n = widths.len();
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let lo = i.saturating_sub(window);
+        let hi = (i + window).min(n - 1);
+        out.push(widths[lo..=hi].iter().copied().min().unwrap_or(0));
+    }
+    out
 }
 
 fn compute_prompt_preview_line_count(

@@ -11,15 +11,11 @@ const MIN_WIDGET_WIDTH: u16 = 24;
 const MAX_WIDGET_WIDTH: u16 = 40;
 /// Minimum height needed to show the widget.
 const MIN_WIDGET_HEIGHT: u16 = 5;
-/// Hysteresis band for width changes. A kept widget only *grows* its width back
-/// when at least this much extra space has reopened, which prevents 1-column
-/// left-edge jitter as ragged content scrolls past on the right side.
-const WIDTH_GROW_HYSTERESIS: u16 = 4;
 /// How many consecutive frames a widget may stay hidden-in-place before its
 /// anchor is abandoned and Phase 2 is allowed to re-home it elsewhere. This keeps
 /// a momentary wide line from teleporting the widget, while still letting it find
 /// a new home if the user parks on a region that permanently covers its slot.
-const MAX_HIDDEN_FRAMES: u16 = 60;
+const MAX_HIDDEN_FRAMES: u16 = 16;
 
 /// Persistent memory of where a widget lives, so it can hold a fixed screen slot
 /// across frames (HUD-style) instead of being re-solved from scratch each frame.
@@ -38,7 +34,7 @@ pub(crate) struct PlacementOutcome {
 }
 
 /// Margin information for layout calculation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Margins {
     /// Free widths on the right side for each row.
     pub right_widths: Vec<u16>,
@@ -46,6 +42,33 @@ pub struct Margins {
     pub left_widths: Vec<u16>,
     /// Whether we're in centered mode.
     pub centered: bool,
+    /// Look-ahead "reliable" free widths: per row, the width that stays free across
+    /// a small band of upcoming/recent scroll lines. When non-empty these gate where
+    /// *new* widgets may dock (Phase 2) so a freshly placed widget won't be covered
+    /// by a long line a frame later. Pinned widgets (Phase 1) still size themselves
+    /// to the instantaneous `right_widths`/`left_widths` for full coverage. Empty =
+    /// fall back to the instantaneous widths (no look-ahead).
+    pub right_reliable: Vec<u16>,
+    pub left_reliable: Vec<u16>,
+}
+
+impl Margins {
+    /// Reliable right-side widths for dock gating, falling back to instantaneous.
+    fn right_dock_widths(&self) -> &[u16] {
+        if self.right_reliable.is_empty() {
+            &self.right_widths
+        } else {
+            &self.right_reliable
+        }
+    }
+    /// Reliable left-side widths for dock gating, falling back to instantaneous.
+    fn left_dock_widths(&self) -> &[u16] {
+        if self.left_reliable.is_empty() {
+            &self.left_widths
+        } else {
+            &self.left_reliable
+        }
+    }
 }
 
 /// Available margin space on one side.
@@ -56,6 +79,23 @@ struct MarginSpace {
     widths: Vec<u16>,
     /// X offset where this margin starts.
     x_offset: u16,
+}
+
+/// Choose the per-row widths Phase 2 should dock against: prefer the look-ahead
+/// `reliable` profile, but if it admits no placeable region at all (e.g. dense long
+/// lines cover every candidate row) fall back to `instant` so we still show
+/// something. Returns an owned profile to store in the `MarginSpace`.
+fn dock_widths_with_fallback(reliable: &[u16], instant: &[u16]) -> Vec<u16> {
+    if reliable.is_empty() {
+        return instant.to_vec();
+    }
+    let reliable_has_dock =
+        !find_all_empty_rects(reliable, MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT).is_empty();
+    if reliable_has_dock {
+        reliable.to_vec()
+    } else {
+        instant.to_vec()
+    }
 }
 
 /// Compute widget placements while keeping the caller-owned widget state stable.
@@ -106,16 +146,30 @@ pub(crate) fn calculate_placements_anchored(
     }
     let mut margin_spaces: Vec<MarginSpace> = Vec::new();
     if !margins.right_widths.is_empty() {
+        // Phase 2 docks on the *reliable* (look-ahead) widths so a newly placed
+        // widget lands only where space stays free for a few scroll lines. But if
+        // the reliable profile is so covered that it yields no dock at all (dense
+        // long lines), fall back to the instantaneous widths so we still show
+        // something rather than nothing. Phase 1 always sizes pinned widgets to the
+        // instantaneous widths for full coverage.
+        let dock = dock_widths_with_fallback(
+            margins.right_dock_widths(),
+            &margins.right_widths,
+        );
         margin_spaces.push(MarginSpace {
             side: Side::Right,
-            widths: margins.right_widths.clone(),
+            widths: dock,
             x_offset: messages_area.x + messages_area.width,
         });
     }
     if margins.centered && !margins.left_widths.is_empty() {
+        let dock = dock_widths_with_fallback(
+            margins.left_dock_widths(),
+            &margins.left_widths,
+        );
         margin_spaces.push(MarginSpace {
             side: Side::Left,
-            widths: margins.left_widths.clone(),
+            widths: dock,
             x_offset: messages_area.x,
         });
     }
@@ -201,16 +255,16 @@ pub(crate) fn calculate_placements_anchored(
             .min(MAX_WIDGET_WIDTH);
         let renderable = fit_width >= MIN_WIDGET_WIDTH;
 
-        // Width hysteresis: shrink immediately when the slot narrows, but only grow
-        // back once enough headroom has reopened, to avoid left-edge oscillation.
+        // Width is monotonic non-increasing for the life of an anchor: it shrinks to
+        // clear newly-wide content but never grows back while pinned. Growing would
+        // move a right-anchored widget's left edge inward every time the margin
+        // breathed, which reads as horizontal jitter on ragged content. The widget
+        // settles to the narrowest width its slot ever required and then holds. It
+        // only widens again by re-homing (a fresh Phase 2 placement).
         let kept_width = if !renderable {
             prev.rect.width
-        } else if fit_width < prev.rect.width {
-            fit_width
-        } else if fit_width >= prev.rect.width + WIDTH_GROW_HYSTERESIS {
-            fit_width
         } else {
-            prev.rect.width.min(fit_width)
+            fit_width.min(prev.rect.width)
         };
 
         if !renderable || kept_width < MIN_WIDGET_WIDTH {

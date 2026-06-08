@@ -1117,6 +1117,7 @@ pub fn calculate_layout(
         right_widths: free_widths.to_vec(),
         left_widths: Vec::new(),
         centered: false,
+        ..Default::default()
     };
     let placements = calculate_placements(messages_area, &margins, data);
     placements.first().map(|p| p.rect)

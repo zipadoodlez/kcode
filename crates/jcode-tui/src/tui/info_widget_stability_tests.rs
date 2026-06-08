@@ -309,5 +309,11 @@ fn demo_lookahead_sweep() {
                 &measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::LookAhead(w)),
             );
         }
+        for w in [2u16, 4, 8] {
+            line(
+                &format!("la-fresh({w})"),
+                &measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::LookAheadFresh(w)),
+            );
+        }
     }
 }

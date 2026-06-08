@@ -152,6 +152,7 @@ mod tests {
             right_widths: vec![30; 5],
             left_widths: vec![0; 5],
             centered: false,
+            ..Default::default()
         };
         // 30-wide widget pinned to the right edge, fully inside the 30-col gap.
         let p = placement(Side::Right, 50, 0, 30, 5);
@@ -167,6 +168,7 @@ mod tests {
             right_widths: vec![30, 30, 12, 30, 30],
             left_widths: vec![0; 5],
             centered: false,
+            ..Default::default()
         };
         let p = placement(Side::Right, 50, 0, 30, 5);
         assert!(widget_overlaps_content(&p, area, &margins));
@@ -179,6 +181,7 @@ mod tests {
             right_widths: vec![30, 30],
             left_widths: vec![0, 0],
             centered: false,
+            ..Default::default()
         };
         // Rows 2..5 have no recorded slack, so coverage there is intrusion.
         let p = placement(Side::Right, 50, 0, 30, 5);

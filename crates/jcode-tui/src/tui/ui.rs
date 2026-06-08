@@ -2493,6 +2493,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             right_widths: Vec::new(),
             left_widths: Vec::new(),
             centered: app.centered_mode(),
+            ..Default::default()
         }
     } else {
         draw_messages(
