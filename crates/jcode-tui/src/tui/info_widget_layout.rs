@@ -230,6 +230,10 @@ pub(crate) fn calculate_placements_anchored(
                 if prev.kind == WidgetKind::Overview {
                     overview_active = true;
                 }
+                // Reserve the hidden widget's rows so Phase 2 cannot drop another
+                // widget into the slot it will reclaim next frame; otherwise the
+                // returning widget would overlap whatever took its place.
+                reserve_rows(&mut all_rects, prev.side, row_start, row_end);
             }
             continue;
         }
@@ -257,26 +261,7 @@ pub(crate) fn calculate_placements_anchored(
             overview_active = true;
         }
 
-        for rect in all_rects.iter_mut() {
-            if rect.2 == 0 || rect.0 != prev.side {
-                continue;
-            }
-            let rect_start = rect.1 as usize;
-            let rect_end = rect_start + rect.2 as usize;
-            if row_start >= rect_end || row_end <= rect_start {
-                continue;
-            }
-
-            if row_start <= rect_start && row_end >= rect_end {
-                rect.2 = 0;
-            } else if row_start <= rect_start {
-                let trim = (row_end - rect_start) as u16;
-                rect.1 += trim;
-                rect.2 = rect.2.saturating_sub(trim);
-            } else {
-                rect.2 = (row_start - rect_start) as u16;
-            }
-        }
+        reserve_rows(&mut all_rects, prev.side, row_start, row_end);
     }
 
     // Phase 2: greedily place remaining widgets.
@@ -372,6 +357,41 @@ pub(crate) fn calculate_placements_anchored(
     PlacementOutcome {
         visible: placements,
         anchors: next_anchors,
+    }
+}
+
+/// Carve the rows `[row_start, row_end)` on `side` out of the candidate empty
+/// rectangles so Phase 2 cannot place another widget into space already claimed by
+/// an anchored widget - whether that widget is visible this frame or only
+/// hidden-in-place. `all_rects` entries are `(side, top, height, width, x, margin)`.
+fn reserve_rows(
+    all_rects: &mut [(Side, u16, u16, u16, u16, usize)],
+    side: Side,
+    row_start: usize,
+    row_end: usize,
+) {
+    for rect in all_rects.iter_mut() {
+        if rect.2 == 0 || rect.0 != side {
+            continue;
+        }
+        let rect_start = rect.1 as usize;
+        let rect_end = rect_start + rect.2 as usize;
+        if row_start >= rect_end || row_end <= rect_start {
+            continue;
+        }
+
+        if row_start <= rect_start && row_end >= rect_end {
+            // Fully covered: remove the rect.
+            rect.2 = 0;
+        } else if row_start <= rect_start {
+            // Covered from the top: push the top down past the reserved rows.
+            let trim = (row_end - rect_start) as u16;
+            rect.1 += trim;
+            rect.2 = rect.2.saturating_sub(trim);
+        } else {
+            // Covered from the bottom (or middle): keep only the top portion.
+            rect.2 = (row_start - rect_start) as u16;
+        }
     }
 }
 

@@ -10,6 +10,54 @@ fn sample_data() -> InfoWidgetData {
     }
 }
 
+/// Widget data with several independent widgets that compete for margin space, so
+/// multiple widgets can be on screen at once (needed to exercise hide-in-place /
+/// overlap behaviour and the information-coverage A/B).
+fn rich_data() -> InfoWidgetData {
+    use crate::tui::info_widget::{BackgroundInfo, UsageInfo, UsageProvider};
+    InfoWidgetData {
+        model: Some("gpt-test".to_string()),
+        queue_mode: Some(true),
+        todos: vec![
+            crate::todo::TodoItem {
+                group: None,
+                content: "first task".to_string(),
+                status: "in_progress".to_string(),
+                priority: "high".to_string(),
+                id: "t1".to_string(),
+                blocked_by: Vec::new(),
+                assigned_to: None,
+                confidence: None,
+                completion_confidence: None,
+            },
+            crate::todo::TodoItem {
+                group: None,
+                content: "second task".to_string(),
+                status: "pending".to_string(),
+                priority: "medium".to_string(),
+                id: "t2".to_string(),
+                blocked_by: Vec::new(),
+                assigned_to: None,
+                confidence: None,
+                completion_confidence: None,
+            },
+        ],
+        background_info: Some(BackgroundInfo {
+            running_count: 2,
+            running_tasks: vec!["bash".to_string(), "task".to_string()],
+            ..Default::default()
+        }),
+        usage_info: Some(UsageInfo {
+            provider: UsageProvider::Anthropic,
+            five_hour: 0.4,
+            seven_day: 0.6,
+            available: true,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
 #[test]
 fn flat_content_is_perfectly_stable() {
     // Uniform narrow content: the negative-space shape never changes while scrolling,
@@ -148,18 +196,60 @@ fn demo_quantify() {
     );
 }
 
+
+/// Widgets must never overlap each other while scrolling, even with the
+/// hide-in-place anchoring (a hidden widget's slot must stay reserved so a
+/// different widget can't be dropped into it and then collide when it returns).
+#[test]
+fn widgets_never_overlap_while_scrolling() {
+    for period in [7usize, 9, 11, 14, 17] {
+        let content: Vec<u16> = (0..240)
+            .map(|i| if i % period == 0 { 95 } else { 26 })
+            .collect();
+        let report = measure_scroll_mode(&content, 100, 24, &rich_data(), SimMode::Anchored);
+        assert_eq!(
+            report.overlap_frames, 0,
+            "period {period}: widgets overlapped in {} frames (max {} pairs)",
+            report.overlap_frames, report.max_overlap_pairs
+        );
+    }
+}
+
+/// A/B: does stable (anchored) placement cost information vs greedy max-info?
+/// Run with:
+///   cargo test -p jcode-tui info_widget_stability::tests::demo_info_tradeoff -- --ignored --nocapture
 #[test]
 #[ignore]
-fn demo_trace_rich14() {
-    use super::{SimMode, simulate_scroll_mode};
-    let content: Vec<u16> = (0..40).map(|i| if i % 14 == 0 { 95 } else { 26 }).collect();
-    for mode in [SimMode::Greedy, SimMode::Anchored] {
-        println!("--- {:?} ---", mode);
-        let frames = simulate_scroll_mode(&content, 100, 24, &rich_data(), mode);
-        for (i, f) in frames.iter().enumerate().take(16) {
-            let mut s = format!("f{:>2}: ", i);
-            for r in f { s.push_str(&format!("[{} y={} h={}] ", r.kind, r.y, r.height)); }
-            println!("{}", s);
-        }
+fn demo_info_tradeoff() {
+    fn row(name: &str, content: &[u16]) {
+        let g = measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::Greedy);
+        let a = measure_scroll_mode(content, 100, 24, &rich_data(), SimMode::Anchored);
+        println!(
+            "{:<20} | greedy: vis={:.2} cells={:>6.0} kinds={} keepVis={:>3.0}% travel/100={:>6.1} overlap={} \
+             | anchored: vis={:.2} cells={:>6.0} kinds={} keepVis={:>3.0}% travel/100={:>6.1} overlap={}",
+            name,
+            g.avg_widgets_visible, g.avg_visible_cells, g.distinct_kinds_seen,
+            g.mean_kind_visibility * 100.0, g.travel_per_100_lines, g.overlap_frames,
+            a.avg_widgets_visible, a.avg_visible_cells, a.distinct_kinds_seen,
+            a.mean_kind_visibility * 100.0, a.travel_per_100_lines, a.overlap_frames,
+        );
     }
+
+    println!(
+        "\n=== information vs stability A/B (100x24, rich widget set) ===\n\
+         vis=avg widgets/frame cells=avg area/frame kinds=distinct seen keepVis=mean kind visible% travel=churn\n"
+    );
+    row("flat narrow", &vec![20; 300]);
+    row(
+        "long line every 7",
+        &(0..300).map(|i| if i % 7 == 0 { 95 } else { 28 }).collect::<Vec<_>>(),
+    );
+    row(
+        "long line every 14",
+        &(0..300).map(|i| if i % 14 == 0 { 95 } else { 28 }).collect::<Vec<_>>(),
+    );
+    row(
+        "code-like (ragged)",
+        &(0..300).map(|i| 20 + ((i * 37) % 70) as u16).collect::<Vec<_>>(),
+    );
 }

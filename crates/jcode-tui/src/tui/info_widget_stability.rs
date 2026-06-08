@@ -110,6 +110,28 @@ pub struct StabilityReport {
     pub unstable_step_fraction: f64,
     /// Widget kind contributing the most distraction.
     pub worst_widget: Option<String>,
+    /// Average number of widgets visible per frame (information *breadth*).
+    pub avg_widgets_visible: f64,
+    /// Average total widget cell area visible per frame (information *volume*).
+    pub avg_visible_cells: f64,
+    /// Distinct widget kinds that were visible in at least one frame.
+    pub distinct_kinds_seen: usize,
+    /// For each kind ever seen, the fraction of frames it was actually visible.
+    pub kind_visibility: Vec<KindVisibility>,
+    /// Mean per-kind visible fraction (how reliably shown info stays shown).
+    pub mean_kind_visibility: f64,
+    /// Number of frames in which two visible widgets overlapped (should be 0).
+    pub overlap_frames: usize,
+    /// Worst-case count of overlapping widget pairs in any single frame.
+    pub max_overlap_pairs: usize,
+}
+
+/// How reliably a single widget kind stayed visible across the scroll.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct KindVisibility {
+    pub kind: String,
+    pub frames_visible: usize,
+    pub visible_fraction: f64,
 }
 
 /// Analyze a sequence of frames (each a list of placed widget rects) and compute
@@ -235,7 +257,84 @@ pub fn analyze_frames(frames: &[Vec<PlacedRect>]) -> StabilityReport {
     report.unstable_step_fraction = unstable_steps as f64 / steps;
     report.widgets = widgets;
 
+    // Information / coverage metrics: how much is actually on screen, averaged over
+    // every frame. This is the counterweight to the stability metrics - a layout
+    // that shows nothing would be perfectly "stable" but useless.
+    let frame_count = frames.len().max(1) as f64;
+    let total_widgets: usize = frames.iter().map(|f| f.len()).sum();
+    let total_cells: u64 = frames
+        .iter()
+        .flat_map(|f| f.iter())
+        .map(|r| r.width as u64 * r.height as u64)
+        .sum();
+    report.avg_widgets_visible = total_widgets as f64 / frame_count;
+    report.avg_visible_cells = total_cells as f64 / frame_count;
+
+    let mut visible_by_kind: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for frame in frames {
+        let mut seen_this_frame: Vec<&'static str> = Vec::new();
+        for r in frame {
+            if !seen_this_frame.contains(&r.kind) {
+                seen_this_frame.push(r.kind);
+                *visible_by_kind.entry(r.kind).or_default() += 1;
+            }
+        }
+    }
+    report.distinct_kinds_seen = visible_by_kind.len();
+    let mut kind_visibility: Vec<KindVisibility> = visible_by_kind
+        .into_iter()
+        .map(|(kind, frames_visible)| KindVisibility {
+            kind: kind.to_string(),
+            frames_visible,
+            visible_fraction: frames_visible as f64 / frame_count,
+        })
+        .collect();
+    kind_visibility.sort_by(|a, b| {
+        b.visible_fraction
+            .partial_cmp(&a.visible_fraction)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.kind.cmp(&b.kind))
+    });
+    report.mean_kind_visibility = if kind_visibility.is_empty() {
+        0.0
+    } else {
+        kind_visibility.iter().map(|k| k.visible_fraction).sum::<f64>()
+            / kind_visibility.len() as f64
+    };
+    report.kind_visibility = kind_visibility;
+
+    // Overlap detection: no two visible widgets should share any cell in a frame.
+    let mut overlap_frames = 0usize;
+    let mut max_overlap_pairs = 0usize;
+    for frame in frames {
+        let mut pairs = 0usize;
+        for i in 0..frame.len() {
+            for j in (i + 1)..frame.len() {
+                if rects_overlap(&frame[i], &frame[j]) {
+                    pairs += 1;
+                }
+            }
+        }
+        if pairs > 0 {
+            overlap_frames += 1;
+            max_overlap_pairs = max_overlap_pairs.max(pairs);
+        }
+    }
+    report.overlap_frames = overlap_frames;
+    report.max_overlap_pairs = max_overlap_pairs;
+
     report
+}
+
+/// True when two placed rects share at least one cell.
+fn rects_overlap(a: &PlacedRect, b: &PlacedRect) -> bool {
+    let (ax1, ay1) = (a.x as u32, a.y as u32);
+    let (bx1, by1) = (b.x as u32, b.y as u32);
+    let ax2 = ax1 + a.width as u32;
+    let ay2 = ay1 + a.height as u32;
+    let bx2 = bx1 + b.width as u32;
+    let by2 = by1 + b.height as u32;
+    (ax1 < bx2 && bx1 < ax2) && (ay1 < by2 && by1 < ay2)
 }
 
 /// Drive the real layout algorithm over a synthetic content-width profile, scrolling
@@ -249,6 +348,35 @@ pub fn simulate_scroll(
     area_width: u16,
     viewport_height: u16,
     data: &InfoWidgetData,
+) -> Vec<Vec<PlacedRect>> {
+    simulate_scroll_mode(
+        content_widths,
+        area_width,
+        viewport_height,
+        data,
+        SimMode::Anchored,
+    )
+}
+
+/// Placement strategy to simulate, for A/B comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimMode {
+    /// Production behaviour: carry anchors across frames (HUD pinning + hide-in-place).
+    Anchored,
+    /// "Maximize info every instant": re-solve from scratch each frame with no
+    /// memory, so every frame independently fills the largest available pockets.
+    /// This is the greedy ideal the stable layout is measured against.
+    Greedy,
+}
+
+/// Like [`simulate_scroll`] but lets the caller pick the placement strategy so the
+/// stable (anchored) and greedy (max-info) layouts can be compared head to head.
+pub fn simulate_scroll_mode(
+    content_widths: &[u16],
+    area_width: u16,
+    viewport_height: u16,
+    data: &InfoWidgetData,
+    mode: SimMode,
 ) -> Vec<Vec<PlacedRect>> {
     let mut frames: Vec<Vec<PlacedRect>> = Vec::new();
     if area_width == 0 || viewport_height == 0 || content_widths.is_empty() {
@@ -280,7 +408,14 @@ pub fn simulate_scroll(
             left_widths: Vec::new(),
             centered: false,
         };
-        let outcome = calculate_placements_anchored(area, &margins, data, true, &anchors);
+        // Greedy mode forgets all anchors each frame, so every frame independently
+        // maximizes coverage (the old "fill the biggest pocket now" philosophy).
+        let prev: &[WidgetAnchor] = if mode == SimMode::Greedy {
+            &[]
+        } else {
+            &anchors
+        };
+        let outcome = calculate_placements_anchored(area, &margins, data, true, prev);
         frames.push(
             outcome
                 .visible
@@ -302,6 +437,18 @@ pub fn measure_scroll(
     data: &InfoWidgetData,
 ) -> StabilityReport {
     let frames = simulate_scroll(content_widths, area_width, viewport_height, data);
+    analyze_frames(&frames)
+}
+
+/// Convenience: simulate a scroll in a specific mode and return the report.
+pub fn measure_scroll_mode(
+    content_widths: &[u16],
+    area_width: u16,
+    viewport_height: u16,
+    data: &InfoWidgetData,
+    mode: SimMode,
+) -> StabilityReport {
+    let frames = simulate_scroll_mode(content_widths, area_width, viewport_height, data, mode);
     analyze_frames(&frames)
 }
 
