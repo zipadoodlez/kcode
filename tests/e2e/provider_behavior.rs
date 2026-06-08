@@ -400,6 +400,94 @@ async fn test_resume_session_with_local_history_uses_metadata_only_history() -> 
     Ok(())
 }
 
+/// End-to-end: resume_all_sessions continues a live session whose last
+/// visible turn is an unanswered (interrupted) user message, and reports a
+/// summary describing the resumed session.
+#[tokio::test]
+async fn test_resume_all_sessions_continues_interrupted_live_session() -> Result<()> {
+    let _env = setup_test_env()?;
+    let runtime_dir = short_runtime_dir(format!(
+        "jcode-resume-all-test-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&runtime_dir)?;
+
+    // A session left with a pending user turn the assistant never answered.
+    let mut session = Session::create(None, Some("Interrupted Session".to_string()));
+    session.model = Some("model-a".to_string());
+    session.add_message(
+        jcode::message::Role::User,
+        vec![jcode::message::ContentBlock::Text {
+            text: "keep going on the migration".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    let socket_path = runtime_dir.join("jcode.sock");
+    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
+
+    let provider = MockProvider::with_models(vec!["model-a"]);
+    provider.queue_response(vec![
+        StreamEvent::TextDelta("Continuing the migration now.".to_string()),
+        StreamEvent::MessageEnd {
+            stop_reason: Some("end_turn".to_string()),
+        },
+    ]);
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
+    let server_instance =
+        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
+    let server_handle = tokio::spawn(async move { server_instance.run().await });
+
+    let mut client = wait_for_server_client(&socket_path).await?;
+    let subscribe_id = client.subscribe().await?;
+    let _ = collect_until_done_unix(&mut client, subscribe_id).await?;
+
+    // Make the interrupted session live by attaching this client to it.
+    let resume_id = client.resume_session(&session.id).await?;
+    let _ = collect_until_done_unix(&mut client, resume_id).await?;
+
+    // Ask the server to continue every interrupted live session.
+    let resume_all_id = client.resume_all_sessions().await?;
+
+    let mut saw_continuation = false;
+    let mut resume_all_result: Option<(usize, usize)> = None;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && (!saw_continuation || resume_all_result.is_none()) {
+        let event = tokio::time::timeout(Duration::from_secs(2), client.read_event()).await??;
+        match event {
+            ServerEvent::TextDelta { text } if text.contains("Continuing the migration now.") => {
+                saw_continuation = true;
+            }
+            ServerEvent::ResumeAllResult {
+                id,
+                resumed,
+                skipped,
+                ..
+            } if id == resume_all_id => {
+                resume_all_result = Some((resumed, skipped));
+            }
+            _ => {}
+        }
+    }
+
+    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
+
+    assert!(
+        saw_continuation,
+        "interrupted live session should stream a continuation after resume_all_sessions"
+    );
+    let (resumed, skipped) =
+        resume_all_result.ok_or_else(|| anyhow::anyhow!("did not receive ResumeAllResult"))?;
+    assert_eq!(resumed, 1, "exactly one interrupted session should resume");
+    assert_eq!(skipped, 0, "no live session should be skipped");
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_resume_session_reports_reload_interruption_for_peer_sessions() -> Result<()> {
     let _env = setup_test_env()?;
