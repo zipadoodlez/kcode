@@ -136,6 +136,40 @@ struct PendingSessionPreviewLoad {
     receiver: std::sync::mpsc::Receiver<Option<Vec<PreviewMessage>>>,
 }
 
+/// Fingerprint of every input that affects the *content* of the preview pane
+/// (before scrolling). When this matches the cached value, scrolling can reuse
+/// the already-wrapped lines instead of re-rendering markdown and re-wrapping
+/// every frame, mirroring the main chat viewport's prepared-frame cache.
+#[derive(Clone, PartialEq, Eq)]
+struct PreviewCacheKey {
+    /// Hash over the selected session id, its preview messages, and the
+    /// header-affecting fields (status label, saved/selection/batch flags, …).
+    content_hash: u64,
+    /// Inner geometry of the preview pane; width drives wrapping and height
+    /// drives the scrollbar decision (which can narrow the content one column).
+    inner_width: u16,
+    inner_height: u16,
+    centered: bool,
+    diff_mode: crate::config::DiffDisplayMode,
+}
+
+/// Cached, fully-wrapped preview content. Built on a cache miss (selection
+/// change, resize, preview load, config change) and reused on every subsequent
+/// frame - notably while scrolling, which then only clamps the offset and
+/// materializes the visible window.
+struct PreviewRenderCache {
+    key: PreviewCacheKey,
+    /// Wrapped lines at the final (post-scrollbar-decision) width.
+    wrapped_lines: Vec<Line<'static>>,
+    /// For each pre-wrap source line, the index of its first wrapped line. Used
+    /// to locate user prompts for the sticky "previous prompt" header.
+    prewrap_to_wrapped: Vec<usize>,
+    /// (pre-wrap line index, display number, text) for every user prompt.
+    user_prompt_markers: Vec<(usize, usize, String)>,
+    /// Whether the content overflows and a scrollbar column is reserved.
+    show_scrollbar: bool,
+}
+
 pub struct SessionPicker {
     /// Flat list of items (headers and sessions)
     items: Vec<PickerItem>,
@@ -190,6 +224,10 @@ pub struct SessionPicker {
     /// meaningful while `onboarding_banner` is set). Selecting it returns
     /// [`PickerResult::StartNewSession`].
     onboarding_start_new_highlighted: bool,
+    /// Cached, fully-wrapped preview content so scrolling does not re-render and
+    /// re-wrap the whole preview every frame. Invalidated by content hash and
+    /// pane geometry (see [`PreviewCacheKey`]).
+    preview_cache: Option<PreviewRenderCache>,
 }
 
 impl SessionPicker {
@@ -231,6 +269,7 @@ impl SessionPicker {
             preview_load_failures: HashSet::new(),
             onboarding_banner: None,
             onboarding_start_new_highlighted: false,
+            preview_cache: None,
         };
         picker.rebuild_items();
         picker
@@ -268,6 +307,7 @@ impl SessionPicker {
             preview_load_failures: HashSet::new(),
             onboarding_banner: None,
             onboarding_start_new_highlighted: false,
+            preview_cache: None,
         }
     }
 
@@ -338,6 +378,7 @@ impl SessionPicker {
             preview_load_failures: HashSet::new(),
             onboarding_banner: None,
             onboarding_start_new_highlighted: false,
+            preview_cache: None,
         };
         picker.rebuild_items();
         picker
@@ -975,13 +1016,6 @@ impl SessionPicker {
     }
 
     fn render_preview(&mut self, frame: &mut Frame, area: Rect) {
-        // Colors matching the actual TUI
-        let user_color: Color = rgb(138, 180, 248); // Soft blue
-        let user_text: Color = rgb(245, 245, 255); // Bright cool white
-        let dim_color: Color = rgb(80, 80, 80); // Dim gray
-        let header_icon_color: Color = rgb(120, 210, 230); // Teal
-        let header_session_color: Color = rgb(255, 255, 255); // White
-
         let empty_border_color = if self.focus == PaneFocus::Preview {
             rgb(130, 130, 160)
         } else {
@@ -1038,11 +1072,193 @@ impl SessionPicker {
         } else {
             Alignment::Left
         };
+
+        // Draw the bordered block first so we know the inner rect (which drives
+        // wrapping width and the scrollbar decision) before building content.
+        let preview_border_color = if self.focus == PaneFocus::Preview {
+            rgb(130, 130, 160)
+        } else {
+            rgb(70, 70, 70)
+        };
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(" Preview ")
+            .border_style(Style::default().fg(preview_border_color));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.width == 0 || inner.height == 0 {
+            return;
+        }
+
+        // Build (or reuse) the fully-wrapped preview content. The expensive
+        // markdown render + wrap only runs on a cache miss; scrolling, focus
+        // changes, and idle redraws reuse the cached wrapped lines. This mirrors
+        // the main chat viewport, whose prepared frame is cached the same way.
+        let key = PreviewCacheKey {
+            content_hash: self.preview_content_hash(&session, centered, diff_mode),
+            inner_width: inner.width,
+            inner_height: inner.height,
+            centered,
+            diff_mode,
+        };
+        let cache_valid = self
+            .preview_cache
+            .as_ref()
+            .is_some_and(|cache| cache.key == key);
+        if !cache_valid {
+            let rebuilt = self.build_preview_cache(&session, area, inner, key, align, diff_mode);
+            self.preview_cache = Some(rebuilt);
+        }
+        // Read cache geometry through a short-lived borrow so the scroll-offset
+        // clamp below can take `&mut self` without conflict.
+        let (show_scrollbar, total_lines) = {
+            let cache = self
+                .preview_cache
+                .as_ref()
+                .expect("preview cache populated above");
+            (cache.show_scrollbar, cache.wrapped_lines.len())
+        };
+
+        let visible_height = inner.height as usize;
+        let (content_area, scrollbar_area) =
+            super::ui::split_native_scrollbar_area(inner, show_scrollbar);
+
+        let max_scroll = total_lines.saturating_sub(visible_height) as u16;
+        if self.auto_scroll_preview {
+            self.scroll_offset = max_scroll;
+            self.auto_scroll_preview = false;
+        } else {
+            self.scroll_offset = self.scroll_offset.min(max_scroll);
+        }
+        let scroll = self.scroll_offset as usize;
+
+        // Materialize only the visible window of wrapped lines instead of cloning
+        // and `.scroll()`ing the whole preview every frame (the main chat
+        // viewport uses the same visible-slice strategy). This makes a scroll
+        // tick O(viewport height) rather than O(total wrapped lines).
+        let visible_end = (scroll + visible_height).min(total_lines);
+        let visible_lines: Vec<Line<'static>> = {
+            let cache = self
+                .preview_cache
+                .as_ref()
+                .expect("preview cache populated above");
+            if scroll < visible_end {
+                cache.wrapped_lines[scroll..visible_end].to_vec()
+            } else {
+                Vec::new()
+            }
+        };
+        frame.render_widget(Paragraph::new(visible_lines), content_area);
+
+        // Sticky "previous prompt" header: when the view is scrolled past a user
+        // prompt, pin a dimmed `N› …` line at the top of the content area, just
+        // like the main TUI's `prompt_preview`.
+        if scroll > 0 {
+            let user_color: Color = rgb(138, 180, 248);
+            let user_text: Color = rgb(245, 245, 255);
+            self.render_preview_prompt_header(
+                frame,
+                content_area,
+                scroll,
+                user_color,
+                user_text,
+                align,
+            );
+        }
+
+        if let Some(scrollbar_area) = scrollbar_area {
+            super::ui::render_native_scrollbar(
+                frame,
+                scrollbar_area,
+                scroll,
+                total_lines,
+                visible_height,
+                self.focus == PaneFocus::Preview,
+            );
+        }
+    }
+
+    /// Fingerprint everything that affects the *content* of the preview pane so
+    /// the wrapped-line cache can be reused across frames (notably while
+    /// scrolling). Mirrors the main chat viewport's prepared-frame cache key.
+    fn preview_content_hash(
+        &self,
+        session: &SessionInfo,
+        centered: bool,
+        diff_mode: crate::config::DiffDisplayMode,
+    ) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        session.id.hash(&mut h);
+        session.short_name.hash(&mut h);
+        session.icon.hash(&mut h);
+        session.title.hash(&mut h);
+        session.working_dir.hash(&mut h);
+        session.save_label.hash(&mut h);
+        session.saved.hash(&mut h);
+        std::mem::discriminant(&session.status).hash(&mut h);
+        match &session.status {
+            SessionStatus::Crashed { message } => message.hash(&mut h),
+            SessionStatus::Error { message } => message.hash(&mut h),
+            _ => {}
+        }
+        // The status line shows a relative "… 5m ago" label derived from real
+        // time, so bucket wall-clock into ~15s windows: fresh enough for the
+        // header without rebuilding the cache during a scroll burst.
+        session.last_message_time.timestamp().hash(&mut h);
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        (now_secs / 15).hash(&mut h);
+        self.crashed_session_ids.contains(&session.id).hash(&mut h);
+        self.selected_session_ids.contains(&session.id).hash(&mut h);
+        let is_loading = session.messages_preview.is_empty()
+            && self
+                .pending_preview_load
+                .as_ref()
+                .is_some_and(|pending| pending.session_id == session.id);
+        is_loading.hash(&mut h);
+        centered.hash(&mut h);
+        diff_mode.hash(&mut h);
+        for msg in &session.messages_preview {
+            msg.role.hash(&mut h);
+            msg.content.hash(&mut h);
+            msg.tool_calls.hash(&mut h);
+            if let Some(tool) = &msg.tool_data {
+                tool.id.hash(&mut h);
+                tool.name.hash(&mut h);
+                tool.input.to_string().hash(&mut h);
+            }
+        }
+        h.finish()
+    }
+
+    /// Build the fully-wrapped preview content for the current selection. This
+    /// is the expensive path (markdown render + wrap of every preview message);
+    /// it only runs on a cache miss (selection change, resize, preview load,
+    /// config change), after which scrolling reuses the wrapped lines.
+    fn build_preview_cache(
+        &self,
+        session: &SessionInfo,
+        area: Rect,
+        inner: Rect,
+        key: PreviewCacheKey,
+        align: Alignment,
+        diff_mode: crate::config::DiffDisplayMode,
+    ) -> PreviewRenderCache {
+        let user_color: Color = rgb(138, 180, 248);
+        let user_text: Color = rgb(245, 245, 255);
+        let dim_color: Color = rgb(80, 80, 80);
+        let header_icon_color: Color = rgb(120, 210, 230);
+        let header_session_color: Color = rgb(255, 255, 255);
+
         let preview_inner_width = area.width.saturating_sub(2);
         let assistant_width = preview_inner_width.saturating_sub(2);
 
         // Build preview content
-        let mut lines: Vec<Line> = Vec::new();
+        let mut lines: Vec<Line<'static>> = Vec::new();
 
         // Header matching TUI style
         lines.push(
@@ -1378,24 +1594,6 @@ impl SessionPicker {
             );
         }
 
-        let preview_border_color = if self.focus == PaneFocus::Preview {
-            rgb(130, 130, 160)
-        } else {
-            rgb(70, 70, 70)
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(" Preview ")
-            .border_style(Style::default().fg(preview_border_color));
-        let inner = block.inner(area);
-        // Render the block first, then draw content/scrollbar/header into its
-        // inner rect so we control the scrollbar column and sticky header rows.
-        frame.render_widget(block, area);
-        if inner.width == 0 || inner.height == 0 {
-            return;
-        }
-
         // Pre-wrap preview lines to keep rendering and scroll bounds aligned.
         // Two-pass so the content reserves the scrollbar column before wrapping
         // (matching the main chat viewport): wrap at the full inner width, and if
@@ -1421,82 +1619,49 @@ impl SessionPicker {
         };
 
         let full_width = inner.width as usize;
-        let (full_lines, _) = wrap_lines_tracked(full_width);
+        let (full_lines, full_map) = wrap_lines_tracked(full_width);
         let show_scrollbar =
             super::ui::native_scrollbar_visible(true, full_lines.len(), visible_height);
-        let (content_area, scrollbar_area) =
-            super::ui::split_native_scrollbar_area(inner, show_scrollbar);
 
-        let (lines, prewrap_to_wrapped) = if show_scrollbar {
-            wrap_lines_tracked(content_area.width as usize)
+        let (wrapped_lines, prewrap_to_wrapped) = if show_scrollbar {
+            let content_width = inner.width.saturating_sub(1) as usize;
+            wrap_lines_tracked(content_width)
         } else {
-            // Reuse the full-width wrap; recompute the map to match.
-            wrap_lines_tracked(full_width)
+            // Reuse the full-width wrap; the map already matches.
+            (full_lines, full_map)
         };
 
-        let total_lines = lines.len();
-
-        let max_scroll = total_lines.saturating_sub(visible_height) as u16;
-        if self.auto_scroll_preview {
-            self.scroll_offset = max_scroll;
-            self.auto_scroll_preview = false;
-        } else {
-            self.scroll_offset = self.scroll_offset.min(max_scroll);
-        }
-        let scroll = self.scroll_offset as usize;
-
-        let paragraph = Paragraph::new(lines).scroll((self.scroll_offset, 0));
-        frame.render_widget(paragraph, content_area);
-
-        // Sticky "previous prompt" header: when the view is scrolled past a user
-        // prompt, pin a dimmed `N› …` line at the top of the content area, just
-        // like the main TUI's `prompt_preview`.
-        if scroll > 0 {
-            self.render_preview_prompt_header(
-                frame,
-                content_area,
-                &user_prompt_markers,
-                &prewrap_to_wrapped,
-                scroll,
-                user_color,
-                user_text,
-                align,
-            );
-        }
-
-        if let Some(scrollbar_area) = scrollbar_area {
-            super::ui::render_native_scrollbar(
-                frame,
-                scrollbar_area,
-                scroll,
-                total_lines,
-                visible_height,
-                self.focus == PaneFocus::Preview,
-            );
+        PreviewRenderCache {
+            key,
+            wrapped_lines,
+            prewrap_to_wrapped,
+            user_prompt_markers,
+            show_scrollbar,
         }
     }
 
     /// Render the pinned "previous prompt" header for the preview pane. Mirrors
     /// the main chat viewport's `prompt_preview`: find the last user prompt whose
     /// wrapped start has scrolled above the viewport and draw it dimmed at the top.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "Header rendering needs the prompt markers, wrap map, and styling context"
-    )]
     fn render_preview_prompt_header(
         &self,
         frame: &mut Frame,
         content_area: Rect,
-        user_prompt_markers: &[(usize, usize, String)],
-        prewrap_to_wrapped: &[usize],
         scroll: usize,
         user_color: Color,
         user_text: Color,
         align: Alignment,
     ) {
+        // Read the prompt markers + wrap map from the cached preview content so
+        // the header costs nothing extra during a scroll burst.
+        let Some(cache) = self.preview_cache.as_ref() else {
+            return;
+        };
+        let prewrap_to_wrapped = &cache.prewrap_to_wrapped;
         // The last prompt whose wrapped start index is above the current scroll.
         let Some((_, prompt_num, text)) =
-            user_prompt_markers
+            cache
+                .user_prompt_markers
                 .iter()
                 .rev()
                 .find(|(prewrap_idx, _, _)| {
