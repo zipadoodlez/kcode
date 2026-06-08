@@ -591,9 +591,16 @@ fn save_default_provider_setting(app: &mut App, provider: Option<&str>) {
         None => None,
         Some("auto") => None,
         Some("claude" | "openai" | "copilot" | "gemini" | "openrouter") => normalized,
+        // Accept the dual-auth credential spellings too (`anthropic-api`,
+        // `claude-api`, `openai-api`, `claude-oauth`, ...). These are the same
+        // values the model picker's "set default" path writes, and startup now
+        // honors them as a routing + OAuth-vs-API decision. Rejecting them here
+        // was itself an inconsistency: the picker could save a default the
+        // `/account` command refused to set.
+        Some(other) if jcode_provider_core::AuthRoute::parse(other).is_some() => normalized,
         Some(other) => {
             app.push_display_message(DisplayMessage::error(format!(
-                "Unsupported default provider {}. Use claude, openai, copilot, gemini, openrouter, or auto.",
+                "Unsupported default provider {}. Use claude, openai, anthropic-api, openai-api, copilot, gemini, openrouter, or auto.",
                 other
             )));
             return;
