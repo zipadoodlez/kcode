@@ -1169,6 +1169,7 @@ impl App {
                     let _ = self.replace_latest_tool_display_message(&tc.id, None, display_output);
 
                     self.observe_tool_result(&tc, &sdk_content, sdk_is_error, None);
+                    self.note_tool_completed(&tc, sdk_is_error);
 
                     self.add_provider_message(Message {
                         role: Role::User,
@@ -1390,6 +1391,7 @@ impl App {
                     Some(tool_duration_ms),
                 );
                 self.observe_tool_result(&tc, &output, is_error, tool_title.as_deref());
+                self.note_tool_completed(&tc, is_error);
                 let _ = self.session.save();
             }
 

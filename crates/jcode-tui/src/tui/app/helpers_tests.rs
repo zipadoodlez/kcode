@@ -326,3 +326,55 @@ fn pretty_model_display_name_handles_empty_and_unknown() {
         "Some New Model"
     );
 }
+
+#[test]
+fn invalidate_todos_cache_backdates_entry_so_next_gather_refetches() {
+    use super::{
+        clear_todos_cache_for_tests, gather_todos_for_session, invalidate_todos_cache,
+        todos_cache_entry_age_for_tests,
+    };
+
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    clear_todos_cache_for_tests();
+
+    let session_id = "freshness-test-session";
+
+    // No entry yet.
+    assert_eq!(todos_cache_entry_age_for_tests(session_id), None);
+
+    // First gather seeds the cache entry (and spawns the initial fetch). The
+    // entry exists immediately, marked as actively refreshing / freshly stamped.
+    let _ = gather_todos_for_session(Some(session_id));
+    let before = todos_cache_entry_age_for_tests(session_id);
+    assert!(before.is_some(), "first gather must seed a cache entry");
+
+    // Let the background fetch settle so we have a non-refreshing, fresh entry.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let _ = gather_todos_for_session(Some(session_id));
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let settled = todos_cache_entry_age_for_tests(session_id)
+        .expect("entry should exist after gather settles");
+    assert!(
+        settled.0 < 5,
+        "a freshly fetched entry should be recent, got age={}s",
+        settled.0
+    );
+
+    // Invalidation backdates the timestamp far past the TTL and clears the
+    // refreshing flag, so the next gather treats it as expired and refetches.
+    invalidate_todos_cache(session_id);
+    let after = todos_cache_entry_age_for_tests(session_id)
+        .expect("entry should still exist after invalidation");
+    assert!(
+        after.0 >= 1000,
+        "invalidation must backdate the entry well past the 1s TTL, got age={}s",
+        after.0
+    );
+    assert!(
+        !after.1,
+        "invalidation must clear the refreshing flag so the next gather refetches"
+    );
+}
+

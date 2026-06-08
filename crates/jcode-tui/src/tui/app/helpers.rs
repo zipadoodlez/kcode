@@ -12,6 +12,69 @@ type AmbientInfoCacheEntry = (std::time::Instant, bool, Option<AmbientWidgetData
 
 static AMBIENT_INFO_CACHE: Mutex<Option<AmbientInfoCacheEntry>> = Mutex::new(None);
 
+/// Stale-while-revalidate cache for the git status widget. Module-level so the
+/// app can force a refresh the moment it mutates the repo (commit, shell, file
+/// edits) instead of waiting out the TTL with a stale branch/dirty count.
+type GitInfoCacheEntry = (std::time::Instant, Option<GitInfo>, bool);
+static GIT_INFO_CACHE: Mutex<Option<GitInfoCacheEntry>> = Mutex::new(None);
+
+/// Stale-while-revalidate cache for per-session todos. Module-level so the app
+/// can force a refresh the moment it persists a todo write locally, instead of
+/// showing the previous list until the TTL lapses.
+type TodosCache = std::collections::HashMap<String, (std::time::Instant, Vec<TodoItem>, bool)>;
+static TODOS_CACHE: std::sync::LazyLock<Mutex<TodosCache>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+/// Force the git-status widget cache to refetch on its next read.
+///
+/// Call this right after the app changes the working tree or HEAD (commits,
+/// shell commands, file edits) so the info widget reflects the new repo state
+/// immediately rather than after the 5s TTL. Stale-while-revalidate still
+/// applies: the next read returns the last value and kicks a background refresh.
+pub(crate) fn invalidate_git_info_cache() {
+    if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
+        if let Some((ts, _cached, refreshing)) = guard.as_mut() {
+            // Backdate the timestamp past the TTL so the next `gather_git_info`
+            // treats the entry as expired and spawns a refresh, while still
+            // returning the last-known value (no flicker to empty).
+            *ts = std::time::Instant::now() - Duration::from_secs(3600);
+            *refreshing = false;
+        }
+    }
+}
+
+/// Force the todos widget cache to refetch the given session on its next read.
+///
+/// Call this right after the app persists a local todo write so the info widget
+/// reflects the new list immediately rather than after the 1s TTL.
+pub(crate) fn invalidate_todos_cache(session_id: &str) {
+    if let Ok(mut cache) = TODOS_CACHE.lock() {
+        if let Some((ts, _todos, refreshing)) = cache.get_mut(session_id) {
+            *ts = std::time::Instant::now() - Duration::from_secs(3600);
+            *refreshing = false;
+        }
+    }
+}
+
+/// Test-only: snapshot `(elapsed_secs, refreshing)` for a session's todos cache
+/// entry, or `None` when no entry exists yet. Lets tests assert that
+/// invalidation backdates the entry so the next gather treats it as expired.
+#[cfg(test)]
+pub(crate) fn todos_cache_entry_age_for_tests(session_id: &str) -> Option<(u64, bool)> {
+    let cache = TODOS_CACHE.lock().ok()?;
+    cache
+        .get(session_id)
+        .map(|(ts, _todos, refreshing)| (ts.elapsed().as_secs(), *refreshing))
+}
+
+/// Test-only: clear the entire todos cache so tests start from a known state.
+#[cfg(test)]
+pub(crate) fn clear_todos_cache_for_tests() {
+    if let Ok(mut cache) = TODOS_CACHE.lock() {
+        cache.clear();
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct CachedContextSnapshot {
     pub session_key: String,
@@ -869,14 +932,11 @@ pub(super) fn encode_rgba_as_png(width: usize, height: usize, rgba: &[u8]) -> Op
 }
 
 pub(super) fn gather_git_info() -> Option<GitInfo> {
-    use std::sync::Mutex;
     use std::time::Instant;
-
-    static CACHE: Mutex<Option<(Instant, Option<GitInfo>, bool)>> = Mutex::new(None);
 
     const TTL: Duration = Duration::from_secs(5);
 
-    if let Ok(mut guard) = CACHE.lock() {
+    if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
         if let Some((ts, cached, refreshing)) = guard.as_mut() {
             if ts.elapsed() < TTL {
                 return cached.clone();
@@ -888,7 +948,7 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
             *refreshing = true;
             std::thread::spawn(|| {
                 let result = gather_git_info_inner();
-                if let Ok(mut guard) = CACHE.lock() {
+                if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
                     *guard = Some((Instant::now(), result, false));
                 }
             });
@@ -898,7 +958,7 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
         *guard = Some((Instant::now() - TTL - Duration::from_secs(1), None, true));
         std::thread::spawn(|| {
             let result = gather_git_info_inner();
-            if let Ok(mut guard) = CACHE.lock() {
+            if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
                 *guard = Some((Instant::now(), result, false));
             }
         });
@@ -907,20 +967,15 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
 }
 
 pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TodoItem> {
-    use std::collections::HashMap;
-    use std::sync::{LazyLock, Mutex};
     use std::time::Instant;
 
-    type TodosCache = HashMap<String, (Instant, Vec<TodoItem>, bool)>;
-
-    static CACHE: LazyLock<Mutex<TodosCache>> = LazyLock::new(|| Mutex::new(HashMap::new()));
     const TTL: Duration = Duration::from_secs(1);
 
     let Some(session_id) = session_id else {
         return Vec::new();
     };
 
-    if let Ok(mut cache) = CACHE.lock() {
+    if let Ok(mut cache) = TODOS_CACHE.lock() {
         if let Some((ts, todos, refreshing)) = cache.get_mut(session_id) {
             if ts.elapsed() < TTL {
                 return todos.clone();
@@ -933,7 +988,7 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TodoItem
             let session_id = session_id.to_string();
             std::thread::spawn(move || {
                 let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
-                if let Ok(mut cache) = CACHE.lock() {
+                if let Ok(mut cache) = TODOS_CACHE.lock() {
                     cache.insert(session_id, (Instant::now(), todos, false));
                 }
             });
@@ -951,7 +1006,7 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TodoItem
         );
         std::thread::spawn(move || {
             let todos = crate::todo::load_todos(&session_id).unwrap_or_default();
-            if let Ok(mut cache) = CACHE.lock() {
+            if let Ok(mut cache) = TODOS_CACHE.lock() {
                 cache.insert(session_id, (Instant::now(), todos, false));
             }
         });

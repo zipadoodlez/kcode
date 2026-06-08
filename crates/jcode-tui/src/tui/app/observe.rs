@@ -60,6 +60,59 @@ impl App {
         self.refresh_observe_page();
     }
 
+    /// React to a completed tool by forcing the info-widget caches it may have
+    /// dirtied to refetch on the next frame, instead of waiting out their TTLs.
+    ///
+    /// The info widget's git-status and todos panels are stale-while-revalidate
+    /// caches (5s / 1s TTL). The agent's own tools are exactly what mutate those
+    /// underlying sources, so without an explicit nudge the widget would show the
+    /// repo/todo state from *before* the tool ran for a full TTL. This keeps the
+    /// SWR perf benefit (no synchronous git/disk work on the render path) while
+    /// making self-inflicted staleness self-correct immediately: the next read
+    /// returns the last value and kicks a background refresh.
+    ///
+    /// Called unconditionally on every tool completion (local and remote paths),
+    /// independent of observe mode. Tool names are matched leniently because the
+    /// same logical tool surfaces under several aliases (e.g. `bash`/`shell`,
+    /// `write`/`write_file`).
+    pub(super) fn note_tool_completed(&mut self, tool_call: &ToolCall, is_error: bool) {
+        if is_error {
+            // A failed tool did not change the working tree or todos.
+            return;
+        }
+
+        let name = tool_call.name.to_ascii_lowercase();
+
+        // Any filesystem- or repo-mutating tool can change git status (branch,
+        // staged/modified/untracked counts). `batch` can wrap any of these, so
+        // treat it as potentially mutating too.
+        let mutates_repo = matches!(
+            name.as_str(),
+            "bash"
+                | "shell"
+                | "shell_exec"
+                | "write"
+                | "write_file"
+                | "edit"
+                | "edit_file"
+                | "multiedit"
+                | "patch"
+                | "apply_patch"
+                | "batch"
+                | "run_shell"
+        );
+        if mutates_repo {
+            super::helpers::invalidate_git_info_cache();
+        }
+
+        // The todo tool rewrites the per-session todo list.
+        if name == "todo" || name == "todowrite" || name == "todo_write" {
+            if let Some(session_id) = self.active_client_session_id().map(str::to_string) {
+                super::helpers::invalidate_todos_cache(&session_id);
+            }
+        }
+    }
+
     pub(super) fn decorate_side_panel_with_observe(
         &self,
         mut snapshot: SidePanelSnapshot,

@@ -34,6 +34,7 @@ pub(super) fn handle_tool_done(
     crate::tui::mermaid::clear_streaming_preview_diagram();
     let is_batch = tool_call.name == "batch";
     app.observe_tool_result(&tool_call, &output, error.is_some(), None);
+    app.note_tool_completed(&tool_call, error.is_some());
     app.push_display_message(DisplayMessage {
         role: "tool".to_string(),
         content: display_output,
