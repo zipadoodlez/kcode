@@ -77,7 +77,7 @@ fn onboarding_golden_walks_every_phase() {
         let text = render_onboarding_text(&app, width, height);
         dump("Login (no imports)", &text);
         assert!(text.contains("First, log in to get started."), "{text}");
-        assert!(text.contains("Press Enter to choose a provider."), "{text}");
+        assert!(text.contains("Press Enter to log in to OpenAI."), "{text}");
     }
 
     // 2. Login with detected imports (per-candidate review).

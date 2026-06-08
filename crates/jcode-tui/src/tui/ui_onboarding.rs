@@ -93,7 +93,14 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(
                         Line::from(Span::styled(
-                            "Press Enter to choose a provider.",
+                            "Press Enter to log in to OpenAI.",
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Or type /login to choose another provider.",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),

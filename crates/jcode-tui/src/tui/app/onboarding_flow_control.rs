@@ -183,8 +183,18 @@ impl App {
                 "Welcome to jcode: review detected logins (arrows/hl to move, Enter to choose)",
             );
         } else {
-            self.set_status_notice("Welcome to jcode: press Enter to log in");
+            self.set_status_notice("Welcome to jcode: press Enter to log in to OpenAI");
         }
+    }
+
+    /// Start the default first-run login when no external logins were detected.
+    /// We point brand-new users straight at OpenAI (ChatGPT) rather than the full
+    /// provider picker, since that is the most common first login. The provider
+    /// picker is still reachable via `/login`.
+    pub(super) fn onboarding_start_default_login(&mut self) {
+        crate::telemetry::record_setup_step_once("login_picker_opened");
+        self.start_login_provider(crate::provider_catalog::OPENAI_LOGIN_PROVIDER);
+        self.set_status_notice("Login: opening OpenAI sign-in (or type /login for others)");
     }
 
     /// Advance out of the `Login` phase once credentials are available. We then
@@ -306,13 +316,13 @@ impl App {
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
         match self.onboarding_phase() {
             Some(OnboardingPhase::Login { import }) => {
-                // No detected imports: fall back to "press Enter to choose a
-                // provider". Only intercept Enter from the welcome screen; if an
+                // No detected imports: prompt the user to log in to OpenAI
+                // directly. Only intercept Enter from the welcome screen; if an
                 // overlay is already open let it commit.
                 if import.is_none() {
                     return match code {
                         KeyCode::Enter if self.inline_interactive_state.is_none() => {
-                            self.show_interactive_login();
+                            self.onboarding_start_default_login();
                             true
                         }
                         _ => false,
