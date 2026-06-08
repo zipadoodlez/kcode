@@ -56,6 +56,20 @@ pub(crate) fn invalidate_todos_cache(session_id: &str) {
     }
 }
 
+/// Force the ambient widget cache to refetch on its next read.
+///
+/// Call this after the app changes ambient state (e.g. the `schedule` tool
+/// queues or cancels a task) so the ambient panel reflects the new queue/next
+/// wake immediately rather than after the 2s TTL.
+pub(crate) fn invalidate_ambient_info_cache() {
+    if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock() {
+        if let Some((ts, _enabled, _cached, refreshing)) = guard.as_mut() {
+            *ts = std::time::Instant::now() - Duration::from_secs(3600);
+            *refreshing = false;
+        }
+    }
+}
+
 /// Test-only: snapshot `(elapsed_secs, refreshing)` for a session's todos cache
 /// entry, or `None` when no entry exists yet. Lets tests assert that
 /// invalidation backdates the entry so the next gather treats it as expired.

@@ -111,6 +111,12 @@ impl App {
                 super::helpers::invalidate_todos_cache(&session_id);
             }
         }
+
+        // The schedule tool queues/cancels ambient tasks, which the ambient panel
+        // surfaces (queue count, next wake).
+        if name == "schedule" {
+            super::helpers::invalidate_ambient_info_cache();
+        }
     }
 
     pub(super) fn decorate_side_panel_with_observe(
