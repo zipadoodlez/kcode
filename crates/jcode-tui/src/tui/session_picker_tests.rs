@@ -1887,6 +1887,19 @@ fn test_current_dir_highlight_marks_matching_sessions() {
         "matching session should show the `here` marker: {text}"
     );
 
+    // The marker and directory line should be styled with the same-dir accent
+    // green so the highlight is visually distinct, not just present as text.
+    let same_dir_color = rgb(120, 200, 140);
+    let marker_styled_green = rows.iter().any(|line| {
+        line.spans.iter().any(|span| {
+            span.content.contains("here") && span.style.fg == Some(same_dir_color)
+        })
+    });
+    assert!(
+        marker_styled_green,
+        "`here` marker should be rendered in the same-dir accent color"
+    );
+
     let other_rows = picker.render_session_item_lines(&other, false);
     let other_text: String = other_rows
         .iter()
