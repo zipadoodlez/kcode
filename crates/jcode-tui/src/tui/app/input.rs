@@ -2,7 +2,8 @@
 
 use super::{
     App, ContentBlock, DisplayMessage, Message, ProcessingStatus, Role, SendAction, SkillRegistry,
-    commands, ctrl_bracket_fallback_to_esc, is_context_limit_error, remote,
+    commands, ctrl_bracket_fallback_to_esc, is_context_limit_error,
+    is_request_payload_too_large_error, remote,
 };
 use crate::bus::{
     Bus, BusEvent, ClipboardPasteCompleted, ClipboardPasteContent, ClipboardPasteKind,
@@ -3027,7 +3028,14 @@ impl App {
                 }
                 Err(e) => {
                     let err_str = crate::util::format_error_chain(&e);
-                    if is_context_limit_error(&err_str) {
+                    if is_request_payload_too_large_error(&err_str) {
+                        if !self
+                            .try_recover_payload_too_large_and_retry(terminal, event_stream)
+                            .await
+                        {
+                            self.handle_turn_error(err_str);
+                        }
+                    } else if is_context_limit_error(&err_str) {
                         if self
                             .try_auto_compact_and_retry(terminal, event_stream)
                             .await

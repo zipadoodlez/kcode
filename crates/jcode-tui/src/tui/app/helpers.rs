@@ -258,6 +258,14 @@ pub(super) fn is_context_limit_error(error: &str) -> bool {
         || (lower.contains("exceeded") && lower.contains("tokens"))
 }
 
+/// Whether `error` is a provider HTTP 413 "request too large" / payload-size
+/// rejection. This is distinct from a token-context overflow: it is driven by
+/// the serialized request body size (dominated by inline base64 images), so it
+/// is recovered by stripping oversized images rather than by token compaction.
+pub(super) fn is_request_payload_too_large_error(error: &str) -> bool {
+    crate::compaction::is_request_payload_too_large_error(error)
+}
+
 /// Parse a clock time like "5am" or "12:30pm" and return duration until that time
 pub(super) fn parse_clock_time_to_duration(time_str: &str) -> Option<Duration> {
     let time_lower = time_str.to_lowercase();

@@ -12,6 +12,56 @@ fn test_context_limit_error_detection() {
 }
 
 #[test]
+fn test_request_payload_too_large_error_detection() {
+    assert!(is_request_payload_too_large_error(
+        "Anthropic API error (413 Payload Too Large): {\"error\":{\"type\":\"request_too_large\",\"message\":\"Request exceeds the maximum size\"}}"
+    ));
+    assert!(!is_request_payload_too_large_error(
+        "rate limit exceeded, retry after 20s"
+    ));
+    // A plain token-context overflow is not a payload-size error.
+    assert!(!is_request_payload_too_large_error(
+        "This model's maximum context length is 200000 tokens"
+    ));
+}
+
+#[test]
+fn test_strip_oversized_images_drops_oldest_first() {
+    use crate::message::ContentBlock;
+    let mut app = create_test_app();
+    app.session.replace_messages(Vec::new());
+
+    let big = "a".repeat(8 * 1024 * 1024); // 8 MiB base64 image each
+    for _ in 0..3 {
+        app.session.add_message(
+            Role::User,
+            vec![ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: big.clone(),
+            }],
+        );
+    }
+
+    // 24 MiB of images, budget 12 MiB → drop the two oldest, keep the newest.
+    let stripped = app
+        .session
+        .strip_oversized_images(crate::compaction::PAYLOAD_IMAGE_CHAR_BUDGET);
+    assert_eq!(stripped, 2);
+    assert!(matches!(
+        app.session.messages[0].content[0],
+        ContentBlock::Text { .. }
+    ));
+    assert!(matches!(
+        app.session.messages[1].content[0],
+        ContentBlock::Text { .. }
+    ));
+    assert!(matches!(
+        app.session.messages[2].content[0],
+        ContentBlock::Image { .. }
+    ));
+}
+
+#[test]
 fn test_rewind_truncates_provider_messages() {
     let mut app = create_test_app();
     app.session.replace_messages(Vec::new());

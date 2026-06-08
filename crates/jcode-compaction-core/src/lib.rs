@@ -30,6 +30,15 @@ pub const EMERGENCY_TOOL_RESULT_MAX_CHARS: usize = 4000;
 /// huge raw image in the recent tail.
 pub const EMERGENCY_IMAGE_MAX_CHARS: usize = 1024;
 
+/// Approximate maximum request body size (in base64 characters) we aim to keep
+/// the transcript under when recovering from a provider "request too large" /
+/// 413 payload error. Anthropic rejects requests whose serialized body exceeds
+/// roughly 32 MB; this distinct failure mode is driven almost entirely by inline
+/// base64 images, which the normal token-budget accounting deliberately
+/// undercounts (see `IMAGE_TOKEN_COST`). We target a conservative budget well
+/// under the hard provider cap so a single retry reliably fits.
+pub const PAYLOAD_IMAGE_CHAR_BUDGET: usize = 12 * 1024 * 1024;
+
 /// Approximate chars per token for estimation
 pub const CHARS_PER_TOKEN: usize = 4;
 
@@ -543,6 +552,107 @@ pub fn emergency_truncate_large_payloads(
     truncated
 }
 
+/// Whether a provider error indicates the *serialized request body* was too
+/// large (HTTP 413), as distinct from exceeding the model's token context
+/// window. Anthropic surfaces this as `request_too_large` / "Request exceeds the
+/// maximum size" / "413 Payload Too Large"; OpenAI and gateways use similar
+/// wording. This failure mode is dominated by inline base64 images, which the
+/// token-budget accounting deliberately undercounts, so it needs a dedicated
+/// byte-size recovery rather than ordinary context compaction.
+pub fn is_request_payload_too_large_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("request_too_large")
+        || lower.contains("request too large")
+        || lower.contains("payload too large")
+        || lower.contains("request entity too large")
+        || lower.contains("request exceeds the maximum size")
+        || lower.contains("exceeds the maximum size")
+        || contains_independent_status_code(&lower, "413")
+}
+
+/// Whether `haystack` contains `code` as a standalone status code rather than as
+/// a fragment of a longer number (so "413" matches but "4130"/"version 4131"
+/// does not). Mirrors the failover classifier's guard.
+fn contains_independent_status_code(haystack: &str, code: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    haystack.match_indices(code).any(|(start, _)| {
+        let before_ok = start == 0 || !bytes[start - 1].is_ascii_digit();
+        let end = start + code.len();
+        let after_ok = end == bytes.len() || !bytes[end].is_ascii_digit();
+        before_ok && after_ok
+    })
+}
+
+/// Strip oversized inline images from `messages`, oldest-first, until the total
+/// remaining base64 image payload fits within `target_total_chars`.
+///
+/// Unlike [`emergency_truncate_large_payloads`] (which is driven by the token
+/// budget and replaces *every* image past a tiny per-image cap), this is the
+/// byte-size recovery path for HTTP 413 "request too large" errors: it preserves
+/// as many of the most recent images as the request size budget allows and only
+/// drops the older ones. Each stripped image is replaced with a text marker so
+/// the model still knows an image existed and where to recover it from.
+///
+/// Returns the number of images that were replaced with text markers.
+pub fn emergency_strip_large_images(
+    messages: &mut [Message],
+    target_total_chars: usize,
+) -> usize {
+    let mut contents: Vec<&mut Vec<ContentBlock>> =
+        messages.iter_mut().map(|m| &mut m.content).collect();
+    strip_large_images_in_contents(&mut contents, target_total_chars)
+}
+
+/// Core of [`emergency_strip_large_images`], operating directly on a slice of
+/// content-block vectors so it can be reused for both provider `Message`s and
+/// the session's stored-message representation (which share `ContentBlock`).
+pub fn strip_large_images_in_contents(
+    contents: &mut [&mut Vec<ContentBlock>],
+    target_total_chars: usize,
+) -> usize {
+    // Collect (content_index, block_index, payload_len) for every inline image,
+    // in transcript order (oldest first).
+    let mut images: Vec<(usize, usize, usize)> = Vec::new();
+    let mut total: usize = 0;
+    for (ci, content) in contents.iter().enumerate() {
+        for (bi, block) in content.iter().enumerate() {
+            if let ContentBlock::Image { data, .. } = block {
+                images.push((ci, bi, data.len()));
+                total = total.saturating_add(data.len());
+            }
+        }
+    }
+
+    if total <= target_total_chars {
+        return 0;
+    }
+
+    let mut stripped = 0;
+    // Drop oldest images first until we're under budget (always keep trying even
+    // if a single huge recent image alone exceeds the budget — better to ship a
+    // request the provider might still trim than to give up entirely).
+    for (ci, bi, payload_len) in images {
+        if total <= target_total_chars {
+            break;
+        }
+        let block = &mut contents[ci][bi];
+        if let ContentBlock::Image { media_type, data } = block {
+            let original_len = data.len();
+            let media_type = media_type.clone();
+            *block = ContentBlock::Text {
+                text: format!(
+                    "[Image omitted during request-size recovery: media_type={media_type}, original_base64_chars={original_len}. The request body exceeded the provider size limit; older images were dropped. Rely on adjacent browser/tool text, screenshots saved to disk, or re-open/re-screenshot if visual details are needed.]"
+                ),
+                cache_control: None,
+            };
+            total = total.saturating_sub(payload_len);
+            stripped += 1;
+        }
+    }
+
+    stripped
+}
+
 pub fn emergency_truncated_tool_result(content: &str, max_chars: usize) -> String {
     let original_len = content.len();
     let keep_head = max_chars / 2;
@@ -760,5 +870,78 @@ mod tests {
             }
             other => panic!("expected image to be replaced with text marker, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn detects_request_payload_too_large_errors() {
+        assert!(is_request_payload_too_large_error(
+            "Anthropic API error (413 Payload Too Large): {\"error\":{\"type\":\"request_too_large\",\"message\":\"Request exceeds the maximum size\"}}"
+        ));
+        assert!(is_request_payload_too_large_error("413 Request Entity Too Large"));
+        assert!(is_request_payload_too_large_error("request too large"));
+        // Not a payload error — should not match.
+        assert!(!is_request_payload_too_large_error(
+            "rate limit exceeded, retry after 20s"
+        ));
+        // Embedded digits must not trip the standalone 413 check.
+        assert!(!is_request_payload_too_large_error(
+            "model version 4130 is unavailable"
+        ));
+    }
+
+    fn image_msg(data_len: usize) -> Message {
+        Message {
+            role: Role::User,
+            content: vec![ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: "a".repeat(data_len),
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        }
+    }
+
+    #[test]
+    fn strip_large_images_drops_oldest_until_under_budget() {
+        // Four 1000-char images = 4000 total; budget 2500 should drop the two
+        // oldest (leaving 2000 <= 2500), keeping the two most recent.
+        let mut messages = vec![
+            image_msg(1000),
+            image_msg(1000),
+            image_msg(1000),
+            image_msg(1000),
+        ];
+
+        let stripped = emergency_strip_large_images(&mut messages, 2500);
+        assert_eq!(stripped, 2);
+        // Oldest two replaced with text markers.
+        assert!(matches!(messages[0].content[0], ContentBlock::Text { .. }));
+        assert!(matches!(messages[1].content[0], ContentBlock::Text { .. }));
+        // Most recent two preserved as images.
+        assert!(matches!(messages[2].content[0], ContentBlock::Image { .. }));
+        assert!(matches!(messages[3].content[0], ContentBlock::Image { .. }));
+        if let ContentBlock::Text { text, .. } = &messages[0].content[0] {
+            assert!(text.contains("Image omitted during request-size recovery"));
+            assert!(text.contains("original_base64_chars=1000"));
+        }
+    }
+
+    #[test]
+    fn strip_large_images_noop_when_under_budget() {
+        let mut messages = vec![image_msg(500), image_msg(500)];
+        let stripped = emergency_strip_large_images(&mut messages, 4000);
+        assert_eq!(stripped, 0);
+        assert!(matches!(messages[0].content[0], ContentBlock::Image { .. }));
+        assert!(matches!(messages[1].content[0], ContentBlock::Image { .. }));
+    }
+
+    #[test]
+    fn strip_large_images_strips_all_when_single_image_exceeds_budget() {
+        // Even a lone over-budget image is stripped (better than re-sending an
+        // oversized request that the provider will reject again).
+        let mut messages = vec![image_msg(8000)];
+        let stripped = emergency_strip_large_images(&mut messages, 2000);
+        assert_eq!(stripped, 1);
+        assert!(matches!(messages[0].content[0], ContentBlock::Text { .. }));
     }
 }

@@ -368,6 +368,31 @@ impl App {
             return;
         }
 
+        if is_request_payload_too_large_error(&error) {
+            // 413 is a request body-size rejection driven by inline images.
+            // Strip oversized images now so a manual resubmit (or auto-poke
+            // retry) goes through, and keep auto-poke alive.
+            let stripped = self
+                .session
+                .strip_oversized_images(crate::compaction::PAYLOAD_IMAGE_CHAR_BUDGET);
+            if stripped > 0 {
+                self.messages.clear();
+                self.reseed_compaction_from_provider_messages();
+                self.push_display_message(DisplayMessage::error(format!(
+                    "Error: {} Dropped {} oversized image(s); you can retry.",
+                    error, stripped
+                )));
+            } else {
+                self.push_display_message(DisplayMessage::error(format!(
+                    "Error: {} Request body was too large but no inline images could be dropped. Run /fix to try manual recovery.",
+                    error
+                )));
+                super::commands::stop_auto_poke_for_non_retryable_error(self, &error);
+                self.stop_overnight_auto_poke_for_non_retryable_error(&error);
+            }
+            return;
+        }
+
         if is_context_limit_error(&error) {
             let recovery = self.auto_recover_context_limit();
             let should_stop_auto_poke = recovery.is_none();
@@ -449,6 +474,45 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Attempt recovery after a provider HTTP 413 "request too large" error by
+    /// stripping oversized inline images (oldest-first) from the persisted
+    /// transcript, then retrying the turn. Returns true if the retry succeeded.
+    ///
+    /// This is the byte-size counterpart to `try_auto_compact_and_retry`: 413 is
+    /// driven by base64 image payload size, which token-budget compaction
+    /// deliberately undercounts, so ordinary compaction would not shrink the
+    /// request and the retry would 413 again.
+    pub(super) async fn try_recover_payload_too_large_and_retry(
+        &mut self,
+        terminal: &mut DefaultTerminal,
+        event_stream: &mut EventStream,
+    ) -> bool {
+        if self.is_remote {
+            return false;
+        }
+
+        let stripped = self
+            .session
+            .strip_oversized_images(crate::compaction::PAYLOAD_IMAGE_CHAR_BUDGET);
+        if stripped == 0 {
+            return false;
+        }
+
+        // Transcript changed: drop the local materialized scratch copy so the
+        // next API call rebuilds from the reduced session, and reseed compaction
+        // bookkeeping from the new provider view.
+        self.messages.clear();
+        self.reseed_compaction_from_provider_messages();
+
+        self.push_display_message(DisplayMessage::system(format!(
+            "⚡ Request was too large; dropped {} oversized image(s) and retrying...",
+            stripped
+        )));
+
+        self.reset_state_for_compaction_retry();
+        self.run_compaction_retry_turn(terminal, event_stream).await
     }
 
     /// Reset session and streaming state so a turn can be safely retried after

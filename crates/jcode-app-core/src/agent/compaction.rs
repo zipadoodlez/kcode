@@ -113,6 +113,14 @@ impl Agent {
         {
             return true;
         }
+        // A provider HTTP 413 ("request too large") is a *byte-size* failure
+        // driven by inline base64 images, not a token-context overflow. Token
+        // accounting deliberately undercounts images, so ordinary compaction
+        // would not shrink the payload and the retry would 413 again. Strip
+        // oversized images first.
+        if self.try_recover_after_payload_too_large(error) {
+            return true;
+        }
         if !Self::is_context_limit_error(error) {
             return false;
         }
@@ -168,6 +176,65 @@ impl Agent {
             .with_detail(format!(
                 "dropped_messages={dropped},usage_pct={usage_pct:.1}"
             ))
+            .force_attribution(),
+        );
+
+        true
+    }
+
+    /// Best-effort recovery after a provider HTTP 413 "request too large" error.
+    ///
+    /// This failure is caused by the serialized request body (dominated by inline
+    /// base64 images) exceeding the provider's size cap, which is independent of
+    /// the token context window. We strip oversized images from the persisted
+    /// transcript, oldest-first, down to a conservative byte budget and reset the
+    /// provider session/cache so the caller can retry the same turn immediately.
+    fn try_recover_after_payload_too_large(&mut self, error: &str) -> bool {
+        if !crate::compaction::is_request_payload_too_large_error(error) {
+            return false;
+        }
+
+        let stripped = self
+            .session
+            .strip_oversized_images(crate::compaction::PAYLOAD_IMAGE_CHAR_BUDGET);
+        if stripped == 0 {
+            logging::warn(
+                "Request-too-large recovery skipped: no oversized inline images to strip",
+            );
+            return false;
+        }
+
+        // The transcript changed; reseed compaction bookkeeping and reset
+        // provider session/cache state so the retry sends the reduced payload.
+        let compaction = self.registry.compaction();
+        if let Ok(mut manager) = compaction.try_write() {
+            let provider_messages = self.session.messages_for_provider();
+            manager.reset();
+            manager.set_budget(self.provider.context_window());
+            if let Some(state) = self.session.compaction.as_ref() {
+                manager.restore_persisted_state_with(state, &provider_messages);
+            } else {
+                manager.seed_restored_messages_with(&provider_messages);
+            }
+            self.sync_session_compaction_state_from_manager(&manager);
+        }
+
+        self.cache_tracker.reset();
+        self.locked_tools = None;
+        self.provider_session_id = None;
+        self.session.provider_session_id = None;
+
+        logging::warn(&format!(
+            "Request body exceeded provider size limit; stripped {} oversized inline image(s) and retrying",
+            stripped
+        ));
+        crate::runtime_memory_log::emit_event(
+            crate::runtime_memory_log::RuntimeMemoryLogEvent::new(
+                "payload_too_large_recovered",
+                "request_payload_too_large",
+            )
+            .with_session_id(self.session.id.clone())
+            .with_detail(format!("images_stripped={stripped}"))
             .force_attribution(),
         );
 

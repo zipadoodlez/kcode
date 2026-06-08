@@ -1178,6 +1178,30 @@ impl Session {
         }
     }
 
+    /// Drop oversized inline images from the stored transcript, oldest-first,
+    /// until the total remaining base64 image payload fits within
+    /// `target_total_chars`. Used to recover from provider HTTP 413
+    /// "request too large" errors, which are driven by base64 image payload size
+    /// rather than the token context window.
+    ///
+    /// Mutates and persists the authoritative transcript (replacing each dropped
+    /// image with a short text marker) and invalidates the provider-message
+    /// cache so the next API call reflects the reduced payload. Returns the
+    /// number of images that were stripped.
+    pub fn strip_oversized_images(&mut self, target_total_chars: usize) -> usize {
+        let mut contents: Vec<&mut Vec<ContentBlock>> =
+            self.messages.iter_mut().map(|m| &mut m.content).collect();
+        let stripped = jcode_compaction_core::strip_large_images_in_contents(
+            &mut contents,
+            target_total_chars,
+        );
+        if stripped > 0 {
+            self.mark_memory_profile_dirty();
+            self.mark_messages_full_dirty();
+        }
+        stripped
+    }
+
     pub fn visible_conversation_message_count(&self) -> usize {
         self.messages
             .iter()
