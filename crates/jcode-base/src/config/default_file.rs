@@ -231,6 +231,7 @@ tool_profile = "acp"
 # OpenAI reasoning effort (none|low|medium|high|xhigh)
 openai_reasoning_effort = "low"
 # Anthropic reasoning effort for Claude reasoning models (none|low|medium|high; xhigh on Opus 4.7; max aliases to the strongest supported level)
+# Defaults to the strongest supported level for Claude Opus models (xhigh on Opus 4.7/4.8, high on older Opus) when unset; other models keep their own default.
 # anthropic_reasoning_effort = "medium"
 # OpenAI transport mode (auto|websocket|https)
 # openai_transport = "auto"
