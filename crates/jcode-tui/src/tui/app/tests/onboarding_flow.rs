@@ -706,3 +706,67 @@ fn remote_post_login_validation_waits_for_catalog_refresh() {
         assert!(app.onboarding_pending_validation_ready_to_fire());
     });
 }
+
+#[test]
+fn startup_check_skips_user_with_established_session_history() {
+    with_temp_jcode_home(|| {
+        // A low/missing launch_count alone must NOT classify someone as a new
+        // user when their jcode home has a substantial native session history
+        // (e.g. setup_hints.json was reset or lost). Seed >=10 native session
+        // files in the temp home.
+        let sessions_dir = crate::storage::jcode_dir()
+            .expect("jcode dir")
+            .join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("create sessions dir");
+        for i in 0..10 {
+            std::fs::write(
+                sessions_dir.join(format!("session_test_{i:02}.json")),
+                "{}",
+            )
+            .expect("write session file");
+        }
+
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = false;
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        assert!(app.onboarding_startup_checked);
+        assert!(
+            app.onboarding_flow.is_none(),
+            "established users (many native sessions) must never re-onboard"
+        );
+    });
+}
+
+#[test]
+fn startup_check_imported_transcripts_do_not_count_as_history() {
+    with_temp_jcode_home(|| {
+        // Imported Codex/Claude transcripts exist on genuinely fresh installs
+        // that chose to import history; they must not suppress onboarding.
+        let sessions_dir = crate::storage::jcode_dir()
+            .expect("jcode dir")
+            .join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("create sessions dir");
+        for i in 0..20 {
+            std::fs::write(
+                sessions_dir.join(format!("imported_codex_{i:02}.json")),
+                "{}",
+            )
+            .expect("write imported file");
+        }
+
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_startup_checked = false;
+
+        app.maybe_begin_onboarding_flow_on_startup();
+
+        assert!(app.onboarding_startup_checked);
+        assert!(
+            app.onboarding_flow.is_some(),
+            "imported transcripts alone should still onboard a fresh install"
+        );
+    });
+}

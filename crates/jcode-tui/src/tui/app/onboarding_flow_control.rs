@@ -110,15 +110,55 @@ impl App {
         }
     }
 
-    /// Whether this install looks like a brand-new user (few launches).
+    /// Whether this install looks like a brand-new user.
+    ///
+    /// Primary signal is `launch_count` in `setup_hints.json`, but that file
+    /// only counts interactive `jcode` launches (TTY-gated) and can be reset
+    /// or lag far behind reality. So before concluding "new user" we also look
+    /// for independent evidence of an established install: a meaningful number
+    /// of persisted native sessions. A user with a long session history must
+    /// never be dragged through first-run onboarding just because their
+    /// launch counter looks low.
     fn is_new_user_for_onboarding(&self) -> bool {
-        crate::storage::jcode_dir()
-            .ok()
-            .and_then(|dir| std::fs::read_to_string(dir.join("setup_hints.json")).ok())
-            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-            .and_then(|v| v.get("launch_count")?.as_u64())
-            .map(|count| count <= 5)
-            .unwrap_or(true)
+        Self::is_new_user_install()
+    }
+
+    /// Shared "does this install look brand-new?" check (see
+    /// [`Self::is_new_user_for_onboarding`] for the rationale). Also used by
+    /// the welcome-screen suggestion prompts.
+    ///
+    /// Loads via [`crate::setup_hints::SetupHintsState`] so the `.bak`
+    /// fallback applies when `setup_hints.json` is missing or corrupt.
+    pub(super) fn is_new_user_install() -> bool {
+        let Ok(dir) = crate::storage::jcode_dir() else {
+            return true;
+        };
+        if crate::setup_hints::SetupHintsState::load().launch_count > 5 {
+            return false;
+        }
+        !Self::has_established_native_session_history(&dir)
+    }
+
+    /// Independent "experienced user" evidence: enough persisted native
+    /// sessions on disk. Imported transcripts (`imported_*.json`) don't count;
+    /// they exist on fresh installs that imported Codex/Claude history.
+    fn has_established_native_session_history(jcode_dir: &std::path::Path) -> bool {
+        const ESTABLISHED_SESSION_THRESHOLD: usize = 10;
+        let Ok(entries) = std::fs::read_dir(jcode_dir.join("sessions")) else {
+            return false;
+        };
+        let mut native_sessions = 0usize;
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if name.starts_with("session_") && name.ends_with(".json") {
+                native_sessions += 1;
+                if native_sessions >= ESTABLISHED_SESSION_THRESHOLD {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Whether this is a self-dev / canary session.
