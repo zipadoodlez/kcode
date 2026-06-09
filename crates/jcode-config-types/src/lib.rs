@@ -764,32 +764,6 @@ impl Default for KeybindingsConfig {
         let p = KeybindingPlatform::current();
         let get = |id: &str, fallback: &'static str| default_binding(id, p).unwrap_or(fallback).to_string();
         Self {
-<<<<<<< HEAD
-            scroll_up: "ctrl+k".to_string(),
-            scroll_down: "ctrl+j".to_string(),
-            scroll_page_up: "alt+u".to_string(),
-            scroll_page_down: "alt+d".to_string(),
-            model_switch_next: "ctrl+tab".to_string(),
-            model_switch_prev: "ctrl+shift+tab".to_string(),
-            effort_increase: "alt+right".to_string(),
-            effort_decrease: "alt+left".to_string(),
-            centered_toggle: "alt+c".to_string(),
-            scroll_prompt_up: "ctrl+[".to_string(),
-            scroll_prompt_down: "ctrl+]".to_string(),
-            scroll_bookmark: "ctrl+g".to_string(),
-            scroll_up_fallback: String::new(),
-            scroll_down_fallback: String::new(),
-            workspace_left: "alt+h".to_string(),
-            workspace_down: "alt+j".to_string(),
-            workspace_up: "alt+k".to_string(),
-            workspace_right: "alt+l".to_string(),
-            side_panel_toggle: "alt+m".to_string(),
-            copy_selection_toggle: "alt+y".to_string(),
-            diagram_pane_toggle: "alt+t".to_string(),
-            typing_scroll_lock_toggle: "alt+s".to_string(),
-            diff_mode_cycle: "alt+g".to_string(),
-            info_widget_toggle: "alt+i".to_string(),
-=======
             scroll_up: get("scroll_up", "ctrl+k"),
             scroll_down: get("scroll_down", "ctrl+j"),
             scroll_page_up: get("scroll_page_up", "alt+u"),
@@ -808,7 +782,12 @@ impl Default for KeybindingsConfig {
             workspace_down: get("workspace_down", "alt+j"),
             workspace_up: get("workspace_up", "alt+k"),
             workspace_right: get("workspace_right", "alt+l"),
->>>>>>> a0fc6447 (feat(keybindings): split macOS/Other defaults with provenance + validation layer)
+            side_panel_toggle: get("side_panel_toggle", "alt+m"),
+            copy_selection_toggle: get("copy_selection_toggle", "alt+y"),
+            diagram_pane_toggle: get("diagram_pane_toggle", "alt+t"),
+            typing_scroll_lock_toggle: get("typing_scroll_lock_toggle", "alt+s"),
+            diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
+            info_widget_toggle: get("info_widget_toggle", "alt+i"),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }
