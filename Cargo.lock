@@ -3994,6 +3994,7 @@ dependencies = [
  "jcode-logging",
  "jcode-storage",
  "serde",
+ "serde_json",
  "tempfile",
 ]
 
