@@ -1761,29 +1761,39 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/commit" {
-                    let prompt = app_mod::commands::build_commit_prompt();
+                if trimmed == "/commit" || trimmed == "/commit-push" || trimmed == "/commit-and-push"
+                {
+                    let is_push = trimmed != "/commit";
+                    let prompt = if is_push {
+                        app_mod::commands::build_commit_push_prompt()
+                    } else {
+                        app_mod::commands::build_commit_prompt()
+                    };
+                    let launch_notice = |interrupted: bool| {
+                        if is_push {
+                            app_mod::commands::commit_push_launch_notice(interrupted)
+                        } else {
+                            app_mod::commands::commit_launch_notice(interrupted)
+                        }
+                    };
+                    let cmd_label = if is_push { "/commit-push" } else { "/commit" };
                     if app.is_processing {
-                        app.push_display_message(DisplayMessage::system(
-                            app_mod::commands::commit_launch_notice(true),
-                        ));
+                        app.push_display_message(DisplayMessage::system(launch_notice(true)));
                         match remote.soft_interrupt(prompt.clone(), false).await {
                             Ok(request_id) => {
                                 app.track_pending_soft_interrupt(request_id, prompt);
-                                app.set_status_notice("Interrupting for /commit...");
+                                app.set_status_notice(format!("Interrupting for {}...", cmd_label));
                             }
                             Err(error) => {
                                 app.push_display_message(DisplayMessage::error(format!(
-                                    "Failed to start /commit: {}",
-                                    error
+                                    "Failed to start {}: {}",
+                                    cmd_label, error
                                 )));
-                                app.set_status_notice("/commit failed");
+                                app.set_status_notice(format!("{} failed", cmd_label));
                             }
                         }
                     } else {
-                        app.push_display_message(DisplayMessage::system(
-                            app_mod::commands::commit_launch_notice(false),
-                        ));
+                        app.push_display_message(DisplayMessage::system(launch_notice(false)));
                         input_dispatch::begin_remote_send(
                             app,
                             remote,

@@ -58,6 +58,9 @@ impl App {
             "commit" => {
                 "/commit\nAsk the agent to inspect current uncommitted changes and create interactive, logical commits.\n\nThe agent should group related files or hunks, preserve unrelated work, validate as appropriate, and report the commits created plus anything left uncommitted."
             }
+            "commit-push" | "commit-and-push" => {
+                "/commit-push\nSame as /commit, then push the new commits to the remote tracking branch.\n\nThe agent groups related changes into logical commits, preserves unrelated work, then runs git push (using git push -u if the branch has no upstream). It will not force-push or rewrite already-pushed history, and reports the commits created plus the push result."
+            }
             "catchup" => {
                 "/catchup\nOpen the Catch Up picker for finished sessions that need attention.\n\n/catchup next\nTeleport to the next session needing attention and open a Catch Up brief in the side panel.\n\n/catchup list\nAlias for opening the picker."
             }

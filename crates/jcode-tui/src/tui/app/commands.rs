@@ -1626,6 +1626,11 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
+    if trimmed == "/commit-push" || trimmed == "/commit-and-push" {
+        handle_commit_push_command_local(app);
+        return true;
+    }
+
     if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
         app.open_session_picker();
         return true;
@@ -2029,11 +2034,28 @@ pub(super) fn build_commit_prompt() -> String {
     "Make interactive, logical commits for the current uncommitted work. Inspect the git state first, including unstaged and staged changes. Group related changes into small coherent commits, staging only the files or hunks that belong together. Preserve unrelated user or agent work, do not discard changes, and do not amend existing commits unless clearly necessary. For each commit, use a concise conventional-style message when possible. Validate as appropriate for the changed files before committing, and report the commits created plus any remaining uncommitted changes.".to_string()
 }
 
+pub(super) fn build_commit_push_prompt() -> String {
+    let mut prompt = build_commit_prompt();
+    prompt.push(' ');
+    prompt.push_str(
+        "After creating the commits, push them to the remote tracking branch with git push (set the upstream with git push -u if the branch has no upstream yet). If the push fails, report the error instead of force-pushing, and never force-push or rewrite already-pushed history. Finally, report the commits created and the push result.",
+    );
+    prompt
+}
+
 pub(super) fn commit_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits...".to_string()
     } else {
         "🚀 Starting logical commits...".to_string()
+    }
+}
+
+pub(super) fn commit_push_launch_notice(interrupted: bool) -> String {
+    if interrupted {
+        "👉 Interrupting and starting logical commits + push...".to_string()
+    } else {
+        "🚀 Starting logical commits + push...".to_string()
     }
 }
 
@@ -2048,6 +2070,21 @@ fn handle_commit_command_local(app: &mut App) {
         );
     } else {
         app.push_display_message(DisplayMessage::system(commit_launch_notice(false)));
+        super::commands_improve::start_synthetic_user_turn(app, prompt);
+    }
+}
+
+fn handle_commit_push_command_local(app: &mut App) {
+    let prompt = build_commit_push_prompt();
+    if app.is_processing {
+        super::commands_improve::interrupt_and_queue_synthetic_message(
+            app,
+            prompt,
+            "Interrupting for /commit-push...",
+            commit_push_launch_notice(true),
+        );
+    } else {
+        app.push_display_message(DisplayMessage::system(commit_push_launch_notice(false)));
         super::commands_improve::start_synthetic_user_turn(app, prompt);
     }
 }
