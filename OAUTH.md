@@ -133,6 +133,19 @@ with headers:
 Otherwise it uses:
 - `https://api.openai.com/v1/responses`
 
+For **API-key** usage (no ChatGPT/Codex OAuth), the Responses API base URL is
+overridable so you can target a local or proxied Responses-API endpoint. Set one
+of (checked in this order) to an absolute `http(s)://` base that ends in the API
+version, e.g. `http://127.0.0.1:8317/v1`:
+- `JCODE_OPENAI_API_BASE`
+- `OPENAI_BASE_URL`
+- `OPENAI_API_BASE`
+
+jcode appends `/responses` itself, derives the WebSocket and `/compact`
+endpoints from the same base, and also points the `/models` catalog probe at it.
+The override is ignored in ChatGPT/Codex OAuth mode (that backend is fixed), and
+a malformed value is logged and ignored rather than breaking requests.
+
 ### Troubleshooting
 - Claude 401/auth errors: run `jcode login --provider claude`.
 - 401/403: re-run `jcode login --provider openai`.

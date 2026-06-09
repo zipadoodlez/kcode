@@ -838,11 +838,62 @@ impl OpenAIProvider {
 
     fn responses_url(credentials: &CodexCredentials) -> String {
         let base = if Self::is_chatgpt_mode(credentials) {
-            CHATGPT_API_BASE
+            // ChatGPT/Codex OAuth backend is fixed; a custom base only applies
+            // to API-key usage of the native Responses API.
+            CHATGPT_API_BASE.to_string()
         } else {
-            OPENAI_API_BASE
+            Self::resolve_api_base()
         };
         format!("{}/{}", base.trim_end_matches('/'), RESPONSES_PATH)
+    }
+
+    /// Resolve the OpenAI Responses API base URL for **API-key** mode.
+    ///
+    /// Defaults to `https://api.openai.com/v1`, but honors a user override so
+    /// the native `openai-api` provider can target a local/proxied Responses
+    /// API endpoint (issue #343). Checked in order:
+    /// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
+    ///
+    /// The override must be an absolute `http(s)://` URL; anything else is
+    /// logged and ignored so a malformed value never silently breaks requests.
+    /// A `/responses` suffix is not expected here (it is appended by callers),
+    /// so a trailing `/responses` is trimmed to avoid `.../responses/responses`.
+    pub(crate) fn resolve_api_base() -> String {
+        const OVERRIDE_VARS: [&str; 3] =
+            ["JCODE_OPENAI_API_BASE", "OPENAI_BASE_URL", "OPENAI_API_BASE"];
+        for var in OVERRIDE_VARS {
+            let Ok(raw) = std::env::var(var) else {
+                continue;
+            };
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+                crate::logging::warn(&format!(
+                    "Ignoring invalid {} '{}'; expected an absolute http(s):// URL",
+                    var, trimmed
+                ));
+                continue;
+            }
+            let normalized = trimmed
+                .trim_end_matches('/')
+                .trim_end_matches("/responses")
+                .trim_end_matches('/');
+            if normalized.is_empty() {
+                crate::logging::warn(&format!(
+                    "Ignoring invalid {} '{}'; URL has no host/path",
+                    var, trimmed
+                ));
+                continue;
+            }
+            crate::logging::info(&format!(
+                "OpenAI Responses API base overridden to '{}' via {}",
+                normalized, var
+            ));
+            return normalized.to_string();
+        }
+        OPENAI_API_BASE.to_string()
     }
 
     fn responses_ws_url(credentials: &CodexCredentials) -> String {

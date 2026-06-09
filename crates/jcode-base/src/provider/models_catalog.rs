@@ -226,8 +226,15 @@ pub async fn fetch_openai_api_key_model_catalog(api_key: &str) -> Result<OpenAIM
     note_openai_model_catalog_refresh_attempt();
 
     let client = shared_http_client();
+    // Honor the same API-base override as the Responses request path so a
+    // custom/proxied endpoint is probed for models instead of the real
+    // api.openai.com (issue #343).
+    let models_url = format!(
+        "{}/models",
+        crate::provider::openai::OpenAIProvider::resolve_api_base().trim_end_matches('/')
+    );
     let resp = client
-        .get("https://api.openai.com/v1/models")
+        .get(&models_url)
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await?;
