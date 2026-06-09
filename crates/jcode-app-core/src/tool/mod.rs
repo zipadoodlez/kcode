@@ -197,7 +197,7 @@ impl Registry {
             Self::insert_tool_timed(
                 &mut m,
                 &mut timings,
-                "computer",
+                "macos_computer_use",
                 computer::ComputerTool::new,
             );
             Self::insert_tool_timed(
