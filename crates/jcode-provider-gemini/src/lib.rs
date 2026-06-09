@@ -252,6 +252,25 @@ pub fn build_system_instruction_with_tool_guard(
 }
 
 pub fn build_contents(messages: &[Message]) -> Vec<GeminiContent> {
+    // Gemini-3 attaches an opaque `thoughtSignature` to function-call parts, and
+    // the Cloud Code / Antigravity backend rejects an assistant turn whose
+    // function calls are ALL unsigned with `Function call is missing a
+    // thought_signature in functionCall parts` (HTTP 400, issue #339). This
+    // happens because:
+    //   * a parallel multi-call turn only signs its FIRST call (siblings persist
+    //     unsigned), and
+    //   * locally synthesized tool calls (batch sub-calls, manual tool use,
+    //     auto-poke continuations, recovery) and pre-signature/imported sessions
+    //     carry no signature at all.
+    //
+    // Live-verified backend rule: a turn is accepted as long as *at least one*
+    // of its function calls carries a (valid) signature; a fully-unsigned turn
+    // 400s. All calls in a session share the same opaque reasoning channel and
+    // the backend accepts a previously-emitted signature replayed on later
+    // calls, so we carry the most recent real signature forward across the whole
+    // conversation onto any function call that lacks one. This keeps multi-call
+    // turns and synthesized/imported histories replayable instead of hard-failing.
+    let mut last_signature: Option<String> = None;
     messages
         .iter()
         .filter_map(|message| {
@@ -278,16 +297,21 @@ pub fn build_contents(messages: &[Message]) -> Vec<GeminiContent> {
                         input,
                         thought_signature,
                     } => {
+                        let own_signature = thought_signature
+                            .as_ref()
+                            .filter(|sig| !sig.is_empty())
+                            .cloned();
+                        if own_signature.is_some() {
+                            last_signature = own_signature.clone();
+                        }
+                        let signature = own_signature.or_else(|| last_signature.clone());
                         parts.push(GeminiPart {
                             function_call: Some(GeminiFunctionCall {
                                 name: name.clone(),
                                 args: ToolCall::input_as_object(input),
                                 id: Some(id.clone()),
                             }),
-                            thought_signature: thought_signature
-                                .as_ref()
-                                .filter(|sig| !sig.is_empty())
-                                .cloned(),
+                            thought_signature: signature,
                             ..Default::default()
                         });
                     }
