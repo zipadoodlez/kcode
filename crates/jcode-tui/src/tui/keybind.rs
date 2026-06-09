@@ -10,6 +10,33 @@ use jcode_tui_core::keybind::{
     parse_keybinding, parse_optional, parse_or_default,
 };
 
+// Re-export the per-platform keybinding registry + provenance + validation API
+// so the rest of the TUI can reach it via `crate::tui::keybind::*`.
+#[allow(unused_imports)]
+pub use jcode_config_types::keybindings::{
+    KEYBINDING_DEFAULTS, KeybindingDefault, KeybindingIssue, KeybindingIssueKind,
+    KeybindingPlatform, KeybindingProvenance, PlatformDefault, default_binding,
+    keybinding_defaults_report, validate_keybinding_defaults,
+};
+
+/// Emit a one-time log warning for every keybinding default that is asymmetric
+/// across platforms or relies on an unconfirmed auto-translation. This is the
+/// "check layer": it nudges developers to confirm/fix per-platform defaults
+/// without blocking startup.
+pub fn log_keybinding_default_warnings() {
+    let issues = validate_keybinding_defaults();
+    if issues.is_empty() {
+        return;
+    }
+    crate::logging::warn(&format!(
+        "KEYBINDINGS: {} default(s) need review (platform asymmetry / unconfirmed auto-translation)",
+        issues.len()
+    ));
+    for issue in issues {
+        crate::logging::warn(&format!("KEYBINDINGS: {}", issue.message));
+    }
+}
+
 pub fn load_model_switch_keys() -> ModelSwitchKeys {
     let cfg = config();
 

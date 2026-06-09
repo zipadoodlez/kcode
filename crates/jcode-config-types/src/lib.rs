@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+pub mod keybindings;
+pub use keybindings::{
+    KEYBINDING_DEFAULTS, KeybindingDefault, KeybindingIssue, KeybindingIssueKind,
+    KeybindingPlatform, KeybindingProvenance, PlatformDefault, default_binding, default_binding_or,
+    keybinding_default, keybinding_defaults_report, validate_keybinding_defaults,
+};
+
 /// Compaction mode
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -751,7 +758,13 @@ pub struct KeybindingsConfig {
 
 impl Default for KeybindingsConfig {
     fn default() -> Self {
+        // Pull platform-appropriate defaults from the single source of truth in
+        // `keybindings.rs`. This is where the macOS vs Windows/Linux split takes
+        // effect: each field resolves to its own platform's default binding.
+        let p = KeybindingPlatform::current();
+        let get = |id: &str, fallback: &'static str| default_binding(id, p).unwrap_or(fallback).to_string();
         Self {
+<<<<<<< HEAD
             scroll_up: "ctrl+k".to_string(),
             scroll_down: "ctrl+j".to_string(),
             scroll_page_up: "alt+u".to_string(),
@@ -776,6 +789,26 @@ impl Default for KeybindingsConfig {
             typing_scroll_lock_toggle: "alt+s".to_string(),
             diff_mode_cycle: "alt+g".to_string(),
             info_widget_toggle: "alt+i".to_string(),
+=======
+            scroll_up: get("scroll_up", "ctrl+k"),
+            scroll_down: get("scroll_down", "ctrl+j"),
+            scroll_page_up: get("scroll_page_up", "alt+u"),
+            scroll_page_down: get("scroll_page_down", "alt+d"),
+            model_switch_next: get("model_switch_next", "ctrl+tab"),
+            model_switch_prev: get("model_switch_prev", "ctrl+shift+tab"),
+            effort_increase: get("effort_increase", "alt+right"),
+            effort_decrease: get("effort_decrease", "alt+left"),
+            centered_toggle: get("centered_toggle", "alt+c"),
+            scroll_prompt_up: get("scroll_prompt_up", "ctrl+["),
+            scroll_prompt_down: get("scroll_prompt_down", "ctrl+]"),
+            scroll_bookmark: get("scroll_bookmark", "ctrl+g"),
+            scroll_up_fallback: get("scroll_up_fallback", ""),
+            scroll_down_fallback: get("scroll_down_fallback", ""),
+            workspace_left: get("workspace_left", "alt+h"),
+            workspace_down: get("workspace_down", "alt+j"),
+            workspace_up: get("workspace_up", "alt+k"),
+            workspace_right: get("workspace_right", "alt+l"),
+>>>>>>> a0fc6447 (feat(keybindings): split macOS/Other defaults with provenance + validation layer)
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }

@@ -85,6 +85,7 @@ pub async fn run() -> Result<()> {
         })
     }));
 
+    crate::tui::keybind::log_keybinding_default_warnings();
     crate::platform::raise_nofile_limit_best_effort(8_192);
     startup_profile::mark("nofile_limit");
 
