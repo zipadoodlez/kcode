@@ -234,6 +234,7 @@ fn compute_image_regions(wrapped_lines: &[ratatui::text::Line<'static>]) -> Vec<
                 end_line: idx + height as usize,
                 hash,
                 height,
+                render: jcode_tui_messages::ImageRegionRender::Crop,
             });
         }
     }
@@ -516,6 +517,7 @@ pub(super) fn prepare_messages(
         streaming_text_hash: super::hash_text_for_cache(app.streaming_text()),
         batch_progress_hash: active_batch_progress_hash(app),
         reasoning_trace_hash: reasoning_trace_hash(app),
+        inline_images_signature: app.side_pane_images_signature(),
     };
 
     super::note_full_prep_request();
@@ -564,6 +566,26 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     let body_start = Instant::now();
     let body_prepared = prepare_body_cached(app, width);
     let body_ms = body_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Inline images render in the transcript flow just below the body. Sized
+    // lazily (header-only) so a session with many images never decodes ones
+    // that are off-screen.
+    let inline_images_prepared = if app.pin_images() {
+        let items = super::inline_image_ui::resolve_items(&app.side_pane_images());
+        if items.is_empty() {
+            Arc::new(empty_prepared_messages())
+        } else {
+            let prefix_blank = !body_prepared.wrapped_lines.is_empty();
+            Arc::new(super::inline_image_ui::build_section(
+                &items,
+                width,
+                height,
+                prefix_blank,
+            ))
+        }
+    } else {
+        Arc::new(empty_prepared_messages())
+    };
 
     let batch_start = Instant::now();
     let has_batch_progress = active_batch_progress(app).is_some();
@@ -705,6 +727,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     let frame = PreparedChatFrame::from_sections(vec![
         (PreparedSectionKind::Header, header_prepared),
         (PreparedSectionKind::Body, body_prepared),
+        (PreparedSectionKind::InlineImages, inline_images_prepared),
         (PreparedSectionKind::BatchProgress, batch_progress_prepared),
         (PreparedSectionKind::Reasoning, reasoning_prepared),
         (PreparedSectionKind::Streaming, streaming_prepared),

@@ -729,6 +729,13 @@ pub(super) fn draw_messages(
             let hash = region.hash;
             let total_height = region.height;
             let image_end = region.end_line;
+            let is_fit = region.render == jcode_tui_messages::ImageRegionRender::Fit;
+
+            // Inline raster images are materialized lazily: only decode + cache
+            // the ones actually on screen this frame.
+            if is_fit && image_end > scroll && abs_idx < visible_end {
+                super::inline_image_ui::materialize_visible(hash);
+            }
 
             if image_end > scroll && abs_idx < visible_end {
                 let marker_visible = abs_idx >= scroll && abs_idx < visible_end;
@@ -745,14 +752,26 @@ pub(super) fn draw_messages(
                             width: content_area.width,
                             height: render_height,
                         };
-                        let rows = crate::tui::mermaid::render_image_widget(
-                            hash,
-                            image_area,
-                            frame.buffer_mut(),
-                            centered,
-                            false,
-                        );
-                        if rows == 0 {
+                        let rows = if is_fit {
+                            // Scale-to-fit with a left border bar, so resizes and
+                            // font-metric mismatches never slice the image.
+                            crate::tui::mermaid::render_image_widget_fit(
+                                hash,
+                                image_area,
+                                frame.buffer_mut(),
+                                centered,
+                                true,
+                            )
+                        } else {
+                            crate::tui::mermaid::render_image_widget(
+                                hash,
+                                image_area,
+                                frame.buffer_mut(),
+                                centered,
+                                false,
+                            )
+                        };
+                        if rows == 0 && !is_fit {
                             frame.render_widget(
                                 Paragraph::new(Line::from(Span::styled(
                                     "↗ mermaid diagram unavailable",
@@ -775,13 +794,25 @@ pub(super) fn draw_messages(
                             width: content_area.width,
                             height: render_height,
                         };
-                        crate::tui::mermaid::render_image_widget(
-                            hash,
-                            image_area,
-                            frame.buffer_mut(),
-                            centered,
-                            true,
-                        );
+                        if is_fit {
+                            // Top scrolled off: scale-to-fit into the visible
+                            // portion rather than cropping arbitrarily.
+                            crate::tui::mermaid::render_image_widget_fit(
+                                hash,
+                                image_area,
+                                frame.buffer_mut(),
+                                centered,
+                                true,
+                            );
+                        } else {
+                            crate::tui::mermaid::render_image_widget(
+                                hash,
+                                image_area,
+                                frame.buffer_mut(),
+                                centered,
+                                true,
+                            );
+                        }
                     }
                 }
             }

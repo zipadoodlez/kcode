@@ -80,6 +80,8 @@ mod header;
 mod inline_interactive_ui;
 #[path = "ui_inline.rs"]
 mod inline_ui;
+#[path = "ui_inline_image.rs"]
+pub(crate) mod inline_image_ui;
 #[path = "ui_input.rs"]
 pub(crate) mod input_ui;
 #[path = "ui_memory_estimates.rs"]
@@ -998,6 +1000,7 @@ struct FullPrepCacheKey {
     streaming_text_hash: u64,
     batch_progress_hash: u64,
     reasoning_trace_hash: u64,
+    inline_images_signature: (usize, u64),
 }
 
 #[derive(Clone)]
@@ -2149,14 +2152,15 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let pane_position = app.diagram_pane_position();
     let has_side_panel_content = app.side_panel().focused_page().is_some();
     let diff_mode = app.diff_mode();
-    let pin_images = app.pin_images();
     let collect_diffs = diff_mode.is_pinned();
-    let has_pinned_content = if collect_diffs || pin_images {
+    // Images now render inline in the transcript, so the side panel only handles
+    // pinned file diffs. `pin_images` no longer feeds the side-panel surface.
+    let has_pinned_content = if collect_diffs {
         collect_pinned_content_cached(
             app.display_messages(),
             &app.side_pane_images(),
             collect_diffs,
-            pin_images,
+            false,
             app.display_messages_version(),
         )
     } else {

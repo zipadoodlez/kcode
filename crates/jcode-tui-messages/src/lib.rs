@@ -13,7 +13,7 @@ pub use message::{
     transcript_preview_lines, truncate_transcript_preview,
 };
 pub use prepared::{
-    CopyTarget, EditToolRange, ImageRegion, PreparedChatFrame, PreparedMessages, PreparedSection,
-    PreparedSectionKind,
+    CopyTarget, EditToolRange, ImageRegion, ImageRegionRender, PreparedChatFrame, PreparedMessages,
+    PreparedSection, PreparedSectionKind,
 };
 pub use wrapped_line_map::WrappedLineMap;

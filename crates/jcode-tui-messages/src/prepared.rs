@@ -14,6 +14,20 @@ pub struct ImageRegion {
     pub hash: u64,
     /// Total height of the image placeholder in lines.
     pub height: u16,
+    /// How the image should be fit into its region when drawn.
+    pub render: ImageRegionRender,
+}
+
+/// Strategy for fitting an image into its placeholder region at draw time.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ImageRegionRender {
+    /// Crop into the pre-estimated region height. Used for Mermaid diagrams,
+    /// whose placeholder height already matches their rendered aspect ratio.
+    #[default]
+    Crop,
+    /// Scale-to-fit (preserve aspect, fit width and height). Used for inline
+    /// raster images so resizes and font-metric mismatches never slice them.
+    Fit,
 }
 
 #[derive(Clone, Debug)]
@@ -74,6 +88,8 @@ pub enum PreparedSectionKind {
     /// `current` reasoning-display mode.
     Reasoning,
     Streaming,
+    /// Inline images rendered in the transcript flow (below the body).
+    InlineImages,
 }
 
 #[derive(Clone)]
@@ -141,6 +157,7 @@ impl PreparedChatFrame {
                 end_line: region.end_line + line_start,
                 hash: region.hash,
                 height: region.height,
+                render: region.render,
             }));
             edit_tool_ranges.extend(prepared.edit_tool_ranges.iter().map(|range| EditToolRange {
                 edit_index: range.edit_index,

@@ -133,6 +133,23 @@ pub trait TuiState {
     }
     fn has_display_edit_tool_messages(&self) -> bool;
     fn side_pane_images(&self) -> Vec<crate::session::RenderedImage>;
+    /// Cheap signature of the current inline-image set: `(count, content_hash)`.
+    /// Used by the prepared-frame cache so the inline image section invalidates
+    /// when images are added/removed without cloning the payloads every frame.
+    /// The default implementation derives it from `side_pane_images`; overrides
+    /// can provide a cheaper path.
+    fn side_pane_images_signature(&self) -> (usize, u64) {
+        use std::hash::{Hash, Hasher};
+        let images = self.side_pane_images();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for image in &images {
+            image.media_type.hash(&mut hasher);
+            image.data.len().hash(&mut hasher);
+            // A short prefix is enough to distinguish distinct payloads cheaply.
+            image.data.as_bytes().iter().take(64).for_each(|b| b.hash(&mut hasher));
+        }
+        (images.len(), hasher.finish())
+    }
     /// Version counter for display_messages (monotonic, increments on mutation)
     fn display_messages_version(&self) -> u64;
     fn streaming_text(&self) -> &str;

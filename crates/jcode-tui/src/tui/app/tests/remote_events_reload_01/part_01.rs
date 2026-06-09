@@ -1080,10 +1080,11 @@ fn test_handle_server_event_side_pane_images_populates_pane_live() {
 
     assert!(needs_redraw, "live side-pane image should request a redraw");
     assert_eq!(app.remote_side_pane_images.len(), 1);
-    // The pane should reveal (not user-hidden) and arm its auto-hide timer.
+    // Images render inline in the transcript now, so a live image must not flip
+    // the side panel or arm the old auto-hide timer.
     assert!(!app.side_panel_user_hidden);
     assert!(<App as crate::tui::TuiState>::pin_images(&app));
-    assert!(app.pinned_images_auto_hide_deadline.is_some());
+    assert!(app.pinned_images_auto_hide_deadline.is_none());
 }
 
 #[test]
