@@ -160,3 +160,7 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_
 
 [target.'cfg(target_os = "macos")'.dependencies]
 global-hotkey = "0.7"
+# Native desktop control for the `computer` tool (synthetic mouse/keyboard
+# events, cursor positioning, display bounds). `highsierra` enables the
+# CGEventCreateScrollWheelEvent2 binding used for scroll.
+core-graphics = { version = "0.23", features = ["highsierra"] }

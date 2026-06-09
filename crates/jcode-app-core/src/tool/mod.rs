@@ -7,6 +7,8 @@ mod bg;
 mod browser;
 mod codesearch;
 mod communicate;
+#[cfg(target_os = "macos")]
+mod computer;
 mod conversation_search;
 mod debug_socket;
 mod edit;
@@ -191,6 +193,13 @@ impl Registry {
             Self::insert_tool_timed(&mut m, &mut timings, "bash", bash::BashTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "browser", browser::BrowserTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "open", open::OpenTool::new);
+            #[cfg(target_os = "macos")]
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
+                "computer",
+                computer::ComputerTool::new,
+            );
             Self::insert_tool_timed(
                 &mut m,
                 &mut timings,
