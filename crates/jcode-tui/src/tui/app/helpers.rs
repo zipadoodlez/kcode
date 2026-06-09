@@ -491,6 +491,7 @@ pub(super) fn inferred_reasoning_efforts(
         || model.starts_with("claude-");
     if is_anthropic {
         let supports_effort = model.contains("claude-mythos")
+            || model.contains("claude-fable-5")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
             || model.contains("claude-opus-4-6")
@@ -501,7 +502,10 @@ pub(super) fn inferred_reasoning_efforts(
         if !supports_effort {
             return Vec::new();
         }
-        if model.contains("claude-opus-4-8") || model.contains("claude-opus-4-7") {
+        if model.contains("claude-fable-5")
+            || model.contains("claude-opus-4-8")
+            || model.contains("claude-opus-4-7")
+        {
             return vec!["none", "low", "medium", "high", "xhigh"];
         }
         return vec!["none", "low", "medium", "high"];

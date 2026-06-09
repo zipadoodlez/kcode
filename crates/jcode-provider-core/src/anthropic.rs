@@ -65,11 +65,12 @@ impl AnthropicContextMode {
 pub fn anthropic_context_mode(model: &str) -> AnthropicContextMode {
     let base = anthropic_strip_1m_suffix(model.trim()).to_ascii_lowercase();
 
-    // Native 1M (default, no opt-in): Opus 4.8 and 4.7.
+    // Native 1M (default, no opt-in): Opus 4.8 and 4.7, Fable 5.
     if base.starts_with("claude-opus-4-8")
         || base.starts_with("claude-opus-4.8")
         || base.starts_with("claude-opus-4-7")
         || base.starts_with("claude-opus-4.7")
+        || base.starts_with("claude-fable-5")
     {
         return AnthropicContextMode::Native1M;
     }

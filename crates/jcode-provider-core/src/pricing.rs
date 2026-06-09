@@ -15,6 +15,14 @@ pub fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     let base = model.strip_suffix("[1m]").unwrap_or(model);
     let long_context = model.ends_with("[1m]");
     match base {
+        "claude-fable-5" => Some(RouteCheapnessEstimate::metered(
+            RouteCostSource::Heuristic,
+            RouteCostConfidence::Low,
+            usd_to_micros(if long_context { 6.0 } else { 3.0 }),
+            usd_to_micros(if long_context { 22.5 } else { 15.0 }),
+            Some(usd_to_micros(if long_context { 0.6 } else { 0.3 })),
+            Some("Estimated from Sonnet 4.6 API pricing".to_string()),
+        )),
         "claude-opus-4-8" => Some(RouteCheapnessEstimate::metered(
             RouteCostSource::PublicApiPricing,
             RouteCostConfidence::Exact,
