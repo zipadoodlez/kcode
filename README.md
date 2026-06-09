@@ -368,6 +368,7 @@ Useful environment overrides for these endpoints:
 
 - `JCODE_STREAM_IDLE_TIMEOUT_SECS` — raise the streaming idle timeout (default 180s) for slow reasoning models that think silently before emitting tokens. Also settable as `[provider] stream_idle_timeout_secs` in `config.toml`.
 - Per-model `context_window` (alias `context_limit`) in a `[[providers.<name>.models]]` entry — set the context window when the endpoint has no usable `/v1/models` response, so jcode does not fall back to the generic 200k default.
+- `extra_body` — inject non-standard top-level fields into every chat/completions request body for backends that require them. See [Extra request-body fields](#extra-request-body-fields-extra_body) below.
 
 For details on self-hosting, local runtimes, and the exact config file shape, see below.
 
@@ -443,6 +444,32 @@ default_model = "my-model-id"
 id = "my-model-id"
 context_window = 128000
 ```
+
+##### Extra request-body fields (`extra_body`)
+
+Some OpenAI-compatible backends require non-standard top-level request fields. For example, NVIDIA NIM DeepSeek-V4 reasoning models (`deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`) only enable thinking when the request includes `chat_template_kwargs`; without it they reply without reasoning (or, for some deployments, hang). jcode lets you inject arbitrary top-level fields two ways.
+
+1. Per named profile, via `extra_body` in `config.toml` (a TOML table merged verbatim into the JSON body):
+
+   ```toml
+   [providers.my-nim]
+   type = "openai-compatible"
+   base_url = "https://integrate.api.nvidia.com/v1"
+   api_key_env = "NVIDIA_API_KEY"
+   default_model = "deepseek-ai/deepseek-v4-flash"
+
+   [providers.my-nim.extra_body.chat_template_kwargs]
+   thinking = true
+   reasoning_effort = "high"
+   ```
+
+2. For built-in profiles (e.g. `nvidia-nim`) or any endpoint, via the `JCODE_OPENAI_EXTRA_BODY` environment variable (a JSON object string). It can live in the provider's env file (`~/.config/jcode/nvidia-nim.env`) next to the API key:
+
+   ```bash
+   JCODE_OPENAI_EXTRA_BODY={"chat_template_kwargs":{"thinking":true,"reasoning_effort":"high"}}
+   ```
+
+Keys from `extra_body` are merged last and override any jcode-generated body field with the same name (`JCODE_OPENAI_EXTRA_BODY` wins over the config `extra_body` on key collisions). Invalid values are logged and ignored rather than failing the request.
 
 The custom OpenAI-compatible provider reads overrides from environment variables or from an env file in jcode's app config directory. On Linux this is usually `~/.config/jcode/`, so the default file is usually:
 

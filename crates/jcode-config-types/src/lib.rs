@@ -336,7 +336,7 @@ pub struct NamedProviderModelConfig {
     pub input: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct NamedProviderConfig {
     #[serde(rename = "type")]
@@ -358,6 +358,17 @@ pub struct NamedProviderConfig {
     pub allow_provider_pinning: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<NamedProviderModelConfig>,
+    /// Extra top-level JSON fields merged into every chat/completions request
+    /// body sent to this provider. Lets users inject non-standard parameters
+    /// some OpenAI-compatible backends require (e.g. NVIDIA NIM DeepSeek-V4
+    /// needs `chat_template_kwargs = { thinking = true, reasoning_effort = "high" }`).
+    /// Must be a JSON object; keys here override jcode-generated body fields.
+    #[serde(
+        default,
+        alias = "extra-body",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub extra_body: Option<serde_json::Value>,
 }
 
 impl Default for NamedProviderConfig {
@@ -377,6 +388,7 @@ impl Default for NamedProviderConfig {
             model_catalog: false,
             allow_provider_pinning: false,
             models: Vec::new(),
+            extra_body: None,
         }
     }
 }

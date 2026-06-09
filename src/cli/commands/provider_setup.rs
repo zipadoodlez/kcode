@@ -180,6 +180,7 @@ pub(crate) fn configure_provider_profile(
             context_window: options.context_window,
             input: Vec::new(),
         }],
+        extra_body: None,
     };
 
     let config_path = Config::path().ok_or_else(|| anyhow::anyhow!("No config path"))?;

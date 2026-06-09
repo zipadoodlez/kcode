@@ -13,10 +13,10 @@ use super::{EventStream, Provider};
 use crate::message::{CacheControl, ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use crate::provider_catalog::{
     OPENAI_COMPAT_PROFILE, is_safe_env_file_name, is_safe_env_key_name,
-    load_api_key_from_env_or_config, normalize_api_base, openai_compatible_profile_by_id,
-    openai_compatible_profile_id_for_api_base, openai_compatible_profile_static_context_limits,
-    openai_compatible_profile_static_models, openai_compatible_profiles,
-    resolve_openai_compatible_profile,
+    load_api_key_from_env_or_config, load_env_value_from_env_or_config, normalize_api_base,
+    openai_compatible_profile_by_id, openai_compatible_profile_id_for_api_base,
+    openai_compatible_profile_static_context_limits, openai_compatible_profile_static_models,
+    openai_compatible_profiles, resolve_openai_compatible_profile,
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -928,6 +928,11 @@ pub struct OpenRouterProvider {
     supports_model_catalog: bool,
     profile_id: Option<String>,
     max_tokens: Option<u32>,
+    /// Extra top-level JSON object fields merged into every chat/completions
+    /// request body (e.g. NVIDIA NIM DeepSeek-V4 `chat_template_kwargs`).
+    /// Resolved once at construction from named-profile config or the
+    /// `JCODE_OPENAI_EXTRA_BODY` env/env-file value.
+    extra_body: Option<serde_json::Map<String, Value>>,
     static_models: Vec<String>,
     static_context_limits: HashMap<String, usize>,
     send_openrouter_headers: bool,
@@ -1033,6 +1038,65 @@ impl OpenRouterProvider {
 
         let _ = profile_id;
         None
+    }
+
+    /// Resolve extra request-body fields for an OpenAI-compatible/OpenRouter
+    /// provider.
+    ///
+    /// Sources, in precedence order (later overrides earlier):
+    /// 1. An optional named-profile `extra_body` config object.
+    /// 2. The `JCODE_OPENAI_EXTRA_BODY` env var (or the same key inside the
+    ///    profile's `.env` file), parsed as a JSON object string.
+    ///
+    /// This lets users inject non-standard parameters that some backends
+    /// require, e.g. NVIDIA NIM DeepSeek-V4 reasoning models need
+    /// `chat_template_kwargs = { "thinking": true, "reasoning_effort": "high" }`
+    /// or they silently hang instead of responding (issue #341).
+    ///
+    /// Returns `None` when nothing is configured. Invalid input is logged and
+    /// ignored rather than failing provider construction.
+    fn resolve_extra_body(
+        config: Option<&serde_json::Value>,
+        env_file: &str,
+    ) -> Option<serde_json::Map<String, Value>> {
+        let mut merged = serde_json::Map::new();
+
+        if let Some(value) = config {
+            match value.as_object() {
+                Some(object) => {
+                    for (key, val) in object {
+                        merged.insert(key.clone(), val.clone());
+                    }
+                }
+                None => crate::logging::warn(
+                    "Ignoring provider `extra_body`: expected a table/object of top-level request fields",
+                ),
+            }
+        }
+
+        if let Some(raw) =
+            load_env_value_from_env_or_config("JCODE_OPENAI_EXTRA_BODY", env_file)
+        {
+            match serde_json::from_str::<Value>(&raw) {
+                Ok(Value::Object(object)) => {
+                    for (key, val) in object {
+                        merged.insert(key, val);
+                    }
+                }
+                Ok(_) => crate::logging::warn(
+                    "Ignoring JCODE_OPENAI_EXTRA_BODY: expected a JSON object string, e.g. {\"chat_template_kwargs\":{\"thinking\":true}}",
+                ),
+                Err(err) => crate::logging::warn(&format!(
+                    "Ignoring invalid JCODE_OPENAI_EXTRA_BODY JSON: {err}"
+                )),
+            }
+        }
+
+        if merged.is_empty() {
+            None
+        } else {
+            Some(merged)
+        }
     }
 
     pub(crate) fn supports_provider_routing_features(&self) -> bool {
@@ -1187,6 +1251,14 @@ impl OpenRouterProvider {
                 ),
             profile_id: Some(profile_name.to_string()),
             max_tokens: Self::configured_max_tokens(Some(profile_name)),
+            extra_body: Self::resolve_extra_body(
+                profile.extra_body.as_ref(),
+                profile
+                    .env_file
+                    .as_deref()
+                    .filter(|name| is_safe_env_file_name(name))
+                    .unwrap_or(DEFAULT_ENV_FILE),
+            ),
             static_models,
             static_context_limits,
             send_openrouter_headers: false,
@@ -1317,6 +1389,7 @@ impl OpenRouterProvider {
             ProviderRouting::default()
         };
         let max_tokens = Self::configured_max_tokens(profile_id.as_deref());
+        let extra_body = Self::resolve_extra_body(None, &configured_env_file_name());
 
         Ok(Self {
             client: crate::provider::shared_http_client(),
@@ -1328,6 +1401,7 @@ impl OpenRouterProvider {
             supports_model_catalog,
             profile_id,
             max_tokens,
+            extra_body,
             static_models,
             static_context_limits,
             send_openrouter_headers,
@@ -1366,6 +1440,7 @@ impl OpenRouterProvider {
             supports_model_catalog: true,
             profile_id: None,
             max_tokens: Self::configured_max_tokens(None),
+            extra_body: Self::resolve_extra_body(None, DEFAULT_ENV_FILE),
             static_models: Vec::new(),
             static_context_limits: HashMap::new(),
             send_openrouter_headers: true,
@@ -1429,6 +1504,7 @@ impl OpenRouterProvider {
             supports_model_catalog: true,
             profile_id: Some(resolved.id.clone()),
             max_tokens: Self::configured_max_tokens(Some(&resolved.id)),
+            extra_body: Self::resolve_extra_body(None, &resolved.env_file),
             static_models,
             static_context_limits,
             send_openrouter_headers: false,
@@ -1650,6 +1726,7 @@ impl OpenRouterProvider {
                 supports_model_catalog: true,
                 profile_id: None,
                 max_tokens: None,
+                extra_body: None,
                 static_models: Vec::new(),
                 static_context_limits: HashMap::new(),
                 send_openrouter_headers: true,
