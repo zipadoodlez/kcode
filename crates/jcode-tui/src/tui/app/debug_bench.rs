@@ -1130,7 +1130,7 @@ impl App {
     /// scroll position one content line at a time, captures the resulting widget
     /// placements, and runs the shared stability analyzer.
     pub(in crate::tui::app) fn run_widget_stability(&mut self, raw: Option<&str>) -> String {
-        use crate::tui::info_widget_stability::{PlacedRect, analyze_frames, intern_kind};
+        use crate::tui::info_widget_stability::{PlacedRect, intern_kind};
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
 
@@ -1186,6 +1186,10 @@ impl App {
         // Walk from top to bottom one (or `step`) content lines at a time, recording
         // the widget placements at each scroll position.
         let mut frames: Vec<Vec<PlacedRect>> = Vec::new();
+        // Absolute transcript line shown on the first visible row of each frame, so
+        // the analyzer can subtract the scroll-ride and report content-relative
+        // travel (how much widgets move *relative to the text* they sit beside).
+        let mut scroll_tops_abs: Vec<i64> = Vec::new();
         let mut frame_payloads: Vec<serde_json::Value> = Vec::new();
         self.auto_scroll_paused = true;
 
@@ -1197,6 +1201,7 @@ impl App {
                 errors.push(format!("draw error at scroll_top {}: {}", scroll_top, e));
                 break;
             }
+            scroll_tops_abs.push(crate::tui::ui::last_resolved_chat_scroll() as i64);
             let placed: Vec<PlacedRect> = match crate::tui::visual_debug::latest_frame() {
                 Some(frame) => frame
                     .info_widgets
@@ -1236,7 +1241,10 @@ impl App {
             scroll_top = (scroll_top + step).min(max_scroll);
         }
 
-        let report = analyze_frames(&frames);
+        let report = crate::tui::info_widget_stability::analyze_frames_with_scroll(
+            &frames,
+            &scroll_tops_abs,
+        );
 
         saved_state.restore(self);
         if !was_visual_debug {
@@ -1262,6 +1270,7 @@ impl App {
             "notes": [
                 "Scrolls the current transcript one content line at a time over an offscreen backend.",
                 "travel_per_100_lines = total widget x+y movement per 100 scroll lines (lower is calmer).",
+                "content_travel_per_100_lines = movement RELATIVE TO THE TRANSCRIPT (scroll-ride subtracted); ~0 means widgets stick to one negative-space spot and just scroll along.",
                 "flicker_per_100_lines = widget appear/disappear transitions per 100 scroll lines.",
                 "distraction_per_100_lines = travel + weighted flicker; the single headline number."
             ],

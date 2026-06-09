@@ -381,6 +381,14 @@ pub(super) fn draw_messages(
         right_widths: vec![0; prompt_preview_lines as usize],
         left_widths: vec![0; prompt_preview_lines as usize],
         centered: content_margins.centered,
+        // Bind row `r` of the margin to transcript line `scroll_top + r` so a
+        // content-anchored info widget rides the transcript while the user scrolls
+        // instead of churning against a fixed screen row. The prompt-preview band at
+        // the top is synthetic (not part of the scrolled transcript), so offset by it
+        // to keep the content rows aligned. While pinned at the bottom (auto-follow),
+        // widgets stay screen-anchored as before.
+        scroll_top: scroll.saturating_sub(prompt_preview_lines as usize),
+        content_anchored: app.auto_scroll_paused(),
         ..Default::default()
     };
     margins

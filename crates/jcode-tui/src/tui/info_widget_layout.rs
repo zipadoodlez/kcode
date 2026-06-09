@@ -24,6 +24,13 @@ pub(crate) struct WidgetAnchor {
     pub placement: WidgetPlacement,
     /// Consecutive frames this anchor has been retained but not rendered.
     pub hidden_frames: u16,
+    /// Absolute transcript line the widget's top row is pinned to. When the user is
+    /// scrolling ([`Margins::content_anchored`]) the widget rides with this content
+    /// line instead of holding a fixed screen row, so it sticks to the same pocket
+    /// of negative space and scrolls along with the text. Refreshed every frame in
+    /// screen-anchored mode so a later switch into content-anchored mode hands off
+    /// seamlessly.
+    pub content_top: usize,
 }
 
 /// Result of a placement pass: what to render now, plus the anchor memory to feed
@@ -50,6 +57,14 @@ pub struct Margins {
     /// fall back to the instantaneous widths (no look-ahead).
     pub right_reliable: Vec<u16>,
     pub left_reliable: Vec<u16>,
+    /// Absolute transcript line shown on the first visible row this frame. Lets the
+    /// placement engine translate a content-anchored widget by the scroll delta so
+    /// it rides the transcript instead of holding a fixed screen row.
+    pub scroll_top: usize,
+    /// When true (the user is actively scrolling), anchored widgets stick to their
+    /// transcript line and scroll with the content. When false (pinned at the
+    /// bottom / streaming) they hold a fixed screen row as before.
+    pub content_anchored: bool,
 }
 
 impl Margins {
@@ -113,6 +128,7 @@ pub(crate) fn calculate_placements(
         .map(|placement| WidgetAnchor {
             placement,
             hidden_frames: 0,
+            content_top: 0,
         })
         .collect();
     calculate_placements_anchored(messages_area, margins, data, enabled, &prev_anchors).visible
@@ -235,8 +251,35 @@ pub(crate) fn calculate_placements_anchored(
             continue;
         }
 
-        let row_start = prev.rect.y.saturating_sub(messages_area.y) as usize;
+        // Resolve which screen row the widget occupies this frame.
+        //
+        // Content-anchored (the user is scrolling): the widget is pinned to a
+        // transcript line (`anchor.content_top`) and rides with it, so it sticks to
+        // the same pocket of negative space and simply scrolls along with the text
+        // rather than churning against a fixed screen row. Because the rows it now
+        // covers map back to the *same* content lines, the free-width profile under
+        // it is invariant frame-to-frame, so its width is stable too. If its content
+        // line has scrolled above the viewport, drop the anchor and let Phase 2 home
+        // a fresh widget into the newly exposed space.
+        //
+        // Screen-anchored (pinned at the bottom / streaming): hold the exact screen
+        // row as before, and refresh `content_top` so a later switch into scrolling
+        // hands off seamlessly.
         let height = prev.rect.height as usize;
+        let (row_start, target_y, content_top) = if margins.content_anchored {
+            if anchor.content_top < margins.scroll_top {
+                continue;
+            }
+            let row = anchor.content_top - margins.scroll_top;
+            (
+                row,
+                messages_area.y.saturating_add(row as u16),
+                anchor.content_top,
+            )
+        } else {
+            let row = prev.rect.y.saturating_sub(messages_area.y) as usize;
+            (row, prev.rect.y, margins.scroll_top + row)
+        };
         let row_end = row_start + height;
         let widths = match prev.side {
             Side::Right => &margins.right_widths,
@@ -278,6 +321,7 @@ pub(crate) fn calculate_placements_anchored(
                 next_anchors.push(WidgetAnchor {
                     placement: prev.clone(),
                     hidden_frames,
+                    content_top,
                 });
                 // Overview will pop back into its slot, so keep suppressing its
                 // mergeable widgets while it is only transiently hidden.
@@ -301,13 +345,14 @@ pub(crate) fn calculate_placements_anchored(
         };
         let placement = WidgetPlacement {
             kind: prev.kind,
-            rect: Rect::new(kept_x, prev.rect.y, kept_width, prev.rect.height),
+            rect: Rect::new(kept_x, target_y, kept_width, prev.rect.height),
             side: prev.side,
         };
         placements.push(placement.clone());
         next_anchors.push(WidgetAnchor {
             placement,
             hidden_frames: 0,
+            content_top,
         });
         kept.insert(prev.kind);
         anchored.insert(prev.kind);
@@ -364,15 +409,33 @@ pub(crate) fn calculate_placements_anchored(
             continue;
         }
 
+        // Where inside the pocket to seat the widget.
+        //
+        // Content-anchored (scrolling): seat it at the *bottom* of the pocket so it
+        // has the maximum runway to ride upward with the transcript before scrolling
+        // off the top - otherwise a widget born at the pocket's top row would fall off
+        // and re-home every single frame (a constant recycle). The leftover free space
+        // is then the region above it.
+        //
+        // Screen-anchored: seat it at the top as before; it holds a fixed screen row.
+        let placed_top = if margins.content_anchored {
+            top + height.saturating_sub(widget_height)
+        } else {
+            top
+        };
+
         let placement = WidgetPlacement {
             kind,
-            rect: Rect::new(x, messages_area.y + top, width, widget_height),
+            rect: Rect::new(x, messages_area.y + placed_top, width, widget_height),
             side,
         };
         placements.push(placement.clone());
         next_anchors.push(WidgetAnchor {
             placement,
             hidden_frames: 0,
+            // Bind this fresh widget to the transcript line currently under its top
+            // row, so the moment the user keeps scrolling it rides with the content.
+            content_top: margins.scroll_top + placed_top as usize,
         });
         if kind == WidgetKind::Overview {
             overview_placed = true;
@@ -384,7 +447,13 @@ pub(crate) fn calculate_placements_anchored(
             continue;
         }
 
-        let new_top = top + widget_height;
+        // The leftover pocket: below the widget when top-aligned, above it when the
+        // widget was seated at the bottom (content-anchored).
+        let new_top = if margins.content_anchored {
+            top
+        } else {
+            top + widget_height
+        };
         all_rects[idx].1 = new_top;
         all_rects[idx].2 = remaining_height;
 

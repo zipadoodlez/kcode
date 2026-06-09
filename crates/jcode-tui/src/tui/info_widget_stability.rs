@@ -67,6 +67,17 @@ pub struct WidgetMotion {
     pub height_churn: u32,
     /// Largest single-frame top-left jump (Chebyshev distance).
     pub max_jump: u16,
+    /// Total *content-relative* vertical travel: |actual dy - expected scroll-ride|,
+    /// counting only small frame-to-frame residuals (<= [`RIDE_TOLERANCE`]). A widget
+    /// glued to its transcript line scores 0 here; a widget holding a fixed screen row
+    /// while the text scrolls under it accrues ~1 per frame (it drifts against the
+    /// text). This is the per-frame "jiggle" the user notices while scrolling.
+    pub content_y_travel: u32,
+    /// Number of steps where the widget moved much more than the scroll-ride (a
+    /// "recycle": it left the viewport at one edge and a fresh instance entered at
+    /// another). Visually this is one widget leaving with its content and another
+    /// joining new content, not a slide, so it is tracked separately from jiggle.
+    pub recycles: usize,
 }
 
 impl WidgetMotion {
@@ -83,6 +94,13 @@ impl WidgetMotion {
 /// equivalent cells of positional travel.
 const FLICKER_WEIGHT: u32 = 8;
 
+/// Maximum content-relative residual (rows) that still counts as "riding the scroll"
+/// rather than a recycle. A perfectly content-anchored widget has residual 0; a
+/// screen-anchored widget drifts ~1 row/frame against the text. A jump larger than
+/// this means the widget was recycled to a different pocket (left at one edge,
+/// re-entered at another), which is counted separately from per-frame jiggle.
+const RIDE_TOLERANCE: i64 = 2;
+
 /// Aggregate stability report over a scroll sequence.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct StabilityReport {
@@ -98,10 +116,22 @@ pub struct StabilityReport {
     pub total_flicker: usize,
     /// Total positional travel (x + y) across all widgets.
     pub total_travel: u32,
+    /// Total *content-relative* vertical travel across all widgets (residual after
+    /// subtracting the expected scroll-ride). This is near-zero when widgets stick to
+    /// their negative-space spot in the transcript and only grows when they actually
+    /// jump between pockets. Headline metric for the "ride the scroll" behaviour.
+    pub total_content_travel: u32,
+    /// Total recycles across all widgets: a widget left the viewport at one edge and a
+    /// fresh instance entered at another (transcript scrolled past its pocket). This is
+    /// expected and calm, unlike per-frame jiggle, so it is reported on its own.
+    pub total_recycles: usize,
     /// Total size churn (width + height) across all widgets.
     pub total_size_churn: u32,
     /// Positional travel per 100 scroll lines (the headline distraction metric).
     pub travel_per_100_lines: f64,
+    /// Content-relative vertical travel per 100 scroll lines. Lower means widgets
+    /// ride the transcript more faithfully (stick to one negative-space spot).
+    pub content_travel_per_100_lines: f64,
     /// Flicker transitions per 100 scroll lines.
     pub flicker_per_100_lines: f64,
     /// Composite distraction score per 100 scroll lines (travel + weighted flicker).
@@ -136,8 +166,24 @@ pub struct KindVisibility {
 
 /// Analyze a sequence of frames (each a list of placed widget rects) and compute
 /// movement/flicker metrics. Frames are assumed to be consecutive scroll positions
-/// differing by one content line.
+/// differing by one content line, scrolling downward (transcript top advances by 1).
+/// For the content-relative travel metric to reflect real scroll deltas, prefer
+/// [`analyze_frames_with_scroll`].
 pub fn analyze_frames(frames: &[Vec<PlacedRect>]) -> StabilityReport {
+    // Default: assume each step advances the transcript top by exactly one line.
+    let scroll_tops: Vec<i64> = (0..frames.len() as i64).collect();
+    analyze_frames_with_scroll(frames, &scroll_tops)
+}
+
+/// Like [`analyze_frames`] but with explicit per-frame transcript tops, so the
+/// content-relative travel metric subtracts the *real* scroll-ride. `scroll_tops[i]`
+/// is the absolute transcript line shown on the first visible row of frame `i`. A
+/// widget that rides its transcript line perfectly contributes zero content travel
+/// even though its absolute `y` moves with the scroll.
+pub fn analyze_frames_with_scroll(
+    frames: &[Vec<PlacedRect>],
+    scroll_tops: &[i64],
+) -> StabilityReport {
     let mut report = StabilityReport {
         frames: frames.len(),
         steps: frames.len().saturating_sub(1),
@@ -175,6 +221,16 @@ pub fn analyze_frames(frames: &[Vec<PlacedRect>]) -> StabilityReport {
         let cur = &frames[step + 1];
         let mut step_unstable = false;
 
+        // Signed scroll delta for this step: how far the transcript top advanced. A
+        // content-anchored widget should move by `-scroll_delta` rows on screen
+        // (content scrolls up as the top line advances), so the residual is
+        // `signed_dy + scroll_delta`.
+        let scroll_delta = scroll_tops
+            .get(step + 1)
+            .copied()
+            .unwrap_or(step as i64 + 1)
+            - scroll_tops.get(step).copied().unwrap_or(step as i64);
+
         // Index current frame by kind for lookup.
         let cur_index = |kind: &str| cur.iter().find(|r| r.kind == kind).copied();
         let prev_index = |kind: &str| prev.iter().find(|r| r.kind == kind).copied();
@@ -206,6 +262,17 @@ pub fn analyze_frames(frames: &[Vec<PlacedRect>]) -> StabilityReport {
                     }
                     m.x_travel += dx as u32;
                     m.y_travel += dy as u32;
+                    // Residual after removing the expected scroll-ride. Small residuals
+                    // are per-frame jiggle (drift against the text); a large residual
+                    // means the widget jumped to a different pocket (a recycle), which
+                    // is counted separately so it doesn't masquerade as smooth travel.
+                    let signed_dy = c.y as i64 - p.y as i64;
+                    let residual = (signed_dy + scroll_delta).abs();
+                    if residual <= RIDE_TOLERANCE {
+                        m.content_y_travel += residual as u32;
+                    } else {
+                        m.recycles += 1;
+                    }
                     m.width_churn += dw as u32;
                     m.height_churn += dh as u32;
                     m.max_jump = m.max_jump.max(dx.max(dy));
@@ -243,6 +310,8 @@ pub fn analyze_frames(frames: &[Vec<PlacedRect>]) -> StabilityReport {
         .map(|w| w.appearances + w.disappearances)
         .sum();
     report.total_travel = widgets.iter().map(|w| w.x_travel + w.y_travel).sum();
+    report.total_content_travel = widgets.iter().map(|w| w.x_travel + w.content_y_travel).sum();
+    report.total_recycles = widgets.iter().map(|w| w.recycles).sum();
     report.total_size_churn = widgets.iter().map(|w| w.width_churn + w.height_churn).sum();
     report.worst_widget = widgets
         .first()
@@ -251,6 +320,7 @@ pub fn analyze_frames(frames: &[Vec<PlacedRect>]) -> StabilityReport {
 
     let steps = report.steps.max(1) as f64;
     report.travel_per_100_lines = report.total_travel as f64 / steps * 100.0;
+    report.content_travel_per_100_lines = report.total_content_travel as f64 / steps * 100.0;
     report.flicker_per_100_lines = report.total_flicker as f64 / steps * 100.0;
     let distraction: u32 = widgets.iter().map(|w| w.distraction()).sum();
     report.distraction_per_100_lines = distraction as f64 / steps * 100.0;
@@ -374,6 +444,10 @@ pub enum SimMode {
     /// Look-ahead sizing with NO anchor carry (re-solve each frame). Isolates how
     /// much stability comes from the smoothed profile alone vs the anchor logic.
     LookAheadFresh(u16),
+    /// Anchored carry PLUS content anchoring: widgets are pinned to a transcript line
+    /// and ride the scroll (the "stick to one negative-space spot" behaviour). This
+    /// is what the live renderer uses while the user is actively scrolling.
+    ContentAnchored,
 }
 
 /// Build the per-row free-width profile for `scroll`. When `window > 0`, each row's
@@ -434,6 +508,7 @@ pub fn simulate_scroll_mode(
         _ => 0,
     };
     let greedy = matches!(mode, SimMode::Greedy | SimMode::LookAheadFresh(_));
+    let content_anchored = matches!(mode, SimMode::ContentAnchored);
 
     // Carry anchors across frames exactly like the live renderer does, so the
     // HUD pinning / hide-in-place behaviour is exercised identically.
@@ -452,6 +527,8 @@ pub fn simulate_scroll_mode(
             centered: false,
             right_reliable,
             left_reliable: Vec::new(),
+            scroll_top: scroll,
+            content_anchored,
         };
         // Greedy mode forgets all anchors each frame, so every frame independently
         // maximizes coverage (the old "fill the biggest pocket now" philosophy).
