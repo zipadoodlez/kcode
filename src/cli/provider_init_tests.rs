@@ -300,6 +300,7 @@ fn login_provider_menu_shows_autodetected_auth_and_skip() {
         anthropic: auth::ProviderAuth {
             state: auth::AuthState::Available,
             has_oauth: true,
+            oauth_state: auth::AuthState::Available,
             has_api_key: false,
         },
         ..Default::default()

@@ -131,6 +131,7 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
         anthropic: ProviderAuth {
             state: AuthState::Available,
             has_oauth: true,
+            oauth_state: AuthState::Available,
             has_api_key: false,
         },
         openai: AuthState::NotConfigured,
