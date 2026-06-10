@@ -534,7 +534,7 @@ pub(super) async fn execute_debug_command(
                 if claude_usage_exhausted {
                     "claude-sonnet-4-6"
                 } else {
-                    "claude-opus-4-8"
+                    "claude-fable-5"
                 }
             }
             "openai" | "codex" => "gpt-5.5",

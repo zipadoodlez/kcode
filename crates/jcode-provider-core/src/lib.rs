@@ -852,7 +852,7 @@ pub fn model_route_metadata_is_recommended(
             matches!(&api_method, ModelRouteApiMethod::OpenAIOAuth)
                 && model_route_provider_labels_match(provider, "openai")
         }
-        "claude-opus-4-8" => {
+        "claude-fable-5" | "claude-opus-4-8" => {
             matches!(
                 &api_method,
                 ModelRouteApiMethod::ClaudeOAuth | ModelRouteApiMethod::AnthropicApiKey
@@ -1250,6 +1250,18 @@ mod tests {
             "OpenAI",
             "openai-oauth",
             false
+        ));
+        assert!(model_route_metadata_is_recommended(
+            "claude-fable-5",
+            "Anthropic",
+            "claude-oauth",
+            true
+        ));
+        assert!(model_route_metadata_is_recommended(
+            "claude-fable-5",
+            "Anthropic",
+            "claude-api",
+            true
         ));
         assert!(model_route_metadata_is_recommended(
             "claude-opus-4-8",
