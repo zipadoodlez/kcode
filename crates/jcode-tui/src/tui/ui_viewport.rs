@@ -716,7 +716,8 @@ pub(super) fn draw_messages(
 
     let centered = app.centered_mode();
     let diagram_mode = app.diagram_mode();
-    if diagram_mode != crate::config::DiagramDisplayMode::Pinned {
+    let pinned_diagrams = diagram_mode == crate::config::DiagramDisplayMode::Pinned;
+    {
         let visible_image_start = prepared
             .image_regions
             .partition_point(|region| region.end_line <= scroll);
@@ -730,6 +731,11 @@ pub(super) fn draw_messages(
             let total_height = region.height;
             let image_end = region.end_line;
             let is_fit = region.render == jcode_tui_messages::ImageRegionRender::Fit;
+            // Pinned mode only redirects mermaid diagrams (Crop) to the side
+            // pane; inline raster images (Fit) always render in the flow.
+            if pinned_diagrams && !is_fit {
+                continue;
+            }
 
             // Inline raster images are materialized lazily: only decode + cache
             // the ones actually on screen this frame.
@@ -753,15 +759,30 @@ pub(super) fn draw_messages(
                             height: render_height,
                         };
                         let rows = if is_fit {
-                            // Scale-to-fit with a left border bar, so resizes and
-                            // font-metric mismatches never slice the image.
-                            crate::tui::mermaid::render_image_widget_fit(
+                            // Stable fit: scale once to the placeholder box and
+                            // reuse the transmitted pixels for every frame.
+                            // Falls back to the per-area fit renderer on
+                            // non-Kitty protocols.
+                            if crate::tui::mermaid::render_image_widget_fit_stable(
                                 hash,
                                 image_area,
                                 frame.buffer_mut(),
+                                content_area.width,
+                                total_height,
+                                0,
                                 centered,
                                 true,
-                            )
+                            ) {
+                                image_area.height
+                            } else {
+                                crate::tui::mermaid::render_image_widget_fit(
+                                    hash,
+                                    image_area,
+                                    frame.buffer_mut(),
+                                    centered,
+                                    true,
+                                )
+                            }
                         } else {
                             crate::tui::mermaid::render_image_widget(
                                 hash,
@@ -795,15 +816,28 @@ pub(super) fn draw_messages(
                             height: render_height,
                         };
                         if is_fit {
-                            // Top scrolled off: scale-to-fit into the visible
-                            // portion rather than cropping arbitrarily.
-                            crate::tui::mermaid::render_image_widget_fit(
+                            // Top scrolled off: keep the same scaled pixels and
+                            // skip the hidden rows instead of rescaling into
+                            // the smaller visible portion.
+                            let skip_rows = (visible_start - abs_idx) as u16;
+                            if !crate::tui::mermaid::render_image_widget_fit_stable(
                                 hash,
                                 image_area,
                                 frame.buffer_mut(),
+                                content_area.width,
+                                total_height,
+                                skip_rows,
                                 centered,
                                 true,
-                            );
+                            ) {
+                                crate::tui::mermaid::render_image_widget_fit(
+                                    hash,
+                                    image_area,
+                                    frame.buffer_mut(),
+                                    centered,
+                                    true,
+                                );
+                            }
                         } else {
                             crate::tui::mermaid::render_image_widget(
                                 hash,

@@ -429,6 +429,35 @@ impl crate::tui::TuiState for App {
         }
     }
 
+    fn side_pane_images_signature(&self) -> (usize, u64) {
+        // Recomputing the signature walks (and in local mode re-renders) every
+        // image payload, so cache it per display_messages_version: image sets
+        // only change when the transcript does.
+        let version = self.display_messages_version;
+        if let Some((cached_version, signature)) = self.side_pane_images_signature_cache.get()
+            && cached_version == version
+        {
+            return signature;
+        }
+        use std::hash::{Hash, Hasher};
+        let images = self.side_pane_images();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for image in &images {
+            image.media_type.hash(&mut hasher);
+            image.data.len().hash(&mut hasher);
+            image
+                .data
+                .as_bytes()
+                .iter()
+                .take(64)
+                .for_each(|b| b.hash(&mut hasher));
+        }
+        let signature = (images.len(), hasher.finish());
+        self.side_pane_images_signature_cache
+            .set(Some((version, signature)));
+        signature
+    }
+
     fn display_messages_version(&self) -> u64 {
         self.display_messages_version
     }
