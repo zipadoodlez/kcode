@@ -377,6 +377,11 @@ impl App {
     /// Detailed route expansion can lag behind the model-name catalog (stale
     /// disk cache, names-only catalog updates). Without this, newly released
     /// models are invisible in the picker even though the server lists them.
+    ///
+    /// A model also needs re-synthesis when its persisted routes predate an
+    /// auth method: an older session may have baked an OAuth-only fallback
+    /// route into the cache, which would otherwise permanently hide the
+    /// API-key route for that model.
     fn extend_remote_routes_for_uncovered_models(
         &self,
         routes: &mut Vec<crate::provider::ModelRoute>,
@@ -384,20 +389,54 @@ impl App {
         if !self.is_remote || self.remote_available_entries.is_empty() {
             return;
         }
-        let covered: HashSet<&str> = routes.iter().map(|route| route.model.as_str()).collect();
+        let mut methods_by_model: std::collections::HashMap<&str, HashSet<&str>> =
+            std::collections::HashMap::new();
+        for route in routes.iter() {
+            methods_by_model
+                .entry(route.model.as_str())
+                .or_default()
+                .insert(route.api_method.as_str());
+        }
+        let auth = crate::auth::AuthStatus::check_fast();
         let missing: Vec<String> = self
             .remote_available_entries
             .iter()
-            .filter(|model| !covered.contains(model.as_str()))
+            .filter(|model| match methods_by_model.get(model.as_str()) {
+                None => true,
+                Some(methods) => {
+                    crate::provider::provider_for_model(model) == Some("claude")
+                        && !model.contains('/')
+                        && ((auth.anthropic.has_api_key && !methods.contains("claude-api"))
+                            || (auth.anthropic.has_oauth && !methods.contains("claude-oauth")))
+                }
+            })
             .cloned()
             .collect();
         if missing.is_empty() {
             return;
         }
-        routes.extend(crate::provider::remote_model_routes_fallback(
+        let existing: HashSet<(String, String, String)> = routes
+            .iter()
+            .map(|route| {
+                (
+                    route.model.clone(),
+                    route.provider.clone(),
+                    route.api_method.clone(),
+                )
+            })
+            .collect();
+        for route in crate::provider::remote_model_routes_fallback(
             self.remote_provider_name.as_deref(),
             &missing,
-        ));
+        ) {
+            if !existing.contains(&(
+                route.model.clone(),
+                route.provider.clone(),
+                route.api_method.clone(),
+            )) {
+                routes.push(route);
+            }
+        }
     }
 
     fn hydrate_remote_model_catalog_snapshot(

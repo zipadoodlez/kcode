@@ -275,6 +275,53 @@ fn test_remote_fallback_claude_model_gets_api_key_route_without_oauth() {
 }
 
 #[test]
+fn test_remote_cached_oauth_only_claude_route_gains_api_key_route_in_picker() {
+    // A stale persisted catalog can carry an OAuth-only route for a newly
+    // released Claude model. When an Anthropic API key is configured, opening
+    // the picker must add the claude-api route instead of trusting the stale
+    // single-route cache forever.
+    with_temp_jcode_home(|| {
+        crate::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-key");
+        crate::auth::AuthStatus::invalidate_cache();
+
+        let mut app = create_test_app();
+        app.is_remote = true;
+        app.remote_available_entries = vec!["claude-fable-5".to_string()];
+        app.remote_model_options = vec![crate::provider::ModelRoute {
+            model: "claude-fable-5".to_string(),
+            provider: "Anthropic".to_string(),
+            api_method: "claude-oauth".to_string(),
+            available: true,
+            detail: String::new(),
+            cheapness: None,
+        }];
+
+        app.open_model_picker();
+
+        let picker = app
+            .inline_interactive_state
+            .as_ref()
+            .expect("model picker should be open");
+        let entry = picker
+            .entries
+            .iter()
+            .find(|entry| entry.name == "claude-fable-5")
+            .expect("fable should be in the picker");
+        assert!(
+            entry
+                .options
+                .iter()
+                .any(|option| option.api_method == "claude-api" && option.available),
+            "stale oauth-only cached route should be augmented with claude-api, got {:?}",
+            entry.options
+        );
+
+        crate::env::remove_var("ANTHROPIC_API_KEY");
+        crate::auth::AuthStatus::invalidate_cache();
+    });
+}
+
+#[test]
 fn test_model_picker_ctrl_b_bedrock_selection_saves_bedrock_default() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
