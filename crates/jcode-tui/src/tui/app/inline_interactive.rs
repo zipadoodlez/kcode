@@ -343,11 +343,13 @@ impl App {
         snapshot: jcode_provider_core::ModelCatalogSnapshot,
     ) -> bool {
         let mut provider_meta_changed = false;
+        let mut provider_name_changed = false;
         if let Some(name) = snapshot.provider_name
             && self.remote_provider_name.as_deref() != Some(name.as_str())
         {
             self.remote_provider_name = Some(name);
             provider_meta_changed = true;
+            provider_name_changed = true;
         }
         if let Some(model) = snapshot.provider_model
             && self.remote_provider_model.as_deref() != Some(model.as_str())
@@ -356,10 +358,46 @@ impl App {
             self.remote_provider_model = Some(model);
             provider_meta_changed = true;
         }
+        // A names-only snapshot (models without route expansion) arrives when the
+        // server downgrades an oversized AvailableModelsUpdated frame. Keep the
+        // previously known detailed routes in that case; the picker synthesizes
+        // fallback routes for any newly appearing models. If the provider
+        // identity changed, the old routes are stale and must be dropped.
+        let names_only = snapshot.model_routes.is_empty() && !snapshot.available_models.is_empty();
         self.remote_available_entries = snapshot.available_models;
-        self.remote_model_options = snapshot.model_routes;
+        if !names_only || provider_name_changed {
+            self.remote_model_options = snapshot.model_routes;
+        }
         self.invalidate_model_picker_cache();
         provider_meta_changed
+    }
+
+    /// Ensure every advertised remote model has at least one picker route.
+    ///
+    /// Detailed route expansion can lag behind the model-name catalog (stale
+    /// disk cache, names-only catalog updates). Without this, newly released
+    /// models are invisible in the picker even though the server lists them.
+    fn extend_remote_routes_for_uncovered_models(
+        &self,
+        routes: &mut Vec<crate::provider::ModelRoute>,
+    ) {
+        if !self.is_remote || self.remote_available_entries.is_empty() {
+            return;
+        }
+        let covered: HashSet<&str> = routes.iter().map(|route| route.model.as_str()).collect();
+        let missing: Vec<String> = self
+            .remote_available_entries
+            .iter()
+            .filter(|model| !covered.contains(model.as_str()))
+            .cloned()
+            .collect();
+        if missing.is_empty() {
+            return;
+        }
+        routes.extend(crate::provider::remote_model_routes_fallback(
+            self.remote_provider_name.as_deref(),
+            &missing,
+        ));
     }
 
     fn hydrate_remote_model_catalog_snapshot(
@@ -632,7 +670,8 @@ impl App {
         let routes_started = std::time::Instant::now();
         let routes: Vec<crate::provider::ModelRoute> = if self.is_remote {
             if !self.remote_model_options.is_empty() {
-                let routes = std::mem::take(&mut self.remote_model_options);
+                let mut routes = std::mem::take(&mut self.remote_model_options);
+                self.extend_remote_routes_for_uncovered_models(&mut routes);
                 let routes_ms = routes_started.elapsed().as_millis();
                 self.remote_model_options = self.open_model_picker_with_routes(
                     cache_signature,
@@ -1329,7 +1368,9 @@ impl App {
         let routes_started = std::time::Instant::now();
         let routes: Vec<crate::provider::ModelRoute> = if self.is_remote {
             if !self.remote_model_options.is_empty() {
-                std::mem::take(&mut self.remote_model_options)
+                let mut routes = std::mem::take(&mut self.remote_model_options);
+                self.extend_remote_routes_for_uncovered_models(&mut routes);
+                routes
             } else {
                 self.build_remote_model_routes_lightweight_fallback(&current_model)
             }

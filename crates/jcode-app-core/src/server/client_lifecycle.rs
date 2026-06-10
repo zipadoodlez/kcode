@@ -741,10 +741,33 @@ pub(super) async fn handle_client(
                         }
                         let encoded_len = encoded_event.len();
                         if encoded_len > MAX_LIVE_AVAILABLE_MODELS_UPDATE_BYTES {
-                            crate::logging::warn(&format!(
-                                "Skipping oversized bus AvailableModelsUpdated frame for connection {} ({} bytes)",
-                                client_connection_id, encoded_len
-                            ));
+                            // Don't drop the catalog update entirely: clients still
+                            // need fresh model names for the picker. Strip the heavy
+                            // route expansion and ship a names-only snapshot; the TUI
+                            // rebuilds fallback routes for missing models locally.
+                            let slim_event = names_only_available_models_event(&event);
+                            let slim_encoded =
+                                slim_event.as_ref().map(crate::protocol::encode_event);
+                            match (slim_event, slim_encoded) {
+                                (Some(slim_event), Some(slim_encoded))
+                                    if slim_encoded.len()
+                                        <= MAX_LIVE_AVAILABLE_MODELS_UPDATE_BYTES =>
+                                {
+                                    crate::logging::info(&format!(
+                                        "Downgrading oversized bus AvailableModelsUpdated frame to names-only for connection {} ({} -> {} bytes)",
+                                        client_connection_id,
+                                        encoded_len,
+                                        slim_encoded.len()
+                                    ));
+                                    let _ = client_event_tx.send(slim_event);
+                                }
+                                _ => {
+                                    crate::logging::warn(&format!(
+                                        "Skipping oversized bus AvailableModelsUpdated frame for connection {} ({} bytes)",
+                                        client_connection_id, encoded_len
+                                    ));
+                                }
+                            }
                             last_available_models_snapshot = Some(encoded_event);
                             continue;
                         }
@@ -2749,6 +2772,27 @@ async fn cancel_processing_message(
 fn try_available_models_snapshot(agent: &Arc<Mutex<Agent>>) -> Option<String> {
     let event = try_available_models_updated_event(agent)?;
     Some(crate::protocol::encode_event(&event))
+}
+
+/// Build a names-only copy of an `AvailableModelsUpdated` event by dropping the
+/// per-model route expansion. Used when the fully-routed frame exceeds the live
+/// update size cap so clients still receive fresh model names.
+fn names_only_available_models_event(event: &ServerEvent) -> Option<ServerEvent> {
+    let ServerEvent::AvailableModelsUpdated {
+        provider_name,
+        provider_model,
+        available_models,
+        ..
+    } = event
+    else {
+        return None;
+    };
+    Some(ServerEvent::AvailableModelsUpdated {
+        provider_name: provider_name.clone(),
+        provider_model: provider_model.clone(),
+        available_models: available_models.clone(),
+        available_model_routes: Vec::new(),
+    })
 }
 
 fn queue_soft_interrupt(
