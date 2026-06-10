@@ -74,6 +74,8 @@ mod diagram_pane;
 mod file_diff_ui;
 #[path = "ui_frame_metrics.rs"]
 mod frame_metrics;
+#[path = "ui_smoothness.rs"]
+mod smoothness;
 #[path = "ui_header.rs"]
 mod header;
 #[path = "ui_inline_image.rs"]
@@ -1187,6 +1189,7 @@ pub(crate) use frame_metrics::{
     debug_flicker_frame_history, debug_slow_frame_history, recent_flicker_copy_target_for_key,
     recent_flicker_ui_notice,
 };
+pub(crate) use smoothness::{report_json as smoothness_report_json, reset as smoothness_reset};
 
 #[cfg(test)]
 pub(crate) use frame_metrics::{
@@ -2782,6 +2785,15 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     if visual_debug::overlay_enabled() {
         overlays::draw_debug_overlay(frame, &placements, &chunks);
     }
+
+    // Observe the rendered messages area for the anchor-stability (smoothness)
+    // report. Runs on the final buffer so it sees exactly what the user sees.
+    smoothness::observe_frame(
+        frame.buffer_mut(),
+        messages_area,
+        app.scroll_offset(),
+        !app.auto_scroll_paused(),
+    );
 
     // Record the frame capture if enabled
     if let Some(capture) = debug_capture {

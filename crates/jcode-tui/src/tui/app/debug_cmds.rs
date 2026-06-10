@@ -126,6 +126,16 @@ impl App {
             self.stream_buffer.reset_jitter();
             return "OK: stream jitter stats reset".to_string();
         }
+        if cmd == "smoothness" {
+            // Anchor-stability report: jarring transcript motion (repositions,
+            // insertions above, big pops, blinks, mass reflows) per rendered
+            // frame, with expected motion (scroll/resize/tail-follow) excluded.
+            return crate::tui::ui::smoothness_report_json();
+        }
+        if cmd == "smoothness:reset" {
+            crate::tui::ui::smoothness_reset();
+            return "OK: smoothness stats reset".to_string();
+        }
         if cmd == "overlay" || cmd == "overlay:status" {
             let overlay = crate::tui::visual_debug::overlay_enabled();
             return serde_json::json!({
