@@ -356,6 +356,15 @@ impl AuthStatus {
                     AuthState::NotConfigured
                 }
             }
+            // The `claude` login provider is the *OAuth/subscription* path: the
+            // mirror image of the `anthropic-api` rule above. It must report on
+            // the OAuth credential alone, never borrow the API key's
+            // availability, so the two rows never blur into one ambiguous
+            // "OAuth + API key" answer.
+            crate::provider_catalog::LoginProviderTarget::Claude => self.anthropic.oauth_state,
+            // Same split for OpenAI: `openai` is the ChatGPT/Codex OAuth login,
+            // `openai-api` (handled above) is the API-key login.
+            crate::provider_catalog::LoginProviderTarget::OpenAi => self.openai_oauth_state,
             crate::provider_catalog::LoginProviderTarget::Bedrock => {
                 if crate::provider::bedrock::BedrockProvider::has_credentials() {
                     AuthState::Available
@@ -457,15 +466,16 @@ impl AuthStatus {
                 }
             }
             _ => match provider.auth_state_key {
+                // The `claude` login provider is the OAuth/subscription path;
+                // the API key reports through the separate `anthropic-api`
+                // provider (handled above via `LoginProviderTarget::ClaudeApiKey`).
+                // Describe the OAuth credential alone so the two rows never
+                // blur together as "OAuth + API key".
                 LoginProviderAuthStateKey::Anthropic => {
-                    let detail = if self.anthropic.has_oauth && self.anthropic.has_api_key {
-                        "OAuth + API key"
-                    } else if self.anthropic.has_oauth {
-                        "OAuth"
-                    } else if self.anthropic.has_api_key {
-                        "API key"
-                    } else {
-                        "not configured"
+                    let detail = match self.anthropic.oauth_state {
+                        AuthState::Available => "OAuth",
+                        AuthState::Expired => "OAuth (expired)",
+                        AuthState::NotConfigured => "not configured",
                     };
 
                     let accounts = crate::auth::claude::list_accounts().unwrap_or_default();
@@ -483,15 +493,13 @@ impl AuthStatus {
                         detail.to_string()
                     }
                 }
+                // Same split for OpenAI: this is the ChatGPT/Codex OAuth login;
+                // `openai-api` (handled above) owns the API-key answer.
                 LoginProviderAuthStateKey::OpenAi => {
-                    let detail = if self.openai_has_oauth && self.openai_has_api_key {
-                        "OAuth + API key"
-                    } else if self.openai_has_oauth {
-                        "OAuth"
-                    } else if self.openai_has_api_key {
-                        "API key"
-                    } else {
-                        "not configured"
+                    let detail = match self.openai_oauth_state {
+                        AuthState::Available => "OAuth",
+                        AuthState::Expired => "OAuth (expired)",
+                        AuthState::NotConfigured => "not configured",
                     };
 
                     let accounts = crate::auth::codex::list_accounts().unwrap_or_default();
@@ -816,6 +824,9 @@ fn probe_anthropic_status(status: &mut AuthStatus) {
         } else {
             anthropic.state = AuthState::Expired;
         }
+        // Record the OAuth credential's own state before the API key below can
+        // mask an expired (or absent) OAuth login in the combined `state`.
+        anthropic.oauth_state = anthropic.state;
     }
 
     // API key overrides expired OAuth.
@@ -862,6 +873,9 @@ fn probe_openai_status(status: &mut AuthStatus) {
                 // No expiry info, assume available.
                 status.openai = AuthState::Available;
             }
+            // Record the OAuth credential's own state before the API key below
+            // can mask an expired (or absent) OAuth login in the combined state.
+            status.openai_oauth_state = status.openai;
         } else if !creds.access_token.is_empty() {
             status.openai_has_api_key = true;
             status.openai = AuthState::Available;
@@ -940,30 +954,23 @@ fn assessment_for_key(
     AuthValidationMethod,
 ) {
     match key {
+        // The Claude/OpenAI rows that reach here are the OAuth/subscription
+        // login providers; their API-key counterparts (`anthropic-api`,
+        // `openai-api`) attribute sources separately via their
+        // `LoginProviderTarget` arms. Describe only the OAuth credential here so
+        // an API key never makes the OAuth row look configured (or vice versa).
         LoginProviderAuthStateKey::Anthropic => {
-            let (source, detail) = summarize_sources(vec![
-                anthropic_oauth_source(status),
-                env_source("ANTHROPIC_API_KEY"),
-                config_source(
-                    "ANTHROPIC_API_KEY",
-                    "anthropic.env",
-                    "~/.config/jcode/anthropic.env",
-                ),
-            ]);
+            let (source, detail) = summarize_sources(vec![anthropic_oauth_source(status)]);
             (
                 source,
                 detail,
                 if status.anthropic.has_oauth {
                     AuthExpiryConfidence::Exact
-                } else if status.anthropic.has_api_key {
-                    AuthExpiryConfidence::NotApplicable
                 } else {
                     AuthExpiryConfidence::Unknown
                 },
                 if status.anthropic.has_oauth {
                     AuthRefreshSupport::Automatic
-                } else if status.anthropic.has_api_key {
-                    AuthRefreshSupport::NotApplicable
                 } else {
                     AuthRefreshSupport::Unknown
                 },
@@ -975,24 +982,17 @@ fn assessment_for_key(
             )
         }
         LoginProviderAuthStateKey::OpenAi => {
-            let (source, detail) = summarize_sources(vec![
-                openai_oauth_source(status),
-                openai_api_key_source(status),
-            ]);
+            let (source, detail) = summarize_sources(vec![openai_oauth_source(status)]);
             (
                 source,
                 detail,
                 if status.openai_has_oauth {
                     AuthExpiryConfidence::Exact
-                } else if status.openai_has_api_key {
-                    AuthExpiryConfidence::NotApplicable
                 } else {
                     AuthExpiryConfidence::Unknown
                 },
                 if status.openai_has_oauth {
                     AuthRefreshSupport::Automatic
-                } else if status.openai_has_api_key {
-                    AuthRefreshSupport::NotApplicable
                 } else {
                     AuthRefreshSupport::Unknown
                 },
@@ -1215,22 +1215,6 @@ fn openai_oauth_source(status: &AuthStatus) -> Option<(AuthCredentialSource, Str
         ));
     }
     None
-}
-
-fn openai_api_key_source(status: &AuthStatus) -> Option<(AuthCredentialSource, String)> {
-    if !status.openai_has_api_key {
-        return None;
-    }
-    env_source("OPENAI_API_KEY").or_else(|| {
-        (crate::auth::codex::legacy_auth_allowed()
-            && crate::auth::codex::legacy_auth_source_exists())
-        .then(|| {
-            (
-                AuthCredentialSource::TrustedExternalFile,
-                "trusted legacy Codex API key".to_string(),
-            )
-        })
-    })
 }
 
 fn gemini_source() -> Option<(AuthCredentialSource, String)> {

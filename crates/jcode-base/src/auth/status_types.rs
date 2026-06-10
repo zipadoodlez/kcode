@@ -26,6 +26,10 @@ pub struct AuthStatus {
     pub openai: AuthState,
     /// OpenAI has OAuth credentials
     pub openai_has_oauth: bool,
+    /// OpenAI OAuth credential state alone (ignores any API key). Lets the
+    /// OAuth/subscription login surface report honestly instead of borrowing
+    /// the API key's availability.
+    pub openai_oauth_state: AuthState,
     /// OpenAI has API key available
     pub openai_has_api_key: bool,
     /// Azure OpenAI has API key available
@@ -55,6 +59,10 @@ pub struct ProviderAuth {
     pub state: AuthState,
     /// Has OAuth credentials
     pub has_oauth: bool,
+    /// OAuth credential state alone (ignores any API key). Lets the
+    /// OAuth/subscription login surface report honestly instead of borrowing
+    /// the API key's availability.
+    pub oauth_state: AuthState,
     /// Has API key
     pub has_api_key: bool,
 }

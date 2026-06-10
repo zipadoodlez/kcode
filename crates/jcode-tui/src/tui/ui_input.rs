@@ -909,6 +909,17 @@ mod tests {
     use ratatui::style::Modifier;
 
     #[test]
+    fn overscroll_provider_display_is_credential_neutral() {
+        // The credential (OAuth vs API key) is reported by the adjacent auth
+        // chip from canonical resolution; the provider name must not bake in a
+        // credential or the two can contradict (e.g. "Claude OAuth · API key").
+        assert_eq!(overscroll_provider_display("claude"), "Claude");
+        assert_eq!(overscroll_provider_display("anthropic"), "Anthropic");
+        assert!(!overscroll_provider_display("claude").contains("OAuth"));
+        assert!(!overscroll_provider_display("anthropic").contains("API"));
+    }
+
+    #[test]
     fn session_history_warning_is_clear_and_occasional() {
         assert!(occasional_session_history_warning(249_999, 0, None, 100, 0).is_none());
         assert!(occasional_session_history_warning(300_000, 0, None, 63, 0).is_none());
@@ -1601,8 +1612,13 @@ fn overscroll_is_runtime_placeholder(provider: &str) -> bool {
 
 fn overscroll_provider_display(provider: &str) -> String {
     match provider.to_ascii_lowercase().as_str() {
-        "claude" => "Claude OAuth".to_string(),
-        "anthropic" => "Anthropic API".to_string(),
+        // Keep provider labels credential-neutral: the adjacent auth chip
+        // (`overscroll_auth_label`) reports OAuth vs API key from the canonical
+        // credential resolution. Baking a credential into the provider name
+        // used to produce contradictions like "Claude OAuth · API key" when
+        // the Anthropic route was pinned to the API key.
+        "claude" => "Claude".to_string(),
+        "anthropic" => "Anthropic".to_string(),
         "openai" => "OpenAI".to_string(),
         "openrouter" => "OpenRouter".to_string(),
         "opencode" => "OpenCode".to_string(),

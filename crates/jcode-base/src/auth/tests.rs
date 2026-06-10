@@ -835,3 +835,53 @@ fn anthropic_api_provider_reports_api_key_independently_of_oauth() {
     }
     AuthStatus::invalidate_cache();
 }
+
+#[test]
+fn claude_oauth_provider_reports_oauth_independently_of_api_key() {
+    // Mirror of the regression above: the `claude` (OAuth/subscription) login
+    // provider must report on OAuth credentials alone. An ANTHROPIC_API_KEY
+    // used to leak into `auth_state_key::Anthropic`, making the OAuth row claim
+    // "available / OAuth + API key" with zero OAuth accounts -- contradicting
+    // the separate `anthropic-api` row and the header's active-route tag.
+    let _lock = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().expect("create temp dir");
+    let home = temp.path().join("home");
+    let xdg = temp.path().join("xdg");
+    std::fs::create_dir_all(&home).expect("create temp home");
+    std::fs::create_dir_all(&xdg).expect("create temp xdg config");
+    let saved = ["JCODE_HOME", "XDG_CONFIG_HOME", "HOME", "ANTHROPIC_API_KEY"]
+        .into_iter()
+        .map(|key| (key, std::env::var_os(key)))
+        .collect::<Vec<_>>();
+
+    crate::env::set_var("JCODE_HOME", temp.path().join("jcode-home"));
+    crate::env::set_var("XDG_CONFIG_HOME", &xdg);
+    crate::env::set_var("HOME", &home);
+    // API key present, no OAuth anywhere: the OAuth provider must stay
+    // NotConfigured and must not describe the API key as its method.
+    crate::env::set_var("ANTHROPIC_API_KEY", "sk-ant-api-test-key");
+    AuthStatus::invalidate_cache();
+
+    let status = AuthStatus::check_fast();
+    let oauth = status.assessment_for_provider(crate::provider_catalog::CLAUDE_LOGIN_PROVIDER);
+    assert_eq!(
+        oauth.state,
+        AuthState::NotConfigured,
+        "claude (OAuth) must not borrow API-key availability"
+    );
+    assert_eq!(oauth.method_detail, "not configured");
+    assert!(
+        !oauth.credential_source_detail.contains("ANTHROPIC_API_KEY"),
+        "OAuth row must not attribute the API key as its source: {}",
+        oauth.credential_source_detail
+    );
+
+    // The API-key row still owns that credential.
+    let api = status.assessment_for_provider(crate::provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER);
+    assert_eq!(api.state, AuthState::Available);
+
+    for (key, value) in saved {
+        restore_env_var(key, value);
+    }
+    AuthStatus::invalidate_cache();
+}

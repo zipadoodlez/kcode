@@ -133,25 +133,40 @@ pub(super) fn build_auth_status_line(auth: &AuthStatus, max_width: usize) -> Lin
         }
     }
 
-    let anthropic_label = if auth.anthropic.has_oauth && auth.anthropic.has_api_key {
-        provider_label("anthropic", auth.anthropic.state, Some("oauth+key"))
-    } else if auth.anthropic.has_oauth {
-        provider_label("anthropic", auth.anthropic.state, Some("oauth"))
-    } else if auth.anthropic.has_api_key {
-        provider_label("anthropic", auth.anthropic.state, Some("key"))
-    } else {
-        provider_label("anthropic", auth.anthropic.state, None)
-    };
+    // The auth line is a credential *inventory* (what is configured), while the
+    // provider tag above reports the *active* route. When both credentials are
+    // configured, mark the active one with `*` so the two surfaces read as one
+    // consistent story ("oauth*+key" = both configured, OAuth in use) instead
+    // of an ambiguous "oauth+key" that looks like both are being used at once.
+    fn dual_method_label(
+        provider: jcode_provider_core::ActiveProvider,
+        auth: &AuthStatus,
+    ) -> Option<&'static str> {
+        use crate::auth::{ActiveCredential, resolve_dual_credential_auth};
+        let runtime_provider = std::env::var("JCODE_RUNTIME_PROVIDER").ok();
+        let resolved = resolve_dual_credential_auth(provider, auth, runtime_provider.as_deref())?;
+        Some(match (resolved.has_oauth, resolved.has_api_key) {
+            (true, true) => match resolved.active {
+                ActiveCredential::OAuth => "oauth*+key",
+                ActiveCredential::ApiKey => "oauth+key*",
+            },
+            (true, false) => "oauth",
+            (false, true) => "key",
+            (false, false) => return None,
+        })
+    }
 
-    let openai_label = if auth.openai_has_oauth && auth.openai_has_api_key {
-        provider_label("openai", auth.openai, Some("oauth+key"))
-    } else if auth.openai_has_oauth {
-        provider_label("openai", auth.openai, Some("oauth"))
-    } else if auth.openai_has_api_key {
-        provider_label("openai", auth.openai, Some("key"))
-    } else {
-        provider_label("openai", auth.openai, None)
-    };
+    let anthropic_label = provider_label(
+        "anthropic",
+        auth.anthropic.state,
+        dual_method_label(jcode_provider_core::ActiveProvider::Claude, auth),
+    );
+
+    let openai_label = provider_label(
+        "openai",
+        auth.openai,
+        dual_method_label(jcode_provider_core::ActiveProvider::OpenAI, auth),
+    );
 
     let gemini_label = if auth.gemini != AuthState::NotConfigured {
         provider_label("gemini", auth.gemini, Some("oauth"))
@@ -245,18 +260,12 @@ fn header_provider_auth_tag(name: &str, auth: &AuthStatus) -> &'static str {
         use crate::auth::{ActiveCredential, resolve_dual_credential_auth};
         match resolve_dual_credential_auth(provider, auth, runtime_provider.as_deref()) {
             Some(resolved) => {
+                // Report exactly the credential the next request will use. The
+                // "both configured" inventory now lives in the auth status line
+                // (`oauth*+key`), so this tag never claims two credentials at
+                // once -- that ambiguity is how "Claude OAuth" and "API key"
+                // used to contradict each other across surfaces.
                 return match resolved.active {
-                    // Preserve the long-standing "oauth+key" affordance for
-                    // OpenAI: only when auto-resolution landed on OAuth while
-                    // both credentials are present. An explicit selection or
-                    // Anthropic surfaces just the active credential.
-                    ActiveCredential::OAuth
-                        if matches!(provider, jcode_provider_core::ActiveProvider::OpenAI)
-                            && resolved.has_both()
-                            && !resolved.explicit =>
-                    {
-                        "oauth+key"
-                    }
                     ActiveCredential::OAuth => "oauth",
                     ActiveCredential::ApiKey => "api-key",
                 };
@@ -859,6 +868,7 @@ mod tests {
             anthropic: ProviderAuth {
                 state: AuthState::Expired,
                 has_oauth: true,
+                oauth_state: AuthState::Expired,
                 has_api_key: false,
             },
             azure: AuthState::Available,
@@ -870,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn header_provider_auth_tag_reports_openai_oauth_and_api_key() {
+    fn header_provider_auth_tag_reports_active_credential_for_openai() {
         let _guard = crate::storage::lock_test_env();
         let prev = std::env::var_os("JCODE_RUNTIME_PROVIDER");
         crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
@@ -881,7 +891,9 @@ mod tests {
             ..AuthStatus::default()
         };
 
-        assert_eq!(header_provider_auth_tag("openai", &auth), "oauth+key");
+        // Auto mode prefers OAuth; the tag must report only the credential in
+        // use (the auth inventory line carries the "both configured" detail).
+        assert_eq!(header_provider_auth_tag("openai", &auth), "oauth");
         if let Some(value) = prev {
             crate::env::set_var("JCODE_RUNTIME_PROVIDER", value);
         }
@@ -1011,6 +1023,7 @@ mod tests {
             anthropic: ProviderAuth {
                 state: AuthState::Expired,
                 has_oauth: true,
+                oauth_state: AuthState::Expired,
                 has_api_key: false,
             },
             openai: AuthState::Available,
@@ -1040,6 +1053,53 @@ mod tests {
     fn auth_status_line_is_empty_when_nothing_was_attempted() {
         let line = build_auth_status_line(&AuthStatus::default(), 120);
         assert!(line.spans.is_empty(), "line should be empty: {line:?}");
+    }
+
+    #[test]
+    fn auth_status_line_marks_active_credential_when_both_configured() {
+        let _guard = crate::storage::lock_test_env();
+        let prev = std::env::var_os("JCODE_RUNTIME_PROVIDER");
+        let auth = AuthStatus {
+            anthropic: ProviderAuth {
+                state: AuthState::Available,
+                has_oauth: true,
+                oauth_state: AuthState::Available,
+                has_api_key: true,
+            },
+            ..AuthStatus::default()
+        };
+
+        let rendered_with = |runtime: Option<&str>| {
+            match runtime {
+                Some(value) => crate::env::set_var("JCODE_RUNTIME_PROVIDER", value),
+                None => crate::env::remove_var("JCODE_RUNTIME_PROVIDER"),
+            }
+            build_auth_status_line(&auth, 120)
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        };
+
+        // Auto prefers OAuth: the star must sit on oauth, matching the header
+        // provider tag's active-route answer.
+        let rendered = rendered_with(None);
+        assert!(
+            rendered.contains("anthropic(oauth*+key)"),
+            "rendered: {rendered}"
+        );
+
+        // Pinning the API key moves the star, keeping both surfaces consistent.
+        let rendered = rendered_with(Some("claude-api"));
+        assert!(
+            rendered.contains("anthropic(oauth+key*)"),
+            "rendered: {rendered}"
+        );
+
+        match prev {
+            Some(value) => crate::env::set_var("JCODE_RUNTIME_PROVIDER", value),
+            None => crate::env::remove_var("JCODE_RUNTIME_PROVIDER"),
+        }
     }
 
     #[test]
