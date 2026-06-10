@@ -840,7 +840,9 @@ fn test_prepare_messages_renders_retained_reasoning_section_above_stream() {
     clear_test_render_state_for_tests();
 
     let mut retained = String::new();
-    retained.push_str(&jcode_tui_markdown::reasoning_line_markup("retained thinking"));
+    retained.push_str(&jcode_tui_markdown::reasoning_line_markup(
+        "retained thinking",
+    ));
 
     let state = TestState {
         display_messages: vec![DisplayMessage::user("hi")],

@@ -594,10 +594,7 @@ fn contains_independent_status_code(haystack: &str, code: &str) -> bool {
 /// the model still knows an image existed and where to recover it from.
 ///
 /// Returns the number of images that were replaced with text markers.
-pub fn emergency_strip_large_images(
-    messages: &mut [Message],
-    target_total_chars: usize,
-) -> usize {
+pub fn emergency_strip_large_images(messages: &mut [Message], target_total_chars: usize) -> usize {
     let mut contents: Vec<&mut Vec<ContentBlock>> =
         messages.iter_mut().map(|m| &mut m.content).collect();
     strip_large_images_in_contents(&mut contents, target_total_chars)
@@ -877,7 +874,9 @@ mod tests {
         assert!(is_request_payload_too_large_error(
             "Anthropic API error (413 Payload Too Large): {\"error\":{\"type\":\"request_too_large\",\"message\":\"Request exceeds the maximum size\"}}"
         ));
-        assert!(is_request_payload_too_large_error("413 Request Entity Too Large"));
+        assert!(is_request_payload_too_large_error(
+            "413 Request Entity Too Large"
+        ));
         assert!(is_request_payload_too_large_error("request too large"));
         // Not a payload error — should not match.
         assert!(!is_request_payload_too_large_error(

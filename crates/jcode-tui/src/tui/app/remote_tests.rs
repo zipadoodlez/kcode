@@ -76,7 +76,10 @@ fn idle_donut_pauses_while_unfocused() {
     // absolutely. We only assert the invariant that matters for the swarm CPU
     // regression: it must never run while the terminal is unfocused.
     let redraw = app.set_client_focused(false);
-    assert!(!redraw, "losing focus should not request an immediate redraw");
+    assert!(
+        !redraw,
+        "losing focus should not request an immediate redraw"
+    );
     assert!(!app.client_focused());
     assert!(
         !crate::tui::idle_donut_active(&app),

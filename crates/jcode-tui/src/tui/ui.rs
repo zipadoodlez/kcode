@@ -76,12 +76,12 @@ mod file_diff_ui;
 mod frame_metrics;
 #[path = "ui_header.rs"]
 mod header;
+#[path = "ui_inline_image.rs"]
+pub(crate) mod inline_image_ui;
 #[path = "ui_inline_interactive.rs"]
 mod inline_interactive_ui;
 #[path = "ui_inline.rs"]
 mod inline_ui;
-#[path = "ui_inline_image.rs"]
-pub(crate) mod inline_image_ui;
 #[path = "ui_input.rs"]
 pub(crate) mod input_ui;
 #[path = "ui_memory_estimates.rs"]

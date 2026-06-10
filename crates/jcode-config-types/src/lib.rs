@@ -363,11 +363,7 @@ pub struct NamedProviderConfig {
     /// some OpenAI-compatible backends require (e.g. NVIDIA NIM DeepSeek-V4
     /// needs `chat_template_kwargs = { thinking = true, reasoning_effort = "high" }`).
     /// Must be a JSON object; keys here override jcode-generated body fields.
-    #[serde(
-        default,
-        alias = "extra-body",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, alias = "extra-body", skip_serializing_if = "Option::is_none")]
     pub extra_body: Option<serde_json::Value>,
 }
 

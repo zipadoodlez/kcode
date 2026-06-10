@@ -450,8 +450,7 @@ impl SeriesStats {
                 buckets[idx] += e.chars as f64;
             }
             stats.bucket_100ms_cv = coefficient_of_variation(&buckets);
-            stats.bucket_100ms_max_chars =
-                buckets.iter().copied().fold(0.0_f64, f64::max) as usize;
+            stats.bucket_100ms_max_chars = buckets.iter().copied().fold(0.0_f64, f64::max) as usize;
         }
         stats
     }
@@ -776,8 +775,7 @@ mod tests {
         ops.extend(buf.push_reasoning(" still thinking"));
         ops.extend(buf.flush());
         assert!(
-            !ops.iter()
-                .any(|op| matches!(op, StreamOp::CloseReasoning)),
+            !ops.iter().any(|op| matches!(op, StreamOp::CloseReasoning)),
             "whitespace-only text must not close the reasoning region: {ops:?}"
         );
     }

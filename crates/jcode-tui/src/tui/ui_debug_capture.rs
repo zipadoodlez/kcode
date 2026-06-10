@@ -188,5 +188,3 @@ mod tests {
         assert!(widget_overlaps_content(&p, area, &margins));
     }
 }
-
-

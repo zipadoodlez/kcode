@@ -1084,9 +1084,7 @@ impl OpenRouterProvider {
             }
         }
 
-        if let Some(raw) =
-            load_env_value_from_env_or_config("JCODE_OPENAI_EXTRA_BODY", env_file)
-        {
+        if let Some(raw) = load_env_value_from_env_or_config("JCODE_OPENAI_EXTRA_BODY", env_file) {
             match serde_json::from_str::<Value>(&raw) {
                 Ok(Value::Object(object)) => {
                     for (key, val) in object {

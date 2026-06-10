@@ -377,4 +377,3 @@ fn invalidate_todos_cache_backdates_entry_so_next_gather_refetches() {
         "invalidation must clear the refreshing flag so the next gather refetches"
     );
 }
-

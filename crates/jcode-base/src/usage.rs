@@ -373,9 +373,7 @@ fn activity_source_has_dedicated_report(source_key: &str) -> bool {
 
 /// One catch-all task that reports every ledger entry without a dedicated
 /// fetcher: last-used recency plus locally tracked spend.
-fn enqueue_activity_sweeper_task(
-    tasks: &mut tokio::task::JoinSet<Option<ProviderUsage>>,
-) -> usize {
+fn enqueue_activity_sweeper_task(tasks: &mut tokio::task::JoinSet<Option<ProviderUsage>>) -> usize {
     let leftover: Vec<(String, crate::provider_activity::ProviderActivityEntry)> =
         crate::provider_activity::all_entries()
             .into_iter()

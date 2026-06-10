@@ -100,9 +100,7 @@ impl ModelCatalogService {
         let age = SystemTime::now()
             .duration_since(observed_at)
             .unwrap_or(Duration::ZERO);
-        let fetched_at = Instant::now()
-            .checked_sub(age)
-            .unwrap_or_else(Instant::now);
+        let fetched_at = Instant::now().checked_sub(age).unwrap_or_else(Instant::now);
         self.replace_scope_models_inner(scope, models, observed_at, fetched_at)
     }
 
@@ -374,7 +372,10 @@ mod tests {
         assert!(service.hydrate_scope_models_from_snapshot("default", models, observed_at));
 
         // Models are available immediately for display...
-        assert_eq!(service.model_ids("default"), Some(vec!["gpt-5.5".to_string()]));
+        assert_eq!(
+            service.model_ids("default"),
+            Some(vec!["gpt-5.5".to_string()])
+        );
         // ...but the scope is not considered fresh, so a live refresh can run.
         assert!(!service.is_fresh("default"));
         assert!(service.should_refresh("default"));

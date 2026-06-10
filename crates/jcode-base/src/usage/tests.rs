@@ -659,22 +659,25 @@ fn test_reports_sort_most_recently_used_first() {
     ];
     sort_reports_most_recent_first(&mut results);
 
-    let names: Vec<&str> = results
-        .iter()
-        .map(|r| r.provider_name.as_str())
-        .collect();
+    let names: Vec<&str> = results.iter().map(|r| r.provider_name.as_str()).collect();
     assert_eq!(names, ["Recent", "Old", "Never Used A", "Never Used B"]);
 }
 
 #[test]
 fn test_activity_sweeper_skips_sources_with_dedicated_reports() {
     // Dual-auth surfaces are always reported by their own fetchers.
-    assert!(activity_source_has_dedicated_report("claude:oauth:claude-1"));
+    assert!(activity_source_has_dedicated_report(
+        "claude:oauth:claude-1"
+    ));
     assert!(activity_source_has_dedicated_report("claude:api-key"));
-    assert!(activity_source_has_dedicated_report("openai:oauth:openai-1"));
+    assert!(activity_source_has_dedicated_report(
+        "openai:oauth:openai-1"
+    ));
     assert!(activity_source_has_dedicated_report("openai:api-key"));
     // Unknown/uncovered sources fall through to the sweeper.
     assert!(!activity_source_has_dedicated_report("bedrock"));
     assert!(!activity_source_has_dedicated_report("jcode"));
-    assert!(!activity_source_has_dedicated_report("some-custom-endpoint"));
+    assert!(!activity_source_has_dedicated_report(
+        "some-custom-endpoint"
+    ));
 }

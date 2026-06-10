@@ -1761,7 +1761,9 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/commit" || trimmed == "/commit-push" || trimmed == "/commit-and-push"
+                if trimmed == "/commit"
+                    || trimmed == "/commit-push"
+                    || trimmed == "/commit-and-push"
                 {
                     let is_push = trimmed != "/commit";
                     let prompt = if is_push {

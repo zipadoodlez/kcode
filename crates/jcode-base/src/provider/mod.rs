@@ -540,10 +540,7 @@ impl MultiProvider {
                     .map(|execution| execution.runtime_display_name())
                     .unwrap_or_else(|| "OpenRouter".to_string());
                 let runtime = std::env::var("JCODE_RUNTIME_PROVIDER").ok();
-                crate::provider_activity::source_key_for_provider_label(
-                    &label,
-                    runtime.as_deref(),
-                )
+                crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
             }
             other => Self::provider_key(other).to_string(),
         }
@@ -736,11 +733,11 @@ impl MultiProvider {
                                 .direct_openai_compatible_route_parts()
                                 .and_then(|(_provider, api_method, _detail)| {
                                     api_method
-                                        .strip_prefix("openai-compatible:")
-                                        .map(str::trim)
-                                        .and_then(
-                                            crate::provider_catalog::openai_compatible_profile_by_id,
-                                        )
+                                    .strip_prefix("openai-compatible:")
+                                    .map(str::trim)
+                                    .and_then(
+                                        crate::provider_catalog::openai_compatible_profile_by_id,
+                                    )
                                 })
                                 .map(|profile| {
                                     profile.id != crate::provider_catalog::OPENAI_COMPAT_PROFILE.id
@@ -1065,15 +1062,14 @@ impl MultiProvider {
                 })
             });
             let openai_credential_mode = pinned.and_then(|route| {
-                matches!(route.provider, jcode_provider_core::DualAuthProvider::OpenAI)
-                    .then(|| match route.mode {
-                        jcode_provider_core::AuthMode::ApiKey => {
-                            openai::OpenAICredentialMode::ApiKey
-                        }
-                        jcode_provider_core::AuthMode::Oauth => {
-                            openai::OpenAICredentialMode::OAuth
-                        }
-                    })
+                matches!(
+                    route.provider,
+                    jcode_provider_core::DualAuthProvider::OpenAI
+                )
+                .then(|| match route.mode {
+                    jcode_provider_core::AuthMode::ApiKey => openai::OpenAICredentialMode::ApiKey,
+                    jcode_provider_core::AuthMode::Oauth => openai::OpenAICredentialMode::OAuth,
+                })
             });
             return self.set_model_on_provider_with_credential_modes(
                 selection.active_provider(),

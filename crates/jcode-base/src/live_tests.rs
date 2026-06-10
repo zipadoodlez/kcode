@@ -2833,8 +2833,14 @@ mod tests {
         skipped.recorded_at = Utc::now();
 
         let mut latest = BTreeMap::new();
-        latest.insert("anthropic-api::claude-opus-4-8::passing".to_string(), passing);
-        latest.insert("anthropic-api::claude-opus-4-8::skipped".to_string(), skipped);
+        latest.insert(
+            "anthropic-api::claude-opus-4-8::passing".to_string(),
+            passing,
+        );
+        latest.insert(
+            "anthropic-api::claude-opus-4-8::skipped".to_string(),
+            skipped,
+        );
         let coverage = LiveVerificationCoverage {
             schema_version: SCHEMA_VERSION,
             updated_at: Utc::now(),

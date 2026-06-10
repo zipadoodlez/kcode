@@ -859,8 +859,11 @@ impl OpenAIProvider {
     /// A `/responses` suffix is not expected here (it is appended by callers),
     /// so a trailing `/responses` is trimmed to avoid `.../responses/responses`.
     pub(crate) fn resolve_api_base() -> String {
-        const OVERRIDE_VARS: [&str; 3] =
-            ["JCODE_OPENAI_API_BASE", "OPENAI_BASE_URL", "OPENAI_API_BASE"];
+        const OVERRIDE_VARS: [&str; 3] = [
+            "JCODE_OPENAI_API_BASE",
+            "OPENAI_BASE_URL",
+            "OPENAI_API_BASE",
+        ];
         for var in OVERRIDE_VARS {
             let Ok(raw) = std::env::var(var) else {
                 continue;

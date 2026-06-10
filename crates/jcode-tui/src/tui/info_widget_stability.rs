@@ -302,7 +302,11 @@ pub fn analyze_frames_with_scroll(
             m
         })
         .collect();
-    widgets.sort_by(|a, b| b.distraction().cmp(&a.distraction()).then(a.kind.cmp(&b.kind)));
+    widgets.sort_by(|a, b| {
+        b.distraction()
+            .cmp(&a.distraction())
+            .then(a.kind.cmp(&b.kind))
+    });
 
     report.total_move_events = widgets.iter().map(|w| w.move_events).sum();
     report.total_flicker = widgets
@@ -310,7 +314,10 @@ pub fn analyze_frames_with_scroll(
         .map(|w| w.appearances + w.disappearances)
         .sum();
     report.total_travel = widgets.iter().map(|w| w.x_travel + w.y_travel).sum();
-    report.total_content_travel = widgets.iter().map(|w| w.x_travel + w.content_y_travel).sum();
+    report.total_content_travel = widgets
+        .iter()
+        .map(|w| w.x_travel + w.content_y_travel)
+        .sum();
     report.total_recycles = widgets.iter().map(|w| w.recycles).sum();
     report.total_size_churn = widgets.iter().map(|w| w.width_churn + w.height_churn).sum();
     report.worst_widget = widgets
@@ -368,7 +375,10 @@ pub fn analyze_frames_with_scroll(
     report.mean_kind_visibility = if kind_visibility.is_empty() {
         0.0
     } else {
-        kind_visibility.iter().map(|k| k.visible_fraction).sum::<f64>()
+        kind_visibility
+            .iter()
+            .map(|k| k.visible_fraction)
+            .sum::<f64>()
             / kind_visibility.len() as f64
     };
     report.kind_visibility = kind_visibility;

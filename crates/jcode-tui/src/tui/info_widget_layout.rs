@@ -168,10 +168,7 @@ pub(crate) fn calculate_placements_anchored(
         // long lines), fall back to the instantaneous widths so we still show
         // something rather than nothing. Phase 1 always sizes pinned widgets to the
         // instantaneous widths for full coverage.
-        let dock = dock_widths_with_fallback(
-            margins.right_dock_widths(),
-            &margins.right_widths,
-        );
+        let dock = dock_widths_with_fallback(margins.right_dock_widths(), &margins.right_widths);
         margin_spaces.push(MarginSpace {
             side: Side::Right,
             widths: dock,
@@ -179,10 +176,7 @@ pub(crate) fn calculate_placements_anchored(
         });
     }
     if margins.centered && !margins.left_widths.is_empty() {
-        let dock = dock_widths_with_fallback(
-            margins.left_dock_widths(),
-            &margins.left_widths,
-        );
+        let dock = dock_widths_with_fallback(margins.left_dock_widths(), &margins.left_widths);
         margin_spaces.push(MarginSpace {
             side: Side::Left,
             widths: dock,

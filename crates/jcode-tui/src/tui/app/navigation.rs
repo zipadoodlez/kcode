@@ -717,7 +717,9 @@ impl App {
                 let Some(picker_cell) = self.session_picker_overlay.as_ref() else {
                     return false;
                 };
-                picker_cell.borrow_mut().apply_preview_scroll_step(direction)
+                picker_cell
+                    .borrow_mut()
+                    .apply_preview_scroll_step(direction)
             }
         }
     }
@@ -1435,11 +1437,7 @@ impl App {
         // If the upward scroll bottomed out against the top of the currently
         // loaded content, fold the unsatisfied intent into the prefetch as
         // overshoot so the newly loaded history scrolls into view smoothly.
-        let overshoot = if self.scroll_offset == 0 {
-            amount
-        } else {
-            0
-        };
+        let overshoot = if self.scroll_offset == 0 { amount } else { 0 };
         self.maybe_queue_compacted_history_load_with_overshoot(overshoot);
         before != (self.scroll_offset, self.auto_scroll_paused)
     }

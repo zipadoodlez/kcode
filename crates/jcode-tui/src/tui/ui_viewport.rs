@@ -291,7 +291,11 @@ pub(super) fn draw_messages(
     // is seamless (no jump to the new absolute top).
     let anchored_scroll = app
         .pending_history_anchor_lines_from_bottom()
-        .map(|lines_from_bottom| total_lines.saturating_sub(lines_from_bottom).min(max_scroll));
+        .map(|lines_from_bottom| {
+            total_lines
+                .saturating_sub(lines_from_bottom)
+                .min(max_scroll)
+        });
     let user_scroll = app.scroll_offset().min(max_scroll);
     let scroll = if let Some(anchored) = anchored_scroll {
         anchored
@@ -425,7 +429,11 @@ pub(super) fn draw_messages(
             let leftover = content_area.width.saturating_sub(occupied);
             // Non-centered mode draws the image flush left, leaving all the
             // slack on the right; centered mode splits it across both sides.
-            let free_right = if margins.centered { leftover / 2 } else { leftover };
+            let free_right = if margins.centered {
+                leftover / 2
+            } else {
+                leftover
+            };
             // Include the label line directly above the region so a widget
             // can't sit flush against the image top either.
             let row_first = region.abs_line_idx.saturating_sub(1).max(scroll);

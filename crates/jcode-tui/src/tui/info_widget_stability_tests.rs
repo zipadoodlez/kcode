@@ -70,7 +70,10 @@ fn flat_content_is_perfectly_stable() {
         "uniform content should produce zero widget travel, got {:#?}",
         report
     );
-    assert_eq!(report.total_flicker, 0, "uniform content should not flicker");
+    assert_eq!(
+        report.total_flicker, 0,
+        "uniform content should not flicker"
+    );
     assert!(report.distraction_per_100_lines.abs() < f64::EPSILON);
 }
 
@@ -79,9 +82,7 @@ fn ragged_content_makes_widgets_move() {
     // Chat-like content: mostly narrow lines with a long line every few rows. This
     // leaves fitting regions in the right margin, but their top/height shift under
     // the fixed screen rows as you scroll, which is exactly the reported distraction.
-    let content: Vec<u16> = (0..200)
-        .map(|i| if i % 7 == 0 { 95 } else { 28 })
-        .collect();
+    let content: Vec<u16> = (0..200).map(|i| if i % 7 == 0 { 95 } else { 28 }).collect();
     let report = measure_scroll(&content, 100, 24, &sample_data());
     assert!(
         report.widgets.iter().any(|w| w.frames_present > 0),
@@ -196,7 +197,6 @@ fn demo_quantify() {
     );
 }
 
-
 /// Widgets must never overlap each other while scrolling, even with the
 /// hide-in-place anchoring (a hidden widget's slot must stay reserved so a
 /// different widget can't be dropped into it and then collide when it returns).
@@ -227,7 +227,8 @@ fn content_anchoring_reduces_content_relative_travel() {
             .map(|i| if i % period == 0 { 95 } else { 28 })
             .collect();
         let screen = measure_scroll_mode(&content, 100, 24, &sample_data(), SimMode::Anchored);
-        let stuck = measure_scroll_mode(&content, 100, 24, &sample_data(), SimMode::ContentAnchored);
+        let stuck =
+            measure_scroll_mode(&content, 100, 24, &sample_data(), SimMode::ContentAnchored);
         assert!(
             stuck.widgets.iter().any(|w| w.frames_present > 0),
             "period {period}: expected a widget to be placed"
@@ -277,8 +278,14 @@ fn demo_content_anchor() {
             "{:<20} | screen-anchored: travel/100={:>6.1} content-travel/100={:>6.1} flicker/100={:>5.1} keepVis={:>3.0}% \
              | content-anchored: travel/100={:>6.1} content-travel/100={:>6.1} flicker/100={:>5.1} keepVis={:>3.0}%",
             name,
-            s.travel_per_100_lines, s.content_travel_per_100_lines, s.flicker_per_100_lines, s.mean_kind_visibility * 100.0,
-            c.travel_per_100_lines, c.content_travel_per_100_lines, c.flicker_per_100_lines, c.mean_kind_visibility * 100.0,
+            s.travel_per_100_lines,
+            s.content_travel_per_100_lines,
+            s.flicker_per_100_lines,
+            s.mean_kind_visibility * 100.0,
+            c.travel_per_100_lines,
+            c.content_travel_per_100_lines,
+            c.flicker_per_100_lines,
+            c.mean_kind_visibility * 100.0,
         );
     }
 
@@ -289,15 +296,21 @@ fn demo_content_anchor() {
     row("flat narrow", &vec![20; 300]);
     row(
         "long line every 7",
-        &(0..300).map(|i| if i % 7 == 0 { 95 } else { 28 }).collect::<Vec<_>>(),
+        &(0..300)
+            .map(|i| if i % 7 == 0 { 95 } else { 28 })
+            .collect::<Vec<_>>(),
     );
     row(
         "long line every 14",
-        &(0..300).map(|i| if i % 14 == 0 { 95 } else { 28 }).collect::<Vec<_>>(),
+        &(0..300)
+            .map(|i| if i % 14 == 0 { 95 } else { 28 })
+            .collect::<Vec<_>>(),
     );
     row(
         "code-like (ragged)",
-        &(0..300).map(|i| 20 + ((i * 37) % 70) as u16).collect::<Vec<_>>(),
+        &(0..300)
+            .map(|i| 20 + ((i * 37) % 70) as u16)
+            .collect::<Vec<_>>(),
     );
 }
 
@@ -314,10 +327,18 @@ fn demo_info_tradeoff() {
             "{:<20} | greedy: vis={:.2} cells={:>6.0} kinds={} keepVis={:>3.0}% travel/100={:>6.1} overlap={} \
              | anchored: vis={:.2} cells={:>6.0} kinds={} keepVis={:>3.0}% travel/100={:>6.1} overlap={}",
             name,
-            g.avg_widgets_visible, g.avg_visible_cells, g.distinct_kinds_seen,
-            g.mean_kind_visibility * 100.0, g.travel_per_100_lines, g.overlap_frames,
-            a.avg_widgets_visible, a.avg_visible_cells, a.distinct_kinds_seen,
-            a.mean_kind_visibility * 100.0, a.travel_per_100_lines, a.overlap_frames,
+            g.avg_widgets_visible,
+            g.avg_visible_cells,
+            g.distinct_kinds_seen,
+            g.mean_kind_visibility * 100.0,
+            g.travel_per_100_lines,
+            g.overlap_frames,
+            a.avg_widgets_visible,
+            a.avg_visible_cells,
+            a.distinct_kinds_seen,
+            a.mean_kind_visibility * 100.0,
+            a.travel_per_100_lines,
+            a.overlap_frames,
         );
     }
 
@@ -328,15 +349,21 @@ fn demo_info_tradeoff() {
     row("flat narrow", &vec![20; 300]);
     row(
         "long line every 7",
-        &(0..300).map(|i| if i % 7 == 0 { 95 } else { 28 }).collect::<Vec<_>>(),
+        &(0..300)
+            .map(|i| if i % 7 == 0 { 95 } else { 28 })
+            .collect::<Vec<_>>(),
     );
     row(
         "long line every 14",
-        &(0..300).map(|i| if i % 14 == 0 { 95 } else { 28 }).collect::<Vec<_>>(),
+        &(0..300)
+            .map(|i| if i % 14 == 0 { 95 } else { 28 })
+            .collect::<Vec<_>>(),
     );
     row(
         "code-like (ragged)",
-        &(0..300).map(|i| 20 + ((i * 37) % 70) as u16).collect::<Vec<_>>(),
+        &(0..300)
+            .map(|i| 20 + ((i * 37) % 70) as u16)
+            .collect::<Vec<_>>(),
     );
 }
 
@@ -370,7 +397,9 @@ fn demo_lookahead_sweep() {
         ),
         (
             "long line /14",
-            (0..300).map(|i| if i % 14 == 0 { 95 } else { 28 }).collect(),
+            (0..300)
+                .map(|i| if i % 14 == 0 { 95 } else { 28 })
+                .collect(),
         ),
         (
             "code-like",

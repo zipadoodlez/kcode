@@ -208,7 +208,9 @@ async fn fetch_compatible_profile_report(
             if let Some(api_key) = configured_key(profile.api_key_env, profile.env_file) {
                 match fetch_deepseek_balance(&api_key).await {
                     Ok(lines) => extra_info.extend(lines),
-                    Err(e) => extra_info.push(("Balance".to_string(), format!("unavailable ({})", e))),
+                    Err(e) => {
+                        extra_info.push(("Balance".to_string(), format!("unavailable ({})", e)))
+                    }
                 }
             }
         }
@@ -217,7 +219,9 @@ async fn fetch_compatible_profile_report(
                 let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
                 match fetch_moonshot_balance(&api_key, &resolved.api_base).await {
                     Ok(lines) => extra_info.extend(lines),
-                    Err(e) => extra_info.push(("Balance".to_string(), format!("unavailable ({})", e))),
+                    Err(e) => {
+                        extra_info.push(("Balance".to_string(), format!("unavailable ({})", e)))
+                    }
                 }
             }
         }
@@ -273,10 +277,7 @@ async fn fetch_deepseek_balance(api_key: &str) -> Result<Vec<(String, String)>> 
     }
     if let Some(infos) = json.get("balance_infos").and_then(|v| v.as_array()) {
         for info in infos {
-            let currency = info
-                .get("currency")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
+            let currency = info.get("currency").and_then(|v| v.as_str()).unwrap_or("?");
             let total = info
                 .get("total_balance")
                 .and_then(|v| v.as_str())

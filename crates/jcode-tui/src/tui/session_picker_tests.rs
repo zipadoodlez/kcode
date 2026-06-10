@@ -1613,7 +1613,11 @@ fn preview_render_cache_is_reused_across_scroll_and_rebuilt_on_selection_change(
     for _ in 0..5 {
         picker.scroll_preview_up(1);
         render(&mut picker);
-        let key_now = picker.preview_cache.as_ref().map(|c| c.key.clone()).unwrap();
+        let key_now = picker
+            .preview_cache
+            .as_ref()
+            .map(|c| c.key.clone())
+            .unwrap();
         assert!(
             key_now == key_after_build,
             "scrolling must reuse the cached wrapped preview"
@@ -1624,7 +1628,11 @@ fn preview_render_cache_is_reused_across_scroll_and_rebuilt_on_selection_change(
     // is rebuilt for the new selection.
     picker.next();
     render(&mut picker);
-    let key_after_nav = picker.preview_cache.as_ref().map(|c| c.key.clone()).unwrap();
+    let key_after_nav = picker
+        .preview_cache
+        .as_ref()
+        .map(|c| c.key.clone())
+        .unwrap();
     assert!(
         key_after_nav != key_after_build,
         "selecting a different session must invalidate the preview cache"
@@ -1781,7 +1789,10 @@ fn test_search_mode_ctrl_j_k_navigate_session_list() {
     picker
         .handle_overlay_key(KeyCode::Char('j'), KeyModifiers::CONTROL)
         .unwrap();
-    assert!(picker.search_query.is_empty(), "Ctrl+J must not type into search");
+    assert!(
+        picker.search_query.is_empty(),
+        "Ctrl+J must not type into search"
+    );
     let second = picker
         .selected_session()
         .map(|s| s.id.clone())
@@ -1792,7 +1803,10 @@ fn test_search_mode_ctrl_j_k_navigate_session_list() {
     picker
         .handle_overlay_key(KeyCode::Char('k'), KeyModifiers::CONTROL)
         .unwrap();
-    assert!(picker.search_query.is_empty(), "Ctrl+K must not type into search");
+    assert!(
+        picker.search_query.is_empty(),
+        "Ctrl+K must not type into search"
+    );
     assert_eq!(
         picker.selected_session().map(|s| s.id.clone()),
         Some(first),
@@ -1863,7 +1877,10 @@ fn test_search_mode_ctrl_u_clears_query() {
         .handle_overlay_key(KeyCode::Char('u'), KeyModifiers::CONTROL)
         .unwrap();
     assert_eq!(picker.search_query, "");
-    assert!(picker.search_active, "Ctrl+U clears text but stays in search");
+    assert!(
+        picker.search_active,
+        "Ctrl+U clears text but stays in search"
+    );
 }
 
 #[test]
@@ -1891,9 +1908,9 @@ fn test_current_dir_highlight_marks_matching_sessions() {
     // green so the highlight is visually distinct, not just present as text.
     let same_dir_color = rgb(120, 200, 140);
     let marker_styled_green = rows.iter().any(|line| {
-        line.spans.iter().any(|span| {
-            span.content.contains("here") && span.style.fg == Some(same_dir_color)
-        })
+        line.spans
+            .iter()
+            .any(|span| span.content.contains("here") && span.style.fg == Some(same_dir_color))
     });
     assert!(
         marker_styled_green,
