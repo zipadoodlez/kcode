@@ -43,6 +43,27 @@ fn key_status_from_response(status: reqwest::StatusCode) -> String {
     }
 }
 
+/// Free `GET {base}/models` probe used for OpenAI-compatible profiles that do
+/// not expose a balance API. Returns a human-readable key status.
+async fn probe_openai_compatible_key(api_base: &str, api_key: &str) -> String {
+    let base = api_base.trim_end_matches('/');
+    if base.is_empty() {
+        return "configured (no endpoint to probe)".to_string();
+    }
+    let client = crate::provider::shared_http_client();
+    let response = client
+        .get(format!("{}/models", base))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Accept", "application/json")
+        .timeout(HTTP_TIMEOUT)
+        .send()
+        .await;
+    match response {
+        Ok(response) => key_status_from_response(response.status()),
+        Err(e) => format!("check failed ({})", e),
+    }
+}
+
 fn month_start_utc() -> chrono::DateTime<chrono::Utc> {
     use chrono::Datelike;
     let now = chrono::Utc::now();
@@ -201,7 +222,14 @@ async fn fetch_compatible_profile_report(
             }
         }
         _ => {
-            extra_info.push(("Key".to_string(), "configured".to_string()));
+            // No provider-specific balance API: do a free `GET /models` probe
+            // against the profile's own endpoint so the key status is real
+            // rather than just "configured".
+            if let Some(api_key) = configured_key(profile.api_key_env, profile.env_file) {
+                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+                let status = probe_openai_compatible_key(&resolved.api_base, &api_key).await;
+                extra_info.push(("Key status".to_string(), status));
+            }
         }
     }
 

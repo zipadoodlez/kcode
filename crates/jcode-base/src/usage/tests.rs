@@ -674,7 +674,7 @@ fn test_activity_sweeper_skips_sources_with_dedicated_reports() {
     assert!(activity_source_has_dedicated_report("openai:oauth:openai-1"));
     assert!(activity_source_has_dedicated_report("openai:api-key"));
     // Unknown/uncovered sources fall through to the sweeper.
-    assert!(!activity_source_has_dedicated_report("cursor"));
     assert!(!activity_source_has_dedicated_report("bedrock"));
     assert!(!activity_source_has_dedicated_report("jcode"));
+    assert!(!activity_source_has_dedicated_report("some-custom-endpoint"));
 }

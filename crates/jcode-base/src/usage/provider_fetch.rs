@@ -488,6 +488,68 @@ pub(super) async fn fetch_gemini_usage_report() -> Option<ProviderUsage> {
     })
 }
 
+/// Cursor API-key report. Cursor's admin/usage API requires a paid plan; for
+/// free keys the `/v0/me` error body still tells us the key is live and which
+/// plan tier it is on, so we surface that.
+pub(super) async fn fetch_cursor_usage_report() -> Option<ProviderUsage> {
+    let api_key = auth::cursor::load_api_key().ok()?;
+
+    let client = crate::provider::shared_http_client();
+    let response = client
+        .get("https://api.cursor.com/v0/me")
+        .basic_auth(&api_key, Option::<&str>::None)
+        .header("Accept", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+
+    let mut extra_info = Vec::new();
+    match response {
+        Ok(response) => {
+            let status = response.status();
+            let body: serde_json::Value = response.json().await.unwrap_or_default();
+            if status.is_success() {
+                extra_info.push(("Key status".to_string(), "valid".to_string()));
+                if let Some(email) = body.get("email").and_then(|v| v.as_str()) {
+                    extra_info.push(("Account".to_string(), mask_email(email)));
+                }
+            } else if let Some(error) = body.get("error").and_then(|v| v.as_str()) {
+                if error.contains("free users") {
+                    // Key is live; the admin API is just gated to paid plans.
+                    extra_info.push(("Key status".to_string(), "valid".to_string()));
+                    extra_info.push(("Plan".to_string(), "free".to_string()));
+                    extra_info.push((
+                        "Usage API".to_string(),
+                        "requires Cursor Pro (admin API)".to_string(),
+                    ));
+                } else {
+                    extra_info.push((
+                        "Key status".to_string(),
+                        format!("{} ({})", error, status.as_u16()),
+                    ));
+                }
+            } else {
+                extra_info.push((
+                    "Key status".to_string(),
+                    format!("check failed ({})", status.as_u16()),
+                ));
+            }
+        }
+        Err(e) => {
+            extra_info.push(("Key status".to_string(), format!("check failed ({})", e)));
+        }
+    }
+
+    Some(ProviderUsage {
+        provider_name: "Cursor".to_string(),
+        limits: Vec::new(),
+        extra_info,
+        hard_limit_reached: false,
+        error: None,
+        last_used_unix_secs: None,
+    })
+}
+
 pub(super) async fn fetch_copilot_usage_report() -> Option<ProviderUsage> {
     if !auth::copilot::has_copilot_credentials() {
         return None;
