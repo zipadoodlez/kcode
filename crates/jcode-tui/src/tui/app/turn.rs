@@ -265,9 +265,8 @@ impl App {
                     }
                     // Redraw periodically
                     _ = redraw_interval.tick() => {
-                        if let Some(chunk) = self.stream_buffer.flush_smooth_frame() {
-                            self.append_streaming_text(&chunk);
-                        }
+                        let ops = self.stream_buffer.flush_smooth_frame();
+                        self.apply_stream_ops(ops);
                         // Poll for background compaction completion during streaming
                         self.poll_compaction_completion();
                         status_spinner_renderer.draw_full(self, terminal)?;
@@ -337,9 +336,8 @@ impl App {
                                                 let _ = self.session.save();
                                             }
                                             // Flush buffer and show partial response
-                                            if let Some(chunk) = self.stream_buffer.flush() {
-                                                self.append_streaming_text(&chunk);
-                                            }
+                                            let ops = self.stream_buffer.flush();
+                                            self.apply_stream_ops(ops);
                                             if !self.streaming.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
                                                 let content = self.collapse_reasoning_for_commit(content);
@@ -477,16 +475,25 @@ impl App {
                                         self.status = ProcessingStatus::Streaming;
                                         text_content.push_str(&text);
                                         self.resume_streaming_tps();
-                                        // Real output token: close any open reasoning region first so
-                                        // the answer renders as normal (non-quoted) text.
-                                        if self.reasoning_streaming && !text.trim().is_empty() {
-                                            self.close_reasoning_region(None);
-                                        }
-                                        if let Some(chunk) = self.stream_buffer.push(&text) {
-                                            self.append_streaming_text(&chunk);
-                                            self.broadcast_debug(crate::tui::backend::DebugEvent::TextDelta {
-                                                text: chunk.clone()
-                                            });
+                                        // The buffer queues a CloseReasoning marker ahead of real
+                                        // output so any open reasoning region closes in order as
+                                        // the paced stream reveals.
+                                        let ops = self.stream_buffer.push_text(&text);
+                                        let revealed: Vec<String> = ops
+                                            .iter()
+                                            .filter_map(|op| match op {
+                                                crate::tui::stream_buffer::StreamOp::Text(chunk) => {
+                                                    Some(chunk.clone())
+                                                }
+                                                _ => None,
+                                            })
+                                            .collect();
+                                        if self.apply_stream_ops(ops) {
+                                            for chunk in revealed {
+                                                self.broadcast_debug(crate::tui::backend::DebugEvent::TextDelta {
+                                                    text: chunk
+                                                });
+                                            }
                                             if eager_stream_redraw {
                                                 status_spinner_renderer.draw_full(self, terminal)?;
                                             }
@@ -730,14 +737,13 @@ impl App {
                                         }
                                         // Buffer thinking content for status/debug accounting.
                                         self.thinking_buffer.push_str(&thinking_text);
-                                        // Flush any pending real output before reasoning text.
-                                        if let Some(chunk) = self.stream_buffer.flush() {
-                                            self.append_streaming_text(&chunk);
-                                        }
-                                        // Only render thinking content if enabled in config.
+                                        // Only render thinking content if enabled in config. It is
+                                        // paced through the same segment-aware StreamBuffer as the
+                                        // answer text, so ordering is preserved without flushing
+                                        // and bursts trickle in smoothly.
                                         if config().display.reasoning_enabled() {
-                                            self.open_reasoning_region();
-                                            self.append_reasoning_text(&thinking_text);
+                                            let ops = self.stream_buffer.push_reasoning(&thinking_text);
+                                            self.apply_stream_ops(ops);
                                         }
                                         // Always capture reasoning text so it can be
                                         // persisted as a history-only trace, regardless
@@ -757,12 +763,12 @@ impl App {
                                         self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingEnd);
                                     }
                                     StreamEvent::ThinkingDone { duration_secs: _ } => {
-                                        // Flush any pending buffered text first
-                                        if let Some(chunk) = self.stream_buffer.flush() {
-                                            self.append_streaming_text(&chunk);
-                                        }
                                         if config().display.reasoning_enabled() {
-                                            self.close_reasoning_region(None);
+                                            // Queue the region close behind any still-buffered
+                                            // reasoning so it lands exactly after the final
+                                            // reasoning character reveals.
+                                            let ops = self.stream_buffer.push_close_reasoning();
+                                            self.apply_stream_ops(ops);
                                         }
                                         self.thinking_prefix_emitted = false;
                                         self.thinking_buffer.clear();
@@ -794,9 +800,8 @@ impl App {
                                                 });
                                         }
                                         // Flush any pending buffered text first
-                                        if let Some(chunk) = self.stream_buffer.flush() {
-                                            self.append_streaming_text(&chunk);
-                                        }
+                                        let ops = self.stream_buffer.flush();
+                                        self.apply_stream_ops(ops);
                                         let tokens_str = pre_tokens
                                             .map(|t| format!(" (was {} tokens)", t))
                                             .unwrap_or_default();
@@ -1063,9 +1068,8 @@ impl App {
             let duration = self.display_turn_duration_secs();
 
             // Flush any remaining buffered text
-            if let Some(chunk) = self.stream_buffer.flush() {
-                self.append_streaming_text(&chunk);
-            }
+            let ops = self.stream_buffer.flush();
+            self.apply_stream_ops(ops);
 
             if tool_calls.is_empty() {
                 // No tool calls - display full text_content
@@ -1245,9 +1249,8 @@ impl App {
                                             // Partial text+tool_calls were already saved
                                             // to the session before tool execution started.
                                             // Just preserve the visual streaming content.
-                                            if let Some(chunk) = self.stream_buffer.flush() {
-                                                self.append_streaming_text(&chunk);
-                                            }
+                                            let ops = self.stream_buffer.flush();
+                                            self.apply_stream_ops(ops);
                                             if !self.streaming.streaming_text.is_empty() {
                                                 let content = self.take_streaming_text();
                                                 let content = self.collapse_reasoning_for_commit(content);

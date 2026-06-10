@@ -8,4 +8,7 @@ pub use graph_topology::{GraphEdge, GraphNode, build_graph_topology, graph_node_
 pub mod keybind;
 pub mod stream_buffer;
 
-pub use stream_buffer::{StreamBuffer, StreamBufferMemoryProfile};
+pub use stream_buffer::{
+    SeriesStats, StreamBuffer, StreamBufferMemoryProfile, StreamJitterProfile, StreamKind,
+    StreamOp,
+};

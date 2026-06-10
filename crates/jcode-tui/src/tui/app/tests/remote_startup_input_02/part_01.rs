@@ -673,9 +673,8 @@ fn test_submit_input_commits_pending_streaming_assistant_text_before_user_messag
     // Mirror the real streaming caller: append any paced chunk the buffer reveals.
     // The paced StreamBuffer may reveal part of the text immediately, so commit
     // (below) must still flush the remainder.
-    if let Some(chunk) = app.stream_buffer.push(" that was still buffered.") {
-        app.append_streaming_text(&chunk);
-    }
+    let ops = app.stream_buffer.push_text(" that was still buffered.");
+    app.apply_stream_ops(ops);
 
     app.input = "follow up".to_string();
     app.cursor_pos = app.input.len();

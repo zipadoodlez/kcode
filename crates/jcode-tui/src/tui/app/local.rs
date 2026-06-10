@@ -76,8 +76,8 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
         app.submit_input();
         needs_redraw = true;
     }
-    if let Some(chunk) = app.stream_buffer.flush() {
-        app.append_streaming_text(&chunk);
+    let ops = app.stream_buffer.flush();
+    if app.apply_stream_ops(ops) {
         needs_redraw = true;
     }
     needs_redraw |= app.refresh_todos_view_if_needed();

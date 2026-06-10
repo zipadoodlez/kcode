@@ -115,6 +115,17 @@ impl App {
             })
             .to_string();
         }
+        if cmd == "stream-jitter" {
+            // Arrival-vs-reveal smoothness report for the paced stream buffer.
+            // `reveals.bucket_100ms_cv` well below `arrivals.bucket_100ms_cv`
+            // means pacing is smoothing provider bursts (text and reasoning).
+            return serde_json::to_string_pretty(&self.stream_buffer.jitter_profile())
+                .unwrap_or_else(|_| "{}".to_string());
+        }
+        if cmd == "stream-jitter:reset" {
+            self.stream_buffer.reset_jitter();
+            return "OK: stream jitter stats reset".to_string();
+        }
         if cmd == "overlay" || cmd == "overlay:status" {
             let overlay = crate::tui::visual_debug::overlay_enabled();
             return serde_json::json!({
