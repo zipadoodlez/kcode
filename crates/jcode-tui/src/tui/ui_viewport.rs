@@ -404,6 +404,47 @@ pub(super) fn draw_messages(
         margins.left_widths.push(0);
     }
 
+    // Image placeholders are blank lines, so the margin scan above sees their
+    // rows as fully free and would happily dock an info widget on top of the
+    // picture. Carve every visible image region (and its label line) out of
+    // the free-width profile. A region with unknown width (mermaid crop = 0)
+    // occupies the full row.
+    {
+        let img_start = prepared
+            .image_regions
+            .partition_point(|region| region.end_line <= scroll);
+        let img_end = prepared
+            .image_regions
+            .partition_point(|region| region.abs_line_idx < visible_end);
+        for region in &prepared.image_regions[img_start..img_end] {
+            let occupied = if region.width == 0 {
+                content_area.width
+            } else {
+                region.width.min(content_area.width)
+            };
+            let leftover = content_area.width.saturating_sub(occupied);
+            // Non-centered mode draws the image flush left, leaving all the
+            // slack on the right; centered mode splits it across both sides.
+            let free_right = if margins.centered { leftover / 2 } else { leftover };
+            // Include the label line directly above the region so a widget
+            // can't sit flush against the image top either.
+            let row_first = region.abs_line_idx.saturating_sub(1).max(scroll);
+            let row_last = region.end_line.min(visible_end);
+            for abs_line in row_first..row_last {
+                let row = prompt_preview_lines as usize + (abs_line - scroll);
+                if let Some(width) = margins.right_widths.get_mut(row) {
+                    *width = (*width).min(free_right);
+                }
+                if margins.centered
+                    && let Some(width) = margins.left_widths.get_mut(row)
+                {
+                    // Centered images leave half the slack on each side.
+                    *width = (*width).min(free_right);
+                }
+            }
+        }
+    }
+
     record_copy_viewport_frame_snapshot(
         prepared.clone(),
         scroll,

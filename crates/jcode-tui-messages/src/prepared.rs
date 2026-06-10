@@ -14,6 +14,9 @@ pub struct ImageRegion {
     pub hash: u64,
     /// Total height of the image placeholder in lines.
     pub height: u16,
+    /// Estimated rendered width in cells, including the left border. `0` means
+    /// unknown; consumers should treat the rows as fully occupied.
+    pub width: u16,
     /// How the image should be fit into its region when drawn.
     pub render: ImageRegionRender,
 }
@@ -157,6 +160,7 @@ impl PreparedChatFrame {
                 end_line: region.end_line + line_start,
                 hash: region.hash,
                 height: region.height,
+                width: region.width,
                 render: region.render,
             }));
             edit_tool_ranges.extend(prepared.edit_tool_ranges.iter().map(|range| EditToolRange {

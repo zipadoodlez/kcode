@@ -234,6 +234,9 @@ fn compute_image_regions(wrapped_lines: &[ratatui::text::Line<'static>]) -> Vec<
                 end_line: idx + height as usize,
                 hash,
                 height,
+                // Mermaid crop regions don't know their rendered width here;
+                // 0 = treat the rows as fully occupied for layout purposes.
+                width: 0,
                 render: jcode_tui_messages::ImageRegionRender::Crop,
             });
         }
