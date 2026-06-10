@@ -197,10 +197,16 @@ fn current_claude_account_scope() -> String {
 }
 
 fn current_anthropic_catalog_scope() -> String {
-    if std::env::var("ANTHROPIC_API_KEY")
-        .ok()
-        .map(|key| !key.trim().is_empty())
-        .unwrap_or(false)
+    // Match the credential-resolution order used by the Anthropic provider:
+    // the API key can come from the process env *or* the persisted
+    // anthropic.env file. Checking only the env var made env-file-keyed
+    // sessions read/write the OAuth scope while requests actually used the
+    // API key, so the `api-key` catalog scope went permanently stale.
+    if crate::provider_catalog::load_api_key_from_env_or_config(
+        "ANTHROPIC_API_KEY",
+        "anthropic.env",
+    )
+    .is_some()
     {
         "api-key".to_string()
     } else {
