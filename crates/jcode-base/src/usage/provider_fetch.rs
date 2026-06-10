@@ -378,6 +378,116 @@ pub(super) fn openrouter_api_key() -> Option<String> {
         .filter(|k| !k.is_empty())
 }
 
+/// Antigravity per-model quota report. The backend's `fetchAvailableModels`
+/// response carries `quotaInfo.remainingFraction` + `resetTime` per model,
+/// which is the only usage signal Antigravity exposes.
+pub(super) async fn fetch_antigravity_usage_report() -> Option<ProviderUsage> {
+    if !auth::antigravity::has_cached_auth() {
+        return None;
+    }
+
+    let provider = crate::provider::antigravity::AntigravityProvider::new();
+    let snapshot = match provider.fetch_catalog_snapshot_for_usage().await {
+        Ok(snapshot) => snapshot,
+        Err(e) => {
+            return Some(ProviderUsage {
+                provider_name: "Antigravity".to_string(),
+                error: Some(format!("Failed to fetch model quotas: {}", e)),
+                ..Default::default()
+            });
+        }
+    };
+
+    let mut limits = Vec::new();
+    let mut extra_info = Vec::new();
+
+    if let Ok(tokens) = auth::antigravity::load_tokens()
+        && let Some(email) = tokens.email.as_deref()
+    {
+        extra_info.push(("Account".to_string(), mask_email(email)));
+    }
+
+    let mut seen_names = std::collections::HashSet::new();
+    for model in &snapshot.models {
+        let Some(remaining_milli) = model.remaining_fraction_milli else {
+            continue;
+        };
+        // Skip internal/non-chat ids (tab completion, command models) that
+        // jcode never exposes for switching.
+        if model.id.starts_with("chat_") || model.id.starts_with("tab_") {
+            continue;
+        }
+        let name = model
+            .display_name
+            .clone()
+            .unwrap_or_else(|| model.id.clone());
+        // The backend lists alias ids with identical display names; report
+        // each visible model once.
+        if !seen_names.insert(name.clone()) {
+            continue;
+        }
+        let used_percent = ((1000u16.saturating_sub(remaining_milli)) as f32) / 10.0;
+        limits.push(UsageLimit {
+            name,
+            usage_percent: used_percent,
+            resets_at: model.reset_time.clone(),
+        });
+    }
+
+    if limits.is_empty() && extra_info.is_empty() {
+        return None;
+    }
+
+    Some(ProviderUsage {
+        provider_name: "Antigravity".to_string(),
+        limits,
+        extra_info,
+        hard_limit_reached: false,
+        error: None,
+        last_used_unix_secs: None,
+    })
+}
+
+/// Gemini API key validity report. Google does not expose per-key spend or
+/// quota through a public API, so this is a free `models.list` probe plus the
+/// local activity ledger.
+pub(super) async fn fetch_gemini_usage_report() -> Option<ProviderUsage> {
+    let api_key = auth::gemini::api_key()?;
+
+    let client = crate::provider::shared_http_client();
+    let response = client
+        .get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1")
+        .header("x-goog-api-key", api_key)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+
+    let status = match response {
+        Ok(response) => {
+            let status = response.status();
+            if status.is_success() {
+                "valid".to_string()
+            } else if status.as_u16() == 400 || status.as_u16() == 401 || status.as_u16() == 403 {
+                format!("invalid or unauthorized ({})", status.as_u16())
+            } else if status.as_u16() == 429 {
+                "rate limited (429)".to_string()
+            } else {
+                format!("check failed ({})", status.as_u16())
+            }
+        }
+        Err(e) => format!("check failed ({})", e),
+    };
+
+    Some(ProviderUsage {
+        provider_name: "Google Gemini (API key)".to_string(),
+        limits: Vec::new(),
+        extra_info: vec![("Key status".to_string(), status)],
+        hard_limit_reached: false,
+        error: None,
+        last_used_unix_secs: None,
+    })
+}
+
 pub(super) async fn fetch_copilot_usage_report() -> Option<ProviderUsage> {
     if !auth::copilot::has_copilot_credentials() {
         return None;

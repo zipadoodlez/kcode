@@ -303,7 +303,100 @@ fn enqueue_provider_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provider
         total += 1;
     }
 
+    if auth::antigravity::has_cached_auth() {
+        tasks.spawn(async {
+            fetch_antigravity_usage_report().await.map(|mut report| {
+                attach_activity(&mut report, "antigravity");
+                report
+            })
+        });
+        total += 1;
+    }
+
+    if auth::gemini::has_api_key() {
+        tasks.spawn(async {
+            fetch_gemini_usage_report().await.map(|mut report| {
+                attach_activity(&mut report, "gemini");
+                report
+            })
+        });
+        total += 1;
+    }
+
+    total += enqueue_activity_sweeper_task(tasks);
+
     total
+}
+
+/// Source-key prefixes that already get a dedicated `/usage` report; the
+/// sweeper skips these so used-but-unreported logins (Cursor, Bedrock,
+/// Azure, jcode subscription, ...) still show recency + local spend without
+/// double-listing covered providers.
+fn activity_source_has_dedicated_report(source_key: &str) -> bool {
+    // Dual-auth and OAuth surfaces always reported above.
+    if source_key.starts_with("claude:") || source_key.starts_with("openai:") {
+        return true;
+    }
+    match source_key {
+        "openrouter" => openrouter_api_key().is_some(),
+        "copilot" => auth::copilot::has_copilot_credentials(),
+        "antigravity" => auth::antigravity::has_cached_auth(),
+        "gemini" => auth::gemini::has_api_key(),
+        _ => {
+            // Direct OpenAI-compatible profiles are reported by the API-key
+            // module whenever their key is configured.
+            source_key
+                .strip_prefix("openai-compatible:")
+                .and_then(crate::provider_catalog::openai_compatible_profile_by_id)
+                .map(|profile| {
+                    crate::provider_catalog::load_api_key_from_env_or_config(
+                        profile.api_key_env,
+                        profile.env_file,
+                    )
+                    .is_some()
+                })
+                .unwrap_or(false)
+        }
+    }
+}
+
+/// One catch-all task that reports every ledger entry without a dedicated
+/// fetcher: last-used recency plus locally tracked spend.
+fn enqueue_activity_sweeper_task(
+    tasks: &mut tokio::task::JoinSet<Option<ProviderUsage>>,
+) -> usize {
+    let leftover: Vec<(String, crate::provider_activity::ProviderActivityEntry)> =
+        crate::provider_activity::all_entries()
+            .into_iter()
+            .filter(|(key, _)| !activity_source_has_dedicated_report(key))
+            .collect();
+    if leftover.is_empty() {
+        return 0;
+    }
+
+    let count = leftover.len();
+    for (source_key, entry) in leftover {
+        tasks.spawn(async move {
+            let mut extra_info = Vec::new();
+            if let Some(spend) = entry.spend {
+                extra_info.push((
+                    "Local spend (this machine)".to_string(),
+                    format!(
+                        "${:.2} today · ${:.2} this month · ${:.2} all-time",
+                        spend.day_usd, spend.month_usd, spend.all_time_usd
+                    ),
+                ));
+            }
+            let mut report = ProviderUsage {
+                provider_name: crate::provider_activity::display_name_for_source_key(&source_key),
+                extra_info,
+                ..Default::default()
+            };
+            attach_activity(&mut report, &source_key);
+            Some(report)
+        });
+    }
+    count
 }
 
 fn enqueue_anthropic_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUsage>>) -> usize {

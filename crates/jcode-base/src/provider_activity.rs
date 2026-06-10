@@ -194,6 +194,88 @@ pub fn spend_snapshot(source_key: &str) -> Option<ProviderSpend> {
     Some(spend)
 }
 
+/// All ledger entries (source key -> activity), with spend buckets rolled.
+/// Used by `/usage` to surface logins that have been used but have no
+/// dedicated usage fetcher (Cursor, Bedrock, Azure, ...).
+pub fn all_entries() -> Vec<(String, ProviderActivityEntry)> {
+    let mut guard = match LEDGER.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let needs_reload = guard
+        .as_ref()
+        .map(|cached| cached.loaded_at.elapsed() > QUERY_RELOAD_TTL)
+        .unwrap_or(true);
+    if needs_reload {
+        *guard = Some(CachedStore {
+            loaded_at: Instant::now(),
+            store: load_store(),
+        });
+    }
+    let Some(cached) = guard.as_ref() else {
+        return Vec::new();
+    };
+    let mut entries: Vec<(String, ProviderActivityEntry)> = cached
+        .store
+        .entries
+        .iter()
+        .map(|(key, entry)| {
+            let mut entry = entry.clone();
+            if let Some(spend) = entry.spend.as_mut() {
+                roll_spend(spend);
+            }
+            (key.clone(), entry)
+        })
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries
+}
+
+/// Human-facing display name for a ledger source key, e.g.
+/// `openai-compatible:deepseek` -> `DeepSeek (API key)`,
+/// `claude:oauth:claude-1` -> `Anthropic (Claude) [claude-1]`.
+pub fn display_name_for_source_key(source_key: &str) -> String {
+    if let Some(profile_id) = source_key.strip_prefix("openai-compatible:") {
+        let name = crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
+            .map(|profile| profile.display_name.to_string())
+            .unwrap_or_else(|| profile_id.to_string());
+        return format!("{} (API key)", name);
+    }
+    if let Some(label) = source_key.strip_prefix("claude:oauth:") {
+        return format!("Anthropic (Claude) [{}]", label);
+    }
+    if let Some(label) = source_key.strip_prefix("openai:oauth:") {
+        return format!("OpenAI (ChatGPT) [{}]", label);
+    }
+    match source_key {
+        "claude:api-key" => "Anthropic API key".to_string(),
+        "openai:api-key" => "OpenAI API key".to_string(),
+        "openrouter" => "OpenRouter".to_string(),
+        "jcode" => "Jcode subscription".to_string(),
+        "copilot" => "GitHub Copilot".to_string(),
+        "gemini" => "Google Gemini".to_string(),
+        "cursor" => "Cursor".to_string(),
+        "bedrock" => "AWS Bedrock".to_string(),
+        "antigravity" => "Antigravity".to_string(),
+        "azure-openai" => "Azure OpenAI".to_string(),
+        other => {
+            // Slug -> Title Case fallback.
+            other
+                .split('-')
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        Some(first) => first.to_uppercase().to_string() + chars.as_str(),
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    }
+}
+
 /// Human-readable relative age such as `just now`, `5m ago`, `3h ago`, `2d ago`.
 pub fn format_relative_age(unix_secs: u64) -> String {
     let secs = now_unix_secs().saturating_sub(unix_secs);

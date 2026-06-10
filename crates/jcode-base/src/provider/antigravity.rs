@@ -184,6 +184,18 @@ impl AntigravityProvider {
         Ok(model_ids)
     }
 
+    /// Live catalog snapshot for the `/usage` report: per-model quota
+    /// (`remaining_fraction_milli`) and reset times. Persists the warm catalog
+    /// like the runtime prefetch so the rest of the process benefits.
+    pub async fn fetch_catalog_snapshot_for_usage(&self) -> Result<CatalogSnapshot> {
+        let snapshot = self.fetch_available_models().await?;
+        if snapshot.models.is_empty() {
+            anyhow::bail!("Antigravity model catalog returned no models");
+        }
+        Self::persist_catalog(&snapshot);
+        Ok(snapshot)
+    }
+
     /// Resolve a requested model id into a real backend model id. The literal
     /// alias `"default"` (and the empty string) is rejected by the
     /// `generateContent` endpoint with HTTP 404, so it is mapped to the
