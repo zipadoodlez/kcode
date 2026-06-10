@@ -1390,6 +1390,7 @@ async fn parse_and_inject_key(
 
 fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
     let handled = super::commands::handle_help_command(app, trimmed)
+        || super::commands::handle_keys_command(app, trimmed)
         || super::commands::handle_session_command(app, trimmed)
         || super::commands::handle_test_command(app, trimmed)
         || super::commands::handle_disabled_mission_command(app, trimmed)

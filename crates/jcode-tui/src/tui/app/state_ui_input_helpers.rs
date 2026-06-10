@@ -117,6 +117,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/config", "Show or edit configuration"),
     RegisteredCommand::public("/log", "Mark the current location in the jcode logs"),
     RegisteredCommand::public(
+        "/keys",
+        "Show keybinding conflicts with your terminal and OS (/keys refresh to rescan)",
+    ),
+    RegisteredCommand::public(
         "/diff",
         "Cycle or set diff display mode (off/inline/full/pinned/file)",
     ),

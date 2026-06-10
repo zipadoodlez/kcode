@@ -3992,9 +3992,11 @@ dependencies = [
  "dirs",
  "global-hotkey",
  "jcode-build-meta",
+ "jcode-config-types",
  "jcode-logging",
  "jcode-storage",
  "serde",
+ "serde_json",
  "tempfile",
 ]
 
