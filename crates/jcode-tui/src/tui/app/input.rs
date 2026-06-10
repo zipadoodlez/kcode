@@ -2527,12 +2527,30 @@ impl App {
     /// the retained trace. Any previously retained trace begins its shrink-away
     /// animation (it is "fully done" now that a newer trace has closed). Used in
     /// `current` mode when decorative animations are enabled.
+    ///
+    /// Anchor stability: the retained trace renders in its own section *above*
+    /// the live stream, so retaining is only position-stable when the block was
+    /// already at the top of the stream (nothing else precedes it; the trace
+    /// stays visually in place). When answer text streamed *before* the block,
+    /// moving it above that text would make it jump upward, so the block is
+    /// discarded in place at the tail instead.
     pub(super) fn retain_current_reasoning_block(&mut self) {
         let block_start = self
             .reasoning_block_start
             .take()
             .unwrap_or(0)
             .min(self.streaming.streaming_text.len());
+        // Answer text precedes the block: retaining above would reposition the
+        // trace over content that streamed first. Drop it at its anchor (the
+        // stream tail) instead.
+        if !self.streaming.streaming_text[..block_start].trim().is_empty() {
+            self.streaming.streaming_text.truncate(block_start);
+            while self.streaming.streaming_text.ends_with('\n') {
+                self.streaming.streaming_text.pop();
+            }
+            self.refresh_split_view_if_needed();
+            return;
+        }
         // Everything from the block start onward is the reasoning markup. Split it
         // off so the preceding answer text (if any) stays in the live stream.
         let block = self.streaming.streaming_text.split_off(block_start);
@@ -2732,6 +2750,15 @@ impl App {
         if self.reasoning_streaming {
             self.close_reasoning_region(None);
         }
+        // The commit also ends this reasoning->answer segment. The retained
+        // trace renders below the transcript body, so once the answer commits
+        // into the body the trace's slot is chronologically wrong (it would sit
+        // *below* the answer it preceded, then bounce when the next thinking
+        // starts). Drop it (and any in-flight collapse) instantly: the commit
+        // reflows this area anyway, and one clean reflow beats animating a
+        // misplaced trace.
+        self.reasoning_retained = None;
+        self.reasoning_collapse = None;
 
         if self.streaming.streaming_text.is_empty() {
             self.stream_buffer.clear();

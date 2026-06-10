@@ -606,3 +606,67 @@ fn remote_reasoning_then_text_preserves_order_through_paced_buffer() {
         "answer must reveal after reasoning: {text:?}"
     );
 }
+
+#[test]
+fn retain_with_preceding_answer_text_discards_instead_of_repositioning() {
+    // The retained trace renders in its own section *above* the live stream.
+    // If answer text streamed before the reasoning block, hoisting the block
+    // above that text would visually reposition it (anchor violation). The
+    // block must be discarded at its anchor (the stream tail) instead.
+    let mut app = create_test_app();
+
+    app.append_streaming_text("answer text that streamed first");
+    app.open_reasoning_region();
+    app.append_reasoning_text("later thinking\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+
+    assert!(
+        app.reasoning_retained_markup().is_none(),
+        "block with preceding answer text must not be hoisted above it"
+    );
+    let text = app.streaming_text();
+    assert!(
+        text.contains("answer text that streamed first"),
+        "answer text must stay in the stream: {text:?}"
+    );
+    assert!(
+        !text.contains(jcode_tui_markdown::REASONING_SENTINEL),
+        "reasoning must be discarded in place: {text:?}"
+    );
+}
+
+#[test]
+fn commit_drops_retained_trace_instead_of_leaving_it_below_the_answer() {
+    // Committing the streamed answer moves it into the transcript body, which
+    // renders *above* the reasoning trace section. A trace retained across the
+    // commit would therefore appear below the answer it preceded (chronology
+    // flip) and bounce when the next thinking starts. The commit must drop it.
+    let mut app = create_test_app();
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("pre-answer thinking\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+    assert!(app.reasoning_retained_markup().is_some());
+
+    app.append_streaming_text("the final answer");
+    app.commit_pending_streaming_assistant_message();
+
+    assert!(
+        app.reasoning_retained_markup().is_none(),
+        "retained trace must not survive a commit boundary"
+    );
+    assert!(
+        app.reasoning_collapse_state().is_none(),
+        "no stale collapse animation across a commit"
+    );
+    assert!(
+        app.display_messages
+            .iter()
+            .any(|m| m.role == "assistant" && m.content.contains("the final answer")),
+        "answer must commit to the transcript"
+    );
+}
