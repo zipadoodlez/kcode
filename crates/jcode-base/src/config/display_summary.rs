@@ -85,6 +85,7 @@ impl Config {
 **Agent models:**
 - Swarm / subagent: {}
 - Swarm spawn mode: {}
+- Spawn hook: {}
 - Review: {}
 - Judge: {}
 - Memory: {}
@@ -232,6 +233,10 @@ impl Config {
                 .as_deref()
                 .unwrap_or("(inherit current session)"),
             self.agents.swarm_spawn_mode.as_str(),
+            self.terminal
+                .spawn_hook
+                .as_deref()
+                .unwrap_or("(built-in terminal detection)"),
             self.autoreview
                 .model
                 .as_deref()

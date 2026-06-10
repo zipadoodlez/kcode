@@ -283,6 +283,29 @@ swarm_spawn_mode = "visible"
 # Whether the memory sidecar handles relevance/extraction.
 # memory_sidecar_enabled = false
 
+[terminal]
+# External command that takes over headed session spawns (swarm agents,
+# resume-in-new-terminal, self-dev windows, restart restores).
+#
+# When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
+# opening a terminal emulator itself. The hook receives JCODE_SPAWN_* env vars
+# describing the spawn so multiplexers/wrappers can decide where it appears:
+#   JCODE_SPAWN_KIND        - "swarm-agent", "resume", "selfdev", "restart", ...
+#   JCODE_SPAWN_SESSION_ID  - session the window will run
+#   JCODE_SPAWN_TITLE       - suggested window/tab title
+#   JCODE_SPAWN_CWD         - session working directory (also the hook's cwd)
+#   JCODE_SPAWN_PROGRAM     - jcode binary path
+#   JCODE_SPAWN_COMMAND     - full shell-escaped command line
+#   JCODE_SPAWN_SWARM_ID / JCODE_SPAWN_COORDINATOR_SESSION_ID (swarm spawns)
+# If the hook fails to start, jcode falls back to built-in terminal detection.
+# Env override: JCODE_SPAWN_HOOK (set empty to disable a config hook).
+#
+# Examples:
+#   spawn_hook = "tmux new-window"                # tmux window per agent
+#   spawn_hook = "kitty @ launch --type=tab --"   # kitty tab per agent
+#   spawn_hook = "~/bin/jcode-spawn-router"       # custom placement script
+# spawn_hook = ""
+
 [ambient]
 # Ambient mode: background agent that maintains your codebase
 # Enable ambient mode (default: false)

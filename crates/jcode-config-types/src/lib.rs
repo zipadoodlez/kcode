@@ -452,6 +452,27 @@ impl SwarmSpawnMode {
     }
 }
 
+/// Terminal window/pane spawning configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct TerminalConfig {
+    /// External command that takes over headed session spawns (new terminal
+    /// windows for swarm agents, resume-in-new-terminal, self-dev, restarts).
+    ///
+    /// When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
+    /// opening a terminal emulator itself, with `JCODE_SPAWN_*` metadata env
+    /// vars describing the spawn (kind, session id, title, cwd, full command).
+    /// This lets multiplexers and wrappers (tmux, kitty remote, zellij, herd
+    /// runners, window managers) decide where and how the session appears.
+    ///
+    /// Example: `spawn_hook = "tmux new-window"` opens each headed spawn as a
+    /// tmux window in the current server. If the hook fails to launch, jcode
+    /// falls back to its built-in terminal detection.
+    ///
+    /// Env override: `JCODE_SPAWN_HOOK` (set empty to disable a config hook).
+    pub spawn_hook: Option<String>,
+}
+
 /// Automatic end-of-turn code review configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]

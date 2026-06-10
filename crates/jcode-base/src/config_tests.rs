@@ -110,6 +110,38 @@ fn test_env_override_swarm_model() {
 }
 
 #[test]
+fn spawn_hook_defaults_to_none_and_parses_from_toml() {
+    assert_eq!(Config::default().terminal.spawn_hook, None);
+
+    let cfg: Config = toml::from_str("[terminal]\nspawn_hook = \"tmux new-window\"\n")
+        .expect("spawn_hook should parse");
+    assert_eq!(cfg.terminal.spawn_hook.as_deref(), Some("tmux new-window"));
+}
+
+#[test]
+fn test_env_override_spawn_hook() {
+    let _guard = crate::storage::lock_test_env();
+    let prev = std::env::var_os("JCODE_SPAWN_HOOK");
+    crate::env::set_var("JCODE_SPAWN_HOOK", "kitty @ launch --type=tab --");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+    assert_eq!(
+        cfg.terminal.spawn_hook.as_deref(),
+        Some("kitty @ launch --type=tab --")
+    );
+
+    // Empty env value disables a config-file hook.
+    crate::env::set_var("JCODE_SPAWN_HOOK", "  ");
+    let mut cfg = Config::default();
+    cfg.terminal.spawn_hook = Some("tmux new-window".to_string());
+    cfg.apply_env_overrides();
+    assert_eq!(cfg.terminal.spawn_hook, None);
+
+    restore_env_var("JCODE_SPAWN_HOOK", prev);
+}
+
+#[test]
 fn test_env_override_memory_sidecar() {
     let _guard = crate::storage::lock_test_env();
     let prev_model = std::env::var_os("JCODE_MEMORY_MODEL");

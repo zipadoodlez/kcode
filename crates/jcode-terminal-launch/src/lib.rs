@@ -8,6 +8,16 @@ pub struct TerminalCommand {
     pub args: Vec<String>,
     pub title: Option<String>,
     pub fresh_spawn: bool,
+    /// What this spawn is for (e.g. "resume", "selfdev", "swarm-agent").
+    /// Exported as `JCODE_SPAWN_KIND` to spawn hooks and spawned terminals.
+    pub kind: Option<String>,
+    /// The jcode session this terminal will run, when known.
+    /// Exported as `JCODE_SPAWN_SESSION_ID`.
+    pub session_id: Option<String>,
+    /// Extra metadata env entries (e.g. `JCODE_SPAWN_SWARM_ID`) exported to
+    /// spawn hooks and spawned terminals. Applied after the first-class
+    /// `JCODE_SPAWN_*` keys, so entries here win on key collisions.
+    pub extra_env: Vec<(String, String)>,
 }
 
 impl TerminalCommand {
@@ -17,6 +27,9 @@ impl TerminalCommand {
             args,
             title: None,
             fresh_spawn: false,
+            kind: None,
+            session_id: None,
+            extra_env: Vec::new(),
         }
     }
 
@@ -27,6 +40,21 @@ impl TerminalCommand {
 
     pub fn fresh_spawn(mut self) -> Self {
         self.fresh_spawn = true;
+        self
+    }
+
+    pub fn kind(mut self, kind: impl Into<String>) -> Self {
+        self.kind = Some(kind.into());
+        self
+    }
+
+    pub fn session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+
+    pub fn spawn_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.extra_env.push((key.into(), value.into()));
         self
     }
 }
@@ -273,6 +301,165 @@ pub fn spawn_command_in_new_terminal_with(
     }
 }
 
+/// Parse an external spawn-hook command line into argv parts.
+///
+/// Supports basic POSIX-style word splitting: whitespace separates arguments,
+/// single and double quotes group words, and backslash escapes the next
+/// character (outside single quotes). Errors on empty input, unterminated
+/// quotes, and trailing escapes.
+pub fn parse_hook_command(raw: &str) -> Result<Vec<String>> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut token_started = false;
+
+    for ch in raw.chars() {
+        if escaped {
+            current.push(ch);
+            token_started = true;
+            escaped = false;
+            continue;
+        }
+
+        if let Some(quote_ch) = quote {
+            if ch == quote_ch {
+                quote = None;
+            } else if ch == '\\' && quote_ch == '"' {
+                escaped = true;
+            } else {
+                current.push(ch);
+                token_started = true;
+            }
+            continue;
+        }
+
+        match ch {
+            '\\' => {
+                escaped = true;
+                token_started = true;
+            }
+            '\'' | '"' => {
+                quote = Some(ch);
+                token_started = true;
+            }
+            ch if ch.is_whitespace() => {
+                if token_started {
+                    parts.push(std::mem::take(&mut current));
+                    token_started = false;
+                }
+            }
+            ch => {
+                current.push(ch);
+                token_started = true;
+            }
+        }
+    }
+
+    if escaped {
+        anyhow::bail!("spawn hook command ends with an escape character");
+    }
+    if quote.is_some() {
+        anyhow::bail!("spawn hook command has an unterminated quote");
+    }
+    if token_started {
+        parts.push(current);
+    }
+    if parts.is_empty() {
+        anyhow::bail!("spawn hook command is empty");
+    }
+
+    Ok(parts)
+}
+
+/// Expand a leading `~/` in a hook program path to the user's home directory,
+/// since the hook is executed directly (no shell) and would otherwise fail.
+fn expand_home(program: &str) -> PathBuf {
+    if let Some(rest) = program.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
+    }
+    PathBuf::from(program)
+}
+
+/// The `JCODE_SPAWN_*` metadata env exported to spawn hooks and to terminals
+/// launched by the built-in fallback:
+///
+/// - `JCODE_SPAWN_KIND`: why this spawn happened ("resume", "selfdev",
+///   "swarm-agent", ...), when known.
+/// - `JCODE_SPAWN_SESSION_ID`: the jcode session the window will run.
+/// - `JCODE_SPAWN_TITLE`: the suggested window/tab title.
+/// - `JCODE_SPAWN_CWD`: the working directory for the session.
+/// - `JCODE_SPAWN_PROGRAM`: path of the jcode binary to execute.
+/// - `JCODE_SPAWN_COMMAND`: the full command line, shell-escaped, for hooks
+///   (like tmux) that take a single shell-command string.
+///
+/// `TerminalCommand::extra_env` entries (e.g. `JCODE_SPAWN_SWARM_ID`,
+/// `JCODE_SPAWN_COORDINATOR_SESSION_ID`) are appended last and win collisions.
+fn spawn_metadata_env(command: &TerminalCommand, cwd: &Path) -> Vec<(String, String)> {
+    let mut env: Vec<(String, String)> = Vec::new();
+    if let Some(kind) = &command.kind {
+        env.push(("JCODE_SPAWN_KIND".to_string(), kind.clone()));
+    }
+    if let Some(session_id) = &command.session_id {
+        env.push(("JCODE_SPAWN_SESSION_ID".to_string(), session_id.clone()));
+    }
+    if let Some(title) = &command.title {
+        env.push(("JCODE_SPAWN_TITLE".to_string(), title.clone()));
+    }
+    env.push((
+        "JCODE_SPAWN_CWD".to_string(),
+        cwd.to_string_lossy().into_owned(),
+    ));
+    env.push((
+        "JCODE_SPAWN_PROGRAM".to_string(),
+        command.program.to_string_lossy().into_owned(),
+    ));
+    env.push((
+        "JCODE_SPAWN_COMMAND".to_string(),
+        shell_command(&command_parts(command)),
+    ));
+    env.extend(command.extra_env.iter().cloned());
+    env
+}
+
+/// Build the process invocation for an external spawn hook.
+///
+/// The hook command is parsed shell-style, then the target program and its
+/// arguments are appended as additional argv entries (the `$TERMINAL -e`
+/// convention), so `hook --flag` becomes `hook --flag <jcode> <args...>`.
+/// The hook runs in the session working directory with the full
+/// `JCODE_SPAWN_*` metadata env set (see [`spawn_metadata_env`]); hooks that
+/// need a single shell-command string (tmux, kitty `@ launch`) can use
+/// `$JCODE_SPAWN_COMMAND` instead of the appended argv.
+pub fn build_hook_spawn_command(
+    hook: &str,
+    command: &TerminalCommand,
+    cwd: &Path,
+) -> Result<Command> {
+    let parts = parse_hook_command(hook)?;
+    let (program, prefix_args) = parts
+        .split_first()
+        .expect("parse_hook_command guarantees at least one part");
+
+    let mut cmd = Command::new(expand_home(program));
+    cmd.args(prefix_args)
+        .arg(&command.program)
+        .args(&command.args)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if command.fresh_spawn {
+        cmd.env("JCODE_FRESH_SPAWN", "1");
+    }
+    for (key, value) in spawn_metadata_env(command, cwd) {
+        cmd.env(key, value);
+    }
+    Ok(cmd)
+}
+
 fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Option<Command> {
     let title = command.title.as_deref().unwrap_or("jcode");
     let mut cmd = Command::new(term);
@@ -360,6 +547,14 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
             cmd.arg(&command.program).args(&command.args);
         }
         _ => return None,
+    }
+
+    // Export spawn metadata to the terminal process so programs running
+    // inside (shells, multiplexers) can also see why the window was opened.
+    // Note: terminals launched indirectly (macOS `open`/`osascript` paths) do
+    // not inherit this env, matching the existing JCODE_FRESH_SPAWN caveat.
+    for (key, value) in spawn_metadata_env(command, cwd) {
+        cmd.env(key, value);
     }
 
     Some(cmd)
@@ -494,5 +689,122 @@ mod tests {
             Err(std::io::Error::from(std::io::ErrorKind::NotFound))
         });
         assert!(matches!(result, Ok(false)));
+    }
+
+    #[test]
+    fn parse_hook_command_splits_words_and_quotes() {
+        assert_eq!(
+            parse_hook_command("tmux new-window --").unwrap(),
+            vec!["tmux", "new-window", "--"]
+        );
+        assert_eq!(
+            parse_hook_command("my-hook --label 'two words'").unwrap(),
+            vec!["my-hook", "--label", "two words"]
+        );
+        assert_eq!(
+            parse_hook_command(r#"hook "a \"b\" c""#).unwrap(),
+            vec!["hook", r#"a "b" c"#]
+        );
+    }
+
+    #[test]
+    fn parse_hook_command_rejects_bad_input() {
+        assert!(parse_hook_command("").is_err());
+        assert!(parse_hook_command("   ").is_err());
+        assert!(parse_hook_command("hook 'unterminated").is_err());
+        assert!(parse_hook_command("hook trailing\\").is_err());
+    }
+
+    fn env_value(cmd: &Command, key: &str) -> Option<String> {
+        cmd.get_envs().find_map(|(k, v)| {
+            (k.to_string_lossy() == key).then(|| {
+                v.map(|v| v.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            })
+        })
+    }
+
+    #[test]
+    fn hook_spawn_command_appends_program_args_and_exports_metadata() {
+        let command = TerminalCommand::new(
+            std::path::PathBuf::from("/usr/local/bin/jcode"),
+            vec!["--resume".to_string(), "ses_abc".to_string()],
+        )
+        .title("🦊 jcode ses_abc")
+        .kind("swarm-agent")
+        .session_id("ses_abc")
+        .spawn_env("JCODE_SPAWN_SWARM_ID", "swarm-1")
+        .fresh_spawn();
+
+        let cmd = build_hook_spawn_command("tmux-hook --flag", &command, Path::new("/work/dir"))
+            .expect("hook command should build");
+
+        assert_eq!(cmd.get_program().to_string_lossy(), "tmux-hook");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec!["--flag", "/usr/local/bin/jcode", "--resume", "ses_abc"]
+        );
+        assert_eq!(
+            cmd.get_current_dir(),
+            Some(Path::new("/work/dir")),
+            "hook should run in the session working dir"
+        );
+
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_KIND").as_deref(),
+            Some("swarm-agent")
+        );
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_SESSION_ID").as_deref(),
+            Some("ses_abc")
+        );
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_TITLE").as_deref(),
+            Some("🦊 jcode ses_abc")
+        );
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_CWD").as_deref(),
+            Some("/work/dir")
+        );
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_PROGRAM").as_deref(),
+            Some("/usr/local/bin/jcode")
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_COMMAND").as_deref(),
+            Some("'/usr/local/bin/jcode' '--resume' 'ses_abc'")
+        );
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_SWARM_ID").as_deref(),
+            Some("swarm-1")
+        );
+        assert_eq!(env_value(&cmd, "JCODE_FRESH_SPAWN").as_deref(), Some("1"));
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn builtin_terminal_spawn_exports_metadata_env() {
+        let command = TerminalCommand::new(
+            std::path::PathBuf::from("/usr/local/bin/jcode"),
+            vec!["--resume".to_string(), "ses_abc".to_string()],
+        )
+        .kind("resume")
+        .session_id("ses_abc");
+
+        let cmd = build_spawn_command("kitty", &command, Path::new("/work/dir"))
+            .expect("kitty spawn command should build");
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_KIND").as_deref(),
+            Some("resume")
+        );
+        assert_eq!(
+            env_value(&cmd, "JCODE_SPAWN_SESSION_ID").as_deref(),
+            Some("ses_abc")
+        );
     }
 }

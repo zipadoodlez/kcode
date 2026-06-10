@@ -187,10 +187,23 @@ pub fn restore_snapshot(exe: &Path) -> Result<RestoreSnapshotResult> {
 
     for session in &snapshot.sessions {
         let cwd = resolve_session_cwd(session.working_dir.as_deref());
+        let context = crate::session_launch::SessionSpawnContext::kind("restart");
         let launched = if session.is_selfdev {
-            crate::session_launch::spawn_selfdev_in_new_terminal(exe, &session.session_id, &cwd)?
+            crate::session_launch::spawn_selfdev_in_new_terminal_with_context(
+                exe,
+                &session.session_id,
+                &cwd,
+                None,
+                &context,
+            )?
         } else {
-            crate::session_launch::spawn_resume_in_new_terminal(exe, &session.session_id, &cwd)?
+            crate::session_launch::spawn_resume_in_new_terminal_with_context(
+                exe,
+                &session.session_id,
+                &cwd,
+                None,
+                &context,
+            )?
         };
         outcomes.push(RestoreLaunchOutcome {
             session: session.clone(),

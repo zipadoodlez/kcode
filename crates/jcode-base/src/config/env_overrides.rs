@@ -312,6 +312,17 @@ impl Config {
             }
         }
 
+        // Terminal spawning
+        if let Ok(v) = std::env::var("JCODE_SPAWN_HOOK") {
+            let trimmed = v.trim();
+            // An explicitly empty env value disables a config-file hook.
+            self.terminal.spawn_hook = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+
         // Web search
         if let Ok(v) = std::env::var("JCODE_WEBSEARCH_ENGINE")
             && let Some(engine) = WebSearchEngine::parse(&v)

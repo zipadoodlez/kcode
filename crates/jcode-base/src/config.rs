@@ -9,8 +9,8 @@ pub use jcode_config_types::{
     DiffDisplayMode, DisplayConfig, FeatureConfig, GatewayConfig, KeybindingsConfig,
     MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
     NamedProviderType, NativeScrollbarConfig, PowerConfig, ProviderConfig, ReasoningDisplayMode,
-    SafetyConfig, SessionPickerResumeAction, SwarmSpawnMode, UpdateChannel, WebSearchConfig,
-    WebSearchEngine,
+    SafetyConfig, SessionPickerResumeAction, SwarmSpawnMode, TerminalConfig, UpdateChannel,
+    WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -131,6 +131,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_SIDE_PANEL_TOGGLE_KEY",
     "JCODE_SIDE_PANEL_NATIVE_SCROLLBAR",
     "JCODE_SMTP_PASSWORD",
+    "JCODE_SPAWN_HOOK",
     "JCODE_STREAM_IDLE_TIMEOUT_SECS",
     "JCODE_SWARM_ENABLED",
     "JCODE_SWARM_MODEL",
@@ -418,6 +419,9 @@ pub struct Config {
 
     /// Agent-specific model defaults
     pub agents: AgentsConfig,
+
+    /// Terminal window/pane spawning configuration
+    pub terminal: TerminalConfig,
 
     /// Ambient mode configuration
     pub ambient: AmbientConfig,
