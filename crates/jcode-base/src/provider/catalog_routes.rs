@@ -734,10 +734,29 @@ pub fn remote_model_routes_fallback(
 
         let mut added_any = false;
 
-        if provider_for_model(model) == Some("claude") && auth.anthropic.has_oauth {
-            let (available, detail) = anthropic_oauth_route_availability(model);
-            routes.push(build_anthropic_oauth_route(model, available, detail));
-            added_any = true;
+        if provider_for_model(model) == Some("claude") {
+            if auth.anthropic.has_oauth {
+                let (available, detail) = anthropic_oauth_route_availability(model);
+                routes.push(build_anthropic_oauth_route(model, available, detail));
+                added_any = true;
+            }
+            // An Anthropic API key is an equally valid direct route. Without
+            // this, a model that only reaches the picker via the names-only
+            // fallback path (e.g. a newly released model whose detailed route
+            // frame was oversized) shows an OAuth route but silently loses its
+            // API-key route even though the key works.
+            if auth.anthropic.has_api_key {
+                let (available, detail) = anthropic_api_key_route_availability(model);
+                routes.push(ModelRoute {
+                    model: model.clone(),
+                    provider: "Anthropic".to_string(),
+                    api_method: "claude-api".to_string(),
+                    available,
+                    detail,
+                    cheapness: cheapness_for_route(model, "Anthropic", "claude-api"),
+                });
+                added_any = true;
+            }
         }
 
         if ALL_OPENAI_MODELS.contains(&model.as_str()) {
