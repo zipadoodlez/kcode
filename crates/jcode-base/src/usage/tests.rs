@@ -379,6 +379,7 @@ fn test_usage_data_from_provider_report_maps_limits_and_extra_usage() {
         )],
         hard_limit_reached: false,
         error: None,
+        last_used_unix_secs: None,
     };
 
     let usage = usage_data_from_provider_report(&report);
@@ -640,4 +641,27 @@ fn test_account_usage_probe_detects_all_accounts_exhausted() {
     assert!(probe.all_accounts_exhausted());
     assert!(probe.best_available_alternative().is_none());
     assert!(probe.switch_guidance().is_none());
+}
+
+#[test]
+fn test_reports_sort_most_recently_used_first() {
+    let report = |name: &str, last_used: Option<u64>| ProviderUsage {
+        provider_name: name.to_string(),
+        last_used_unix_secs: last_used,
+        ..Default::default()
+    };
+
+    let mut results = vec![
+        report("Never Used B", None),
+        report("Old", Some(100)),
+        report("Never Used A", None),
+        report("Recent", Some(2_000_000)),
+    ];
+    sort_reports_most_recent_first(&mut results);
+
+    let names: Vec<&str> = results
+        .iter()
+        .map(|r| r.provider_name.as_str())
+        .collect();
+    assert_eq!(names, ["Recent", "Old", "Never Used A", "Never Used B"]);
 }

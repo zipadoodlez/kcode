@@ -232,12 +232,14 @@ impl App {
             is_anthropic,
         };
 
-        self.cost.total_cost += pricing.cost_for_usage(
+        let call_cost = pricing.cost_for_usage(
             self.streaming.streaming_input_tokens,
             self.streaming.streaming_output_tokens,
             self.streaming.streaming_cache_read_tokens.unwrap_or(0),
             self.streaming.streaming_cache_creation_tokens.unwrap_or(0),
         );
+        self.cost.total_cost += call_cost;
+        self.record_api_key_spend(call_cost);
     }
 
     /// Accrue the dollar cost of a single completed remote API call.
@@ -268,12 +270,34 @@ impl App {
         let Some(pricing) = self.resolve_remote_cost_pricing() else {
             return;
         };
-        self.cost.total_cost += pricing.cost_for_usage(
+        let call_cost = pricing.cost_for_usage(
             input_delta,
             output_delta,
             cache_read_delta,
             cache_creation_delta,
         );
+        self.cost.total_cost += call_cost;
+        self.record_api_key_spend(call_cost);
+    }
+
+    /// Persist an API-key call cost into the cross-provider activity ledger so
+    /// `/usage` can show per-login spend (today / month / all-time). Only ever
+    /// called from the billed-per-token paths, so every dollar recorded here
+    /// is real API-key spend rather than subscription usage.
+    fn record_api_key_spend(&self, call_cost: f32) {
+        if !call_cost.is_finite() || call_cost <= 0.0 {
+            return;
+        }
+        use crate::tui::TuiState;
+        let label = <Self as TuiState>::provider_name(self);
+        let runtime = active_runtime_provider_key();
+        let source_key =
+            crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref());
+        let cost = call_cost as f64;
+        // Ledger writes hit the filesystem; never block the render/input loop.
+        std::thread::spawn(move || {
+            crate::provider_activity::record_spend(&source_key, cost);
+        });
     }
 
     /// Resolve per-token pricing for the active *remote* session, or `None` when

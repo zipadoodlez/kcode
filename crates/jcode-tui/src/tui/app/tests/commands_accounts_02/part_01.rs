@@ -51,6 +51,7 @@ fn test_usage_report_updates_display_only_card_without_system_message() {
         extra_info: vec![("plan".to_string(), "pro".to_string())],
         hard_limit_reached: false,
         error: None,
+        last_used_unix_secs: None,
     }]);
 
     assert!(!app.usage_report_refreshing);
@@ -81,6 +82,7 @@ fn test_usage_progress_updates_card_incrementally() {
             extra_info: Vec::new(),
             hard_limit_reached: false,
             error: None,
+            last_used_unix_secs: None,
         }],
         completed: 1,
         total: 2,

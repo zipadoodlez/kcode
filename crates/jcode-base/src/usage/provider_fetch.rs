@@ -252,6 +252,7 @@ pub(super) async fn fetch_openai_usage_for_account(
         extra_info: parsed.extra_info,
         hard_limit_reached: parsed.hard_limit_reached,
         error: None,
+        last_used_unix_secs: None,
     };
     store_openai_usage(cache_key, openai_usage_data_from_provider_report(&report));
     report
@@ -356,6 +357,7 @@ pub(super) async fn fetch_openrouter_usage_report() -> Option<ProviderUsage> {
         extra_info,
         hard_limit_reached: false,
         error: None,
+        last_used_unix_secs: None,
     })
 }
 
@@ -493,5 +495,6 @@ pub(super) async fn fetch_copilot_usage_report() -> Option<ProviderUsage> {
         extra_info,
         hard_limit_reached: false,
         error: None,
+        last_used_unix_secs: None,
     })
 }

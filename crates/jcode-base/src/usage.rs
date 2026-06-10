@@ -4,12 +4,14 @@
 
 use crate::auth;
 mod accessors;
+mod api_keys;
 mod cache;
 mod display;
 mod model;
 mod openai_helpers;
 mod provider_fetch;
 pub use accessors::*;
+use api_keys::enqueue_api_key_usage_tasks;
 use cache::*;
 pub use jcode_usage_types::{ProviderUsage, ProviderUsageProgress, UsageLimit};
 pub use model::*;
@@ -148,7 +150,9 @@ where
 
     let now = Instant::now();
     let cached_results = if let Ok(map) = cache.lock() {
-        map.values().map(|(_, r)| r.clone()).collect::<Vec<_>>()
+        let mut cached = map.values().map(|(_, r)| r.clone()).collect::<Vec<_>>();
+        sort_reports_most_recent_first(&mut cached);
+        cached
     } else {
         Vec::new()
     };
@@ -247,6 +251,29 @@ fn upsert_provider_usage(results: &mut Vec<ProviderUsage>, report: ProviderUsage
     } else {
         results.push(report);
     }
+    sort_reports_most_recent_first(results);
+}
+
+/// Order reports so the most recently used login comes first. Sources jcode
+/// has never used sort last, alphabetically for stability.
+fn sort_reports_most_recent_first(results: &mut [ProviderUsage]) {
+    results.sort_by(|a, b| {
+        b.last_used_unix_secs
+            .cmp(&a.last_used_unix_secs)
+            .then_with(|| a.provider_name.cmp(&b.provider_name))
+    });
+}
+
+/// Stamp a report with last-used recency from the activity ledger: sets the
+/// sort key and appends a human-readable "Last used" detail line.
+fn attach_activity(report: &mut ProviderUsage, source_key: &str) {
+    if let Some(used) = crate::provider_activity::last_used_unix_secs(source_key) {
+        report.last_used_unix_secs = Some(used);
+        report.extra_info.push((
+            "Last used".to_string(),
+            crate::provider_activity::format_relative_age(used),
+        ));
+    }
 }
 
 fn enqueue_provider_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUsage>>) -> usize {
@@ -254,14 +281,25 @@ fn enqueue_provider_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provider
 
     total += enqueue_anthropic_usage_tasks(tasks);
     total += enqueue_openai_usage_tasks(tasks);
+    total += enqueue_api_key_usage_tasks(tasks);
 
     if openrouter_api_key().is_some() {
-        tasks.spawn(async { fetch_openrouter_usage_report().await });
+        tasks.spawn(async {
+            fetch_openrouter_usage_report().await.map(|mut report| {
+                attach_activity(&mut report, "openrouter");
+                report
+            })
+        });
         total += 1;
     }
 
     if auth::copilot::has_copilot_credentials() {
-        tasks.spawn(async { fetch_copilot_usage_report().await });
+        tasks.spawn(async {
+            fetch_copilot_usage_report().await.map(|mut report| {
+                attach_activity(&mut report, "copilot");
+                report
+            })
+        });
         total += 1;
     }
 
@@ -274,16 +312,16 @@ fn enqueue_anthropic_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provide
         _ => match auth::claude::load_credentials() {
             Ok(creds) if !creds.access_token.is_empty() => {
                 tasks.spawn(async move {
-                    Some(
-                        fetch_anthropic_usage_for_token(
-                            "Anthropic (Claude)".to_string(),
-                            creds.access_token,
-                            creds.refresh_token,
-                            "default".to_string(),
-                            creds.expires_at,
-                        )
-                        .await,
+                    let mut report = fetch_anthropic_usage_for_token(
+                        "Anthropic (Claude)".to_string(),
+                        creds.access_token,
+                        creds.refresh_token,
+                        "default".to_string(),
+                        creds.expires_at,
                     )
+                    .await;
+                    attach_activity(&mut report, "claude:oauth:default");
+                    Some(report)
                 });
                 return 1;
             }
@@ -321,16 +359,17 @@ fn enqueue_anthropic_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provide
         };
 
         tasks.spawn(async move {
-            Some(
-                fetch_anthropic_usage_for_token(
-                    label,
-                    account.access,
-                    account.refresh,
-                    account.label,
-                    account.expires,
-                )
-                .await,
+            let source_key = format!("claude:oauth:{}", account.label);
+            let mut report = fetch_anthropic_usage_for_token(
+                label,
+                account.access,
+                account.refresh,
+                account.label,
+                account.expires,
             )
+            .await;
+            attach_activity(&mut report, &source_key);
+            Some(report)
         });
     }
 
@@ -358,9 +397,11 @@ fn enqueue_openai_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUs
                 expires_at: account.expires_at,
             };
             tasks.spawn(async move {
-                Some(
-                    fetch_openai_usage_for_account(display_name, creds, Some(&account_label)).await,
-                )
+                let source_key = format!("openai:oauth:{}", account_label);
+                let mut report =
+                    fetch_openai_usage_for_account(display_name, creds, Some(&account_label)).await;
+                attach_activity(&mut report, &source_key);
+                Some(report)
             });
         }
         return account_count;
@@ -376,14 +417,14 @@ fn enqueue_openai_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<ProviderUs
     }
 
     tasks.spawn(async move {
-        Some(
-            fetch_openai_usage_for_account(
-                openai_provider_display_name("default", None, 1, true),
-                creds,
-                None,
-            )
-            .await,
+        let mut report = fetch_openai_usage_for_account(
+            openai_provider_display_name("default", None, 1, true),
+            creds,
+            None,
         )
+        .await;
+        attach_activity(&mut report, "openai:oauth:default");
+        Some(report)
     });
     1
 }

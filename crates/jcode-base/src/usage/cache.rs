@@ -159,6 +159,7 @@ pub(super) fn provider_report_from_usage_data(
         extra_info,
         hard_limit_reached: false,
         error: None,
+        last_used_unix_secs: None,
     }
 }
 
@@ -256,6 +257,7 @@ pub(super) fn provider_report_from_openai_usage_data(
         extra_info: Vec::new(),
         hard_limit_reached: data.hard_limit_reached,
         error: None,
+        last_used_unix_secs: None,
     }
 }
 

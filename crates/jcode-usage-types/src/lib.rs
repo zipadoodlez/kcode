@@ -5,6 +5,9 @@ pub struct ProviderUsage {
     pub extra_info: Vec<(String, String)>,
     pub hard_limit_reached: bool,
     pub error: Option<String>,
+    /// When jcode last successfully used this login/credential (unix seconds).
+    /// Drives most-recently-used-first ordering in `/usage`. `None` sorts last.
+    pub last_used_unix_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
