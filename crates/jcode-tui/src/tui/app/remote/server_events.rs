@@ -1438,12 +1438,16 @@ pub(in crate::tui::app) fn handle_server_event(
             if images.is_empty() {
                 return false;
             }
-            // Append the freshly-read tool images so the pinned-image side pane
-            // updates immediately, without waiting for the next full History
-            // reload. A later History payload replaces this list wholesale, so
-            // duplicates are not a long-term concern.
+            // Append the freshly-read tool images so the inline transcript
+            // images update immediately, without waiting for the next full
+            // History reload. A later History payload replaces this list
+            // wholesale, so duplicates are not a long-term concern.
             let added = images.len();
             app.remote_side_pane_images.extend(images);
+            // The image-set signature is cached per display_messages_version,
+            // which this event does not bump; drop the cached value so the
+            // prepared-frame and body caches see the new image immediately.
+            app.invalidate_side_pane_images_signature();
             crate::logging::info(&format!(
                 "SidePaneImages: appended {} live image(s) (total={}, user_hidden={}, explicit_hidden={}) session={}",
                 added,

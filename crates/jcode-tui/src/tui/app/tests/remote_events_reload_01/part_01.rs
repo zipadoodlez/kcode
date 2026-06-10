@@ -1073,6 +1073,7 @@ fn test_handle_server_event_side_pane_images_populates_pane_live() {
                 source: crate::session::RenderedImageSource::ToolResult {
                     tool_name: "read".to_string(),
                 },
+                anchor: None,
             }],
         },
         &mut remote,
@@ -1107,6 +1108,7 @@ fn test_handle_server_event_side_pane_images_ignores_inactive_session() {
                 source: crate::session::RenderedImageSource::ToolResult {
                     tool_name: "read".to_string(),
                 },
+                anchor: None,
             }],
         },
         &mut remote,

@@ -6,6 +6,8 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         messages_version: 1,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        pin_images: true,
+        images_signature: (0, 0),
     };
     let key_b = BodyCacheKey {
         width: 41,
@@ -68,6 +70,8 @@ fn test_body_cache_state_evicts_oldest_entries() {
             messages_version: 1,
             diagram_mode: crate::config::DiagramDisplayMode::Pinned,
             centered: false,
+            pin_images: true,
+            images_signature: (0, 0),
         };
         let prepared = Arc::new(PreparedMessages {
             wrapped_lines: vec![Line::from(format!("{idx}"))],
@@ -101,6 +105,8 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
         messages_version: 99,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        pin_images: true,
+        images_signature: (0, 0),
     };
     let prepared = make_prepared_messages_with_content_bytes(3 * 1024 * 1024, "body-large-");
 
@@ -124,6 +130,8 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        pin_images: true,
+        images_signature: (0, 0),
     };
     let prepared = make_oversized_prepared_messages("body-oversized-");
 
@@ -148,6 +156,8 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        pin_images: true,
+        images_signature: (0, 0),
     };
     let key_b = BodyCacheKey {
         width: 139,
@@ -179,6 +189,8 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
         messages_version: 120,
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
+        pin_images: true,
+        images_signature: (0, 0),
     };
     let prepared = make_oversized_prepared_messages("body-oversized-base-");
 
@@ -498,4 +510,138 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
     assert!(Arc::ptr_eq(&hit_a, &prepared_a));
     assert!(Arc::ptr_eq(&hit_b, &prepared_b));
     assert_eq!(cache.oversized_entries.len(), 2);
+}
+
+/// 1x1 transparent PNG used to exercise the real inline-image header parse.
+const BODY_ANCHOR_TINY_PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+fn anchored_tool_image(tool_id: &str) -> crate::session::RenderedImage {
+    crate::session::RenderedImage {
+        media_type: "image/png".to_string(),
+        data: BODY_ANCHOR_TINY_PNG_B64.to_string(),
+        label: Some("shot.png".to_string()),
+        source: crate::session::RenderedImageSource::ToolResult {
+            tool_name: "read".to_string(),
+        },
+        anchor: Some(crate::session::RenderedImageAnchor::ToolCall {
+            id: tool_id.to_string(),
+        }),
+    }
+}
+
+fn read_tool_call(tool_id: &str) -> crate::message::ToolCall {
+    crate::message::ToolCall {
+        id: tool_id.to_string(),
+        name: "read".to_string(),
+        input: serde_json::json!({"file_path": "shot.png"}),
+        intent: None,
+        thought_signature: None,
+    }
+}
+
+#[test]
+fn test_prepare_body_anchors_tool_image_after_tool_message() {
+    let state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("read the screenshot"),
+            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-1")),
+            DisplayMessage::assistant("that is a screenshot"),
+        ],
+        messages_version: 1,
+        side_pane_images: vec![anchored_tool_image("tool-img-1")],
+        pin_images: true,
+        ..Default::default()
+    };
+
+    let prepared = super::prepare::prepare_body(&state, 80, false);
+    assert_eq!(
+        prepared.image_regions.len(),
+        1,
+        "anchored image should produce exactly one Fit region in the body"
+    );
+    let region = &prepared.image_regions[0];
+    assert_eq!(region.render, jcode_tui_messages::ImageRegionRender::Fit);
+    assert!(region.width > 2);
+
+    // The region must sit between the tool message and the assistant reply.
+    let plain = &prepared.wrapped_plain_lines;
+    let assistant_line = plain
+        .iter()
+        .position(|line| line.contains("that is a screenshot"))
+        .expect("assistant reply should render");
+    assert!(
+        region.abs_line_idx < assistant_line,
+        "image region (line {}) should render before the assistant reply (line {})",
+        region.abs_line_idx,
+        assistant_line
+    );
+    let label_line = plain
+        .iter()
+        .position(|line| line.contains("shot.png") && line.contains("1×1"))
+        .expect("image label line should render");
+    assert!(
+        label_line < region.abs_line_idx,
+        "label should sit directly above the image region"
+    );
+}
+
+#[test]
+fn test_prepare_body_incremental_anchors_image_on_new_tool_message() {
+    let base_state = TestState {
+        display_messages: vec![DisplayMessage::user("read the screenshot")],
+        messages_version: 1,
+        pin_images: true,
+        ..Default::default()
+    };
+    let grown_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("read the screenshot"),
+            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-2")),
+        ],
+        messages_version: 2,
+        side_pane_images: vec![anchored_tool_image("tool-img-2")],
+        pin_images: true,
+        ..Default::default()
+    };
+
+    let prepared = Arc::new(super::prepare::prepare_body(&base_state, 80, false));
+    assert!(prepared.image_regions.is_empty());
+    let incremented = super::prepare::prepare_body_incremental(&grown_state, 80, prepared, 1);
+    assert_eq!(
+        incremented.image_regions.len(),
+        1,
+        "incremental append should inject the anchored image region"
+    );
+    assert_eq!(
+        incremented.image_regions[0].render,
+        jcode_tui_messages::ImageRegionRender::Fit
+    );
+
+    // Incremental output must match a full rebuild.
+    let full = super::prepare::prepare_body(&grown_state, 80, false);
+    assert_eq!(full.image_regions.len(), 1);
+    assert_eq!(
+        full.image_regions[0].abs_line_idx,
+        incremented.image_regions[0].abs_line_idx
+    );
+}
+
+#[test]
+fn test_prepare_body_skips_anchored_images_when_pin_images_off() {
+    let state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("read the screenshot"),
+            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-3")),
+        ],
+        messages_version: 1,
+        side_pane_images: vec![anchored_tool_image("tool-img-3")],
+        pin_images: false,
+        ..Default::default()
+    };
+
+    let prepared = super::prepare::prepare_body(&state, 80, false);
+    assert!(
+        prepared.image_regions.is_empty(),
+        "hidden images must not inject regions into the body"
+    );
 }

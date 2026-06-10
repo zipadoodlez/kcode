@@ -114,6 +114,27 @@ pub fn disable_keyboard_enhancement() {
     );
 }
 
+/// Hash a rendered image's transcript anchor into `hasher`. Shared by the
+/// default and `App` implementations of `side_pane_images_signature` so both
+/// stay in lockstep.
+pub(crate) fn hash_rendered_image_anchor(
+    anchor: Option<&crate::session::RenderedImageAnchor>,
+    hasher: &mut impl std::hash::Hasher,
+) {
+    use std::hash::Hash;
+    match anchor {
+        None => 0u8.hash(hasher),
+        Some(crate::session::RenderedImageAnchor::ToolCall { id }) => {
+            1u8.hash(hasher);
+            id.hash(hasher);
+        }
+        Some(crate::session::RenderedImageAnchor::UserPrompt { ordinal }) => {
+            2u8.hash(hasher);
+            ordinal.hash(hasher);
+        }
+    }
+}
+
 /// Trait for TUI state consumed by the shared renderer.
 ///
 /// This is a wide (114-method) presentation interface: the read-only surface the
@@ -147,6 +168,9 @@ pub trait TuiState {
             image.data.len().hash(&mut hasher);
             // A short prefix is enough to distinguish distinct payloads cheaply.
             image.data.as_bytes().iter().take(64).for_each(|b| b.hash(&mut hasher));
+            // The anchor determines where the image renders in the transcript,
+            // so anchor changes must invalidate prepared frames too.
+            hash_rendered_image_anchor(image.anchor.as_ref(), &mut hasher);
         }
         (images.len(), hasher.finish())
     }

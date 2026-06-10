@@ -782,6 +782,11 @@ struct BodyCacheKey {
     messages_version: u64,
     diagram_mode: crate::config::DiagramDisplayMode,
     centered: bool,
+    /// Whether inline images render at all (Alt+M hides them).
+    pin_images: bool,
+    /// Signature of the inline image set; anchored images render inside the
+    /// body, so the body must rebuild when images arrive or change.
+    images_signature: (usize, u64),
 }
 
 #[derive(Clone)]
@@ -851,6 +856,11 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    // Anchored inline images render inside the body, and a
+                    // late-arriving image may target an already-prepared
+                    // message; only reuse bases built with the same image set.
+                    && entry.key.pin_images == key.pin_images
+                    && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|entry| entry.msg_count)
             .map(|entry| (entry.prepared.clone(), entry.msg_count));
@@ -864,6 +874,11 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    // Anchored inline images render inside the body, and a
+                    // late-arriving image may target an already-prepared
+                    // message; only reuse bases built with the same image set.
+                    && entry.key.pin_images == key.pin_images
+                    && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|entry| entry.msg_count)
             .map(|entry| (entry.prepared.clone(), entry.msg_count));
@@ -897,6 +912,11 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    // Anchored inline images render inside the body, and a
+                    // late-arriving image may target an already-prepared
+                    // message; only reuse bases built with the same image set.
+                    && entry.key.pin_images == key.pin_images
+                    && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|(_, entry)| entry.msg_count)
             .map(|(idx, entry)| (false, idx, entry.msg_count));
@@ -911,6 +931,11 @@ impl BodyCacheState {
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
                     && entry.key.centered == key.centered
+                    // Anchored inline images render inside the body, and a
+                    // late-arriving image may target an already-prepared
+                    // message; only reuse bases built with the same image set.
+                    && entry.key.pin_images == key.pin_images
+                    && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|(_, entry)| entry.msg_count)
             .map(|(idx, entry)| (true, idx, entry.msg_count));

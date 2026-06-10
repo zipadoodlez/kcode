@@ -285,6 +285,7 @@ fn test_side_pane_images_event_roundtrip() -> Result<()> {
             source: jcode_session_types::RenderedImageSource::ToolResult {
                 tool_name: "read".to_string(),
             },
+            anchor: None,
         }],
     };
     let json = encode_event(&event);

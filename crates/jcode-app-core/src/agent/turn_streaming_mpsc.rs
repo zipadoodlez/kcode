@@ -1186,7 +1186,7 @@ impl Agent {
                             });
 
                             let side_pane_images =
-                                tool_output_side_pane_images(&tc.name, &tc.input, &output);
+                                tool_output_side_pane_images(&tc.id, &tc.name, &tc.input, &output);
                             if !side_pane_images.is_empty() {
                                 logging::info(&format!(
                                     "SidePaneImages: emitting {} image(s) from tool '{}' (session={})",

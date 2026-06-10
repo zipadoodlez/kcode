@@ -138,6 +138,8 @@ struct TestState {
     compacted_hidden_user_prompts: usize,
     reasoning_retained: Option<String>,
     reasoning_collapse: Option<(String, f32)>,
+    side_pane_images: Vec<crate::session::RenderedImage>,
+    pin_images: bool,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -163,7 +165,7 @@ impl crate::tui::TuiState for TestState {
         })
     }
     fn side_pane_images(&self) -> Vec<crate::session::RenderedImage> {
-        Vec::new()
+        self.side_pane_images.clone()
     }
     fn display_messages_version(&self) -> u64 {
         self.messages_version
@@ -391,7 +393,7 @@ impl crate::tui::TuiState for TestState {
         &EMPTY
     }
     fn pin_images(&self) -> bool {
-        false
+        self.pin_images
     }
     fn diff_line_wrap(&self) -> bool {
         true

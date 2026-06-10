@@ -148,6 +148,13 @@ impl App {
         self.bump_display_messages_version_no_stats();
     }
 
+    /// Drop the cached inline-image signature so the next prepared frame
+    /// recomputes it. Needed when the image set changes without a
+    /// display-messages mutation (e.g. a live SidePaneImages event).
+    pub(super) fn invalidate_side_pane_images_signature(&mut self) {
+        self.side_pane_images_signature_cache.set(None);
+    }
+
     /// Bump the display-messages version without rescanning the transcript to
     /// recompute counters. Callers that have already maintained the cached
     /// counters incrementally (e.g. a single append) use this to stay O(1).

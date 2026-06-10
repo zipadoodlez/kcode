@@ -272,6 +272,7 @@ fn debug_memory_profile_includes_app_owned_summary_for_large_client_state() {
             data: "x".repeat(32 * 1024),
             label: Some("preview.png".to_string()),
             source: crate::session::RenderedImageSource::UserInput,
+            anchor: None,
         });
     app.observe_page_markdown = "# observe\n".repeat(256);
     app.input_undo_stack.push(("draft ".repeat(256), 12));

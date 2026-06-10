@@ -1702,3 +1702,130 @@ fn reasoning_trace_survives_session_save_and_load() -> Result<()> {
     assert!(has_trace, "ReasoningTrace must survive save/load roundtrip");
     Ok(())
 }
+
+#[test]
+fn test_render_images_anchors_tool_and_user_images() {
+    let mut session = Session::create_with_id(
+        "session_render_image_anchor_test".to_string(),
+        None,
+        Some("image anchor test".to_string()),
+    );
+
+    // Prompt 0 with a pasted image.
+    session.add_message(
+        Role::User,
+        vec![
+            ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: "user-image-data".to_string(),
+            },
+            ContentBlock::Text {
+                text: "look at this".to_string(),
+                cache_control: None,
+            },
+        ],
+    );
+    // Assistant calls a tool.
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::ToolUse {
+            id: "tool-call-1".to_string(),
+            name: "read".to_string(),
+            input: serde_json::json!({"file_path": "shot.png"}),
+            thought_signature: None,
+        }],
+    );
+    // Tool result with an attached image.
+    session.add_message(
+        Role::User,
+        vec![
+            ContentBlock::ToolResult {
+                tool_use_id: "tool-call-1".to_string(),
+                content: "read image".to_string(),
+                is_error: None,
+            },
+            ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: "tool-image-data".to_string(),
+            },
+        ],
+    );
+
+    let (_, images) = render_messages_and_images(&session);
+    assert_eq!(images.len(), 2);
+    assert_eq!(
+        images[0].anchor,
+        Some(RenderedImageAnchor::UserPrompt { ordinal: 0 }),
+        "pasted user image should anchor to its prompt"
+    );
+    assert_eq!(
+        images[1].anchor,
+        Some(RenderedImageAnchor::ToolCall {
+            id: "tool-call-1".to_string()
+        }),
+        "tool image should anchor to its tool call"
+    );
+}
+
+#[test]
+fn test_render_images_attached_label_message_does_not_shift_prompt_ordinals() {
+    let mut session = Session::create_with_id(
+        "session_render_image_label_ordinal_test".to_string(),
+        None,
+        Some("image label ordinal test".to_string()),
+    );
+
+    // Tool flow that produces a labeled image: the synthetic label text message
+    // must not count as a user prompt for anchoring.
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::ToolUse {
+            id: "tool-call-2".to_string(),
+            name: "read".to_string(),
+            input: serde_json::json!({"file_path": "shot.png"}),
+            thought_signature: None,
+        }],
+    );
+    session.add_message(
+        Role::User,
+        vec![
+            ContentBlock::ToolResult {
+                tool_use_id: "tool-call-2".to_string(),
+                content: "read image".to_string(),
+                is_error: None,
+            },
+            ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: "tool-image-data".to_string(),
+            },
+            ContentBlock::Text {
+                text: "[Attached image associated with the preceding tool result: shot.png]"
+                    .to_string(),
+                cache_control: None,
+            },
+        ],
+    );
+    // A real follow-up prompt with an image: must be ordinal 0 (first prompt).
+    session.add_message(
+        Role::User,
+        vec![
+            ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: "second-user-image".to_string(),
+            },
+            ContentBlock::Text {
+                text: "and this one".to_string(),
+                cache_control: None,
+            },
+        ],
+    );
+
+    let (_, images) = render_messages_and_images(&session);
+    assert_eq!(images.len(), 2);
+    assert_eq!(images[0].label.as_deref(), Some("shot.png"));
+    assert_eq!(
+        images[1].anchor,
+        Some(RenderedImageAnchor::UserPrompt { ordinal: 0 }),
+        "label-only messages must not consume prompt ordinals"
+    );
+}

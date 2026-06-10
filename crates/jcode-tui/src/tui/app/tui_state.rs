@@ -451,6 +451,7 @@ impl crate::tui::TuiState for App {
                 .iter()
                 .take(64)
                 .for_each(|b| b.hash(&mut hasher));
+            crate::tui::hash_rendered_image_anchor(image.anchor.as_ref(), &mut hasher);
         }
         let signature = (images.len(), hasher.finish());
         self.side_pane_images_signature_cache

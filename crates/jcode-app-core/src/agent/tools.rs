@@ -34,8 +34,10 @@ pub(super) fn cap_sdk_tool_content_for_history(tool_name: &str, content: String)
 /// This mirrors how `render_messages_and_images` derives images from persisted
 /// session history (source = ToolResult), so live-streamed images match what a
 /// later History reload would produce. `tool_name` and `tool_input` provide the
-/// label fallback (e.g. the `read` tool's `file_path`).
+/// label fallback (e.g. the `read` tool's `file_path`); `tool_call_id` anchors
+/// the image to its tool message in the transcript.
 pub(super) fn tool_output_side_pane_images(
+    tool_call_id: &str,
     tool_name: &str,
     tool_input: &serde_json::Value,
     output: &ToolOutput,
@@ -64,6 +66,9 @@ pub(super) fn tool_output_side_pane_images(
             source: jcode_session_types::RenderedImageSource::ToolResult {
                 tool_name: tool_name.to_string(),
             },
+            anchor: Some(jcode_session_types::RenderedImageAnchor::ToolCall {
+                id: tool_call_id.to_string(),
+            }),
         })
         .collect()
 }

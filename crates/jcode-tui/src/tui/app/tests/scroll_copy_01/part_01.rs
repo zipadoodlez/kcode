@@ -714,6 +714,7 @@ fn test_images_do_not_drive_side_panel_visibility() {
         data: "image-data".to_string(),
         label: Some("preview.png".to_string()),
         source: crate::session::RenderedImageSource::UserInput,
+        anchor: None,
     });
 
     // Auto-hide bookkeeping is now a no-op for images.

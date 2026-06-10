@@ -239,6 +239,23 @@ fn compute_image_regions(wrapped_lines: &[ratatui::text::Line<'static>]) -> Vec<
                 width: 0,
                 render: jcode_tui_messages::ImageRegionRender::Crop,
             });
+        } else if let Some((hash, rows, cols)) =
+            super::super::mermaid::parse_inline_image_placeholder(line)
+        {
+            // Inline raster image anchored in the transcript body. The marker
+            // encodes its exact geometry; clamp to the blank run that actually
+            // follows so a wrapped/truncated placeholder can never claim
+            // non-blank lines below it.
+            let available = (1 + blank_run[idx + 1]).min(u16::MAX as usize) as u16;
+            let height = rows.max(1).min(available);
+            image_regions.push(ImageRegion {
+                abs_line_idx: idx,
+                end_line: idx + height as usize,
+                hash,
+                height,
+                width: cols,
+                render: jcode_tui_messages::ImageRegionRender::Fit,
+            });
         }
     }
     image_regions
@@ -570,11 +587,12 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
     let body_prepared = prepare_body_cached(app, width);
     let body_ms = body_start.elapsed().as_secs_f64() * 1000.0;
 
-    // Inline images render in the transcript flow just below the body. Sized
-    // lazily (header-only) so a session with many images never decodes ones
-    // that are off-screen.
+    // Anchored images render inside the body at their producing message; only
+    // images without a resolvable anchor target fall back to this trailing
+    // inline section so nothing silently disappears.
     let inline_images_prepared = if app.pin_images() {
-        let items = super::inline_image_ui::resolve_items(&app.side_pane_images());
+        let anchored = super::inline_image_ui::resolve_anchored_items_cached(app);
+        let items = anchored.unplaced_items(app.display_messages());
         if items.is_empty() {
             Arc::new(empty_prepared_messages())
         } else {
@@ -758,6 +776,8 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
         messages_version: app.display_messages_version(),
         diagram_mode: app.diagram_mode(),
         centered: app.centered_mode(),
+        pin_images: app.pin_images(),
+        images_signature: app.side_pane_images_signature(),
     };
     let msg_count = app.display_messages().len();
     let cache_lookup_start = Instant::now();
@@ -838,6 +858,23 @@ pub(super) fn prepare_body_incremental(
     // exact prior prompt count.
     let mut prompt_num = prev.user_prompt_texts.len();
 
+    // Images anchored to transcript messages render inline right after the
+    // message that produced them. An incremental base is only reused when the
+    // image set is unchanged (cache key includes the image signature), so any
+    // anchored image matching a *new* message must be injected here; its anchor
+    // target did not exist when the base was built.
+    let anchored_images = super::inline_image_ui::resolve_anchored_items_cached(app);
+    // 0-based ordinal of the next rendered user prompt, excluding synthetic
+    // attached-image label messages, mirroring the session renderer's count.
+    let mut anchor_prompt_ordinal = if anchored_images.by_prompt.is_empty() {
+        0
+    } else {
+        prev.user_prompt_texts
+            .iter()
+            .filter(|text| !crate::session::is_attached_image_label_text(text))
+            .count()
+    };
+
     let mut new_lines: Vec<Line> = Vec::new();
     let mut new_user_line_indices: Vec<usize> = Vec::new();
     let mut new_user_prompt_texts: Vec<String> = Vec::new();
@@ -888,6 +925,17 @@ pub(super) fn prepare_body_incremental(
                     end_col: prompt_width,
                 }));
                 new_line_copy_offsets.push(prefix_width);
+                if !crate::session::is_attached_image_label_text(&msg.content) {
+                    let ordinal = anchor_prompt_ordinal;
+                    anchor_prompt_ordinal += 1;
+                    if let Some(items) = anchored_images.by_prompt.get(&ordinal) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                            new_lines.push(line);
+                            new_line_raw_overrides.push(None);
+                            new_line_copy_offsets.push(0);
+                        }
+                    }
+                }
             }
             "assistant" => {
                 let content_width = width.saturating_sub(4);
@@ -980,6 +1028,13 @@ pub(super) fn prepare_body_incremental(
                             new_lines.len(),
                             expandable,
                         ));
+                    }
+                    if let Some(items) = anchored_images.by_tool.get(&tc.id) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                            new_lines.push(line);
+                            new_line_raw_overrides.push(None);
+                            new_line_copy_offsets.push(0);
+                        }
                     }
                 }
             }
@@ -1399,6 +1454,11 @@ pub(super) fn prepare_body(
     let total_prompts = app.display_user_message_count();
     let pending_count = input_ui::pending_prompt_count(app);
 
+    // Images anchored to transcript messages render inline right after the
+    // message that produced them (tool result or user prompt).
+    let anchored_images = super::inline_image_ui::resolve_anchored_items_cached(app);
+    let mut anchor_prompt_ordinal = 0usize;
+
     for (msg_idx, msg) in app.display_messages().iter().enumerate() {
         let role = msg.effective_role();
         let align = default_message_alignment(role, centered);
@@ -1426,6 +1486,17 @@ pub(super) fn prepare_body(
                     &msg.content,
                     align,
                 );
+                if !crate::session::is_attached_image_label_text(&msg.content) {
+                    let ordinal = anchor_prompt_ordinal;
+                    anchor_prompt_ordinal += 1;
+                    if let Some(items) = anchored_images.by_prompt.get(&ordinal) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                            lines.push(line);
+                            line_raw_overrides.push(None);
+                            line_copy_offsets.push(0);
+                        }
+                    }
+                }
             }
             "assistant" => {
                 let content_width = width.saturating_sub(4);
@@ -1548,6 +1619,13 @@ pub(super) fn prepare_body(
                             lines.len(),
                             expandable,
                         ));
+                    }
+                    if let Some(items) = anchored_images.by_tool.get(&tc.id) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                            lines.push(line);
+                            line_raw_overrides.push(None);
+                            line_copy_offsets.push(0);
+                        }
                     }
                 }
             }
