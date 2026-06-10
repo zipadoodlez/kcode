@@ -275,6 +275,32 @@ impl ModelCatalogService {
             in_flight.insert(scope.to_string(), started_at);
         }
     }
+
+    /// Test-only: drop all cached scopes and bookkeeping. The catalog services
+    /// are process-global statics, so without this a test that hydrates a
+    /// scope (e.g. `api-key` -> fixture models) leaks that catalog into every
+    /// later test in the same process, breaking model-validation assertions.
+    #[cfg(test)]
+    pub(crate) fn reset_for_tests(&self) {
+        if let Ok(mut models) = self.available_models.write() {
+            models.clear();
+        }
+        if let Ok(mut fetched_at) = self.fetched_at.write() {
+            fetched_at.clear();
+        }
+        if let Ok(mut observed_at) = self.observed_at.write() {
+            observed_at.clear();
+        }
+        if let Ok(mut last_attempt) = self.last_attempt.write() {
+            last_attempt.clear();
+        }
+        if let Ok(mut in_flight) = self.in_flight.write() {
+            in_flight.clear();
+        }
+        if let Ok(mut unavailable) = self.runtime_unavailable_models.write() {
+            unavailable.clear();
+        }
+    }
 }
 
 #[cfg(test)]

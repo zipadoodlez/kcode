@@ -426,6 +426,16 @@ pub fn cached_openai_model_ids() -> Option<Vec<String>> {
         .or_else(|| load_openai_catalog_from_disk(&scope))
 }
 
+/// Test-only: clear the process-global in-memory model catalogs. The catalog
+/// services are statics shared by every test in the process; a test that
+/// hydrates a scope (directly or via `persist_*` + `cached_*`) otherwise leaks
+/// fixture models into later tests' `known_*_model_ids()` validation.
+#[cfg(test)]
+pub(crate) fn reset_model_catalog_services_for_tests() {
+    OPENAI_MODEL_CATALOG_SERVICE.reset_for_tests();
+    ANTHROPIC_MODEL_CATALOG_SERVICE.reset_for_tests();
+}
+
 pub fn persist_openai_model_catalog(catalog: &OpenAIModelCatalog) {
     persist_scoped_model_catalog(
         OPENAI_MODEL_CATALOG_CACHE_FILE,

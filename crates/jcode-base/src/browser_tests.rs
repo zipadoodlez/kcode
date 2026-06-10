@@ -102,6 +102,11 @@ fn setup_complete_requires_native_host_binary() {
 
 #[tokio::test]
 async fn test_inspect_browser_status_without_binary() {
+    // Hold the test-env lock: this reads JCODE_HOME-derived paths, and other
+    // tests mutate JCODE_HOME (and write browser fixture files) under the
+    // lock. Without it, the status snapshot and the exists() check below can
+    // observe different JCODE_HOME values mid-test.
+    let _guard = crate::storage::lock_test_env();
     let status = inspect_browser_status().await.unwrap();
     assert_eq!(status.backend, "firefox_agent_bridge");
     assert_eq!(status.browser, "firefox");
@@ -113,6 +118,9 @@ async fn test_inspect_browser_status_without_binary() {
 
 #[tokio::test]
 async fn test_ensure_browser_ready_noninteractive_without_binary() {
+    // See test_inspect_browser_status_without_binary: serialize against tests
+    // that mutate JCODE_HOME under the test-env lock.
+    let _guard = crate::storage::lock_test_env();
     let status = ensure_browser_ready_noninteractive().await.unwrap();
     assert_eq!(status.backend, "firefox_agent_bridge");
     assert_eq!(status.browser, "firefox");

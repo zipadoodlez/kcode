@@ -412,6 +412,10 @@ pub enum BusEvent {
 
 pub struct Bus {
     sender: broadcast::Sender<BusEvent>,
+    /// Debounce state for [`Bus::publish_models_updated`]. Per-instance (not a
+    /// global static) so tests can exercise coalescing on a private bus
+    /// without racing other tests that publish to the global bus.
+    models_updated_state: std::sync::Arc<Mutex<ModelsUpdatedPublishState>>,
 }
 
 const MODELS_UPDATED_DEBOUNCE: Duration = Duration::from_millis(750);
@@ -427,14 +431,10 @@ struct ModelsUpdatedPublishState {
     publish_pending: bool,
 }
 
-fn models_updated_publish_state() -> &'static Mutex<ModelsUpdatedPublishState> {
-    static STATE: OnceLock<Mutex<ModelsUpdatedPublishState>> = OnceLock::new();
-    STATE.get_or_init(|| Mutex::new(ModelsUpdatedPublishState::default()))
-}
-
 #[cfg(any(test, feature = "test-support"))]
 pub fn reset_models_updated_publish_state_for_tests() {
-    let mut state = models_updated_publish_state()
+    let mut state = Bus::global()
+        .models_updated_state
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     *state = ModelsUpdatedPublishState::default();
@@ -443,10 +443,24 @@ pub fn reset_models_updated_publish_state_for_tests() {
 impl Bus {
     pub fn global() -> &'static Bus {
         static INSTANCE: OnceLock<Bus> = OnceLock::new();
-        INSTANCE.get_or_init(|| {
-            let (sender, _) = broadcast::channel(256);
-            Bus { sender }
-        })
+        INSTANCE.get_or_init(Bus::new)
+    }
+
+    /// A standalone bus with its own subscribers and debounce state. Used by
+    /// tests; production code shares [`Bus::global`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn new_isolated_for_tests() -> std::sync::Arc<Bus> {
+        std::sync::Arc::new(Bus::new())
+    }
+
+    fn new() -> Bus {
+        let (sender, _) = broadcast::channel(256);
+        Bus {
+            sender,
+            models_updated_state: std::sync::Arc::new(Mutex::new(
+                ModelsUpdatedPublishState::default(),
+            )),
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<BusEvent> {
@@ -473,7 +487,8 @@ impl Bus {
     pub fn publish_models_updated(&self) {
         let delay = {
             let now = Instant::now();
-            let mut state = models_updated_publish_state()
+            let mut state = self
+                .models_updated_state
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             match state.last_published_at {
@@ -498,7 +513,8 @@ impl Bus {
 
         if let Some(delay) = delay {
             let Ok(handle) = tokio::runtime::Handle::try_current() else {
-                let mut state = models_updated_publish_state()
+                let mut state = self
+                    .models_updated_state
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 state.publish_pending = false;
@@ -507,15 +523,21 @@ impl Bus {
                 self.publish(BusEvent::ModelsUpdated);
                 return;
             };
+            // The delayed publish must flow through *this* bus instance (its
+            // sender and its debounce state), not Bus::global(): an isolated
+            // test bus would otherwise leak its coalesced event onto the
+            // global bus and clear the wrong pending flag.
+            let state = std::sync::Arc::clone(&self.models_updated_state);
+            let sender = self.sender.clone();
             handle.spawn(async move {
                 tokio::time::sleep(delay).await;
-                let mut state = models_updated_publish_state()
+                let mut state = state
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 state.publish_pending = false;
                 state.last_published_at = Some(Instant::now());
                 drop(state);
-                Bus::global().publish(BusEvent::ModelsUpdated);
+                let _ = sender.send(BusEvent::ModelsUpdated);
             });
             return;
         }
@@ -526,19 +548,20 @@ impl Bus {
 
 #[cfg(test)]
 mod tests {
-    use super::{Bus, BusEvent, reset_models_updated_publish_state_for_tests};
+    use super::{Bus, BusEvent};
     use tokio::time::{Duration, timeout};
 
     #[tokio::test]
     async fn models_updated_publishes_are_coalesced() {
-        let mut rx = Bus::global().subscribe();
-        while rx.try_recv().is_ok() {}
+        // An isolated bus: subscribing to Bus::global() here used to race
+        // other tests that publish ModelsUpdated (or any event) to the global
+        // bus, making the "exactly two events" assertions flaky.
+        let bus = Bus::new_isolated_for_tests();
+        let mut rx = bus.subscribe();
 
-        reset_models_updated_publish_state_for_tests();
-
-        Bus::global().publish_models_updated();
-        Bus::global().publish_models_updated();
-        Bus::global().publish_models_updated();
+        bus.publish_models_updated();
+        bus.publish_models_updated();
+        bus.publish_models_updated();
 
         match timeout(Duration::from_secs(1), rx.recv()).await {
             Ok(Ok(BusEvent::ModelsUpdated)) => {}

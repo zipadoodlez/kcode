@@ -706,6 +706,16 @@ fn global_profile_catalog_refresh() -> &'static Mutex<ProfileCatalogRefreshTrack
         .get_or_init(|| Mutex::new(ProfileCatalogRefreshTracker::default()))
 }
 
+/// Clear the process-global profile catalog refresh tracker. Tests that
+/// assert a refresh fires must not inherit `last_attempt_unix` backoff (or an
+/// in-flight marker) recorded by other tests in the same process.
+#[cfg(test)]
+pub(crate) fn reset_profile_catalog_refresh_tracker_for_tests() {
+    if let Ok(mut state) = global_profile_catalog_refresh().lock() {
+        *state = ProfileCatalogRefreshTracker::default();
+    }
+}
+
 fn begin_profile_catalog_refresh(profile_id: &str) -> bool {
     let Some(now) = current_unix_secs() else {
         return false;

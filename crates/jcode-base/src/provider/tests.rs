@@ -53,9 +53,15 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     crate::subscription_catalog::clear_runtime_env();
     crate::auth::claude::set_active_account_override(None);
     crate::auth::codex::set_active_account_override(None);
+    // The in-memory model catalog services are process-global; earlier tests
+    // may have hydrated scopes (fixture models) that would corrupt this test's
+    // known_*_model_ids() validation, and vice versa. Reset on entry and exit
+    // so neither direction leaks.
+    crate::provider::models::reset_model_catalog_services_for_tests();
 
     let result = f();
 
+    crate::provider::models::reset_model_catalog_services_for_tests();
     crate::auth::claude::set_active_account_override(None);
     crate::auth::codex::set_active_account_override(None);
     if let Some(prev_home) = prev_home {
@@ -634,6 +640,12 @@ fn standard_openrouter_catalog_refresh_fires_when_named_profile_owns_slot() {
                 "https://integrate.api.nvidia.com/v1",
             );
             crate::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", "mynvidia");
+
+            // Other tests in this process may already have attempted (or be
+            // running) an `openrouter` catalog refresh; clear the process-wide
+            // backoff/in-flight tracker or this assertion is flaky under
+            // parallel test execution.
+            openrouter::reset_profile_catalog_refresh_tracker_for_tests();
 
             assert!(
                 openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
