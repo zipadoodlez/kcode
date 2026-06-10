@@ -2388,6 +2388,12 @@ impl App {
         if self.reasoning_streaming {
             return;
         }
+        // A new reasoning trace supersedes the previous retained one. Fold the
+        // old trace away as soon as the new one starts streaming so stale
+        // reasoning never lingers next to the live trace.
+        if let Some(prev) = self.reasoning_retained.take() {
+            self.start_reasoning_collapse(prev);
+        }
         // Separate the reasoning block from any prior content with a blank line.
         if !self.streaming.streaming_text.is_empty() {
             if self.streaming.streaming_text.ends_with("\n\n") {

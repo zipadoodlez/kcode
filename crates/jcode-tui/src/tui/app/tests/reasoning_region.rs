@@ -475,6 +475,39 @@ fn retained_reasoning_folds_away_after_turn_finishes() {
 }
 
 #[test]
+fn opening_new_reasoning_region_collapses_previous_retained_trace() {
+    // The previous retained trace must start folding away as soon as the next
+    // reasoning trace begins streaming, not only once the new trace closes.
+    let mut app = create_test_app();
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("first trace\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+    assert!(app.reasoning_retained_markup().is_some());
+    assert!(app.reasoning_collapse_state().is_none());
+
+    // The next trace starts streaming: the old one collapses immediately.
+    app.open_reasoning_region();
+    app.append_reasoning_text("second trace begins");
+
+    assert!(
+        app.reasoning_retained_markup().is_none(),
+        "stale retained trace must be dropped when a new trace starts"
+    );
+    let (collapsing, _) = app
+        .reasoning_collapse_state()
+        .expect("previous trace should be collapsing while the new one streams");
+    assert!(collapsing.contains("first trace"), "got: {collapsing:?}");
+    assert!(
+        app.streaming_text().contains("second trace begins"),
+        "new trace must stream live: {:?}",
+        app.streaming_text()
+    );
+}
+
+#[test]
 fn clear_retained_reasoning_drops_trace_and_collapse() {
     // Starting a new turn (or resetting the transcript) drops any retained or
     // collapsing reasoning immediately.
