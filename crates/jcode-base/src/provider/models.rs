@@ -400,7 +400,7 @@ fn hydrate_catalog_cache_from_disk(
     }
 
     let observed_at = system_time_from_unix_secs(persisted.observed_at_unix_secs);
-    service.replace_scope_models(scope, normalized, observed_at);
+    service.hydrate_scope_models_from_snapshot(scope, normalized, observed_at);
     if !persisted.context_limits.is_empty() {
         populate_context_limits(persisted.context_limits.clone());
     }

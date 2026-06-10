@@ -1073,6 +1073,11 @@ mod tests {
                         AuthState::NotConfigured
                     },
                     has_oauth,
+                    oauth_state: if has_oauth {
+                        AuthState::Available
+                    } else {
+                        AuthState::NotConfigured
+                    },
                     has_api_key,
                 },
                 ..AuthStatus::default()

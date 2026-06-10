@@ -24,11 +24,17 @@ pub(crate) struct ModelCatalogService {
     fetched_at: RwLock<HashMap<String, Instant>>,
     observed_at: RwLock<HashMap<String, SystemTime>>,
     last_attempt: RwLock<HashMap<String, Instant>>,
-    in_flight: RwLock<HashSet<String>>,
+    in_flight: RwLock<HashMap<String, Instant>>,
     runtime_unavailable_models:
         RwLock<HashMap<String, HashMap<String, RuntimeModelUnavailability>>>,
     revision: RwLock<u64>,
 }
+
+/// Maximum time a refresh may stay marked in-flight before it is considered
+/// abandoned. A refresh task that hangs or dies without calling
+/// `finish_refresh` must not freeze the catalog for that scope forever
+/// (observed as "model picker missing newly released models until restart").
+const IN_FLIGHT_REFRESH_EXPIRY: Duration = Duration::from_secs(5 * 60);
 
 impl ModelCatalogService {
     pub(crate) fn new(
@@ -44,7 +50,7 @@ impl ModelCatalogService {
             fetched_at: RwLock::new(HashMap::new()),
             observed_at: RwLock::new(HashMap::new()),
             last_attempt: RwLock::new(HashMap::new()),
-            in_flight: RwLock::new(HashSet::new()),
+            in_flight: RwLock::new(HashMap::new()),
             runtime_unavailable_models: RwLock::new(HashMap::new()),
             revision: RwLock::new(0),
         }
@@ -77,6 +83,36 @@ impl ModelCatalogService {
         models: HashSet<String>,
         observed_at: SystemTime,
     ) -> bool {
+        self.replace_scope_models_inner(scope, models, observed_at, Instant::now())
+    }
+
+    /// Like [`Self::replace_scope_models`], but for hydrating from a persisted
+    /// disk snapshot. The snapshot's `observed_at` age is subtracted from the
+    /// freshness clock so an old snapshot does not suppress a live refresh for
+    /// a full `cache_ttl` after process start (stale-catalog bug: newly
+    /// released models stayed hidden until restart + TTL expiry).
+    pub(crate) fn hydrate_scope_models_from_snapshot(
+        &self,
+        scope: &str,
+        models: HashSet<String>,
+        observed_at: SystemTime,
+    ) -> bool {
+        let age = SystemTime::now()
+            .duration_since(observed_at)
+            .unwrap_or(Duration::ZERO);
+        let fetched_at = Instant::now()
+            .checked_sub(age)
+            .unwrap_or_else(Instant::now);
+        self.replace_scope_models_inner(scope, models, observed_at, fetched_at)
+    }
+
+    fn replace_scope_models_inner(
+        &self,
+        scope: &str,
+        models: HashSet<String>,
+        observed_at: SystemTime,
+        fetched_at: Instant,
+    ) -> bool {
         if models.is_empty() {
             return false;
         }
@@ -86,8 +122,8 @@ impl ModelCatalogService {
         } else {
             return false;
         }
-        if let Ok(mut fetched_at) = self.fetched_at.write() {
-            fetched_at.insert(scope.to_string(), Instant::now());
+        if let Ok(mut fetched_at_map) = self.fetched_at.write() {
+            fetched_at_map.insert(scope.to_string(), fetched_at);
         }
         if let Ok(mut observed_at_map) = self.observed_at.write() {
             observed_at_map.insert(scope.to_string(), observed_at);
@@ -189,7 +225,12 @@ impl ModelCatalogService {
         }
         self.in_flight
             .read()
-            .map(|in_flight| !in_flight.contains(scope))
+            .map(|in_flight| {
+                in_flight
+                    .get(scope)
+                    .map(|started_at| started_at.elapsed() > IN_FLIGHT_REFRESH_EXPIRY)
+                    .unwrap_or(true)
+            })
             .unwrap_or(true)
     }
 
@@ -200,8 +241,14 @@ impl ModelCatalogService {
         let Ok(mut in_flight) = self.in_flight.write() else {
             return false;
         };
-        if !in_flight.insert(scope.to_string()) {
-            return false;
+        match in_flight.get(scope) {
+            // Another refresh is genuinely running; back off.
+            Some(started_at) if started_at.elapsed() <= IN_FLIGHT_REFRESH_EXPIRY => return false,
+            // Stale marker from a hung/abandoned refresh: reclaim the slot so
+            // the catalog can self-heal instead of staying frozen.
+            Some(_) | None => {
+                in_flight.insert(scope.to_string(), Instant::now());
+            }
         }
         self.note_attempt(scope);
         true
@@ -216,6 +263,17 @@ impl ModelCatalogService {
     #[cfg(test)]
     pub(crate) fn revision(&self) -> u64 {
         self.revision.read().map(|revision| *revision).unwrap_or(0)
+    }
+
+    /// Test-only: backdate an in-flight refresh marker to simulate a hung or
+    /// abandoned refresh task.
+    #[cfg(test)]
+    pub(crate) fn backdate_in_flight_for_tests(&self, scope: &str, age: Duration) {
+        if let Ok(mut in_flight) = self.in_flight.write()
+            && let Some(started_at) = Instant::now().checked_sub(age)
+        {
+            in_flight.insert(scope.to_string(), started_at);
+        }
     }
 }
 
@@ -255,6 +313,57 @@ mod tests {
 
         service.finish_refresh("default");
         assert!(!service.begin_refresh("default"));
+    }
+
+    #[test]
+    fn abandoned_in_flight_refresh_expires_and_is_reclaimed() {
+        // Zero retry interval so throttling does not mask the in-flight check.
+        let service = ModelCatalogService::new(
+            Duration::from_secs(60),
+            Duration::ZERO,
+            Duration::from_secs(60),
+        );
+
+        assert!(service.begin_refresh("default"));
+        // A live in-flight refresh still blocks a duplicate.
+        assert!(!service.begin_refresh("default"));
+
+        // Simulate the refresh task hanging/dying without finish_refresh.
+        service.backdate_in_flight_for_tests("default", IN_FLIGHT_REFRESH_EXPIRY * 2);
+
+        // The stale marker must not freeze the scope forever: refresh resumes.
+        assert!(service.should_refresh("default"));
+        assert!(service.begin_refresh("default"));
+        // And the reclaimed slot blocks duplicates again.
+        assert!(!service.begin_refresh("default"));
+    }
+
+    #[test]
+    fn hydrating_stale_disk_snapshot_does_not_mark_scope_fresh() {
+        let service = service();
+        let models = HashSet::from(["gpt-5.5".to_string()]);
+
+        // Snapshot observed well past the 60s cache TTL.
+        let observed_at = SystemTime::now() - Duration::from_secs(3600);
+        assert!(service.hydrate_scope_models_from_snapshot("default", models, observed_at));
+
+        // Models are available immediately for display...
+        assert_eq!(service.model_ids("default"), Some(vec!["gpt-5.5".to_string()]));
+        // ...but the scope is not considered fresh, so a live refresh can run.
+        assert!(!service.is_fresh("default"));
+        assert!(service.should_refresh("default"));
+    }
+
+    #[test]
+    fn hydrating_recent_disk_snapshot_keeps_scope_fresh() {
+        let service = service();
+        let models = HashSet::from(["gpt-5.5".to_string()]);
+
+        let observed_at = SystemTime::now() - Duration::from_secs(5);
+        assert!(service.hydrate_scope_models_from_snapshot("default", models, observed_at));
+
+        assert!(service.is_fresh("default"));
+        assert!(!service.should_refresh("default"));
     }
 
     #[test]
