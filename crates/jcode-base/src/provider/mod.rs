@@ -640,6 +640,18 @@ impl MultiProvider {
             }
             ActiveProvider::OpenAI => {
                 let Some(openai) = self.openai_provider() else {
+                    // No OpenAI runtime: still run the same model-name
+                    // validation the runtime itself would. A cross-provider
+                    // model under a forced/locked OpenAI selection must report
+                    // the real problem (wrong model family), not demand a
+                    // login that would never make the model valid. Keeps the
+                    // error independent of which credentials exist on disk.
+                    if !known_openai_model_ids().iter().any(|known| known == model) {
+                        anyhow::bail!(
+                            "Unsupported OpenAI model '{}'. Use /model to choose from the models available to your account.",
+                            model
+                        );
+                    }
                     anyhow::bail!(
                         "OpenAI credentials not available. Run `jcode login --provider openai` first."
                     );
@@ -703,12 +715,40 @@ impl MultiProvider {
             }
             ActiveProvider::OpenRouter => {
                 self.clear_active_openai_compatible_profile();
-                if self
-                    .openrouter_provider()
-                    .as_deref()
-                    .map(|provider| !provider.supports_provider_routing_features())
-                    .unwrap_or(true)
-                {
+                // Decide whether the slot must be rebound to the real
+                // OpenRouter API-key runtime. Rebinding repairs a slot left
+                // flavored as a *known catalog profile* runtime by startup
+                // profile env (e.g. a Cerebras login applied globally, then
+                // the slot was built as Cerebras), so an OpenRouter-targeted
+                // switch reaches the real aggregator again. But a *custom*
+                // OpenAI-compatible endpoint (generic profile or named config
+                // profile) or a CLI `--provider` lock owns the slot
+                // legitimately: its model IDs are provider-local and must not
+                // be re-routed through OpenRouter (or fail outright because no
+                // OPENROUTER_API_KEY is configured).
+                let locked_to_slot = self.forced_provider == Some(ActiveProvider::OpenRouter);
+                let needs_rebind = match self.openrouter_provider().as_deref() {
+                    None => true,
+                    Some(provider) => {
+                        !provider.supports_provider_routing_features()
+                            && !locked_to_slot
+                            && provider
+                                .direct_openai_compatible_route_parts()
+                                .and_then(|(_provider, api_method, _detail)| {
+                                    api_method
+                                        .strip_prefix("openai-compatible:")
+                                        .map(str::trim)
+                                        .and_then(
+                                            crate::provider_catalog::openai_compatible_profile_by_id,
+                                        )
+                                })
+                                .map(|profile| {
+                                    profile.id != crate::provider_catalog::OPENAI_COMPAT_PROFILE.id
+                                })
+                                .unwrap_or(false)
+                    }
+                };
+                if needs_rebind {
                     let provider =
                         Arc::new(openrouter::OpenRouterProvider::new_openrouter_api_key_runtime()?);
                     *self
@@ -1308,7 +1348,7 @@ impl Provider for MultiProvider {
                 .map(|provider| provider.supports_image_input())
                 .unwrap_or(false),
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .map(|provider| provider.supports_image_input())
                 .unwrap_or(false),
         }
@@ -1501,7 +1541,7 @@ impl Provider for MultiProvider {
                 .map(|bedrock| bedrock.available_models_for_switching())
                 .unwrap_or_default(),
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .map(|openrouter| openrouter.available_models_for_switching())
                 .unwrap_or_default(),
         }
@@ -1731,7 +1771,7 @@ impl Provider for MultiProvider {
             ActiveProvider::Cursor => None,
             ActiveProvider::Bedrock => None,
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .and_then(|o| o.reasoning_effort()),
         }
     }
@@ -1747,7 +1787,7 @@ impl Provider for MultiProvider {
                 .ok_or_else(|| anyhow::anyhow!("OpenAI provider not available"))?
                 .set_reasoning_effort(effort),
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .ok_or_else(|| anyhow::anyhow!("OpenAI-compatible provider not available"))?
                 .set_reasoning_effort(effort),
             _ => Err(anyhow::anyhow!(
@@ -1767,7 +1807,7 @@ impl Provider for MultiProvider {
                 .map(|o| o.available_efforts())
                 .unwrap_or_default(),
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .map(|o| o.available_efforts())
                 .unwrap_or_default(),
             ActiveProvider::Copilot => vec![],
@@ -1903,7 +1943,7 @@ impl Provider for MultiProvider {
                 .map(|o| o.uses_jcode_compaction())
                 .unwrap_or(false),
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .map(|o| o.supports_compaction())
                 .unwrap_or(false),
         }
@@ -1942,7 +1982,7 @@ impl Provider for MultiProvider {
                 .unwrap_or(false),
             ActiveProvider::Bedrock => false,
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .map(|o| o.uses_jcode_compaction())
                 .unwrap_or(false),
         }
@@ -2038,7 +2078,7 @@ impl Provider for MultiProvider {
                 "AWS Bedrock does not support native compaction"
             )),
             ActiveProvider::OpenRouter => {
-                let provider = self.openrouter_provider();
+                let provider = self.active_openrouter_execution_provider();
                 if let Some(openrouter) = provider {
                     openrouter
                         .native_compact(
@@ -2113,7 +2153,7 @@ impl Provider for MultiProvider {
                 .map(|o| o.context_window())
                 .unwrap_or(DEFAULT_CONTEXT_LIMIT),
             ActiveProvider::OpenRouter => self
-                .openrouter_provider()
+                .active_openrouter_execution_provider()
                 .map(|o| o.context_window())
                 .unwrap_or(DEFAULT_CONTEXT_LIMIT),
         }

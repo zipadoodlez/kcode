@@ -146,19 +146,29 @@ fn test_cerebras_model_routes_are_profile_scoped_and_unique() {
             };
 
             let routes = provider.model_routes();
-            let qwen_routes = routes
+            // Assert against the profile's current static model list so this
+            // test tracks catalog updates instead of hardcoding a model that
+            // Cerebras may stop serving (the original fixture pinned
+            // `qwen-3-235b-a22b-instruct-2507`, which rotted when the static
+            // coverage was refreshed).
+            let static_models = crate::provider_catalog::openai_compatible_profile_static_models(
+                crate::provider_catalog::CEREBRAS_PROFILE,
+            );
+            let probe_model = static_models
+                .first()
+                .expect("Cerebras profile should have static models")
+                .clone();
+            let probe_routes = routes
                 .iter()
-                .filter(|route| {
-                    route.provider == "Cerebras" && route.model == "qwen-3-235b-a22b-instruct-2507"
-                })
+                .filter(|route| route.provider == "Cerebras" && route.model == probe_model)
                 .collect::<Vec<_>>();
             assert_eq!(
-                qwen_routes.len(),
+                probe_routes.len(),
                 1,
                 "Cerebras direct route should not appear twice in provider routes: {routes:?}"
             );
-            assert_eq!(qwen_routes[0].api_method, "openai-compatible:cerebras");
-            assert!(qwen_routes[0].available);
+            assert_eq!(probe_routes[0].api_method, "openai-compatible:cerebras");
+            assert!(probe_routes[0].available);
             assert!(
                 !routes.iter().any(|route| {
                     route.provider == "Cerebras" && route.api_method == "openai-compatible"
@@ -947,20 +957,17 @@ fn test_profile_prefixed_model_switch_reinitializes_direct_compatible_runtime() 
                     .expect("DeepSeek profile-prefixed model should initialize direct provider");
                 assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
                 assert_eq!(provider.model(), "deepseek-v4-pro");
-                assert_eq!(
-                    crate::provider_catalog::runtime_provider_display_name(provider.name()),
-                    "DeepSeek"
-                );
+                // `display_name` resolves through the active execution runtime
+                // (registry), which is the production display path since the
+                // compat-profile/OpenRouter slot split.
+                assert_eq!(provider.display_name(), "DeepSeek");
 
                 provider
                     .set_model("kimi:kimi-for-coding")
                     .expect("Kimi profile-prefixed model should reinitialize direct provider");
                 assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
                 assert_eq!(provider.model(), "kimi-for-coding");
-                assert_eq!(
-                    crate::provider_catalog::runtime_provider_display_name(provider.name()),
-                    "Kimi Code"
-                );
+                assert_eq!(provider.display_name(), "Kimi Code");
             })
         })
     });
