@@ -175,3 +175,80 @@ fn smoothness_benchmark_simulated_streaming_turn_stays_within_budget() {
         report.big_pop_events
     );
 }
+
+#[test]
+fn smoothness_benchmark_mid_transcript_growth_settles_quickly() {
+    // An in-place message replacement (todo-table update) grows the transcript
+    // mid-document while following the tail. The viewport cannot keep both the
+    // grown block and the bottom anchored, so some motion is expected; this
+    // benchmark bounds it: the disturbance must settle within a few frames and
+    // must not blink, reposition, or mass-reflow.
+    let _render_lock = scroll_render_test_lock();
+    let mut app = create_test_app();
+    app.session.short_name = Some("test".to_string());
+
+    // A transcript tall enough to scroll, with a todo-like block in the middle.
+    for i in 0..6 {
+        app.display_messages.push(DisplayMessage::assistant(format!(
+            "Message {i} line one.\nMessage {i} line two.\nMessage {i} line three."
+        )));
+    }
+    let todo_idx = app.display_messages.len();
+    app.display_messages
+        .push(DisplayMessage::assistant("todo: item 1\ntodo: item 2".to_string()));
+    for i in 6..10 {
+        app.display_messages.push(DisplayMessage::assistant(format!(
+            "Message {i} line one.\nMessage {i} line two.\nMessage {i} line three."
+        )));
+    }
+    app.bump_display_messages_version();
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+
+    let backend = ratatui::backend::TestBackend::new(100, 28);
+    let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+    let mut recorder = jcode_tui_core::anchor_stability::AnchorStabilityRecorder::new();
+
+    // Settle the initial view.
+    for _ in 0..3 {
+        observe_smoothness_frame(&app, &mut terminal, &mut recorder);
+    }
+
+    // Grow the mid-transcript block by many rows at once (todo update).
+    let grown = (1..=10)
+        .map(|i| format!("todo: item {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    app.display_messages[todo_idx].content = grown;
+    app.bump_display_messages_version();
+
+    // Render until motion settles (tail catch-up slide runs at frame cadence).
+    for _ in 0..20 {
+        observe_smoothness_frame(&app, &mut terminal, &mut recorder);
+    }
+
+    let report = recorder.report();
+    assert_eq!(report.blink_events, 0, "no blinks: {report:?}");
+    assert_eq!(report.reposition_events, 0, "no repositions: {report:?}");
+    // Known limitation (budget ratchet): a mid-transcript block growing while
+    // the viewport is bottom-anchored moves content above and below it in
+    // opposite directions, so the single update frame reads as one reflow +
+    // one pop. Per-message height-diff easing would remove this; until then
+    // the budget pins the disturbance to exactly one frame so regressions
+    // (flicker loops, repeated reflows) still fail.
+    assert!(
+        report.mass_reflow_events <= 1,
+        "at most the one growth frame may reflow: {report:?}"
+    );
+    // The tail catch-up slide spreads the disturbance over a couple frames,
+    // so up to two frames may individually exceed the pop threshold.
+    assert!(
+        report.big_pop_events <= 2,
+        "growth disturbance must stay within two frames: {report:?}"
+    );
+    assert!(
+        report.frames_with_changes <= 4,
+        "mid-transcript growth must settle in a frame or two, {} frames changed: {report:?}",
+        report.frames_with_changes
+    );
+}
