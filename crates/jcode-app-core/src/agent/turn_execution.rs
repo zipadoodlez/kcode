@@ -80,9 +80,45 @@ impl Agent {
         self.add_message(Role::User, blocks);
         crate::telemetry::record_turn();
         self.session.save()?;
+        let turn_started_at = Instant::now();
+        let start_message_index = self.message_count();
         let result = self.run_turn_streaming_mpsc(event_tx).await;
         self.current_turn_system_reminder = None;
+        self.fire_turn_end_hook(&result, turn_started_at, start_message_index);
         result
+    }
+
+    /// Fire the `turn_end` observer hook with turn outcome metadata.
+    /// No-op (without building the payload) when the hook is not configured.
+    fn fire_turn_end_hook(
+        &self,
+        result: &Result<()>,
+        started_at: Instant,
+        start_message_index: usize,
+    ) {
+        if !crate::hooks::hook_configured("turn_end") {
+            return;
+        }
+        let status = if result.is_ok() { "ok" } else { "error" };
+        let mut event = crate::hooks::HookEvent::new("turn_end")
+            .session_id(self.session.id.clone())
+            .field("STATUS", status)
+            .field("DURATION_MS", started_at.elapsed().as_millis().to_string())
+            .field("MODEL", self.provider_model());
+        if let Some(cwd) = self.working_dir() {
+            event = event.cwd(cwd);
+        }
+        if let Some(text) = self.latest_assistant_text_after(start_message_index) {
+            const LAST_TEXT_LIMIT: usize = 4000;
+            let snippet: String = text.chars().take(LAST_TEXT_LIMIT).collect();
+            event = event.field("LAST_ASSISTANT_TEXT", snippet);
+        }
+        if let Err(error) = result {
+            const ERROR_LIMIT: usize = 1000;
+            let message: String = error.to_string().chars().take(ERROR_LIMIT).collect();
+            event = event.field("ERROR", message);
+        }
+        crate::hooks::dispatch_observer(event);
     }
 
     /// Clear conversation history
@@ -524,6 +560,7 @@ impl Agent {
         let env_snapshot_start = Instant::now();
         self.log_env_snapshot("resume");
         let env_snapshot_ms = env_snapshot_start.elapsed().as_millis();
+        self.fire_session_lifecycle_hook("session_start", "resume");
 
         let save_start = Instant::now();
         if let Err(err) = self.session.save() {

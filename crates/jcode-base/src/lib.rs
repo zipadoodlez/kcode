@@ -36,6 +36,7 @@ pub mod gateway;
 pub mod generated_image;
 pub mod gmail;
 pub mod goal;
+pub mod hooks;
 pub mod id;
 pub mod import;
 pub mod live_tests;

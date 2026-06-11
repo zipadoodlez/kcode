@@ -332,6 +332,28 @@ impl Config {
             };
         }
 
+        // Lifecycle hooks. Empty env values disable config-file hooks.
+        fn hook_env_override(slot: &mut Option<String>, key: &str) {
+            if let Ok(v) = std::env::var(key) {
+                let trimmed = v.trim();
+                *slot = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+            }
+        }
+        hook_env_override(&mut self.hooks.turn_end, "JCODE_HOOK_TURN_END");
+        hook_env_override(&mut self.hooks.session_start, "JCODE_HOOK_SESSION_START");
+        hook_env_override(&mut self.hooks.session_end, "JCODE_HOOK_SESSION_END");
+        hook_env_override(&mut self.hooks.pre_tool, "JCODE_HOOK_PRE_TOOL");
+        hook_env_override(&mut self.hooks.post_tool, "JCODE_HOOK_POST_TOOL");
+        if let Ok(v) = std::env::var("JCODE_HOOK_PRE_TOOL_TIMEOUT_MS") {
+            if let Ok(parsed) = v.trim().parse::<u64>() {
+                self.hooks.pre_tool_timeout_ms = parsed;
+            }
+        }
+
         // Web search
         if let Ok(v) = std::env::var("JCODE_WEBSEARCH_ENGINE")
             && let Some(engine) = WebSearchEngine::parse(&v)

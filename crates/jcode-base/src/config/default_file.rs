@@ -316,6 +316,49 @@ swarm_spawn_mode = "visible"
 #   focus_hook = "~/bin/jcode-focus-router"
 # focus_hook = ""
 
+[hooks]
+# Lifecycle hooks: external commands jcode runs at well-defined points so other
+# programs can observe or gate agent behavior. Commands are parsed shell-style
+# (quotes work) but executed directly, with JCODE_HOOK_* env vars describing
+# the event:
+#   JCODE_HOOK_EVENT       - "turn_end", "session_start", "session_end",
+#                            "pre_tool", "post_tool"
+#   JCODE_HOOK_SESSION_ID  - the session the event belongs to
+#   JCODE_HOOK_CWD         - session working directory (also the hook's cwd)
+#   JCODE_HOOK_PAYLOAD     - JSON mirror of all fields
+# Hook processes get JCODE_HOOKS_DISABLED=1 so nested jcode calls don't recurse.
+#
+# All hooks except pre_tool are observers: detached, fire-and-forget, failures
+# only logged. Env overrides: JCODE_HOOK_TURN_END, JCODE_HOOK_SESSION_START,
+# JCODE_HOOK_SESSION_END, JCODE_HOOK_PRE_TOOL, JCODE_HOOK_POST_TOOL (set empty
+# to disable a config hook).
+#
+# Runs when an agent turn completes. Extra fields: JCODE_HOOK_STATUS
+# ("ok"/"error"), JCODE_HOOK_DURATION_MS, JCODE_HOOK_MODEL,
+# JCODE_HOOK_LAST_ASSISTANT_TEXT (first 4000 chars), JCODE_HOOK_ERROR.
+# turn_end = "~/bin/jcode-turn-notify"
+#
+# Runs when a session becomes active. Extra: JCODE_HOOK_SOURCE
+# ("create"/"attach"/"resume").
+# session_start = ""
+#
+# Runs when a session closes normally. Extra: JCODE_HOOK_SOURCE ("close").
+# session_end = ""
+#
+# Gate hook before every tool call. Receives JCODE_HOOK_TOOL_NAME and the tool
+# input JSON on stdin (truncated copy in JCODE_HOOK_TOOL_INPUT). Exit 0 allows
+# the call; exit 2 blocks it and stderr is shown to the model as the error;
+# any other outcome (other exits, timeout, missing binary) fails open.
+# pre_tool = "~/bin/jcode-tool-policy"
+#
+# Max milliseconds to wait for pre_tool before failing open (default: 5000).
+# pre_tool_timeout_ms = 5000
+#
+# Runs after each tool call. Extra fields: JCODE_HOOK_TOOL_NAME,
+# JCODE_HOOK_STATUS, JCODE_HOOK_DURATION_MS, JCODE_HOOK_OUTPUT_BYTES,
+# JCODE_HOOK_ERROR.
+# post_tool = ""
+
 [ambient]
 # Ambient mode: background agent that maintains your codebase
 # Enable ambient mode (default: false)

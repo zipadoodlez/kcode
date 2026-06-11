@@ -327,6 +327,7 @@ impl Agent {
         agent.session.ensure_initial_session_context_message();
         agent.seed_compaction_from_session();
         agent.log_env_snapshot("create");
+        agent.fire_session_lifecycle_hook("session_start", "create");
         crate::telemetry::begin_session_with_parent(
             agent.provider.name(),
             &agent.provider.model(),
@@ -386,6 +387,7 @@ impl Agent {
         agent.sync_memory_dedup_state_from_session();
         agent.seed_compaction_from_session();
         agent.log_env_snapshot("attach");
+        agent.fire_session_lifecycle_hook("session_start", "attach");
         crate::telemetry::begin_session_with_parent(
             agent.provider.name(),
             &agent.provider.model(),
@@ -837,6 +839,23 @@ impl Agent {
         if !self.session.messages.is_empty() {
             self.persist_session_best_effort("session close state");
         }
+        self.fire_session_lifecycle_hook("session_end", "close");
+    }
+
+    /// Fire a session lifecycle observer hook (`session_start`/`session_end`).
+    /// No-op when the hook is not configured.
+    pub(crate) fn fire_session_lifecycle_hook(&self, event_name: &'static str, source: &str) {
+        if !crate::hooks::hook_configured(event_name) {
+            return;
+        }
+        let mut event = crate::hooks::HookEvent::new(event_name)
+            .session_id(self.session.id.clone())
+            .field("SOURCE", source)
+            .field("MODEL", self.provider_model());
+        if let Some(cwd) = self.working_dir() {
+            event = event.cwd(cwd);
+        }
+        crate::hooks::dispatch_observer(event);
     }
 
     pub fn mark_crashed(&mut self, message: Option<String>) {

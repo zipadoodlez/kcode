@@ -484,6 +484,59 @@ pub struct TerminalConfig {
     pub focus_hook: Option<String>,
 }
 
+/// Lifecycle hooks: external commands jcode runs at well-defined points.
+///
+/// Hook commands are parsed shell-style (quotes work) but executed directly,
+/// with `JCODE_HOOK_*` env vars describing the event (`JCODE_HOOK_EVENT`,
+/// `JCODE_HOOK_SESSION_ID`, `JCODE_HOOK_CWD`, event-specific fields, and a
+/// `JCODE_HOOK_PAYLOAD` JSON mirror). Hook processes get
+/// `JCODE_HOOKS_DISABLED=1` so nested jcode invocations don't recurse.
+///
+/// All hooks except `pre_tool` are observers: detached, fire-and-forget,
+/// failures only logged. `pre_tool` is a gate: jcode waits for it and exit
+/// code 2 blocks the tool call (stderr becomes the error shown to the model);
+/// exit 0 allows; anything else fails open.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HooksConfig {
+    /// Runs when an agent turn completes.
+    /// Fields: STATUS ("ok"/"error"), DURATION_MS, MODEL, LAST_ASSISTANT_TEXT.
+    /// Env override: JCODE_HOOK_TURN_END.
+    pub turn_end: Option<String>,
+    /// Runs when a session becomes active (created or resumed).
+    /// Fields: SOURCE ("create"/"resume").
+    /// Env override: JCODE_HOOK_SESSION_START.
+    pub session_start: Option<String>,
+    /// Runs when a session closes normally.
+    /// Env override: JCODE_HOOK_SESSION_END.
+    pub session_end: Option<String>,
+    /// Gate hook before each tool call. Receives TOOL_NAME and the tool input
+    /// JSON on stdin (also truncated in TOOL_INPUT). Exit 0 allows, exit 2
+    /// blocks (stderr is fed back to the model), anything else fails open.
+    /// Env override: JCODE_HOOK_PRE_TOOL.
+    pub pre_tool: Option<String>,
+    /// Runs after each tool call completes.
+    /// Fields: TOOL_NAME, STATUS ("ok"/"error"), DURATION_MS, OUTPUT_BYTES.
+    /// Env override: JCODE_HOOK_POST_TOOL.
+    pub post_tool: Option<String>,
+    /// Max milliseconds to wait for the pre_tool gate before failing open
+    /// (default: 5000). Env override: JCODE_HOOK_PRE_TOOL_TIMEOUT_MS.
+    pub pre_tool_timeout_ms: u64,
+}
+
+impl Default for HooksConfig {
+    fn default() -> Self {
+        Self {
+            turn_end: None,
+            session_start: None,
+            session_end: None,
+            pre_tool: None,
+            post_tool: None,
+            pre_tool_timeout_ms: 5000,
+        }
+    }
+}
+
 /// Automatic end-of-turn code review configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]

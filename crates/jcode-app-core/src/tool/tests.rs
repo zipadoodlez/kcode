@@ -220,6 +220,77 @@ async fn registry_execute_enforces_session_tool_policy_after_alias_resolution() 
     );
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn registry_execute_pre_tool_hook_blocks_and_allows() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider).await;
+    let temp = tempfile::TempDir::new().expect("temp dir");
+
+    // Policy script: block grep calls whose input mentions "secret".
+    let policy = temp.path().join("policy.sh");
+    std::fs::write(
+        &policy,
+        "#!/bin/sh\ninput=$(cat)\ncase \"$input\" in\n  *secret*) echo \"no secrets\" >&2; exit 2 ;;\nesac\nexit 0\n",
+    )
+    .expect("write policy");
+    std::fs::set_permissions(&policy, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod policy");
+
+    let prev = std::env::var_os("JCODE_HOOK_PRE_TOOL");
+    crate::env::set_var("JCODE_HOOK_PRE_TOOL", policy.to_string_lossy().to_string());
+    // jcode-base is compiled without cfg(test) here, so the config cache only
+    // re-checks env every 500ms; force a reload so the hook is visible now.
+    crate::config::invalidate_config_cache();
+
+    let ctx = || ToolContext {
+        session_id: "test-pre-tool-hook".to_string(),
+        message_id: "test".to_string(),
+        tool_call_id: "test".to_string(),
+        working_dir: Some(std::env::temp_dir()),
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: ToolExecutionMode::Direct,
+    };
+
+    let blocked = registry
+        .execute(
+            "grep",
+            serde_json::json!({
+                "pattern": "secret",
+                "path": std::env::temp_dir().to_string_lossy()
+            }),
+            ctx(),
+        )
+        .await;
+    let allowed = registry
+        .execute(
+            "grep",
+            serde_json::json!({
+                "pattern": "nonexistent_xyz",
+                "path": std::env::temp_dir().to_string_lossy()
+            }),
+            ctx(),
+        )
+        .await;
+
+    match prev {
+        Some(value) => crate::env::set_var("JCODE_HOOK_PRE_TOOL", value),
+        None => crate::env::remove_var("JCODE_HOOK_PRE_TOOL"),
+    }
+    crate::config::invalidate_config_cache();
+
+    let error = blocked.expect_err("pre_tool hook should block matching input");
+    assert!(
+        error.to_string().contains("no secrets"),
+        "hook stderr should surface in the error: {error}"
+    );
+    assert!(allowed.is_ok(), "non-matching input should pass the gate");
+}
+
 #[tokio::test]
 async fn test_definitions_keep_batch_schema_generic() {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
