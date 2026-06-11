@@ -374,7 +374,7 @@ pub fn parse_hook_command(raw: &str) -> Result<Vec<String>> {
 
 /// Expand a leading `~/` in a hook program path to the user's home directory,
 /// since the hook is executed directly (no shell) and would otherwise fail.
-fn expand_home(program: &str) -> PathBuf {
+pub fn expand_home(program: &str) -> PathBuf {
     if let Some(rest) = program.strip_prefix("~/")
         && let Some(home) = dirs::home_dir()
     {

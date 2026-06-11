@@ -305,6 +305,16 @@ swarm_spawn_mode = "visible"
 #   spawn_hook = "kitty @ launch --type=tab --"   # kitty tab per agent
 #   spawn_hook = "~/bin/jcode-spawn-router"       # custom placement script
 # spawn_hook = ""
+#
+# External command used to focus/raise an existing session window, replacing
+# the built-in wmctrl/xdotool title search. Receives JCODE_FOCUS_SESSION_ID
+# and JCODE_FOCUS_TITLE env vars. Pair with spawn_hook so the program that
+# placed the window also brings it to the front.
+# Env override: JCODE_FOCUS_HOOK (set empty to disable a config hook).
+#
+# Example:
+#   focus_hook = "~/bin/jcode-focus-router"
+# focus_hook = ""
 
 [ambient]
 # Ambient mode: background agent that maintains your codebase

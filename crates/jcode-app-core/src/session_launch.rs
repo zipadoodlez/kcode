@@ -83,6 +83,63 @@ pub fn resumed_window_title(session_id: &str) -> String {
     }
 }
 
+/// Focus/raise the window for `session_id` via the configured focus hook.
+///
+/// Returns `true` when a hook was configured and its process started (the
+/// built-in wmctrl/xdotool fallback should then be skipped). The hook receives
+/// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars.
+pub fn focus_session_via_hook(session_id: &str, title: &str) -> bool {
+    let hook = {
+        let config = &crate::config::config().terminal;
+        config
+            .focus_hook
+            .as_deref()
+            .map(str::trim)
+            .filter(|hook| !hook.is_empty())
+            .map(str::to_string)
+    };
+    let Some(hook) = hook else {
+        return false;
+    };
+
+    let parts = match crate::terminal_launch::parse_hook_command(&hook) {
+        Ok(parts) => parts,
+        Err(error) => {
+            crate::logging::warn(&format!("Focus hook '{hook}' failed to parse: {error}"));
+            return false;
+        }
+    };
+    let (program, args) = parts
+        .split_first()
+        .expect("parse_hook_command guarantees at least one part");
+
+    let mut cmd = std::process::Command::new(crate::terminal_launch::expand_home(program));
+    cmd.args(args)
+        .env("JCODE_FOCUS_SESSION_ID", session_id)
+        .env("JCODE_FOCUS_TITLE", title)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    match crate::platform::spawn_detached(&mut cmd) {
+        Ok(_) => true,
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "Focus hook '{hook}' failed to start ({error}); falling back to built-in focus"
+            ));
+            false
+        }
+    }
+}
+
+/// Focus a session window: configured focus hook first, then the built-in
+/// wmctrl/xdotool title search (Linux only) as a best-effort fallback.
+pub fn focus_session_window_best_effort(session_id: &str, title: &str) {
+    if focus_session_via_hook(session_id, title) {
+        return;
+    }
+    focus_title_best_effort(title);
+}
+
 #[cfg(all(unix, not(target_os = "macos")))]
 fn focus_title_best_effort(title: &str) {
     use std::process::{Command, Stdio};
@@ -203,7 +260,7 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
     let command = context.apply(command, "selfdev", session_id);
     let spawned = crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)?;
     if spawned {
-        focus_title_best_effort(&selfdev_title);
+        focus_session_window_best_effort(session_id, &selfdev_title);
     }
     Ok(spawned)
 }

@@ -471,6 +471,17 @@ pub struct TerminalConfig {
     ///
     /// Env override: `JCODE_SPAWN_HOOK` (set empty to disable a config hook).
     pub spawn_hook: Option<String>,
+    /// External command used to focus/raise an existing session window.
+    ///
+    /// When set, jcode runs the hook (instead of wmctrl/xdotool) whenever it
+    /// wants to bring a session's window to the foreground, with
+    /// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars. Pair this
+    /// with `spawn_hook` so wrappers that own placement (tmux, kitty remote,
+    /// herd) also own focus (e.g. `tmux select-window`, Wayland compositor
+    /// IPC like `niri msg`).
+    ///
+    /// Env override: `JCODE_FOCUS_HOOK` (set empty to disable a config hook).
+    pub focus_hook: Option<String>,
 }
 
 /// Automatic end-of-turn code review configuration.

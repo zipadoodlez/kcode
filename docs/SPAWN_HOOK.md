@@ -135,3 +135,26 @@ Programs that wrap jcode (e.g. herd-style session managers) can set
 launch. Every headed spawn the server performs, including swarm agents
 requested by coordinators over the socket protocol, will then route through
 the wrapper's hook.
+
+## Focus hook
+
+When jcode wants to bring an existing session window to the foreground (e.g.
+after launching a self-dev window), it normally does a best-effort
+wmctrl/xdotool title search on X11. That doesn't work under Wayland or inside
+multiplexers, and a wrapper that owns placement should also own focus:
+
+```toml
+[terminal]
+spawn_hook = "tmux new-window"
+focus_hook = "~/bin/jcode-focus"   # env: JCODE_FOCUS_SESSION_ID, JCODE_FOCUS_TITLE
+```
+
+```bash
+#!/usr/bin/env bash
+# ~/bin/jcode-focus
+tmux select-window -t "$(tmux list-windows -F '#{window_id} #{window_name}' \
+  | grep -F "$JCODE_FOCUS_TITLE" | head -1 | cut -d' ' -f1)"
+```
+
+Env override: `JCODE_FOCUS_HOOK` (empty value disables a config-file hook).
+If the hook fails to start, jcode falls back to the built-in focus path.

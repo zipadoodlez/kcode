@@ -142,6 +142,26 @@ fn test_env_override_spawn_hook() {
 }
 
 #[test]
+fn test_env_override_focus_hook() {
+    let _guard = crate::storage::lock_test_env();
+    let prev = std::env::var_os("JCODE_FOCUS_HOOK");
+    crate::env::set_var("JCODE_FOCUS_HOOK", "niri-focus-jcode");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+    assert_eq!(cfg.terminal.focus_hook.as_deref(), Some("niri-focus-jcode"));
+
+    // Empty env value disables a config-file hook.
+    crate::env::set_var("JCODE_FOCUS_HOOK", "");
+    let mut cfg = Config::default();
+    cfg.terminal.focus_hook = Some("wmctrl -a".to_string());
+    cfg.apply_env_overrides();
+    assert_eq!(cfg.terminal.focus_hook, None);
+
+    restore_env_var("JCODE_FOCUS_HOOK", prev);
+}
+
+#[test]
 fn test_env_override_memory_sidecar() {
     let _guard = crate::storage::lock_test_env();
     let prev_model = std::env::var_os("JCODE_MEMORY_MODEL");
