@@ -29,6 +29,11 @@ const EVENT_LOG_CAP: usize = 256;
 /// as a "big pop" (rows appearing at once feel sharp past a few lines).
 const BIG_POP_ROWS: usize = 5;
 
+/// Maximum per-frame deviation from the dominant shift that still reads as
+/// smooth motion. Collapse/expand animations move nearby content a row or two
+/// per frame, which the eye tracks as a slide; anything farther is a jump.
+const SLIDE_TOLERANCE: i32 = 2;
+
 /// Fraction of previously visible rows that must survive a frame for it not to
 /// be considered a mass reflow.
 const MASS_CHANGE_SURVIVOR_FRACTION: f64 = 0.5;
@@ -92,6 +97,9 @@ pub struct AnchorDiff {
     pub matched_rows: usize,
     /// Non-blank rows that matched at a *different* offset (repositioned).
     pub displaced_rows: usize,
+    /// Rows that moved within [`SLIDE_TOLERANCE`] of the dominant shift:
+    /// smooth animation motion (collapse/expand), tracked but not jarring.
+    pub sliding_rows: usize,
     /// Rows that stayed at the same screen position while the dominant shift
     /// was nonzero: viewport-pinned UI (footers, status rows). Tracked
     /// separately because staying still is usually intentional, unlike
@@ -124,6 +132,8 @@ pub struct AnchorStabilityReport {
     /// rows). Expected UI behavior; tracked to confirm they are excluded from
     /// reposition events.
     pub stationary_rows_total: u64,
+    /// Rows that slid within tolerance of the dominant shift (animations).
+    pub sliding_rows_total: u64,
     pub insertion_above_events: u64,
     pub big_pop_events: u64,
     pub blink_events: u64,
@@ -156,6 +166,7 @@ pub struct AnchorStabilityRecorder {
     reposition_events: u64,
     reposition_rows_total: u64,
     stationary_rows_total: u64,
+    sliding_rows_total: u64,
     insertion_above_events: u64,
     big_pop_events: u64,
     blink_events: u64,
@@ -185,6 +196,7 @@ impl AnchorStabilityRecorder {
             reposition_events: 0,
             reposition_rows_total: 0,
             stationary_rows_total: 0,
+            sliding_rows_total: 0,
             insertion_above_events: 0,
             big_pop_events: 0,
             blink_events: 0,
@@ -271,6 +283,7 @@ impl AnchorStabilityRecorder {
             });
         }
         self.stationary_rows_total += diff.stationary_rows as u64;
+        self.sliding_rows_total += diff.sliding_rows as u64;
 
         if diff.dominant_shift > 0 && diff.matched_rows > 0 {
             self.insertion_above_events += 1;
@@ -351,6 +364,7 @@ impl AnchorStabilityRecorder {
             reposition_events: self.reposition_events,
             reposition_rows_total: self.reposition_rows_total,
             stationary_rows_total: self.stationary_rows_total,
+            sliding_rows_total: self.sliding_rows_total,
             insertion_above_events: self.insertion_above_events,
             big_pop_events: self.big_pop_events,
             blink_events: self.blink_events,
@@ -432,15 +446,20 @@ fn align_frames(prev: &[u64], cur: &[u64]) -> AnchorDiff {
             matched_cur_rows[dominant_target as usize] = true;
             continue;
         }
-        // Unique-in-both rows found elsewhere are displaced; everything else
-        // (changed content, duplicates) counts as removed. Rows that stayed at
-        // the *same screen position* while everything else shifted are
-        // viewport-pinned UI (footers, status rows), not jumps: track them as
-        // stationary instead of displaced.
+        // Unique-in-both rows found elsewhere are classified by how far they
+        // moved relative to the dominant shift; everything else (changed
+        // content, duplicates) counts as removed. Rows that stayed at the
+        // *same screen position* while everything else shifted are
+        // viewport-pinned UI (footers, status rows). Rows within
+        // SLIDE_TOLERANCE of the dominant shift are smooth animation motion.
+        // Only rows beyond that are true jumps (displaced).
         if prev_unique.contains_key(h) {
             if let Some(cur_idx) = cur_unique.get(h) {
-                if *cur_idx == prev_idx && dominant_shift != 0 {
+                let offset = *cur_idx as i32 - prev_idx as i32;
+                if offset == 0 && dominant_shift != 0 {
                     diff.stationary_rows += 1;
+                } else if (offset - dominant_shift).abs() <= SLIDE_TOLERANCE {
+                    diff.sliding_rows += 1;
                 } else {
                     diff.displaced_rows += 1;
                 }
@@ -521,14 +540,16 @@ mod tests {
     #[test]
     fn block_jumping_to_bottom_is_a_reposition() {
         // Rows 1..8 stay anchored; block [100,101] moves from the middle to the
-        // bottom (like a reasoning block jumping below new output).
+        // bottom (like a reasoning block jumping below new output). Rows 4/5/6
+        // shift up by only 2 (within slide tolerance), but the block jumps +3.
         let mut rec = AnchorStabilityRecorder::new();
         rec.observe(frame(vec![1, 2, 3, 100, 101, 4, 5, 6]));
         let diff = rec
             .observe(frame(vec![1, 2, 3, 4, 5, 6, 100, 101]))
             .unwrap();
         assert_eq!(diff.dominant_shift, 0, "anchored rows must win the vote");
-        assert_eq!(diff.displaced_rows, 2 + 3, "100/101 jump down; 4/5/6 shift up");
+        assert_eq!(diff.displaced_rows, 2, "100/101 jump beyond tolerance");
+        assert_eq!(diff.sliding_rows, 3, "4/5/6 slide up within tolerance");
         let report = rec.report();
         assert_eq!(report.reposition_events, 1);
     }

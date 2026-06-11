@@ -2770,18 +2770,32 @@ impl App {
         if self.reasoning_streaming {
             self.close_reasoning_region(None);
         }
-        // The commit also ends this reasoning->answer segment. The retained
-        // trace renders below the transcript body, so once the answer commits
-        // into the body the trace's slot is chronologically wrong (it would sit
-        // *below* the answer it preceded, then bounce when the next thinking
-        // starts). Drop it (and any in-flight collapse) instantly: the commit
-        // reflows this area anyway, and one clean reflow beats animating a
-        // misplaced trace.
-        self.reasoning_retained = None;
-        self.reasoning_collapse = None;
+        // The commit ends this reasoning->answer segment. The retained trace
+        // renders below the transcript body, so a trace kept across the commit
+        // would sit *below* the answer it preceded (chronology flip) and bounce
+        // when the next thinking starts. Fold it into the one-line collapsed
+        // summary ("▸ thought (n lines)") placed above the answer inside the
+        // committed message: chronology is preserved, the vertical shift is
+        // small, and it matches how reloaded history renders in current mode.
+        let folded_summary = if self.reasoning_current_mode() {
+            self.reasoning_collapse = None;
+            self.reasoning_retained.take().map(|trace| {
+                let line_count = trace.lines().filter(|l| !l.trim().is_empty()).count();
+                jcode_tui_markdown::reasoning_summary_line_markup(line_count)
+            })
+        } else {
+            None
+        };
 
         if self.streaming.streaming_text.is_empty() {
             self.stream_buffer.clear();
+            // Reasoning-only segment (thinking straight into a tool call):
+            // commit just the folded trace marker so the thought leaves a
+            // stable, anchored line instead of vanishing in one frame.
+            if let Some(summary) = folded_summary {
+                self.push_display_message(DisplayMessage::assistant(summary));
+                return true;
+            }
             return false;
         }
 
@@ -2790,8 +2804,19 @@ impl App {
         if content.trim().is_empty() {
             // Nothing left after collapsing reasoning-only content.
             self.stream_buffer.clear();
+            if let Some(summary) = folded_summary {
+                self.push_display_message(DisplayMessage::assistant(summary));
+                return true;
+            }
             return false;
         }
+        // The summary is its own paragraph above the answer. The blank line
+        // also keeps the fold's upward shift small (summary + blank replaces
+        // trace + blank), so the answer slides instead of jumping.
+        let content = match folded_summary {
+            Some(summary) => format!("{summary}\n{content}"),
+            None => content,
+        };
         self.push_display_message(DisplayMessage::assistant(content));
         self.stream_buffer.clear();
         true

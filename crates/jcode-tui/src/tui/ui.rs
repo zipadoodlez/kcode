@@ -1199,6 +1199,8 @@ pub(crate) use frame_metrics::{
     recent_flicker_ui_notice,
 };
 pub(crate) use smoothness::{report_json as smoothness_report_json, reset as smoothness_reset};
+#[cfg(test)]
+pub(crate) use smoothness::frame_from_buffer as smoothness_frame_from_buffer;
 
 #[cfg(test)]
 pub(crate) use frame_metrics::{

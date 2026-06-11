@@ -40,6 +40,34 @@ fn hash_row(buffer: &Buffer, area: Rect, y: u16) -> u64 {
     if blank { BLANK_ROW_HASH } else { hasher.finish() }
 }
 
+/// Build an [`AnchorFrame`] from a rendered buffer region. Shared by the live
+/// recorder hook and offscreen benchmark tests (which feed frames into their
+/// own local [`AnchorStabilityRecorder`] for deterministic assertions).
+pub(crate) fn frame_from_buffer(
+    buffer: &Buffer,
+    messages_area: Rect,
+    scroll_offset: usize,
+    following_tail: bool,
+) -> Option<AnchorFrame> {
+    if messages_area.width == 0 || messages_area.height == 0 {
+        return None;
+    }
+    let area = messages_area.intersection(*buffer.area());
+    if area.width == 0 || area.height == 0 {
+        return None;
+    }
+    let rows: Vec<u64> = (area.top()..area.bottom())
+        .map(|y| hash_row(buffer, area, y))
+        .collect();
+    Some(AnchorFrame {
+        rows,
+        width: area.width,
+        scroll_offset,
+        following_tail,
+        at: std::time::Instant::now(),
+    })
+}
+
 /// Observe the rendered messages area for this frame. Called once per draw.
 pub(super) fn observe_frame(
     buffer: &Buffer,
@@ -47,22 +75,9 @@ pub(super) fn observe_frame(
     scroll_offset: usize,
     following_tail: bool,
 ) {
-    if messages_area.width == 0 || messages_area.height == 0 {
+    let Some(frame) = frame_from_buffer(buffer, messages_area, scroll_offset, following_tail)
+    else {
         return;
-    }
-    let area = messages_area.intersection(*buffer.area());
-    if area.width == 0 || area.height == 0 {
-        return;
-    }
-    let rows: Vec<u64> = (area.top()..area.bottom())
-        .map(|y| hash_row(buffer, area, y))
-        .collect();
-    let frame = AnchorFrame {
-        rows,
-        width: area.width,
-        scroll_offset,
-        following_tail,
-        at: std::time::Instant::now(),
     };
     let mut rec = recorder()
         .lock()
