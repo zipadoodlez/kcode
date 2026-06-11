@@ -121,6 +121,36 @@ fn format_gpt_name(short: &str) -> String {
     format!("GPT-{}", rest)
 }
 
+/// Generic fallback for model ids with no curated pretty name: title-case the
+/// hyphen/underscore segments (`claude-fable-5` -> `Claude Fable 5`). Date or
+/// snapshot suffixes (6+ digit runs) are dropped. Placeholder labels with
+/// spaces/ellipses pass through untouched.
+fn prettify_model_id(model: &str) -> String {
+    if model.contains(' ') || model.contains('…') || model.contains('/') {
+        return model.to_string();
+    }
+    let parts: Vec<String> = model
+        .split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .filter(|part| !(part.len() >= 6 && part.chars().all(|c| c.is_ascii_digit())))
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) if first.is_ascii_alphabetic() => {
+                    first.to_uppercase().chain(chars).collect::<String>()
+                }
+                Some(first) => first.to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    if parts.is_empty() {
+        model.to_string()
+    } else {
+        parts.join(" ")
+    }
+}
+
 pub(super) fn build_auth_status_line(auth: &AuthStatus, max_width: usize) -> Line<'static> {
     fn dot_color(state: AuthState) -> Color {
         match state {
@@ -446,7 +476,16 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     let short_model = shorten_model_name(&model);
     let icon = connection_type_icon(app.connection_type().as_deref())
         .unwrap_or_else(|| crate::id::session_icon(&session_name));
-    let nice_model = format_model_name(&short_model, &app.provider_name());
+    let nice_model = {
+        let curated = format_model_name(&short_model, &app.provider_name());
+        if curated == short_model {
+            // No curated pretty name matched; title-case the raw model id
+            // instead of showing the mangled short form (`claudefable5`).
+            prettify_model_id(model.trim())
+        } else {
+            curated
+        }
+    };
     let build_info = binary_age().unwrap_or_else(|| "unknown".to_string());
     let align = Alignment::Center;
     let mut lines: Vec<Line> = Vec::new();
@@ -1030,6 +1069,18 @@ mod tests {
                 .any(|line| line.contains("client:") && line.contains(" · v")),
             "local mode client line should not carry a version label: {lines:?}"
         );
+    }
+
+    #[test]
+    fn prettify_model_id_title_cases_unknown_models() {
+        assert_eq!(prettify_model_id("claude-fable-5"), "Claude Fable 5");
+        assert_eq!(prettify_model_id("grok-code-fast-1"), "Grok Code Fast 1");
+        assert_eq!(prettify_model_id("kimi_k2"), "Kimi K2");
+        // Long digit runs (snapshot dates) are dropped.
+        assert_eq!(prettify_model_id("claude-fable-5-20260101"), "Claude Fable 5");
+        // Placeholders and slashed ids pass through untouched.
+        assert_eq!(prettify_model_id("loading session…"), "loading session…");
+        assert_eq!(prettify_model_id("deepseek/deepseek-chat"), "deepseek/deepseek-chat");
     }
 
     #[test]
