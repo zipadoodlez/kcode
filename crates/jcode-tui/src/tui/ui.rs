@@ -204,6 +204,12 @@ static LAST_TOTAL_WRAPPED_LINES: AtomicUsize = AtomicUsize::new(0);
 /// handlers adopt this so manual scrolling resumes from the on-screen position.
 #[cfg(not(test))]
 static LAST_RESOLVED_CHAT_SCROLL: AtomicUsize = AtomicUsize::new(0);
+/// Whether the tail-follow viewport is mid catch-up slide (a large content
+/// append is being scrolled into view over several frames instead of jumping).
+/// Drives the redraw loop so the slide completes promptly.
+#[cfg(not(test))]
+static TAIL_CATCHUP_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 /// Wrapped line indices where each user prompt starts (updated each render frame).
 /// Used by prompt-jump keybindings (Ctrl+5..9, Ctrl+[/]) for accurate positioning.
 #[cfg(not(test))]
@@ -217,6 +223,7 @@ thread_local! {
     static TEST_LAST_DIFF_PANE_EFFECTIVE_SCROLL: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_TOTAL_WRAPPED_LINES: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_RESOLVED_CHAT_SCROLL: Cell<usize> = const { Cell::new(0) };
+    static TEST_TAIL_CATCHUP_ACTIVE: Cell<bool> = const { Cell::new(false) };
     static TEST_LAST_USER_PROMPT_POSITIONS: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
     static TEST_LAST_LAYOUT: RefCell<Option<LayoutSnapshot>> = const { RefCell::new(None) };
     static TEST_LAST_STATUS_AREA: RefCell<Option<Rect>> = const { RefCell::new(None) };
@@ -410,6 +417,31 @@ pub(crate) fn set_last_resolved_chat_scroll(value: usize) {
     #[cfg(not(test))]
     {
         LAST_RESOLVED_CHAT_SCROLL.store(value, Ordering::Relaxed);
+    }
+}
+
+/// Whether the tail-follow viewport is still sliding toward the bottom after a
+/// large append. The redraw loop keeps animation cadence while this is set.
+pub(crate) fn tail_catchup_active() -> bool {
+    #[cfg(test)]
+    {
+        return TEST_TAIL_CATCHUP_ACTIVE.with(Cell::get);
+    }
+    #[cfg(not(test))]
+    {
+        TAIL_CATCHUP_ACTIVE.load(Ordering::Relaxed)
+    }
+}
+
+pub(crate) fn set_tail_catchup_active(active: bool) {
+    #[cfg(test)]
+    {
+        TEST_TAIL_CATCHUP_ACTIVE.with(|cell| cell.set(active));
+        return;
+    }
+    #[cfg(not(test))]
+    {
+        TAIL_CATCHUP_ACTIVE.store(active, Ordering::Relaxed);
     }
 }
 

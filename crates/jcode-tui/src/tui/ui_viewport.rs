@@ -32,6 +32,53 @@ fn lower_bound(values: &[usize], target: usize) -> usize {
     values.partition_point(|&v| v < target)
 }
 
+/// Appended-row jump size (in rows) above which the tail-follow viewport slides
+/// to the bottom over several frames instead of snapping. Small appends
+/// (paced streaming) snap as before; only block insertions animate.
+const TAIL_CATCHUP_MIN_JUMP: usize = 4;
+
+/// Maximum rows the tail-follow viewport advances per rendered frame while
+/// catching up. At animation cadence (~30-60fps) even a full-screen insertion
+/// settles within a few hundred milliseconds.
+const TAIL_CATCHUP_MAX_STEP: usize = 3;
+
+/// Resolve the scroll position while following the live tail. Normally this is
+/// just `max_scroll`, but when a large block lands at once (committed message,
+/// tool result) the bottom-anchored viewport would teleport everything upward
+/// in a single frame - the "big pop". Instead, advance from the previous
+/// frame's resolved position by a bounded step so the new content slides into
+/// view. Disabled on tiers without decorative animations.
+fn resolve_tail_follow_scroll(max_scroll: usize, viewport_height: usize) -> usize {
+    if !crate::perf::tui_policy().enable_decorative_animations {
+        super::set_tail_catchup_active(false);
+        return max_scroll;
+    }
+    let prev = super::last_resolved_chat_scroll();
+    // Only animate forward catch-up from an established position. Backward
+    // motion (content shrank) and first frames snap directly.
+    if prev == 0 || max_scroll <= prev {
+        super::set_tail_catchup_active(false);
+        return max_scroll;
+    }
+    let jump = max_scroll - prev;
+    // Never let the live tail drift more than a viewport behind (e.g. a huge
+    // paste); cap the lag so the catch-up is at most one screen.
+    let max_lag = viewport_height.max(TAIL_CATCHUP_MIN_JUMP);
+    if jump <= TAIL_CATCHUP_MIN_JUMP {
+        super::set_tail_catchup_active(false);
+        return max_scroll;
+    }
+    let floor = max_scroll.saturating_sub(max_lag);
+    let next = prev.max(floor).saturating_add(TAIL_CATCHUP_MAX_STEP);
+    if next >= max_scroll {
+        super::set_tail_catchup_active(false);
+        max_scroll
+    } else {
+        super::set_tail_catchup_active(true);
+        next
+    }
+}
+
 fn selection_bg_for(base_bg: Option<Color>) -> Color {
     let fallback = rgb(32, 38, 48);
     blend_color(base_bg.unwrap_or(fallback), accent_color(), 0.34)
@@ -298,11 +345,13 @@ pub(super) fn draw_messages(
         });
     let user_scroll = app.scroll_offset().min(max_scroll);
     let scroll = if let Some(anchored) = anchored_scroll {
+        super::set_tail_catchup_active(false);
         anchored
     } else if app.auto_scroll_paused() {
+        super::set_tail_catchup_active(false);
         user_scroll.min(max_scroll)
     } else {
-        max_scroll
+        resolve_tail_follow_scroll(max_scroll, viewport_height)
     };
 
     // Publish the resolved geometry so scroll handlers and the anchor-reconcile
@@ -786,13 +835,21 @@ pub(super) fn draw_messages(
                 continue;
             }
 
-            // Inline raster images are materialized lazily: only decode + cache
-            // the ones actually on screen this frame.
-            if is_fit && image_end > scroll && abs_idx < visible_end {
-                super::inline_image_ui::materialize_visible(hash);
-            }
+            // Inline raster images are prepared lazily and off-thread: only
+            // the ones actually on screen get decoded/scaled, and a cold image
+            // schedules background prep instead of stalling this frame.
+            let fit_ready = if is_fit && image_end > scroll && abs_idx < visible_end {
+                super::inline_image_ui::ensure_drawable(hash, content_area.width, total_height)
+            } else {
+                true
+            };
 
             if image_end > scroll && abs_idx < visible_end {
+                if is_fit && !fit_ready {
+                    // Background prep in flight; leave the blank placeholder
+                    // rows this frame. A repaint is nudged on completion.
+                    continue;
+                }
                 let marker_visible = abs_idx >= scroll && abs_idx < visible_end;
 
                 if marker_visible {
@@ -1130,6 +1187,60 @@ fn compute_max_scroll_with_prompt_preview(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tail_follow_small_appends_snap_to_bottom() {
+        // Streaming-sized appends (<= min jump) snap directly; no animation.
+        crate::tui::ui::set_last_resolved_chat_scroll(100);
+        let scroll = super::resolve_tail_follow_scroll(103, 30);
+        assert_eq!(scroll, 103);
+        assert!(!crate::tui::ui::tail_catchup_active());
+    }
+
+    #[test]
+    fn tail_follow_large_append_slides_in_bounded_steps() {
+        // A 12-row jump advances by at most TAIL_CATCHUP_MAX_STEP per frame
+        // and reports an active catch-up until it reaches the bottom.
+        crate::tui::ui::set_last_resolved_chat_scroll(100);
+        let first = super::resolve_tail_follow_scroll(112, 30);
+        assert!(first < 112, "must not snap: {first}");
+        assert!(
+            first - 100 <= super::TAIL_CATCHUP_MAX_STEP,
+            "step bounded: {first}"
+        );
+        assert!(crate::tui::ui::tail_catchup_active());
+
+        // Subsequent frames converge to the bottom and clear the flag.
+        let mut scroll = first;
+        let mut guard = 0;
+        while scroll < 112 {
+            crate::tui::ui::set_last_resolved_chat_scroll(scroll);
+            scroll = super::resolve_tail_follow_scroll(112, 30);
+            guard += 1;
+            assert!(guard < 50, "catch-up must converge");
+        }
+        assert_eq!(scroll, 112);
+        assert!(!crate::tui::ui::tail_catchup_active());
+    }
+
+    #[test]
+    fn tail_follow_caps_lag_to_one_viewport() {
+        // A huge append (way beyond a screen) starts at most one viewport
+        // behind the bottom so the catch-up never replays pages of content.
+        crate::tui::ui::set_last_resolved_chat_scroll(100);
+        let scroll = super::resolve_tail_follow_scroll(400, 30);
+        assert!(scroll >= 400 - 30, "lag capped to viewport: {scroll}");
+        assert!(crate::tui::ui::tail_catchup_active());
+    }
+
+    #[test]
+    fn tail_follow_backward_motion_snaps() {
+        // Content shrank (commit collapsed reasoning): snap, don't animate.
+        crate::tui::ui::set_last_resolved_chat_scroll(100);
+        let scroll = super::resolve_tail_follow_scroll(80, 30);
+        assert_eq!(scroll, 80);
+        assert!(!crate::tui::ui::tail_catchup_active());
+    }
+
     #[test]
     fn default_copy_badge_alt_label_matches_platform() {
         #[cfg(target_os = "macos")]

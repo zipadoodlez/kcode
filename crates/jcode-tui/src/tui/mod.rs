@@ -1352,8 +1352,9 @@ pub(crate) fn redraw_interval_with_policy(
 
     // A retained/collapsing reasoning trace shrinks away even when the turn is no
     // longer processing, so it needs a smooth animation cadence and must skip the
-    // deep-idle short-circuits below.
-    if state.reasoning_animation_active() {
+    // deep-idle short-circuits below. The same goes for the tail-follow catch-up
+    // slide (viewport easing toward the bottom after a large append).
+    if state.reasoning_animation_active() || ui::tail_catchup_active() {
         return match policy.tier {
             crate::perf::PerformanceTier::Minimal => fast_interval,
             _ => animation_interval,
@@ -1486,6 +1487,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
     if state.is_processing()
         || !state.streaming_text().is_empty()
         || state.reasoning_animation_active()
+        || ui::tail_catchup_active()
         || state.status_notice().is_some()
         || state.has_pending_mouse_scroll_animation()
         || state.copy_selection_edge_autoscroll_active()
