@@ -327,6 +327,20 @@ fn header_provider_auth_tag(name: &str, auth: &AuthStatus) -> &'static str {
     }
 }
 
+fn header_provider_label(provider_name: &str, auth: &AuthStatus) -> String {
+    let trimmed = provider_name.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let name = trimmed.to_lowercase();
+    let auth_tag = header_provider_auth_tag(&name, auth);
+    if auth_tag.is_empty() {
+        name
+    } else {
+        format!("{}:{}", auth_tag, name)
+    }
+}
+
 fn abbreviate_home(path: &str) -> String {
     if let Some(home) = dirs::home_dir() {
         let home_str = home.display().to_string();
@@ -543,15 +557,62 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
         );
     }
 
-    lines.push(
-        Line::from(Span::styled(
-            nice_model,
-            Style::default().fg(header_session_color()),
-        ))
-        .alignment(align),
-    );
+    // Single model line: the styled model name plus a dim active-route detail
+    // (auth tag / upstream). This used to be a second, unstyled line in the
+    // secondary header that duplicated the model name.
+    let model_is_placeholder = {
+        let trimmed = model.trim();
+        trimmed.is_empty()
+            || trimmed == "connected"
+            || trimmed.ends_with('…')
+            || trimmed.starts_with("connecting")
+    };
+    let auth = app.auth_status();
+    let provider_label = if model_is_placeholder {
+        String::new()
+    } else {
+        header_provider_label(&app.provider_name(), &auth)
+    };
+    let upstream = if model_is_placeholder {
+        None
+    } else {
+        app.upstream_provider()
+    };
+    let mut model_spans = vec![Span::styled(
+        nice_model.clone(),
+        Style::default().fg(header_session_color()),
+    )];
+    let mut detail_parts: Vec<String> = Vec::new();
+    if !provider_label.is_empty() {
+        detail_parts.push(provider_label);
+    }
+    if let Some(upstream) = upstream.as_deref() {
+        detail_parts.push(format!("via {}", upstream));
+    }
+    let mut model_line_len = nice_model.chars().count();
+    if !detail_parts.is_empty() {
+        let suffix = format!(" · {}", detail_parts.join(" "));
+        if model_line_len + suffix.chars().count() <= w {
+            model_line_len += suffix.chars().count();
+            model_spans.push(Span::styled(suffix, Style::default().fg(dim_color())));
+        }
+    }
+    if !nice_model.is_empty() {
+        let hint = " · /model to switch";
+        if !model_is_placeholder && model_line_len + hint.chars().count() <= w {
+            model_spans.push(Span::styled(
+                hint.to_string(),
+                Style::default().fg(dim_color()),
+            ));
+        }
+        lines.push(Line::from(model_spans).alignment(align));
+    }
 
-    let version_text = if is_running_stable_release() {
+    let version_text = if client_version_label.is_some() {
+        // The server/client lines above already state both versions, so this
+        // line keeps only the (non-duplicated) client build age.
+        format!("built {}", build_info)
+    } else if is_running_stable_release() {
         let tag = jcode_build_meta::GIT_TAG;
         if tag.is_empty() || tag.contains('-') {
             let full = format!("{} · release · built {}", semver(), build_info);
@@ -594,77 +655,8 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
 pub(crate) fn build_header_lines(app: &dyn TuiState, width: u16) -> Vec<Line<'static>> {
     let mut lines: Vec<Line> = Vec::new();
     let align = ratatui::layout::Alignment::Center;
-    let model = app.provider_model();
-    let provider_name = app.provider_name();
-    let upstream = app.upstream_provider();
     let auth = app.auth_status();
     let w = width as usize;
-    let model = model.trim().to_string();
-    let provider_label = {
-        let trimmed = provider_name.trim();
-        if trimmed.is_empty() {
-            String::new()
-        } else {
-            let name = trimmed.to_lowercase();
-            let auth_tag = header_provider_auth_tag(&name, &auth);
-            if auth_tag.is_empty() {
-                name
-            } else {
-                format!("{}:{}", auth_tag, name)
-            }
-        }
-    };
-
-    let suppress_placeholder_detail = provider_label.is_empty()
-        && upstream.is_none()
-        && matches!(model.as_str(), "" | "connecting to server…" | "connected");
-
-    let model_info = if suppress_placeholder_detail || model.is_empty() {
-        String::new()
-    } else if let Some(ref provider) = upstream {
-        if provider_label.is_empty() {
-            let full = format!("{} via {} · /model to switch", model, provider);
-            if full.chars().count() <= w {
-                full
-            } else {
-                format!("{} via {}", model, provider)
-            }
-        } else {
-            let full = format!(
-                "({}) {} via {} · /model to switch",
-                provider_label, model, provider
-            );
-            if full.chars().count() <= w {
-                full
-            } else {
-                let short = format!("({}) {} via {}", provider_label, model, provider);
-                if short.chars().count() <= w {
-                    short
-                } else {
-                    format!("({}) {}", provider_label, model)
-                }
-            }
-        }
-    } else if provider_label.is_empty() {
-        let full = format!("{} · /model to switch", model);
-        if full.chars().count() <= w {
-            full
-        } else {
-            model.clone()
-        }
-    } else {
-        let full = format!("({}) {} · /model to switch", provider_label, model);
-        if full.chars().count() <= w {
-            full
-        } else {
-            format!("({}) {}", provider_label, model)
-        }
-    };
-    if !model_info.is_empty() {
-        lines.push(
-            Line::from(Span::styled(model_info, Style::default().fg(dim_color()))).alignment(align),
-        );
-    }
 
     let auth_line = build_auth_status_line(&auth, w);
     if !auth_line.spans.is_empty() {
@@ -1171,16 +1163,16 @@ mod tests {
         let mut app = crate::tui::app::App::new_for_remote(None);
         app.set_remote_startup_phase(crate::tui::app::RemoteStartupPhase::LoadingSession);
 
-        let lines = build_header_lines(&app, 80);
+        // The model line lives in the persistent header now; the startup phase
+        // label renders there without a bogus "(unknown)" provider tag.
+        let lines = build_persistent_header(&app, 80);
         let rendered = lines
-            .first()
-            .expect("header line")
-            .spans
             .iter()
+            .flat_map(|line| line.spans.iter())
             .map(|span| span.content.as_ref())
             .collect::<String>();
 
-        assert!(rendered.contains("loading session…"));
+        assert!(rendered.contains("loading session…"), "{rendered}");
         assert!(!rendered.contains("(unknown)"));
         assert!(!rendered.contains("(remote)"));
     }
