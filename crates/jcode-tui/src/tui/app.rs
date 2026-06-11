@@ -697,6 +697,8 @@ pub struct App {
     is_processing: bool,
     // Live streaming/turn progress (text, per-turn tokens, TPS tracking).
     streaming: StreamingProgress,
+    /// Keeps the machine awake while a turn is processing/streaming.
+    power_inhibitor: crate::power_inhibit::PowerInhibitor,
     should_quit: bool,
     // Message queueing
     queued_messages: Vec<String>,

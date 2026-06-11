@@ -22,6 +22,12 @@ impl App {
         self.is_processing || self.pending_queued_dispatch || self.split_launch_in_flight()
     }
 
+    /// Keep a power inhibitor held while a turn is processing/streaming so the
+    /// machine does not idle-sleep mid-stream. No-op on unsupported platforms.
+    pub(super) fn sync_sleep_guard(&mut self) {
+        self.power_inhibitor.set_active(self.is_processing());
+    }
+
     pub fn streaming_text(&self) -> &str {
         &self.streaming.streaming_text
     }

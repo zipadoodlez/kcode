@@ -249,6 +249,7 @@ impl App {
         }
 
         loop {
+            self.sync_sleep_guard();
             let desired_redraw = crate::tui::redraw_interval(&self);
             if desired_redraw != redraw_period {
                 redraw_period = desired_redraw;
@@ -405,6 +406,7 @@ impl App {
 
             // Main event loop
             loop {
+                self.sync_sleep_guard();
                 let desired_redraw = crate::tui::redraw_interval(&self);
                 if desired_redraw != redraw_period {
                     redraw_period = desired_redraw;
