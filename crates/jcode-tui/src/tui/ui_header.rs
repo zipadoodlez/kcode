@@ -917,7 +917,8 @@ mod tests {
     #[test]
     fn version_display_candidates_compact_for_narrow_width() {
         let rendered = choose_header_candidate(8, version_display_candidates());
-        assert_eq!(rendered, "v0.9");
+        // Version-agnostic: at width 8 only the bare minor semver fits.
+        assert_eq!(rendered, semver_minor());
     }
 
     fn rendered_header_lines(app: &crate::tui::app::App, width: u16) -> Vec<String> {
