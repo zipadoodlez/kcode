@@ -272,16 +272,10 @@ impl Config {
                 self.features.persist_memory_injections = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_UPDATE_CHANNEL") {
-            match v.trim().to_lowercase().as_str() {
-                "main" | "nightly" | "edge" => {
-                    self.features.update_channel = UpdateChannel::Main;
-                }
-                "stable" | "release" => {
-                    self.features.update_channel = UpdateChannel::Stable;
-                }
-                _ => {}
-            }
+        if let Ok(v) = std::env::var("JCODE_UPDATE_CHANNEL")
+            && let Some(channel) = UpdateChannel::parse(&v)
+        {
+            self.features.update_channel = channel;
         }
 
         // Agents (spawned helper sessions)
