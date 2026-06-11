@@ -89,10 +89,19 @@ pub(crate) fn reload_exec_target(is_selfdev_session: bool) -> Option<(PathBuf, &
     // marker so we compare against (and can re-exec) the real on-disk path.
     let current_exe = std::env::current_exe().ok().map(strip_deleted_suffix);
 
-    let candidate_canonical = canonicalize_or(candidate.0.clone());
-    let current_canonical = current_exe.as_ref().map(|p| canonicalize_or(p.clone()));
+    // Identity/mtime comparisons must look through release wrapper scripts to
+    // the payload that actually runs (see `build::resolve_binary_payload`):
+    // the running exe is the `.bin` payload while channel candidates are tiny
+    // wrapper scripts, and comparing wrapper-vs-payload mtimes turned every
+    // release install into a phantom "downgrade"/"update". The exec target
+    // stays the original candidate path (the wrapper), which is what sets up
+    // `LD_LIBRARY_PATH` correctly.
+    let candidate_canonical = build::resolve_binary_payload(&candidate.0);
+    let current_canonical = current_exe
+        .as_ref()
+        .map(|p| build::resolve_binary_payload(p));
 
-    let current_mtime = current_exe
+    let current_mtime = current_canonical
         .as_ref()
         .map(|p| p.as_path())
         .and_then(binary_mtime);
@@ -155,7 +164,10 @@ fn newest_reload_candidate(is_selfdev_session: bool) -> Option<(PathBuf, &'stati
         server_update_candidate(!is_selfdev_session),
     ];
     let with_mtimes = ordered.into_iter().flatten().map(|candidate| {
-        let canonical = canonicalize_or(candidate.0.clone());
+        // Compare payloads, not release wrapper scripts (whose mtimes carry no
+        // version information). Dedup also happens on the payload so a wrapper
+        // and its payload never count as two distinct candidates.
+        let canonical = build::resolve_binary_payload(&candidate.0);
         let mtime = binary_mtime(canonical.as_path());
         (candidate, canonical, mtime)
     });
@@ -376,19 +388,26 @@ pub(crate) fn server_has_newer_binary() -> bool {
     // Strip the Linux " (deleted)" marker (see `strip_deleted_suffix`) so an
     // in-place rebuild does not make the running binary's mtime unreadable and
     // suppress a legitimate update signal.
+    //
+    // All paths are resolved through `build::resolve_binary_payload` so release
+    // installs (channel symlink -> wrapper script -> `.bin` payload) compare the
+    // payload that actually runs. Comparing the wrapper script against the
+    // running payload compared two different files with unrelated mtimes, which
+    // could report a phantom update forever and wedge clients into an infinite
+    // reload loop right after `/update`.
     let current_exe = std::env::current_exe().ok().map(strip_deleted_suffix);
-    let current_mtime = current_exe
+    let current_canonical = current_exe
+        .as_ref()
+        .map(|path| build::resolve_binary_payload(path));
+    let current_mtime = current_canonical
         .as_ref()
         .and_then(|p| std::fs::metadata(p).ok())
         .and_then(|m| m.modified().ok());
-    let current_canonical = current_exe
-        .as_ref()
-        .map(|path| canonicalize_or(path.clone()));
 
     let mut candidates = HashSet::new();
     for is_selfdev_session in [false, true] {
         if let Some((candidate, _label)) = server_update_candidate(is_selfdev_session) {
-            candidates.insert(canonicalize_or(candidate));
+            candidates.insert(build::resolve_binary_payload(&candidate));
         }
     }
 
@@ -865,13 +884,14 @@ mod newest_reload_candidate_integration_tests {
     /// running-daemon path + mtime, so a test can model "the daemon is still the
     /// OLD binary" without spawning a real process. It scans the exact same
     /// candidate set (both flavors) and uses the same `newer_binary_available`
-    /// core the production function uses.
+    /// core the production function uses, including the wrapper->payload
+    /// resolution.
     fn daemon_reports_update(running: &Path, running_mtime: SystemTime) -> bool {
-        let running_canonical = canonicalize_or(running.to_path_buf());
+        let running_canonical = build::resolve_binary_payload(running);
         let mut candidates = std::collections::HashSet::new();
         for is_selfdev in [false, true] {
             if let Some((candidate, _label)) = super::server_update_candidate(is_selfdev) {
-                candidates.insert(canonicalize_or(candidate));
+                candidates.insert(build::resolve_binary_payload(&candidate));
             }
         }
         let with_mtimes = candidates.into_iter().map(|candidate| {
@@ -935,6 +955,88 @@ mod newest_reload_candidate_integration_tests {
             Some(new_release),
             "normal-user daemon should reload into the freshly installed release"
         );
+    }
+
+    /// Install a release-archive-style version dir: a tiny `jcode` wrapper
+    /// script plus the real `jcode-linux-x86_64.bin` payload, with independently
+    /// settable mtimes. This is exactly what `/update`'s tar.gz install path
+    /// produces on disk.
+    fn install_release_style_binary(
+        version: &str,
+        wrapper_mtime: SystemTime,
+        payload_mtime: SystemTime,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = build::builds_dir()
+            .expect("builds dir")
+            .join("versions")
+            .join(version);
+        std::fs::create_dir_all(&dir).expect("create version dir");
+        let payload = dir.join("jcode-linux-x86_64.bin");
+        std::fs::write(&payload, format!("payload for {version}")).expect("write payload");
+        std::fs::File::open(&payload)
+            .expect("open payload")
+            .set_modified(payload_mtime)
+            .expect("set payload mtime");
+        let wrapper = dir.join(build::binary_name());
+        std::fs::write(
+            &wrapper,
+            "#!/usr/bin/env sh\nexec ./jcode-linux-x86_64.bin \"$@\"\n",
+        )
+        .expect("write wrapper");
+        std::fs::File::open(&wrapper)
+            .expect("open wrapper")
+            .set_modified(wrapper_mtime)
+            .expect("set wrapper mtime");
+        (wrapper, payload)
+    }
+
+    /// Regression test for the post-`/update` infinite reload loop: release
+    /// archives install a wrapper script + `.bin` payload, and the install copy
+    /// loop can write the wrapper AFTER the payload. The running daemon's
+    /// `current_exe()` is the payload, while the channel candidate resolves to
+    /// the wrapper. Comparing wrapper-vs-payload mtimes made the freshly
+    /// updated daemon report "newer binary available" against ITS OWN install
+    /// forever -> the client force-reloaded the server in a loop and the
+    /// session never attached.
+    #[test]
+    fn freshly_updated_release_daemon_reports_no_phantom_update() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let prev_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        // Wrapper written strictly AFTER the payload (the bad copy order).
+        let (wrapper, payload) =
+            install_release_style_binary("0.25.1", base + Duration::from_secs(5), base);
+        build::update_stable_symlink("0.25.1").expect("stable");
+        build::update_current_symlink("0.25.1").expect("current");
+        build::update_shared_server_symlink("0.25.1").expect("shared");
+
+        // The daemon runs the payload; the candidate is the wrapper. Same
+        // logical install -> no update must be reported.
+        let payload_mtime = std::fs::metadata(&payload)
+            .expect("payload metadata")
+            .modified()
+            .expect("payload mtime");
+        assert!(
+            !daemon_reports_update(&payload, payload_mtime),
+            "a freshly updated daemon must not report an update against its own install"
+        );
+        // Sanity: the wrapper IS strictly newer than the payload on disk, so a
+        // naive wrapper-vs-payload comparison would have reported a phantom
+        // update (the bug this guards against).
+        let wrapper_mtime = std::fs::metadata(&wrapper)
+            .expect("wrapper metadata")
+            .modified()
+            .expect("wrapper mtime");
+        assert!(wrapper_mtime > payload_mtime);
+
+        if let Some(prev_home) = prev_home {
+            crate::env::set_var("JCODE_HOME", prev_home);
+        } else {
+            crate::env::remove_var("JCODE_HOME");
+        }
     }
 }
 

@@ -14,7 +14,7 @@ pub use jcode_build_support::{
     migration_context_path, preferred_reload_candidate, promote_version_to_shared_server,
     publish_local_current_build, publish_local_current_build_for_source, read_build_progress,
     read_current_version, read_shared_server_version, read_stable_version, release_binary_path,
-    repair_stale_shared_server_channel, repo_build_version, repo_scope_key,
+    repair_stale_shared_server_channel, repo_build_version, repo_scope_key, resolve_binary_payload,
     rollback_pending_activation_for_session, run_selfdev_build, save_migration_context,
     selfdev_binary_path, selfdev_build_command, selfdev_build_command_for_target,
     shared_server_binary_path, shared_server_tracks_stable, shared_server_update_candidate,

@@ -180,7 +180,12 @@ impl App {
             return false;
         };
 
-        std::fs::metadata(&candidate)
+        // The candidate may be a channel symlink to a release wrapper script;
+        // compare the payload that actually runs (`client_binary_mtime` is the
+        // running payload's mtime). Comparing the wrapper's mtime reported a
+        // phantom "newer client" forever after release installs whose wrapper
+        // was written after the payload, re-execing the client in a loop.
+        std::fs::metadata(crate::build::resolve_binary_payload(&candidate))
             .ok()
             .and_then(|m| m.modified().ok())
             .is_some_and(|mtime| mtime > startup_mtime)
