@@ -1664,6 +1664,10 @@ pub(super) fn handle_visible_copy_shortcut(
         return true;
     }
 
+    if handle_inline_image_toggle_shortcut(app, c) {
+        return true;
+    }
+
     if let Some(target) = crate::tui::ui::recent_flicker_copy_target_for_key(c)
         .or_else(|| crate::tui::ui::visible_copy_target_for_key(c))
     {
@@ -1693,6 +1697,22 @@ fn visible_copy_shortcut_key(code: KeyCode, modifiers: KeyModifiers) -> Option<c
     };
 
     modifiers.contains(KeyModifiers::ALT).then_some(c)
+}
+
+/// Alt+Shift+I toggles inline transcript images between expanded and
+/// collapsed label stubs. Only active when the transcript actually has
+/// inline images, so the chord stays inert otherwise.
+fn handle_inline_image_toggle_shortcut(app: &mut App, key: char) -> bool {
+    if !key.eq_ignore_ascii_case(&'i') {
+        return false;
+    }
+    use crate::tui::TuiState as _;
+    if app.side_pane_images_signature().0 == 0 {
+        return false;
+    }
+    app.record_copy_badge_key_press('i');
+    app.toggle_inline_images();
+    true
 }
 
 fn handle_expand_edit_badge_shortcut(app: &mut App, key: char) -> bool {

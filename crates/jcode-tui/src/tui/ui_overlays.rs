@@ -374,6 +374,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Toggle side panel (or diagram pane if empty)",
     ));
     lines.push(key_entry("Alt+T", "Toggle diagram position (side/top)"));
+    lines.push(key_entry(
+        "Alt+Shift+I",
+        "Show/hide inline images (persists)",
+    ));
     lines.push(key_entry("Ctrl+H / Ctrl+L", "Focus chat / diagram / diffs"));
     lines.push(key_entry(
         "Ctrl+Left / Right",

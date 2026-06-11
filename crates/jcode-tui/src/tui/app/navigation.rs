@@ -821,6 +821,20 @@ impl App {
         self.set_status_notice(format!("Side panel: {}%", self.diagram_pane_ratio_target));
     }
 
+    /// Toggle whether inline transcript images render expanded or as
+    /// collapsed label stubs. Persisted so the choice survives restarts and
+    /// session resumes.
+    pub(super) fn toggle_inline_images(&mut self) {
+        self.inline_images_visible = !self.inline_images_visible;
+        super::ui_prefs::save_inline_images_visible(self.inline_images_visible);
+        let status = if self.inline_images_visible {
+            "Inline images: ON"
+        } else {
+            "Inline images: hidden (Alt+Shift+I to show)"
+        };
+        self.set_status_notice(status);
+    }
+
     pub(super) fn toggle_side_panel(&mut self) {
         if self.side_panel_user_hidden {
             self.side_panel_user_hidden = false;

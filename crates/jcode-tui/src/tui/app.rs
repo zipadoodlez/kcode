@@ -93,6 +93,7 @@ mod tui_lifecycle_runtime;
 mod tui_state;
 mod turn;
 mod turn_memory;
+mod ui_prefs;
 
 pub(crate) use self::state_ui_storage::compact_display_messages_for_storage;
 
@@ -1062,6 +1063,10 @@ pub struct App {
     side_panel_explicit_hidden: bool,
     // Pin read images to side pane
     pin_images: bool,
+    // Inline transcript images render expanded (true) or as collapsed label
+    // stubs (false). Toggled with Alt+Shift+I; persisted in UI preferences so
+    // it survives restarts and session resumes.
+    inline_images_visible: bool,
     // Auto-hide deadline for the pinned image side pane only.
     pinned_images_auto_hide_deadline: Option<Instant>,
     pinned_images_seen_count: usize,

@@ -538,6 +538,7 @@ pub(super) fn prepare_messages(
         batch_progress_hash: active_batch_progress_hash(app),
         reasoning_trace_hash: reasoning_trace_hash(app),
         inline_images_signature: app.side_pane_images_signature(),
+        inline_images_visible: app.inline_images_visible(),
     };
 
     super::note_full_prep_request();
@@ -602,6 +603,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
                 width,
                 height,
                 prefix_blank,
+                app.inline_images_visible(),
             ))
         }
     } else {
@@ -777,6 +779,7 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
         diagram_mode: app.diagram_mode(),
         centered: app.centered_mode(),
         pin_images: app.pin_images(),
+        inline_images_visible: app.inline_images_visible(),
         images_signature: app.side_pane_images_signature(),
     };
     let msg_count = app.display_messages().len();
@@ -864,6 +867,7 @@ pub(super) fn prepare_body_incremental(
     // anchored image matching a *new* message must be injected here; its anchor
     // target did not exist when the base was built.
     let anchored_images = super::inline_image_ui::resolve_anchored_items_cached(app);
+    let inline_images_visible = app.inline_images_visible();
     // 0-based ordinal of the next rendered user prompt, excluding synthetic
     // attached-image label messages, mirroring the session renderer's count.
     let mut anchor_prompt_ordinal = if anchored_images.by_prompt.is_empty() {
@@ -929,7 +933,7 @@ pub(super) fn prepare_body_incremental(
                     let ordinal = anchor_prompt_ordinal;
                     anchor_prompt_ordinal += 1;
                     if let Some(items) = anchored_images.by_prompt.get(&ordinal) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
                             new_lines.push(line);
                             new_line_raw_overrides.push(None);
                             new_line_copy_offsets.push(0);
@@ -1030,7 +1034,7 @@ pub(super) fn prepare_body_incremental(
                         ));
                     }
                     if let Some(items) = anchored_images.by_tool.get(&tc.id) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
                             new_lines.push(line);
                             new_line_raw_overrides.push(None);
                             new_line_copy_offsets.push(0);
@@ -1457,6 +1461,7 @@ pub(super) fn prepare_body(
     // Images anchored to transcript messages render inline right after the
     // message that produced them (tool result or user prompt).
     let anchored_images = super::inline_image_ui::resolve_anchored_items_cached(app);
+    let inline_images_visible = app.inline_images_visible();
     let mut anchor_prompt_ordinal = 0usize;
 
     for (msg_idx, msg) in app.display_messages().iter().enumerate() {
@@ -1490,7 +1495,7 @@ pub(super) fn prepare_body(
                     let ordinal = anchor_prompt_ordinal;
                     anchor_prompt_ordinal += 1;
                     if let Some(items) = anchored_images.by_prompt.get(&ordinal) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
                             lines.push(line);
                             line_raw_overrides.push(None);
                             line_copy_offsets.push(0);
@@ -1621,7 +1626,7 @@ pub(super) fn prepare_body(
                         ));
                     }
                     if let Some(items) = anchored_images.by_tool.get(&tc.id) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width) {
+                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
                             lines.push(line);
                             line_raw_overrides.push(None);
                             line_copy_offsets.push(0);

@@ -1497,6 +1497,10 @@ impl crate::tui::TuiState for App {
     fn pin_images(&self) -> bool {
         self.pin_images && !self.side_panel_user_hidden
     }
+
+    fn inline_images_visible(&self) -> bool {
+        self.inline_images_visible
+    }
     fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
         if self.side_panel_user_hidden
             || self.side_panel.focused_page().is_some()

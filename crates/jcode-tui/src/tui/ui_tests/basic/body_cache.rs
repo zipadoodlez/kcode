@@ -7,6 +7,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
         pin_images: true,
+        inline_images_visible: true,
         images_signature: (0, 0),
     };
     let key_b = BodyCacheKey {
@@ -71,6 +72,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
             diagram_mode: crate::config::DiagramDisplayMode::Pinned,
             centered: false,
             pin_images: true,
+        inline_images_visible: true,
             images_signature: (0, 0),
         };
         let prepared = Arc::new(PreparedMessages {
@@ -106,6 +108,7 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
         pin_images: true,
+        inline_images_visible: true,
         images_signature: (0, 0),
     };
     let prepared = make_prepared_messages_with_content_bytes(3 * 1024 * 1024, "body-large-");
@@ -131,6 +134,7 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
         pin_images: true,
+        inline_images_visible: true,
         images_signature: (0, 0),
     };
     let prepared = make_oversized_prepared_messages("body-oversized-");
@@ -157,6 +161,7 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
         pin_images: true,
+        inline_images_visible: true,
         images_signature: (0, 0),
     };
     let key_b = BodyCacheKey {
@@ -190,6 +195,7 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
         diagram_mode: crate::config::DiagramDisplayMode::Pinned,
         centered: false,
         pin_images: true,
+        inline_images_visible: true,
         images_signature: (0, 0),
     };
     let prepared = make_oversized_prepared_messages("body-oversized-base-");
@@ -320,6 +326,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         batch_progress_hash: 0,
         reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
+    inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
         width: 39,
@@ -389,6 +396,7 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             batch_progress_hash: 0,
         reasoning_trace_hash: 0,
         inline_images_signature: (0, 0),
+        inline_images_visible: true,
         };
         let prepared = make_prepared_chat_frame(Arc::new(PreparedMessages {
             wrapped_lines: vec![Line::from(format!("{idx}"))],
@@ -429,6 +437,7 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
         batch_progress_hash: 0,
         reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
+    inline_images_visible: true,
     };
     let prepared = make_prepared_chat_frame_with_content_bytes(3 * 1024 * 1024, "full-large-");
 
@@ -458,6 +467,7 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
         batch_progress_hash: 0,
         reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
+    inline_images_visible: true,
     };
     let prepared = make_oversized_prepared_chat_frame("full-oversized-");
 
@@ -489,6 +499,7 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
         batch_progress_hash: 0,
         reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
+    inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
         width: 139,
@@ -550,6 +561,7 @@ fn test_prepare_body_anchors_tool_image_after_tool_message() {
         messages_version: 1,
         side_pane_images: vec![anchored_tool_image("tool-img-1")],
         pin_images: true,
+        inline_images_visible: true,
         ..Default::default()
     };
 
@@ -591,6 +603,7 @@ fn test_prepare_body_incremental_anchors_image_on_new_tool_message() {
         display_messages: vec![DisplayMessage::user("read the screenshot")],
         messages_version: 1,
         pin_images: true,
+        inline_images_visible: true,
         ..Default::default()
     };
     let grown_state = TestState {
@@ -601,6 +614,7 @@ fn test_prepare_body_incremental_anchors_image_on_new_tool_message() {
         messages_version: 2,
         side_pane_images: vec![anchored_tool_image("tool-img-2")],
         pin_images: true,
+        inline_images_visible: true,
         ..Default::default()
     };
 
@@ -636,6 +650,7 @@ fn test_prepare_body_skips_anchored_images_when_pin_images_off() {
         messages_version: 1,
         side_pane_images: vec![anchored_tool_image("tool-img-3")],
         pin_images: false,
+        inline_images_visible: true,
         ..Default::default()
     };
 
@@ -643,5 +658,35 @@ fn test_prepare_body_skips_anchored_images_when_pin_images_off() {
     assert!(
         prepared.image_regions.is_empty(),
         "hidden images must not inject regions into the body"
+    );
+}
+
+#[test]
+fn test_prepare_body_collapses_anchored_images_when_inline_images_hidden() {
+    let state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("read the screenshot"),
+            DisplayMessage::tool("read shot.png", read_tool_call("tool-img-4")),
+        ],
+        messages_version: 1,
+        side_pane_images: vec![anchored_tool_image("tool-img-4")],
+        pin_images: true,
+        inline_images_visible: false,
+        ..Default::default()
+    };
+
+    let prepared = super::prepare::prepare_body(&state, 80, false);
+    assert!(
+        prepared.image_regions.is_empty(),
+        "collapsed images must not emit drawable regions"
+    );
+    let text = prepared.wrapped_plain_lines.join("\n");
+    assert!(
+        text.contains("shot.png"),
+        "label stub should remain visible: {text:?}"
+    );
+    assert!(
+        text.contains("show image"),
+        "show badge should render on the stub: {text:?}"
     );
 }

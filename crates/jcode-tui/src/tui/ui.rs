@@ -786,6 +786,9 @@ struct BodyCacheKey {
     centered: bool,
     /// Whether inline images render at all (Alt+M hides them).
     pin_images: bool,
+    /// Whether inline images render expanded or as collapsed label stubs
+    /// (Alt+Shift+I toggles; persisted).
+    inline_images_visible: bool,
     /// Signature of the inline image set; anchored images render inside the
     /// body, so the body must rebuild when images arrive or change.
     images_signature: (usize, u64),
@@ -862,6 +865,7 @@ impl BodyCacheState {
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
                     && entry.key.pin_images == key.pin_images
+                    && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|entry| entry.msg_count)
@@ -880,6 +884,7 @@ impl BodyCacheState {
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
                     && entry.key.pin_images == key.pin_images
+                    && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|entry| entry.msg_count)
@@ -918,6 +923,7 @@ impl BodyCacheState {
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
                     && entry.key.pin_images == key.pin_images
+                    && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|(_, entry)| entry.msg_count)
@@ -937,6 +943,7 @@ impl BodyCacheState {
                     // late-arriving image may target an already-prepared
                     // message; only reuse bases built with the same image set.
                     && entry.key.pin_images == key.pin_images
+                    && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
             })
             .max_by_key(|(_, entry)| entry.msg_count)
@@ -1028,6 +1035,8 @@ struct FullPrepCacheKey {
     batch_progress_hash: u64,
     reasoning_trace_hash: u64,
     inline_images_signature: (usize, u64),
+    /// Whether inline images render expanded or as collapsed label stubs.
+    inline_images_visible: bool,
 }
 
 #[derive(Clone)]

@@ -140,6 +140,7 @@ struct TestState {
     reasoning_collapse: Option<(String, f32)>,
     side_pane_images: Vec<crate::session::RenderedImage>,
     pin_images: bool,
+    inline_images_visible: bool,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -394,6 +395,9 @@ impl crate::tui::TuiState for TestState {
     }
     fn pin_images(&self) -> bool {
         self.pin_images
+    }
+    fn inline_images_visible(&self) -> bool {
+        self.inline_images_visible
     }
     fn diff_line_wrap(&self) -> bool {
         true

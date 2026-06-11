@@ -405,6 +405,12 @@ pub trait TuiState {
     fn side_panel(&self) -> &crate::side_panel::SidePanelSnapshot;
     /// Whether to pin read images to a side pane
     fn pin_images(&self) -> bool;
+    /// Whether inline transcript images render expanded. When false, each
+    /// image collapses to a one-line label stub with a `show image` badge.
+    /// Persisted across restarts/resume via UI preferences.
+    fn inline_images_visible(&self) -> bool {
+        true
+    }
     /// Remaining seconds before the pinned image side pane auto-hides.
     fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
         None
