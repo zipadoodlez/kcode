@@ -739,6 +739,20 @@ impl crate::tui::TuiState for App {
         })
     }
 
+    fn server_display_version(&self) -> Option<String> {
+        if !self.is_remote {
+            return None;
+        }
+        // Prefer the live version reported by the connected server (history
+        // sync); fall back to the registry record so a version is available
+        // even before the first history event arrives.
+        self.remote_server_version.clone().or_else(|| {
+            crate::registry::find_server_by_socket_sync(&crate::server::socket_path())
+                .map(|info| info.version)
+                .filter(|version| !version.trim().is_empty())
+        })
+    }
+
     fn server_sessions(&self) -> Vec<String> {
         self.remote_sessions.clone()
     }
@@ -1406,30 +1420,6 @@ impl crate::tui::TuiState for App {
         let mut renderer = self.streaming_md_renderer.borrow_mut();
         renderer.set_width(Some(width));
         renderer.update(&self.streaming.streaming_text)
-    }
-
-    fn reasoning_retained_markup(&self) -> Option<&str> {
-        self.reasoning_retained
-            .as_ref()
-            .map(|retained| retained.markup.as_str())
-    }
-
-    fn reasoning_collapse_state(&self) -> Option<(&str, f32)> {
-        let collapse = self.reasoning_collapse.as_ref()?;
-        let elapsed = collapse.started.elapsed().as_secs_f32();
-        let dur = crate::tui::app::REASONING_COLLAPSE_DURATION.as_secs_f32();
-        let t = if dur <= 0.0 {
-            1.0
-        } else {
-            (elapsed / dur).clamp(0.0, 1.0)
-        };
-        // Ease-in-out so the shrink starts and ends gently.
-        let progress = t * t * (3.0 - 2.0 * t);
-        Some((collapse.markup.as_str(), progress))
-    }
-
-    fn reasoning_animation_active(&self) -> bool {
-        App::reasoning_animation_active(self)
     }
 
     fn centered_mode(&self) -> bool {

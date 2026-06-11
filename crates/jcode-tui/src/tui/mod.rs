@@ -281,6 +281,10 @@ pub trait TuiState {
     fn server_display_name(&self) -> Option<String>;
     /// Server icon (e.g., "🔥", "🌫️") - only set in remote mode
     fn server_display_icon(&self) -> Option<String>;
+    /// Server binary version (e.g., "v0.25.19-dev (abc1234)") - remote mode only
+    fn server_display_version(&self) -> Option<String> {
+        None
+    }
     /// List of all session IDs on the server (remote mode only)
     fn server_sessions(&self) -> Vec<String>;
     /// Number of connected clients (remote mode only)
@@ -347,23 +351,6 @@ pub trait TuiState {
     /// Render streaming text using incremental markdown renderer
     /// This is more efficient than re-rendering on every frame
     fn render_streaming_markdown(&self, width: usize) -> Vec<Line<'static>>;
-    /// Sentinel-wrapped dim+italic markup of the reasoning trace that is currently
-    /// *retained* on screen above the live stream in `current` display mode (kept
-    /// until the next trace finishes), or `None` when nothing is retained.
-    fn reasoning_retained_markup(&self) -> Option<&str> {
-        None
-    }
-    /// Markup and shrink progress (0.0 = full height, 1.0 = fully gone) of the
-    /// reasoning trace that is currently animating away, or `None` when no collapse
-    /// animation is running.
-    fn reasoning_collapse_state(&self) -> Option<(&str, f32)> {
-        None
-    }
-    /// Whether a retained or collapsing reasoning trace still needs animation
-    /// frames (drives `periodic_redraw_required` / `redraw_interval`).
-    fn reasoning_animation_active(&self) -> bool {
-        false
-    }
     /// Whether centered mode is enabled
     fn centered_mode(&self) -> bool;
     /// Authentication status for all supported providers
@@ -1350,11 +1337,11 @@ pub(crate) fn redraw_interval_with_policy(
     let animation_interval = fps_to_duration(policy.animation_fps);
     let fast_interval = fps_to_duration(policy.redraw_fps);
 
-    // A retained/collapsing reasoning trace shrinks away even when the turn is no
-    // longer processing, so it needs a smooth animation cadence and must skip the
-    // deep-idle short-circuits below. The same goes for the tail-follow catch-up
-    // slide (viewport easing toward the bottom after a large append).
-    if state.reasoning_animation_active() || ui::tail_catchup_active() {
+    // A retained/collapsing reasoning trace used to need animation cadence here;
+    // anchored traces are static transcript messages now. The tail-follow
+    // catch-up slide still needs smooth frames and must skip the deep-idle
+    // short-circuits below.
+    if ui::tail_catchup_active() {
         return match policy.tier {
             crate::perf::PerformanceTier::Minimal => fast_interval,
             _ => animation_interval,
@@ -1465,7 +1452,6 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
     if deep_idle
         && !state.is_processing()
         && state.streaming_text().is_empty()
-        && !state.reasoning_animation_active()
         && !state.has_pending_mouse_scroll_animation()
         && !state.copy_selection_edge_autoscroll_active()
         && !state.remote_startup_phase_active()
@@ -1486,7 +1472,6 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
 
     if state.is_processing()
         || !state.streaming_text().is_empty()
-        || state.reasoning_animation_active()
         || ui::tail_catchup_active()
         || state.status_notice().is_some()
         || state.has_pending_mouse_scroll_animation()

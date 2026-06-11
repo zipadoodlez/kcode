@@ -324,7 +324,6 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         streaming_text_len: 0,
         streaming_text_hash: 0,
         batch_progress_hash: 0,
-        reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
     inline_images_visible: true,
     };
@@ -394,7 +393,6 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             streaming_text_len: 0,
             streaming_text_hash: 0,
             batch_progress_hash: 0,
-        reasoning_trace_hash: 0,
         inline_images_signature: (0, 0),
         inline_images_visible: true,
         };
@@ -435,7 +433,6 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
         streaming_text_len: 0,
         streaming_text_hash: 0,
         batch_progress_hash: 0,
-        reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
     inline_images_visible: true,
     };
@@ -465,7 +462,6 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
-        reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
     inline_images_visible: true,
     };
@@ -497,7 +493,6 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
-        reasoning_trace_hash: 0,
     inline_images_signature: (0, 0),
     inline_images_visible: true,
     };

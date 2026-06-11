@@ -45,6 +45,27 @@ pub(crate) fn capitalize(s: &str) -> String {
     }
 }
 
+/// Compact form of a full build version string: `v0.25.19-dev (abc1234, dirty)`
+/// becomes `v0.25.19-dev`. Used for the per-line server/client version labels.
+fn compact_version_label(version: &str) -> String {
+    let trimmed = version.trim();
+    match trimmed.split_once(" (") {
+        Some((head, _)) => head.trim().to_string(),
+        None => trimmed.to_string(),
+    }
+}
+
+/// Version label for a `server:`/`client:` header line. Normally compact
+/// (semver only); keeps the git-hash suffix when the two sides share a semver
+/// but differ by build, so the mismatch is still visible at a glance.
+fn header_version_label(version: &str, include_hash: bool) -> String {
+    if include_hash {
+        version.trim().to_string()
+    } else {
+        compact_version_label(version)
+    }
+}
+
 fn format_model_name(short: &str, provider_name: &str) -> String {
     if short.contains('/') {
         // Slashed model ids (e.g. `nvidia/nemotron-...`) are served by the
@@ -440,6 +461,36 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
         status_items.push(badge);
     }
 
+    // Labeled versions for the `server:` / `client:` lines. Lots of users run
+    // mismatched client/server binaries, so both lines carry their own version
+    // label (and highlight on mismatch) instead of relying on the single
+    // ambiguous version line at the bottom.
+    let server_version_full = app.server_display_version();
+    let client_version_full = server_name
+        .as_ref()
+        .map(|_| jcode_build_meta::VERSION.to_string());
+    let version_mismatch = matches!(
+        (&server_version_full, &client_version_full),
+        (Some(server), Some(client)) if server.trim() != client.trim()
+    );
+    let include_hash = version_mismatch
+        && matches!(
+            (&server_version_full, &client_version_full),
+            (Some(server), Some(client))
+                if compact_version_label(server) == compact_version_label(client)
+        );
+    let version_style = if version_mismatch {
+        Style::default().fg(rgb(255, 200, 100))
+    } else {
+        Style::default().fg(dim_color())
+    };
+    let server_version_label = server_version_full
+        .as_deref()
+        .map(|version| header_version_label(version, include_hash));
+    let client_version_label = client_version_full
+        .as_deref()
+        .map(|version| header_version_label(version, include_hash));
+
     if !status_items.is_empty() {
         let badge_text = format!("⟨{}⟩", status_items.join("·"));
         lines.push(
@@ -456,24 +507,32 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
         } else {
             format!("server: {} {}", capitalize(server_name), server_icon)
         };
-        lines.push(
-            Line::from(Span::styled(
-                server_text,
-                Style::default().fg(header_name_color()),
-            ))
-            .alignment(align),
-        );
+        let mut spans = vec![Span::styled(
+            server_text.clone(),
+            Style::default().fg(header_name_color()),
+        )];
+        if let Some(version) = server_version_label.as_deref() {
+            let suffix = format!(" · {}", version);
+            if server_text.chars().count() + suffix.chars().count() <= w {
+                spans.push(Span::styled(suffix, version_style));
+            }
+        }
+        lines.push(Line::from(spans).alignment(align));
     }
 
     if !session_name.is_empty() {
         let client_text = format!("client: {} {}", capitalize(&session_name), icon);
-        lines.push(
-            Line::from(Span::styled(
-                client_text,
-                Style::default().fg(header_name_color()),
-            ))
-            .alignment(align),
-        );
+        let mut spans = vec![Span::styled(
+            client_text.clone(),
+            Style::default().fg(header_name_color()),
+        )];
+        if let Some(version) = client_version_label.as_deref() {
+            let suffix = format!(" · {}", version);
+            if client_text.chars().count() + suffix.chars().count() <= w {
+                spans.push(Span::styled(suffix, version_style));
+            }
+        }
+        lines.push(Line::from(spans).alignment(align));
     } else if server_name.is_none() {
         lines.push(
             Line::from(Span::styled(
@@ -859,6 +918,132 @@ mod tests {
     fn version_display_candidates_compact_for_narrow_width() {
         let rendered = choose_header_candidate(8, version_display_candidates());
         assert_eq!(rendered, "v0.9");
+    }
+
+    fn rendered_header_lines(app: &crate::tui::app::App, width: u16) -> Vec<String> {
+        build_persistent_header(app, width)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn persistent_header_labels_server_and_client_versions() {
+        let mut app = create_test_app();
+        app.set_remote_server_identity_for_tests(
+            Some("blazing"),
+            Some("🔥"),
+            Some("v0.14.2-dev (old1234)"),
+            Some("session_fox_1705012345678"),
+        );
+
+        let lines = rendered_header_lines(&app, 120);
+        let server_line = lines
+            .iter()
+            .find(|line| line.contains("server:"))
+            .expect("server line");
+        let client_line = lines
+            .iter()
+            .find(|line| line.contains("client:"))
+            .expect("client line");
+
+        assert!(
+            server_line.contains("server: Blazing 🔥 · v0.14.2-dev"),
+            "server line should carry the server version: {server_line}"
+        );
+        let client_version = compact_version_label(jcode_build_meta::VERSION);
+        assert!(
+            client_line.contains("client: Fox"),
+            "client line should keep the session name: {client_line}"
+        );
+        assert!(
+            client_line.contains(&format!("· {}", client_version)),
+            "client line should carry the client version: {client_line}"
+        );
+    }
+
+    #[test]
+    fn persistent_header_keeps_git_hash_when_semvers_match_but_builds_differ() {
+        let mut app = create_test_app();
+        let client_semver = compact_version_label(jcode_build_meta::VERSION);
+        let fake_server_version = format!("{} (0000000)", client_semver);
+        app.set_remote_server_identity_for_tests(
+            Some("blazing"),
+            None,
+            Some(&fake_server_version),
+            Some("session_fox_1705012345678"),
+        );
+
+        let lines = rendered_header_lines(&app, 160);
+        let server_line = lines
+            .iter()
+            .find(|line| line.contains("server:"))
+            .expect("server line");
+        let client_line = lines
+            .iter()
+            .find(|line| line.contains("client:"))
+            .expect("client line");
+
+        assert!(
+            server_line.contains("(0000000)"),
+            "same-semver mismatch should keep the server git hash: {server_line}"
+        );
+        assert!(
+            client_line.contains(&format!("· {}", jcode_build_meta::VERSION)),
+            "same-semver mismatch should keep the client git hash: {client_line}"
+        );
+    }
+
+    #[test]
+    fn persistent_header_omits_version_suffix_when_too_narrow() {
+        let mut app = create_test_app();
+        app.set_remote_server_identity_for_tests(
+            Some("blazing"),
+            Some("🔥"),
+            Some("v0.14.2-dev (old1234)"),
+            Some("session_fox_1705012345678"),
+        );
+
+        let lines = rendered_header_lines(&app, 18);
+        let server_line = lines
+            .iter()
+            .find(|line| line.contains("server:"))
+            .expect("server line");
+        assert!(
+            !server_line.contains("v0.14.2"),
+            "narrow widths should drop the version suffix: {server_line}"
+        );
+    }
+
+    #[test]
+    fn persistent_header_local_mode_has_no_version_labels() {
+        let app = create_test_app();
+        let lines = rendered_header_lines(&app, 120);
+        assert!(
+            !lines.iter().any(|line| line.contains("server:")),
+            "local mode should not render a server line: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("client:") && line.contains(" · v")),
+            "local mode client line should not carry a version label: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn compact_version_label_strips_hash_suffix() {
+        assert_eq!(
+            compact_version_label("v0.25.19-dev (7e261bcc, dirty)"),
+            "v0.25.19-dev"
+        );
+        assert_eq!(compact_version_label("v0.25.19 (abc1234)"), "v0.25.19");
+        assert_eq!(compact_version_label(" v0.25.19 "), "v0.25.19");
     }
 
     #[test]

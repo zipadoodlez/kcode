@@ -46,17 +46,24 @@ fn reasoning_region_emits_dim_italic_lines_no_gutter_header_or_footer() {
         "second line not dim+italic: {streaming:?}"
     );
 
-    // In `current` mode (the default), closing discards the block in place: it
-    // leaves the live stream entirely and never becomes a persistent message.
+    // In `current` mode (the default), closing anchors the block in the
+    // transcript flow as a display-only reasoning message: it leaves the live
+    // stream and never moves again.
     app.close_reasoning_region(None);
     assert!(
         app.streaming_text().is_empty(),
-        "reasoning should leave the live stream once discarded: {:?}",
+        "reasoning should leave the live stream once anchored: {:?}",
         app.streaming_text()
     );
+    let anchored = app
+        .display_messages
+        .iter()
+        .find(|m| m.role == "reasoning")
+        .expect("closed trace anchors as a display-only reasoning message");
     assert!(
-        !app.display_messages.iter().any(|m| m.role == "reasoning"),
-        "ephemeral reasoning must not create a persistent message"
+        anchored.content.contains("Let me think."),
+        "anchored trace keeps its content: {:?}",
+        anchored.content
     );
 }
 
@@ -84,15 +91,14 @@ fn reasoning_region_closes_before_normal_output() {
         !answer_line.contains(jcode_tui_markdown::REASONING_SENTINEL),
         "final answer must not be styled as reasoning: {answer_line:?}"
     );
-    // The reasoning was discarded; it is no longer in the stream and no persistent
-    // reasoning message was created.
+    // The reasoning left the stream and anchored as a display-only message.
     assert!(
         !text.contains(jcode_tui_markdown::REASONING_SENTINEL),
         "reasoning must not remain in the answer stream: {text:?}"
     );
     assert!(
-        !app.display_messages.iter().any(|m| m.role == "reasoning"),
-        "ephemeral reasoning must not create a persistent message"
+        app.display_messages.iter().any(|m| m.role == "reasoning"),
+        "closed trace anchors in the transcript"
     );
 }
 
@@ -295,24 +301,31 @@ fn reasoning_close_promotes_pending_partial_line() {
     app.append_reasoning_text("final thought");
     app.close_reasoning_region(None);
 
-    // The reasoning is discarded in place on close: it leaves the live stream and
-    // never becomes a persistent message.
+    // The reasoning leaves the live stream on close and anchors as a display
+    // message, with the pending partial promoted to a committed line.
     let _ = sentinel;
     assert!(
         app.streaming_text().is_empty(),
-        "reasoning should leave the live stream once discarded: {:?}",
+        "reasoning should leave the live stream once anchored: {:?}",
         app.streaming_text()
     );
+    let anchored = app
+        .display_messages
+        .iter()
+        .find(|m| m.role == "reasoning")
+        .expect("anchored trace exists");
     assert!(
-        !app.display_messages.iter().any(|m| m.role == "reasoning"),
-        "ephemeral reasoning must not create a persistent message"
+        anchored.content.contains("final thought"),
+        "pending partial promoted into the anchored trace: {:?}",
+        anchored.content
     );
 }
 
 #[test]
 fn reasoning_preceded_by_answer_keeps_order_and_drops_reasoning() {
-    // Answer text streamed *before* a reasoning block must stay in place and in
-    // order; closing the reasoning removes only the reasoning, leaving the answer.
+    // Answer text streamed *before* a reasoning block commits ahead of the
+    // anchored trace so the transcript keeps chronological order; answer text
+    // after the close streams below the anchored trace.
     let mut app = create_test_app();
     let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
 
@@ -325,26 +338,33 @@ fn reasoning_preceded_by_answer_keeps_order_and_drops_reasoning() {
     let text = app.streaming_text();
     assert!(
         !text.contains(sentinel),
-        "reasoning must be fully removed: {text:?}"
-    );
-    let intro = text.find("Intro before thinking.").expect("intro present");
-    let concl = text
-        .find("Conclusion after thinking.")
-        .expect("conclusion present");
-    assert!(
-        intro < concl,
-        "answer text must keep its original order: {text:?}"
+        "reasoning must leave the live stream: {text:?}"
     );
     assert!(
-        !app.display_messages.iter().any(|m| m.role == "reasoning"),
-        "ephemeral reasoning must not create a persistent message"
+        text.contains("Conclusion after thinking."),
+        "post-close answer streams live: {text:?}"
+    );
+    // Intro committed ahead of the anchored trace, in order.
+    let intro_idx = app
+        .display_messages
+        .iter()
+        .position(|m| m.role == "assistant" && m.content.contains("Intro before thinking."))
+        .expect("intro committed before the anchored trace");
+    let trace_idx = app
+        .display_messages
+        .iter()
+        .position(|m| m.role == "reasoning")
+        .expect("trace anchored in the transcript");
+    assert!(
+        intro_idx < trace_idx,
+        "intro must precede the anchored trace: {intro_idx} vs {trace_idx}"
     );
 }
 
 #[test]
-fn multiple_reasoning_blocks_do_not_accumulate() {
-    // Each reasoning block is ephemeral: closing a second block (after a commit)
-    // must not leave any reasoning message behind from the first or second block.
+fn multiple_reasoning_blocks_anchor_in_order_and_clear_next_prompt() {
+    // Each closed block anchors in the transcript flow, in order, and stays
+    // readable for the whole turn. The next user prompt clears them all.
     let mut app = create_test_app();
 
     app.open_reasoning_region();
@@ -357,14 +377,17 @@ fn multiple_reasoning_blocks_do_not_accumulate() {
     app.append_reasoning_text("second block thinking\n");
     app.close_reasoning_region(None);
 
-    let reasoning_msgs = app
+    let reasoning_msgs: Vec<usize> = app
         .display_messages
         .iter()
-        .filter(|m| m.role == "reasoning")
-        .count();
+        .enumerate()
+        .filter(|(_, m)| m.role == "reasoning")
+        .map(|(i, _)| i)
+        .collect();
     assert_eq!(
-        reasoning_msgs, 0,
-        "reasoning must never accumulate as persistent messages"
+        reasoning_msgs.len(),
+        2,
+        "both traces anchor for the duration of the turn"
     );
     assert!(
         !app.streaming_text()
@@ -372,165 +395,69 @@ fn multiple_reasoning_blocks_do_not_accumulate() {
         "no reasoning markup should linger in the stream: {:?}",
         app.streaming_text()
     );
+
+    // The next prompt removes the turn's traces (ephemeral across turns).
+    app.clear_turn_reasoning_traces();
+    assert_eq!(
+        app.display_messages
+            .iter()
+            .filter(|m| m.role == "reasoning")
+            .count(),
+        0,
+        "next prompt clears the turn's anchored traces"
+    );
+    assert!(
+        app.display_messages
+            .iter()
+            .any(|m| m.content.contains("Answer one.")),
+        "committed answers survive trace cleanup"
+    );
 }
 
 #[test]
-fn retained_reasoning_keeps_trace_out_of_stream_until_superseded() {
-    // Retaining a closed reasoning block slices it out of the live stream (so the
-    // stream itself stays clean) but keeps it as the retained trace to render
-    // above the stream. A *second* retain supersedes the first: the first begins
-    // its shrink-away collapse while the second becomes the retained trace.
+fn anchored_trace_never_moves_and_clears_on_next_prompt() {
+    // Anchored traces are ordinary transcript entries: they keep their index
+    // as later content is appended (no bottom-following, no hoisting) and are
+    // removed when the next user prompt begins.
     let mut app = create_test_app();
 
     app.open_reasoning_region();
     app.append_reasoning_text("first trace\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
+    app.close_reasoning_region(None);
 
-    // Stream is clean; the trace is retained, nothing is collapsing yet.
-    assert!(
-        !app.streaming_text()
-            .contains(jcode_tui_markdown::REASONING_SENTINEL),
-        "retained reasoning must leave the live stream: {:?}",
-        app.streaming_text()
-    );
-    let retained = app
-        .reasoning_retained_markup()
-        .expect("first trace retained");
-    assert!(retained.contains("first trace"), "got: {retained:?}");
-    assert!(
-        app.reasoning_collapse_state().is_none(),
-        "nothing should be collapsing after a single trace"
-    );
+    let trace_idx = app
+        .display_messages
+        .iter()
+        .position(|m| m.role == "reasoning")
+        .expect("first trace anchored");
 
-    // A second trace supersedes the first.
+    // Later activity appends below; the trace index is unchanged.
+    app.append_streaming_text("answer text");
+    app.commit_pending_streaming_assistant_message();
     app.open_reasoning_region();
     app.append_reasoning_text("second trace\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
+    app.close_reasoning_region(None);
 
-    let retained = app
-        .reasoning_retained_markup()
-        .expect("second trace retained");
-    assert!(retained.contains("second trace"), "got: {retained:?}");
-    let (collapsing, progress) = app
-        .reasoning_collapse_state()
-        .expect("first trace now collapsing");
-    assert!(collapsing.contains("first trace"), "got: {collapsing:?}");
-    assert!(
-        (0.0..=1.0).contains(&progress),
-        "collapse progress in range: {progress}"
+    assert_eq!(
+        app.display_messages[trace_idx].role, "reasoning",
+        "anchored trace must keep its transcript position"
     );
-    // The retained/collapsing traces never become persistent messages.
     assert!(
-        !app.display_messages.iter().any(|m| m.role == "reasoning"),
-        "retained reasoning must not create a persistent message"
+        app.display_messages[trace_idx]
+            .content
+            .contains("first trace"),
+        "anchored trace content unchanged"
     );
-}
 
-#[test]
-fn retained_reasoning_folds_away_after_turn_finishes() {
-    // The final retained trace has no successor to wait on, so once the turn is no
-    // longer processing it folds away (begins collapsing) on the next tick.
-    let mut app = create_test_app();
-
-    app.open_reasoning_region();
-    app.append_reasoning_text("last trace\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-    app.is_processing = true;
-
-    // While still processing, the retained trace stays put (waiting for a successor).
-    app.tick_reasoning_collapse();
-    assert!(
-        app.reasoning_retained_markup().is_some(),
-        "retained trace should persist while the turn is processing"
+    // Next prompt clears all of the turn's traces.
+    app.clear_turn_reasoning_traces();
+    assert_eq!(
+        app.display_messages
+            .iter()
+            .filter(|m| m.role == "reasoning")
+            .count(),
+        0
     );
-    assert!(app.reasoning_collapse_state().is_none());
-
-    // Turn finishes: once the minimum readable dwell has passed, the retained
-    // trace folds into the collapse animation. Backdate the dwell so the fold
-    // is eligible immediately in the test.
-    app.is_processing = false;
-    if let Some(retained) = app.reasoning_retained.as_mut() {
-        retained.retained_at = std::time::Instant::now()
-            - crate::tui::app::REASONING_RETAIN_MIN_DWELL
-            - std::time::Duration::from_millis(50);
-    }
-    let redraw = app.tick_reasoning_collapse();
-    assert!(redraw, "folding the trace away should request a redraw");
-    assert!(
-        app.reasoning_retained_markup().is_none(),
-        "retained trace should hand off to the collapse animation"
-    );
-    let (collapsing, _) = app
-        .reasoning_collapse_state()
-        .expect("final trace now collapsing");
-    assert!(collapsing.contains("last trace"), "got: {collapsing:?}");
-
-    // After the animation duration elapses the trace is fully gone.
-    std::thread::sleep(crate::tui::app::REASONING_COLLAPSE_DURATION + std::time::Duration::from_millis(20));
-    app.tick_reasoning_collapse();
-    assert!(
-        !app.reasoning_animation_active(),
-        "collapse must complete and clear all reasoning animation state"
-    );
-    assert!(app.reasoning_collapse_state().is_none());
-}
-
-#[test]
-fn opening_new_reasoning_region_collapses_previous_retained_trace() {
-    // The previous retained trace must start folding away as soon as the next
-    // reasoning trace begins streaming, not only once the new trace closes.
-    let mut app = create_test_app();
-
-    app.open_reasoning_region();
-    app.append_reasoning_text("first trace\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-    assert!(app.reasoning_retained_markup().is_some());
-    assert!(app.reasoning_collapse_state().is_none());
-
-    // The next trace starts streaming: the old one collapses immediately.
-    app.open_reasoning_region();
-    app.append_reasoning_text("second trace begins");
-
-    assert!(
-        app.reasoning_retained_markup().is_none(),
-        "stale retained trace must be dropped when a new trace starts"
-    );
-    let (collapsing, _) = app
-        .reasoning_collapse_state()
-        .expect("previous trace should be collapsing while the new one streams");
-    assert!(collapsing.contains("first trace"), "got: {collapsing:?}");
-    assert!(
-        app.streaming_text().contains("second trace begins"),
-        "new trace must stream live: {:?}",
-        app.streaming_text()
-    );
-}
-
-#[test]
-fn clear_retained_reasoning_drops_trace_and_collapse() {
-    // Starting a new turn (or resetting the transcript) drops any retained or
-    // collapsing reasoning immediately.
-    let mut app = create_test_app();
-
-    app.open_reasoning_region();
-    app.append_reasoning_text("trace\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-    assert!(app.reasoning_retained_markup().is_some());
-
-    app.clear_retained_reasoning();
-    assert!(app.reasoning_retained_markup().is_none());
-    assert!(app.reasoning_collapse_state().is_none());
-    assert!(!app.reasoning_animation_active());
 }
 
 #[test]
@@ -615,132 +542,42 @@ fn remote_reasoning_then_text_preserves_order_through_paced_buffer() {
 }
 
 #[test]
-fn retain_with_preceding_answer_text_discards_instead_of_repositioning() {
-    // The retained trace renders in its own section *above* the live stream.
-    // If answer text streamed before the reasoning block, hoisting the block
-    // above that text would visually reposition it (anchor violation). The
-    // block must be discarded at its anchor (the stream tail) instead.
-    let mut app = create_test_app();
-
-    app.append_streaming_text("answer text that streamed first");
-    app.open_reasoning_region();
-    app.append_reasoning_text("later thinking\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-
-    assert!(
-        app.reasoning_retained_markup().is_none(),
-        "block with preceding answer text must not be hoisted above it"
-    );
-    let text = app.streaming_text();
-    assert!(
-        text.contains("answer text that streamed first"),
-        "answer text must stay in the stream: {text:?}"
-    );
-    assert!(
-        !text.contains(jcode_tui_markdown::REASONING_SENTINEL),
-        "reasoning must be discarded in place: {text:?}"
-    );
-}
-
-#[test]
-fn commit_keeps_retained_trace_readable_until_superseded() {
-    // Tool-only commits (the common reasoning -> tool path) must keep the
-    // retained trace on screen so the user can read it while the tool runs;
-    // it folds only via supersession (next thinking) or end-of-turn dwell.
-    // No "thought (n lines)" residue is ever committed.
+fn anchored_trace_survives_tool_commit_and_answer_commit() {
+    // Anchored traces are independent transcript entries: neither a tool-only
+    // commit nor an answer commit touches them, so the thought stays readable
+    // (and stationary) for the rest of the turn.
     let mut app = create_test_app();
     app.is_processing = true;
 
     app.open_reasoning_region();
     app.append_reasoning_text("pre-tool thinking\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-    assert!(app.reasoning_retained_markup().is_some());
+    app.close_reasoning_region(None);
+    assert_eq!(trace_count(&app), 1);
 
-    // Tool boundary with no answer text: trace stays readable.
+    // Tool-only commit (no streamed answer text).
     app.commit_pending_streaming_assistant_message();
-    assert!(
-        app.reasoning_retained_markup().is_some(),
-        "retained trace must stay readable across a tool-only commit"
+    assert_eq!(trace_count(&app), 1, "tool commit leaves the trace anchored");
+
+    // Answer commit.
+    app.append_streaming_text("the final answer");
+    app.commit_pending_streaming_assistant_message();
+    assert_eq!(
+        trace_count(&app),
+        1,
+        "answer commit leaves the trace anchored"
     );
     assert!(
         !app
             .display_messages
             .iter()
-            .any(|m| m.content.contains("thought")),
+            .any(|m| m.role == "assistant" && m.content.contains("thought")),
         "no thought-summary residue may be committed"
     );
-
-    // The next reasoning trace supersedes it: old trace starts collapsing.
-    app.open_reasoning_region();
-    assert!(
-        app.reasoning_retained_markup().is_none(),
-        "new thinking supersedes the previous trace"
-    );
-    assert!(
-        app.reasoning_collapse_state().is_some(),
-        "superseded trace folds via the collapse animation"
-    );
 }
 
-#[test]
-fn answer_commit_releases_retained_trace_without_residue() {
-    // When real answer text commits into the transcript body (which renders
-    // above the trace section), keeping the trace would flip chronology - the
-    // thought would sit below the answer it preceded. The trace was readable
-    // the whole time the answer streamed; it goes with the commit's reflow,
-    // leaving no summary residue.
-    let mut app = create_test_app();
-    app.is_processing = true;
-
-    app.open_reasoning_region();
-    app.append_reasoning_text("pre-answer thinking\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-    assert!(app.reasoning_retained_markup().is_some());
-
-    app.append_streaming_text("the final answer");
-    app.commit_pending_streaming_assistant_message();
-
-    assert!(
-        app.reasoning_retained_markup().is_none(),
-        "trace must not linger below the committed answer"
-    );
-    let committed = app
-        .display_messages
+fn trace_count(app: &App) -> usize {
+    app.display_messages
         .iter()
-        .find(|m| m.role == "assistant" && m.content.contains("the final answer"))
-        .expect("answer must commit to the transcript");
-    assert!(
-        !committed.content.contains("thought"),
-        "no thought-summary residue in the committed message: {:?}",
-        committed.content
-    );
-}
-
-#[test]
-fn retained_trace_dwell_prevents_instant_fold_at_turn_end() {
-    // A turn that ends right after reasoning closes must not flash the trace
-    // away unread: the end-of-turn fold waits for the minimum dwell.
-    let mut app = create_test_app();
-    app.is_processing = true;
-
-    app.open_reasoning_region();
-    app.append_reasoning_text("just finished thinking\n");
-    app.reasoning_pending_line.clear();
-    app.reasoning_streaming = false;
-    app.retain_current_reasoning_block();
-
-    // Turn ends immediately; the dwell keeps the trace on screen.
-    app.is_processing = false;
-    app.tick_reasoning_collapse();
-    assert!(
-        app.reasoning_retained_markup().is_some(),
-        "trace must stay readable for the minimum dwell after the turn ends"
-    );
-    assert!(app.reasoning_collapse_state().is_none());
+        .filter(|m| m.role == "reasoning")
+        .count()
 }

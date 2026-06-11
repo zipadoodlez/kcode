@@ -131,35 +131,6 @@ struct PendingLocalTransfer {
     receiver: mpsc::Receiver<anyhow::Result<PreparedTransferSession>>,
 }
 
-/// A reasoning trace that is animating out of view in `current` display mode. Its
-/// rendered height shrinks from full to zero over [`REASONING_COLLAPSE_DURATION`],
-/// after which it is dropped entirely. `markup` is the sentinel-wrapped dim+italic
-/// block exactly as it last rendered live.
-#[derive(Debug, Clone)]
-struct ReasoningCollapse {
-    markup: String,
-    started: Instant,
-}
-
-/// The most recently closed reasoning trace, kept on screen (in `current`
-/// display mode) so it stays readable while the tool runs / the turn continues.
-/// `retained_at` feeds the minimum-dwell check so the trace never flashes away
-/// before it could be read.
-#[derive(Debug, Clone)]
-struct RetainedReasoning {
-    markup: String,
-    retained_at: Instant,
-}
-
-/// Duration of the reasoning-trace shrink-away animation (`current` mode).
-pub(crate) const REASONING_COLLAPSE_DURATION: Duration = Duration::from_millis(220);
-
-/// Minimum time a retained reasoning trace stays readable before the
-/// end-of-turn fold may begin. Mid-turn, the trace persists until superseded
-/// (next thinking) or replaced by committed answer text, so this only guards
-/// fast turns from flashing the final thought away unread.
-pub(crate) const REASONING_RETAIN_MIN_DWELL: Duration = Duration::from_secs(4);
-
 #[derive(Debug, Clone)]
 struct LocalRewindUndoSnapshot {
     messages: Vec<StoredMessage>,
@@ -814,16 +785,12 @@ pub struct App {
     // closed reasoning block back out of the stream in place, keeping any answer
     // text that preceded it in order.
     reasoning_block_start: Option<usize>,
-    // `current` reasoning-display mode keeps the *most recently closed* reasoning
-    // trace on screen (sliced out of the live stream but rendered as its own dim
-    // section just above the stream) until it is superseded or the turn ends.
-    // Holds the trace markup plus when it was retained (for the dwell check).
-    reasoning_retained: Option<RetainedReasoning>,
-    // A previously-retained reasoning trace that is now animating away: it shrinks
-    // vertically (its visible height interpolates from full down to zero) and is
-    // dropped once the animation completes. Holds the block markup plus the
-    // animation start instant.
-    reasoning_collapse: Option<ReasoningCollapse>,
+    // Display-message indices of reasoning traces committed during the current
+    // turn (`current` reasoning-display mode anchors each closed trace in the
+    // transcript flow). Cleared - and the messages removed - when the next user
+    // prompt is submitted, keeping `current` mode ephemeral across turns
+    // without ever moving a trace while it is on screen.
+    turn_reasoning_trace_indices: Vec<usize>,
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec

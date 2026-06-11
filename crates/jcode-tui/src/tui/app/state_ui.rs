@@ -674,6 +674,21 @@ impl App {
         self.prewarm_focused_side_panel();
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_remote_server_identity_for_tests(
+        &mut self,
+        name: Option<&str>,
+        icon: Option<&str>,
+        version: Option<&str>,
+        session_id: Option<&str>,
+    ) {
+        self.is_remote = true;
+        self.remote_server_short_name = name.map(str::to_string);
+        self.remote_server_icon = icon.map(str::to_string);
+        self.remote_server_version = version.map(str::to_string);
+        self.remote_session_id = session_id.map(str::to_string);
+    }
+
     fn prewarm_focused_side_panel(&self) {
         let Ok((terminal_width, terminal_height)) = crossterm::terminal::size() else {
             return;

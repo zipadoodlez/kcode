@@ -1065,7 +1065,6 @@ struct FullPrepCacheKey {
     streaming_text_len: usize,
     streaming_text_hash: u64,
     batch_progress_hash: u64,
-    reasoning_trace_hash: u64,
     inline_images_signature: (usize, u64),
     /// Whether inline images render expanded or as collapsed label stubs.
     inline_images_visible: bool,

@@ -835,20 +835,23 @@ fn test_prepare_messages_renders_reasoning_role_dim_italic_without_sentinel() {
 }
 
 #[test]
-fn test_prepare_messages_renders_retained_reasoning_section_above_stream() {
+fn test_prepare_messages_renders_anchored_reasoning_message_in_flow() {
     let _guard = crate::storage::lock_test_env();
     clear_test_render_state_for_tests();
 
-    let mut retained = String::new();
-    retained.push_str(&jcode_tui_markdown::reasoning_line_markup(
-        "retained thinking",
+    // Anchored reasoning traces are ordinary display messages in the body:
+    // they render dim+italic (sentinel stripped) between surrounding entries.
+    let mut trace = String::new();
+    trace.push_str(&jcode_tui_markdown::reasoning_line_markup(
+        "anchored thinking",
     ));
 
     let state = TestState {
-        display_messages: vec![DisplayMessage::user("hi")],
-        streaming_text: "Answer body".to_string(),
-        status: ProcessingStatus::Streaming,
-        reasoning_retained: Some(retained),
+        display_messages: vec![
+            DisplayMessage::user("hi"),
+            DisplayMessage::reasoning(trace),
+            DisplayMessage::assistant("Answer body"),
+        ],
         ..Default::default()
     };
 
@@ -861,15 +864,15 @@ fn test_prepare_messages_renders_retained_reasoning_section_above_stream() {
 
     let reasoning_idx = joined
         .iter()
-        .position(|l| l.contains("retained thinking"))
-        .expect("retained reasoning rendered");
+        .position(|l| l.contains("anchored thinking"))
+        .expect("anchored reasoning rendered");
     let answer_idx = joined
         .iter()
         .position(|l| l.contains("Answer body"))
         .expect("answer rendered");
     assert!(
         reasoning_idx < answer_idx,
-        "retained reasoning must render above the live stream: {joined:?}"
+        "anchored reasoning renders in transcript order: {joined:?}"
     );
     // Sentinel is stripped from the visible reasoning text.
     assert!(
@@ -877,47 +880,4 @@ fn test_prepare_messages_renders_retained_reasoning_section_above_stream() {
         "sentinel must be stripped: {:?}",
         joined[reasoning_idx]
     );
-}
-
-#[test]
-fn test_collapsing_reasoning_shrinks_to_fewer_rows_as_progress_advances() {
-    let _guard = crate::storage::lock_test_env();
-    clear_test_render_state_for_tests();
-
-    // A multi-line collapsing trace shrinks vertically: more progress -> fewer
-    // visible rows, reaching zero at progress 1.0.
-    let mut markup = String::new();
-    for i in 0..6 {
-        markup.push_str(&jcode_tui_markdown::reasoning_line_markup(&format!(
-            "collapsing line {i}"
-        )));
-    }
-
-    let count_visible = |progress: f32| -> usize {
-        clear_test_render_state_for_tests();
-        let state = TestState {
-            display_messages: vec![DisplayMessage::user("hi")],
-            reasoning_collapse: Some((markup.clone(), progress)),
-            ..Default::default()
-        };
-        let prepared = prepare::prepare_messages(&state, 100, 40);
-        prepared
-            .materialize_all_lines()
-            .iter()
-            .filter(|l| {
-                let joined: String = l.spans.iter().map(|s| s.content.as_ref()).collect();
-                joined.contains("collapsing line")
-            })
-            .count()
-    };
-
-    let early = count_visible(0.0);
-    let mid = count_visible(0.5);
-    let done = count_visible(1.0);
-    assert!(early > 0, "trace should be visible at progress 0.0");
-    assert!(
-        mid < early,
-        "trace should shrink as it collapses: early={early} mid={mid}"
-    );
-    assert_eq!(done, 0, "trace must be fully gone at progress 1.0");
 }

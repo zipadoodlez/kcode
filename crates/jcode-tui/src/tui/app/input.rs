@@ -2408,12 +2408,6 @@ impl App {
         if self.reasoning_streaming {
             return;
         }
-        // A new reasoning trace supersedes the previous retained one. Fold the
-        // old trace away as soon as the new one starts streaming so stale
-        // reasoning never lingers next to the live trace.
-        if let Some(prev) = self.reasoning_retained.take() {
-            self.start_reasoning_collapse(prev.markup);
-        }
         // Separate the reasoning block from any prior content with a blank line.
         if !self.streaming.streaming_text.is_empty() {
             if self.streaming.streaming_text.ends_with("\n\n") {
@@ -2500,18 +2494,13 @@ impl App {
         self.reasoning_streaming = false;
 
         // In `current` mode, reasoning is ephemeral: it is never written to the
-        // persistent transcript. Historically the closed block was sliced straight
-        // back out of the live stream, so it vanished the instant the model moved
-        // on. With decorative animations we instead *retain* the just-closed trace
-        // on screen (as its own dim section above the live stream) until the next
-        // trace is fully done, then shrink the previous one away. Tiers without
-        // decorative animations keep the original instant-discard behavior.
+        // persistent transcript. The closed block is sliced out of the live
+        // stream and anchored *in place* as a display-only reasoning message in
+        // the transcript flow: it never moves again (no bottom-following, no
+        // hoisting), stays readable for the rest of the turn, and is removed
+        // when the next user prompt starts a new turn.
         if self.reasoning_current_mode() {
-            if self.reasoning_animations_enabled() {
-                self.retain_current_reasoning_block();
-            } else {
-                self.discard_current_reasoning_block();
-            }
+            self.anchor_current_reasoning_block();
             return;
         }
 
@@ -2536,41 +2525,18 @@ impl App {
         )
     }
 
-    /// True when the retain-then-shrink reasoning animation should drive the
-    /// `current`-mode collapse. Disabled on tiers without decorative animations
-    /// (SSH/WSL/Minimal), which fall back to instant discard.
-    pub(super) fn reasoning_animations_enabled(&self) -> bool {
-        crate::perf::tui_policy().enable_decorative_animations
-    }
-
-    /// Slice the just-closed reasoning block out of `streaming_text` and keep it as
-    /// the retained trace. Any previously retained trace begins its shrink-away
-    /// animation (it is "fully done" now that a newer trace has closed). Used in
-    /// `current` mode when decorative animations are enabled.
-    ///
-    /// Anchor stability: the retained trace renders in its own section *above*
-    /// the live stream, so retaining is only position-stable when the block was
-    /// already at the top of the stream (nothing else precedes it; the trace
-    /// stays visually in place). When answer text streamed *before* the block,
-    /// moving it above that text would make it jump upward, so the block is
-    /// discarded in place at the tail instead.
-    pub(super) fn retain_current_reasoning_block(&mut self) {
+    /// Slice the just-closed reasoning block out of `streaming_text` and anchor
+    /// it as a display-only reasoning message in the transcript flow, exactly
+    /// where it streamed. Used in `current` mode: the trace keeps its position
+    /// (content below it can only be appended, never inserted above), so the
+    /// thought stays readable and anchored until the next user prompt removes
+    /// the turn's traces.
+    pub(super) fn anchor_current_reasoning_block(&mut self) {
         let block_start = self
             .reasoning_block_start
             .take()
             .unwrap_or(0)
             .min(self.streaming.streaming_text.len());
-        // Answer text precedes the block: retaining above would reposition the
-        // trace over content that streamed first. Drop it at its anchor (the
-        // stream tail) instead.
-        if !self.streaming.streaming_text[..block_start].trim().is_empty() {
-            self.streaming.streaming_text.truncate(block_start);
-            while self.streaming.streaming_text.ends_with('\n') {
-                self.streaming.streaming_text.pop();
-            }
-            self.refresh_split_view_if_needed();
-            return;
-        }
         // Everything from the block start onward is the reasoning markup. Split it
         // off so the preceding answer text (if any) stays in the live stream.
         let block = self.streaming.streaming_text.split_off(block_start);
@@ -2584,96 +2550,44 @@ impl App {
             self.refresh_split_view_if_needed();
             return;
         }
-        // The previously retained trace is now superseded: fold it away.
-        if let Some(prev) = self.reasoning_retained.take() {
-            self.start_reasoning_collapse(prev.markup);
-        }
-        self.reasoning_retained = Some(crate::tui::app::RetainedReasoning {
-            markup: block,
-            retained_at: std::time::Instant::now(),
-        });
-        self.refresh_split_view_if_needed();
-    }
-
-    /// Begin (or restart) the shrink-away animation for a retained reasoning trace.
-    fn start_reasoning_collapse(&mut self, markup: String) {
-        if markup.trim().is_empty() {
-            return;
-        }
-        self.reasoning_collapse = Some(crate::tui::app::ReasoningCollapse {
-            markup,
-            started: std::time::Instant::now(),
-        });
-    }
-
-    /// Drive the reasoning retain/collapse animation forward by one tick. Folds the
-    /// last retained trace away once the turn is over (after a minimum readable
-    /// dwell), finishes any in-progress shrink, and reports whether a redraw is
-    /// still needed. Cheap no-op when no reasoning animation is active.
-    pub(super) fn tick_reasoning_collapse(&mut self) -> bool {
-        let mut redraw = false;
-        if let Some(collapse) = &self.reasoning_collapse {
-            redraw = true;
-            if collapse.started.elapsed() >= crate::tui::app::REASONING_COLLAPSE_DURATION {
-                self.reasoning_collapse = None;
+        // Answer text that streamed *before* the block must commit first so the
+        // anchored trace lands after it in the transcript (chronological order).
+        if !self.streaming.streaming_text.trim().is_empty() {
+            let preceding = self.take_streaming_text();
+            let preceding = self.collapse_reasoning_for_commit(preceding);
+            if !preceding.trim().is_empty() {
+                self.push_display_message(DisplayMessage::assistant(preceding));
             }
         }
-        // Once the turn finishes, the final retained trace has no successor to
-        // wait on, so fold it away too - but never before it has been on screen
-        // long enough to read.
-        if !self.is_processing
-            && self
-                .reasoning_retained
-                .as_ref()
-                .is_some_and(|retained| {
-                    retained.retained_at.elapsed() >= crate::tui::app::REASONING_RETAIN_MIN_DWELL
-                })
-            && let Some(trace) = self.reasoning_retained.take()
-        {
-            self.start_reasoning_collapse(trace.markup);
-            redraw = true;
-        }
-        if redraw {
-            self.refresh_split_view_if_needed();
-        }
-        redraw
-    }
-
-    /// Whether a retained or collapsing reasoning trace needs animation frames.
-    pub(super) fn reasoning_animation_active(&self) -> bool {
-        self.reasoning_collapse.is_some()
-            || (self.reasoning_retained.is_some() && !self.is_processing)
-    }
-
-    /// Drop any retained/collapsing reasoning trace immediately (new turn / reset).
-    pub(super) fn clear_retained_reasoning(&mut self) {
-        let had = self.reasoning_retained.is_some() || self.reasoning_collapse.is_some();
-        self.reasoning_retained = None;
-        self.reasoning_collapse = None;
-        if had {
-            self.refresh_split_view_if_needed();
-        }
-    }
-
-    /// Slice the just-closed reasoning block out of `streaming_text` in place,
-    /// leaving any answer text that streamed *before* it untouched and in order.
-    /// Used in `current` mode (animations disabled) so only the live reasoning
-    /// block is ever visible and no per-block trace is left behind.
-    pub(super) fn discard_current_reasoning_block(&mut self) {
-        let block_start = self
-            .reasoning_block_start
-            .take()
-            .unwrap_or(0)
-            .min(self.streaming.streaming_text.len());
-        // Everything from the block start onward is reasoning markup (plus the
-        // separators inserted by open/close). Drop it from the live stream.
-        self.streaming.streaming_text.truncate(block_start);
-        // Drop the separator the open path added before the reasoning block so the
-        // surrounding answer text rejoins cleanly.
-        while self.streaming.streaming_text.ends_with('\n') {
-            self.streaming.streaming_text.pop();
-        }
+        self.turn_reasoning_trace_indices
+            .push(self.display_messages.len());
+        self.push_display_message(DisplayMessage::reasoning(block));
         self.refresh_split_view_if_needed();
+    }
+
+    /// Remove the current turn's anchored reasoning traces from the transcript.
+    /// Called when the next user prompt is submitted so `current` mode stays
+    /// ephemeral across turns: the trace never moves while on screen, it is
+    /// simply gone the next time the user acts (a moment when the transcript
+    /// reflows anyway).
+    pub(super) fn clear_turn_reasoning_traces(&mut self) {
+        if self.turn_reasoning_trace_indices.is_empty() {
+            return;
+        }
+        let indices = std::mem::take(&mut self.turn_reasoning_trace_indices);
+        let mut removed = 0usize;
+        for idx in indices {
+            let idx = idx.saturating_sub(removed);
+            if idx < self.display_messages.len() && self.display_messages[idx].role == "reasoning"
+            {
+                self.display_messages.remove(idx);
+                removed += 1;
+            }
+        }
+        if removed > 0 {
+            self.bump_display_messages_version();
+            self.refresh_split_view_if_needed();
+        }
     }
 
     pub(super) fn append_streaming_text(&mut self, text: &str) {
@@ -2797,14 +2711,6 @@ impl App {
             self.stream_buffer.clear();
             return false;
         }
-        // Real answer text is committing into the transcript body, which
-        // renders *above* the trace section: keeping the trace would visually
-        // swap it below the answer it preceded (chronology flip) and bounce
-        // when the next thinking starts. The thought was readable for the
-        // whole time the answer streamed beneath it, so let it go with this
-        // commit's reflow. No summary residue is left behind.
-        self.reasoning_retained = None;
-        self.reasoning_collapse = None;
         self.push_display_message(DisplayMessage::assistant(content));
         self.stream_buffer.clear();
         true
@@ -3034,7 +2940,9 @@ impl App {
         self.is_processing = true;
         self.status = ProcessingStatus::Sending;
         self.clear_streaming_render_state();
-        self.clear_retained_reasoning();
+        // A new prompt starts a new turn: the previous turn's anchored
+        // reasoning traces leave the transcript (ephemeral `current` mode).
+        self.clear_turn_reasoning_traces();
         self.stream_buffer.clear();
         self.thought_line_inserted = false;
         self.thinking_prefix_emitted = false;

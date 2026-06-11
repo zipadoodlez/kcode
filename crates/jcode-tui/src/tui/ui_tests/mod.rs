@@ -136,8 +136,6 @@ struct TestState {
     onboarding_preview: bool,
     suggestions: Vec<(String, String)>,
     compacted_hidden_user_prompts: usize,
-    reasoning_retained: Option<String>,
-    reasoning_collapse: Option<(String, f32)>,
     side_pane_images: Vec<crate::session::RenderedImage>,
     pin_images: bool,
     inline_images_visible: bool,
@@ -173,18 +171,6 @@ impl crate::tui::TuiState for TestState {
     }
     fn streaming_text(&self) -> &str {
         &self.streaming_text
-    }
-    fn reasoning_retained_markup(&self) -> Option<&str> {
-        self.reasoning_retained.as_deref()
-    }
-    fn reasoning_collapse_state(&self) -> Option<(&str, f32)> {
-        self.reasoning_collapse
-            .as_ref()
-            .map(|(markup, progress)| (markup.as_str(), *progress))
-    }
-    fn reasoning_animation_active(&self) -> bool {
-        self.reasoning_collapse.is_some()
-            || (self.reasoning_retained.is_some() && !self.is_processing())
     }
     fn input(&self) -> &str {
         &self.input
