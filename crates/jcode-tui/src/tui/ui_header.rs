@@ -1,8 +1,8 @@
 use super::box_utils::render_rounded_box;
 use super::changelog::get_unseen_changelog_entries;
 use super::{
-    TuiState, binary_age, dim_color, header_name_color, header_session_color,
-    is_running_stable_release, semver, shorten_model_name,
+    TuiState, binary_age, dim_color, header_name_color, is_running_stable_release, semver,
+    shorten_model_name,
 };
 use crate::auth::{AuthState, AuthStatus};
 use crate::tui::color_support::rgb;
@@ -123,17 +123,47 @@ fn format_gpt_name(short: &str) -> String {
 
 /// Generic fallback for model ids with no curated pretty name: title-case the
 /// hyphen/underscore segments (`claude-fable-5` -> `Claude Fable 5`). Date or
-/// snapshot suffixes (6+ digit runs) are dropped. Placeholder labels with
-/// spaces/ellipses pass through untouched.
+/// snapshot suffixes (6+ digit runs) are dropped, vowel-less short segments are
+/// treated as acronyms (`glm` -> `GLM`), and parameter sizes are uppercased
+/// (`70b` -> `70B`). Placeholder labels with spaces/ellipses pass through.
 fn prettify_model_id(model: &str) -> String {
     if model.contains(' ') || model.contains('…') || model.contains('/') {
         return model.to_string();
     }
+
+    fn is_acronym(part: &str) -> bool {
+        // Short, all-alphabetic, and vowel-less segments read as initialisms:
+        // glm, gpt, qwq, llm. Anything with a vowel (pro, max, mini, fable)
+        // reads as a word and gets normal title-casing.
+        part.len() <= 4
+            && part.chars().all(|c| c.is_ascii_alphabetic())
+            && !part
+                .chars()
+                .any(|c| matches!(c.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u' | 'y'))
+    }
+
+    fn is_param_size(part: &str) -> bool {
+        // 70b / 8x7b / 32k style size or context markers.
+        part.len() >= 2
+            && part
+                .chars()
+                .last()
+                .is_some_and(|c| matches!(c.to_ascii_lowercase(), 'b' | 'm' | 'k'))
+            && part[..part.len() - 1]
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == 'x')
+            && part.chars().any(|c| c.is_ascii_digit())
+    }
+
     let parts: Vec<String> = model
         .split(['-', '_'])
         .filter(|part| !part.is_empty())
+        // Drop date/snapshot suffixes like 20241022.
         .filter(|part| !(part.len() >= 6 && part.chars().all(|c| c.is_ascii_digit())))
         .map(|part| {
+            if is_acronym(part) || is_param_size(part) {
+                return part.to_uppercase();
+            }
             let mut chars = part.chars();
             match chars.next() {
                 Some(first) if first.is_ascii_alphabetic() => {
@@ -619,7 +649,9 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     };
     let mut model_spans = vec![Span::styled(
         nice_model.clone(),
-        Style::default().fg(header_session_color()),
+        // Match the info widget's model accent (pink, bold) instead of plain
+        // white so the model reads as a distinct, styled element.
+        Style::default().fg(rgb(255, 150, 200)).bold(),
     )];
     let mut detail_parts: Vec<String> = Vec::new();
     if !provider_label.is_empty() {
@@ -1076,11 +1108,24 @@ mod tests {
         assert_eq!(prettify_model_id("claude-fable-5"), "Claude Fable 5");
         assert_eq!(prettify_model_id("grok-code-fast-1"), "Grok Code Fast 1");
         assert_eq!(prettify_model_id("kimi_k2"), "Kimi K2");
+        assert_eq!(prettify_model_id("gemini-3-pro-preview"), "Gemini 3 Pro Preview");
+        assert_eq!(prettify_model_id("deepseek-chat"), "Deepseek Chat");
+        assert_eq!(prettify_model_id("mistral-large-2411"), "Mistral Large 2411");
+        assert_eq!(prettify_model_id("o3-mini"), "O3 Mini");
+        // Vowel-less short segments read as acronyms.
+        assert_eq!(prettify_model_id("glm-4.6"), "GLM 4.6");
+        assert_eq!(prettify_model_id("qwq-32b"), "QWQ 32B");
+        // Parameter sizes are uppercased.
+        assert_eq!(prettify_model_id("llama-3.3-70b"), "Llama 3.3 70B");
+        assert_eq!(prettify_model_id("mixtral-8x7b"), "Mixtral 8X7B");
         // Long digit runs (snapshot dates) are dropped.
         assert_eq!(prettify_model_id("claude-fable-5-20260101"), "Claude Fable 5");
         // Placeholders and slashed ids pass through untouched.
         assert_eq!(prettify_model_id("loading session…"), "loading session…");
         assert_eq!(prettify_model_id("deepseek/deepseek-chat"), "deepseek/deepseek-chat");
+        // Degenerate inputs survive.
+        assert_eq!(prettify_model_id(""), "");
+        assert_eq!(prettify_model_id("-"), "-");
     }
 
     #[test]
