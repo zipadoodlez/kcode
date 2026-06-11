@@ -208,15 +208,22 @@ fn test_mouse_scroll_events_are_classified_as_scroll_only() {
 
 #[test]
 fn test_handterm_native_scroll_command_updates_chat_offset() {
-    let mut app = create_test_app();
-    let (_scroll_app, mut terminal) = create_scroll_test_app(50, 12, 0, 24);
+    // Use an app with real scrollable content and draw it, so the renderer
+    // records a non-zero max scroll. Since the phantom-offset fix,
+    // scroll_down treats a rendered max of 0 (e.g. an undrawn or empty
+    // transcript) as "already at the bottom" and snaps back to follow mode.
+    let (mut app, mut terminal) = create_scroll_test_app(50, 12, 0, 24);
+    app.auto_scroll_paused = true;
+    app.scroll_offset = 6;
     terminal
         .draw(|f| crate::tui::ui::draw(f, &app))
         .expect("draw failed");
     crate::tui::ui::record_layout_snapshot(Rect::new(0, 0, 50, 12), None, None, None);
+    assert!(
+        crate::tui::ui::last_max_scroll() > 7,
+        "scroll test content should exceed the viewport"
+    );
 
-    app.auto_scroll_paused = true;
-    app.scroll_offset = 6;
     app.apply_handterm_native_scroll(super::handterm_native_scroll::HostToApp::Scroll {
         pane: super::handterm_native_scroll::PaneKind::Chat,
         delta: -2,

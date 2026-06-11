@@ -188,21 +188,32 @@ fn test_compacted_history_marker_scroll_queues_lazy_load() {
 
 #[test]
 fn test_local_compacted_history_marker_scroll_expands_from_session() {
+    // Truncation only applies to genuinely large compacted prefixes: at least
+    // 80 renderable messages AND more than 5 user turns (smaller histories are
+    // always shown whole). Build 7 turns x 14 messages = 98 compacted
+    // messages so the lazy-load path actually engages.
     let mut app = create_test_app();
-    app.session.add_message(
-        crate::message::Role::User,
-        vec![crate::message::ContentBlock::Text {
-            text: "old prompt".to_string(),
-            cache_control: None,
-        }],
-    );
-    app.session.add_message(
-        crate::message::Role::Assistant,
-        vec![crate::message::ContentBlock::Text {
-            text: "old response".to_string(),
-            cache_control: None,
-        }],
-    );
+    const TURNS: usize = 7;
+    const MESSAGES_PER_TURN: usize = 14;
+    for turn in 0..TURNS {
+        app.session.add_message(
+            crate::message::Role::User,
+            vec![crate::message::ContentBlock::Text {
+                text: format!("old prompt {turn}"),
+                cache_control: None,
+            }],
+        );
+        for reply in 0..(MESSAGES_PER_TURN - 1) {
+            app.session.add_message(
+                crate::message::Role::Assistant,
+                vec![crate::message::ContentBlock::Text {
+                    text: format!("old response {turn}-{reply}"),
+                    cache_control: None,
+                }],
+            );
+        }
+    }
+    let compacted_count = app.session.messages.len();
     app.session.add_message(
         crate::message::Role::User,
         vec![crate::message::ContentBlock::Text {
@@ -211,11 +222,11 @@ fn test_local_compacted_history_marker_scroll_expands_from_session() {
         }],
     );
     app.session.compaction = Some(crate::session::StoredCompactionState {
-        summary_text: "old prompt and response".to_string(),
+        summary_text: "old prompts and responses".to_string(),
         openai_encrypted_content: None,
-        covers_up_to_turn: 2,
-        original_turn_count: 2,
-        compacted_count: 2,
+        covers_up_to_turn: TURNS,
+        original_turn_count: TURNS,
+        compacted_count,
     });
 
     let (rendered_messages, _images, _compacted_info) =
@@ -232,24 +243,43 @@ fn test_local_compacted_history_marker_scroll_expands_from_session() {
         })
         .collect();
     app.replace_display_messages(rendered);
-    assert_eq!(app.compacted_history_lazy_state().remaining_messages, 1);
+    // total/remaining count *renderable* messages; the test session may carry
+    // non-renderable bootstrap entries, so use the parsed marker as truth.
+    let total = app.compacted_history_lazy_state().total_messages;
+    assert!(
+        total >= TURNS * MESSAGES_PER_TURN,
+        "all added messages should be renderable, got total {total}"
+    );
+    assert_eq!(app.compacted_history_lazy_state().visible_messages, 0);
+    assert_eq!(
+        app.compacted_history_lazy_state().remaining_messages,
+        total,
+        "requesting 0 visible should hide the whole compacted prefix"
+    );
 
     app.auto_scroll_paused = true;
     app.scroll_offset = 0;
     app.scroll_up(1);
 
+    // Local sessions expand in place (no remote round-trip).
     assert_eq!(app.take_pending_compacted_history_load(), None);
-    assert_eq!(app.compacted_history_lazy_state().visible_messages, 1);
-    assert_eq!(app.compacted_history_lazy_state().remaining_messages, 0);
+    let state = app.compacted_history_lazy_state();
+    assert!(
+        state.visible_messages >= 64,
+        "one chunk (turn-snapped) should be visible, got {}",
+        state.visible_messages
+    );
+    assert_eq!(state.remaining_messages, total - state.visible_messages);
+    // The newest old turn is in the visible window; the oldest is still hidden.
     assert!(
         app.display_messages()
             .iter()
-            .any(|message| message.content == "old prompt")
+            .any(|message| message.content == "old response 6-0")
     );
     assert!(
-        app.display_messages()
+        !app.display_messages()
             .iter()
-            .any(|message| message.content == "old response")
+            .any(|message| message.content == "old prompt 0")
     );
 }
 
@@ -353,3 +383,4 @@ fn test_remote_error_with_retry_after_keeps_pending_for_auto_retry() {
     assert_eq!(last.role, "system");
     assert!(last.content.contains("Will auto-retry in 3 seconds"));
 }
+
