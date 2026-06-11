@@ -12,9 +12,7 @@ use crate::bus::{
 use crate::util::truncate_str;
 use anyhow::Result;
 use crossterm::event::{EventStream, KeyCode, KeyEvent, KeyModifiers};
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::DefaultTerminal;
-use std::io::{Read, Write};
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -49,66 +47,6 @@ pub(super) fn strip_reasoning_lines(content: &str) -> String {
         prev_blank = is_blank;
     }
     result.trim_end().to_string()
-}
-
-pub(super) fn edit_input_in_external_editor(app: &mut App) {
-    match edit_text_in_external_editor(&app.input) {
-        Ok(edited) => {
-            if edited != app.input {
-                app.remember_input_undo_state();
-                app.input = edited;
-                app.cursor_pos = app.input.len();
-                app.sync_model_picker_preview_from_input();
-            }
-            app.set_status_notice("Prompt edited in $EDITOR");
-        }
-        Err(err) => app.set_status_notice(format!("Failed to open $EDITOR: {err}")),
-    }
-}
-
-fn edit_text_in_external_editor(initial_text: &str) -> Result<String> {
-    let mut file = tempfile::Builder::new()
-        .prefix("jcode-prompt-")
-        .suffix(".md")
-        .tempfile()?;
-    file.write_all(initial_text.as_bytes())?;
-    file.flush()?;
-    let path = file.path().to_path_buf();
-
-    let raw_was_enabled = crossterm::terminal::is_raw_mode_enabled().unwrap_or(false);
-    if raw_was_enabled {
-        let _ = crossterm::terminal::disable_raw_mode();
-    }
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        LeaveAlternateScreen,
-        crossterm::cursor::Show
-    );
-
-    let status_result = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("exec ${VISUAL:-${EDITOR:-vi}} \"$@\"")
-        .arg("jcode-editor")
-        .arg(&path)
-        .status();
-
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        EnterAlternateScreen,
-        crossterm::cursor::Hide
-    );
-    if raw_was_enabled {
-        let _ = crossterm::terminal::enable_raw_mode();
-    }
-
-    let status = status_result?;
-    if !status.success() {
-        anyhow::bail!("editor exited with status {status}");
-    }
-
-    let mut edited = String::new();
-    std::fs::File::open(&path)?.read_to_string(&mut edited)?;
-    Ok(edited)
 }
 
 fn mission_turn_reminder(session_id: &str) -> Option<String> {
@@ -1238,7 +1176,7 @@ pub(super) fn handle_control_key(app: &mut App, code: KeyCode) -> bool {
             true
         }
         KeyCode::Char('e') => {
-            edit_input_in_external_editor(app);
+            app.cursor_pos = app.input.len();
             true
         }
         KeyCode::Char('b') => {

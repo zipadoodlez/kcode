@@ -403,7 +403,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Quit (press twice to confirm)",
     ));
     lines.push(key_entry("Ctrl+X", "Cut entire input line to clipboard"));
-    lines.push(key_entry("Ctrl+E", "Edit prompt in $EDITOR"));
     lines.push(key_entry(
         "Ctrl+A",
         "Copy visible chat viewport plus nearby context",

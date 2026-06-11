@@ -550,7 +550,7 @@ async fn handle_remote_key_internal(
                 return Ok(());
             }
             KeyCode::Char('e') => {
-                input::edit_input_in_external_editor(app);
+                app.cursor_pos = app.input.len();
                 return Ok(());
             }
             KeyCode::Char('f') => {
