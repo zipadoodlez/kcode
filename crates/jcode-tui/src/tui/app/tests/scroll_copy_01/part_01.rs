@@ -523,12 +523,23 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
         lines.push(format!("filler line {idx:02}"));
     }
 
-    app.display_messages = vec![DisplayMessage::assistant(lines.join("\n"))];
+    // Join as separate markdown paragraphs: the repro depends on the file
+    // activity line owning its row with trailing blank cells (so a blank->blank
+    // diff skips repainting the injected ghost). Single newlines now soft-wrap
+    // into one flowing paragraph, which would repaint over the ghost cells.
+    app.display_messages = vec![DisplayMessage::assistant(lines.join("\n\n"))];
     app.bump_display_messages_version();
     app.auto_scroll_paused = true;
     app.scroll_offset = 0;
 
-    let clean = render_and_snap(&app, &mut terminal);
+    // The transcript begins with the persistent header, which can be taller
+    // than this 12-row viewport. Scroll until the file activity line is
+    // actually on screen instead of assuming it sits at the top.
+    let mut clean = render_and_snap(&app, &mut terminal);
+    while !clean.contains("read lines") && app.scroll_offset < 200 {
+        app.scroll_offset += 1;
+        clean = render_and_snap(&app, &mut terminal);
+    }
     assert!(
         !clean.contains('Z'),
         "ghost marker must not be present before injection:\n{clean}"
@@ -554,7 +565,7 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
         .draw(updates)
         .expect("inject trailing nines after file activity line");
 
-    app.scroll_offset = 1;
+    app.scroll_offset += 1;
     let scrolled = render_and_snap(&app, &mut terminal);
 
     assert!(
