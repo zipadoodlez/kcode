@@ -99,7 +99,13 @@ fn format_model_name(short: &str, provider_name: &str) -> String {
         return "Claude Haiku".to_string();
     }
     if short.starts_with("gpt") {
-        return format_gpt_name(short);
+        // Only the numeric GPT families (gpt-4o, gpt-5.2-codex, ...) have a
+        // curated form. Other gpt-prefixed ids (gpt-oss-120b) fall through to
+        // the generic prettifier instead of producing "GPT-oss120b".
+        let rest = short.trim_start_matches("gpt");
+        if rest.is_empty() || rest.starts_with(|c: char| c.is_ascii_digit()) {
+            return format_gpt_name(short);
+        }
     }
     short.to_string()
 }
@@ -132,6 +138,12 @@ fn prettify_model_id(model: &str) -> String {
     }
 
     fn is_acronym(part: &str) -> bool {
+        // Well-known initialisms that contain vowels and would otherwise be
+        // title-cased as words.
+        const KNOWN: &[&str] = &["oss", "ai", "moe", "vl", "it", "fp8", "awq", "exp"];
+        if KNOWN.contains(&part.to_ascii_lowercase().as_str()) {
+            return true;
+        }
         // Short, all-alphabetic, and vowel-less segments read as initialisms:
         // glm, gpt, qwq, llm. Anything with a vowel (pro, max, mini, fable)
         // reads as a word and gets normal title-casing.
@@ -178,6 +190,85 @@ fn prettify_model_id(model: &str) -> String {
         model.to_string()
     } else {
         parts.join(" ")
+    }
+}
+
+/// Final display name for the header model line: curated pretty names first
+/// (Claude 4.5 Opus, GPT-5.2 Codex), generic title-cased prettification otherwise.
+fn header_model_display_name(model: &str, provider_name: &str) -> String {
+    let raw = model.trim();
+
+    // Claude family ids ("claude-opus-4-6", "claude-3-5-sonnet-latest",
+    // "claude-haiku-4.5") render as "Claude <version> <Family>" for any
+    // version, instead of only the hardcoded 3.5/4.5 cases.
+    if raw.starts_with("claude") {
+        for family in ["opus", "sonnet", "haiku"] {
+            if raw.contains(family) {
+                let family_pretty = capitalize(family);
+                let version = claude_version_segment(raw, family);
+                return match version {
+                    Some(version) => format!("Claude {} {}", version, family_pretty),
+                    None => format!("Claude {}", family_pretty),
+                };
+            }
+        }
+    }
+
+    // GPT ids are formatted from the raw segments ("gpt-5.1-codex-max" ->
+    // "GPT-5.1 Codex Max") rather than the legacy mashed short form, which
+    // produced "GPT-5.1codexmax"-style names.
+    if let Some(rest) = raw.strip_prefix("gpt-")
+        && rest.starts_with(|c: char| c.is_ascii_digit())
+    {
+        let mut segments = rest.split('-');
+        let version = segments.next().unwrap_or_default();
+        let mut name = format!("GPT-{}", version);
+        for segment in segments {
+            if segment.is_empty() {
+                continue;
+            }
+            let pretty = prettify_model_id(segment);
+            name.push(' ');
+            name.push_str(&pretty);
+        }
+        return name;
+    }
+
+    let short_model = shorten_model_name(raw);
+    let curated = format_model_name(&short_model, provider_name);
+    if curated == short_model {
+        // No curated pretty name matched; title-case the raw model id
+        // instead of showing the mangled short form (`claudefable5`).
+        prettify_model_id(raw)
+    } else {
+        curated
+    }
+}
+
+/// Extract the version from a Claude model id, e.g. "claude-opus-4-6" -> "4.6",
+/// "claude-3-5-sonnet-latest" -> "3.5", "claude-haiku-4.5" -> "4.5". Snapshot
+/// dates (6+ digit runs) are ignored.
+fn claude_version_segment(raw: &str, family: &str) -> Option<String> {
+    let digits: Vec<&str> = raw
+        .split(['-', '_'])
+        .filter(|part| *part != family)
+        .filter(|part| {
+            !part.is_empty()
+                && part.len() < 6
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '.')
+                && part.chars().any(|c| c.is_ascii_digit())
+        })
+        .collect();
+    match digits.as_slice() {
+        [] => None,
+        [single] => Some(single.to_string()),
+        [major, minor, ..] => Some(format!(
+            "{}.{}",
+            major.trim_matches('.'),
+            minor.trim_matches('.')
+        )),
     }
 }
 
@@ -503,19 +594,9 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     let model = app.provider_model();
     let session_name = app.session_display_name().unwrap_or_default();
     let server_name = app.server_display_name();
-    let short_model = shorten_model_name(&model);
     let icon = connection_type_icon(app.connection_type().as_deref())
         .unwrap_or_else(|| crate::id::session_icon(&session_name));
-    let nice_model = {
-        let curated = format_model_name(&short_model, &app.provider_name());
-        if curated == short_model {
-            // No curated pretty name matched; title-case the raw model id
-            // instead of showing the mangled short form (`claudefable5`).
-            prettify_model_id(model.trim())
-        } else {
-            curated
-        }
-    };
+    let nice_model = header_model_display_name(&model, &app.provider_name());
     let build_info = binary_age().unwrap_or_else(|| "unknown".to_string());
     let align = Alignment::Center;
     let mut lines: Vec<Line> = Vec::new();
@@ -626,9 +707,9 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
         );
     }
 
-    // Single model line: the styled model name plus a dim active-route detail
-    // (auth tag / upstream). This used to be a second, unstyled line in the
-    // secondary header that duplicated the model name.
+    // Single model line: dim active-route method on the left, styled model
+    // name in the middle, dim upstream/hint detail after. This used to be a
+    // second, unstyled line in the secondary header duplicating the model name.
     let model_is_placeholder = {
         let trimmed = model.trim();
         trimmed.is_empty()
@@ -647,25 +728,26 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     } else {
         app.upstream_provider()
     };
-    let mut model_spans = vec![Span::styled(
-        nice_model.clone(),
-        // Match the info widget's model accent (pink, bold) instead of plain
-        // white so the model reads as a distinct, styled element.
-        Style::default().fg(rgb(255, 150, 200)).bold(),
-    )];
-    let mut detail_parts: Vec<String> = Vec::new();
-    if !provider_label.is_empty() {
-        detail_parts.push(provider_label);
-    }
-    if let Some(upstream) = upstream.as_deref() {
-        detail_parts.push(format!("via {}", upstream));
-    }
+    let mut model_spans: Vec<Span> = Vec::new();
     let mut model_line_len = nice_model.chars().count();
     // Keep a little headroom below the full width so the centered line never
     // wraps when the render area subtracts side margins.
     let fit_width = w.saturating_sub(4);
-    if !detail_parts.is_empty() {
-        let suffix = format!(" · {}", detail_parts.join(" "));
+    if !provider_label.is_empty() {
+        let prefix = format!("{} · ", provider_label);
+        if model_line_len + prefix.chars().count() <= fit_width {
+            model_line_len += prefix.chars().count();
+            model_spans.push(Span::styled(prefix, Style::default().fg(dim_color())));
+        }
+    }
+    model_spans.push(Span::styled(
+        nice_model.clone(),
+        // Match the info widget's model accent (pink, bold) instead of plain
+        // white so the model reads as a distinct, styled element.
+        Style::default().fg(rgb(255, 150, 200)).bold(),
+    ));
+    if let Some(upstream) = upstream.as_deref() {
+        let suffix = format!(" via {}", upstream);
         if model_line_len + suffix.chars().count() <= fit_width {
             model_line_len += suffix.chars().count();
             model_spans.push(Span::styled(suffix, Style::default().fg(dim_color())));
@@ -1126,6 +1208,70 @@ mod tests {
         // Degenerate inputs survive.
         assert_eq!(prettify_model_id(""), "");
         assert_eq!(prettify_model_id("-"), "-");
+    }
+
+    #[test]
+    fn header_model_display_name_sweeps_real_model_catalog() {
+        // End-to-end through shorten_model_name + format_model_name +
+        // prettify_model_id, over the model ids jcode actually routes.
+        let cases = [
+            // Anthropic
+            ("claude-opus-4-5-20251101", "Claude 4.5 Opus"),
+            ("claude-opus-4.6", "Claude 4.6 Opus"),
+            ("claude-opus-4-8", "Claude 4.8 Opus"),
+            ("claude-sonnet-4-5", "Claude 4.5 Sonnet"),
+            ("claude-sonnet-4", "Claude 4 Sonnet"),
+            ("claude-3-5-sonnet-latest", "Claude 3.5 Sonnet"),
+            ("claude-haiku-4-5", "Claude 4.5 Haiku"),
+            ("claude-fable-5", "Claude Fable 5"),
+            // OpenAI
+            ("gpt-5.2-codex", "GPT-5.2 Codex"),
+            ("gpt-5.1-codex-max", "GPT-5.1 Codex Max"),
+            ("gpt-5.3-codex-spark", "GPT-5.3 Codex Spark"),
+            ("gpt-5-mini", "GPT-5 Mini"),
+            ("gpt-5.1-chat-latest", "GPT-5.1 Chat Latest"),
+            ("gpt-4o", "GPT-4o"),
+            ("gpt-4o-mini", "GPT-4o Mini"),
+            ("gpt-oss-120b", "GPT OSS 120B"),
+            ("o3-mini", "O3 Mini"),
+            ("o4-mini", "O4 Mini"),
+            // Google
+            ("gemini-3-pro-preview", "Gemini 3 Pro Preview"),
+            ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+            // xAI / Moonshot / Zhipu / DeepSeek / Minimax
+            ("grok-code-fast-1", "Grok Code Fast 1"),
+            ("kimi-k2.5", "Kimi K2.5"),
+            ("kimi-k2p5-turbo", "Kimi K2p5 Turbo"),
+            ("glm-4.6", "GLM 4.6"),
+            ("deepseek-v4-flash", "Deepseek V4 Flash"),
+            ("minimax-m2.7", "Minimax M2.7"),
+            // Meta / Mistral / Qwen / community
+            ("llama-3.3-70b", "Llama 3.3 70B"),
+            ("mixtral-8x7b", "Mixtral 8X7B"),
+            ("devstral-medium-2507", "Devstral Medium 2507"),
+            ("qwen3-coder-plus", "Qwen3 Coder Plus"),
+            ("composer-1.5", "Composer 1.5"),
+            ("llama-3.1-8b-instant", "Llama 3.1 8B Instant"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(
+                header_model_display_name(input, ""),
+                expected,
+                "model id {input:?}"
+            );
+        }
+
+        // Slashed ids keep the provider label form.
+        assert_eq!(
+            header_model_display_name("deepseek/deepseek-chat", "OpenRouter"),
+            "OpenRouter: deepseek/deepseek-chat"
+        );
+        // Placeholders pass through untouched.
+        assert_eq!(
+            header_model_display_name("loading session…", ""),
+            "loading session…"
+        );
+        assert_eq!(header_model_display_name("connected", ""), "Connected");
     }
 
     #[test]
