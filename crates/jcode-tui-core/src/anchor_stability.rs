@@ -92,6 +92,11 @@ pub struct AnchorDiff {
     pub matched_rows: usize,
     /// Non-blank rows that matched at a *different* offset (repositioned).
     pub displaced_rows: usize,
+    /// Rows that stayed at the same screen position while the dominant shift
+    /// was nonzero: viewport-pinned UI (footers, status rows). Tracked
+    /// separately because staying still is usually intentional, unlike
+    /// `displaced_rows` which truly jumped.
+    pub stationary_rows: usize,
     /// Non-blank rows newly visible this frame.
     pub appeared_rows: usize,
     /// Largest contiguous block of appeared rows.
@@ -115,6 +120,10 @@ pub struct AnchorStabilityReport {
     pub frames_with_changes: u64,
     pub reposition_events: u64,
     pub reposition_rows_total: u64,
+    /// Rows that stayed screen-pinned while content scrolled (footers, status
+    /// rows). Expected UI behavior; tracked to confirm they are excluded from
+    /// reposition events.
+    pub stationary_rows_total: u64,
     pub insertion_above_events: u64,
     pub big_pop_events: u64,
     pub blink_events: u64,
@@ -146,6 +155,7 @@ pub struct AnchorStabilityRecorder {
     frames_with_changes: u64,
     reposition_events: u64,
     reposition_rows_total: u64,
+    stationary_rows_total: u64,
     insertion_above_events: u64,
     big_pop_events: u64,
     blink_events: u64,
@@ -174,6 +184,7 @@ impl AnchorStabilityRecorder {
             frames_with_changes: 0,
             reposition_events: 0,
             reposition_rows_total: 0,
+            stationary_rows_total: 0,
             insertion_above_events: 0,
             big_pop_events: 0,
             blink_events: 0,
@@ -259,6 +270,7 @@ impl AnchorStabilityRecorder {
                 dominant_shift: diff.dominant_shift,
             });
         }
+        self.stationary_rows_total += diff.stationary_rows as u64;
 
         if diff.dominant_shift > 0 && diff.matched_rows > 0 {
             self.insertion_above_events += 1;
@@ -338,6 +350,7 @@ impl AnchorStabilityRecorder {
             frames_with_changes: self.frames_with_changes,
             reposition_events: self.reposition_events,
             reposition_rows_total: self.reposition_rows_total,
+            stationary_rows_total: self.stationary_rows_total,
             insertion_above_events: self.insertion_above_events,
             big_pop_events: self.big_pop_events,
             blink_events: self.blink_events,
@@ -420,10 +433,17 @@ fn align_frames(prev: &[u64], cur: &[u64]) -> AnchorDiff {
             continue;
         }
         // Unique-in-both rows found elsewhere are displaced; everything else
-        // (changed content, duplicates) counts as removed.
+        // (changed content, duplicates) counts as removed. Rows that stayed at
+        // the *same screen position* while everything else shifted are
+        // viewport-pinned UI (footers, status rows), not jumps: track them as
+        // stationary instead of displaced.
         if prev_unique.contains_key(h) {
             if let Some(cur_idx) = cur_unique.get(h) {
-                diff.displaced_rows += 1;
+                if *cur_idx == prev_idx && dominant_shift != 0 {
+                    diff.stationary_rows += 1;
+                } else {
+                    diff.displaced_rows += 1;
+                }
                 matched_cur_rows[*cur_idx] = true;
                 continue;
             }
@@ -511,6 +531,29 @@ mod tests {
         assert_eq!(diff.displaced_rows, 2 + 3, "100/101 jump down; 4/5/6 shift up");
         let report = rec.report();
         assert_eq!(report.reposition_events, 1);
+    }
+
+    #[test]
+    fn screen_pinned_footer_rows_are_stationary_not_repositioned() {
+        // While the transcript scrolls up (tail-follow), bottom-pinned UI rows
+        // (status footer, TPS line) stay at the same screen position. That is
+        // intentional viewport-pinned behavior and must not count as a
+        // reposition event.
+        let mut rec = AnchorStabilityRecorder::new();
+        // 8 transcript rows + 2 pinned footer rows (900, 901) at the bottom.
+        let mut rows = hashes(1..9);
+        rows.extend([900, 901]);
+        rec.observe(frame(rows));
+        // Transcript scrolls up by 2 (rows 3..=10 now visible); footer stays.
+        let mut rows = hashes(3..11);
+        rows.extend([900, 901]);
+        let diff = rec.observe(frame(rows)).unwrap();
+        assert_eq!(diff.dominant_shift, -2);
+        assert_eq!(diff.stationary_rows, 2, "footer rows are stationary");
+        assert_eq!(diff.displaced_rows, 0, "no true repositions");
+        let report = rec.report();
+        assert_eq!(report.reposition_events, 0);
+        assert_eq!(report.stationary_rows_total, 2);
     }
 
     #[test]
