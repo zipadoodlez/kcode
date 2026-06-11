@@ -498,7 +498,10 @@ impl CopilotApiProvider {
             let resp = match resp {
                 Ok(r) => r,
                 Err(e) => {
-                    let error_str = e.to_string().to_lowercase();
+                    // Full anyhow chain ({:#}) so a `.context(...)`-wrapped
+                    // transport cause (e.g. TLS BadRecordMac) is visible to the
+                    // retry classifier.
+                    let error_str = format!("{e:#}").to_lowercase();
                     if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
                         crate::logging::info(&format!(
                             "Transient Copilot error, will retry: {}",
@@ -559,7 +562,10 @@ impl CopilotApiProvider {
             match self.process_sse_stream(resp, tx.clone()).await {
                 Ok(()) => return,
                 Err(e) => {
-                    let error_str = e.to_string().to_lowercase();
+                    // Full anyhow chain ({:#}) so a `.context(...)`-wrapped
+                    // transport cause (e.g. TLS BadRecordMac) is visible to the
+                    // retry classifier.
+                    let error_str = format!("{e:#}").to_lowercase();
                     if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
                         crate::logging::info(&format!(
                             "Copilot stream failed (attempt {}/{}), will retry: {}",

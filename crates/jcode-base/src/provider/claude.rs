@@ -729,7 +729,11 @@ impl Provider for ClaudeProvider {
                 {
                     Ok(()) => return, // Success
                     Err(e) => {
-                        let error_str = e.to_string().to_lowercase();
+                        // Use the full anyhow source chain ({:#}) so transport
+                        // causes wrapped behind a `.context(...)` (e.g. a TLS
+                        // `received fatal alert: BadRecordMac`) are visible to the
+                        // retry classifier, not just the top-level context string.
+                        let error_str = format!("{e:#}").to_lowercase();
                         // Check if this is a transient/retryable error
                         if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
                             crate::logging::info(&format!("Transient error, will retry: {}", e));
