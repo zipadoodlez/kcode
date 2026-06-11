@@ -1409,7 +1409,9 @@ impl crate::tui::TuiState for App {
     }
 
     fn reasoning_retained_markup(&self) -> Option<&str> {
-        self.reasoning_retained.as_deref()
+        self.reasoning_retained
+            .as_ref()
+            .map(|retained| retained.markup.as_str())
     }
 
     fn reasoning_collapse_state(&self) -> Option<(&str, f32)> {

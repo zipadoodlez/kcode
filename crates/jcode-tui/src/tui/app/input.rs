@@ -2412,7 +2412,7 @@ impl App {
         // old trace away as soon as the new one starts streaming so stale
         // reasoning never lingers next to the live trace.
         if let Some(prev) = self.reasoning_retained.take() {
-            self.start_reasoning_collapse(prev);
+            self.start_reasoning_collapse(prev.markup);
         }
         // Separate the reasoning block from any prior content with a blank line.
         if !self.streaming.streaming_text.is_empty() {
@@ -2586,9 +2586,12 @@ impl App {
         }
         // The previously retained trace is now superseded: fold it away.
         if let Some(prev) = self.reasoning_retained.take() {
-            self.start_reasoning_collapse(prev);
+            self.start_reasoning_collapse(prev.markup);
         }
-        self.reasoning_retained = Some(block);
+        self.reasoning_retained = Some(crate::tui::app::RetainedReasoning {
+            markup: block,
+            retained_at: std::time::Instant::now(),
+        });
         self.refresh_split_view_if_needed();
     }
 
@@ -2604,9 +2607,9 @@ impl App {
     }
 
     /// Drive the reasoning retain/collapse animation forward by one tick. Folds the
-    /// last retained trace away once the turn is over, finishes any in-progress
-    /// shrink, and reports whether a redraw is still needed. Cheap no-op when no
-    /// reasoning animation is active.
+    /// last retained trace away once the turn is over (after a minimum readable
+    /// dwell), finishes any in-progress shrink, and reports whether a redraw is
+    /// still needed. Cheap no-op when no reasoning animation is active.
     pub(super) fn tick_reasoning_collapse(&mut self) -> bool {
         let mut redraw = false;
         if let Some(collapse) = &self.reasoning_collapse {
@@ -2615,12 +2618,19 @@ impl App {
                 self.reasoning_collapse = None;
             }
         }
-        // Once the turn finishes, the final retained trace has no successor to wait
-        // on, so fold it away too (keeping `current` mode ephemeral).
-        if !self.is_processing && self.reasoning_retained.is_some() {
-            if let Some(trace) = self.reasoning_retained.take() {
-                self.start_reasoning_collapse(trace);
-            }
+        // Once the turn finishes, the final retained trace has no successor to
+        // wait on, so fold it away too - but never before it has been on screen
+        // long enough to read.
+        if !self.is_processing
+            && self
+                .reasoning_retained
+                .as_ref()
+                .is_some_and(|retained| {
+                    retained.retained_at.elapsed() >= crate::tui::app::REASONING_RETAIN_MIN_DWELL
+                })
+            && let Some(trace) = self.reasoning_retained.take()
+        {
+            self.start_reasoning_collapse(trace.markup);
             redraw = true;
         }
         if redraw {
@@ -2770,53 +2780,31 @@ impl App {
         if self.reasoning_streaming {
             self.close_reasoning_region(None);
         }
-        // The commit ends this reasoning->answer segment. The retained trace
-        // renders below the transcript body, so a trace kept across the commit
-        // would sit *below* the answer it preceded (chronology flip) and bounce
-        // when the next thinking starts. Fold it into the one-line collapsed
-        // summary ("▸ thought (n lines)") placed above the answer inside the
-        // committed message: chronology is preserved, the vertical shift is
-        // small, and it matches how reloaded history renders in current mode.
-        let folded_summary = if self.reasoning_current_mode() {
-            self.reasoning_collapse = None;
-            self.reasoning_retained.take().map(|trace| {
-                let line_count = trace.lines().filter(|l| !l.trim().is_empty()).count();
-                jcode_tui_markdown::reasoning_summary_line_markup(line_count)
-            })
-        } else {
-            None
-        };
 
         if self.streaming.streaming_text.is_empty() {
             self.stream_buffer.clear();
-            // Reasoning-only segment (thinking straight into a tool call):
-            // commit just the folded trace marker so the thought leaves a
-            // stable, anchored line instead of vanishing in one frame.
-            if let Some(summary) = folded_summary {
-                self.push_display_message(DisplayMessage::assistant(summary));
-                return true;
-            }
+            // Tool-only boundary (no answer text): keep the retained trace on
+            // screen so the thought stays readable while the tool runs. It
+            // folds when superseded by the next trace or at end of turn.
             return false;
         }
 
         let content = self.take_streaming_text();
         let content = self.collapse_reasoning_for_commit(content);
         if content.trim().is_empty() {
-            // Nothing left after collapsing reasoning-only content.
+            // Nothing left after collapsing reasoning-only content; same
+            // tool-only situation as above, keep the trace readable.
             self.stream_buffer.clear();
-            if let Some(summary) = folded_summary {
-                self.push_display_message(DisplayMessage::assistant(summary));
-                return true;
-            }
             return false;
         }
-        // The summary is its own paragraph above the answer. The blank line
-        // also keeps the fold's upward shift small (summary + blank replaces
-        // trace + blank), so the answer slides instead of jumping.
-        let content = match folded_summary {
-            Some(summary) => format!("{summary}\n{content}"),
-            None => content,
-        };
+        // Real answer text is committing into the transcript body, which
+        // renders *above* the trace section: keeping the trace would visually
+        // swap it below the answer it preceded (chronology flip) and bounce
+        // when the next thinking starts. The thought was readable for the
+        // whole time the answer streamed beneath it, so let it go with this
+        // commit's reflow. No summary residue is left behind.
+        self.reasoning_retained = None;
+        self.reasoning_collapse = None;
         self.push_display_message(DisplayMessage::assistant(content));
         self.stream_buffer.clear();
         true

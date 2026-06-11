@@ -155,11 +155,18 @@ fn smoothness_benchmark_simulated_streaming_turn_stays_within_budget() {
         "benchmark must observe a realistic number of frames, got {}",
         report.frames_compared
     );
-    // Budgets: a paced streaming turn must not reposition content or reflow
-    // the screen. Commits may pop (bounded), and nothing should blink.
-    assert_eq!(
-        report.reposition_events, 0,
-        "no content may move out of step with its anchor: {report:?}"
+    // Budgets: a paced streaming turn must not reflow the screen and nothing
+    // should blink. Commits may pop (bounded). One small reposition is
+    // permitted at the answer-commit boundary: the retained reasoning trace
+    // (kept above the streaming answer so it stays readable) releases when
+    // the answer commits, shifting the answer up by the trace height once.
+    assert!(
+        report.reposition_events <= 1,
+        "at most the answer-commit trace release may reposition: {report:?}"
+    );
+    assert!(
+        report.reposition_rows_total <= 4,
+        "the trace-release shift must stay small: {report:?}"
     );
     assert_eq!(
         report.mass_reflow_events, 0,

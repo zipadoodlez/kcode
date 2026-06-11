@@ -141,8 +141,24 @@ struct ReasoningCollapse {
     started: Instant,
 }
 
+/// The most recently closed reasoning trace, kept on screen (in `current`
+/// display mode) so it stays readable while the tool runs / the turn continues.
+/// `retained_at` feeds the minimum-dwell check so the trace never flashes away
+/// before it could be read.
+#[derive(Debug, Clone)]
+struct RetainedReasoning {
+    markup: String,
+    retained_at: Instant,
+}
+
 /// Duration of the reasoning-trace shrink-away animation (`current` mode).
 pub(crate) const REASONING_COLLAPSE_DURATION: Duration = Duration::from_millis(220);
+
+/// Minimum time a retained reasoning trace stays readable before the
+/// end-of-turn fold may begin. Mid-turn, the trace persists until superseded
+/// (next thinking) or replaced by committed answer text, so this only guards
+/// fast turns from flashing the final thought away unread.
+pub(crate) const REASONING_RETAIN_MIN_DWELL: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Clone)]
 struct LocalRewindUndoSnapshot {
@@ -800,10 +816,9 @@ pub struct App {
     reasoning_block_start: Option<usize>,
     // `current` reasoning-display mode keeps the *most recently closed* reasoning
     // trace on screen (sliced out of the live stream but rendered as its own dim
-    // section just above the stream) until the next trace finishes. Holds the
-    // sentinel-wrapped dim+italic markup of that retained block, or `None` when
-    // nothing is retained.
-    reasoning_retained: Option<String>,
+    // section just above the stream) until it is superseded or the turn ends.
+    // Holds the trace markup plus when it was retained (for the dwell check).
+    reasoning_retained: Option<RetainedReasoning>,
     // A previously-retained reasoning trace that is now animating away: it shrinks
     // vertically (its visible height interpolates from full down to zero) and is
     // dropped once the animation completes. Holds the block markup plus the

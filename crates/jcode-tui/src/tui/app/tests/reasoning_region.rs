@@ -451,8 +451,15 @@ fn retained_reasoning_folds_away_after_turn_finishes() {
     );
     assert!(app.reasoning_collapse_state().is_none());
 
-    // Turn finishes: the retained trace folds into the collapse animation.
+    // Turn finishes: once the minimum readable dwell has passed, the retained
+    // trace folds into the collapse animation. Backdate the dwell so the fold
+    // is eligible immediately in the test.
     app.is_processing = false;
+    if let Some(retained) = app.reasoning_retained.as_mut() {
+        retained.retained_at = std::time::Instant::now()
+            - crate::tui::app::REASONING_RETAIN_MIN_DWELL
+            - std::time::Duration::from_millis(50);
+    }
     let redraw = app.tick_reasoning_collapse();
     assert!(redraw, "folding the trace away should request a redraw");
     assert!(
@@ -638,12 +645,56 @@ fn retain_with_preceding_answer_text_discards_instead_of_repositioning() {
 }
 
 #[test]
-fn commit_drops_retained_trace_instead_of_leaving_it_below_the_answer() {
-    // Committing the streamed answer moves it into the transcript body, which
-    // renders *above* the reasoning trace section. A trace retained across the
-    // commit would therefore appear below the answer it preceded (chronology
-    // flip) and bounce when the next thinking starts. The commit must drop it.
+fn commit_keeps_retained_trace_readable_until_superseded() {
+    // Tool-only commits (the common reasoning -> tool path) must keep the
+    // retained trace on screen so the user can read it while the tool runs;
+    // it folds only via supersession (next thinking) or end-of-turn dwell.
+    // No "thought (n lines)" residue is ever committed.
     let mut app = create_test_app();
+    app.is_processing = true;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("pre-tool thinking\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+    assert!(app.reasoning_retained_markup().is_some());
+
+    // Tool boundary with no answer text: trace stays readable.
+    app.commit_pending_streaming_assistant_message();
+    assert!(
+        app.reasoning_retained_markup().is_some(),
+        "retained trace must stay readable across a tool-only commit"
+    );
+    assert!(
+        !app
+            .display_messages
+            .iter()
+            .any(|m| m.content.contains("thought")),
+        "no thought-summary residue may be committed"
+    );
+
+    // The next reasoning trace supersedes it: old trace starts collapsing.
+    app.open_reasoning_region();
+    assert!(
+        app.reasoning_retained_markup().is_none(),
+        "new thinking supersedes the previous trace"
+    );
+    assert!(
+        app.reasoning_collapse_state().is_some(),
+        "superseded trace folds via the collapse animation"
+    );
+}
+
+#[test]
+fn answer_commit_releases_retained_trace_without_residue() {
+    // When real answer text commits into the transcript body (which renders
+    // above the trace section), keeping the trace would flip chronology - the
+    // thought would sit below the answer it preceded. The trace was readable
+    // the whole time the answer streamed; it goes with the commit's reflow,
+    // leaving no summary residue.
+    let mut app = create_test_app();
+    app.is_processing = true;
 
     app.open_reasoning_region();
     app.append_reasoning_text("pre-answer thinking\n");
@@ -657,16 +708,39 @@ fn commit_drops_retained_trace_instead_of_leaving_it_below_the_answer() {
 
     assert!(
         app.reasoning_retained_markup().is_none(),
-        "retained trace must not survive a commit boundary"
+        "trace must not linger below the committed answer"
     );
+    let committed = app
+        .display_messages
+        .iter()
+        .find(|m| m.role == "assistant" && m.content.contains("the final answer"))
+        .expect("answer must commit to the transcript");
     assert!(
-        app.reasoning_collapse_state().is_none(),
-        "no stale collapse animation across a commit"
+        !committed.content.contains("thought"),
+        "no thought-summary residue in the committed message: {:?}",
+        committed.content
     );
+}
+
+#[test]
+fn retained_trace_dwell_prevents_instant_fold_at_turn_end() {
+    // A turn that ends right after reasoning closes must not flash the trace
+    // away unread: the end-of-turn fold waits for the minimum dwell.
+    let mut app = create_test_app();
+    app.is_processing = true;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("just finished thinking\n");
+    app.reasoning_pending_line.clear();
+    app.reasoning_streaming = false;
+    app.retain_current_reasoning_block();
+
+    // Turn ends immediately; the dwell keeps the trace on screen.
+    app.is_processing = false;
+    app.tick_reasoning_collapse();
     assert!(
-        app.display_messages
-            .iter()
-            .any(|m| m.role == "assistant" && m.content.contains("the final answer")),
-        "answer must commit to the transcript"
+        app.reasoning_retained_markup().is_some(),
+        "trace must stay readable for the minimum dwell after the turn ends"
     );
+    assert!(app.reasoning_collapse_state().is_none());
 }
