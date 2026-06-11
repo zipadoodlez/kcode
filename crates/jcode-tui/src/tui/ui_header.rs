@@ -590,16 +590,19 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
         detail_parts.push(format!("via {}", upstream));
     }
     let mut model_line_len = nice_model.chars().count();
+    // Keep a little headroom below the full width so the centered line never
+    // wraps when the render area subtracts side margins.
+    let fit_width = w.saturating_sub(4);
     if !detail_parts.is_empty() {
         let suffix = format!(" · {}", detail_parts.join(" "));
-        if model_line_len + suffix.chars().count() <= w {
+        if model_line_len + suffix.chars().count() <= fit_width {
             model_line_len += suffix.chars().count();
             model_spans.push(Span::styled(suffix, Style::default().fg(dim_color())));
         }
     }
     if !nice_model.is_empty() {
         let hint = " · /model to switch";
-        if !model_is_placeholder && model_line_len + hint.chars().count() <= w {
+        if !model_is_placeholder && model_line_len + hint.chars().count() <= fit_width {
             model_spans.push(Span::styled(
                 hint.to_string(),
                 Style::default().fg(dim_color()),
