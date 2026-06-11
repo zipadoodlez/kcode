@@ -1,5 +1,130 @@
 use std::path::Path;
 
+#[cfg(target_os = "macos")]
+mod macos_power {
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_void};
+
+    type CFStringRef = *const c_void;
+    type IOPMAssertionID = u32;
+    type IOReturn = i32;
+
+    const K_CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+    const K_IOPM_ASSERTION_LEVEL_ON: u32 = 255;
+    const K_IO_RETURN_SUCCESS: IOReturn = 0;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFStringCreateWithCString(
+            alloc: *const c_void,
+            c_str: *const c_char,
+            encoding: u32,
+        ) -> CFStringRef;
+        fn CFRelease(cf: *const c_void);
+    }
+
+    #[link(name = "IOKit", kind = "framework")]
+    unsafe extern "C" {
+        fn IOPMAssertionCreateWithName(
+            assertion_type: CFStringRef,
+            assertion_level: u32,
+            assertion_name: CFStringRef,
+            assertion_id: *mut IOPMAssertionID,
+        ) -> IOReturn;
+        fn IOPMAssertionRelease(assertion_id: IOPMAssertionID) -> IOReturn;
+    }
+
+    fn cf_string(value: &str) -> Option<CFStringRef> {
+        let c_string = CString::new(value).ok()?;
+        let cf = unsafe {
+            CFStringCreateWithCString(
+                std::ptr::null(),
+                c_string.as_ptr(),
+                K_CF_STRING_ENCODING_UTF8,
+            )
+        };
+        (!cf.is_null()).then_some(cf)
+    }
+
+    pub struct PowerAssertion {
+        id: Option<IOPMAssertionID>,
+    }
+
+    impl PowerAssertion {
+        pub fn prevent_user_idle_system_sleep(reason: &str) -> Self {
+            let Some(assertion_type) = cf_string("PreventUserIdleSystemSleep") else {
+                return Self { id: None };
+            };
+            let Some(assertion_name) = cf_string(reason) else {
+                unsafe { CFRelease(assertion_type) };
+                return Self { id: None };
+            };
+
+            let mut id = 0;
+            let result = unsafe {
+                IOPMAssertionCreateWithName(
+                    assertion_type,
+                    K_IOPM_ASSERTION_LEVEL_ON,
+                    assertion_name,
+                    &mut id,
+                )
+            };
+            unsafe {
+                CFRelease(assertion_type);
+                CFRelease(assertion_name);
+            }
+
+            if result == K_IO_RETURN_SUCCESS {
+                crate::logging::info(&format!(
+                    "Created macOS sleep-prevention assertion while streaming (id={id})"
+                ));
+                Self { id: Some(id) }
+            } else {
+                crate::logging::warn(&format!(
+                    "Failed to create macOS sleep-prevention assertion while streaming: IOReturn={result}"
+                ));
+                Self { id: None }
+            }
+        }
+
+        #[cfg(test)]
+        pub fn is_active(&self) -> bool {
+            self.id.is_some()
+        }
+    }
+
+    impl Drop for PowerAssertion {
+        fn drop(&mut self) {
+            if let Some(id) = self.id.take() {
+                let result = unsafe { IOPMAssertionRelease(id) };
+                if result != K_IO_RETURN_SUCCESS {
+                    crate::logging::warn(&format!(
+                        "Failed to release macOS sleep-prevention assertion id={id}: IOReturn={result}"
+                    ));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod macos_power {
+    pub struct PowerAssertion;
+
+    impl PowerAssertion {
+        pub fn prevent_user_idle_system_sleep(_reason: &str) -> Self {
+            Self
+        }
+
+        #[cfg(test)]
+        pub fn is_active(&self) -> bool {
+            false
+        }
+    }
+}
+
+pub use macos_power::PowerAssertion;
+
 fn desired_nofile_soft_limit(current: u64, hard: u64, minimum: u64) -> Option<u64> {
     let desired = current.max(minimum).min(hard);
     (desired > current).then_some(desired)

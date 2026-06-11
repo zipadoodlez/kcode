@@ -60,13 +60,21 @@ pub fn unmark_streaming(session_id: &str) {
 /// never gets stuck showing a phantom streaming session.
 pub struct StreamingGuard {
     session_id: String,
+    #[allow(dead_code)]
+    sleep_assertion: crate::platform::PowerAssertion,
 }
 
 impl StreamingGuard {
     pub fn new(session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
         mark_streaming(&session_id);
-        Self { session_id }
+        let sleep_assertion = crate::platform::PowerAssertion::prevent_user_idle_system_sleep(
+            "Jcode streaming model response",
+        );
+        Self {
+            session_id,
+            sleep_assertion,
+        }
     }
 }
 
@@ -186,7 +194,10 @@ mod tests {
 
         let counts = session_counts();
         assert_eq!(counts.total, 3, "three live sessions expected");
-        assert_eq!(counts.streaming, 1, "only one live streaming session expected");
+        assert_eq!(
+            counts.streaming, 1,
+            "only one live streaming session expected"
+        );
 
         // Clearing the streaming marker drops the streaming count.
         unmark_streaming("session_alpha");
@@ -215,6 +226,47 @@ mod tests {
             assert_eq!(session_counts().streaming, 1);
         }
         assert_eq!(session_counts().streaming, 0);
+
+        crate::env::remove_var("JCODE_HOME");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn streaming_guard_creates_visible_macos_sleep_assertion() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        crate::env::set_var("JCODE_HOME", temp.path());
+
+        let reason = "Jcode streaming model response";
+        register_active_pid("session_power", std::process::id());
+        {
+            let streaming = StreamingGuard::new("session_power");
+            assert!(
+                streaming.sleep_assertion.is_active(),
+                "macOS should create a native power assertion"
+            );
+
+            let output = std::process::Command::new("pmset")
+                .args(["-g", "assertions"])
+                .output()
+                .expect("pmset -g assertions should run on macOS");
+            assert!(output.status.success(), "pmset should succeed");
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                stdout.contains(reason),
+                "pmset output should show the streaming assertion; output was:\n{stdout}"
+            );
+        }
+
+        let output = std::process::Command::new("pmset")
+            .args(["-g", "assertions"])
+            .output()
+            .expect("pmset -g assertions should run on macOS");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            !stdout.contains(reason),
+            "streaming assertion should be released after guard drop; output was:\n{stdout}"
+        );
 
         crate::env::remove_var("JCODE_HOME");
     }
