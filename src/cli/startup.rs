@@ -35,7 +35,7 @@ pub async fn run() -> Result<()> {
     // Wire config-reload reactions without making config depend on auth/bus:
     // when the config cache reloads, invalidate the auth-status cache and
     // broadcast a models-updated event.
-    crate::config::on_config_reloaded(|| crate::auth::AuthStatus::invalidate_cache());
+    crate::config::on_config_reloaded(crate::auth::AuthStatus::invalidate_cache);
     crate::config::on_config_reloaded(|| crate::bus::Bus::global().publish_models_updated());
 
     // Invert the legacy provider_catalog -> auth dependency: provider_catalog

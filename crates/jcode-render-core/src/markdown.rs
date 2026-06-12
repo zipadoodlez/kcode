@@ -607,10 +607,10 @@ pub fn parse_markdown(text: &str) -> Document {
                 pending_item_marker = None;
             }
             Event::End(TagEnd::List(_)) => {
-                if let Some(frame) = list_stack.pop() {
-                    if frame.ordered {
-                        align_ordered_markers(&mut doc, frame.start_block, frame.depth);
-                    }
+                if let Some(frame) = list_stack.pop()
+                    && frame.ordered
+                {
+                    align_ordered_markers(&mut doc, frame.start_block, frame.depth);
                 }
             }
             Event::End(TagEnd::BlockQuote(_)) => {
@@ -650,10 +650,10 @@ pub fn parse_markdown(text: &str) -> Document {
             Event::End(TagEnd::Strong) => style.bold = false,
             Event::End(TagEnd::Strikethrough) => style.strike = false,
             Event::End(TagEnd::Link) => {
-                if let Some(url) = link_targets.pop() {
-                    if !url.is_empty() {
-                        spans.push(StyledSpan::new(format!(" ({url})"), StyleRole::Dim));
-                    }
+                if let Some(url) = link_targets.pop()
+                    && !url.is_empty()
+                {
+                    spans.push(StyledSpan::new(format!(" ({url})"), StyleRole::Dim));
                 }
             }
             Event::End(TagEnd::Image) => {

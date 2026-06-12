@@ -161,7 +161,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             helper,
             clear,
         } => {
-            return run_cloud_sessions_configure(
+            run_cloud_sessions_configure(
                 api_base,
                 api_token,
                 api_token_env,
@@ -169,9 +169,9 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
                 user_id,
                 helper,
                 clear,
-            );
+            )
         }
-        CloudSessionsSubcommand::Status { json } => return run_cloud_sessions_status(json),
+        CloudSessionsSubcommand::Status { json } => run_cloud_sessions_status(json),
         CloudSessionsSubcommand::Dashboard {
             limit,
             output,
@@ -182,7 +182,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             region,
             helper,
         } => {
-            return run_cloud_sessions_dashboard(CloudSessionsDashboardRequest {
+            run_cloud_sessions_dashboard(CloudSessionsDashboardRequest {
                 limit,
                 output,
                 open,
@@ -191,7 +191,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
                 profile,
                 region,
                 helper,
-            });
+            })
         }
         CloudSessionsSubcommand::Sync {
             sessions_dir,
@@ -208,7 +208,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             region,
             helper,
         } => {
-            return run_cloud_sessions_sync(CloudSessionsSyncRequest {
+            run_cloud_sessions_sync(CloudSessionsSyncRequest {
                 sessions_dir,
                 since_days,
                 all,
@@ -222,7 +222,7 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
                 profile,
                 region,
                 helper,
-            });
+            })
         }
         other => run_cloud_sessions_helper_command(other),
     }
