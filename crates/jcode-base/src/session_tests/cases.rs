@@ -1856,10 +1856,12 @@ fn fork_notice_is_model_visible_but_hidden_from_transcript() {
     let provider_messages = session.messages_for_provider_uncached();
     assert!(
         provider_messages.iter().any(|message| {
-            message.content.iter().any(|block| matches!(
-                block,
-                ContentBlock::Text { text, .. } if text.contains("forked")
-            ))
+            message.content.iter().any(|block| {
+                matches!(
+                    block,
+                    ContentBlock::Text { text, .. } if text.contains("forked")
+                )
+            })
         }),
         "fork notice must reach the model"
     );
