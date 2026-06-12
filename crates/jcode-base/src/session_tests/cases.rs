@@ -1829,3 +1829,47 @@ fn test_render_images_attached_label_message_does_not_shift_prompt_ordinals() {
         "label-only messages must not consume prompt ordinals"
     );
 }
+
+#[test]
+fn fork_notice_is_model_visible_but_hidden_from_transcript() {
+    let mut session = Session::create(None, None);
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "original request".to_string(),
+            cache_control: None,
+        }],
+    );
+
+    session.append_fork_notice("session_parent_abc", "otter");
+
+    let notice = session.messages.last().expect("fork notice appended");
+    assert_eq!(notice.role, Role::User);
+    assert_eq!(notice.display_role, Some(StoredDisplayRole::System));
+    let text = notice.content_preview();
+    assert!(text.contains("<system-reminder>"));
+    assert!(text.contains("forked"));
+    assert!(text.contains("session_parent_abc"));
+    assert!(text.contains("otter"));
+
+    // Model-visible: included in the provider message list.
+    let provider_messages = session.messages_for_provider_uncached();
+    assert!(
+        provider_messages.iter().any(|message| {
+            message.content.iter().any(|block| matches!(
+                block,
+                ContentBlock::Text { text, .. } if text.contains("forked")
+            ))
+        }),
+        "fork notice must reach the model"
+    );
+
+    // Transcript-hidden: not rendered as a visible user message.
+    let (rendered, _) = render_messages_and_images(&session);
+    assert!(
+        !rendered
+            .iter()
+            .any(|message| message.role == "user" && message.content.contains("forked")),
+        "fork notice must not render as a visible user message"
+    );
+}

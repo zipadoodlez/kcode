@@ -624,7 +624,8 @@ fn clone_session_for_review(
 }
 
 fn clone_session_for_prompt(app: &App) -> anyhow::Result<(String, String)> {
-    let mut child = Session::create(Some(active_session_id(app)), None);
+    let parent_session_id = active_session_id(app);
+    let mut child = Session::create(Some(parent_session_id.clone()), None);
     child.replace_messages(app.session.messages.clone());
     child.compaction = app.session.compaction.clone();
     child.working_dir = app.session.working_dir.clone();
@@ -634,6 +635,10 @@ fn clone_session_for_prompt(app: &App) -> anyhow::Result<(String, String)> {
     child.autoreview_enabled = app.session.autoreview_enabled;
     child.autojudge_enabled = app.session.autojudge_enabled;
     child.status = crate::session::SessionStatus::Closed;
+    // The parent agent keeps ownership of any in-flight request; tell the
+    // forked agent so it treats the next prompt as fresh work instead of
+    // continuing (and duplicating) the parent's current turn.
+    child.append_fork_notice(&parent_session_id, app.session.display_name());
     child.save()?;
     Ok((child.id.clone(), child.display_name().to_string()))
 }
