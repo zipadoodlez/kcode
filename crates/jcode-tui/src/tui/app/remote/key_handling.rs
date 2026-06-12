@@ -224,8 +224,8 @@ impl App {
                 self.prompt_new_account_label(provider)
             }
             other => {
-                if let Some(input) = Self::account_command_for_picker(&other) {
-                    crate::tui::app::auth::handle_account_command_remote(self, &input, remote)
+                if let Some(command) = crate::tui::app::auth::account_command_from_picker(&other) {
+                    crate::tui::app::auth::execute_account_command_remote(self, command, remote)
                         .await?;
                 }
             }

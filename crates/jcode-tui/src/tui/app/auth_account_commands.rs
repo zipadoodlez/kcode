@@ -317,7 +317,47 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
     }))
 }
 
-fn execute_account_command_local(app: &mut App, command: AccountCommand) {
+/// Translate typed account-picker commands directly into [`AccountCommand`]s.
+///
+/// This is the typed bridge for picker actions: it avoids rendering the
+/// action into a `/account ...` string and re-parsing it through the slash
+/// command grammar (which broke for labels containing spaces and coupled
+/// picker behavior to the CLI grammar). `SubmitInput` items still carry
+/// free-form command strings and are not handled here.
+pub(crate) fn account_command_from_picker(
+    command: &crate::tui::account_picker::AccountPickerCommand,
+) -> Option<AccountCommand> {
+    use crate::tui::account_picker::{AccountPickerCommand, AccountProviderKind};
+
+    fn provider_id(provider: &AccountProviderKind) -> String {
+        match provider {
+            AccountProviderKind::Anthropic => "claude".to_string(),
+            AccountProviderKind::OpenAi => "openai".to_string(),
+        }
+    }
+
+    match command {
+        AccountPickerCommand::Switch { provider, label } => Some(AccountCommand::Switch {
+            provider_id: provider_id(provider),
+            label: label.clone(),
+        }),
+        AccountPickerCommand::Login { provider, label } => Some(AccountCommand::Add {
+            provider_id: provider_id(provider),
+            label: Some(label.clone()),
+        }),
+        AccountPickerCommand::Remove { provider, label } => Some(AccountCommand::Remove {
+            provider_id: provider_id(provider),
+            label: label.clone(),
+        }),
+        AccountPickerCommand::SubmitInput(_)
+        | AccountPickerCommand::OpenAccountCenter { .. }
+        | AccountPickerCommand::OpenAddReplaceFlow { .. }
+        | AccountPickerCommand::PromptValue { .. }
+        | AccountPickerCommand::PromptNew { .. } => None,
+    }
+}
+
+pub(crate) fn execute_account_command_local(app: &mut App, command: AccountCommand) {
     match command {
         AccountCommand::OpenOverlay { provider_filter } => {
             if app.should_open_inline_account_picker(provider_filter.as_deref()) {
@@ -390,7 +430,7 @@ fn execute_account_command_local(app: &mut App, command: AccountCommand) {
     }
 }
 
-async fn execute_account_command_remote(
+pub(crate) async fn execute_account_command_remote(
     app: &mut App,
     command: AccountCommand,
     remote: &mut crate::tui::backend::RemoteConnection,
