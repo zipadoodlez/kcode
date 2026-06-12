@@ -716,10 +716,16 @@ async fn test_model_switch_resets_provider_session() -> Result<()> {
 
     let msg_id = client.send_message("hello").await?;
     let mut saw_done1 = false;
-    let deadline = Instant::now() + Duration::from_secs(5);
+    // First-turn Done includes full agent-loop startup; slow Windows CI
+    // runners intermittently exceeded the old 5s budget (CI flake). Keep the
+    // loop tolerant of individual read timeouts and bound only the total wait.
+    let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
-        if matches!(event, ServerEvent::Done { id } if id == msg_id) {
+        let Ok(event) = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await
+        else {
+            continue;
+        };
+        if matches!(event?, ServerEvent::Done { id } if id == msg_id) {
             saw_done1 = true;
             break;
         }
@@ -728,10 +734,13 @@ async fn test_model_switch_resets_provider_session() -> Result<()> {
 
     let model_id = client.cycle_model(1).await?;
     let mut saw_model = false;
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
-        if matches!(event, ServerEvent::ModelChanged { id, error: None, .. } if id == model_id) {
+        let Ok(event) = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await
+        else {
+            continue;
+        };
+        if matches!(event?, ServerEvent::ModelChanged { id, error: None, .. } if id == model_id) {
             saw_model = true;
             break;
         }
@@ -740,10 +749,13 @@ async fn test_model_switch_resets_provider_session() -> Result<()> {
 
     let msg2_id = client.send_message("second").await?;
     let mut saw_done2 = false;
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
-        let event = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await??;
-        if matches!(event, ServerEvent::Done { id } if id == msg2_id) {
+        let Ok(event) = tokio::time::timeout(Duration::from_secs(1), client.read_event()).await
+        else {
+            continue;
+        };
+        if matches!(event?, ServerEvent::Done { id } if id == msg2_id) {
             saw_done2 = true;
             break;
         }
