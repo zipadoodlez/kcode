@@ -37,7 +37,11 @@ fn hash_row(buffer: &Buffer, area: Rect, y: u16) -> u64 {
             symbol.hash(&mut hasher);
         }
     }
-    if blank { BLANK_ROW_HASH } else { hasher.finish() }
+    if blank {
+        BLANK_ROW_HASH
+    } else {
+        hasher.finish()
+    }
 }
 
 /// Build an [`AnchorFrame`] from a rendered buffer region. Shared by the live

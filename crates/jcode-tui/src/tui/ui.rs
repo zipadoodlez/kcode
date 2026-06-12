@@ -74,8 +74,6 @@ mod diagram_pane;
 mod file_diff_ui;
 #[path = "ui_frame_metrics.rs"]
 mod frame_metrics;
-#[path = "ui_smoothness.rs"]
-mod smoothness;
 #[path = "ui_header.rs"]
 mod header;
 #[path = "ui_inline_image.rs"]
@@ -100,6 +98,8 @@ mod overlays;
 mod pinned_ui;
 #[path = "ui_prepare.rs"]
 mod prepare;
+#[path = "ui_smoothness.rs"]
+mod smoothness;
 #[path = "ui_tools.rs"]
 pub(crate) mod tools_ui;
 #[path = "ui_transitions.rs"]
@@ -1229,9 +1229,9 @@ pub(crate) use frame_metrics::{
     debug_flicker_frame_history, debug_slow_frame_history, recent_flicker_copy_target_for_key,
     recent_flicker_ui_notice,
 };
-pub(crate) use smoothness::{report_json as smoothness_report_json, reset as smoothness_reset};
 #[cfg(test)]
 pub(crate) use smoothness::frame_from_buffer as smoothness_frame_from_buffer;
+pub(crate) use smoothness::{report_json as smoothness_report_json, reset as smoothness_reset};
 
 #[cfg(test)]
 pub(crate) use frame_metrics::{

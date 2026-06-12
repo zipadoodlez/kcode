@@ -2559,14 +2559,15 @@ impl App {
                 self.push_display_message(DisplayMessage::assistant(preceding));
             }
         }
-        self.turn_reasoning_traces.push(crate::tui::app::TurnReasoningTrace {
-            display_index: self.display_messages.len(),
-            // Snapshot the transcript height when this trace anchors. The trace
-            // begins life at the viewport tail; once the transcript grows a
-            // full viewport beyond this point the trace is provably off-screen
-            // (while tail-following) and can be GC'd without visible motion.
-            wrapped_lines_at_anchor: crate::tui::ui::last_total_wrapped_lines(),
-        });
+        self.turn_reasoning_traces
+            .push(crate::tui::app::TurnReasoningTrace {
+                display_index: self.display_messages.len(),
+                // Snapshot the transcript height when this trace anchors. The trace
+                // begins life at the viewport tail; once the transcript grows a
+                // full viewport beyond this point the trace is provably off-screen
+                // (while tail-following) and can be GC'd without visible motion.
+                wrapped_lines_at_anchor: crate::tui::ui::last_total_wrapped_lines(),
+            });
         self.push_display_message(DisplayMessage::reasoning(block));
         self.refresh_split_view_if_needed();
     }

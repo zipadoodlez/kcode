@@ -924,7 +924,11 @@ pub(super) fn prepare_body_incremental(
                     let ordinal = anchor_prompt_ordinal;
                     anchor_prompt_ordinal += 1;
                     if let Some(items) = anchored_images.by_prompt.get(&ordinal) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
+                        for line in super::inline_image_ui::anchored_image_lines(
+                            items,
+                            width,
+                            inline_images_visible,
+                        ) {
                             new_lines.push(line);
                             new_line_raw_overrides.push(None);
                             new_line_copy_offsets.push(0);
@@ -1025,7 +1029,11 @@ pub(super) fn prepare_body_incremental(
                         ));
                     }
                     if let Some(items) = anchored_images.by_tool.get(&tc.id) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
+                        for line in super::inline_image_ui::anchored_image_lines(
+                            items,
+                            width,
+                            inline_images_visible,
+                        ) {
                             new_lines.push(line);
                             new_line_raw_overrides.push(None);
                             new_line_copy_offsets.push(0);
@@ -1402,7 +1410,11 @@ pub(super) fn prepare_body(
                     let ordinal = anchor_prompt_ordinal;
                     anchor_prompt_ordinal += 1;
                     if let Some(items) = anchored_images.by_prompt.get(&ordinal) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
+                        for line in super::inline_image_ui::anchored_image_lines(
+                            items,
+                            width,
+                            inline_images_visible,
+                        ) {
                             lines.push(line);
                             line_raw_overrides.push(None);
                             line_copy_offsets.push(0);
@@ -1533,7 +1545,11 @@ pub(super) fn prepare_body(
                         ));
                     }
                     if let Some(items) = anchored_images.by_tool.get(&tc.id) {
-                        for line in super::inline_image_ui::anchored_image_lines(items, width, inline_images_visible) {
+                        for line in super::inline_image_ui::anchored_image_lines(
+                            items,
+                            width,
+                            inline_images_visible,
+                        ) {
                             lines.push(line);
                             line_raw_overrides.push(None);
                             line_copy_offsets.push(0);

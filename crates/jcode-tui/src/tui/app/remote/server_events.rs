@@ -616,9 +616,10 @@ pub(in crate::tui::app) fn handle_server_event(
             ));
             app.rollback_streaming_attempt();
             remote.clear_pending();
-            app.status = ProcessingStatus::Connecting(
-                crate::message::ConnectionPhase::Retrying { attempt, max },
-            );
+            app.status = ProcessingStatus::Connecting(crate::message::ConnectionPhase::Retrying {
+                attempt,
+                max,
+            });
             true
         }
         ServerEvent::UpstreamProvider { provider } => {

@@ -55,8 +55,8 @@ pub use jcode_provider_core::{
     ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute, ModelRouteApiMethod,
     NativeCompactionResult, NativeToolResult, NativeToolResultSender, PremiumMode, Provider,
     RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource, RouteSelection,
-    RuntimeKey, dedupe_model_routes, explicit_model_provider_prefix, model_name_for_provider,
-    normalize_copilot_model_name, provider_from_model_key, fresh_transport_client,
+    RuntimeKey, dedupe_model_routes, explicit_model_provider_prefix, fresh_transport_client,
+    model_name_for_provider, normalize_copilot_model_name, provider_from_model_key,
     shared_http_client, summarize_model_catalog_refresh,
 };
 pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};

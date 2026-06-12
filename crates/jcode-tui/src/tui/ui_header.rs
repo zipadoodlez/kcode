@@ -255,9 +255,7 @@ fn claude_version_segment(raw: &str, family: &str) -> Option<String> {
         .filter(|part| {
             !part.is_empty()
                 && part.len() < 6
-                && part
-                    .chars()
-                    .all(|c| c.is_ascii_digit() || c == '.')
+                && part.chars().all(|c| c.is_ascii_digit() || c == '.')
                 && part.chars().any(|c| c.is_ascii_digit())
         })
         .collect();
@@ -1190,9 +1188,15 @@ mod tests {
         assert_eq!(prettify_model_id("claude-fable-5"), "Claude Fable 5");
         assert_eq!(prettify_model_id("grok-code-fast-1"), "Grok Code Fast 1");
         assert_eq!(prettify_model_id("kimi_k2"), "Kimi K2");
-        assert_eq!(prettify_model_id("gemini-3-pro-preview"), "Gemini 3 Pro Preview");
+        assert_eq!(
+            prettify_model_id("gemini-3-pro-preview"),
+            "Gemini 3 Pro Preview"
+        );
         assert_eq!(prettify_model_id("deepseek-chat"), "Deepseek Chat");
-        assert_eq!(prettify_model_id("mistral-large-2411"), "Mistral Large 2411");
+        assert_eq!(
+            prettify_model_id("mistral-large-2411"),
+            "Mistral Large 2411"
+        );
         assert_eq!(prettify_model_id("o3-mini"), "O3 Mini");
         // Vowel-less short segments read as acronyms.
         assert_eq!(prettify_model_id("glm-4.6"), "GLM 4.6");
@@ -1201,10 +1205,16 @@ mod tests {
         assert_eq!(prettify_model_id("llama-3.3-70b"), "Llama 3.3 70B");
         assert_eq!(prettify_model_id("mixtral-8x7b"), "Mixtral 8X7B");
         // Long digit runs (snapshot dates) are dropped.
-        assert_eq!(prettify_model_id("claude-fable-5-20260101"), "Claude Fable 5");
+        assert_eq!(
+            prettify_model_id("claude-fable-5-20260101"),
+            "Claude Fable 5"
+        );
         // Placeholders and slashed ids pass through untouched.
         assert_eq!(prettify_model_id("loading session…"), "loading session…");
-        assert_eq!(prettify_model_id("deepseek/deepseek-chat"), "deepseek/deepseek-chat");
+        assert_eq!(
+            prettify_model_id("deepseek/deepseek-chat"),
+            "deepseek/deepseek-chat"
+        );
         // Degenerate inputs survive.
         assert_eq!(prettify_model_id(""), "");
         assert_eq!(prettify_model_id("-"), "-");
