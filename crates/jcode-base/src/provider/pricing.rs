@@ -124,10 +124,7 @@ fn usd_to_micros(usd: f64) -> u64 {
 ///
 /// Returns `None` when nothing can price the route, so callers can
 /// distinguish "unknown" from "free" instead of silently guessing.
-pub fn metered_pricing_for_source(
-    source_key: &str,
-    model: &str,
-) -> Option<RouteCheapnessEstimate> {
+pub fn metered_pricing_for_source(source_key: &str, model: &str) -> Option<RouteCheapnessEstimate> {
     metered_pricing_for_source_with_tier(source_key, model, None)
 }
 

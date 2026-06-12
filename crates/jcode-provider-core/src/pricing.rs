@@ -16,7 +16,10 @@ fn usd_per_token_str_to_micros_per_mtok(raw: &str) -> Option<u64> {
 /// because `/fast on` is shared with OpenAI.
 fn anthropic_tier_is_fast(service_tier: Option<&str>) -> bool {
     matches!(
-        service_tier.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        service_tier
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
         Some("auto") | Some("priority")
     )
 }
@@ -200,10 +203,13 @@ pub fn openai_api_pricing_with_tier(
             exact(1.75, 14.0, Some(0.175), "OpenAI API pricing")
         }
         "gpt-5.2-pro" => exact(21.0, 168.0, None, "OpenAI API pricing"),
-        "gpt-5.1" | "gpt-5.1-codex" | "gpt-5.1-codex-max" | "gpt-5.1-chat-latest" | "gpt-5"
-        | "gpt-5-codex" | "gpt-5-chat-latest" => {
-            exact(1.25, 10.0, Some(0.125), "OpenAI API pricing")
-        }
+        "gpt-5.1"
+        | "gpt-5.1-codex"
+        | "gpt-5.1-codex-max"
+        | "gpt-5.1-chat-latest"
+        | "gpt-5"
+        | "gpt-5-codex"
+        | "gpt-5-chat-latest" => exact(1.25, 10.0, Some(0.125), "OpenAI API pricing"),
         "gpt-5.1-codex-mini" | "gpt-5-mini" => exact(0.25, 2.0, Some(0.025), "OpenAI API pricing"),
         "gpt-5-nano" => exact(0.05, 0.4, Some(0.005), "OpenAI API pricing"),
         "gpt-5-pro" => exact(15.0, 120.0, None, "OpenAI API pricing"),
@@ -343,8 +349,8 @@ mod tests {
     #[test]
     fn anthropic_fast_mode_tier_bills_premium_rates() {
         // Opus 4.6 fast mode: $30/$150, cache read 0.1x fast input.
-        let fast = anthropic_api_pricing_with_tier("claude-opus-4-6", Some("auto"))
-            .expect("priced model");
+        let fast =
+            anthropic_api_pricing_with_tier("claude-opus-4-6", Some("auto")).expect("priced model");
         assert_eq!(fast.input_price_per_mtok_micros, Some(30_000_000));
         assert_eq!(fast.output_price_per_mtok_micros, Some(150_000_000));
         assert_eq!(fast.cache_read_price_per_mtok_micros, Some(3_000_000));
