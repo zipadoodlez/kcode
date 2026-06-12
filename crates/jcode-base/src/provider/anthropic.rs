@@ -1446,8 +1446,19 @@ async fn run_stream_with_retries(
         // consumer before the retry replays the response from the top.
         let (attempt_tx, attempt_guard) = super::attempt_tracker::track_attempt_output(tx.clone());
 
+        // Retries use a fresh unpooled client: the fault that broke attempt N
+        // (e.g. TLS BadRecordMac from a corrupting middlebox) may also have
+        // poisoned other idle pooled connections opened through the same path,
+        // so reusing the shared pool can fail identically. A fresh client
+        // guarantees a brand-new TCP+TLS connection.
+        let attempt_client = if attempt == 0 {
+            client.clone()
+        } else {
+            crate::provider::fresh_transport_client()
+        };
+
         match stream_response(
-            client.clone(),
+            attempt_client,
             token.clone(),
             is_oauth,
             request.clone(),

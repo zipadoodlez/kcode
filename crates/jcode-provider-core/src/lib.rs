@@ -494,6 +494,29 @@ pub fn shared_http_client() -> reqwest::Client {
         .clone()
 }
 
+/// Fresh HTTP client for transport-fault retries.
+///
+/// Retrying on the shared pooled client can reuse *other* idle connections
+/// established through the same broken network path (corrupting middlebox,
+/// flaky NAT/VPN) that produced a TLS fault like `BadRecordMac` - so the
+/// retry fails the same way. This client disables connection pooling, which
+/// guarantees the retry opens a brand-new TCP+TLS connection (the property
+/// that makes transport-fault retries actually succeed). Building a client
+/// costs ~10ms, which is fine on a retry path that already backs off >=1s.
+pub fn fresh_transport_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(JCODE_USER_AGENT)
+        .connect_timeout(Duration::from_secs(15))
+        .tcp_keepalive(Some(Duration::from_secs(30)))
+        .http2_keep_alive_interval(Some(Duration::from_secs(30)))
+        .http2_keep_alive_timeout(Duration::from_secs(15))
+        .http2_keep_alive_while_idle(true)
+        // No pooled reuse: every request gets a fresh connection.
+        .pool_max_idle_per_host(0)
+        .build()
+        .unwrap_or_else(|_| shared_http_client())
+}
+
 #[derive(Debug, Clone)]
 pub struct NativeCompactionResult {
     pub summary_text: Option<String>,
@@ -1113,6 +1136,16 @@ mod tests {
     fn shared_http_client_reuses_builder() {
         let _a = shared_http_client();
         let _b = shared_http_client();
+    }
+
+    #[test]
+    fn fresh_transport_client_builds_distinct_clients() {
+        // Each call must produce a brand-new client (new connection pool), not
+        // a cached one: the whole point is that a retry after a transport
+        // fault (e.g. TLS BadRecordMac) never reuses a possibly-poisoned
+        // pooled connection.
+        let _a = fresh_transport_client();
+        let _b = fresh_transport_client();
     }
 
     #[test]

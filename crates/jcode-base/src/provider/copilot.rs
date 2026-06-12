@@ -473,8 +473,18 @@ impl CopilotApiProvider {
 
             let request_id = Uuid::new_v4().to_string();
 
-            let resp = self
-                .client
+            // Retries use a fresh unpooled client: the fault that broke
+            // attempt N (e.g. TLS BadRecordMac from a corrupting middlebox)
+            // may also have poisoned other idle pooled connections opened
+            // through the same path, so reusing the shared pool can fail
+            // identically. A fresh client guarantees a new TCP+TLS connection.
+            let attempt_client = if attempt == 0 {
+                self.client.clone()
+            } else {
+                crate::provider::fresh_transport_client()
+            };
+
+            let resp = attempt_client
                 .post(format!(
                     "{}/chat/completions",
                     copilot_auth::COPILOT_API_BASE
