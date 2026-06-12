@@ -47,7 +47,10 @@ struct PricingCache {
     providers: HashMap<String, HashMap<String, ModelCost>>,
 }
 
-static MEMORY_CACHE: Mutex<Option<PricingCache>> = Mutex::new(None);
+/// In-memory pricing cache keyed by the on-disk cache path it was loaded
+/// from, so changing `JCODE_HOME` (tests, multi-home setups) never serves
+/// pricing that belongs to a different home directory.
+static MEMORY_CACHE: Mutex<Option<(PathBuf, PricingCache)>> = Mutex::new(None);
 static REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 fn cache_path() -> PathBuf {
@@ -65,24 +68,28 @@ fn now_unix_secs() -> u64 {
 }
 
 fn load_cache() -> Option<PricingCache> {
+    let path = cache_path();
     {
         let memory = MEMORY_CACHE.lock().ok()?;
-        if let Some(cache) = memory.as_ref() {
+        if let Some((cached_path, cache)) = memory.as_ref()
+            && cached_path == &path
+        {
             return Some(cache.clone());
         }
     }
-    let cache: PricingCache = crate::storage::read_json(&cache_path()).ok()?;
+    let cache: PricingCache = crate::storage::read_json(&path).ok()?;
     if let Ok(mut memory) = MEMORY_CACHE.lock() {
-        *memory = Some(cache.clone());
+        *memory = Some((path, cache.clone()));
     }
     Some(cache)
 }
 
 fn save_cache(cache: &PricingCache) {
+    let path = cache_path();
     if let Ok(mut memory) = MEMORY_CACHE.lock() {
-        *memory = Some(cache.clone());
+        *memory = Some((path.clone(), cache.clone()));
     }
-    let _ = crate::storage::write_json(&cache_path(), cache);
+    let _ = crate::storage::write_json(&path, cache);
 }
 
 /// Translate a jcode provider key (runtime key, activity source key, or
