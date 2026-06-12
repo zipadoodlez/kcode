@@ -746,6 +746,7 @@ pub(in crate::tui::app) fn handle_server_event(
             let completes_resumed_turn =
                 app.current_message_id.is_none() && app.is_processing && has_resumed_turn_evidence;
             if app.current_message_id == Some(id) || completes_resumed_turn {
+                let turn_duration_secs = app.display_turn_duration_secs();
                 if completes_resumed_turn {
                     crate::logging::info(&format!(
                         "Treating Done id={} as completion for resumed remote activity",
@@ -808,6 +809,9 @@ pub(in crate::tui::app) fn handle_server_event(
                     || app.schedule_overnight_poke_followup_if_needed();
                 if !auto_poked {
                     app.clear_visible_turn_started();
+                    if app.queued_messages.is_empty() {
+                        app.maybe_notify_turn_complete(turn_duration_secs);
+                    }
                 }
             } else if app.is_processing {
                 let is_stale = app.current_message_id.is_some_and(|mid| id < mid);

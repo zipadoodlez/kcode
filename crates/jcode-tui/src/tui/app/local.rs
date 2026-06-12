@@ -476,6 +476,7 @@ fn handle_input_shell_completed(app: &mut App, shell: InputShellCompleted) {
 }
 
 pub(super) fn finish_turn(app: &mut App) {
+    let turn_duration_secs = app.display_turn_duration_secs();
     app.token_accounting.total_input_tokens += app.streaming.streaming_input_tokens;
     app.token_accounting.total_output_tokens += app.streaming.streaming_output_tokens;
     app.update_cost_impl();
@@ -490,10 +491,13 @@ pub(super) fn finish_turn(app: &mut App) {
     app.thinking_prefix_emitted = false;
     app.thinking_buffer.clear();
     app.note_runtime_memory_event_force("turn_completed", "local_turn_finished");
-    if !app.schedule_auto_poke_followup_if_needed()
-        && !app.schedule_overnight_poke_followup_if_needed()
-    {
+    let followup_scheduled = app.schedule_auto_poke_followup_if_needed()
+        || app.schedule_overnight_poke_followup_if_needed();
+    if !followup_scheduled {
         app.clear_visible_turn_started();
+        if !app.pending_queued_dispatch && app.queued_messages.is_empty() {
+            app.maybe_notify_turn_complete(turn_duration_secs);
+        }
     }
     let _ = super::commands::maybe_begin_pending_local_transfer(app);
 }
