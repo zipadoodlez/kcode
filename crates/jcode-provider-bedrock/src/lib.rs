@@ -1143,11 +1143,11 @@ impl Provider for BedrockProvider {
                                                 .await;
                                         }
                                     }
-                                    ContentBlockDelta::ReasoningContent(reasoning) => {
-                                        if let ReasoningContentBlockDelta::Text(text) = reasoning {
-                                            let _ =
-                                                tx.send(Ok(StreamEvent::ThinkingDelta(text))).await;
-                                        }
+                                    ContentBlockDelta::ReasoningContent(
+                                        ReasoningContentBlockDelta::Text(text),
+                                    ) => {
+                                        let _ =
+                                            tx.send(Ok(StreamEvent::ThinkingDelta(text))).await;
                                     }
                                     _ => {}
                                 }
