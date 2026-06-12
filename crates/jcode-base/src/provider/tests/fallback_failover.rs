@@ -316,3 +316,56 @@ fn test_no_provider_error_mentions_tokens_and_details() {
     assert!(text.contains("OpenAI: rate limited"));
     assert!(text.contains("GitHub Copilot: not configured"));
 }
+
+/// Regression for issue #358: after switching to a direct OpenAI-compatible
+/// profile (e.g. `minimax:MiniMax-M3`), the OpenRouter slot's configured check
+/// must see the *active profile runtime*, not just the real-OpenRouter slot.
+/// With no OPENROUTER_API_KEY, the old check reported "not configured" and the
+/// failover loop silently rerouted the request to another provider (the user
+/// saw an OpenAI token refresh against api.openai.com).
+#[test]
+fn test_active_compat_profile_counts_as_configured_openrouter_slot() {
+    with_clean_provider_test_env(|| {
+        with_env_var("DEEPSEEK_API_KEY", "test-deepseek-key", || {
+            crate::env::remove_var("OPENROUTER_API_KEY");
+            let provider = MultiProvider {
+                claude: RwLock::new(None),
+                anthropic: RwLock::new(None),
+                openai: RwLock::new(None),
+                copilot_api: RwLock::new(None),
+                antigravity: RwLock::new(None),
+                gemini: RwLock::new(None),
+                cursor: RwLock::new(None),
+                bedrock: RwLock::new(None),
+                openrouter: RwLock::new(None),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
+                active: RwLock::new(ActiveProvider::OpenRouter),
+                use_claude_cli: false,
+                startup_notices: RwLock::new(Vec::new()),
+                forced_provider: None,
+            };
+
+            // Activate a direct compat profile exactly like
+            // `set_model("deepseek:<model>")` does.
+            provider
+                .set_model("deepseek:deepseek-v4-flash")
+                .expect("compat profile switch should succeed with profile key set");
+            assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
+            assert_eq!(provider.model(), "deepseek-v4-flash");
+
+            // The real OpenRouter slot is still empty...
+            assert!(provider.openrouter_provider().is_none());
+            // ...but the slot check (used by the dispatch "not configured"
+            // precheck) must consider the slot available through the active
+            // compat profile runtime. `provider_slot_available` is asserted
+            // directly because `provider_is_configured` would reconcile auth
+            // from disk and could hot-install a real OpenRouter runtime from
+            // ambient developer credentials, masking the regression.
+            assert!(
+                provider.provider_slot_available(ActiveProvider::OpenRouter),
+                "active OpenAI-compatible profile must count as a configured OpenRouter slot"
+            );
+        })
+    });
+}
