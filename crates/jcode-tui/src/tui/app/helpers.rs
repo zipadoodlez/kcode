@@ -732,22 +732,28 @@ pub(super) fn spawn_resume_target_in_new_terminal(
     spawn_command_in_new_terminal(&program, &args, &title, cwd)
 }
 
+/// Build the terminal command used to spawn a brand-new jcode session.
+/// Split from `spawn_fresh_session_in_new_terminal` so tests can verify the
+/// invocation without launching a window.
+fn build_fresh_session_command(socket: Option<&str>) -> crate::terminal_launch::TerminalCommand {
+    let exe = launch_client_executable();
+    let mut args = vec!["--fresh-spawn".to_string()];
+    if let Some(socket) = socket.map(str::trim).filter(|s| !s.is_empty()) {
+        args.push("--socket".to_string());
+        args.push(socket.to_string());
+    }
+    crate::terminal_launch::TerminalCommand::new(&exe, args)
+        .title("jcode · new session".to_string())
+        .kind("new-terminal")
+        .fresh_spawn()
+}
+
 /// Spawn a brand-new jcode session in a new terminal window, staying on the
 /// same server socket when one is configured. Returns Ok(true) when a terminal
 /// was launched, Ok(false) when no supported terminal was found.
 pub(super) fn spawn_fresh_session_in_new_terminal(cwd: &Path) -> anyhow::Result<bool> {
-    let exe = launch_client_executable();
-    let mut args = vec!["--fresh-spawn".to_string()];
-    if let Ok(socket) = std::env::var("JCODE_SOCKET")
-        && !socket.trim().is_empty()
-    {
-        args.push("--socket".to_string());
-        args.push(socket);
-    }
-    let command = crate::terminal_launch::TerminalCommand::new(&exe, args)
-        .title("jcode · new session".to_string())
-        .kind("new-terminal")
-        .fresh_spawn();
+    let socket = std::env::var("JCODE_SOCKET").ok();
+    let command = build_fresh_session_command(socket.as_deref());
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
 }
 

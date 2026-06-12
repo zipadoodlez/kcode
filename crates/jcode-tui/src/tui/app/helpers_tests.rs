@@ -377,3 +377,27 @@ fn invalidate_todos_cache_backdates_entry_so_next_gather_refetches() {
         "invalidation must clear the refreshing flag so the next gather refetches"
     );
 }
+
+#[test]
+fn fresh_session_command_includes_fresh_spawn_and_socket() {
+    let command = super::build_fresh_session_command(Some("/tmp/test.sock"));
+    assert!(command.fresh_spawn, "must hand off as a fresh spawn");
+    assert_eq!(command.kind.as_deref(), Some("new-terminal"));
+    assert_eq!(command.title.as_deref(), Some("jcode · new session"));
+    assert_eq!(
+        command.args,
+        vec![
+            "--fresh-spawn".to_string(),
+            "--socket".to_string(),
+            "/tmp/test.sock".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn fresh_session_command_omits_blank_socket() {
+    let command = super::build_fresh_session_command(Some("   "));
+    assert_eq!(command.args, vec!["--fresh-spawn".to_string()]);
+    let command = super::build_fresh_session_command(None);
+    assert_eq!(command.args, vec!["--fresh-spawn".to_string()]);
+}
