@@ -3,7 +3,6 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
-use std::sync::RwLock;
 
 const ALLOW_LEGACY_AUTH_ENV: &str = "JCODE_ALLOW_CODEX_LEGACY_AUTH";
 pub const LEGACY_CODEX_AUTH_SOURCE_ID: &str = "openai_codex_auth_json";
@@ -56,20 +55,16 @@ struct LegacyTokens {
     expires_at: Option<i64>,
 }
 
-static ACTIVE_ACCOUNT_OVERRIDE: RwLock<Option<String>> = RwLock::new(None);
 const ACCOUNT_LABEL_PREFIX: &str = "openai";
 
+/// Set the runtime override for the active account label.
+/// This allows `/account switch <label>` to take effect without rewriting the file.
 pub fn set_active_account_override(label: Option<String>) {
-    if let Ok(mut guard) = ACTIVE_ACCOUNT_OVERRIDE.write() {
-        *guard = label;
-    }
+    crate::auth::account_store::set_runtime_active_override(ACCOUNT_LABEL_PREFIX, label);
 }
 
 pub fn get_active_account_override() -> Option<String> {
-    ACTIVE_ACCOUNT_OVERRIDE
-        .read()
-        .ok()
-        .and_then(|guard| guard.clone())
+    crate::auth::account_store::runtime_active_override(ACCOUNT_LABEL_PREFIX)
 }
 
 pub fn primary_account_label() -> String {

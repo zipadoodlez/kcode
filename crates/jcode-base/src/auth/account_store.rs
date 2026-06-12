@@ -1,4 +1,35 @@
 use anyhow::Result;
+use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
+
+/// Runtime (process-local) active-account overrides, keyed by provider
+/// prefix ("claude", "openai", ...). Lets `/account switch <label>` take
+/// effect immediately without rewriting the provider auth file.
+///
+/// Centralized here so every provider shares one mechanism instead of
+/// duplicating a `static ACTIVE_ACCOUNT_OVERRIDE` per module.
+static RUNTIME_ACTIVE_OVERRIDES: LazyLock<RwLock<HashMap<&'static str, String>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+pub fn set_runtime_active_override(prefix: &'static str, label: Option<String>) {
+    if let Ok(mut overrides) = RUNTIME_ACTIVE_OVERRIDES.write() {
+        match label {
+            Some(label) => {
+                overrides.insert(prefix, label);
+            }
+            None => {
+                overrides.remove(prefix);
+            }
+        }
+    }
+}
+
+pub fn runtime_active_override(prefix: &str) -> Option<String> {
+    RUNTIME_ACTIVE_OVERRIDES
+        .read()
+        .ok()
+        .and_then(|overrides| overrides.get(prefix).cloned())
+}
 
 pub fn canonical_account_label(prefix: &str, index: usize) -> String {
     format!("{prefix}-{index}")

@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::RwLock;
 
 pub const CLAUDE_CODE_AUTH_SOURCE_ID: &str = "claude_code_credentials";
 pub const OPENCODE_AUTH_SOURCE_ID: &str = "opencode_anthropic_auth";
@@ -83,19 +82,16 @@ struct LegacyAnthropicAuth {
     expires: i64,
 }
 
-/// Runtime override for the active account label.
-/// This allows `/account switch <label>` to take effect without rewriting the file.
-static ACTIVE_ACCOUNT_OVERRIDE: RwLock<Option<String>> = RwLock::new(None);
 const ACCOUNT_LABEL_PREFIX: &str = "claude";
 
+/// Set the runtime override for the active account label.
+/// This allows `/account switch <label>` to take effect without rewriting the file.
 pub fn set_active_account_override(label: Option<String>) {
-    if let Ok(mut guard) = ACTIVE_ACCOUNT_OVERRIDE.write() {
-        *guard = label;
-    }
+    crate::auth::account_store::set_runtime_active_override(ACCOUNT_LABEL_PREFIX, label);
 }
 
 pub fn get_active_account_override() -> Option<String> {
-    ACTIVE_ACCOUNT_OVERRIDE.read().ok().and_then(|g| g.clone())
+    crate::auth::account_store::runtime_active_override(ACCOUNT_LABEL_PREFIX)
 }
 
 pub fn primary_account_label() -> String {

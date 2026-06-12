@@ -11,6 +11,7 @@ pub mod doctor;
 pub mod external;
 pub mod gemini;
 pub mod google;
+pub(crate) mod google_oauth;
 pub mod integration;
 pub mod lifecycle;
 #[cfg(any(test, feature = "test-support"))]

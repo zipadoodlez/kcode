@@ -298,36 +298,18 @@ pub async fn refresh_tokens(tokens: &GeminiTokens) -> Result<GeminiTokens> {
 
 async fn refresh_tokens_uncoordinated(tokens: &GeminiTokens) -> Result<GeminiTokens> {
     let result: Result<GeminiTokens> = async {
-        let client_id = gemini_client_id();
-        let client_secret = gemini_client_secret();
-        let client = crate::provider::shared_http_client();
-        let resp = client
-            .post(GOOGLE_TOKEN_URL)
-            .form(&vec![
-                ("grant_type", "refresh_token".to_string()),
-                ("client_id", client_id),
-                ("client_secret", client_secret),
-                ("refresh_token", tokens.refresh_token.clone()),
-            ])
-            .send()
-            .await
-            .context("Failed to refresh Gemini OAuth token")?;
-
-        if !resp.status().is_success() {
-            let body = crate::util::http_error_body(resp, "HTTP error").await;
-            anyhow::bail!("Gemini token refresh failed: {}", body.trim());
-        }
-
-        let token_resp: GoogleTokenResponse = resp
-            .json()
-            .await
-            .context("Failed to parse Gemini refresh response")?;
+        let refreshed = crate::auth::google_oauth::refresh_access_token(
+            "Gemini",
+            &gemini_client_id(),
+            &gemini_client_secret(),
+            &tokens.refresh_token,
+            None,
+        )
+        .await?;
         let refreshed = GeminiTokens {
-            access_token: token_resp.access_token,
-            refresh_token: token_resp
-                .refresh_token
-                .unwrap_or_else(|| tokens.refresh_token.clone()),
-            expires_at: chrono::Utc::now().timestamp_millis() + (token_resp.expires_in * 1000),
+            access_token: refreshed.access_token,
+            refresh_token: refreshed.refresh_token,
+            expires_at: refreshed.expires_at_ms,
             email: tokens.email.clone(),
         };
         save_tokens(&refreshed)?;

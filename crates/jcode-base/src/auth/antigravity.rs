@@ -185,38 +185,19 @@ pub async fn refresh_tokens(tokens: &AntigravityTokens) -> Result<AntigravityTok
 
 async fn refresh_tokens_uncoordinated(tokens: &AntigravityTokens) -> Result<AntigravityTokens> {
     let result: Result<AntigravityTokens> = async {
-        let client = crate::provider::shared_http_client();
-        let client_id = antigravity_client_id();
-        let client_secret = antigravity_client_secret();
-        let resp = client
-            .post(GOOGLE_TOKEN_URL)
-            .header(reqwest::header::USER_AGENT, GOOGLE_OAUTH_USER_AGENT)
-            .form(&vec![
-                ("grant_type", "refresh_token".to_string()),
-                ("client_id", client_id),
-                ("client_secret", client_secret),
-                ("refresh_token", tokens.refresh_token.clone()),
-            ])
-            .send()
-            .await
-            .context("Failed to refresh Antigravity OAuth token")?;
-
-        if !resp.status().is_success() {
-            let body = crate::util::http_error_body(resp, "HTTP error").await;
-            anyhow::bail!("Antigravity token refresh failed: {}", body.trim());
-        }
-
-        let token_resp: GoogleTokenResponse = resp
-            .json()
-            .await
-            .context("Failed to parse Antigravity refresh response")?;
+        let token = crate::auth::google_oauth::refresh_access_token(
+            "Antigravity",
+            &antigravity_client_id(),
+            &antigravity_client_secret(),
+            &tokens.refresh_token,
+            Some(GOOGLE_OAUTH_USER_AGENT),
+        )
+        .await?;
 
         let mut refreshed = AntigravityTokens {
-            access_token: token_resp.access_token,
-            refresh_token: token_resp
-                .refresh_token
-                .unwrap_or_else(|| tokens.refresh_token.clone()),
-            expires_at: chrono::Utc::now().timestamp_millis() + (token_resp.expires_in * 1000),
+            access_token: token.access_token,
+            refresh_token: token.refresh_token,
+            expires_at: token.expires_at_ms,
             email: tokens.email.clone(),
             project_id: tokens.project_id.clone(),
         };
