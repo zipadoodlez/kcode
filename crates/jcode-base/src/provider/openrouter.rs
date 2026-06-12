@@ -937,6 +937,9 @@ pub struct OpenRouterProvider {
     supports_provider_features: bool,
     supports_model_catalog: bool,
     profile_id: Option<String>,
+    /// Explicit `supports_reasoning_effort` override from named-profile config.
+    /// `None` means auto-detect (deepseek profile id or DeepSeek-family model).
+    reasoning_effort_support: Option<bool>,
     max_tokens: Option<u32>,
     /// Extra top-level JSON object fields merged into every chat/completions
     /// request body (e.g. NVIDIA NIM DeepSeek-V4 `chat_template_kwargs`).
@@ -963,6 +966,73 @@ impl OpenRouterProvider {
         matches!(profile_id, Some(id) if id.eq_ignore_ascii_case("deepseek"))
     }
 
+    /// DeepSeek-family models accept the DeepSeek-style top-level
+    /// `reasoning_effort` request field regardless of which OpenAI-compatible
+    /// gateway serves them (issue #352: profiles like opencode-go serve
+    /// DeepSeek V4 but were rejected by the profile-id-only check).
+    fn model_is_deepseek_family(model: &str) -> bool {
+        model.trim().to_ascii_lowercase().contains("deepseek")
+    }
+
+    /// Does this runtime accept the DeepSeek-style `reasoning_effort` field?
+    /// Priority: explicit named-profile config override, then the dedicated
+    /// deepseek profile, then the active model family for direct compat
+    /// endpoints (never for real OpenRouter, which uses unified reasoning).
+    pub(crate) fn supports_deepseek_reasoning_effort(&self) -> bool {
+        if let Some(explicit) = self.reasoning_effort_support {
+            return explicit;
+        }
+        if Self::profile_supports_reasoning_effort(self.profile_id.as_deref()) {
+            return true;
+        }
+        !Self::profile_supports_unified_reasoning(
+            self.profile_id.as_deref(),
+            self.send_openrouter_headers,
+        ) && Self::model_is_deepseek_family(&self.model_snapshot())
+    }
+
+    fn model_snapshot(&self) -> String {
+        self.model
+            .try_read()
+            .map(|model| model.clone())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn supports_any_reasoning_effort(&self) -> bool {
+        self.supports_deepseek_reasoning_effort()
+            || Self::profile_supports_unified_reasoning(
+                self.profile_id.as_deref(),
+                self.send_openrouter_headers,
+            )
+    }
+
+    pub(crate) fn normalize_reasoning_effort_for_self(&self, effort: &str) -> Option<String> {
+        if self.supports_deepseek_reasoning_effort() {
+            Self::normalize_reasoning_effort(effort)
+        } else {
+            Self::normalize_unified_reasoning_effort(effort)
+        }
+    }
+
+    /// Initial reasoning effort at construction. Named/compat profiles that
+    /// support effort honor the user's configured `openai_reasoning_effort`
+    /// (issue #352: previously hardcoded to None so the config was ignored).
+    fn initial_reasoning_effort(
+        reasoning_effort_support: Option<bool>,
+        profile_id: Option<&str>,
+    ) -> Option<String> {
+        let supported =
+            reasoning_effort_support.unwrap_or(Self::profile_supports_reasoning_effort(profile_id));
+        if !supported {
+            return None;
+        }
+        crate::config::config()
+            .provider
+            .openai_reasoning_effort
+            .as_deref()
+            .and_then(Self::normalize_reasoning_effort)
+    }
+
     fn profile_rejects_image_input(profile_id: Option<&str>) -> bool {
         matches!(profile_id, Some(id) if id.eq_ignore_ascii_case("deepseek"))
     }
@@ -972,14 +1042,6 @@ impl OpenRouterProvider {
         send_openrouter_headers: bool,
     ) -> bool {
         profile_id.is_none() && send_openrouter_headers
-    }
-
-    fn supports_reasoning_effort_for_profile(
-        profile_id: Option<&str>,
-        send_openrouter_headers: bool,
-    ) -> bool {
-        Self::profile_supports_reasoning_effort(profile_id)
-            || Self::profile_supports_unified_reasoning(profile_id, send_openrouter_headers)
     }
 
     fn normalize_reasoning_effort(raw: &str) -> Option<String> {
@@ -1016,17 +1078,6 @@ impl OpenRouterProvider {
                 ));
                 Some("xhigh".to_string())
             }
-        }
-    }
-
-    fn normalize_reasoning_effort_for_profile(
-        profile_id: Option<&str>,
-        effort: &str,
-    ) -> Option<String> {
-        if Self::profile_supports_reasoning_effort(profile_id) {
-            Self::normalize_reasoning_effort(effort)
-        } else {
-            Self::normalize_unified_reasoning_effort(effort)
         }
     }
 
@@ -1244,7 +1295,10 @@ impl OpenRouterProvider {
         Ok(Self {
             client: crate::provider::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
-            reasoning_effort: Arc::new(RwLock::new(None)),
+            reasoning_effort: Arc::new(RwLock::new(Self::initial_reasoning_effort(
+                profile.supports_reasoning_effort,
+                Some(profile_name),
+            ))),
             api_base,
             auth,
             supports_provider_features: matches!(
@@ -1258,6 +1312,7 @@ impl OpenRouterProvider {
                     crate::config::NamedProviderType::OpenRouter
                 ),
             profile_id: Some(profile_name.to_string()),
+            reasoning_effort_support: profile.supports_reasoning_effort,
             max_tokens: Self::configured_max_tokens(Some(profile_name)),
             extra_body: Self::resolve_extra_body(
                 profile.extra_body.as_ref(),
@@ -1402,12 +1457,16 @@ impl OpenRouterProvider {
         Ok(Self {
             client: crate::provider::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
-            reasoning_effort: Arc::new(RwLock::new(None)),
+            reasoning_effort: Arc::new(RwLock::new(Self::initial_reasoning_effort(
+                None,
+                profile_id.as_deref(),
+            ))),
             api_base,
             auth,
             supports_provider_features,
             supports_model_catalog,
             profile_id,
+            reasoning_effort_support: None,
             max_tokens,
             extra_body,
             static_models,
@@ -1447,6 +1506,7 @@ impl OpenRouterProvider {
             supports_provider_features: true,
             supports_model_catalog: true,
             profile_id: None,
+            reasoning_effort_support: None,
             max_tokens: Self::configured_max_tokens(None),
             extra_body: Self::resolve_extra_body(None, DEFAULT_ENV_FILE),
             static_models: Vec::new(),
@@ -1505,12 +1565,16 @@ impl OpenRouterProvider {
         Ok(Self {
             client: crate::provider::shared_http_client(),
             model: Arc::new(RwLock::new(model)),
-            reasoning_effort: Arc::new(RwLock::new(None)),
+            reasoning_effort: Arc::new(RwLock::new(Self::initial_reasoning_effort(
+                None,
+                Some(&resolved.id),
+            ))),
             api_base,
             auth,
             supports_provider_features: false,
             supports_model_catalog: true,
             profile_id: Some(resolved.id.clone()),
+            reasoning_effort_support: None,
             max_tokens: Self::configured_max_tokens(Some(&resolved.id)),
             extra_body: Self::resolve_extra_body(None, &resolved.env_file),
             static_models,
@@ -1733,6 +1797,7 @@ impl OpenRouterProvider {
                 supports_provider_features: true,
                 supports_model_catalog: true,
                 profile_id: None,
+                reasoning_effort_support: None,
                 max_tokens: None,
                 extra_body: None,
                 static_models: Vec::new(),

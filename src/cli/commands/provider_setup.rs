@@ -181,6 +181,7 @@ pub(crate) fn configure_provider_profile(
             input: Vec::new(),
         }],
         extra_body: None,
+        supports_reasoning_effort: None,
     };
 
     let config_path = Config::path().ok_or_else(|| anyhow::anyhow!("No config path"))?;
