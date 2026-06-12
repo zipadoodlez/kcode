@@ -21,21 +21,44 @@ impl App {
         "To turn this off, set [provider].cross_provider_failover = \"manual\" in ~/.jcode/config.toml or export JCODE_CROSS_PROVIDER_FAILOVER=manual."
     }
 
+    /// Shared post-switch bookkeeping for every local model/provider switch
+    /// path (/model, model cycling, failover, post-login activation).
+    ///
+    /// Centralized so all paths agree on what a switch means: reset provider
+    /// session ids, drop upstream/status details, invalidate the model picker
+    /// cache, update the context limit, recompute the session provider key,
+    /// and persist the session. Returns the active model after the switch.
+    ///
+    /// `model_request` is the original request string (it may carry an
+    /// explicit provider prefix like `openrouter:`); for provider-level
+    /// switches without a model request, pass the active model name.
+    pub(super) fn finalize_model_switch(&mut self, model_request: &str) -> String {
+        self.provider_session_id = None;
+        self.session.provider_session_id = None;
+        self.upstream_provider = None;
+        self.status_detail = None;
+        self.invalidate_model_picker_cache();
+        let active_model = self.provider.model();
+        self.update_context_limit_for_model(&active_model);
+        self.session.provider_key =
+            crate::provider::MultiProvider::session_provider_key_after_model_switch(
+                model_request,
+                self.provider.name(),
+                self.session.provider_key.as_deref(),
+            );
+        self.session.model = Some(active_model.clone());
+        let _ = self.session.save();
+        active_model
+    }
+
     fn apply_provider_switch_for_failover(
         &mut self,
         prompt: &crate::provider::ProviderFailoverPrompt,
     ) -> anyhow::Result<String> {
         self.provider
             .switch_active_provider_to(&prompt.to_provider)?;
-        self.provider_session_id = None;
-        self.session.provider_session_id = None;
-        self.upstream_provider = None;
-        self.status_detail = None;
         let active_model = self.provider.model();
-        self.update_context_limit_for_model(&active_model);
-        self.session.model = Some(active_model.clone());
-        let _ = self.session.save();
-        Ok(active_model)
+        Ok(self.finalize_model_switch(&active_model))
     }
 
     pub(super) fn cancel_pending_provider_failover(&mut self, notice: impl Into<String>) {
@@ -173,19 +196,7 @@ impl App {
 
         match self.provider.set_model(&next_model) {
             Ok(()) => {
-                self.provider_session_id = None;
-                self.session.provider_session_id = None;
-                self.upstream_provider = None;
-                self.status_detail = None;
-                self.update_context_limit_for_model(&next_model);
-                self.session.provider_key =
-                    crate::provider::MultiProvider::session_provider_key_after_model_switch(
-                        &next_model,
-                        self.provider.name(),
-                        self.session.provider_key.as_deref(),
-                    );
-                self.session.model = Some(self.provider.model());
-                let _ = self.session.save();
+                self.finalize_model_switch(&next_model);
                 let auth_suffix = self
                     .provider
                     .active_auth_method_label()
@@ -1042,20 +1053,7 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
         let model_name = model_name.trim();
         match app.provider.set_model(model_name) {
             Ok(()) => {
-                app.provider_session_id = None;
-                app.session.provider_session_id = None;
-                app.upstream_provider = None;
-                app.invalidate_model_picker_cache();
-                let active_model = app.provider.model();
-                app.update_context_limit_for_model(&active_model);
-                app.session.provider_key =
-                    crate::provider::MultiProvider::session_provider_key_after_model_switch(
-                        model_name,
-                        app.provider.name(),
-                        app.session.provider_key.as_deref(),
-                    );
-                app.session.model = Some(active_model.clone());
-                let _ = app.session.save();
+                let active_model = app.finalize_model_switch(model_name);
                 let auth_suffix = app
                     .provider
                     .active_auth_method_label()

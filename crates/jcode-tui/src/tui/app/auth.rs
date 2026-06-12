@@ -2378,20 +2378,7 @@ impl App {
 
         match self.provider.set_model(&model_request) {
             Ok(()) => {
-                self.provider_session_id = None;
-                self.session.provider_session_id = None;
-                self.upstream_provider = None;
-                let active_model = self.provider.model();
-                self.update_context_limit_for_model(&active_model);
-                self.session.provider_key =
-                    crate::provider::MultiProvider::session_provider_key_after_model_switch(
-                        &model_request,
-                        self.provider.name(),
-                        self.session.provider_key.as_deref(),
-                    );
-                self.session.model = Some(active_model.clone());
-                let _ = self.session.save();
-                self.invalidate_model_picker_cache();
+                let active_model = self.finalize_model_switch(&model_request);
                 crate::bus::Bus::global().publish_models_updated();
                 crate::logging::auth_event(
                     "auth_changed_runtime_model_applied",
