@@ -4125,6 +4125,7 @@ dependencies = [
  "image",
  "jcode-app-core",
  "jcode-build-meta",
+ "jcode-config-types",
  "jcode-core",
  "jcode-logging",
  "jcode-productivity-core",

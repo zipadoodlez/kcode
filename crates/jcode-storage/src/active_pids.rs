@@ -60,21 +60,13 @@ pub fn unmark_streaming(session_id: &str) {
 /// never gets stuck showing a phantom streaming session.
 pub struct StreamingGuard {
     session_id: String,
-    #[allow(dead_code)]
-    sleep_assertion: crate::platform::PowerAssertion,
 }
 
 impl StreamingGuard {
     pub fn new(session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
         mark_streaming(&session_id);
-        let sleep_assertion = crate::platform::PowerAssertion::prevent_user_idle_system_sleep(
-            "Jcode streaming model response",
-        );
-        Self {
-            session_id,
-            sleep_assertion,
-        }
+        Self { session_id }
     }
 }
 
@@ -113,6 +105,23 @@ pub fn active_session_ids() -> Vec<String> {
         .collect()
 }
 
+#[cfg(unix)]
+fn process_is_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(not(unix))]
+fn process_is_running(pid: u32) -> bool {
+    // Best-effort fallback for platforms where this low-level storage crate does
+    // not have a process API. The active PID file is still useful, and stale
+    // entries are cleaned up by higher-level session lifecycle code.
+    pid != 0
+}
+
 /// Live snapshot of how many jcode sessions are running, and how many of those
 /// are actively streaming a model response right now. Used by the menu bar
 /// indicator (`jcode menubar`) and any other presence UI.
@@ -147,7 +156,7 @@ pub fn session_counts() -> SessionCounts {
         else {
             continue;
         };
-        if !crate::platform::is_process_running(pid) {
+        if !process_is_running(pid) {
             continue;
         }
         counts.total += 1;
@@ -156,7 +165,7 @@ pub fn session_counts() -> SessionCounts {
             let streaming_pid = std::fs::read_to_string(streaming_dir.join(&session_id))
                 .ok()
                 .and_then(|raw| raw.trim().parse::<u32>().ok());
-            if streaming_pid.is_some_and(crate::platform::is_process_running) {
+            if streaming_pid.is_some_and(process_is_running) {
                 counts.streaming += 1;
             }
         }
@@ -230,7 +239,6 @@ mod tests {
         crate::env::remove_var("JCODE_HOME");
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn streaming_guard_creates_visible_macos_sleep_assertion() {
         let _guard = crate::storage::lock_test_env();

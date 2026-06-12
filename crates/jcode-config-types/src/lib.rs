@@ -762,7 +762,9 @@ impl Default for KeybindingsConfig {
         // `keybindings.rs`. This is where the macOS vs Windows/Linux split takes
         // effect: each field resolves to its own platform's default binding.
         let p = KeybindingPlatform::current();
-        let get = |id: &str, fallback: &'static str| default_binding(id, p).unwrap_or(fallback).to_string();
+        let get = |id: &str, fallback: &'static str| {
+            default_binding(id, p).unwrap_or(fallback).to_string()
+        };
         Self {
             scroll_up: get("scroll_up", "ctrl+k"),
             scroll_down: get("scroll_down", "ctrl+j"),

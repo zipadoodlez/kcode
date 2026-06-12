@@ -484,7 +484,11 @@ mod tests {
     fn every_default_id_is_unique() {
         let mut seen = std::collections::HashSet::new();
         for entry in KEYBINDING_DEFAULTS {
-            assert!(seen.insert(entry.id), "duplicate keybinding id: {}", entry.id);
+            assert!(
+                seen.insert(entry.id),
+                "duplicate keybinding id: {}",
+                entry.id
+            );
         }
     }
 
@@ -591,6 +595,9 @@ mod tests {
             default_binding("scroll_up_fallback", KeybindingPlatform::Other),
             Some("")
         );
-        assert_eq!(default_binding("does_not_exist", KeybindingPlatform::Other), None);
+        assert_eq!(
+            default_binding("does_not_exist", KeybindingPlatform::Other),
+            None
+        );
     }
 }

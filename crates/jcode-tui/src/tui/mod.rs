@@ -21,7 +21,7 @@ pub mod info_widget;
 mod info_widget_layout;
 mod info_widget_overview;
 pub mod info_widget_stability;
-pub(crate) mod keybind;
+pub mod keybind;
 mod layout_utils;
 pub mod login_picker;
 pub mod markdown;
