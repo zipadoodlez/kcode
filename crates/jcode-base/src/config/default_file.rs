@@ -65,6 +65,10 @@ typing_scroll_lock_toggle = "alt+s"
 diff_mode_cycle = "alt+g"
 info_widget_toggle = "alt+i"
 
+# Spawn a fresh jcode session in a new terminal window.
+# Unbound by default (Alt/Shift+Enter inserts a newline). Example: "alt+enter"
+new_terminal = ""
+
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.
 session_picker_enter = "current-terminal"

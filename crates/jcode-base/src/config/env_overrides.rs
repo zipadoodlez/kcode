@@ -80,6 +80,9 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_INFO_WIDGET_TOGGLE_KEY") {
             self.keybindings.info_widget_toggle = v;
         }
+        if let Ok(v) = std::env::var("JCODE_NEW_TERMINAL_KEY") {
+            self.keybindings.new_terminal = v;
+        }
 
         // Dictation
         if let Ok(v) = std::env::var("JCODE_DICTATION_COMMAND") {

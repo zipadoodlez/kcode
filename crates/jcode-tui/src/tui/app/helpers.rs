@@ -732,6 +732,25 @@ pub(super) fn spawn_resume_target_in_new_terminal(
     spawn_command_in_new_terminal(&program, &args, &title, cwd)
 }
 
+/// Spawn a brand-new jcode session in a new terminal window, staying on the
+/// same server socket when one is configured. Returns Ok(true) when a terminal
+/// was launched, Ok(false) when no supported terminal was found.
+pub(super) fn spawn_fresh_session_in_new_terminal(cwd: &Path) -> anyhow::Result<bool> {
+    let exe = launch_client_executable();
+    let mut args = vec!["--fresh-spawn".to_string()];
+    if let Ok(socket) = std::env::var("JCODE_SOCKET")
+        && !socket.trim().is_empty()
+    {
+        args.push("--socket".to_string());
+        args.push(socket);
+    }
+    let command = crate::terminal_launch::TerminalCommand::new(&exe, args)
+        .title("jcode · new session".to_string())
+        .kind("new-terminal")
+        .fresh_spawn();
+    crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
+}
+
 fn resumed_window_title(session_id: &str) -> String {
     let session_name = crate::process_title::session_name(session_id);
     let icon = crate::id::session_icon(&session_name);

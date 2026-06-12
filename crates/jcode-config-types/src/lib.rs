@@ -751,6 +751,9 @@ pub struct KeybindingsConfig {
     pub diff_mode_cycle: String,
     /// Toggle the info widget (default: "alt+i")
     pub info_widget_toggle: String,
+    /// Spawn a fresh jcode session in a new terminal window (default: unbound).
+    /// Example: "alt+enter".
+    pub new_terminal: String,
     /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
     /// Ctrl+Enter performs the alternate action.
     pub session_picker_enter: SessionPickerResumeAction,
@@ -790,6 +793,7 @@ impl Default for KeybindingsConfig {
             typing_scroll_lock_toggle: get("typing_scroll_lock_toggle", "alt+s"),
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
+            new_terminal: get("new_terminal", ""),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }

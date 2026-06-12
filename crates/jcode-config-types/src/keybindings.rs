@@ -303,6 +303,14 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
         macos: PlatformDefault::dev("alt+l"),
         other: PlatformDefault::dev("alt+l"),
     },
+    KeybindingDefault {
+        id: "new_terminal",
+        description: "Spawn a fresh jcode session in a new terminal window",
+        // Unbound by default: Alt/Shift+Enter inserts a newline, so users opt in
+        // (e.g. `new_terminal = "alt+enter"`).
+        macos: PlatformDefault::unbound(KeybindingProvenance::Ai),
+        other: PlatformDefault::unbound(KeybindingProvenance::Ai),
+    },
 ];
 
 /// Look up a keybinding action by id.

@@ -408,6 +408,23 @@ pub fn load_dictation_key() -> OptionalBinding {
     }
 }
 
+/// Optional binding that spawns a fresh jcode session in a new terminal window.
+/// Unbound by default; users opt in with e.g. `new_terminal = "alt+enter"`.
+pub fn load_new_terminal_key() -> OptionalBinding {
+    let cfg = config();
+    let raw = cfg.keybindings.new_terminal.trim();
+    if raw.is_empty() || is_disabled(raw) {
+        return OptionalBinding::default();
+    }
+    match parse_keybinding(raw) {
+        Some(binding) => OptionalBinding {
+            label: Some(format_binding(&binding)),
+            binding: Some(binding),
+        },
+        None => OptionalBinding::default(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

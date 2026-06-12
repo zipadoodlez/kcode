@@ -1151,6 +1151,8 @@ pub struct App {
     workspace_navigation_keys: WorkspaceNavigationKeys,
     // Optional configured keybinding for external dictation
     dictation_key: OptionalBinding,
+    // Optional configured keybinding for spawning a fresh session in a new terminal
+    new_terminal_key: OptionalBinding,
     // Active external dictation session, if one is running
     dictation_session: Option<dictation::ActiveDictation>,
     // Whether an external dictation command is currently running

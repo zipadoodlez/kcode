@@ -1542,6 +1542,11 @@ fn handle_disconnected_key_internal(
         return Ok(());
     }
 
+    if app.new_terminal_key_matches(code, modifiers) {
+        app.handle_new_terminal_hotkey();
+        return Ok(());
+    }
+
     if code == KeyCode::Enter && modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) {
         input::insert_input_text(app, "\n");
         return Ok(());
