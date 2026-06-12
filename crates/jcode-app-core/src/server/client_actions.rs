@@ -5,8 +5,7 @@ use super::{
     ClientConnectionInfo, SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState,
     VersionedPlan, broadcast_swarm_status, fanout_session_event, persist_swarm_state_for,
     queue_soft_interrupt_for_session, remove_session_channel_subscriptions,
-    remove_session_from_swarm, session_event_fanout_sender, swarm_id_for_dir, truncate_detail,
-    update_member_status,
+    remove_session_from_swarm, swarm_id_for_dir, truncate_detail, update_member_status,
 };
 use crate::agent::Agent;
 use crate::protocol::{FeatureToggle, NotificationType, ServerEvent};
@@ -80,65 +79,15 @@ fn combine_input_shell_output(stdout: &[u8], stderr: &[u8]) -> (String, bool) {
     (output, truncated)
 }
 
-async fn run_scheduled_task_in_live_session_if_idle(
-    session_id: &str,
-    message: &str,
-    sessions: &SessionAgents,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> bool {
-    let agent = {
-        let guard = sessions.read().await;
-        guard.get(session_id).cloned()
-    };
-    let Some(agent) = agent else {
-        return false;
-    };
-
-    let has_live_attachments = {
-        let members = swarm_members.read().await;
-        members
-            .get(session_id)
-            .map(|member| !member.event_txs.is_empty() || !member.event_tx.is_closed())
-            .unwrap_or(false)
-    };
-    if !has_live_attachments {
-        return false;
-    }
-
-    let is_idle = match agent.try_lock() {
-        Ok(guard) => {
-            drop(guard);
-            true
-        }
-        Err(_) => false,
-    };
-
-    if !is_idle {
-        return false;
-    }
-
-    let session_id = session_id.to_string();
-    let message = message.to_string();
-    let event_tx = session_event_fanout_sender(session_id.clone(), Arc::clone(swarm_members));
-    tokio::spawn(async move {
-        if let Err(err) =
-            process_message_streaming_mpsc(agent, &message, vec![], None, event_tx).await
-        {
-            crate::logging::error(&format!(
-                "Failed to run scheduled task immediately for live session {}: {}",
-                session_id, err
-            ));
-        }
-    });
-
-    true
-}
-
 pub(super) struct NotifySessionContext<'a> {
     pub sessions: &'a SessionAgents,
     pub soft_interrupt_queues: &'a SessionInterruptQueues,
     pub client_connections: &'a Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     pub swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
+    pub swarms_by_id: &'a Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    pub event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
+    pub event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
+    pub swarm_event_tx: &'a broadcast::Sender<SwarmEvent>,
     pub client_event_tx: &'a mpsc::UnboundedSender<ServerEvent>,
 }
 
@@ -156,11 +105,18 @@ pub(super) async fn handle_notify_session(
     };
 
     let ran_immediately = if target_has_client {
-        run_scheduled_task_in_live_session_if_idle(
+        super::live_turn::run_live_turn_if_idle(
             &session_id,
             &message,
+            None,
             ctx.sessions,
-            ctx.swarm_members,
+            super::live_turn::LiveTurnSwarmContext::new(
+                ctx.swarm_members,
+                ctx.swarms_by_id,
+                ctx.event_history,
+                ctx.event_counter,
+                ctx.swarm_event_tx,
+            ),
         )
         .await
     } else {
@@ -707,6 +663,10 @@ fn clone_split_session(parent_session_id: &str) -> anyhow::Result<(String, Strin
     child.working_dir = parent.working_dir.clone();
     child.model = parent.model.clone();
     child.status = crate::session::SessionStatus::Closed;
+    // The parent agent keeps ownership of any in-flight request; tell the
+    // forked agent so it treats the next prompt as fresh work instead of
+    // continuing (and duplicating) the parent's current turn.
+    child.append_fork_notice(parent_session_id, parent.display_name());
     child.save()?;
 
     let name = child.display_name().to_string();
@@ -956,10 +916,18 @@ fn live_session_owes_continuation(agent: &Agent) -> bool {
 /// the currently-live sessions, and for each idle one that still owes the model
 /// a continuation, injects the standard "continue where you left off" reminder
 /// so the session picks back up without the user having to open each one.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "resuming live sessions needs session, swarm membership, and status event state"
+)]
 pub(super) async fn handle_resume_all_sessions(
     id: u64,
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
+    event_counter: &Arc<std::sync::atomic::AtomicU64>,
+    swarm_event_tx: &broadcast::Sender<SwarmEvent>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     // Snapshot live sessions (those with at least one live client attachment).
@@ -1018,20 +986,21 @@ pub(super) async fn handle_resume_all_sessions(
             ));
         }
 
-        let event_tx = session_event_fanout_sender(session_id.clone(), Arc::clone(swarm_members));
-        let task_agent = Arc::clone(&agent);
-        let task_session_id = session_id.clone();
-        tokio::spawn(async move {
-            if let Err(error) =
-                process_message_streaming_mpsc(task_agent, "", vec![], Some(reminder), event_tx)
-                    .await
-            {
-                crate::logging::error(&format!(
-                    "resume_all_sessions: failed to continue live session {}: {}",
-                    task_session_id, error
-                ));
-            }
-        });
+        super::live_turn::spawn_tracked_live_turn(
+            &session_id,
+            Arc::clone(&agent),
+            String::new(),
+            Some(reminder),
+            Some("resuming interrupted session".to_string()),
+            super::live_turn::LiveTurnSwarmContext::new(
+                swarm_members,
+                swarms_by_id,
+                event_history,
+                event_counter,
+                swarm_event_tx,
+            ),
+        )
+        .await;
 
         resumed_sessions.push(display_name);
     }

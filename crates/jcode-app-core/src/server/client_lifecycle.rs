@@ -1566,6 +1566,10 @@ pub(super) async fn handle_client(
                     id,
                     &sessions,
                     &swarm_members,
+                    &swarms_by_id,
+                    &event_history,
+                    &event_counter,
+                    &swarm_event_tx,
                     &client_event_tx,
                 )
                 .await;
@@ -1830,6 +1834,10 @@ pub(super) async fn handle_client(
                         soft_interrupt_queues: &soft_interrupt_queues,
                         client_connections: &client_connections,
                         swarm_members: &swarm_members,
+                        swarms_by_id: &swarms_by_id,
+                        event_history: &event_history,
+                        event_counter: &event_counter,
+                        swarm_event_tx: &swarm_event_tx,
                         client_event_tx: &client_event_tx,
                     },
                 )

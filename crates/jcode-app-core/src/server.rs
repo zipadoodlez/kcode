@@ -33,6 +33,7 @@ mod durable_state;
 mod headless;
 mod jade_relay;
 mod lifecycle;
+mod live_turn;
 mod provider_control;
 mod reload;
 mod reload_recovery;
@@ -1794,6 +1795,10 @@ impl Server {
                         &sessions,
                         &soft_interrupt_queues,
                         &swarm_members,
+                        &swarms_by_id,
+                        &event_history,
+                        &event_counter,
+                        &swarm_event_tx,
                     )
                     .await;
                 }

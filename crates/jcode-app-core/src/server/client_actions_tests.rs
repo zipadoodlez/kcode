@@ -18,6 +18,21 @@ use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::{Duration, timeout};
 
+fn empty_swarm_status_state() -> (
+    Arc<RwLock<HashMap<String, std::collections::HashSet<String>>>>,
+    Arc<RwLock<std::collections::VecDeque<crate::server::SwarmEvent>>>,
+    Arc<std::sync::atomic::AtomicU64>,
+    tokio::sync::broadcast::Sender<crate::server::SwarmEvent>,
+) {
+    let (swarm_event_tx, _) = tokio::sync::broadcast::channel(16);
+    (
+        Arc::new(RwLock::new(HashMap::new())),
+        Arc::new(RwLock::new(std::collections::VecDeque::new())),
+        Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        swarm_event_tx,
+    )
+}
+
 struct MockProvider;
 
 #[derive(Clone, Default)]
@@ -120,10 +135,25 @@ fn clone_split_session_uses_persisted_session_state() {
     let child = crate::session::Session::load(&child_id).expect("load child");
 
     assert_eq!(child.parent_id.as_deref(), Some(parent.id.as_str()));
-    assert_eq!(child.messages.len(), parent.messages.len());
+    assert_eq!(
+        child.messages.len(),
+        parent.messages.len() + 1,
+        "fork should inherit the transcript plus one fork notice"
+    );
     assert_eq!(
         child.messages[0].content_preview(),
         parent.messages[0].content_preview()
+    );
+    let fork_notice = child.messages.last().expect("fork notice message");
+    assert_eq!(
+        fork_notice.display_role,
+        Some(crate::session::StoredDisplayRole::System),
+        "fork notice must be hidden from the visible transcript"
+    );
+    let fork_notice_text = fork_notice.content_preview();
+    assert!(
+        fork_notice_text.contains("forked") && fork_notice_text.contains(parent.id.as_str()),
+        "fork notice should mention the parent session: {fork_notice_text}"
     );
     assert_eq!(child.compaction, parent.compaction);
     assert_eq!(child.working_dir, parent.working_dir);
@@ -366,6 +396,7 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
+    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     handle_notify_session(
         77,
         session_id.clone(),
@@ -375,6 +406,10 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             soft_interrupt_queues: &soft_interrupt_queues,
             client_connections: &client_connections,
             swarm_members: &swarm_members,
+            swarms_by_id: &swarms_by_id,
+            event_history: &event_history,
+            event_counter: &event_counter,
+            swarm_event_tx: &swarm_event_tx,
             client_event_tx: &client_event_tx,
         },
     )
@@ -474,6 +509,7 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
 
     let _busy_guard = agent.lock().await;
 
+    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
     handle_notify_session(
         88,
         session_id.clone(),
@@ -483,6 +519,10 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             soft_interrupt_queues: &soft_interrupt_queues,
             client_connections: &client_connections,
             swarm_members: &swarm_members,
+            swarms_by_id: &swarms_by_id,
+            event_history: &event_history,
+            event_counter: &event_counter,
+            swarm_event_tx: &swarm_event_tx,
             client_event_tx: &client_event_tx,
         },
     )
@@ -585,7 +625,18 @@ async fn resume_all_continues_interrupted_idle_live_session() {
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    handle_resume_all_sessions(91, &sessions, &swarm_members, &client_event_tx).await;
+    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    handle_resume_all_sessions(
+        91,
+        &sessions,
+        &swarm_members,
+        &swarms_by_id,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &client_event_tx,
+    )
+    .await;
 
     // The session should resume and stream the continuation.
     let streamed = timeout(Duration::from_secs(2), async {
@@ -676,7 +727,18 @@ async fn resume_all_skips_session_with_completed_turn() {
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    handle_resume_all_sessions(92, &sessions, &swarm_members, &client_event_tx).await;
+    let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
+    handle_resume_all_sessions(
+        92,
+        &sessions,
+        &swarm_members,
+        &swarms_by_id,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &client_event_tx,
+    )
+    .await;
 
     let result = timeout(Duration::from_secs(2), async {
         loop {

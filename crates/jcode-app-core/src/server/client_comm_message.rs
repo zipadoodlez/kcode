@@ -1,7 +1,7 @@
+use super::live_turn::{LiveTurnSwarmContext, run_live_turn_if_idle};
 use super::{
     ClientConnectionInfo, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
-    fanout_session_event, queue_soft_interrupt_for_session, record_swarm_event,
-    session_event_fanout_sender, truncate_detail,
+    fanout_session_event, queue_soft_interrupt_for_session, record_swarm_event, truncate_detail,
 };
 use crate::agent::Agent;
 use crate::protocol::{CommDeliveryMode, NotificationType, ServerEvent};
@@ -77,60 +77,6 @@ async fn resolve_dm_target_session(
             ))
         }
     }
-}
-
-async fn run_message_in_live_session_if_idle(
-    session_id: &str,
-    message: &str,
-    system_reminder: Option<String>,
-    sessions: &SessionAgents,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> bool {
-    let agent = {
-        let guard = sessions.read().await;
-        guard.get(session_id).cloned()
-    };
-    let Some(agent) = agent else {
-        return false;
-    };
-
-    let has_live_attachments = {
-        let members = swarm_members.read().await;
-        members
-            .get(session_id)
-            .map(|member| !member.event_txs.is_empty() || !member.event_tx.is_closed())
-            .unwrap_or(false)
-    };
-    if !has_live_attachments {
-        return false;
-    }
-
-    let is_idle = match agent.try_lock() {
-        Ok(guard) => {
-            drop(guard);
-            true
-        }
-        Err(_) => false,
-    };
-    if !is_idle {
-        return false;
-    }
-
-    let session_id = session_id.to_string();
-    let message = message.to_string();
-    let event_tx = session_event_fanout_sender(session_id.clone(), Arc::clone(swarm_members));
-    tokio::spawn(async move {
-        let _ = super::client_lifecycle::process_message_streaming_mpsc(
-            agent,
-            &message,
-            vec![],
-            system_reminder,
-            event_tx,
-        )
-        .await;
-    });
-
-    true
 }
 
 fn resolve_comm_delivery_mode(
@@ -366,12 +312,18 @@ pub(super) async fn handle_comm_message(
                         .await;
                     }
                     CommDeliveryMode::Wake => {
-                        let woke_immediately = run_message_in_live_session_if_idle(
+                        let woke_immediately = run_live_turn_if_idle(
                             session_id,
                             &notification_msg,
                             reminder,
                             sessions,
-                            swarm_members,
+                            LiveTurnSwarmContext::new(
+                                swarm_members,
+                                swarms_by_id,
+                                event_history,
+                                event_counter,
+                                swarm_event_tx,
+                            ),
                         )
                         .await;
 

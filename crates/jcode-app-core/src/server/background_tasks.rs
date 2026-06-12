@@ -1,84 +1,32 @@
+use super::live_turn::{LiveTurnSwarmContext, run_live_turn_if_idle};
+use super::state::SwarmEvent;
 use super::{
     SessionAgents, SessionInterruptQueues, SwarmMember, fanout_session_event,
-    queue_soft_interrupt_for_session, session_event_fanout_sender,
+    queue_soft_interrupt_for_session,
 };
 use crate::message::{
     format_background_task_notification_markdown, format_background_task_progress_markdown,
 };
 use crate::protocol::{NotificationType, ServerEvent};
 use jcode_agent_runtime::SoftInterruptSource;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::atomic::AtomicU64;
+use tokio::sync::{RwLock, broadcast};
 
-async fn run_background_task_message_in_live_session_if_idle(
-    session_id: &str,
-    message: &str,
-    sessions: &SessionAgents,
-    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-) -> bool {
-    let agent = {
-        let guard = sessions.read().await;
-        guard.get(session_id).cloned()
-    };
-    let Some(agent) = agent else {
-        return false;
-    };
-
-    let has_live_attachments = {
-        let members = swarm_members.read().await;
-        members
-            .get(session_id)
-            .map(|member| !member.event_txs.is_empty() || !member.event_tx.is_closed())
-            .unwrap_or(false)
-    };
-    if !has_live_attachments {
-        return false;
-    }
-
-    let is_idle = match agent.try_lock() {
-        Ok(guard) => {
-            drop(guard);
-            true
-        }
-        Err(_) => false,
-    };
-
-    if !is_idle {
-        return false;
-    }
-
-    let session_id = session_id.to_string();
-    let message = message.to_string();
-    let event_tx = session_event_fanout_sender(session_id.clone(), Arc::clone(swarm_members));
-    tokio::spawn(async move {
-        if let Err(err) = super::client_lifecycle::process_message_streaming_mpsc(
-            agent,
-            &message,
-            vec![],
-            Some(
-                "A background task for this session just finished. Review the completion message and continue if useful."
-                    .to_string(),
-            ),
-            event_tx,
-        )
-        .await
-        {
-            crate::logging::error(&format!(
-                "Failed to run background task completion immediately for live session {}: {}",
-                session_id, err
-            ));
-        }
-    });
-
-    true
-}
-
+#[expect(
+    clippy::too_many_arguments,
+    reason = "background task completion needs session, interrupt, and swarm status state"
+)]
 pub(super) async fn dispatch_background_task_completion(
     task: &crate::bus::BackgroundTaskCompleted,
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
+    event_counter: &Arc<AtomicU64>,
+    swarm_event_tx: &broadcast::Sender<SwarmEvent>,
 ) {
     let notification = format_background_task_notification_markdown(task);
 
@@ -106,11 +54,21 @@ pub(super) async fn dispatch_background_task_completion(
     }
 
     if task.wake
-        && !run_background_task_message_in_live_session_if_idle(
+        && !run_live_turn_if_idle(
             &task.session_id,
             &notification,
+            Some(
+                "A background task for this session just finished. Review the completion message and continue if useful."
+                    .to_string(),
+            ),
             sessions,
-            swarm_members,
+            LiveTurnSwarmContext::new(
+                swarm_members,
+                swarms_by_id,
+                event_history,
+                event_counter,
+                swarm_event_tx,
+            ),
         )
         .await
         && !queue_soft_interrupt_for_session(
