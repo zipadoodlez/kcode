@@ -6,19 +6,26 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{LazyLock, RwLock};
 
-static GITHUB_TOKEN_CACHE: LazyLock<RwLock<Option<String>>> = LazyLock::new(|| RwLock::new(None));
+/// Cached GitHub token resolved from file or subprocess sources, with the
+/// time it was cached. Env vars are intentionally NOT served from this cache:
+/// they are cheap to read and must take effect immediately when they change.
+/// The TTL bounds how long a deleted/changed credential file keeps working.
+static GITHUB_TOKEN_CACHE: LazyLock<RwLock<Option<(String, std::time::Instant)>>> =
+    LazyLock::new(|| RwLock::new(None));
+const GITHUB_TOKEN_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 const FAILED_VALIDATION_AUTO_USE_TTL_MS: i64 = 24 * 60 * 60 * 1000;
 
 fn cached_github_token() -> Option<String> {
-    GITHUB_TOKEN_CACHE
-        .read()
-        .ok()
-        .and_then(|value| value.clone())
+    GITHUB_TOKEN_CACHE.read().ok().and_then(|value| {
+        value.as_ref().and_then(|(token, cached_at)| {
+            (cached_at.elapsed() < GITHUB_TOKEN_CACHE_TTL).then(|| token.clone())
+        })
+    })
 }
 
 fn cache_github_token(token: &str) {
     if let Ok(mut cache) = GITHUB_TOKEN_CACHE.write() {
-        *cache = Some(token.to_string());
+        *cache = Some((token.to_string(), std::time::Instant::now()));
     }
 }
 
@@ -147,18 +154,19 @@ impl CopilotApiToken {
 /// 7. trusted OpenCode/pi auth.json OAuth entries
 /// 8. optional `gh auth token` fallback when JCODE_COPILOT_ALLOW_GH_AUTH_TOKEN=1
 pub fn load_github_token() -> Result<String> {
-    if let Some(token) = cached_github_token() {
-        return Ok(token);
-    }
-
+    // Env vars first: cheap to read and they must win immediately when the
+    // user changes them, so they are never served from (or shadowed by) the
+    // file-source cache below.
     for env_key in ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] {
         if let Ok(token) = std::env::var(env_key)
             && !token.trim().is_empty()
         {
-            let token = token.trim().to_string();
-            cache_github_token(&token);
-            return Ok(token);
+            return Ok(token.trim().to_string());
         }
+    }
+
+    if let Some(token) = cached_github_token() {
+        return Ok(token);
     }
 
     let config_path = ExternalCopilotAuthSource::ConfigJson.path();
