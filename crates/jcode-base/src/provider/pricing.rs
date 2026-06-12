@@ -202,14 +202,15 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_api_pricing_handles_long_context_variants() {
+    fn anthropic_api_pricing_long_context_uses_standard_rates() {
+        // Anthropic bills the 1M context window at standard per-token rates.
         let estimate = anthropic_api_pricing("claude-opus-4-6[1m]").expect("priced model");
         assert_eq!(estimate.billing_kind, RouteBillingKind::Metered);
         assert_eq!(estimate.source, RouteCostSource::PublicApiPricing);
         assert_eq!(estimate.confidence, RouteCostConfidence::Exact);
-        assert_eq!(estimate.input_price_per_mtok_micros, Some(10_000_000));
-        assert_eq!(estimate.output_price_per_mtok_micros, Some(37_500_000));
-        assert_eq!(estimate.cache_read_price_per_mtok_micros, Some(1_000_000));
+        assert_eq!(estimate.input_price_per_mtok_micros, Some(5_000_000));
+        assert_eq!(estimate.output_price_per_mtok_micros, Some(25_000_000));
+        assert_eq!(estimate.cache_read_price_per_mtok_micros, Some(500_000));
     }
 
     #[test]

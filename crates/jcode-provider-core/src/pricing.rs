@@ -11,78 +11,32 @@ fn usd_per_token_str_to_micros_per_mtok(raw: &str) -> Option<u64> {
         .map(|usd_per_token| (usd_per_token * 1_000_000_000_000.0).round() as u64)
 }
 
+/// Published Anthropic API pricing (docs.anthropic.com/en/docs/about-claude/pricing).
+///
+/// `[1m]` long-context variants bill at standard per-token rates: Anthropic
+/// includes the full 1M context window at standard pricing for Fable 5,
+/// Opus 4.8/4.7/4.6 and Sonnet 4.6, so the suffix never changes the estimate.
 pub fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     let base = model.strip_suffix("[1m]").unwrap_or(model);
-    let long_context = model.ends_with("[1m]");
-    match base {
-        "claude-fable-5" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Low,
-            usd_to_micros(if long_context { 6.0 } else { 3.0 }),
-            usd_to_micros(if long_context { 22.5 } else { 15.0 }),
-            Some(usd_to_micros(if long_context { 0.6 } else { 0.3 })),
-            Some("Estimated from Sonnet 4.6 API pricing".to_string()),
-        )),
-        "claude-opus-4-8" => Some(RouteCheapnessEstimate::metered(
+    let exact = |input_usd: f64, output_usd: f64, cache_read_usd: f64| {
+        Some(RouteCheapnessEstimate::metered(
             RouteCostSource::PublicApiPricing,
             RouteCostConfidence::Exact,
-            usd_to_micros(if long_context { 10.0 } else { 5.0 }),
-            usd_to_micros(if long_context { 37.5 } else { 25.0 }),
-            Some(usd_to_micros(if long_context { 1.0 } else { 0.5 })),
-            Some(if long_context {
-                "Anthropic API long-context pricing".to_string()
-            } else {
-                "Anthropic API pricing".to_string()
-            }),
-        )),
-        "claude-opus-4-6" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::Exact,
-            usd_to_micros(if long_context { 10.0 } else { 5.0 }),
-            usd_to_micros(if long_context { 37.5 } else { 25.0 }),
-            Some(usd_to_micros(if long_context { 1.0 } else { 0.5 })),
-            Some(if long_context {
-                "Anthropic API long-context pricing".to_string()
-            } else {
-                "Anthropic API pricing".to_string()
-            }),
-        )),
-        "claude-sonnet-4-6" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::Exact,
-            usd_to_micros(if long_context { 6.0 } else { 3.0 }),
-            usd_to_micros(if long_context { 22.5 } else { 15.0 }),
-            Some(usd_to_micros(if long_context { 0.6 } else { 0.3 })),
-            Some(if long_context {
-                "Anthropic API long-context pricing".to_string()
-            } else {
-                "Anthropic API pricing".to_string()
-            }),
-        )),
-        "claude-haiku-4-5" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::Exact,
-            usd_to_micros(1.0),
-            usd_to_micros(5.0),
-            Some(usd_to_micros(0.1)),
+            usd_to_micros(input_usd),
+            usd_to_micros(output_usd),
+            Some(usd_to_micros(cache_read_usd)),
             Some("Anthropic API pricing".to_string()),
-        )),
-        "claude-opus-4-5" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Medium,
-            usd_to_micros(5.0),
-            usd_to_micros(25.0),
-            Some(usd_to_micros(0.5)),
-            Some("Estimated from Opus 4.6 API pricing".to_string()),
-        )),
-        "claude-sonnet-4-5" | "claude-sonnet-4-20250514" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Medium,
-            usd_to_micros(3.0),
-            usd_to_micros(15.0),
-            Some(usd_to_micros(0.3)),
-            Some("Estimated from Sonnet 4.6 API pricing".to_string()),
-        )),
+        ))
+    };
+    match base {
+        "claude-fable-5" => exact(10.0, 50.0, 1.0),
+        "claude-opus-4-8" | "claude-opus-4-7" | "claude-opus-4-6" | "claude-opus-4-5" => {
+            exact(5.0, 25.0, 0.5)
+        }
+        "claude-sonnet-4-6" | "claude-sonnet-4-5" | "claude-sonnet-4-20250514" => {
+            exact(3.0, 15.0, 0.3)
+        }
+        "claude-haiku-4-5" => exact(1.0, 5.0, 0.1),
         _ => None,
     }
 }
@@ -264,14 +218,42 @@ mod tests {
     use crate::RouteBillingKind;
 
     #[test]
-    fn anthropic_api_pricing_handles_long_context_variants() {
+    fn anthropic_api_pricing_long_context_uses_standard_rates() {
+        // Anthropic includes the 1M context window at standard pricing, so the
+        // `[1m]` suffix must not change the estimate.
         let estimate = anthropic_api_pricing("claude-opus-4-6[1m]").expect("priced model");
         assert_eq!(estimate.billing_kind, RouteBillingKind::Metered);
         assert_eq!(estimate.source, RouteCostSource::PublicApiPricing);
         assert_eq!(estimate.confidence, RouteCostConfidence::Exact);
-        assert_eq!(estimate.input_price_per_mtok_micros, Some(10_000_000));
-        assert_eq!(estimate.output_price_per_mtok_micros, Some(37_500_000));
-        assert_eq!(estimate.cache_read_price_per_mtok_micros, Some(1_000_000));
+        assert_eq!(estimate.input_price_per_mtok_micros, Some(5_000_000));
+        assert_eq!(estimate.output_price_per_mtok_micros, Some(25_000_000));
+        assert_eq!(estimate.cache_read_price_per_mtok_micros, Some(500_000));
+        assert_eq!(
+            anthropic_api_pricing("claude-opus-4-6"),
+            anthropic_api_pricing("claude-opus-4-6[1m]")
+        );
+        assert_eq!(
+            anthropic_api_pricing("claude-sonnet-4-6"),
+            anthropic_api_pricing("claude-sonnet-4-6[1m]")
+        );
+    }
+
+    #[test]
+    fn anthropic_api_pricing_matches_published_rates() {
+        let fable = anthropic_api_pricing("claude-fable-5").expect("priced model");
+        assert_eq!(fable.input_price_per_mtok_micros, Some(10_000_000));
+        assert_eq!(fable.output_price_per_mtok_micros, Some(50_000_000));
+        assert_eq!(fable.cache_read_price_per_mtok_micros, Some(1_000_000));
+
+        let sonnet = anthropic_api_pricing("claude-sonnet-4-6").expect("priced model");
+        assert_eq!(sonnet.input_price_per_mtok_micros, Some(3_000_000));
+        assert_eq!(sonnet.output_price_per_mtok_micros, Some(15_000_000));
+        assert_eq!(sonnet.cache_read_price_per_mtok_micros, Some(300_000));
+
+        let haiku = anthropic_api_pricing("claude-haiku-4-5").expect("priced model");
+        assert_eq!(haiku.input_price_per_mtok_micros, Some(1_000_000));
+        assert_eq!(haiku.output_price_per_mtok_micros, Some(5_000_000));
+        assert_eq!(haiku.cache_read_price_per_mtok_micros, Some(100_000));
     }
 
     #[test]
