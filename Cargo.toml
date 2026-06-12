@@ -72,8 +72,6 @@ members = [
     "crates/jcode-terminal-image",
     "crates/jcode-telemetry-core",
     "crates/jcode-tui-workspace",
-    "crates/jcode-mobile-core",
-    "crates/jcode-mobile-sim",
     "crates/jcode-desktop",
     "crates/jcode-render-core",
 ]

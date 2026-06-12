@@ -3736,33 +3736,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-mobile-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "jcode-mobile-sim"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "clap",
- "jcode-mobile-core",
- "libc",
- "pollster",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "wgpu",
- "winit",
-]
-
-[[package]]
 name = "jcode-notify-email"
 version = "0.1.0"
 dependencies = [
@@ -7815,7 +7788,6 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2 0.6.1",

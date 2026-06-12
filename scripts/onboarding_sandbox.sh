@@ -12,7 +12,6 @@ sandbox_root_default="$repo_root/.tmp/onboarding/$sandbox_name"
 sandbox_root=${JCODE_ONBOARDING_DIR:-$sandbox_root_default}
 jcode_home="$sandbox_root/home"
 runtime_dir="$sandbox_root/runtime"
-mobile_socket="$runtime_dir/jcode-mobile-sim.sock"
 
 ensure_dirs() {
   mkdir -p "$jcode_home" "$runtime_dir"
@@ -62,14 +61,6 @@ Commands:
   fixture-load <name>    Load a saved auth fixture into this sandbox
   fixture-run <name> -- [args...]
                          Load a fixture, then run jcode with args
-  mobile-start [scenario]
-                         Start jcode-mobile-sim in background (default: onboarding)
-  mobile-serve [scenario]
-                         Run jcode-mobile-sim in foreground (default: onboarding)
-  mobile-status          Show mobile simulator status
-  mobile-state           Show full mobile simulator state
-  mobile-reset           Reset the mobile simulator back to its initial scenario
-  mobile-log             Show mobile simulator transition log
   help                   Show this help
 
 Environment overrides:
@@ -83,8 +74,6 @@ Examples:
   $(basename "$0") fixture-save normal-openai
   $(basename "$0") fixture-load normal-openai
   $(basename "$0") auth-status
-  $(basename "$0") mobile-start onboarding
-  $(basename "$0") mobile-status
 EOF
 }
 
@@ -107,13 +96,6 @@ status() {
   if [[ -d "$jcode_home" ]]; then
     echo "Home contents:"
     find "$jcode_home" -maxdepth 3 \( -type f -o -type d \) | sed "s#^$sandbox_root#.#" | sort
-  fi
-  echo
-
-  if [[ -S "$mobile_socket" ]]; then
-    echo "Mobile simulator socket: $mobile_socket"
-  else
-    echo "Mobile simulator socket: not running"
   fi
 }
 
@@ -158,15 +140,6 @@ run_jcode() {
     run_in_sandbox "$binary_path" "${prefix[@]}" "$@"
   else
     run_in_sandbox cargo run --bin jcode -- "${prefix[@]}" "$@"
-  fi
-}
-
-run_mobile_sim() {
-  local binary_path="$repo_root/target/debug/jcode-mobile-sim"
-  if [[ -x "$binary_path" ]]; then
-    run_in_sandbox "$binary_path" "$@"
-  else
-    run_in_sandbox cargo run -p jcode-mobile-sim -- "$@"
   fi
 }
 
@@ -355,26 +328,6 @@ case "$command" in
     ;;
   fixture-run)
     run_auth_fixture run "$@"
-    ;;
-  mobile-start)
-    scenario=$(scenario_arg "$@")
-    run_mobile_sim start --scenario "$scenario"
-    ;;
-  mobile-serve)
-    scenario=$(scenario_arg "$@")
-    run_mobile_sim serve --scenario "$scenario"
-    ;;
-  mobile-status)
-    run_mobile_sim status
-    ;;
-  mobile-state)
-    run_mobile_sim state
-    ;;
-  mobile-reset)
-    run_mobile_sim reset
-    ;;
-  mobile-log)
-    run_mobile_sim log
     ;;
   help|-h|--help)
     print_usage

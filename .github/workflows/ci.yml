@@ -68,37 +68,6 @@ jobs:
         shell: bash
         run: python3 scripts/check_swallowed_error_budget.py
 
-  mobile-simulator:
-    name: Mobile Simulator (Linux)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ssh-key: ${{ secrets.DEPLOY_KEY }}
-          submodules: recursive
-
-      - name: Configure SSH for cargo git dependencies
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: mobile-simulator-ubuntu
-
-      - name: Run mobile core and simulator tests
-        shell: bash
-        run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
-            cargo test -p jcode-mobile-core -p jcode-mobile-sim
-
-      - name: Run mobile simulator CLI smoke
-        shell: bash
-        run: scripts/mobile_simulator_smoke.sh pairing_ready "hello ci simulator"
-
   build:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
