@@ -278,7 +278,25 @@ pub async fn load_or_refresh_tokens() -> Result<GeminiTokens> {
     }
 }
 
+/// Refresh Gemini OAuth tokens, serialized via the refresh coordinator so
+/// concurrent callers do not race the token endpoint and the stored file.
 pub async fn refresh_tokens(tokens: &GeminiTokens) -> Result<GeminiTokens> {
+    crate::auth::refresh_coordinator::single_flight(
+        "gemini".to_string(),
+        || load_tokens().ok(),
+        |stored: &GeminiTokens| !stored.is_expired(),
+        {
+            let observed = tokens.clone();
+            move |stored: Option<GeminiTokens>| async move {
+                let source = stored.unwrap_or(observed);
+                refresh_tokens_uncoordinated(&source).await
+            }
+        },
+    )
+    .await
+}
+
+async fn refresh_tokens_uncoordinated(tokens: &GeminiTokens) -> Result<GeminiTokens> {
     let result: Result<GeminiTokens> = async {
         let client_id = gemini_client_id();
         let client_secret = gemini_client_secret();

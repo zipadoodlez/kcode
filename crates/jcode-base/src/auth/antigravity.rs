@@ -165,7 +165,25 @@ pub async fn load_or_refresh_tokens() -> Result<AntigravityTokens> {
     }
 }
 
+/// Refresh Antigravity OAuth tokens, serialized via the refresh coordinator
+/// so concurrent callers do not race the token endpoint and the stored file.
 pub async fn refresh_tokens(tokens: &AntigravityTokens) -> Result<AntigravityTokens> {
+    crate::auth::refresh_coordinator::single_flight(
+        "antigravity".to_string(),
+        || load_tokens().ok(),
+        |stored: &AntigravityTokens| !stored.is_expired(),
+        {
+            let observed = tokens.clone();
+            move |stored: Option<AntigravityTokens>| async move {
+                let source = stored.unwrap_or(observed);
+                refresh_tokens_uncoordinated(&source).await
+            }
+        },
+    )
+    .await
+}
+
+async fn refresh_tokens_uncoordinated(tokens: &AntigravityTokens) -> Result<AntigravityTokens> {
     let result: Result<AntigravityTokens> = async {
         let client = crate::provider::shared_http_client();
         let client_id = antigravity_client_id();

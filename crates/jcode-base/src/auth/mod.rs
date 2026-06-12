@@ -20,6 +20,7 @@ pub mod login_diagnostics;
 pub mod login_flows;
 pub mod oauth;
 pub mod provider_e2e;
+pub(crate) mod refresh_coordinator;
 pub mod refresh_state;
 mod status_types;
 #[cfg(any(test, feature = "test-support"))]

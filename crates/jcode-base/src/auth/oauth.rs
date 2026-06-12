@@ -1112,28 +1112,63 @@ async fn refresh_claude_tokens_inner(
     Ok(oauth_tokens)
 }
 
-/// Refresh Claude OAuth tokens
+/// Refresh Claude OAuth tokens for the active (or primary) stored account.
 pub async fn refresh_claude_tokens(refresh_token: &str) -> Result<OAuthTokens> {
-    let result = refresh_claude_tokens_inner(refresh_token, None).await;
+    let label =
+        claude_auth::active_account_label().unwrap_or_else(claude_auth::primary_account_label);
+    refresh_claude_tokens_for_account(refresh_token, &label).await
+}
 
-    match &result {
-        Ok(_) => {
-            let _ = crate::auth::refresh_state::record_success("claude");
-        }
-        Err(err) => {
-            let _ = crate::auth::refresh_state::record_failure("claude", err.to_string());
-        }
-    }
-
-    result
+/// Stored Claude tokens for `label`, expressed as [`OAuthTokens`].
+fn stored_claude_tokens(label: &str) -> Option<OAuthTokens> {
+    let account = claude_auth::list_accounts()
+        .ok()?
+        .into_iter()
+        .find(|account| account.label == label)?;
+    Some(OAuthTokens {
+        access_token: account.access,
+        refresh_token: account.refresh,
+        expires_at: account.expires,
+        id_token: None,
+        scopes: account.scopes,
+    })
 }
 
 /// Refresh Claude OAuth tokens for a specific account.
+///
+/// Serialized per account via the refresh coordinator: Anthropic rotates
+/// refresh tokens, so two concurrent refreshes can otherwise persist a dead
+/// refresh token and break the account.
 pub async fn refresh_claude_tokens_for_account(
     refresh_token: &str,
     label: &str,
 ) -> Result<OAuthTokens> {
-    let result = refresh_claude_tokens_inner(refresh_token, Some(label)).await;
+    let observed_refresh = refresh_token.to_string();
+    let label = label.to_string();
+    let result = crate::auth::refresh_coordinator::single_flight(
+        format!("claude:{label}"),
+        {
+            let label = label.clone();
+            move || stored_claude_tokens(&label)
+        },
+        {
+            let observed = observed_refresh.clone();
+            move |stored: &OAuthTokens| {
+                stored.refresh_token != observed
+                    && crate::auth::refresh_coordinator::expiry_is_fresh(stored.expires_at)
+            }
+        },
+        move |stored: Option<OAuthTokens>| async move {
+            // Prefer the newest stored refresh token over the caller's
+            // possibly stale observation.
+            let token = stored
+                .map(|tokens| tokens.refresh_token)
+                .filter(|token| !token.is_empty())
+                .unwrap_or(observed_refresh);
+            refresh_claude_tokens_inner(&token, Some(&label)).await
+        },
+    )
+    .await;
 
     match &result {
         Ok(_) => {
@@ -1167,16 +1202,64 @@ pub fn save_openai_tokens_for_account(tokens: &OAuthTokens, label: &str) -> Resu
 
 /// Refresh OpenAI/Codex OAuth tokens
 pub async fn refresh_openai_tokens(refresh_token: &str) -> Result<OAuthTokens> {
-    let active_label = crate::auth::codex::active_account_label();
-    refresh_openai_tokens_inner(refresh_token, active_label.as_deref()).await
+    match crate::auth::codex::active_account_label() {
+        Some(label) => refresh_openai_tokens_for_account(refresh_token, &label).await,
+        // External token (not stored in jcode auth): nothing on disk to
+        // coordinate against, refresh directly.
+        None => refresh_openai_tokens_inner(refresh_token, None).await,
+    }
+}
+
+/// Stored OpenAI tokens for `label`, expressed as [`OAuthTokens`].
+fn stored_openai_tokens(label: &str) -> Option<OAuthTokens> {
+    let account = crate::auth::codex::list_accounts()
+        .ok()?
+        .into_iter()
+        .find(|account| account.label == label)?;
+    Some(OAuthTokens {
+        access_token: account.access_token,
+        refresh_token: account.refresh_token,
+        expires_at: account.expires_at.unwrap_or(0),
+        id_token: account.id_token,
+        scopes: Vec::new(),
+    })
 }
 
 /// Refresh OpenAI/Codex OAuth tokens for a specific stored account label.
+///
+/// Serialized per account via the refresh coordinator: OpenAI rotates
+/// refresh tokens, so two concurrent refreshes can otherwise persist a dead
+/// refresh token and break the account.
 pub async fn refresh_openai_tokens_for_account(
     refresh_token: &str,
     label: &str,
 ) -> Result<OAuthTokens> {
-    refresh_openai_tokens_inner(refresh_token, Some(label)).await
+    let observed_refresh = refresh_token.to_string();
+    let label = label.to_string();
+    crate::auth::refresh_coordinator::single_flight(
+        format!("openai:{label}"),
+        {
+            let label = label.clone();
+            move || stored_openai_tokens(&label)
+        },
+        {
+            let observed = observed_refresh.clone();
+            move |stored: &OAuthTokens| {
+                stored.refresh_token != observed
+                    && crate::auth::refresh_coordinator::expiry_is_fresh(stored.expires_at)
+            }
+        },
+        move |stored: Option<OAuthTokens>| async move {
+            // Prefer the newest stored refresh token over the caller's
+            // possibly stale observation.
+            let token = stored
+                .map(|tokens| tokens.refresh_token)
+                .filter(|token| !token.is_empty())
+                .unwrap_or(observed_refresh);
+            refresh_openai_tokens_inner(&token, Some(&label)).await
+        },
+    )
+    .await
 }
 
 async fn refresh_openai_tokens_inner(
