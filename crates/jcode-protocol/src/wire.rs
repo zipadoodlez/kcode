@@ -725,6 +725,14 @@ pub enum ServerEvent {
     #[serde(rename = "message_end")]
     MessageEnd,
 
+    /// A transient transport fault interrupted the provider stream mid-response
+    /// and the provider is retrying the request from the top. The client must
+    /// discard all partial output from the current attempt (streamed text,
+    /// reasoning, in-progress tool calls) so the replayed response renders
+    /// cleanly instead of duplicating.
+    #[serde(rename = "retry_rollback")]
+    RetryRollback { attempt: u32, max: u32 },
+
     /// Upstream provider info (e.g., which provider OpenRouter routed to)
     #[serde(rename = "upstream_provider")]
     UpstreamProvider { provider: String },

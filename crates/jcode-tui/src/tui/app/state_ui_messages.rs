@@ -65,6 +65,15 @@ impl App {
             return;
         }
         let is_tool = message.role == "tool";
+        // Track the trailing run of assistant messages so a provider
+        // RetryRollback can remove exactly the current attempt's committed
+        // output. Any non-assistant message (user/tool/system) is a fence: it
+        // proves earlier assistant messages belong to completed work.
+        if message.role == "assistant" {
+            self.attempt_committed_assistant_messages += 1;
+        } else {
+            self.attempt_committed_assistant_messages = 0;
+        }
         // Maintain the cached display-message counters incrementally for this
         // single append, then bump the version without a full O(M) rescan.
         // Appending is the hot path; rescanning every append was O(M^2) over a
@@ -80,6 +89,7 @@ impl App {
     pub(super) fn replace_display_messages(&mut self, mut messages: Vec<DisplayMessage>) {
         compact_display_messages_for_storage(&mut messages);
         self.display_messages = messages;
+        self.attempt_committed_assistant_messages = 0;
         self.sync_compacted_history_lazy_from_display_messages();
         self.bump_display_messages_version();
         self.note_runtime_memory_event_force("display_messages_replaced", "display_history_reset");

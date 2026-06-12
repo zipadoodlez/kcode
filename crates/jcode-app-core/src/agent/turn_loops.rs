@@ -422,6 +422,36 @@ impl Agent {
                         }
                         self.last_status_detail = Some(detail);
                     }
+                    StreamEvent::RetryRollback { attempt, max } => {
+                        // Transient transport fault mid-stream; the provider is
+                        // replaying the request. Discard this attempt's partial
+                        // output so the replay doesn't duplicate it in history.
+                        logging::warn(&format!(
+                            "Mid-stream retry rollback (attempt {}/{}): discarding partial output ({} text chars, {} tool calls)",
+                            attempt,
+                            max,
+                            text_content.len(),
+                            tool_calls.len(),
+                        ));
+                        if print_output && !text_content.is_empty() {
+                            // Already-printed text can't be unprinted on a plain
+                            // stdout stream; mark the discontinuity instead.
+                            println!("\n[connection interrupted, retrying response from the top]");
+                            io::stdout().flush()?;
+                        }
+                        text_content.clear();
+                        tool_calls.clear();
+                        current_tool = None;
+                        current_tool_input.clear();
+                        sdk_tool_results.clear();
+                        generated_image_contexts.clear();
+                        reasoning_content.clear();
+                        reasoning_signature.clear();
+                        openai_reasoning_items.clear();
+                        openai_native_compaction = None;
+                        saw_message_end = false;
+                        stop_reason = None;
+                    }
                     StreamEvent::MessageEnd {
                         stop_reason: reason,
                     } => {

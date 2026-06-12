@@ -672,6 +672,41 @@ impl App {
                                             status_spinner_renderer.draw_full(self, terminal)?;
                                         }
                                     }
+                                    StreamEvent::RetryRollback { attempt, max } => {
+                                        // Transient transport fault mid-stream; the provider is
+                                        // replaying the request from the top. Discard the partial
+                                        // attempt (accumulators + on-screen streaming render) so
+                                        // the replay streams into a clean slate instead of
+                                        // duplicating output.
+                                        crate::logging::warn(&format!(
+                                            "Retry rollback (attempt {}/{}): discarding partial streamed output ({} text chars, {} tool calls)",
+                                            attempt,
+                                            max,
+                                            text_content.len(),
+                                            tool_calls.len(),
+                                        ));
+                                        text_content.clear();
+                                        tool_calls.clear();
+                                        current_tool = None;
+                                        current_tool_input.clear();
+                                        generated_image_contexts.clear();
+                                        sdk_tool_results.clear();
+                                        reasoning_content.clear();
+                                        reasoning_signature.clear();
+                                        openai_reasoning_items.clear();
+                                        openai_native_compaction = None;
+                                        saw_message_end = false;
+                                        self.rollback_streaming_attempt();
+                                        self.status = ProcessingStatus::Connecting(
+                                            crate::message::ConnectionPhase::Retrying {
+                                                attempt,
+                                                max,
+                                            },
+                                        );
+                                        if eager_stream_redraw {
+                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                        }
+                                    }
                                     StreamEvent::SessionId(sid) => {
                                         self.provider_session_id = Some(sid);
                                         if saw_message_end {

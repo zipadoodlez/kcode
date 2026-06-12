@@ -748,6 +748,11 @@ pub struct App {
     session_save_pending: bool,
     // Tool calls detected during streaming (shown in real-time with details)
     streaming_tool_calls: Vec<ToolCall>,
+    // Assistant transcript messages committed during the current provider
+    // attempt (at ToolStart boundaries). A RetryRollback removes exactly this
+    // many trailing assistant messages; reset whenever a new API attempt's
+    // output starts cleanly or the turn ends.
+    attempt_committed_assistant_messages: usize,
     // Provider-specific session ID for conversation resume
     provider_session_id: Option<String>,
     // One-step undo snapshot captured before the most recent local rewind.

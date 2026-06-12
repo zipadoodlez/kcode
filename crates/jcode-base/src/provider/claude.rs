@@ -24,7 +24,12 @@ static CLAUDE_CLI_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 const DEFAULT_MODEL: &str = "claude-opus-4-6";
 const DEFAULT_PERMISSION_MODE: &str = "bypassPermissions";
 
-/// Maximum number of retries for transient errors
+/// Maximum number of retries for transient errors.
+///
+/// Intentionally higher than the HTTP providers' 3: spawning the Claude CLI
+/// subprocess has extra local failure modes (ProcessTransport startup races,
+/// `not ready for writing`) that resolve quickly and deserve more attempts,
+/// and unlike HTTP providers a failed spawn never streams partial output.
 const MAX_RETRIES: u32 = 5;
 
 /// Base delay for exponential backoff (in milliseconds)
@@ -688,8 +693,11 @@ impl Provider for ClaudeProvider {
 
             for attempt in 0..MAX_RETRIES {
                 if attempt > 0 {
-                    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-                    let base_delay = RETRY_BASE_DELAY_MS * (1 << (attempt - 1));
+                    // Exponential backoff with jitter: ~1s, ~2s, ~4s, ~8s, ~16s
+                    let base_delay = crate::provider::attempt_tracker::retry_backoff_delay(
+                        attempt,
+                        RETRY_BASE_DELAY_MS,
+                    );
                     // Add extra delay for transport errors (from last_error if available)
                     let extra_delay = if let Some(ref e) = last_error {
                         let err_str = e.to_string().to_lowercase();
@@ -701,13 +709,13 @@ impl Provider for ClaudeProvider {
                     } else {
                         0
                     };
-                    let delay = base_delay + extra_delay;
-                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    let delay = base_delay + std::time::Duration::from_millis(extra_delay);
+                    tokio::time::sleep(delay).await;
                     crate::logging::info(&format!(
                         "Retrying Claude CLI request (attempt {}/{}, delay {}ms)",
                         attempt + 1,
                         MAX_RETRIES,
-                        delay
+                        delay.as_millis()
                     ));
                 }
 

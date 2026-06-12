@@ -639,6 +639,13 @@ pub enum StreamEvent {
     ThinkingDone { duration_secs: f64 },
     /// Message complete (may have stop reason)
     MessageEnd { stop_reason: Option<String> },
+    /// A transient transport fault interrupted the stream and the provider is
+    /// about to retry the same request from the top. Consumers must discard
+    /// any partial output accumulated for the current attempt (text, tool
+    /// calls, reasoning) so the replayed stream renders cleanly instead of
+    /// duplicating. Safe for jcode HTTP providers because tools only execute
+    /// after the stream completes, so a partial attempt has no side effects.
+    RetryRollback { attempt: u32, max: u32 },
     /// Token usage update
     TokenUsage {
         input_tokens: Option<u64>,

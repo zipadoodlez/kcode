@@ -625,6 +625,53 @@ impl Agent {
                         self.last_status_detail = Some(detail.clone());
                         let _ = event_tx.send(ServerEvent::StatusDetail { detail });
                     }
+                    StreamEvent::RetryRollback { attempt, max } => {
+                        // A transient transport fault hit mid-stream after partial
+                        // output was already emitted; the provider is replaying the
+                        // request from the top. Discard everything accumulated for
+                        // this attempt so the replay doesn't duplicate output, and
+                        // tell the client to do the same.
+                        logging::warn(&format!(
+                            "Mid-stream retry rollback (attempt {}/{}): discarding partial output ({} text chars, {} tool calls)",
+                            attempt,
+                            max,
+                            text_content.len(),
+                            tool_calls.len(),
+                        ));
+                        log_agent_provider_stream_lifecycle(
+                            logging::LogLevel::Warn,
+                            self,
+                            "retry_rollback",
+                            api_start,
+                            vec![
+                                ("mode", "mpsc".to_string()),
+                                ("attempt", attempt.to_string()),
+                                ("max", max.to_string()),
+                                ("text_chars", text_content.len().to_string()),
+                                ("tool_calls", tool_calls.len().to_string()),
+                            ],
+                        );
+                        text_content.clear();
+                        text_wrapped_detected = false;
+                        tool_calls.clear();
+                        current_tool = None;
+                        current_tool_input.clear();
+                        tool_id_to_name.clear();
+                        sdk_tool_results.clear();
+                        generated_image_contexts.clear();
+                        reasoning_content.clear();
+                        reasoning_signature.clear();
+                        reasoning_open = false;
+                        openai_reasoning_items.clear();
+                        openai_native_compaction = None;
+                        saw_message_end = false;
+                        stop_reason = None;
+                        let _ = event_tx.send(ServerEvent::RetryRollback { attempt, max });
+                        let _ = event_tx.send(ServerEvent::ConnectionPhase {
+                            phase: crate::message::ConnectionPhase::Retrying { attempt, max }
+                                .to_string(),
+                        });
+                    }
                     StreamEvent::MessageEnd {
                         stop_reason: reason,
                     } => {

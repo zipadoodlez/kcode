@@ -2578,8 +2578,7 @@ impl App {
         let mut removed = 0usize;
         for idx in indices {
             let idx = idx.saturating_sub(removed);
-            if idx < self.display_messages.len() && self.display_messages[idx].role == "reasoning"
-            {
+            if idx < self.display_messages.len() && self.display_messages[idx].role == "reasoning" {
                 self.display_messages.remove(idx);
                 removed += 1;
             }
@@ -2671,6 +2670,46 @@ impl App {
         self.refresh_split_view_if_needed();
         self.streaming_md_renderer.borrow_mut().reset();
         crate::tui::mermaid::clear_streaming_preview_diagram();
+    }
+
+    /// Discard all client-side render state for the current streaming attempt:
+    /// the live streaming buffer, in-progress tool calls, thinking-line state,
+    /// and any assistant transcript messages that were already committed
+    /// mid-attempt at tool-call boundaries.
+    ///
+    /// Used when the provider reports a `RetryRollback`: a transient transport
+    /// fault interrupted the response mid-stream and the request is being
+    /// replayed from the top, so everything from the aborted attempt must
+    /// disappear or the replay would render duplicated output.
+    pub(super) fn rollback_streaming_attempt(&mut self) {
+        self.stream_buffer.clear();
+        self.clear_streaming_render_state();
+        self.streaming_tool_calls.clear();
+        self.batch_progress = None;
+        self.thought_line_inserted = false;
+        self.thinking_prefix_emitted = false;
+        self.thinking_buffer.clear();
+        self.thinking_start = None;
+        // Assistant text committed to the transcript during this attempt (a
+        // ToolStart boundary commits the pending streamed text) must also go;
+        // the retry re-streams the entire response. `push_display_message`
+        // counts the trailing run of assistant messages and resets on any
+        // user/tool/system fence, so this removes exactly the current
+        // attempt's committed segments and never touches earlier turns.
+        let to_remove = self.attempt_committed_assistant_messages;
+        for _ in 0..to_remove {
+            if self
+                .display_messages
+                .last()
+                .is_some_and(|m| m.role == "assistant")
+            {
+                let idx = self.display_messages.len() - 1;
+                self.remove_display_message(idx);
+            } else {
+                break;
+            }
+        }
+        self.attempt_committed_assistant_messages = 0;
     }
 
     pub(super) fn take_streaming_text(&mut self) -> String {

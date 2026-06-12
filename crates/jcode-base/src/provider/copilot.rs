@@ -426,12 +426,15 @@ impl CopilotApiProvider {
 
         for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
-                let delay = RETRY_BASE_DELAY_MS * (1 << (attempt - 1));
+                let delay = crate::provider::attempt_tracker::retry_backoff_delay(
+                    attempt,
+                    RETRY_BASE_DELAY_MS,
+                );
                 crate::logging::info(&format!(
                     "Retrying Copilot API request (attempt {}/{}) after {}ms",
                     attempt + 1,
                     MAX_RETRIES,
-                    delay
+                    delay.as_millis()
                 ));
                 let _ = tx
                     .send(Ok(StreamEvent::ConnectionPhase {
@@ -441,7 +444,7 @@ impl CopilotApiProvider {
                         },
                     }))
                     .await;
-                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                tokio::time::sleep(delay).await;
             }
 
             crate::logging::info(&format!(
@@ -558,21 +561,49 @@ impl CopilotApiProvider {
                 }))
                 .await;
 
+            // Track whether this attempt streams replay-visible output so a
+            // mid-stream transport fault can roll the partial output back on
+            // the consumer before the retry replays the response from the top.
+            let (attempt_tx, attempt_guard) =
+                crate::provider::attempt_tracker::track_attempt_output(tx.clone());
+
             // Process SSE stream - returns Err on timeout/stream errors
-            match self.process_sse_stream(resp, tx.clone()).await {
-                Ok(()) => return,
+            match self.process_sse_stream(resp, attempt_tx).await {
+                Ok(()) => {
+                    let _ = attempt_guard.finish().await;
+                    return;
+                }
                 Err(e) => {
+                    let saw_output = attempt_guard.finish().await;
                     // Full anyhow chain ({:#}) so a `.context(...)`-wrapped
                     // transport cause (e.g. TLS BadRecordMac) is visible to the
                     // retry classifier.
                     let error_str = format!("{e:#}").to_lowercase();
                     if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
-                        crate::logging::info(&format!(
-                            "Copilot stream failed (attempt {}/{}), will retry: {}",
-                            attempt + 1,
-                            MAX_RETRIES,
-                            e
-                        ));
+                        if saw_output {
+                            // Partial output already reached the consumer; tell
+                            // it to discard the partial attempt so the retried
+                            // response replays cleanly instead of duplicating.
+                            crate::logging::warn(&format!(
+                                "Copilot stream failed after partial output (attempt {}/{}); rolling back partial attempt and retrying: {}",
+                                attempt + 1,
+                                MAX_RETRIES,
+                                e
+                            ));
+                            let _ = tx
+                                .send(Ok(StreamEvent::RetryRollback {
+                                    attempt: attempt + 2,
+                                    max: MAX_RETRIES,
+                                }))
+                                .await;
+                        } else {
+                            crate::logging::info(&format!(
+                                "Copilot stream failed (attempt {}/{}), will retry: {}",
+                                attempt + 1,
+                                MAX_RETRIES,
+                                e
+                            ));
+                        }
                         last_error = Some(e);
                         continue;
                     }

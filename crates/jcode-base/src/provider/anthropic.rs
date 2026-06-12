@@ -1423,8 +1423,8 @@ async fn run_stream_with_retries(
 
     for attempt in 0..MAX_RETRIES {
         if attempt > 0 {
-            // Exponential backoff: 1s, 2s, 4s
-            let delay = RETRY_BASE_DELAY_MS * (1 << (attempt - 1));
+            // Exponential backoff with jitter: ~1s, ~2s, ~4s
+            let delay = super::attempt_tracker::retry_backoff_delay(attempt, RETRY_BASE_DELAY_MS);
             let _ = tx
                 .send(Ok(StreamEvent::ConnectionPhase {
                     phase: crate::message::ConnectionPhase::Retrying {
@@ -1433,7 +1433,7 @@ async fn run_stream_with_retries(
                     },
                 }))
                 .await;
-            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            tokio::time::sleep(delay).await;
             crate::logging::info(&format!(
                 "Retrying Anthropic API request (attempt {}/{})",
                 attempt + 1,
@@ -1441,19 +1441,28 @@ async fn run_stream_with_retries(
             ));
         }
 
+        // Track whether this attempt streams replay-visible output so a
+        // mid-stream transport fault can roll the partial output back on the
+        // consumer before the retry replays the response from the top.
+        let (attempt_tx, attempt_guard) = super::attempt_tracker::track_attempt_output(tx.clone());
+
         match stream_response(
             client.clone(),
             token.clone(),
             is_oauth,
             request.clone(),
-            tx.clone(),
+            attempt_tx,
             &model_name,
             &oauth_session_id,
         )
         .await
         {
-            Ok(()) => return, // Success
+            Ok(()) => {
+                let _ = attempt_guard.finish().await;
+                return; // Success
+            }
             Err(e) => {
+                let saw_output = attempt_guard.finish().await;
                 // Use the full anyhow source chain ({:#}) rather than just the top
                 // context. The underlying cause (e.g. the HTTP/2 "stream error" or
                 // a connection reset) lives deeper than "Failed to send request to
@@ -1495,7 +1504,24 @@ async fn run_stream_with_retries(
 
                 // Check if this is a transient/retryable error
                 if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
-                    crate::logging::info(&format!("Transient error, will retry: {}", e));
+                    if saw_output {
+                        // The fault hit mid-stream after partial output reached
+                        // the consumer. Tell it to discard the partial attempt
+                        // so the retried response replays cleanly instead of
+                        // duplicating.
+                        crate::logging::warn(&format!(
+                            "Transient error after partial output; rolling back partial attempt and retrying: {}",
+                            e
+                        ));
+                        let _ = tx
+                            .send(Ok(StreamEvent::RetryRollback {
+                                attempt: attempt + 2,
+                                max: MAX_RETRIES,
+                            }))
+                            .await;
+                    } else {
+                        crate::logging::info(&format!("Transient error, will retry: {}", e));
+                    }
                     last_error = Some(e);
                     continue;
                 }

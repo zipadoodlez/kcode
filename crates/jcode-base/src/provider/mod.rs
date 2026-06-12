@@ -3,6 +3,7 @@ mod account_failover;
 pub mod activation;
 pub mod anthropic;
 pub mod antigravity;
+mod attempt_tracker;
 pub mod bedrock;
 mod catalog_routes;
 pub mod claude;
