@@ -44,7 +44,8 @@ impl App {
         let threshold = if todos.is_empty() {
             cfg.turn_complete_min_secs
         } else {
-            cfg.turn_complete_todo_min_secs.min(cfg.turn_complete_min_secs)
+            cfg.turn_complete_todo_min_secs
+                .min(cfg.turn_complete_min_secs)
         };
         if (duration as u64) < threshold.max(1) {
             return;
@@ -97,7 +98,10 @@ pub(super) fn build_turn_notification(
     if let Some(progress) = todo_progress_line(todos) {
         body.push_str(&progress);
     }
-    if let Some(snippet) = last_assistant_text.map(summary_snippet).filter(|s| !s.is_empty()) {
+    if let Some(snippet) = last_assistant_text
+        .map(summary_snippet)
+        .filter(|s| !s.is_empty())
+    {
         if !body.is_empty() {
             body.push_str(" — ");
         }
@@ -138,10 +142,7 @@ fn summary_snippet(text: &str) -> String {
         .lines()
         .map(str::trim)
         .find(|l| {
-            !l.is_empty()
-                && !l.starts_with("```")
-                && !l.starts_with('|')
-                && !l.starts_with("---")
+            !l.is_empty() && !l.starts_with("```") && !l.starts_with('|') && !l.starts_with("---")
         })
         .unwrap_or("");
     let cleaned = strip_markdown_inline(line);

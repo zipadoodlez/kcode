@@ -420,10 +420,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     if cfg!(target_os = "macos") {
         // On macOS, Cmd+Left/Right default to effort cycling; Home/End and
         // Cmd+A/E still jump to the start/end of the input.
-        lines.push(key_entry(
-            "Home / End",
-            "Move to start / end of input",
-        ));
+        lines.push(key_entry("Home / End", "Move to start / end of input"));
     } else {
         lines.push(key_entry(
             "Cmd/Super+Left / Right",
