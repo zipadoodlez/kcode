@@ -718,6 +718,12 @@ fn spawn_command_in_new_terminal(
     title: &str,
     cwd: &Path,
 ) -> anyhow::Result<bool> {
+    if cfg!(test) {
+        // Never launch real terminal windows from unit tests. Server-event
+        // handlers (e.g. SplitResponse) call this with current_exe(), which in
+        // tests is the libtest harness and would pop up a broken window.
+        return Ok(false);
+    }
     let command = crate::terminal_launch::TerminalCommand::new(program, args.to_vec())
         .title(title.to_string());
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
@@ -752,6 +758,10 @@ fn build_fresh_session_command(socket: Option<&str>) -> crate::terminal_launch::
 /// same server socket when one is configured. Returns Ok(true) when a terminal
 /// was launched, Ok(false) when no supported terminal was found.
 pub(super) fn spawn_fresh_session_in_new_terminal(cwd: &Path) -> anyhow::Result<bool> {
+    if cfg!(test) {
+        // Never launch real terminal windows from unit tests.
+        return Ok(false);
+    }
     let socket = std::env::var("JCODE_SOCKET").ok();
     let command = build_fresh_session_command(socket.as_deref());
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
