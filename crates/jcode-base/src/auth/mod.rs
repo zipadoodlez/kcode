@@ -47,10 +47,23 @@ use std::path::Path;
 use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 
-static AUTH_STATUS_CACHE: std::sync::LazyLock<RwLock<Option<(AuthStatus, Instant)>>> =
+/// Cached auth status plus the `JCODE_HOME` it was computed under.
+///
+/// Auth probes read credential files relative to `JCODE_HOME`. Tests swap
+/// `JCODE_HOME` to per-test temp dirs, and a status computed under one home
+/// must never be served for another (issue #361: parallel provider tests
+/// intermittently observed another test's auth snapshot through this global
+/// cache). In production the home never changes, so the key check is free.
+type CachedAuthStatus = (AuthStatus, Instant, Option<std::ffi::OsString>);
+
+static AUTH_STATUS_CACHE: std::sync::LazyLock<RwLock<Option<CachedAuthStatus>>> =
     std::sync::LazyLock::new(|| RwLock::new(None));
-static AUTH_STATUS_FAST_CACHE: std::sync::LazyLock<RwLock<Option<(AuthStatus, Instant)>>> =
+static AUTH_STATUS_FAST_CACHE: std::sync::LazyLock<RwLock<Option<CachedAuthStatus>>> =
     std::sync::LazyLock::new(|| RwLock::new(None));
+
+fn auth_cache_home_key() -> Option<std::ffi::OsString> {
+    std::env::var_os("JCODE_HOME")
+}
 
 const AUTH_STATUS_CACHE_TTL_SECS: u64 = 30;
 const AUTH_STATUS_FAST_CACHE_TTL_SECS: u64 = 60;
@@ -208,9 +221,11 @@ impl AuthStatus {
     /// Check all authentication sources and return their status.
     /// Results are cached for 30 seconds to avoid expensive PATH scanning on every frame.
     pub fn check() -> Self {
+        let home_key = auth_cache_home_key();
         if let Ok(cache) = AUTH_STATUS_CACHE.read()
-            && let Some((ref status, ref when)) = *cache
+            && let Some((ref status, ref when, ref cached_home)) = *cache
             && when.elapsed().as_secs() < AUTH_STATUS_CACHE_TTL_SECS
+            && *cached_home == home_key
         {
             return status.clone();
         }
@@ -218,10 +233,10 @@ impl AuthStatus {
         let status = Self::check_uncached();
 
         if let Ok(mut cache) = AUTH_STATUS_CACHE.write() {
-            *cache = Some((status.clone(), Instant::now()));
+            *cache = Some((status.clone(), Instant::now(), home_key.clone()));
         }
         if let Ok(mut cache) = AUTH_STATUS_FAST_CACHE.write() {
-            *cache = Some((status.clone(), Instant::now()));
+            *cache = Some((status.clone(), Instant::now(), home_key));
         }
 
         status
@@ -235,23 +250,26 @@ impl AuthStatus {
     /// forever: external credential files may be deleted or replaced while the
     /// process is running.
     pub fn check_fast() -> Self {
+        let home_key = auth_cache_home_key();
         if let Ok(cache) = AUTH_STATUS_CACHE.read()
-            && let Some((ref status, ref when)) = *cache
+            && let Some((ref status, ref when, ref cached_home)) = *cache
             && when.elapsed().as_secs() < AUTH_STATUS_CACHE_TTL_SECS
+            && *cached_home == home_key
         {
             return status.clone();
         }
 
         if let Ok(cache) = AUTH_STATUS_FAST_CACHE.read()
-            && let Some((ref status, ref when)) = *cache
+            && let Some((ref status, ref when, ref cached_home)) = *cache
             && when.elapsed().as_secs() < AUTH_STATUS_FAST_CACHE_TTL_SECS
+            && *cached_home == home_key
         {
             return status.clone();
         }
 
         let status = Self::check_uncached_fast();
         if let Ok(mut cache) = AUTH_STATUS_FAST_CACHE.write() {
-            *cache = Some((status.clone(), Instant::now()));
+            *cache = Some((status.clone(), Instant::now(), home_key));
         }
 
         status

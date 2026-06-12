@@ -455,7 +455,8 @@ fn auth_status_check_fast_ignores_expired_full_cache() {
         ))
         .expect("stale cache timestamp");
 
-    *AUTH_STATUS_CACHE.write().expect("auth cache lock") = Some((stale_status, stale_when));
+    *AUTH_STATUS_CACHE.write().expect("auth cache lock") =
+        Some((stale_status, stale_when, auth_cache_home_key()));
     *AUTH_STATUS_FAST_CACHE
         .write()
         .expect("fast auth cache lock") = None;
