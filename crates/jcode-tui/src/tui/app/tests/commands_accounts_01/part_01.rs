@@ -776,7 +776,7 @@ fn test_goals_command_opens_overview_in_side_panel() {
         .display_messages()
         .last()
         .expect("missing goals message");
-    assert!(msg.content.contains("Opened goals overview"));
+    assert!(msg.content.contains("Opened initiatives overview"));
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
