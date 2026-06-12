@@ -715,9 +715,9 @@ pub struct KeybindingsConfig {
     pub model_switch_next: String,
     /// Model switch previous key (default: "ctrl+shift+tab")
     pub model_switch_prev: String,
-    /// Effort increase key (default: "alt+right")
+    /// Effort increase key (default: "cmd+right" on macOS, "alt+right" elsewhere)
     pub effort_increase: String,
-    /// Effort decrease key (default: "alt+left")
+    /// Effort decrease key (default: "cmd+left" on macOS, "alt+left" elsewhere)
     pub effort_decrease: String,
     /// Centered mode toggle key (default: "alt+c")
     pub centered_toggle: String,
@@ -1143,6 +1143,40 @@ impl Default for AmbientConfig {
             proactive_work: true,
             work_branch_prefix: "ambient/".to_string(),
             visible: true,
+        }
+    }
+}
+
+/// Desktop notification configuration for interactive sessions.
+///
+/// Unlike `[safety]` (ambient-mode ntfy/email/channel notifications), this
+/// section controls lightweight local desktop notifications for the normal
+/// interactive TUI, e.g. "agent finished a long turn".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NotificationsConfig {
+    /// Send a desktop notification when an agent turn completes (default: true).
+    /// Notifications fire only for long turns (see thresholds below) and, by
+    /// default, only while the terminal window is unfocused.
+    pub turn_complete: bool,
+    /// Minimum turn duration, in seconds, before a completed turn notifies
+    /// (default: 120).
+    pub turn_complete_min_secs: u64,
+    /// Lower duration threshold, in seconds, used when the session has todos
+    /// recorded, since todos indicate longer task-style work (default: 30).
+    pub turn_complete_todo_min_secs: u64,
+    /// Only notify while the terminal window is unfocused (default: true).
+    /// Requires a terminal that reports focus events (most modern terminals).
+    pub turn_complete_only_when_unfocused: bool,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            turn_complete: true,
+            turn_complete_min_secs: 120,
+            turn_complete_todo_min_secs: 30,
+            turn_complete_only_when_unfocused: true,
         }
     }
 }

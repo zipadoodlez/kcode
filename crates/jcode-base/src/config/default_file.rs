@@ -30,8 +30,10 @@ model_switch_next = "ctrl+tab"
 model_switch_prev = "ctrl+shift+tab"
 
 # Reasoning effort switching (OpenAI models)
-effort_increase = "alt+right"
-effort_decrease = "alt+left"
+# Defaults: cmd+right / cmd+left on macOS, alt+right / alt+left elsewhere.
+# Alt/Option+Left/Right move by word in the input box.
+effort_increase = "@EFFORT_INCREASE@"
+effort_decrease = "@EFFORT_DECREASE@"
 
 # Centered mode toggle key
 centered_toggle = "alt+c"
@@ -359,6 +361,24 @@ swarm_spawn_mode = "visible"
 #   focus_hook = "~/bin/jcode-focus-router"
 # focus_hook = ""
 
+[notifications]
+# Desktop notifications for interactive sessions (macOS Notification Center /
+# Linux notify-send). Separate from [safety], which covers ambient-mode
+# ntfy/email/channel notifications.
+#
+# Notify when an agent turn finishes. Fires only for long turns and, by
+# default, only while the terminal window is unfocused. The notification is a
+# compact summary: session name, duration, todo progress, and a snippet of the
+# final assistant message.
+# turn_complete = true
+# Minimum turn duration (seconds) before notifying (default: 120)
+# turn_complete_min_secs = 120
+# Lower threshold (seconds) when the session has todos, since todos indicate
+# task-style work worth reporting sooner (default: 30)
+# turn_complete_todo_min_secs = 30
+# Only notify while the terminal window is unfocused (default: true)
+# turn_complete_only_when_unfocused = true
+
 [hooks]
 # Lifecycle hooks: external commands jcode runs at well-defined points so other
 # programs can observe or gate agent behavior. Commands are parsed shell-style
@@ -488,6 +508,16 @@ desktop_notifications = true
 # jade_relay_launch_enabled = false  # Allow cloud device commands to open headed local sessions.
 # jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
 	"#;
+
+        // Substitute platform-specific defaults from the keybinding registry.
+        let p = jcode_config_types::KeybindingPlatform::current();
+        let effort_increase =
+            jcode_config_types::default_binding("effort_increase", p).unwrap_or("alt+right");
+        let effort_decrease =
+            jcode_config_types::default_binding("effort_decrease", p).unwrap_or("alt+left");
+        let default_content = default_content
+            .replace("@EFFORT_INCREASE@", effort_increase)
+            .replace("@EFFORT_DECREASE@", effort_decrease);
 
         std::fs::write(&path, default_content)?;
         Ok(path)

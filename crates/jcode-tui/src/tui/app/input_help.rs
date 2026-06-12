@@ -83,7 +83,7 @@ impl App {
                 "/judge\nLaunch a one-shot headed judge session immediately.\n\nThe judge will DM this session when done. If OpenAI ChatGPT OAuth is available, it prefers gpt-5.5."
             }
             "effort" => {
-                "/effort\nShow current reasoning effort.\n\n/effort <level>\nSet reasoning effort (none|low|medium|high|xhigh).\n\nAlso: Alt+Left / Alt+Right to cycle."
+                "/effort\nShow current reasoning effort.\n\n/effort <level>\nSet reasoning effort (none|low|medium|high|xhigh).\n\nAlso: {effort_keys} to cycle."
             }
             "fast" => {
                 "/fast\nShow whether fast mode is enabled, plus the saved default.\n\n/fast on\nEnable fast mode (service_tier = priority) for the current session.\n\n/fast off\nDisable fast mode for the current session.\n\n/fast status\nShow current fast-mode status.\n\n/fast default on\nSave fast mode as the default on startup.\n\n/fast default off\nSave fast mode as the default off on startup.\n\n/fast default status\nShow the saved fast-mode default."
@@ -185,6 +185,10 @@ impl App {
             }
             _ => return None,
         };
-        Some(help.to_string())
+        let help = help.replace(
+            "{effort_keys}",
+            &crate::tui::keybind::effort_switch_keys_label(),
+        );
+        Some(help)
     }
 }

@@ -1323,11 +1323,12 @@ pub(super) fn delete_input_word_back(app: &mut App) {
 
 pub(super) fn handle_alt_key(app: &mut App, code: KeyCode) -> bool {
     match code {
-        KeyCode::Char('b') => {
+        // Alt/Option+Left/Right move by word, matching Alt+B / Alt+F.
+        KeyCode::Left | KeyCode::Char('b') => {
             app.cursor_pos = app.find_word_boundary_back();
             true
         }
-        KeyCode::Char('f') => {
+        KeyCode::Right | KeyCode::Char('f') => {
             app.cursor_pos = app.find_word_boundary_forward();
             true
         }

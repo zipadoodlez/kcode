@@ -386,7 +386,12 @@ async fn handle_remote_key_internal(
                 app.cursor_pos = app.find_word_boundary_back();
                 return Ok(());
             }
-            KeyCode::Char('f') => {
+            // Alt/Option+Left/Right move by word, matching Alt+B / Alt+F.
+            KeyCode::Left => {
+                app.cursor_pos = app.find_word_boundary_back();
+                return Ok(());
+            }
+            KeyCode::Char('f') | KeyCode::Right => {
                 app.cursor_pos = app.find_word_boundary_forward();
                 return Ok(());
             }
@@ -1050,9 +1055,10 @@ async fn handle_remote_key_internal(
                         })
                         .collect();
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Reasoning effort: {}\nAvailable: {}\nUse /effort <level> or Alt+Left / Alt+Right to change.",
+                        "Reasoning effort: {}\nAvailable: {}\nUse /effort <level> or {} to change.",
                         label,
-                        list.join(" · ")
+                        list.join(" · "),
+                        crate::tui::keybind::effort_switch_keys_label()
                     )));
                     return Ok(());
                 }

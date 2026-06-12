@@ -417,10 +417,19 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Cmd/Super+Backspace / Delete",
         "Delete previous word in input",
     ));
-    lines.push(key_entry(
-        "Cmd/Super+Left / Right",
-        "Move to start / end of input",
-    ));
+    if cfg!(target_os = "macos") {
+        // On macOS, Cmd+Left/Right default to effort cycling; Home/End and
+        // Cmd+A/E still jump to the start/end of the input.
+        lines.push(key_entry(
+            "Home / End",
+            "Move to start / end of input",
+        ));
+    } else {
+        lines.push(key_entry(
+            "Cmd/Super+Left / Right",
+            "Move to start / end of input",
+        ));
+    }
     lines.push(key_entry("Cmd/Super+Z", "Undo input edit"));
     lines.push(key_entry("Cmd/Super+X / V", "Cut input / paste clipboard"));
     lines.push(key_entry("Ctrl+S", "Stash / pop input (save for later)"));
@@ -449,7 +458,16 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(key_entry("Alt+Y", "Toggle chat selection/copy mode"));
     lines.push(key_entry("Alt+S", "Toggle typing scroll lock"));
     lines.push(key_entry("Ctrl+P", "Toggle auto-poke for incomplete todos"));
-    lines.push(key_entry("Alt+Left / Right", "Cycle reasoning effort"));
+    lines.push(key_entry(
+        &crate::tui::keybind::effort_switch_keys_label(),
+        "Cycle reasoning effort",
+    ));
+    if cfg!(target_os = "macos") {
+        lines.push(key_entry(
+            "Alt+Left / Right",
+            "Move by word in input (also Alt+B / Alt+F)",
+        ));
+    }
     if let Some(label) = app.dictation_key_label() {
         lines.push(key_entry(&label, "Run configured dictation"));
     }

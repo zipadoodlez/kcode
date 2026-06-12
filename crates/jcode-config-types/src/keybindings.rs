@@ -232,13 +232,15 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "effort_increase",
         description: "Increase reasoning effort",
-        macos: PlatformDefault::dev("alt+right"),
+        // macOS uses Cmd+Right so Option+Right stays free for word navigation.
+        macos: PlatformDefault::dev("cmd+right"),
         other: PlatformDefault::dev("alt+right"),
     },
     KeybindingDefault {
         id: "effort_decrease",
         description: "Decrease reasoning effort",
-        macos: PlatformDefault::dev("alt+left"),
+        // macOS uses Cmd+Left so Option+Left stays free for word navigation.
+        macos: PlatformDefault::dev("cmd+left"),
         other: PlatformDefault::dev("alt+left"),
     },
     KeybindingDefault {

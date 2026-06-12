@@ -507,10 +507,48 @@ fn test_handle_key_super_left_right_move_to_edges() {
     let mut app = create_test_app();
     app.set_input_for_test("hello world");
 
-    app.handle_key(KeyCode::Left, KeyModifiers::SUPER).unwrap();
+    if cfg!(target_os = "macos") {
+        // On macOS, Cmd+Left/Right default to effort cycling, so the cursor
+        // must NOT move; Home/End still jump to the edges.
+        let before = app.cursor_pos();
+        app.handle_key(KeyCode::Left, KeyModifiers::SUPER).unwrap();
+        assert_eq!(app.cursor_pos(), before);
+
+        app.handle_key(KeyCode::Home, KeyModifiers::empty()).unwrap();
+        assert_eq!(app.cursor_pos(), 0);
+
+        app.handle_key(KeyCode::End, KeyModifiers::empty()).unwrap();
+        assert_eq!(app.cursor_pos(), "hello world".len());
+    } else {
+        app.handle_key(KeyCode::Left, KeyModifiers::SUPER).unwrap();
+        assert_eq!(app.cursor_pos(), 0);
+
+        app.handle_key(KeyCode::Right, KeyModifiers::SUPER).unwrap();
+        assert_eq!(app.cursor_pos(), "hello world".len());
+    }
+}
+
+#[test]
+fn test_handle_key_alt_left_right_move_by_word() {
+    // On non-macOS platforms Alt+Left/Right default to effort cycling, so the
+    // word-move behavior only applies where Cmd+Left/Right own effort cycling.
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut app = create_test_app();
+    app.set_input_for_test("hello world");
+
+    app.handle_key(KeyCode::Left, KeyModifiers::ALT).unwrap();
+    assert_eq!(app.cursor_pos(), "hello ".len());
+
+    app.handle_key(KeyCode::Left, KeyModifiers::ALT).unwrap();
     assert_eq!(app.cursor_pos(), 0);
 
-    app.handle_key(KeyCode::Right, KeyModifiers::SUPER).unwrap();
+    // Forward lands at the start of the next word, matching Alt+F.
+    app.handle_key(KeyCode::Right, KeyModifiers::ALT).unwrap();
+    assert_eq!(app.cursor_pos(), "hello ".len());
+
+    app.handle_key(KeyCode::Right, KeyModifiers::ALT).unwrap();
     assert_eq!(app.cursor_pos(), "hello world".len());
 }
 
