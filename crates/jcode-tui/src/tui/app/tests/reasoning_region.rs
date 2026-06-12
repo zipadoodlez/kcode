@@ -581,3 +581,102 @@ fn trace_count(app: &App) -> usize {
         .filter(|m| m.role == "reasoning")
         .count()
 }
+
+#[test]
+fn gc_dissolves_stale_traces_only_when_provably_offscreen() {
+    // Stale traces (all but the most recent) are GC'd only once the transcript
+    // has grown a full viewport past their anchor point, so removal can never
+    // cause visible motion while tail-following.
+    let mut app = create_test_app();
+    app.is_processing = true;
+
+    // Two traces: the first anchored when the transcript was 10 lines tall.
+    crate::tui::ui::set_last_total_wrapped_lines(10);
+    app.open_reasoning_region();
+    app.append_reasoning_text("old thought\n");
+    app.close_reasoning_region(None);
+
+    crate::tui::ui::set_last_total_wrapped_lines(40);
+    app.open_reasoning_region();
+    app.append_reasoning_text("current thought\n");
+    app.close_reasoning_region(None);
+
+    let viewport_h = 20u16;
+    crate::tui::ui::record_layout_snapshot(
+        ratatui::layout::Rect::new(0, 0, 80, viewport_h),
+        None,
+        None,
+        None,
+    );
+
+    // Transcript hasn't grown enough yet: 25 - 10 = 15 <= 20 + 2 margin.
+    crate::tui::ui::set_last_total_wrapped_lines(25);
+    assert!(!app.gc_offscreen_reasoning_traces());
+    assert_eq!(trace_count(&app), 2, "no GC while possibly on screen");
+
+    // Transcript grew a viewport past the first anchor: 40 - 10 = 30 > 22.
+    crate::tui::ui::set_last_total_wrapped_lines(40);
+    assert!(app.gc_offscreen_reasoning_traces());
+    assert_eq!(trace_count(&app), 1, "stale off-screen trace dissolved");
+    assert!(
+        app.display_messages
+            .iter()
+            .any(|m| m.role == "reasoning" && m.content.contains("current thought")),
+        "the most recent trace always survives"
+    );
+}
+
+#[test]
+fn gc_never_runs_while_user_scrolled_up() {
+    let mut app = create_test_app();
+    app.is_processing = true;
+
+    crate::tui::ui::set_last_total_wrapped_lines(10);
+    app.open_reasoning_region();
+    app.append_reasoning_text("old thought\n");
+    app.close_reasoning_region(None);
+    app.open_reasoning_region();
+    app.append_reasoning_text("current thought\n");
+    app.close_reasoning_region(None);
+
+    crate::tui::ui::record_layout_snapshot(
+        ratatui::layout::Rect::new(0, 0, 80, 20),
+        None,
+        None,
+        None,
+    );
+    crate::tui::ui::set_last_total_wrapped_lines(200);
+
+    // Scrolled up: the user may be reading the old trace; never remove it.
+    app.auto_scroll_paused = true;
+    assert!(!app.gc_offscreen_reasoning_traces());
+    assert_eq!(trace_count(&app), 2);
+
+    // Back at the tail: GC may proceed.
+    app.auto_scroll_paused = false;
+    assert!(app.gc_offscreen_reasoning_traces());
+    assert_eq!(trace_count(&app), 1);
+}
+
+#[test]
+fn gc_keeps_single_trace_indefinitely() {
+    // With only one (current) trace there is nothing stale to collect, no
+    // matter how much the transcript grows.
+    let mut app = create_test_app();
+    app.is_processing = true;
+
+    crate::tui::ui::set_last_total_wrapped_lines(10);
+    app.open_reasoning_region();
+    app.append_reasoning_text("only thought\n");
+    app.close_reasoning_region(None);
+
+    crate::tui::ui::record_layout_snapshot(
+        ratatui::layout::Rect::new(0, 0, 80, 20),
+        None,
+        None,
+        None,
+    );
+    crate::tui::ui::set_last_total_wrapped_lines(500);
+    assert!(!app.gc_offscreen_reasoning_traces());
+    assert_eq!(trace_count(&app), 1, "the current thought is never GC'd");
+}

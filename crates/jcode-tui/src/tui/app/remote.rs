@@ -80,6 +80,8 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     app.progress_mouse_scroll_animation();
     needs_redraw |= app.update_chat_overscroll();
     needs_redraw |= app.update_pinned_images_auto_hide();
+    // Dissolve stale (off-screen) reasoning traces with zero visible motion.
+    needs_redraw |= app.gc_offscreen_reasoning_traces();
     needs_redraw |= dispatch_compacted_history_load(app, remote).await;
     // Adopt the resolved scroll position once a frame containing newly loaded
     // older history has rendered, so manual scrolling resumes seamlessly.

@@ -131,6 +131,17 @@ struct PendingLocalTransfer {
     receiver: mpsc::Receiver<anyhow::Result<PreparedTransferSession>>,
 }
 
+/// A reasoning trace anchored in the transcript during the current turn
+/// (`current` display mode). `wrapped_lines_at_anchor` snapshots the
+/// transcript's total wrapped-line count when the trace anchored; once the
+/// transcript grows a viewport past that point the trace is provably above
+/// the tail-following viewport and can be removed with zero visible motion.
+#[derive(Debug, Clone, Copy)]
+struct TurnReasoningTrace {
+    display_index: usize,
+    wrapped_lines_at_anchor: usize,
+}
+
 #[derive(Debug, Clone)]
 struct LocalRewindUndoSnapshot {
     messages: Vec<StoredMessage>,
@@ -790,12 +801,14 @@ pub struct App {
     // closed reasoning block back out of the stream in place, keeping any answer
     // text that preceded it in order.
     reasoning_block_start: Option<usize>,
-    // Display-message indices of reasoning traces committed during the current
-    // turn (`current` reasoning-display mode anchors each closed trace in the
-    // transcript flow). Cleared - and the messages removed - when the next user
-    // prompt is submitted, keeping `current` mode ephemeral across turns
-    // without ever moving a trace while it is on screen.
-    turn_reasoning_trace_indices: Vec<usize>,
+    // Reasoning traces anchored during the current turn (`current`
+    // reasoning-display mode). Each entry tracks the display index plus the
+    // transcript's wrapped-line total when it anchored, so stale traces can be
+    // garbage-collected once they are provably scrolled off-screen (no visible
+    // motion). All remaining traces are removed when the next user prompt is
+    // submitted, keeping `current` mode ephemeral across turns without ever
+    // moving a trace while it is visible.
+    turn_reasoning_traces: Vec<TurnReasoningTrace>,
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec
