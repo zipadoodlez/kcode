@@ -953,6 +953,88 @@ fn test_remote_anthropic_api_key_accrues_cost_from_token_usage() {
 }
 
 #[test]
+fn test_remote_fast_mode_tier_bills_premium_rates_and_reprices_on_toggle() {
+    // `/fast on` (priority tier) bills premium per-token rates on Opus 4.6
+    // ($30/$150 vs $5/$25). The pricing memo key includes the tier so toggling
+    // fast mode mid-session re-resolves prices instead of reusing stale ones.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_provider_name = Some("Claude".to_string());
+    app.remote_provider_model = Some("claude-opus-4-6".to_string());
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
+
+    // Each TokenUsage below simulates a separate completed API call, so reset
+    // the per-call usage bookkeeping between them (a real session does this at
+    // call start).
+    let reset_call_state = |app: &mut App| {
+        app.kv_cache.current_api_usage_recorded = false;
+        app.streaming.streaming_input_tokens = 0;
+        app.streaming.streaming_output_tokens = 0;
+        app.streaming.streaming_cache_read_tokens = None;
+        app.streaming.streaming_cache_creation_tokens = None;
+    };
+
+    // Standard tier first: 1k in / 1k out = $0.005 + $0.025 = $0.030.
+    app.remote_service_tier = None;
+    reset_call_state(&mut app);
+    app.handle_server_event(
+        crate::protocol::ServerEvent::TokenUsage {
+            input: 1_000,
+            output: 1_000,
+            cache_read_input: None,
+            cache_creation_input: None,
+        },
+        &mut remote,
+    );
+    let standard_cost = app.cost.total_cost;
+    assert!(
+        (standard_cost - 0.030).abs() < 1e-4,
+        "standard-tier cost should be ~$0.030, got ${standard_cost:.4}"
+    );
+
+    // Fast mode on: same usage now bills $0.030 + $0.150 = $0.180.
+    app.remote_service_tier = Some("auto".to_string());
+    reset_call_state(&mut app);
+    app.handle_server_event(
+        crate::protocol::ServerEvent::TokenUsage {
+            input: 1_000,
+            output: 1_000,
+            cache_read_input: None,
+            cache_creation_input: None,
+        },
+        &mut remote,
+    );
+    let fast_call_cost = app.cost.total_cost - standard_cost;
+    assert!(
+        (fast_call_cost - 0.180).abs() < 1e-4,
+        "fast-mode call cost should be ~$0.180, got ${fast_call_cost:.4}"
+    );
+
+    // Fast mode off again: pricing drops back to standard rates.
+    app.remote_service_tier = None;
+    reset_call_state(&mut app);
+    let before = app.cost.total_cost;
+    app.handle_server_event(
+        crate::protocol::ServerEvent::TokenUsage {
+            input: 1_000,
+            output: 1_000,
+            cache_read_input: None,
+            cache_creation_input: None,
+        },
+        &mut remote,
+    );
+    let off_call_cost = app.cost.total_cost - before;
+    assert!(
+        (off_call_cost - 0.030).abs() < 1e-4,
+        "post-toggle standard cost should be ~$0.030, got ${off_call_cost:.4}"
+    );
+}
+
+#[test]
 fn test_info_widget_local_gemini_shows_oauth_auth_method() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("create temp dir");
@@ -1294,3 +1376,83 @@ fn test_remote_judge_shows_processing_until_split_response() {
 }
 
 // ====================================================================
+
+#[test]
+fn test_externally_started_turn_adopts_processing_state_and_settles_on_done() {
+    // A swarm wake / background-task wake / scheduled task can start a turn in
+    // this session without this client sending a message. The client must show
+    // the turn as in-progress (spinner) and settle it when the terminal Done
+    // arrives, instead of staying visually idle while text streams in.
+    let mut app = create_test_app();
+    app.is_remote = true;
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    assert!(!app.is_processing);
+    assert!(app.current_message_id.is_none());
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::TextDelta {
+            text: "Wake turn streaming text".to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(
+        app.is_processing,
+        "stream events while idle must adopt the externally started turn"
+    );
+    assert!(
+        app.processing_started.is_some(),
+        "adopted turn should start the elapsed/spinner clock"
+    );
+    assert!(
+        matches!(app.status, ProcessingStatus::Streaming),
+        "adopted turn should show streaming status, got {:?}",
+        app.status
+    );
+
+    app.handle_server_event(crate::protocol::ServerEvent::MessageEnd, &mut remote);
+    app.handle_server_event(crate::protocol::ServerEvent::Done { id: 0 }, &mut remote);
+
+    assert!(
+        !app.is_processing,
+        "terminal Done must settle the adopted turn"
+    );
+    assert!(matches!(app.status, ProcessingStatus::Idle));
+    assert!(app.processing_started.is_none());
+    assert!(
+        app.display_messages
+            .iter()
+            .any(|message| message.role == "assistant"
+                && message.content.contains("Wake turn streaming text")),
+        "adopted turn's streamed text should commit to the transcript"
+    );
+}
+
+#[test]
+fn test_externally_started_tool_turn_shows_running_tool_status() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolStart {
+            id: "tool_1".to_string(),
+            name: "bash".to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(app.is_processing);
+    assert!(
+        matches!(&app.status, ProcessingStatus::RunningTool(name) if name == "bash"),
+        "adopted tool turn should show the running tool, got {:?}",
+        app.status
+    );
+}

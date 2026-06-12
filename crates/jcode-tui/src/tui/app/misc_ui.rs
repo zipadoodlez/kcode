@@ -351,10 +351,18 @@ impl App {
     /// Resolve and cache per-model pricing for the active provider. Uses the
     /// unified resolver (curated static tables, then the OpenRouter caches,
     /// then the live models.dev catalog) so any metered provider gets real
-    /// per-model prices instead of the generic defaults. Re-resolves when the
-    /// active model changes.
+    /// per-model prices instead of the generic defaults. Honors the active
+    /// service tier (`/fast on` priority, OpenAI flex), which changes
+    /// per-token rates on premium models. Re-resolves when the model or tier
+    /// changes.
     fn refresh_cached_pricing(&mut self, model: &str, is_anthropic: bool, is_openai: bool) {
-        if self.cost.cached_price_model.as_deref() == Some(model) {
+        let service_tier = self.active_service_tier_for_pricing();
+        // Tier is part of the memo key so toggling `/fast on` re-prices.
+        let price_key = match service_tier.as_deref() {
+            Some(tier) => format!("{model}|{tier}"),
+            None => model.to_string(),
+        };
+        if self.cost.cached_price_model.as_deref() == Some(price_key.as_str()) {
             return;
         }
 
@@ -369,13 +377,17 @@ impl App {
             let runtime = active_runtime_provider_key();
             crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
         };
-        let estimate = crate::provider::pricing::metered_pricing_for_source(&source_key, model);
+        let estimate = crate::provider::pricing::metered_pricing_for_source_with_tier(
+            &source_key,
+            model,
+            service_tier.as_deref(),
+        );
 
         if let Some(estimate) = estimate {
             self.cost.cached_prompt_price = per_mtok(estimate.input_price_per_mtok_micros);
             self.cost.cached_completion_price = per_mtok(estimate.output_price_per_mtok_micros);
             self.cost.cached_cache_read_price = per_mtok(estimate.cache_read_price_per_mtok_micros);
-            self.cost.cached_price_model = Some(model.to_string());
+            self.cost.cached_price_model = Some(price_key);
             return;
         }
 
@@ -389,6 +401,21 @@ impl App {
             self.cost.cached_completion_price = None;
             self.cost.cached_cache_read_price = None;
             self.cost.cached_price_model = None;
+        }
+    }
+
+    /// Active service tier for pricing purposes: the server-reported tier for
+    /// remote sessions, the local provider's tier otherwise. `None` means the
+    /// standard tier.
+    fn active_service_tier_for_pricing(&self) -> Option<String> {
+        if self.is_remote {
+            self.remote_service_tier
+                .as_deref()
+                .map(str::trim)
+                .filter(|tier| !tier.is_empty())
+                .map(str::to_string)
+        } else {
+            self.provider.service_tier()
         }
     }
 
