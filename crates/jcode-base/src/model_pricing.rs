@@ -169,10 +169,16 @@ fn ensure_cache_fresh() -> Option<PricingCache> {
 /// Spawn one background refresh at a time. Safe to call from sync contexts;
 /// uses a thread + ad-hoc runtime when no Tokio runtime is active.
 pub fn schedule_refresh() {
-    // Keep tests hermetic: never hit the network from test builds, and let
-    // users opt out entirely.
-    if cfg!(any(test, feature = "test-support"))
-        || std::env::var_os("JCODE_DISABLE_PRICING_REFRESH").is_some()
+    // Keep tests hermetic: never hit the network from test builds (the
+    // `test-support` feature also covers downstream crates' test targets via
+    // feature unification), and let users opt out entirely.
+    // JCODE_FORCE_PRICING_REFRESH=1 re-enables the fetch for manual e2e checks
+    // (e.g. `cargo run --example pricing_e2e_check`, which builds with
+    // test-support unified in).
+    let forced = std::env::var_os("JCODE_FORCE_PRICING_REFRESH").is_some();
+    if !forced
+        && (cfg!(any(test, feature = "test-support"))
+            || std::env::var_os("JCODE_DISABLE_PRICING_REFRESH").is_some())
     {
         return;
     }
