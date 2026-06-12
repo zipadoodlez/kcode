@@ -439,6 +439,7 @@ dev_nightly_toolchain() {
   tc=$(rustup toolchain list 2>/dev/null | awk '/^nightly/ {print $1; exit}')
   tc=${tc%% *}
   [[ -n "$tc" ]] && printf '%s\n' "$tc"
+  return 0
 }
 
 configure_parallel_frontend() {
