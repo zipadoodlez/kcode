@@ -100,7 +100,7 @@ pub fn anthropic_effectively_1m(model: &str) -> bool {
 
 /// Strip the `[1m]` suffix to get the actual API model name.
 pub fn anthropic_strip_1m_suffix(model: &str) -> &str {
-    model.strip_suffix("[1m]").unwrap_or(model)
+    crate::model_id::strip_long_context_suffix(model)
 }
 
 /// Get the OAuth beta header value appropriate for the model.

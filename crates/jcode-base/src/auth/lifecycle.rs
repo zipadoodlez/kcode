@@ -256,14 +256,8 @@ fn preferred_model_rank(orders: &[&[&str]], model: &str) -> usize {
 /// live dated ids (`claude-haiku-4-5-20251001`) match bare canonical ids
 /// (`claude-haiku-4-5`).
 fn normalize_model_for_preference(model: &str) -> String {
-    let lowered = model.trim().to_ascii_lowercase();
-    let without_long_context = lowered.strip_suffix("[1m]").unwrap_or(&lowered);
-    match without_long_context.rsplit_once('-') {
-        Some((head, tail)) if tail.len() == 8 && tail.bytes().all(|byte| byte.is_ascii_digit()) => {
-            head.to_string()
-        }
-        _ => without_long_context.to_string(),
-    }
+    let canonical = jcode_provider_core::model_id::canonical(model);
+    jcode_provider_core::model_id::strip_date_suffix(&canonical).to_string()
 }
 
 fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResult) -> bool {

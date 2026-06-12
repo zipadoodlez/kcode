@@ -759,7 +759,7 @@ pub fn remote_model_routes_fallback(
             }
         }
 
-        if ALL_OPENAI_MODELS.contains(&model.as_str()) {
+        if jcode_provider_core::model_id::matches_known_model(model, ALL_OPENAI_MODELS) {
             let availability = model_availability_for_account(model);
             let (available, detail) = if auth.openai == AuthState::NotConfigured {
                 (false, "no credentials".to_string())

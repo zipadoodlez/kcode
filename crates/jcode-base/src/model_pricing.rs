@@ -131,7 +131,7 @@ pub fn models_dev_provider_id(jcode_provider: &str) -> Option<&'static str> {
 /// Strip jcode-local suffixes/prefixes a model id may carry before catalog
 /// lookup (`[1m]` long-context alias, `provider/` prefixes for OpenRouter ids).
 fn normalize_model_id(model: &str) -> &str {
-    model.strip_suffix("[1m]").unwrap_or(model).trim()
+    jcode_provider_core::model_id::strip_long_context_suffix(model).trim()
 }
 
 /// Look up live pricing for `model` under a jcode provider key. Returns `None`

@@ -102,14 +102,11 @@ pub fn default_model() -> &'static CuratedModel {
         .unwrap_or(&CURATED_MODELS[0])
 }
 
+/// Normalize a model id for curated-catalog matching: strips any `@provider`
+/// routing suffix, the `[1m]` long-context suffix, and lowercases.
 fn normalize_model_key(model: &str) -> String {
-    model
-        .trim()
-        .split('@')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase()
+    let base = model.trim().split('@').next().unwrap_or("").trim();
+    jcode_provider_core::model_id::canonical(base)
 }
 
 pub fn find_curated_model(model: &str) -> Option<&'static CuratedModel> {

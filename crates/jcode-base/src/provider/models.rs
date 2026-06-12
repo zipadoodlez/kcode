@@ -167,11 +167,7 @@ pub fn format_account_model_availability_detail(
 }
 
 pub(crate) fn normalize_model_id(model: &str) -> String {
-    let normalized = model.trim().to_ascii_lowercase();
-    normalized
-        .strip_suffix("[1m]")
-        .unwrap_or(&normalized)
-        .to_string()
+    jcode_provider_core::model_id::canonical(model)
 }
 
 fn normalize_provider_id(provider: &str) -> String {
@@ -997,9 +993,9 @@ pub fn provider_for_model_with_hint(
     let model = model.trim();
     if model.contains('@') {
         Some("openrouter")
-    } else if ALL_CLAUDE_MODELS.contains(&model) {
+    } else if jcode_provider_core::model_id::matches_known_model(model, ALL_CLAUDE_MODELS) {
         Some("claude")
-    } else if ALL_OPENAI_MODELS.contains(&model) {
+    } else if jcode_provider_core::model_id::matches_known_model(model, ALL_OPENAI_MODELS) {
         Some("openai")
     } else if crate::provider::bedrock::BedrockProvider::is_bedrock_model_id(model) {
         Some("bedrock")

@@ -71,16 +71,12 @@ pub fn is_listable_model_name(model: &str) -> bool {
 
 fn model_id_for_capability_lookup(model: &str, provider: Option<&str>) -> (String, bool) {
     let normalized = model.trim().to_ascii_lowercase();
-    let (base, is_1m) = if let Some(base) = normalized.strip_suffix("[1m]") {
-        (base.to_string(), true)
-    } else {
-        (normalized, false)
-    };
+    let (base, is_1m) = crate::model_id::split_long_context(&normalized);
 
     let lookup = if matches!(provider, Some("openrouter")) || base.contains('/') {
-        base.rsplit('/').next().unwrap_or(&base).to_string()
+        crate::model_id::slash_base(base).to_string()
     } else {
-        base
+        base.to_string()
     };
 
     (lookup, is_1m)
