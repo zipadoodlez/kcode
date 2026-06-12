@@ -107,7 +107,10 @@ mod tests {
 
     #[test]
     fn slash_base_takes_last_segment() {
-        assert_eq!(slash_base("anthropic/claude-sonnet-4-6"), "claude-sonnet-4-6");
+        assert_eq!(
+            slash_base("anthropic/claude-sonnet-4-6"),
+            "claude-sonnet-4-6"
+        );
         assert_eq!(slash_base("claude-sonnet-4-6"), "claude-sonnet-4-6");
     }
 
