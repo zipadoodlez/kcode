@@ -97,49 +97,39 @@ pub fn anthropic_oauth_pricing(model: &str, subscription: Option<&str>) -> Route
     }
 }
 
+/// Published OpenAI API pricing (platform.openai.com/docs/pricing).
+///
+/// Standard tier, short-context prices. GPT-5.4+/5.5 bill a higher tier for
+/// requests over ~272k input tokens; per-call estimates here use the standard
+/// tier since jcode cannot see the per-request tier split.
 pub fn openai_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     let base = model.strip_suffix("[1m]").unwrap_or(model);
-    match base {
-        "gpt-5.5" | "gpt-5.4" | "gpt-5.4-pro" => Some(RouteCheapnessEstimate::metered(
+    let exact = |input_usd: f64, output_usd: f64, cache_read_usd: Option<f64>| {
+        Some(RouteCheapnessEstimate::metered(
             RouteCostSource::PublicApiPricing,
-            RouteCostConfidence::High,
-            usd_to_micros(2.5),
-            usd_to_micros(15.0),
-            Some(usd_to_micros(0.25)),
+            RouteCostConfidence::Exact,
+            usd_to_micros(input_usd),
+            usd_to_micros(output_usd),
+            cache_read_usd.map(usd_to_micros),
             Some("OpenAI API pricing".to_string()),
-        )),
-        "gpt-5.3-codex" | "gpt-5.2-codex" | "gpt-5.2" | "gpt-5.1" | "gpt-5.1-codex" => {
-            Some(RouteCheapnessEstimate::metered(
-                RouteCostSource::Heuristic,
-                RouteCostConfidence::Low,
-                usd_to_micros(2.5),
-                usd_to_micros(15.0),
-                Some(usd_to_micros(0.25)),
-                Some("Estimated from GPT-5.4 API pricing".to_string()),
-            ))
+        ))
+    };
+    match base {
+        "gpt-5.5" => exact(5.0, 30.0, Some(0.5)),
+        "gpt-5.5-pro" | "gpt-5.4-pro" => exact(30.0, 180.0, None),
+        "gpt-5.4" => exact(2.5, 15.0, Some(0.25)),
+        "gpt-5.4-mini" => exact(0.75, 4.5, Some(0.075)),
+        "gpt-5.4-nano" => exact(0.2, 1.25, Some(0.02)),
+        "gpt-5.3-codex" | "gpt-5.3-codex-spark" | "gpt-5.3-chat-latest" => {
+            exact(1.75, 14.0, Some(0.175))
         }
-        "gpt-5.3-codex-spark" | "gpt-5.1-codex-mini" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Low,
-            usd_to_micros(0.25),
-            usd_to_micros(2.0),
-            Some(usd_to_micros(0.025)),
-            Some("Estimated from GPT-5 mini API pricing".to_string()),
-        )),
-        "gpt-5.1-codex-max"
-        | "gpt-5.2-pro"
-        | "gpt-5-chat-latest"
-        | "gpt-5.1-chat-latest"
-        | "gpt-5.2-chat-latest"
-        | "gpt-5-codex"
-        | "gpt-5" => Some(RouteCheapnessEstimate::metered(
-            RouteCostSource::Heuristic,
-            RouteCostConfidence::Low,
-            usd_to_micros(2.5),
-            usd_to_micros(15.0),
-            Some(usd_to_micros(0.25)),
-            Some("Estimated from GPT-5.4 API pricing".to_string()),
-        )),
+        "gpt-5.2" | "gpt-5.2-codex" | "gpt-5.2-chat-latest" => exact(1.75, 14.0, Some(0.175)),
+        "gpt-5.2-pro" => exact(21.0, 168.0, None),
+        "gpt-5.1" | "gpt-5.1-codex" | "gpt-5.1-codex-max" | "gpt-5.1-chat-latest" | "gpt-5"
+        | "gpt-5-codex" | "gpt-5-chat-latest" => exact(1.25, 10.0, Some(0.125)),
+        "gpt-5.1-codex-mini" | "gpt-5-mini" => exact(0.25, 2.0, Some(0.025)),
+        "gpt-5-nano" => exact(0.05, 0.4, Some(0.005)),
+        "gpt-5-pro" => exact(15.0, 120.0, None),
         _ => None,
     }
 }

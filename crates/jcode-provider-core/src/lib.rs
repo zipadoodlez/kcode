@@ -994,6 +994,8 @@ pub enum RouteCostSource {
     RuntimePlan,
     OpenRouterEndpoint,
     OpenRouterCatalog,
+    /// Live models.dev pricing catalog (https://models.dev/api.json).
+    ModelsDevCatalog,
     Heuristic,
 }
 

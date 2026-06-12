@@ -348,23 +348,28 @@ impl App {
         })
     }
 
-    /// Resolve and cache per-model pricing for the active provider. For
-    /// Anthropic/Claude and OpenAI models we use the published API pricing
-    /// (input, output and cache-read) so the API-key cost figure is accurate per
-    /// model. Re-resolves when the active model changes.
+    /// Resolve and cache per-model pricing for the active provider. Uses the
+    /// unified resolver (curated static tables, then the OpenRouter caches,
+    /// then the live models.dev catalog) so any metered provider gets real
+    /// per-model prices instead of the generic defaults. Re-resolves when the
+    /// active model changes.
     fn refresh_cached_pricing(&mut self, model: &str, is_anthropic: bool, is_openai: bool) {
         if self.cost.cached_price_model.as_deref() == Some(model) {
             return;
         }
 
         let per_mtok = |micros: Option<u64>| micros.map(|m| m as f32 / 1_000_000.0);
-        let estimate = if is_anthropic {
-            jcode_provider_core::pricing::anthropic_api_pricing(model)
+        let source_key = if is_anthropic {
+            "claude:api-key".to_string()
         } else if is_openai {
-            jcode_provider_core::pricing::openai_api_pricing(model)
+            "openai:api-key".to_string()
         } else {
-            None
+            use crate::tui::TuiState;
+            let label = <Self as TuiState>::provider_name(self);
+            let runtime = active_runtime_provider_key();
+            crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
         };
+        let estimate = crate::provider::pricing::metered_pricing_for_source(&source_key, model);
 
         if let Some(estimate) = estimate {
             self.cost.cached_prompt_price = per_mtok(estimate.input_price_per_mtok_micros);
@@ -374,9 +379,17 @@ impl App {
             return;
         }
 
-        // Unknown model: leave existing defaults in place but remember the model
-        // so we do not repeatedly attempt resolution for it.
-        self.cost.cached_price_model = Some(model.to_string());
+        // Unknown model/provider: clear any prices cached for a previous model
+        // so the generic defaults apply instead of another model's rates, and
+        // do NOT memoize the miss. The models.dev catalog refreshes in the
+        // background, so a later call can succeed (e.g. first run with an empty
+        // pricing cache); the retry is a cheap in-memory lookup per API call.
+        if self.cost.cached_price_model.is_some() {
+            self.cost.cached_prompt_price = None;
+            self.cost.cached_completion_price = None;
+            self.cost.cached_cache_read_price = None;
+            self.cost.cached_price_model = None;
+        }
     }
 
     pub(super) fn compute_streaming_tps(&self) -> Option<f32> {

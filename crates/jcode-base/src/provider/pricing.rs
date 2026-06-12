@@ -106,6 +106,58 @@ pub(crate) fn openrouter_route_pricing(
     })
 }
 
+fn usd_to_micros(usd: f64) -> u64 {
+    (usd * 1_000_000.0).round() as u64
+}
+
+/// Unified metered per-token pricing resolver for any provider/model pair.
+///
+/// `source_key` is the cross-provider activity key (see
+/// [`crate::provider_activity::source_key_for_provider_label`]), e.g.
+/// `claude:api-key`, `openai:api-key`, `openrouter`,
+/// `openai-compatible:deepseek`, `bedrock`.
+///
+/// Resolution order:
+///   1. Curated static tables (exact, hand-reviewed) for Anthropic/OpenAI.
+///   2. OpenRouter endpoint/catalog disk caches for OpenRouter routes.
+///   3. The live models.dev pricing catalog cache (140+ providers).
+///
+/// Returns `None` when nothing can price the route, so callers can
+/// distinguish "unknown" from "free" instead of silently guessing.
+pub fn metered_pricing_for_source(
+    source_key: &str,
+    model: &str,
+) -> Option<RouteCheapnessEstimate> {
+    // 1. Curated static tables.
+    let static_estimate = match source_key {
+        "claude:api-key" => anthropic_api_pricing(model),
+        "openai:api-key" => openai_api_pricing(model),
+        _ => None,
+    };
+    if static_estimate.is_some() {
+        return static_estimate;
+    }
+
+    // 2. OpenRouter's own caches carry per-endpoint pricing, which is more
+    // precise than any catalog average for the route actually used.
+    if source_key == "openrouter"
+        && let Some(estimate) = openrouter_route_pricing(model, "auto")
+    {
+        return Some(estimate);
+    }
+
+    // 3. Live models.dev catalog (disk cache; refreshes in the background).
+    let cost = crate::model_pricing::lookup(source_key, model)?;
+    Some(RouteCheapnessEstimate::metered(
+        RouteCostSource::ModelsDevCatalog,
+        RouteCostConfidence::High,
+        usd_to_micros(cost.input_usd_per_mtok),
+        usd_to_micros(cost.output_usd_per_mtok),
+        cost.cache_read_usd_per_mtok.map(usd_to_micros),
+        Some("models.dev pricing catalog".to_string()),
+    ))
+}
+
 pub(crate) fn cheapness_for_route(
     model: &str,
     provider: &str,
@@ -123,24 +175,32 @@ pub(crate) fn cheapness_for_route(
                 // Bare `api-key` only means Anthropic when the route's provider
                 // label says so; otherwise fall through to the non-dual arms.
                 if provider == "Anthropic" {
-                    anthropic_api_pricing(model)
+                    metered_pricing_for_source("claude:api-key", model)
                 } else {
                     None
                 }
             }
-            (DualAuthProvider::OpenAI, AuthMode::ApiKey) => {
-                Some(openai_api_pricing(model).unwrap_or_else(|| openai_oauth_pricing(model)))
-            }
+            (DualAuthProvider::OpenAI, AuthMode::ApiKey) => Some(
+                metered_pricing_for_source("openai:api-key", model)
+                    .unwrap_or_else(|| openai_oauth_pricing(model)),
+            ),
             (DualAuthProvider::OpenAI, AuthMode::Oauth) => {
                 // An "OAuth" route still bills per token when only an API key is
                 // actually configured, so honor the live effective auth mode.
                 if openai_effective_auth_mode() == "api-key" {
-                    Some(openai_api_pricing(model).unwrap_or_else(|| openai_oauth_pricing(model)))
+                    Some(
+                        metered_pricing_for_source("openai:api-key", model)
+                            .unwrap_or_else(|| openai_oauth_pricing(model)),
+                    )
                 } else {
                     Some(openai_oauth_pricing(model))
                 }
             }
         };
+    }
+
+    if let Some(profile_id) = api_method.strip_prefix("openai-compatible:") {
+        return metered_pricing_for_source(&format!("openai-compatible:{}", profile_id), model);
     }
 
     match api_method {
@@ -156,6 +216,7 @@ pub(crate) fn cheapness_for_route(
                 model.to_string()
             };
             openrouter_route_pricing(&model_id, provider)
+                .or_else(|| metered_pricing_for_source("openrouter", &model_id))
         }
         _ => None,
     }
@@ -238,7 +299,7 @@ mod tests {
     fn cheapness_for_openai_route_falls_back_to_subscription_for_unpriced_api_key_models() {
         with_clean_provider_test_env(|| {
             env::set_var("OPENAI_API_KEY", "test-key");
-            let estimate = cheapness_for_route("gpt-5-mini", "OpenAI", "openai-oauth")
+            let estimate = cheapness_for_route("gpt-4.1-mini", "OpenAI", "openai-oauth")
                 .expect("cheapness estimate");
             assert_eq!(estimate.billing_kind, RouteBillingKind::Subscription);
             assert_eq!(estimate.source, RouteCostSource::PublicPlanPricing);
@@ -264,6 +325,59 @@ mod tests {
             assert_eq!(estimate.billing_kind, RouteBillingKind::IncludedQuota);
             assert_eq!(estimate.confidence, RouteCostConfidence::High);
             assert_eq!(estimate.estimated_reference_cost_micros, Some(0));
+        });
+    }
+
+    #[test]
+    fn unified_resolver_prefers_static_tables_then_models_dev_catalog() {
+        with_clean_provider_test_env(|| {
+            crate::model_pricing::clear_memory_cache_for_tests();
+            crate::model_pricing::save_test_cache(&[
+                (
+                    "anthropic",
+                    "claude-sonnet-4-6",
+                    crate::model_pricing::ModelCost {
+                        // Deliberately wrong so the test proves the curated
+                        // static table wins over the catalog.
+                        input_usd_per_mtok: 99.0,
+                        output_usd_per_mtok: 99.0,
+                        cache_read_usd_per_mtok: None,
+                        cache_write_usd_per_mtok: None,
+                    },
+                ),
+                (
+                    "deepseek",
+                    "deepseek-v4-flash",
+                    crate::model_pricing::ModelCost {
+                        input_usd_per_mtok: 0.14,
+                        output_usd_per_mtok: 0.28,
+                        cache_read_usd_per_mtok: Some(0.0028),
+                        cache_write_usd_per_mtok: None,
+                    },
+                ),
+            ]);
+
+            // Static table wins for curated Anthropic models.
+            let sonnet = metered_pricing_for_source("claude:api-key", "claude-sonnet-4-6")
+                .expect("priced model");
+            assert_eq!(sonnet.source, RouteCostSource::PublicApiPricing);
+            assert_eq!(sonnet.input_price_per_mtok_micros, Some(3_000_000));
+
+            // Compatible profiles resolve through the models.dev catalog.
+            let flash =
+                metered_pricing_for_source("openai-compatible:deepseek", "deepseek-v4-flash")
+                    .expect("priced model");
+            assert_eq!(flash.source, RouteCostSource::ModelsDevCatalog);
+            assert_eq!(flash.input_price_per_mtok_micros, Some(140_000));
+            assert_eq!(flash.output_price_per_mtok_micros, Some(280_000));
+            assert_eq!(flash.cache_read_price_per_mtok_micros, Some(2_800));
+
+            // Unknown models return None instead of a fabricated price.
+            assert!(
+                metered_pricing_for_source("openai-compatible:deepseek", "unknown-model").is_none()
+            );
+
+            crate::model_pricing::clear_memory_cache_for_tests();
         });
     }
 }
