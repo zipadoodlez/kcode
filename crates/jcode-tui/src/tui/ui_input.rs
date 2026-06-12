@@ -1975,9 +1975,9 @@ pub(super) fn draw_input(
     } else if app.is_processing() && !input_text.is_empty() {
         hint_shown = true;
         let hint = if app.queue_mode() {
-            "  Ctrl+Enter to send now"
+            "  Ctrl/Cmd+Enter to send now"
         } else {
-            "  Ctrl+Enter to queue"
+            "  Ctrl/Cmd+Enter to queue"
         };
         hint_line = Some(hint.trim().to_string());
         lines.push(Line::from(Span::styled(

@@ -910,6 +910,34 @@ fn test_ctrl_enter_opposite_send_mode() {
 }
 
 #[test]
+fn test_cmd_enter_opposite_send_mode() {
+    let mut app = create_test_app();
+    app.is_processing = true;
+
+    // Default immediate mode: Cmd+Enter should queue, matching Ctrl+Enter
+    app.handle_key(KeyCode::Char('h'), KeyModifiers::empty())
+        .unwrap();
+    app.handle_key(KeyCode::Char('i'), KeyModifiers::empty())
+        .unwrap();
+    app.handle_key(KeyCode::Enter, KeyModifiers::SUPER).unwrap();
+
+    assert_eq!(app.queued_count(), 1);
+    assert_eq!(app.interleave_message.as_deref(), None);
+    assert!(app.input().is_empty());
+
+    // Queue mode: Cmd+Enter should interleave (sets interleave_message, not queued)
+    app.queue_mode = true;
+    app.handle_key(KeyCode::Char('y'), KeyModifiers::empty())
+        .unwrap();
+    app.handle_key(KeyCode::Char('o'), KeyModifiers::empty())
+        .unwrap();
+    app.handle_key(KeyCode::Enter, KeyModifiers::SUPER).unwrap();
+
+    assert_eq!(app.queued_count(), 1); // Still just "hi" in queue
+    assert_eq!(app.interleave_message.as_deref(), Some("yo")); // "yo" is for interleave
+}
+
+#[test]
 fn test_typing_during_processing() {
     let mut app = create_test_app();
     app.is_processing = true;

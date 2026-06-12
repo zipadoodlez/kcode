@@ -432,7 +432,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Insert newline in input",
     ));
     lines.push(key_entry(
-        "Ctrl+Enter",
+        "Ctrl+Enter / Cmd+Enter",
         "Use opposite send mode while processing",
     ));
     lines.push(key_entry("Ctrl+Up", "Retrieve pending message for editing"));

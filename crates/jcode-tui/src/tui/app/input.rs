@@ -2079,8 +2079,10 @@ impl App {
             return Ok(());
         }
 
-        // Ctrl+Enter: does opposite of queue_mode during processing
-        if code == KeyCode::Enter && modifiers.contains(KeyModifiers::CONTROL) {
+        // Ctrl+Enter / Cmd+Enter: does opposite of queue_mode during processing
+        if code == KeyCode::Enter
+            && modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER)
+        {
             handle_alternate_enter(self);
             return Ok(());
         }

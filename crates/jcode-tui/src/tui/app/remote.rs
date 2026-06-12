@@ -1537,7 +1537,7 @@ fn handle_disconnected_key_internal(
         }
     }
 
-    if code == KeyCode::Enter && modifiers.contains(KeyModifiers::CONTROL) {
+    if code == KeyCode::Enter && modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER) {
         queue_message_for_reconnect(app);
         return Ok(());
     }
