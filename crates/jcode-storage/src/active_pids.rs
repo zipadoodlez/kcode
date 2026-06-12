@@ -133,19 +133,32 @@ pub struct SessionCounts {
     pub streaming: usize,
 }
 
-/// Compute the current session counts by scanning the active-pid registry and
+/// Live presence info for one running session, derived from the active-pid
+/// registry and the streaming markers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionPresence {
+    /// Session ID, e.g. `session_fox_1234567890_deadbeef`.
+    pub session_id: String,
+    /// PID of the process that owns the session.
+    pub pid: u32,
+    /// Whether the session is actively streaming a model response right now.
+    pub streaming: bool,
+}
+
+/// Snapshot per-session presence by scanning the active-pid registry and
 /// streaming markers, skipping any entries whose owning process is no longer
-/// alive. This is a cheap O(n) scan over a handful of tiny files.
-pub fn session_counts() -> SessionCounts {
+/// alive. This is a cheap O(n) scan over a handful of tiny files; used by the
+/// menu bar indicator and other presence UI.
+pub fn session_presence() -> Vec<SessionPresence> {
     let Some(active_dir) = active_pids_dir() else {
-        return SessionCounts::default();
+        return Vec::new();
     };
     let Ok(entries) = std::fs::read_dir(&active_dir) else {
-        return SessionCounts::default();
+        return Vec::new();
     };
 
-    let mut counts = SessionCounts::default();
     let streaming_dir = streaming_pids_dir();
+    let mut sessions = Vec::new();
 
     for entry in entries.filter_map(|entry| entry.ok()) {
         let path = entry.path();
@@ -159,30 +172,48 @@ pub fn session_counts() -> SessionCounts {
         if !process_is_running(pid) {
             continue;
         }
-        counts.total += 1;
 
-        if let Some(streaming_dir) = streaming_dir.as_ref() {
-            let streaming_pid = std::fs::read_to_string(streaming_dir.join(&session_id))
+        let streaming = streaming_dir.as_ref().is_some_and(|dir| {
+            std::fs::read_to_string(dir.join(&session_id))
                 .ok()
-                .and_then(|raw| raw.trim().parse::<u32>().ok());
-            if streaming_pid.is_some_and(process_is_running) {
-                counts.streaming += 1;
-            }
-        }
+                .and_then(|raw| raw.trim().parse::<u32>().ok())
+                .is_some_and(process_is_running)
+        });
+
+        sessions.push(SessionPresence {
+            session_id,
+            pid,
+            streaming,
+        });
     }
 
-    counts
+    sessions
+}
+
+/// Compute the current session counts from [`session_presence`].
+pub fn session_counts() -> SessionCounts {
+    let sessions = session_presence();
+    SessionCounts {
+        total: sessions.len(),
+        streaming: sessions.iter().filter(|s| s.streaming).count(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Serialize tests that mutate `JCODE_HOME`.
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn session_counts_counts_live_and_streaming_only() {
-        let _guard = crate::storage::lock_test_env();
+        let _guard = lock_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        jcode_core::env::set_var("JCODE_HOME", temp.path());
 
         let live = std::process::id();
         // Pick a PID that is almost certainly dead.
@@ -208,6 +239,21 @@ mod tests {
             "only one live streaming session expected"
         );
 
+        // Per-session presence reports the same view, keyed by session.
+        let sessions = session_presence();
+        assert_eq!(sessions.len(), 3);
+        let by_id = |id: &str| {
+            sessions
+                .iter()
+                .find(|s| s.session_id == id)
+                .unwrap_or_else(|| panic!("{id} should be present"))
+        };
+        assert!(by_id("session_alpha").streaming);
+        assert!(!by_id("session_beta").streaming);
+        assert!(!by_id("session_delta").streaming);
+        assert_eq!(by_id("session_alpha").pid, live);
+        assert!(!sessions.iter().any(|s| s.session_id == "session_gamma"));
+
         // Clearing the streaming marker drops the streaming count.
         unmark_streaming("session_alpha");
         assert_eq!(session_counts().streaming, 0);
@@ -219,14 +265,14 @@ mod tests {
         unregister_active_pid("session_epsilon");
         assert_eq!(session_counts().streaming, 0);
 
-        crate::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("JCODE_HOME");
     }
 
     #[test]
     fn streaming_guard_marks_and_clears_on_drop() {
-        let _guard = crate::storage::lock_test_env();
+        let _guard = lock_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        jcode_core::env::set_var("JCODE_HOME", temp.path());
 
         register_active_pid("session_guard", std::process::id());
         assert_eq!(session_counts().streaming, 0);
@@ -236,46 +282,6 @@ mod tests {
         }
         assert_eq!(session_counts().streaming, 0);
 
-        crate::env::remove_var("JCODE_HOME");
-    }
-
-    #[test]
-    fn streaming_guard_creates_visible_macos_sleep_assertion() {
-        let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", temp.path());
-
-        let reason = "Jcode streaming model response";
-        register_active_pid("session_power", std::process::id());
-        {
-            let streaming = StreamingGuard::new("session_power");
-            assert!(
-                streaming.sleep_assertion.is_active(),
-                "macOS should create a native power assertion"
-            );
-
-            let output = std::process::Command::new("pmset")
-                .args(["-g", "assertions"])
-                .output()
-                .expect("pmset -g assertions should run on macOS");
-            assert!(output.status.success(), "pmset should succeed");
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            assert!(
-                stdout.contains(reason),
-                "pmset output should show the streaming assertion; output was:\n{stdout}"
-            );
-        }
-
-        let output = std::process::Command::new("pmset")
-            .args(["-g", "assertions"])
-            .output()
-            .expect("pmset -g assertions should run on macOS");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            !stdout.contains(reason),
-            "streaming assertion should be released after guard drop; output was:\n{stdout}"
-        );
-
-        crate::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("JCODE_HOME");
     }
 }

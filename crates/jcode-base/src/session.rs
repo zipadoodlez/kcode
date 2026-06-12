@@ -1,10 +1,33 @@
 use crate::id::{extract_session_name, new_id, new_memorable_session_id};
 use crate::message::{ContentBlock, Message, Role};
 pub use crate::storage::{
-    SessionCounts, StreamingGuard, active_session_ids, find_active_session_id_by_pid,
-    mark_streaming, session_counts, unmark_streaming,
+    SessionCounts, SessionPresence, active_session_ids, find_active_session_id_by_pid,
+    mark_streaming, session_counts, session_presence, unmark_streaming,
 };
 use crate::storage::{active_pids_dir, register_active_pid, unregister_active_pid};
+
+/// RAII guard that marks a session as actively streaming for its lifetime.
+///
+/// Wraps the on-disk streaming marker from `jcode-storage` (cleared on every
+/// exit path so presence UIs never show a phantom streaming session) and
+/// additionally holds a macOS power assertion so the system does not
+/// idle-sleep in the middle of a streaming model response.
+pub struct StreamingGuard {
+    _marker: crate::storage::StreamingGuard,
+    #[allow(dead_code)]
+    sleep_assertion: crate::platform::PowerAssertion,
+}
+
+impl StreamingGuard {
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            _marker: crate::storage::StreamingGuard::new(session_id),
+            sleep_assertion: crate::platform::PowerAssertion::prevent_user_idle_system_sleep(
+                "Jcode streaming model response",
+            ),
+        }
+    }
+}
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
