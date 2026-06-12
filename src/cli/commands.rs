@@ -160,17 +160,15 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             user_id,
             helper,
             clear,
-        } => {
-            run_cloud_sessions_configure(
-                api_base,
-                api_token,
-                api_token_env,
-                api_token_id,
-                user_id,
-                helper,
-                clear,
-            )
-        }
+        } => run_cloud_sessions_configure(
+            api_base,
+            api_token,
+            api_token_env,
+            api_token_id,
+            user_id,
+            helper,
+            clear,
+        ),
         CloudSessionsSubcommand::Status { json } => run_cloud_sessions_status(json),
         CloudSessionsSubcommand::Dashboard {
             limit,
@@ -181,18 +179,16 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             profile,
             region,
             helper,
-        } => {
-            run_cloud_sessions_dashboard(CloudSessionsDashboardRequest {
-                limit,
-                output,
-                open,
-                with_view,
-                user_id,
-                profile,
-                region,
-                helper,
-            })
-        }
+        } => run_cloud_sessions_dashboard(CloudSessionsDashboardRequest {
+            limit,
+            output,
+            open,
+            with_view,
+            user_id,
+            profile,
+            region,
+            helper,
+        }),
         CloudSessionsSubcommand::Sync {
             sessions_dir,
             since_days,
@@ -207,23 +203,21 @@ fn run_cloud_sessions_command(action: CloudSessionsSubcommand) -> Result<()> {
             profile,
             region,
             helper,
-        } => {
-            run_cloud_sessions_sync(CloudSessionsSyncRequest {
-                sessions_dir,
-                since_days,
-                all,
-                max,
-                min_interval_mins,
-                raw,
-                dry_run,
-                force,
-                json,
-                user_id,
-                profile,
-                region,
-                helper,
-            })
-        }
+        } => run_cloud_sessions_sync(CloudSessionsSyncRequest {
+            sessions_dir,
+            since_days,
+            all,
+            max,
+            min_interval_mins,
+            raw,
+            dry_run,
+            force,
+            json,
+            user_id,
+            profile,
+            region,
+            helper,
+        }),
         other => run_cloud_sessions_helper_command(other),
     }
 }
