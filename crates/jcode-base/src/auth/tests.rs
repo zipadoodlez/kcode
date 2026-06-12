@@ -885,3 +885,20 @@ fn claude_oauth_provider_reports_oauth_independently_of_api_key() {
     }
     AuthStatus::invalidate_cache();
 }
+
+/// Test binaries must never open real browser windows: login/onboarding flows
+/// are exercised heavily by unit tests, and each ungated `open::that` pops an
+/// OAuth page on the developer's desktop. `running_in_test_harness` detects
+/// the `target/**/deps/` test-binary path, and `browser_suppressed` must honor
+/// it even without --no-browser or NO_BROWSER/JCODE_NO_BROWSER.
+#[test]
+fn browser_suppressed_inside_test_harness_without_env_overrides() {
+    assert!(
+        super::running_in_test_harness(),
+        "test binary should be detected as a test harness (exe under target/**/deps/)"
+    );
+    assert!(
+        super::browser_suppressed(false),
+        "browser opens must be suppressed in test binaries even without --no-browser/env vars"
+    );
+}

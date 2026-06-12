@@ -68,7 +68,35 @@ enum AuthProbeMode {
 }
 
 pub fn browser_suppressed(cli_no_browser: bool) -> bool {
-    cli_no_browser || env_truthy("NO_BROWSER") || env_truthy("JCODE_NO_BROWSER")
+    cli_no_browser
+        || env_truthy("NO_BROWSER")
+        || env_truthy("JCODE_NO_BROWSER")
+        || running_in_test_harness()
+}
+
+/// True when the current process is a Rust test binary (`cargo test` /
+/// `cargo nextest`). Test binaries always run from `target/**/deps/`, a
+/// location no installed or self-dev jcode binary ever runs from.
+///
+/// Used to keep tests from opening real browser windows (OAuth login pages,
+/// files) on the developer's desktop: many login/onboarding flows are
+/// exercised by TUI tests, and without this guard each test run could pop
+/// multiple browser tabs. Set `JCODE_ALLOW_BROWSER_IN_TESTS=1` to opt out
+/// (e.g. for an intentionally interactive live test).
+pub fn running_in_test_harness() -> bool {
+    static IN_TEST_HARNESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IN_TEST_HARNESS.get_or_init(|| {
+        if env_truthy("JCODE_ALLOW_BROWSER_IN_TESTS") {
+            return false;
+        }
+        std::env::current_exe()
+            .ok()
+            .map(|exe| {
+                let path = exe.to_string_lossy().replace('\\', "/");
+                path.contains("/target/") && path.contains("/deps/")
+            })
+            .unwrap_or(false)
+    })
 }
 
 fn env_truthy(key: &str) -> bool {

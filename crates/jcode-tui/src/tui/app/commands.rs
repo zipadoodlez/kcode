@@ -1603,7 +1603,7 @@ fn handle_transcript_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    match open::that_detached(&path) {
+    match super::helpers::open_path_or_url_detached(&path) {
         Ok(()) => {
             app.push_display_message(DisplayMessage::system(transcript_opened_message(&path)));
             app.set_status_notice("Transcript opened");

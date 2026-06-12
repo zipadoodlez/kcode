@@ -176,7 +176,7 @@ impl App {
     }
 
     pub(super) fn try_open_link_at(&mut self, column: u16, row: u16) -> bool {
-        self.try_open_link_at_with(column, row, |url| open::that_detached(url))
+        self.try_open_link_at_with(column, row, |url| super::helpers::open_path_or_url_detached(url))
     }
 
     pub(super) fn try_open_link_at_with<F, E>(
@@ -959,7 +959,7 @@ impl App {
         let diagram = &diagrams[index];
         if let Some(path) = super::super::mermaid::get_cached_path(diagram.hash) {
             if path.exists() {
-                match open::that_detached(&path) {
+                match super::helpers::open_path_or_url_detached(&path) {
                     Ok(_) => self.set_status_notice(format!(
                         "Opened diagram {}/{} in viewer",
                         index + 1,

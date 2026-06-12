@@ -70,6 +70,24 @@ pub(crate) fn invalidate_ambient_info_cache() {
     }
 }
 
+/// Open a file/URL with the system opener, unless suppressed.
+///
+/// Every TUI-initiated `open::that_detached` must go through here: it honors
+/// NO_BROWSER/JCODE_NO_BROWSER and refuses to open anything from test binaries
+/// (`browser_suppressed` detects the test harness), so `cargo test` runs never
+/// pop browser windows, image viewers, or OAuth pages on the developer's
+/// desktop.
+pub(crate) fn open_path_or_url_detached(
+    target: impl AsRef<std::ffi::OsStr>,
+) -> std::io::Result<()> {
+    if crate::auth::browser_suppressed(false) {
+        return Err(std::io::Error::other(
+            "opening files/URLs is suppressed (NO_BROWSER/JCODE_NO_BROWSER or test harness)",
+        ));
+    }
+    open::that_detached(target)
+}
+
 /// Test-only: snapshot `(elapsed_secs, refreshing)` for a session's todos cache
 /// entry, or `None` when no entry exists yet. Lets tests assert that
 /// invalidation backdates the entry so the next gather treats it as expired.

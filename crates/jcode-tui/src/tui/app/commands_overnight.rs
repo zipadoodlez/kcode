@@ -198,7 +198,7 @@ fn open_overnight_review(app: &mut App) {
                 )));
                 return;
             }
-            match open::that_detached(&manifest.review_path) {
+            match super::helpers::open_path_or_url_detached(&manifest.review_path) {
                 Ok(()) => {
                     app.push_display_message(DisplayMessage::system(format!(
                         "Opened overnight review page: {}",
