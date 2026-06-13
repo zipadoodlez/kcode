@@ -731,7 +731,14 @@ mod tests {
         .await
         .expect("debug selfdev reload should not hang")
         .expect("debug selfdev reload should succeed");
-        ack_task.await.expect("reload ack task should complete");
+        // Bound the ack wait: the reload must have emitted a signal for the
+        // acker to observe. If a regression makes `do_reload` short-circuit
+        // before `send_reload_signal` (e.g. the old "No binary found" path),
+        // this would otherwise hang forever instead of failing the test.
+        tokio::time::timeout(Duration::from_secs(2), ack_task)
+            .await
+            .expect("reload signal was never emitted (ack task hung)")
+            .expect("reload ack task should complete");
 
         assert!(
             started.elapsed() < Duration::from_secs(2),
