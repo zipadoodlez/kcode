@@ -2160,5 +2160,6 @@ struct UsageInfo {
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 #[path = "anthropic_tests.rs"]
 mod tests;

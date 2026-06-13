@@ -321,6 +321,7 @@ pub async fn run_pre_tool_gate(
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
 

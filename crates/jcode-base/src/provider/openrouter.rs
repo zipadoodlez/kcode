@@ -2582,5 +2582,6 @@ mod openrouter_provider_impl;
 mod openrouter_sse_stream;
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 #[path = "openrouter_tests.rs"]
 mod tests;

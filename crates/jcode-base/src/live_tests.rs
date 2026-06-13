@@ -2706,7 +2706,7 @@ mod tests {
             })
             .collect::<BTreeMap<_, _>>();
         for (checkpoint, status) in overrides {
-            statuses.insert((*checkpoint).to_string(), status.clone());
+            statuses.insert((*checkpoint).to_string(), *status);
         }
         statuses
     }

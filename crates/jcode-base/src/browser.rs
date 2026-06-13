@@ -833,5 +833,6 @@ pub async fn run_setup_command() -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 #[path = "browser_tests.rs"]
 mod browser_tests;
