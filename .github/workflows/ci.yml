@@ -135,19 +135,13 @@ jobs:
           # removes the race. (Was failing every Build & Test job.)
           components: rust-src
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
-        continue-on-error: true
-        id: sccache
-
       - uses: Swatinem/rust-cache@v2
         with:
-          # Bumped suffix to evict a stale cache whose target/ artifacts were
-          # built by an older rustc; after the stable->1.96 bump they failed
-          # with E0514 "compiled by an incompatible version of rustc"
-          # (convert_case / unicode_segmentation). A fresh key forces a clean
-          # rebuild once, then caches normally.
-          key: ${{ matrix.os }}-rustc196
+          # Suffix bumped to evict caches that held artifacts stamped
+          # `<unknown rustc version>` by the old sccache-wrapped Build step,
+          # which broke the non-sccache test compile with E0514. The Build step
+          # no longer uses sccache, so a fresh cache stays coherent.
+          key: ${{ matrix.os }}-rustc196-nosccache
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
@@ -166,9 +160,13 @@ jobs:
           rustflags = ["-C", "link-arg=-fuse-ld=mold"]
           EOF
           fi
-          if command -v sccache &>/dev/null && sccache --start-server 2>/dev/null; then
-            export RUSTC_WRAPPER=sccache
-          fi
+          # NOTE: intentionally NOT exporting RUSTC_WRAPPER=sccache here. Only this
+          # step used sccache while the later `cargo test --no-run` steps did not,
+          # so sccache emitted rlibs/rmetas stamped `<unknown rustc version>` that
+          # the non-sccache test compile then rejected with E0514
+          # ("compiled by an incompatible version of rustc"). rust-cache already
+          # caches target/ across runs, so a clean, wrapper-consistent build is
+          # both correct and fast enough.
           export RUSTC="$(rustup which rustc)"
           CARGO_BIN="$(rustup which cargo)"
           "$CARGO_BIN" build --release --target ${{ matrix.target }}
