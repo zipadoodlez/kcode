@@ -1070,6 +1070,7 @@ impl Provider for AnthropicProvider {
         let client = self.client.clone();
         let credentials = Arc::clone(&self.credentials);
         let oauth_session_id = self.oauth_session_id.clone();
+        let model_state = Arc::clone(&self.model);
 
         // Spawn task to handle streaming with retry logic.
         // This includes forced OAuth refresh on auth failures.
@@ -1092,6 +1093,7 @@ impl Provider for AnthropicProvider {
                 credentials,
                 model,
                 oauth_session_id,
+                model_state,
             )
             .await;
         });
@@ -1374,6 +1376,7 @@ impl Provider for AnthropicProvider {
         let client = self.client.clone();
         let credentials = Arc::clone(&self.credentials);
         let oauth_session_id = self.oauth_session_id.clone();
+        let model_state = Arc::clone(&self.model);
 
         // Spawn task to handle streaming with retry logic
         tokio::spawn(async move {
@@ -1395,6 +1398,7 @@ impl Provider for AnthropicProvider {
                 credentials,
                 model,
                 oauth_session_id,
+                model_state,
             )
             .await;
         });
@@ -1411,15 +1415,21 @@ async fn run_stream_with_retries(
     client: Client,
     initial_token: String,
     is_oauth: bool,
-    request: ApiRequest,
+    mut request: ApiRequest,
     tx: mpsc::Sender<Result<StreamEvent>>,
     credentials: Arc<RwLock<Option<CachedCredentials>>>,
     model_name: String,
     oauth_session_id: String,
+    model_state: Arc<std::sync::RwLock<String>>,
 ) {
     let mut token = initial_token;
     let mut last_error = None;
     let mut attempted_forced_refresh = false;
+    let original_model = model_name.clone();
+    let mut model_name = model_name;
+    // Track every model id we have already attempted so a retired/renamed
+    // model only falls back to genuinely new candidates.
+    let mut tried_models: Vec<String> = vec![original_model.clone()];
 
     for attempt in 0..MAX_RETRIES {
         if attempt > 0 {
@@ -1511,6 +1521,30 @@ async fn run_stream_with_retries(
                             return;
                         }
                     }
+                }
+
+                // Model not found (e.g. a retired or renamed model id): the
+                // server rejects the request up front with a 404 before any
+                // output streams. Transparently fall back to an available
+                // model so the in-flight request still completes instead of
+                // hard-failing, and persist the switch so later turns reuse
+                // the working model.
+                if is_model_not_found_error(&error_str)
+                    && !saw_output
+                    && let Some(fallback) = anthropic_fallback_model(&tried_models)
+                {
+                    crate::logging::warn(&format!(
+                        "Anthropic model '{}' is not available ({}); retrying with fallback '{}'",
+                        model_name, e, fallback
+                    ));
+                    request.model = strip_1m_suffix(&fallback).to_string();
+                    *model_state
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = fallback.clone();
+                    tried_models.push(fallback.clone());
+                    model_name = fallback;
+                    last_error = Some(e);
+                    continue;
                 }
 
                 // Check if this is a transient/retryable error
@@ -1794,6 +1828,41 @@ fn is_retryable_error(error_str: &str) -> bool {
         // API-level server errors (SSE error events)
         || error_str.contains("api_error")
         || error_str.contains("internal server error")
+}
+
+/// Detect an Anthropic "model not found" rejection.
+///
+/// Anthropic returns HTTP 404 with `"type":"not_found_error"` when a model id
+/// has been retired or renamed (e.g. `claude-fable-5` after it was folded into
+/// Opus 4.8). The message text varies, so match on the stable structural
+/// markers. `error_str` is expected to already be lowercased.
+fn is_model_not_found_error(error_str: &str) -> bool {
+    let mentions_model = error_str.contains("model");
+    let is_not_found = error_str.contains("not_found_error")
+        || error_str.contains("404 not found")
+        || error_str.contains("(404 ");
+    is_not_found
+        && (mentions_model
+            || error_str.contains("is not available")
+            || error_str.contains("please use"))
+}
+
+/// Pick the next Anthropic model to try after a "model not found" failure.
+///
+/// Walks the known model catalog (live catalog when available, otherwise the
+/// static list) in preference order and returns the first model that has not
+/// already been attempted. Returns `None` once every candidate is exhausted so
+/// the caller can surface the original error.
+fn anthropic_fallback_model(tried: &[String]) -> Option<String> {
+    let already_tried = |candidate: &str| {
+        tried.iter().any(|model| {
+            AnthropicProvider::normalized_model_key(model)
+                == AnthropicProvider::normalized_model_key(candidate)
+        })
+    };
+    crate::provider::known_anthropic_model_ids()
+        .into_iter()
+        .find(|candidate| !already_tried(candidate))
 }
 
 fn is_oauth_auth_error(error_str: &str) -> bool {
