@@ -1,14 +1,19 @@
 {
-  "total": 21,
+  "total": 23,
   "tracked_files": {
-    "crates/jcode-desktop/src/main.rs": 10,
-    "crates/jcode-protocol/src/lib.rs": 1,
-    "crates/jcode-provider-core/src/lib.rs": 1,
-    "src/auth/lifecycle.rs": 1,
-    "src/auth/lifecycle_driver.rs": 2,
-    "src/auth/oauth.rs": 3,
-    "src/cli/commands/provider_setup.rs": 2,
-    "src/provider/fingerprint.rs": 1
+    "crates/jcode-app-core/src/session_launch.rs": 1,
+    "crates/jcode-app-core/src/tool/computer/win.rs": 3,
+    "crates/jcode-base/src/auth/lifecycle_driver.rs": 2,
+    "crates/jcode-base/src/auth/oauth.rs": 3,
+    "crates/jcode-base/src/hooks.rs": 1,
+    "crates/jcode-desktop/src/main.rs": 2,
+    "crates/jcode-desktop/src/single_session_render/wrapping.rs": 1,
+    "crates/jcode-productivity-core/src/aggregate.rs": 1,
+    "crates/jcode-productivity-core/src/scan.rs": 2,
+    "crates/jcode-terminal-launch/src/lib.rs": 1,
+    "crates/jcode-tui-core/src/stream_buffer.rs": 3,
+    "crates/jcode-tui/src/tui/app/helpers.rs": 1,
+    "crates/jcode-tui/src/tui/session_picker.rs": 2
   },
   "version": 1
 }
