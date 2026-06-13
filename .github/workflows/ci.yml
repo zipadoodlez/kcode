@@ -142,7 +142,12 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}
+          # Bumped suffix to evict a stale cache whose target/ artifacts were
+          # built by an older rustc; after the stable->1.96 bump they failed
+          # with E0514 "compiled by an incompatible version of rustc"
+          # (convert_case / unicode_segmentation). A fresh key forces a clean
+          # rebuild once, then caches normally.
+          key: ${{ matrix.os }}-rustc196
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
