@@ -103,6 +103,17 @@ jobs:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
+    # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
+    # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
+    # published crate*. When cargo builds such a crate its CWD is that crate dir,
+    # so the rustup proxy honours the file: convert_case pins `channel = "1.83.0"`
+    # and proc-macro2 requests `components = ["rust-src"]`. That made every
+    # Build & Test job (a) race two parallel `rust-src` downloads and (b) later
+    # try to compile convert_case with rustc 1.83.0, failing with E0514/E0599.
+    # RUSTUP_TOOLCHAIN takes precedence over any rust-toolchain.toml override, so
+    # pinning it here makes every step use this job's installed stable toolchain.
+    env:
+      RUSTUP_TOOLCHAIN: stable
     strategy:
       fail-fast: false
       matrix:
@@ -137,11 +148,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # Suffix bumped to evict caches that held artifacts stamped
-          # `<unknown rustc version>` by the old sccache-wrapped Build step,
-          # which broke the non-sccache test compile with E0514. The Build step
-          # no longer uses sccache, so a fresh cache stays coherent.
-          key: ${{ matrix.os }}-rustc196-nosccache
+          # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
+          # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
+          key: ${{ matrix.os }}-stablepin
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
