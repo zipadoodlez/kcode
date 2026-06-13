@@ -186,6 +186,17 @@ jobs:
           python3 .github/scripts/run_with_timeout.py 900 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
+      - name: Compile integration test binaries
+        shell: bash
+        # Build the integration-test binaries up front (not counted against the
+        # run steps' execution budgets). The e2e suite in particular is heavy
+        # (burst-spawn concurrency), and folding compilation into its 900s run
+        # budget was pushing slower hosted ubuntu/macos runners over the limit.
+        run: |
+          python3 .github/scripts/run_with_timeout.py 900 \
+            "$(rustup which cargo)" test --target ${{ matrix.target }} \
+            --test provider_matrix --test e2e --no-run
+
       - name: Run provider matrix tests
         shell: bash
         run: |
