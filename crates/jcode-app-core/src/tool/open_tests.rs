@@ -123,7 +123,7 @@ fn app_id_matches_is_case_insensitive_and_guards_short_ids() {
     assert!(!app_id_matches(Some("kitty"), &stems));
     assert!(!app_id_matches(None, &stems));
     // Very short ids should never match to avoid accidental substring hits.
-    assert!(!app_id_matches(Some("fi"), &vec!["fi".to_string()]));
+    assert!(!app_id_matches(Some("fi"), &["fi".to_string()]));
 }
 
 #[test]

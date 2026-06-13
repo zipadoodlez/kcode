@@ -924,7 +924,7 @@ fn apply_diff_mode(app: &mut App, mode: crate::config::DiffDisplayMode) {
     if !app.diff_pane_visible() {
         app.diff_pane_focus = false;
     }
-    app.set_status_notice(&format!("Diffs: {}", app.diff_mode.label()));
+    app.set_status_notice(format!("Diffs: {}", app.diff_mode.label()));
 }
 
 pub(super) fn handle_diff_command(app: &mut App, trimmed: &str) -> bool {

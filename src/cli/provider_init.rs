@@ -112,6 +112,13 @@ pub enum ProviderChoice {
     Cursor,
     Copilot,
     Gemini,
+    #[value(
+        alias = "gemini-key",
+        alias = "gemini-apikey",
+        alias = "google-ai-studio",
+        alias = "ai-studio"
+    )]
+    GeminiApi,
     Antigravity,
     Google,
     Auto,
@@ -165,6 +172,7 @@ impl ProviderChoice {
             Self::Cursor => "cursor",
             Self::Copilot => "copilot",
             Self::Gemini => "gemini",
+            Self::GeminiApi => "gemini-api",
             Self::Antigravity => "antigravity",
             Self::Google => "google",
             Self::Auto => "auto",
@@ -349,6 +357,10 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::Gemini,
         crate::provider_catalog::GEMINI_LOGIN_PROVIDER,
+    ),
+    (
+        ProviderChoice::GeminiApi,
+        crate::provider_catalog::GEMINI_API_LOGIN_PROVIDER,
     ),
     (
         ProviderChoice::Antigravity,
@@ -1488,6 +1500,7 @@ async fn init_provider_with_options(
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::AlibabaCodingPlan
+        | ProviderChoice::GeminiApi
         | ProviderChoice::OpenaiCompatible => {
             disable_subscription_runtime_mode();
             let profile = profile_for_choice(choice)

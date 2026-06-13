@@ -1438,9 +1438,9 @@ const EXTERNAL_CLI_PROMPT_CACHE_TTL: std::time::Duration = std::time::Duration::
 
 /// Cached result of the external-CLI continuation-prompt scan, with the time it
 /// was computed. `None` value means "scanned, but nothing found".
-static EXTERNAL_CLI_PROMPT_CACHE: std::sync::LazyLock<
-    std::sync::RwLock<Option<(Option<String>, std::time::Instant)>>,
-> = std::sync::LazyLock::new(|| std::sync::RwLock::new(None));
+type ExternalCliPromptCache = std::sync::RwLock<Option<(Option<String>, std::time::Instant)>>;
+static EXTERNAL_CLI_PROMPT_CACHE: std::sync::LazyLock<ExternalCliPromptCache> =
+    std::sync::LazyLock::new(|| std::sync::RwLock::new(None));
 
 /// Cached front-end for [`latest_external_cli_continuation_prompt_uncached`].
 ///

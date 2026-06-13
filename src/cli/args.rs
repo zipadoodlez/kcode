@@ -150,7 +150,11 @@ pub(crate) enum Command {
     /// Login to a provider via OAuth, API key, or local credentials
     Login {
         /// Provider to log in to. Equivalent to --provider for this command, e.g. `jcode login google`.
-        #[arg(value_enum)]
+        // Distinct clap id: the global `--provider` flag also has id "provider";
+        // sharing the id makes clap drop the flag inside `login` (so
+        // `jcode login --provider x` errors) and propagate the global default
+        // into this positional.
+        #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
         provider: Option<ProviderChoice>,
 
         /// Account label for multi-account support (stored labels are auto-numbered)

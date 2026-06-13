@@ -514,15 +514,14 @@ impl App {
                 // We also arm a tick-driven autoscroll so it keeps going while the
                 // mouse is simply held at the edge (no further movement needed), just
                 // like dragging a selection past the edge of a browser window.
-                if let Some(pane) = active_pane {
-                    if let Some((edge_point, upward)) =
+                if let Some(pane) = active_pane
+                    && let Some((edge_point, upward)) =
                         crate::tui::ui::copy_pane_vertical_edge_point(pane, mouse.column, mouse.row)
-                    {
-                        self.update_selection_with_point(edge_point, true);
-                        self.scroll_copy_selection_pane(pane, upward);
-                        self.copy_selection_edge_autoscroll = Some((pane, upward));
-                        return Some(false);
-                    }
+                {
+                    self.update_selection_with_point(edge_point, true);
+                    self.scroll_copy_selection_pane(pane, upward);
+                    self.copy_selection_edge_autoscroll = Some((pane, upward));
+                    return Some(false);
                 }
                 // Left the edge: stop the continuous autoscroll.
                 self.copy_selection_edge_autoscroll = None;

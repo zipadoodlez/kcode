@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
+
 use super::{
     CoordinatorSpawnIdentity, ensure_spawn_coordinator_swarm, prepare_visible_spawn_session,
     register_visible_spawned_member, require_coordinator_swarm, resolve_coordinator_spawn_identity,

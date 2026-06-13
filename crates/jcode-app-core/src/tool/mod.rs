@@ -901,10 +901,12 @@ impl Registry {
                 // under the current config fingerprint; prune servers that are
                 // no longer configured. (#206 Phase 2)
                 {
-                    let (live_by_server, config_snapshot): (
-                        std::collections::BTreeMap<String, Vec<crate::mcp::McpToolDef>>,
-                        Vec<(String, crate::mcp::McpServerConfig)>,
-                    ) = {
+                    // Live tool defs grouped by server, plus a snapshot of the
+                    // configured servers, captured under one read lock.
+                    type LiveToolsByServer =
+                        std::collections::BTreeMap<String, Vec<crate::mcp::McpToolDef>>;
+                    type ConfigSnapshot = Vec<(String, crate::mcp::McpServerConfig)>;
+                    let (live_by_server, config_snapshot): (LiveToolsByServer, ConfigSnapshot) = {
                         let manager = mcp_manager.read().await;
                         let mut grouped: std::collections::BTreeMap<
                             String,

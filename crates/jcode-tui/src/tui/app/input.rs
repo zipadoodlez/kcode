@@ -62,7 +62,7 @@ pub(super) fn edit_input_in_external_editor(app: &mut App) {
             }
             app.set_status_notice("Prompt edited in $EDITOR");
         }
-        Err(err) => app.set_status_notice(&format!("Failed to open $EDITOR: {err}")),
+        Err(err) => app.set_status_notice(format!("Failed to open $EDITOR: {err}")),
     }
 }
 

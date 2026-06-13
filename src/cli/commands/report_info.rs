@@ -689,7 +689,7 @@ mod tests {
                 .recommended_actions
                 .iter()
                 .any(|line| {
-                    line == &format!("Connect it: `jcode login --provider {}`", provider.id)
+                    line == &format!("Connect it: jcode login --provider {}", provider.id)
                 })
         );
 
@@ -753,7 +753,7 @@ mod tests {
                 .iter()
                 .any(|line| {
                     line == &format!(
-                        "Run runtime verification: `jcode auth-test --provider {}`",
+                        "Run runtime verification: jcode auth-test --provider {}",
                         provider.id
                     )
                 })
@@ -762,7 +762,7 @@ mod tests {
             after_doctor_provider
                 .recommended_actions
                 .iter()
-                .any(|line| { line == "Review current state: `jcode auth status --json`" })
+                .any(|line| { line == "Review current state: jcode auth status --json" })
         );
     }
 }

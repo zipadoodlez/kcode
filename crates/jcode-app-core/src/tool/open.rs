@@ -505,31 +505,28 @@ struct BrowserFocusContext {
     pre_ids: HashSet<u64>,
 }
 
+#[cfg(all(unix, not(target_os = "macos")))]
 fn capture_browser_windows_before_open() -> Option<BrowserFocusContext> {
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        // Only the niri compositor is wired up for explicit window raising today.
-        if std::env::var_os("NIRI_SOCKET").is_none() {
-            return None;
-        }
-        let stems = browser_app_stems();
-        if stems.is_empty() {
-            return None;
-        }
-        let pre_ids = match query_niri_windows() {
-            Ok(windows) => windows
-                .iter()
-                .filter(|w| app_id_matches(w.app_id.as_deref(), &stems))
-                .map(|w| w.id)
-                .collect(),
-            Err(_) => HashSet::new(),
-        };
-        return Some(BrowserFocusContext { stems, pre_ids });
+    // Only the niri compositor is wired up for explicit window raising today.
+    std::env::var_os("NIRI_SOCKET")?;
+    let stems = browser_app_stems();
+    if stems.is_empty() {
+        return None;
     }
-    #[cfg(not(all(unix, not(target_os = "macos"))))]
-    {
-        None
-    }
+    let pre_ids = match query_niri_windows() {
+        Ok(windows) => windows
+            .iter()
+            .filter(|w| app_id_matches(w.app_id.as_deref(), &stems))
+            .map(|w| w.id)
+            .collect(),
+        Err(_) => HashSet::new(),
+    };
+    Some(BrowserFocusContext { stems, pre_ids })
+}
+
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+fn capture_browser_windows_before_open() -> Option<BrowserFocusContext> {
+    None
 }
 
 async fn focus_browser_window_after_open(ctx: Option<BrowserFocusContext>) {

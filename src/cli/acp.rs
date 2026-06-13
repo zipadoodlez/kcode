@@ -881,13 +881,10 @@ fn parse_json_object(input: &str) -> Option<Value> {
 }
 
 fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
-    let requested = params
-        .get("protocolVersion")
-        .and_then(Value::as_u64)
-        .unwrap_or(ACP_PROTOCOL_VERSION);
-    let protocol_version = requested
-        .min(ACP_PROTOCOL_VERSION)
-        .max(ACP_PROTOCOL_VERSION);
+    // We only speak exactly ACP_PROTOCOL_VERSION; the response pins to our
+    // version regardless of the `protocolVersion` the client requested.
+    let _ = params;
+    let protocol_version = ACP_PROTOCOL_VERSION;
     let mut agent_capabilities = json!({
         "loadSession": true,
         "promptCapabilities": {

@@ -125,6 +125,12 @@ fn test_auto_init_login_selection_preserves_order() {
 fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
     let _guard = lock_env();
     let _env_guard = crate::storage::lock_test_env();
+    // Sandbox JCODE_HOME: with the real home, persisted auth/credential state
+    // (e.g. a pinned anthropic api-key route) re-pins JCODE_RUNTIME_PROVIDER
+    // during MultiProvider construction and breaks the assertions below.
+    let dir = TempDir::new().expect("temp dir");
+    let saved_home = std::env::var("JCODE_HOME").ok();
+    crate::env::set_var("JCODE_HOME", dir.path());
     crate::subscription_catalog::clear_runtime_env();
     crate::env::remove_var("JCODE_OPENROUTER_MODEL");
     crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
@@ -160,6 +166,10 @@ fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
     crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
     crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
     crate::env::remove_var("JCODE_FORCE_PROVIDER");
+    match saved_home {
+        Some(home) => crate::env::set_var("JCODE_HOME", home),
+        None => crate::env::remove_var("JCODE_HOME"),
+    }
 }
 
 #[test]
@@ -735,6 +745,7 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
     let saved: Vec<(String, Option<String>)> = [
         "JCODE_HOME",
         "JCODE_NON_INTERACTIVE",
+        "JCODE_DEFERRED_AUTH_BOOTSTRAP",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
@@ -752,6 +763,7 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
     crate::env::set_var("JCODE_HOME", dir.path());
     crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
     for key in [
+        "JCODE_DEFERRED_AUTH_BOOTSTRAP",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",

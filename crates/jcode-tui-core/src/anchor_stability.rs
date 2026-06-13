@@ -453,19 +453,19 @@ fn align_frames(prev: &[u64], cur: &[u64]) -> AnchorDiff {
         // viewport-pinned UI (footers, status rows). Rows within
         // SLIDE_TOLERANCE of the dominant shift are smooth animation motion.
         // Only rows beyond that are true jumps (displaced).
-        if prev_unique.contains_key(h) {
-            if let Some(cur_idx) = cur_unique.get(h) {
-                let offset = *cur_idx as i32 - prev_idx as i32;
-                if offset == 0 && dominant_shift != 0 {
-                    diff.stationary_rows += 1;
-                } else if (offset - dominant_shift).abs() <= SLIDE_TOLERANCE {
-                    diff.sliding_rows += 1;
-                } else {
-                    diff.displaced_rows += 1;
-                }
-                matched_cur_rows[*cur_idx] = true;
-                continue;
+        if prev_unique.contains_key(h)
+            && let Some(cur_idx) = cur_unique.get(h)
+        {
+            let offset = *cur_idx as i32 - prev_idx as i32;
+            if offset == 0 && dominant_shift != 0 {
+                diff.stationary_rows += 1;
+            } else if (offset - dominant_shift).abs() <= SLIDE_TOLERANCE {
+                diff.sliding_rows += 1;
+            } else {
+                diff.displaced_rows += 1;
             }
+            matched_cur_rows[*cur_idx] = true;
+            continue;
         }
         diff.removed_rows += 1;
     }

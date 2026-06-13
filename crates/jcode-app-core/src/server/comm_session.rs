@@ -191,15 +191,14 @@ async fn resolve_coordinator_spawn_identity(
     if let Some(agent) = {
         let agent_sessions = sessions.read().await;
         agent_sessions.get(req_session_id).cloned()
-    } {
-        if let Ok(agent_guard) = agent.try_lock() {
-            return CoordinatorSpawnIdentity {
-                model: Some(agent_guard.provider_model()),
-                provider_key: agent_guard.session_provider_key(),
-                route_api_method: agent_guard.session_route_api_method(),
-                is_canary: agent_guard.is_canary(),
-            };
-        }
+    } && let Ok(agent_guard) = agent.try_lock()
+    {
+        return CoordinatorSpawnIdentity {
+            model: Some(agent_guard.provider_model()),
+            provider_key: agent_guard.session_provider_key(),
+            route_api_method: agent_guard.session_route_api_method(),
+            is_canary: agent_guard.is_canary(),
+        };
     }
 
     // Agent busy (mid-turn) or not resident: read the authoritative persisted

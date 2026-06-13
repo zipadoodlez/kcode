@@ -581,7 +581,7 @@ pub fn measure_scroll_mode(
 }
 
 fn abs_diff(a: u16, b: u16) -> u16 {
-    if a >= b { a - b } else { b - a }
+    a.abs_diff(b)
 }
 
 /// Map a captured widget-kind string back to a stable `&'static str` so live

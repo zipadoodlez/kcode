@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
+
 use super::{
     NotifySessionContext, clone_split_session, handle_notify_session, handle_rename_session,
     handle_resume_all_sessions, handle_set_feature,
@@ -18,6 +20,7 @@ use std::time::Instant;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::{Duration, timeout};
 
+#[allow(clippy::type_complexity)]
 fn empty_swarm_status_state() -> (
     Arc<RwLock<HashMap<String, std::collections::HashSet<String>>>>,
     Arc<RwLock<std::collections::VecDeque<crate::server::SwarmEvent>>>,

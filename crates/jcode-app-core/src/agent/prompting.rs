@@ -113,6 +113,7 @@ impl Agent {
     }
 
     /// Non-blocking memory prompt - takes pending result and spawns check for next turn
+    #[cfg(test)]
     pub(super) fn build_memory_prompt_nonblocking(
         &self,
         messages: &[Message],

@@ -113,27 +113,6 @@ fn dock_widths_with_fallback(reliable: &[u16], instant: &[u16]) -> Vec<u16> {
     }
 }
 
-/// Compute widget placements while keeping the caller-owned widget state stable.
-pub(crate) fn calculate_placements(
-    messages_area: Rect,
-    margins: &Margins,
-    data: &InfoWidgetData,
-    enabled: bool,
-    prev_placements: &[WidgetPlacement],
-) -> Vec<WidgetPlacement> {
-    // Back-compat shim: derive throwaway anchors from the previous visible set.
-    let prev_anchors: Vec<WidgetAnchor> = prev_placements
-        .iter()
-        .cloned()
-        .map(|placement| WidgetAnchor {
-            placement,
-            hidden_frames: 0,
-            content_top: 0,
-        })
-        .collect();
-    calculate_placements_anchored(messages_area, margins, data, enabled, &prev_anchors).visible
-}
-
 /// Anchor-aware placement. Widgets behave like a pinned HUD: each holds the exact
 /// screen slot recorded in its anchor for as long as that slot can show it, only
 /// shrinking (with hysteresis) or hiding-in-place when a wide line scrolls under

@@ -562,8 +562,10 @@ fn cloud_sessions_sync_respects_min_interval_throttle() {
     std::fs::write(sessions_dir.join("session_gamma.json"), b"{\"id\":\"g\"}").unwrap();
 
     // Seed sync state with a very recent last_sync_at so throttle should trigger.
-    let mut state = CloudSessionsSyncState::default();
-    state.last_sync_at = Some(chrono::Utc::now().to_rfc3339());
+    let state = CloudSessionsSyncState {
+        last_sync_at: Some(chrono::Utc::now().to_rfc3339()),
+        ..Default::default()
+    };
     save_cloud_sessions_sync_state(&state).expect("seed state");
 
     // Should be skipped (not error) because last sync was just now.

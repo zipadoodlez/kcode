@@ -567,11 +567,11 @@ fn process_remote_followups_pauses_auto_reload_after_repeated_attempts() {
         app.pending_server_reload = true;
         rt.block_on(process_remote_followups(&mut app, &mut remote));
         assert!(!app.pending_server_reload);
-        if let Some(last) = app.display_messages().last() {
-            if last.content.contains("auto-reload paused") {
-                paused = true;
-                break;
-            }
+        if let Some(last) = app.display_messages().last()
+            && last.content.contains("auto-reload paused")
+        {
+            paused = true;
+            break;
         }
     }
 

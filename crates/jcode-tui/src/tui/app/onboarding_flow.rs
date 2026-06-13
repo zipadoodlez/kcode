@@ -3,20 +3,20 @@
 //! After the user logs in / imports credentials on a fresh install, we walk
 //! them through a short guided flow:
 //!
-//!   1. `Login`           - if we boot without working credentials, ask the
-//!                          user to log in right inside the TUI (the fresh
-//!                          install no longer runs a blocking CLI login).
-//!                          Skipped entirely when credentials already exist.
-//!   2. `TranscriptPick`  - if we detect external Codex / Claude Code
-//!                          transcripts, drop the user straight into a
-//!                          resume-style picker. The picker reserves a top band
-//!                          for an onboarding prompt and offers a selectable
-//!                          "Start a new session" row alongside the resumable
-//!                          sessions. Nothing auto-selects; the user resumes a
-//!                          session or starts fresh explicitly.
-//!   3. `Suggestions`     - the existing prompt-suggestion cards. Reached when
-//!                          they choose "Start a new session", when there is no
-//!                          external OAuth, or as the terminal resting state.
+//!   1. `Login` - if we boot without working credentials, ask the
+//!      user to log in right inside the TUI (the fresh
+//!      install no longer runs a blocking CLI login).
+//!      Skipped entirely when credentials already exist.
+//!   2. `TranscriptPick` - if we detect external Codex / Claude Code
+//!      transcripts, drop the user straight into a
+//!      resume-style picker. The picker reserves a top band
+//!      for an onboarding prompt and offers a selectable
+//!      "Start a new session" row alongside the resumable
+//!      sessions. Nothing auto-selects; the user resumes a
+//!      session or starts fresh explicitly.
+//!   3. `Suggestions` - the existing prompt-suggestion cards. Reached when
+//!      they choose "Start a new session", when there is no
+//!      external OAuth, or as the terminal resting state.
 //!
 //!   (`ContinuePrompt` is retained as a legacy phase for replay/test fixtures
 //!   but is no longer entered by the live flow.)

@@ -373,7 +373,7 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     lines.push(Line::from(header));
 
     let available_lines = inner.height.saturating_sub(1) as usize; // Account for header
-    let budget = available_lines.min(5).max(1);
+    let budget = available_lines.clamp(1, 5);
 
     // Grouped layout when any todo declares a group; otherwise the flat list.
     if let Some(groups) = grouped_todos(&data.todos) {

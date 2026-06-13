@@ -1998,15 +1998,15 @@ pub(crate) fn copy_selection_text(range: crate::tui::CopySelectionRange) -> Opti
                 continue;
             }
         }
-        let line_width = line_display_width(&text);
+        let line_width = line_display_width(text);
         let copy_start = snapshot.wrapped_copy_offset(abs_line).unwrap_or(0);
         let start_col = if abs_line == start.abs_line {
-            clamp_display_col(&text, start.column).max(copy_start)
+            clamp_display_col(text, start.column).max(copy_start)
         } else {
             copy_start
         };
         let end_col = if abs_line == end.abs_line {
-            clamp_display_col(&text, end.column).max(copy_start)
+            clamp_display_col(text, end.column).max(copy_start)
         } else {
             line_width
         };
@@ -2015,11 +2015,11 @@ pub(crate) fn copy_selection_text(range: crate::tui::CopySelectionRange) -> Opti
             continue;
         }
 
-        let slice = display_col_slice(&text, start_col, end_col);
+        let slice = display_col_slice(text, start_col, end_col);
         if abs_line == start.abs_line {
             out.reserve(slice.len().saturating_mul(selected_lines.min(8)));
         }
-        out.push_str(&slice);
+        out.push_str(slice);
     }
 
     Some(out)
@@ -2070,22 +2070,22 @@ pub(crate) fn copy_selection_metrics(
                 continue;
             }
         }
-        let line_width = line_display_width(&text);
+        let line_width = line_display_width(text);
         let copy_start = snapshot.wrapped_copy_offset(abs_line).unwrap_or(0);
         let start_col = if abs_line == start.abs_line {
-            clamp_display_col(&text, start.column).max(copy_start)
+            clamp_display_col(text, start.column).max(copy_start)
         } else {
             copy_start
         };
         let end_col = if abs_line == end.abs_line {
-            clamp_display_col(&text, end.column).max(copy_start)
+            clamp_display_col(text, end.column).max(copy_start)
         } else {
             line_width
         };
         if end_col < start_col {
             continue;
         }
-        chars += display_col_slice(&text, start_col, end_col).chars().count();
+        chars += display_col_slice(text, start_col, end_col).chars().count();
     }
 
     Some((chars, lines.max(1)))

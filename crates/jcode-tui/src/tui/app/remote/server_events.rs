@@ -106,10 +106,10 @@ fn should_defer_history_for_runtime_identity_with_allow(
 /// from a dev/dirty test binary (whose real version would otherwise be
 /// unorderable and short-circuit the comparison).
 fn client_release_version() -> String {
-    if cfg!(test) || cfg!(debug_assertions) {
-        if let Some(v) = std::env::var_os("JCODE_TEST_CLIENT_VERSION_OVERRIDE") {
-            return v.to_string_lossy().into_owned();
-        }
+    if (cfg!(test) || cfg!(debug_assertions))
+        && let Some(v) = std::env::var_os("JCODE_TEST_CLIENT_VERSION_OVERRIDE")
+    {
+        return v.to_string_lossy().into_owned();
     }
     jcode_build_meta::VERSION.to_string()
 }

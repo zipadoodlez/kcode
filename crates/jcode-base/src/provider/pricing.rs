@@ -4,6 +4,7 @@ use crate::provider::models::provider_for_model;
 use jcode_provider_core::pricing as core_pricing;
 use jcode_provider_core::{RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource};
 
+#[cfg(test)]
 pub(crate) fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
     core_pricing::anthropic_api_pricing(model)
 }
@@ -33,10 +34,6 @@ pub(crate) fn openai_effective_auth_mode() -> &'static str {
             }
         }
     }
-}
-
-pub(crate) fn openai_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
-    core_pricing::openai_api_pricing(model)
 }
 
 pub(crate) fn openai_oauth_pricing(model: &str) -> RouteCheapnessEstimate {

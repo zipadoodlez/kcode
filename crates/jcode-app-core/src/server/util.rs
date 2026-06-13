@@ -101,10 +101,7 @@ pub(crate) fn reload_exec_target(is_selfdev_session: bool) -> Option<(PathBuf, &
         .as_ref()
         .map(|p| build::resolve_binary_payload(p));
 
-    let current_mtime = current_canonical
-        .as_ref()
-        .map(|p| p.as_path())
-        .and_then(binary_mtime);
+    let current_mtime = current_canonical.as_deref().and_then(binary_mtime);
     let candidate_mtime = binary_mtime(candidate_canonical.as_path());
 
     match guarded_reload_target(
@@ -777,7 +774,7 @@ mod newest_reload_candidate_integration_tests {
     //! a temp `JCODE_HOME`. This reproduces the field "/update -> new client,
     //! stale server" state and proves the fix: a self-dev daemon now reloads into
     //! the freshly installed release instead of its old pinned binary.
-    use super::{canonicalize_or, newer_binary_available, newest_reload_candidate};
+    use super::{newer_binary_available, newest_reload_candidate};
     use crate::build;
     use std::path::Path;
     use std::time::{Duration, SystemTime};
@@ -955,6 +952,10 @@ mod newest_reload_candidate_integration_tests {
             Some(new_release),
             "normal-user daemon should reload into the freshly installed release"
         );
+
+        if let Some(prev_home) = prev_home {
+            crate::env::set_var("JCODE_HOME", prev_home);
+        }
     }
 
     /// Install a release-archive-style version dir: a tiny `jcode` wrapper

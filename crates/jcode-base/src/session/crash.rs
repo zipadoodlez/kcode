@@ -544,17 +544,13 @@ fn resolve_imported_snapshot_id(provider_id: &str) -> Option<String> {
         return None;
     }
 
-    for candidate in [
+    [
         crate::import::imported_opencode_session_id(provider_id),
         crate::import::imported_codex_session_id(provider_id),
         crate::import::imported_claude_code_session_id(provider_id),
-    ] {
-        if session_exists(&candidate) {
-            return Some(candidate);
-        }
-    }
-
-    None
+    ]
+    .into_iter()
+    .find(|candidate| session_exists(candidate))
 }
 
 /// Find a session by ID, memorable name, generated title, or custom rename.

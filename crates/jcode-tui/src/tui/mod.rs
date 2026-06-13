@@ -263,9 +263,9 @@ pub trait TuiState {
     fn session_compaction_count(&self) -> usize {
         0
     }
-    /// Whether running in remote (client-server) mode
 
     // ---- Session / server ----
+    /// Whether running in remote (client-server) mode
     fn is_remote_mode(&self) -> bool;
     /// Whether running in canary/self-dev mode
     fn is_canary(&self) -> bool;
@@ -334,9 +334,9 @@ pub trait TuiState {
     fn server_update_available(&self) -> Option<bool>;
     /// Get info widget data (todos, client count, etc.)
     fn info_widget_data(&self) -> info_widget::InfoWidgetData;
-    /// Whether workspace mode is enabled for this client.
 
     // ---- Workspace ----
+    /// Whether workspace mode is enabled for this client.
     fn workspace_mode_enabled(&self) -> bool {
         false
     }

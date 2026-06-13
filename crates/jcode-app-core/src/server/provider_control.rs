@@ -1195,6 +1195,7 @@ fn spawn_account_switch_refresh(
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
     use crate::message::{Message, ToolDefinition};

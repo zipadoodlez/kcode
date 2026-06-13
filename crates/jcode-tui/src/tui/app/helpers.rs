@@ -32,14 +32,14 @@ static TODOS_CACHE: std::sync::LazyLock<Mutex<TodosCache>> =
 /// immediately rather than after the 5s TTL. Stale-while-revalidate still
 /// applies: the next read returns the last value and kicks a background refresh.
 pub(crate) fn invalidate_git_info_cache() {
-    if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
-        if let Some((ts, _cached, refreshing)) = guard.as_mut() {
-            // Backdate the timestamp past the TTL so the next `gather_git_info`
-            // treats the entry as expired and spawns a refresh, while still
-            // returning the last-known value (no flicker to empty).
-            *ts = std::time::Instant::now() - Duration::from_secs(3600);
-            *refreshing = false;
-        }
+    if let Ok(mut guard) = GIT_INFO_CACHE.lock()
+        && let Some((ts, _cached, refreshing)) = guard.as_mut()
+    {
+        // Backdate the timestamp past the TTL so the next `gather_git_info`
+        // treats the entry as expired and spawns a refresh, while still
+        // returning the last-known value (no flicker to empty).
+        *ts = std::time::Instant::now() - Duration::from_secs(3600);
+        *refreshing = false;
     }
 }
 
@@ -48,11 +48,11 @@ pub(crate) fn invalidate_git_info_cache() {
 /// Call this right after the app persists a local todo write so the info widget
 /// reflects the new list immediately rather than after the 1s TTL.
 pub(crate) fn invalidate_todos_cache(session_id: &str) {
-    if let Ok(mut cache) = TODOS_CACHE.lock() {
-        if let Some((ts, _todos, refreshing)) = cache.get_mut(session_id) {
-            *ts = std::time::Instant::now() - Duration::from_secs(3600);
-            *refreshing = false;
-        }
+    if let Ok(mut cache) = TODOS_CACHE.lock()
+        && let Some((ts, _todos, refreshing)) = cache.get_mut(session_id)
+    {
+        *ts = std::time::Instant::now() - Duration::from_secs(3600);
+        *refreshing = false;
     }
 }
 
@@ -62,11 +62,11 @@ pub(crate) fn invalidate_todos_cache(session_id: &str) {
 /// queues or cancels a task) so the ambient panel reflects the new queue/next
 /// wake immediately rather than after the 2s TTL.
 pub(crate) fn invalidate_ambient_info_cache() {
-    if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock() {
-        if let Some((ts, _enabled, _cached, refreshing)) = guard.as_mut() {
-            *ts = std::time::Instant::now() - Duration::from_secs(3600);
-            *refreshing = false;
-        }
+    if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock()
+        && let Some((ts, _enabled, _cached, refreshing)) = guard.as_mut()
+    {
+        *ts = std::time::Instant::now() - Duration::from_secs(3600);
+        *refreshing = false;
     }
 }
 
@@ -437,9 +437,8 @@ pub(super) fn pretty_model_display_name(model: &str) -> String {
         // `-<major>-<minor>` version into `<major>.<minor>` and title-case the
         // family/tier words.
         prettify_claude(core)
-    } else if lower.starts_with("gemini-") {
-        title_case_dashed(core)
     } else {
+        // Gemini and everything else: just title-case the dashed segments.
         title_case_dashed(core)
     };
 

@@ -328,12 +328,13 @@ impl App {
     }
 
     /// Intercept keys for the guided onboarding welcome phases:
-    ///   - `ModelSelect`: we tell the user to run /model; Enter is also a
-    ///     shortcut that opens the model picker from the welcome screen.
-    ///   - `ContinuePrompt`: Y/Enter continues, N/Esc declines.
-    ///   - `LoginOpenAi`: Left/h -> Yes, Right/l -> No, toggle with
-    ///     Up/Down/k/j/Tab; y/n commit directly, Enter/Space commit the
-    ///     highlighted default (Yes -> OpenAI sign-in, No -> provider picker).
+    /// - `ModelSelect`: we tell the user to run /model; Enter is also a
+    ///   shortcut that opens the model picker from the welcome screen.
+    /// - `ContinuePrompt`: Y/Enter continues, N/Esc declines.
+    /// - `LoginOpenAi`: Left/h -> Yes, Right/l -> No, toggle with
+    ///   Up/Down/k/j/Tab; y/n commit directly, Enter/Space commit the
+    ///   highlighted default (Yes -> OpenAI sign-in, No -> provider picker).
+    ///
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
         match self.onboarding_phase() {
@@ -824,10 +825,10 @@ impl App {
     /// so prefer the same resolution the header uses; fall back to the session
     /// model and finally the local provider's model.
     fn onboarding_default_model_id(&self) -> String {
-        if self.is_remote {
-            if let Some(model) = self.effective_remote_provider_model() {
-                return model;
-            }
+        if self.is_remote
+            && let Some(model) = self.effective_remote_provider_model()
+        {
+            return model;
         }
         self.session
             .model

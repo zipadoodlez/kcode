@@ -106,10 +106,10 @@ impl App {
         }
 
         // The todo tool rewrites the per-session todo list.
-        if name == "todo" || name == "todowrite" || name == "todo_write" {
-            if let Some(session_id) = self.active_client_session_id().map(str::to_string) {
-                super::helpers::invalidate_todos_cache(&session_id);
-            }
+        if (name == "todo" || name == "todowrite" || name == "todo_write")
+            && let Some(session_id) = self.active_client_session_id().map(str::to_string)
+        {
+            super::helpers::invalidate_todos_cache(&session_id);
         }
 
         // The schedule tool queues/cancels ambient tasks, which the ambient panel
