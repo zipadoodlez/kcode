@@ -722,7 +722,13 @@ impl App {
                 );
                 return;
             }
-            self.build_remote_model_routes_lightweight_fallback(&current_model)
+            // Names-only remote catalog: synthesize properly classified
+            // provider routes (Comtegra/Copilot/Bedrock/Gemini/OpenRouter/…)
+            // rather than a generic "remote-catalog" placeholder. This is the
+            // final route set for this open (there is no async upgrade after
+            // it), and the full fallback only reads local config/disk caches,
+            // so it is cheap enough for the cold-open path.
+            self.build_remote_model_routes_fallback()
         } else {
             self.simplified_model_routes_for_picker(&current_model)
         };
