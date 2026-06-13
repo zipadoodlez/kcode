@@ -1452,47 +1452,14 @@ impl Provider for MultiProvider {
     }
 
     fn set_route_selection(&self, selection: &RouteSelection) -> Result<()> {
-        let model = selection.model.trim();
-        if model.is_empty() {
+        if selection.model.trim().is_empty() {
             anyhow::bail!("Model cannot be empty");
         }
 
-        let routed_model = match &selection.runtime_key {
-            RuntimeKey::ClaudeOAuth => format!("claude-oauth:{model}"),
-            RuntimeKey::AnthropicApiKey => format!("claude-api:{model}"),
-            RuntimeKey::OpenAIOAuth => format!("openai-oauth:{model}"),
-            RuntimeKey::OpenAIApiKey => format!("openai-api:{model}"),
-            RuntimeKey::OpenAiCompatible {
-                profile_id: Some(profile_id),
-            } => format!("{}:{model}", profile_id.trim()),
-            RuntimeKey::OpenAiCompatible { profile_id: None } => model.to_string(),
-            RuntimeKey::OpenRouter => {
-                let provider = selection.provider_label.trim();
-                if provider.is_empty()
-                    || provider.eq_ignore_ascii_case("auto")
-                    || model.contains('@')
-                {
-                    openrouter_catalog_model_id(model).unwrap_or_else(|| model.to_string())
-                } else {
-                    format!(
-                        "{}@{}",
-                        openrouter_catalog_model_id(model).unwrap_or_else(|| model.to_string()),
-                        provider
-                    )
-                }
-            }
-            RuntimeKey::Copilot => format!("copilot:{model}"),
-            RuntimeKey::Cursor => format!("cursor:{model}"),
-            RuntimeKey::Bedrock => format!("bedrock:{model}"),
-            RuntimeKey::Antigravity => format!("antigravity:{model}"),
-            RuntimeKey::Gemini
-            | RuntimeKey::CodeAssistOAuth
-            | RuntimeKey::RemoteCatalog
-            | RuntimeKey::Current
-            | RuntimeKey::Other(_) => model.to_string(),
-        };
-
-        self.set_model(&routed_model)
+        // Routing-prefix policy lives once in RouteSelection::routed_model_spec
+        // so this orchestrator and every single-runtime provider agree on the
+        // spec string. set_model then dispatches it to the right sub-provider.
+        self.set_model(&selection.routed_model_spec())
     }
 
     fn available_models(&self) -> Vec<&'static str> {

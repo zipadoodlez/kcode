@@ -63,7 +63,10 @@ fn test_review_prefers_openai_oauth_gpt_5_4_when_available() {
 
         assert_eq!(
             super::commands::preferred_one_shot_review_override(),
-            Some(("gpt-5.4".to_string(), "openai".to_string()))
+            Some((
+                super::commands::REVIEW_PREFERRED_MODEL.to_string(),
+                "openai".to_string()
+            ))
         );
     });
 }

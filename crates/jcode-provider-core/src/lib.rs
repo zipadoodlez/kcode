@@ -163,7 +163,7 @@ pub trait Provider: Send + Sync {
     /// orchestrators should override this to activate the exact runtime identified
     /// by [`RouteSelection::runtime_key`] instead of reparsing a lossy model string.
     fn set_route_selection(&self, selection: &RouteSelection) -> Result<()> {
-        self.set_model(&selection.model)
+        self.set_model(&selection.routed_model_spec())
     }
 
     /// List available models for this provider.
@@ -637,6 +637,63 @@ impl RouteSelection {
             provider_label: route.provider.clone(),
             detail: route.detail.clone(),
         }
+    }
+
+    /// The string model spec that applies this route selection, including any
+    /// provider routing prefix/suffix (`openai-oauth:`, `claude-api:`,
+    /// `openai/gpt-5@OpenAI`, `copilot:`, ...).
+    ///
+    /// This is the single source of truth for translating a structured
+    /// [`RouteSelection`] back into the `set_model` spec string. Both the
+    /// trait-default `set_route_selection` and `MultiProvider`'s override use
+    /// it so the routing-prefix policy is never duplicated or allowed to
+    /// drift between provider implementations.
+    pub fn routed_model_spec(&self) -> String {
+        let model = self.model.trim();
+        match &self.runtime_key {
+            RuntimeKey::ClaudeOAuth => format!("claude-oauth:{model}"),
+            RuntimeKey::AnthropicApiKey => format!("claude-api:{model}"),
+            RuntimeKey::OpenAIOAuth => format!("openai-oauth:{model}"),
+            RuntimeKey::OpenAIApiKey => format!("openai-api:{model}"),
+            RuntimeKey::OpenAiCompatible {
+                profile_id: Some(profile_id),
+            } => format!("{}:{model}", profile_id.trim()),
+            RuntimeKey::OpenAiCompatible { profile_id: None } => model.to_string(),
+            RuntimeKey::OpenRouter => {
+                let provider = self.provider_label.trim();
+                let catalog_id = openrouter_catalog_model_id(model);
+                if provider.is_empty()
+                    || provider.eq_ignore_ascii_case("auto")
+                    || model.contains('@')
+                {
+                    catalog_id
+                } else {
+                    format!("{catalog_id}@{provider}")
+                }
+            }
+            RuntimeKey::Copilot => format!("copilot:{model}"),
+            RuntimeKey::Cursor => format!("cursor:{model}"),
+            RuntimeKey::Bedrock => format!("bedrock:{model}"),
+            RuntimeKey::Antigravity => format!("antigravity:{model}"),
+            RuntimeKey::Gemini
+            | RuntimeKey::CodeAssistOAuth
+            | RuntimeKey::RemoteCatalog
+            | RuntimeKey::Current
+            | RuntimeKey::Other(_) => model.to_string(),
+        }
+    }
+}
+
+/// OpenRouter catalog id for a bare model: claude models gain an `anthropic/`
+/// prefix, OpenAI models an `openai/` prefix, already-qualified ids pass
+/// through. Mirrors `jcode_base::provider::openrouter_catalog_model_id` but
+/// lives here so [`RouteSelection::routed_model_spec`] has no upward dep.
+fn openrouter_catalog_model_id(model: &str) -> String {
+    let trimmed = model.trim();
+    match crate::models::provider_for_model(trimmed) {
+        Some("claude") => format!("anthropic/{trimmed}"),
+        Some("openai") => format!("openai/{trimmed}"),
+        _ => trimmed.to_string(),
     }
 }
 
