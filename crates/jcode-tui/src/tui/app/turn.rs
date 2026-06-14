@@ -1105,6 +1105,14 @@ impl App {
             // Flush any remaining buffered text
             let ops = self.stream_buffer.flush();
             self.apply_stream_ops(ops);
+            // The turn can finish with a reasoning region still open (reasoning
+            // streamed but no answer text / explicit close followed). Close it as
+            // a hard message boundary so the live-rendered reasoning is
+            // anchored/retained instead of being silently stripped by
+            // `collapse_reasoning_for_commit`.
+            if self.reasoning_streaming {
+                self.close_reasoning_region(None);
+            }
 
             if tool_calls.is_empty() {
                 // No tool calls - display full text_content

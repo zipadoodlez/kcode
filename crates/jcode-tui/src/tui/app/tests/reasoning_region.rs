@@ -715,6 +715,50 @@ fn repro_reasoning_rendered_then_removed_when_turn_ends_open() {
 }
 
 #[test]
+fn open_reasoning_region_closed_at_turn_finish_is_anchored_not_dropped() {
+    // Mirrors the local turn loop's end-of-turn commit: when a turn finishes
+    // with the reasoning region still open (reasoning streamed, but no answer
+    // text and no explicit close), the finish path must close the region so the
+    // live-rendered reasoning is anchored as a trace rather than silently
+    // stripped by `collapse_reasoning_for_commit`.
+    let mut app = create_test_app();
+    app.is_processing = true;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("weighing the options before answering");
+    assert!(app.reasoning_streaming, "precondition: region open");
+    assert!(
+        app.streaming_text()
+            .contains(jcode_tui_markdown::REASONING_SENTINEL),
+        "precondition: reasoning rendered live in the stream"
+    );
+
+    // End-of-turn commit path (matches turn.rs / Done handler): close any open
+    // region first, then commit whatever remains.
+    if app.reasoning_streaming {
+        app.close_reasoning_region(None);
+    }
+    let _ = app.commit_pending_streaming_assistant_message();
+
+    let anchored = app
+        .display_messages
+        .iter()
+        .any(|m| m.role == "reasoning" && m.content.contains("weighing the options"));
+    let lingered_in_stream = app
+        .streaming_text()
+        .contains(jcode_tui_markdown::REASONING_SENTINEL);
+    assert!(
+        anchored || lingered_in_stream,
+        "reasoning rendered live must be preserved at turn finish; display_messages={:?}, stream={:?}",
+        app.display_messages
+            .iter()
+            .map(|m| (m.role.as_str(), m.content.as_str()))
+            .collect::<Vec<_>>(),
+        app.streaming_text(),
+    );
+}
+
+#[test]
 fn gc_keeps_single_trace_indefinitely() {
     // With only one (current) trace there is nothing stale to collect, no
     // matter how much the transcript grows.

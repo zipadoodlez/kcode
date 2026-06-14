@@ -756,6 +756,14 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.clear_pending_remote_retry();
                 let ops = app.stream_buffer.flush();
                 app.apply_stream_ops(ops);
+                // The turn can finish with a reasoning region still open (the
+                // model streamed reasoning but never sent ReasoningDone and never
+                // began answer text). Close it as a hard message boundary so the
+                // live-rendered reasoning is anchored/retained instead of being
+                // silently stripped by `collapse_reasoning_for_commit` below.
+                if app.reasoning_streaming {
+                    app.close_reasoning_region(None);
+                }
                 app.pause_streaming_tps(false);
                 if !app.streaming.streaming_text.is_empty() {
                     let duration = app.display_turn_duration_secs();
