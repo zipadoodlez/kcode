@@ -881,6 +881,65 @@ pub fn calculate_placements(
     outcome.visible
 }
 
+/// Facts surfaced by the info-widget HUD as of the last rendered frame.
+///
+/// The bottom bar (status line + idle input hint) draws *before* widget
+/// placement is recomputed each frame, so we read the placements stored from
+/// the previous frame. This is a deliberately cheap, one-frame-stale proxy used
+/// only to decide which facts an idle fallback surface should fill in; being a
+/// frame behind is visually harmless.
+pub(crate) fn widget_visible_facts(data: &InfoWidgetData) -> crate::tui::session_facts::FactLedger {
+    use crate::tui::session_facts::Fact;
+    let mut ledger = crate::tui::session_facts::FactLedger::new();
+    let guard = get_or_init_state();
+    let Some(state) = guard.as_ref() else {
+        return ledger;
+    };
+    if !state.enabled {
+        return ledger;
+    }
+    for placement in &state.placements {
+        match placement.kind {
+            WidgetKind::ModelInfo => {
+                ledger.claim(Fact::Model);
+                if data.reasoning_effort.is_some() {
+                    ledger.claim(Fact::ReasoningEffort);
+                }
+                if data.provider_name.is_some() {
+                    ledger.claim(Fact::Provider);
+                }
+                if data.auth_method != AuthMethod::Unknown {
+                    ledger.claim(Fact::Auth);
+                }
+                if data.working_dir.is_some() {
+                    ledger.claim(Fact::Dir);
+                }
+                if data.session_count.is_some() {
+                    ledger.claim(Fact::Session);
+                }
+            }
+            WidgetKind::Overview => {
+                // The overview panel summarizes model, context, provider, dir.
+                ledger.claim_all([
+                    Fact::Model,
+                    Fact::Context,
+                    Fact::Provider,
+                    Fact::Dir,
+                ]);
+                if data.reasoning_effort.is_some() {
+                    ledger.claim(Fact::ReasoningEffort);
+                }
+                if data.auth_method != AuthMethod::Unknown {
+                    ledger.claim(Fact::Auth);
+                }
+            }
+            WidgetKind::ContextUsage => ledger.claim(Fact::Context),
+            _ => {}
+        }
+    }
+    ledger
+}
+
 /// Calculate the height needed for a specific widget type
 pub(crate) fn calculate_widget_height(
     kind: WidgetKind,

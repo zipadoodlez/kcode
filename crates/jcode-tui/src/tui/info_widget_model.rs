@@ -10,7 +10,7 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
 
     let mut lines: Vec<Line> = Vec::new();
 
-    let short_name = shorten_model_name(model);
+    let short_name = crate::tui::session_facts::pretty_model(model);
     let max_len = inner.width.saturating_sub(2) as usize;
 
     let mut spans = vec![
@@ -161,7 +161,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         return Vec::new();
     };
 
-    let short_name = shorten_model_name(model);
+    let short_name = crate::tui::session_facts::pretty_model(model);
     let max_len = inner.width.saturating_sub(2) as usize;
 
     let mut spans = vec![Span::styled(
@@ -359,17 +359,7 @@ fn short_service_tier(service_tier: &str) -> Option<&str> {
 
 /// Render a directory path home-relative (e.g. `/home/me/x` -> `~/x`).
 fn home_relative_dir(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return "/".to_string();
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = home.to_string_lossy();
-        if !home.is_empty() && (trimmed == home || trimmed.starts_with(&format!("{home}/"))) {
-            return format!("~{}", &trimmed[home.len()..]);
-        }
-    }
-    trimmed.to_string()
+    crate::tui::session_facts::dir_label(path)
 }
 
 #[cfg(test)]

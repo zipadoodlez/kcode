@@ -32,6 +32,7 @@ pub mod permissions {
 mod remote_diff;
 pub mod screenshot;
 pub mod session_picker;
+pub(crate) mod session_facts;
 mod stream_buffer;
 pub mod test_harness;
 mod ui;

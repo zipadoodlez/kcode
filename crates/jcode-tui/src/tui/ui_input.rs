@@ -11,6 +11,7 @@ use crate::tui::color_support::rgb;
 use crate::tui::detect_kv_cache_problem;
 use crate::tui::info_widget::occasional_status_tip;
 use crate::tui::layout_utils;
+use crate::tui::session_facts;
 use ratatui::{prelude::*, widgets::Paragraph};
 
 fn shell_mode_color() -> Color {
@@ -843,6 +844,8 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 Span::styled("⚠ ", Style::default().fg(warning_color)),
                 Span::styled(warning, Style::default().fg(warning_color)),
             ])
+        } else if let Some(facts) = idle_status_facts(app) {
+            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
         } else if let Some(tip) =
             occasional_status_tip(area.width as usize, app.animation_elapsed() as u64)
         {
@@ -851,7 +854,9 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
             Line::from("")
         }
     } else {
-        if let Some(tip) =
+        if let Some(facts) = idle_status_facts(app) {
+            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
+        } else if let Some(tip) =
             occasional_status_tip(area.width as usize, app.animation_elapsed() as u64)
         {
             Line::from(vec![Span::styled(tip, Style::default().fg(dim_color()))])
@@ -1511,7 +1516,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         .unwrap_or_else(|| app.provider_model());
     if !model.is_empty() && !overscroll_is_placeholder(&model) {
         spans.push(Span::styled(
-            crate::tui::app::helpers::pretty_model_display_name(&model),
+            session_facts::pretty_model(&model),
             Style::default().fg(rgb(255, 150, 200)).bold(),
         ));
         // Reasoning level shown inline next to the model, e.g. " high".
@@ -1683,34 +1688,7 @@ fn overscroll_truncate_spans(spans: Vec<Span<'static>>, max_width: usize) -> Vec
 
 /// Format a working dir path home-relative (~/foo/bar), keeping the last 2 segments.
 fn overscroll_dir_label(path: &str) -> Option<String> {
-    let trimmed = path.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return None;
-    }
-    let display = if let Some(home) = std::env::var_os("HOME") {
-        let home = home.to_string_lossy();
-        if !home.is_empty() && (trimmed == home || trimmed.starts_with(&format!("{home}/"))) {
-            format!("~{}", &trimmed[home.len()..])
-        } else {
-            trimmed.to_string()
-        }
-    } else {
-        trimmed.to_string()
-    };
-    // Keep it short: show at most the last two path segments.
-    let segs: Vec<&str> = display.split('/').filter(|s| !s.is_empty()).collect();
-    let short = if display.starts_with('~') {
-        if segs.len() <= 2 {
-            display.clone()
-        } else {
-            format!("~/…/{}", segs[segs.len() - 1])
-        }
-    } else if segs.len() <= 2 {
-        format!("/{}", segs.join("/"))
-    } else {
-        format!("…/{}/{}", segs[segs.len() - 2], segs[segs.len() - 1])
-    };
-    Some(short)
+    session_facts::dir_label_short(path)
 }
 
 /// Placeholder header strings used during remote startup; not real model names.
@@ -2278,7 +2256,8 @@ fn send_mode_indicator(app: &dyn TuiState) -> (&'static str, Color) {
 }
 
 /// Faint right-aligned hint shown in the input line while it is empty and idle:
-/// the working directory basename followed by the short model name.
+/// the model name and working directory, but only the facts that are not
+/// already visible in the info-widget HUD (so we never duplicate them).
 fn idle_input_hint(app: &dyn TuiState) -> Option<String> {
     // Only show when nothing meaningful is happening in the composer.
     if !app.input().is_empty() {
@@ -2293,19 +2272,27 @@ fn idle_input_hint(app: &dyn TuiState) -> Option<String> {
         return None;
     }
 
-    let dir = app
-        .working_dir()
-        .as_deref()
-        .and_then(overscroll_dir_label);
+    // Consult the per-frame ledger: skip facts the HUD already shows.
+    let ledger = crate::tui::info_widget::widget_visible_facts(&app.info_widget_data());
 
-    let model = {
+    let dir = if ledger.is_missing(session_facts::Fact::Dir) {
+        app.working_dir()
+            .as_deref()
+            .and_then(session_facts::dir_label_short)
+    } else {
+        None
+    };
+
+    let model = if ledger.is_missing(session_facts::Fact::Model) {
         let m = app.provider_model();
         let m = m.trim();
         if m.is_empty() {
             None
         } else {
-            Some(crate::tui::app::helpers::pretty_model_display_name(m))
+            Some(session_facts::pretty_model(m))
         }
+    } else {
+        None
     };
 
     format_idle_input_hint(model, dir)
@@ -2319,6 +2306,49 @@ fn format_idle_input_hint(model: Option<String>, dir: Option<String>) -> Option<
         (Some(m), None) => Some(m),
         (None, Some(d)) => Some(d),
         (None, None) => None,
+    }
+}
+
+/// Idle status-line facts: surface the session facts that are *not* already
+/// shown by the info-widget HUD nor by the idle input hint (which owns model
+/// and dir). The status line therefore fills in context usage and provider.
+///
+/// Returns `None` when everything important is already visible elsewhere, so
+/// the caller can fall back to the occasional tip / blank line.
+fn idle_status_facts(app: &dyn TuiState) -> Option<String> {
+    use session_facts::Fact;
+    let data = app.info_widget_data();
+    let ledger = crate::tui::info_widget::widget_visible_facts(&data);
+    // The idle input hint owns model + dir, so treat them as already shown.
+    let mut parts: Vec<String> = Vec::new();
+
+    if ledger.is_missing(Fact::Context)
+        && let Some((used, limit)) = overscroll_context_usage(&data)
+    {
+        let pct = (used as f64 / limit as f64 * 100.0).round() as u64;
+        parts.push(format!(
+            "{}% context ({}/{})",
+            pct,
+            overscroll_format_tokens(used),
+            overscroll_format_tokens(limit)
+        ));
+    }
+
+    if ledger.is_missing(Fact::Provider) {
+        let provider = data
+            .provider_name
+            .clone()
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| app.provider_name());
+        if !provider.is_empty() && !overscroll_is_runtime_placeholder(&provider) {
+            parts.push(overscroll_provider_display(&provider));
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
     }
 }
 
