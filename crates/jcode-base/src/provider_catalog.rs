@@ -140,10 +140,72 @@ fn newest_released_model_for_resolved_openai_compatible_profile(
             if id.is_empty() || !crate::provider::is_listable_model_name(&id) {
                 return None;
             }
-            Some((created, std::cmp::Reverse(index), id))
+            let tier = openai_compatible_model_quality_tier(&id);
+            Some((tier, created, std::cmp::Reverse(index), id))
         })
-        .max_by_key(|(created, reverse_index, _)| (*created, *reverse_index))
-        .map(|(_, _, id)| id)
+        // Pick the strongest tier first, then the newest within that tier, then
+        // catalog order. Ranking by quality *before* recency stops a brand-new
+        // cheap/small model (e.g. a freshly released `*-flash`/`*-mini`) from
+        // becoming the default of a heterogeneous proxy catalog (OpenCode Zen,
+        // Groq, ...) when a stronger sibling is available.
+        .max_by_key(|(tier, created, reverse_index, _)| (*tier, *created, *reverse_index))
+        .map(|(_, _, _, id)| id)
+}
+
+/// Cheap/small/fast tier markers. A model id whose tokens include one of these
+/// is a cheaper or smaller variant that must not become a profile's default
+/// while a stronger sibling exists. Matched on whole tokens (split on
+/// non-alphanumeric) so brand names like `minimax` are not mistaken for
+/// `mini`/`max`.
+const OPENAI_COMPAT_CHEAP_TIER_MARKERS: &[&str] = &[
+    "mini",
+    "nano",
+    "lite",
+    "small",
+    "tiny",
+    "flash",
+    "instant",
+    "air",
+    "micro",
+    "lightning",
+    "haiku",
+    "scout",
+    "edge",
+    "lowcost",
+];
+
+/// Flagship/strong tier markers. A model id whose tokens include one of these
+/// advertises itself as a provider's top-tier or specialized-strong model.
+const OPENAI_COMPAT_FLAGSHIP_TIER_MARKERS: &[&str] = &[
+    "opus", "max", "ultra", "pro", "plus", "large", "coder", "code", "reasoner", "405b", "480b",
+    "235b", "671b", "256b",
+];
+
+/// Coarse cross-vendor quality tier for an openai-compatible catalog model id
+/// (higher is stronger): `2` = flagship-marked, `0` = cheap/small-marked, `1`
+/// otherwise (a bare frontier id like `gpt-5.5` or `minimax-m2.7`).
+///
+/// This relies on the near-universal naming convention that cheaper variants
+/// carry a size/speed marker (`mini`, `flash`, `air`, ...) and flagship variants
+/// carry a top-tier marker (`max`, `pro`, `opus`, `coder`, ...). It is a coarse
+/// heuristic only used to break the "newest model" tie sensibly; the user can
+/// always override the selected model.
+fn openai_compatible_model_quality_tier(model_id: &str) -> u8 {
+    let lower = model_id.to_ascii_lowercase();
+    let tokens: Vec<&str> = lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let has = |markers: &[&str]| markers.iter().any(|marker| tokens.contains(marker));
+    // Flagship markers win when both are present (e.g. `qwen3-coder-30b`): a
+    // strong-specialization signal outweighs a size token.
+    if has(OPENAI_COMPAT_FLAGSHIP_TIER_MARKERS) {
+        return 2;
+    }
+    if has(OPENAI_COMPAT_CHEAP_TIER_MARKERS) {
+        return 0;
+    }
+    1
 }
 
 fn apply_profile_key_based_endpoint_overrides(

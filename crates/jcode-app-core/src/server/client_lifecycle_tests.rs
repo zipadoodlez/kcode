@@ -102,6 +102,54 @@ async fn refreshed_session_control_handle_does_not_wait_for_busy_agent_lock() {
 }
 
 #[tokio::test]
+async fn busy_session_background_tool_signal_fires_via_registry_fallback() {
+    // Regression: pressing Alt+B/Ctrl+B while a turn owns the agent mutex (e.g.
+    // running `await_members`) used to silently no-op because the lock-free
+    // `cancel_only` control handle dropped the background-tool signal
+    // (BACKGROUND_TOOL_SIGNAL_FIRE result=no_signal_handle). Building a full
+    // SessionControlHandle now registers the signal in a process-global registry
+    // so the cancel-only fallback can still fire it without the agent lock.
+    let provider: Arc<dyn Provider> = Arc::new(PanicOnForkProvider {
+        forked: Arc::new(AtomicBool::new(false)),
+    });
+    let registry = Registry::new(Arc::clone(&provider)).await;
+    let session_id = "session_busy_background_signal_registry";
+    let mut session =
+        crate::session::Session::create_with_id(session_id.to_string(), None, None);
+    session.model = Some("panic-on-fork".to_string());
+    let agent = Arc::new(Mutex::new(Agent::new_with_session(
+        provider, registry, session, None,
+    )));
+
+    let background_signal = {
+        let agent_guard = agent.lock().await;
+        agent_guard.background_tool_signal()
+    };
+
+    // Build a full control handle once (registers the background signal), then
+    // simulate the busy-turn reconnect path which yields a cancel-only handle.
+    let stop_signal = InterruptSignal::new();
+    let soft_interrupt_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let _full = SessionControlHandle::new(
+        session_id,
+        Arc::clone(&soft_interrupt_queue),
+        background_signal.clone(),
+        stop_signal.clone(),
+    );
+
+    let cancel_only =
+        SessionControlHandle::cancel_only(session_id, soft_interrupt_queue, stop_signal);
+
+    // The cancel-only handle has no directly-held background signal, yet it must
+    // still fire the registered one.
+    assert!(cancel_only.request_background_current_tool());
+    assert!(background_signal.is_set());
+
+    // Cleanup so the global registry does not leak across tests.
+    crate::server::state::remove_background_tool_signal(session_id);
+}
+
+#[tokio::test]
 async fn busy_agent_request_rejection_does_not_wait_for_agent_lock() {
     let provider: Arc<dyn Provider> = Arc::new(PanicOnForkProvider {
         forked: Arc::new(AtomicBool::new(false)),

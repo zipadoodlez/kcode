@@ -3,7 +3,7 @@ use crate::protocol::ServerEvent;
 use crate::provider::Provider;
 use crate::server::{
     SessionInterruptQueues, SwarmMember, VersionedPlan, broadcast_swarm_status,
-    register_session_interrupt_queue, swarm_id_for_dir,
+    register_background_tool_signal, register_session_interrupt_queue, swarm_id_for_dir,
 };
 use crate::tool::Registry;
 use anyhow::Result;
@@ -136,6 +136,10 @@ pub(super) async fn create_headless_session(
             agent_guard.soft_interrupt_queue(),
         )
         .await;
+        register_background_tool_signal(
+            &client_session_id,
+            agent_guard.background_tool_signal(),
+        );
     }
 
     let swarm_id = if swarm_enabled {

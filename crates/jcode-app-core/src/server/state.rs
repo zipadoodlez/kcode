@@ -8,9 +8,61 @@ use jcode_swarm_core::{SwarmLifecycleStatus, SwarmMemberRecord, SwarmRole};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex as StdMutex};
 use std::time::Instant;
 use tokio::sync::{RwLock, mpsc};
+
+/// Process-global registry mapping session id -> background-tool signal.
+///
+/// The background-tool ("move tool to background", Alt+B/Ctrl+B) signal lives on
+/// the `Agent`, so a `SessionControlHandle` can normally only obtain it by
+/// locking the agent mutex. When a turn is busy (e.g. running `await_members`),
+/// `refresh_session_control_handle` falls back to a lock-free `cancel_only`
+/// handle that historically dropped the background signal entirely, which made
+/// Alt+B/Ctrl+B silently no-op (`BACKGROUND_TOOL_SIGNAL_FIRE result=no_signal_handle`).
+///
+/// This registry is populated every time a full `SessionControlHandle` is built
+/// (which always has both the session id and the correct signal), so the
+/// lock-free fallback can still fire the background signal without the agent
+/// lock. Entries are keyed by session id; renames/removals reuse
+/// [`rename_background_tool_signal`]/[`remove_background_tool_signal`] alongside
+/// the existing shutdown-signal lifecycle.
+static BACKGROUND_TOOL_SIGNALS: LazyLock<StdMutex<HashMap<String, InterruptSignal>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// Register (or replace) the background-tool signal for a session.
+pub(super) fn register_background_tool_signal(session_id: &str, signal: InterruptSignal) {
+    if let Ok(mut map) = BACKGROUND_TOOL_SIGNALS.lock() {
+        map.insert(session_id.to_string(), signal);
+    }
+}
+
+/// Look up the registered background-tool signal for a session, if any.
+pub(super) fn background_tool_signal_for_session(session_id: &str) -> Option<InterruptSignal> {
+    BACKGROUND_TOOL_SIGNALS
+        .lock()
+        .ok()
+        .and_then(|map| map.get(session_id).cloned())
+}
+
+/// Move a session's background-tool signal registration to a new session id.
+pub(super) fn rename_background_tool_signal(old_session_id: &str, new_session_id: &str) {
+    if old_session_id == new_session_id {
+        return;
+    }
+    if let Ok(mut map) = BACKGROUND_TOOL_SIGNALS.lock()
+        && let Some(signal) = map.remove(old_session_id)
+    {
+        map.insert(new_session_id.to_string(), signal);
+    }
+}
+
+/// Drop a session's background-tool signal registration.
+pub(super) fn remove_background_tool_signal(session_id: &str) {
+    if let Ok(mut map) = BACKGROUND_TOOL_SIGNALS.lock() {
+        map.remove(session_id);
+    }
+}
 
 /// Record of a file access by an agent
 #[derive(Clone, Debug)]
@@ -446,8 +498,14 @@ impl SessionControlHandle {
         background_tool_signal: InterruptSignal,
         stop_current_turn_signal: InterruptSignal,
     ) -> Self {
+        let session_id = session_id.into();
+        // Mirror the signal into the process-global registry so the lock-free
+        // `cancel_only` fallback (used while the agent mutex is busy, e.g. during
+        // `await_members`) can still fire it. Without this, Alt+B/Ctrl+B silently
+        // no-ops for busy turns.
+        register_background_tool_signal(&session_id, background_tool_signal.clone());
         Self {
-            session_id: session_id.into(),
+            session_id,
             soft_interrupt_queue,
             background_tool_signal: Some(background_tool_signal),
             stop_current_turn_signal,
@@ -509,7 +567,15 @@ impl SessionControlHandle {
     }
 
     pub fn request_background_current_tool(&self) -> bool {
-        if let Some(signal) = &self.background_tool_signal {
+        // Prefer the directly-held signal; fall back to the process-global
+        // registry for lock-free (`cancel_only`) handles built while the agent
+        // mutex was busy. This is what makes Alt+B/Ctrl+B work during a busy
+        // turn such as `await_members`.
+        let signal = self
+            .background_tool_signal
+            .clone()
+            .or_else(|| background_tool_signal_for_session(&self.session_id));
+        if let Some(signal) = signal {
             signal.fire();
             crate::logging::info(&format!(
                 "BACKGROUND_TOOL_SIGNAL_FIRE session={} result=sent",

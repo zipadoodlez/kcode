@@ -29,9 +29,9 @@ pub mod copilot_usage;
 pub mod dictation;
 #[cfg(feature = "embeddings")]
 pub mod embedding;
+pub mod embedding_backend;
 #[cfg(not(feature = "embeddings"))]
 pub mod embedding_stub;
-pub mod embedding_backend;
 pub mod env;
 pub mod gateway;
 pub mod generated_image;

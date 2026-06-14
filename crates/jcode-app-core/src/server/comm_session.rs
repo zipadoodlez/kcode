@@ -7,9 +7,10 @@ use super::{
     SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan,
     append_swarm_completion_report_instructions, broadcast_swarm_plan, broadcast_swarm_status,
     create_headless_session, fanout_session_event, persist_swarm_state_for, record_swarm_event,
-    record_swarm_event_for_session, remove_session_channel_subscriptions,
-    remove_session_from_swarm, remove_session_interrupt_queue, truncate_detail,
-    update_member_status, update_member_status_with_report,
+    record_swarm_event_for_session, remove_background_tool_signal,
+    remove_session_channel_subscriptions, remove_session_from_swarm,
+    remove_session_interrupt_queue, truncate_detail, update_member_status,
+    update_member_status_with_report,
 };
 use crate::agent::Agent;
 use crate::config::SwarmSpawnMode;
@@ -906,6 +907,7 @@ pub(super) async fn handle_comm_stop(
     drop(sessions_guard);
     if let Some(agent_arc) = removed_agent {
         remove_session_interrupt_queue(soft_interrupt_queues, &target_session).await;
+        remove_background_tool_signal(&target_session);
         if let Ok(agent) = agent_arc.try_lock() {
             let memory_enabled = agent.memory_enabled();
             let transcript = if memory_enabled {

@@ -1,7 +1,7 @@
 use super::{
     SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, SwarmState, VersionedPlan,
     broadcast_swarm_status, create_headless_session, persist_swarm_state_for, record_swarm_event,
-    remove_session_interrupt_queue,
+    remove_background_tool_signal, remove_session_interrupt_queue,
 };
 use crate::agent::Agent;
 use crate::provider::Provider;
@@ -115,6 +115,7 @@ pub(super) async fn maybe_handle_session_admin_command(
             sessions_guard.remove(target_id)
         };
         remove_session_interrupt_queue(soft_interrupt_queues, target_id).await;
+        remove_background_tool_signal(target_id);
         if let Some(ref agent_arc) = removed_agent {
             let agent = agent_arc.lock().await;
             let memory_enabled = agent.memory_enabled();

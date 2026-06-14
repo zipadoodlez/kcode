@@ -922,3 +922,110 @@ fn load_api_key_accepts_legacy_zai_key_name() {
         Some("legacy-secret")
     );
 }
+
+#[test]
+fn quality_tier_ranks_flagship_above_bare_above_cheap() {
+    // Flagship-marked ids (max/pro/opus/coder/large/huge-param) -> tier 2.
+    assert_eq!(openai_compatible_model_quality_tier("qwen3-max"), 2);
+    assert_eq!(openai_compatible_model_quality_tier("claude-opus-4-8"), 2);
+    assert_eq!(openai_compatible_model_quality_tier("qwen3-coder-480b"), 2);
+    assert_eq!(openai_compatible_model_quality_tier("glm-4.6-pro"), 2);
+    assert_eq!(
+        openai_compatible_model_quality_tier("llama-3.1-405b-instruct"),
+        2
+    );
+
+    // Bare frontier ids (no tier marker) -> tier 1.
+    assert_eq!(openai_compatible_model_quality_tier("gpt-5.5"), 1);
+    assert_eq!(openai_compatible_model_quality_tier("minimax-m2.7"), 1);
+    assert_eq!(openai_compatible_model_quality_tier("kimi-k2.5"), 1);
+    assert_eq!(openai_compatible_model_quality_tier("glm-4.6"), 1);
+
+    // Cheap/small/fast-marked ids -> tier 0.
+    assert_eq!(openai_compatible_model_quality_tier("gpt-5.5-mini"), 0);
+    assert_eq!(openai_compatible_model_quality_tier("deepseek-v4-flash"), 0);
+    assert_eq!(openai_compatible_model_quality_tier("glm-4.6-air"), 0);
+    assert_eq!(
+        openai_compatible_model_quality_tier("llama-3.1-8b-instant"),
+        0
+    );
+    assert_eq!(openai_compatible_model_quality_tier("claude-haiku-4-5"), 0);
+
+    // Brand names that merely *contain* a marker substring must NOT trip the
+    // whole-token matcher: `minimax` is not `mini`/`max`.
+    assert_eq!(openai_compatible_model_quality_tier("minimax-m2.7"), 1);
+
+    // Flagship marker beats a co-occurring size token.
+    assert_eq!(
+        openai_compatible_model_quality_tier("qwen3-coder-30b-a3b"),
+        2
+    );
+}
+
+#[test]
+fn newest_release_picker_prefers_strongest_tier_over_newest_cheap() {
+    use jcode_provider_openrouter::ModelInfo;
+    let _env = EnvGuard::save(&["JCODE_HOME"]);
+    let temp = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    let mk = |id: &str, created: u64| ModelInfo {
+        id: id.to_string(),
+        name: String::new(),
+        context_length: None,
+        pricing: Default::default(),
+        created: Some(created),
+    };
+
+    // A heterogeneous proxy catalog (like OpenCode Zen): the NEWEST model is a
+    // cheap `*-flash`, but a slightly older flagship-marked model exists. The
+    // picker must choose the flagship, not the newest-cheap.
+    jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
+        "deepseek",
+        &[
+            mk("deepseek-v4-flash", 1_900_000_000), // newest, but cheap tier
+            mk("deepseek-v4", 1_850_000_000),       // bare frontier
+            mk("deepseek-v4-coder", 1_800_000_000), // flagship tier, oldest
+        ],
+        Some("https://api.deepseek.com"),
+    );
+
+    assert_eq!(
+        newest_released_model_for_openai_compatible_profile("deepseek").as_deref(),
+        Some("deepseek-v4-coder"),
+        "a flagship-marked model must win over a newer cheap/flash sibling"
+    );
+}
+
+#[test]
+fn newest_release_picker_uses_recency_within_a_tier() {
+    use jcode_provider_openrouter::ModelInfo;
+    let _env = EnvGuard::save(&["JCODE_HOME"]);
+    let temp = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    let mk = |id: &str, created: u64| ModelInfo {
+        id: id.to_string(),
+        name: String::new(),
+        context_length: None,
+        pricing: Default::default(),
+        created: Some(created),
+    };
+
+    // All same (bare frontier) tier: recency decides.
+    jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
+        "deepseek",
+        &[
+            mk("deepseek-v3", 1_700_000_000),
+            mk("deepseek-v4", 1_900_000_000), // newest within the same tier
+            mk("deepseek-v3.1", 1_800_000_000),
+        ],
+        Some("https://api.deepseek.com"),
+    );
+
+    assert_eq!(
+        newest_released_model_for_openai_compatible_profile("deepseek").as_deref(),
+        Some("deepseek-v4"),
+        "within one quality tier the newest release should win"
+    );
+}

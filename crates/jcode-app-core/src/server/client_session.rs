@@ -4,10 +4,12 @@ use super::client_state::{handle_get_history, spawn_model_prefetch_update};
 use super::{
     ClientConnectionInfo, ClientDebugState, FileTouchService, SessionInterruptQueues, SwarmEvent,
     SwarmMember, SwarmState, VersionedPlan, broadcast_swarm_status, fanout_live_client_event,
-    persist_swarm_state_for, register_session_event_sender, register_session_interrupt_queue,
-    remove_plan_participant, remove_session_channel_subscriptions, remove_session_from_swarm,
-    remove_session_interrupt_queue, rename_plan_participant, rename_session_interrupt_queue,
-    swarm_id_for_dir, unregister_session_event_sender, update_member_status,
+    persist_swarm_state_for, register_background_tool_signal, register_session_event_sender,
+    register_session_interrupt_queue, remove_background_tool_signal, remove_plan_participant,
+    remove_session_channel_subscriptions, remove_session_from_swarm,
+    remove_session_interrupt_queue, rename_background_tool_signal, rename_plan_participant,
+    rename_session_interrupt_queue, swarm_id_for_dir, unregister_session_event_sender,
+    update_member_status,
 };
 use crate::agent::Agent;
 use crate::message::ContentBlock;
@@ -116,6 +118,8 @@ async fn rename_shutdown_signal(
     if let Some(signal) = signals.remove(old_session_id) {
         signals.insert(new_session_id.to_string(), signal);
     }
+    drop(signals);
+    rename_background_tool_signal(old_session_id, new_session_id);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -203,6 +207,9 @@ pub(super) async fn handle_clear_session(
         let mut signals = shutdown_signals.write().await;
         signals.remove(client_session_id);
         signals.insert(new_id.clone(), agent_guard.graceful_shutdown_signal());
+        drop(signals);
+        remove_background_tool_signal(client_session_id);
+        register_background_tool_signal(&new_id, agent_guard.background_tool_signal());
     }
     remove_session_interrupt_queue(soft_interrupt_queues, client_session_id).await;
 
@@ -800,6 +807,7 @@ async fn cleanup_detached_source_session_if_unused(
         let mut signals = shutdown_signals.write().await;
         signals.remove(old_session_id);
     }
+    remove_background_tool_signal(old_session_id);
     remove_session_interrupt_queue(soft_interrupt_queues, old_session_id).await;
     remove_session_channel_subscriptions(
         old_session_id,

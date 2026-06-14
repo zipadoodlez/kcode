@@ -1,6 +1,6 @@
 use super::{
     ClientConnectionInfo, ClientDebugState, FileTouchService, SessionInterruptQueues, SwarmEvent,
-    SwarmEventType, SwarmMember, VersionedPlan, record_swarm_event,
+    SwarmEventType, SwarmMember, VersionedPlan, record_swarm_event, remove_background_tool_signal,
     remove_session_channel_subscriptions, remove_session_from_swarm,
     remove_session_interrupt_queue, unregister_session_event_sender, update_member_status,
 };
@@ -249,6 +249,7 @@ pub(super) async fn cleanup_client_connection(
         let mut signals = shutdown_signals.write().await;
         signals.remove(client_session_id);
     }
+    remove_background_tool_signal(client_session_id);
     remove_session_interrupt_queue(soft_interrupt_queues, client_session_id).await;
 
     if let Some(handle) = processing_task.take() {
