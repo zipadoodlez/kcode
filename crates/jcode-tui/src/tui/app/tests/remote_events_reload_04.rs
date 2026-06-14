@@ -1009,6 +1009,58 @@ fn test_remote_anthropic_api_key_accrues_cost_from_token_usage() {
 }
 
 #[test]
+fn test_resumed_session_seeds_cost_from_history_token_totals() {
+    // Reopening an older session restores token totals from history but never
+    // ran the live per-call cost path, so the cost widget showed $0. The resume
+    // path must price the restored totals once to seed total_cost.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_provider_name = Some("Claude".to_string());
+    app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+
+    let totals = crate::protocol::TokenUsageTotals {
+        messages_with_token_usage: 3,
+        input_tokens: 1_000,
+        output_tokens: 2_000,
+        cache_reported_input_tokens: 1_000,
+        cache_read_input_tokens: 40_000,
+        cache_creation_input_tokens: 100_000,
+    };
+    app.seed_cost_from_history_totals(&totals);
+
+    // Same split-accounting math as the live-call test above.
+    let expected = 0.003 + 0.030 + 0.012 + 0.600;
+    assert!(
+        (app.cost.total_cost - expected).abs() < 1e-4,
+        "resumed session cost should be seeded to ~${expected:.4}, got ${:.4}",
+        app.cost.total_cost
+    );
+
+    // Idempotent: a repeated history snapshot must not double the cost.
+    app.seed_cost_from_history_totals(&totals);
+    assert!(
+        (app.cost.total_cost - expected).abs() < 1e-4,
+        "re-seeding must overwrite (not accrue), got ${:.4}",
+        app.cost.total_cost
+    );
+
+    // OAuth subscription sessions are not metered per token; cost stays $0.
+    let mut oauth_app = create_test_app();
+    oauth_app.is_remote = true;
+    oauth_app.remote_provider_name = Some("Claude".to_string());
+    oauth_app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
+    oauth_app.remote_resolved_credential =
+        Some(jcode_provider_core::ResolvedCredential::Oauth);
+    oauth_app.seed_cost_from_history_totals(&totals);
+    assert_eq!(oauth_app.cost.total_cost, 0.0);
+}
+
+#[test]
 fn test_remote_fast_mode_tier_bills_premium_rates_and_reprices_on_toggle() {
     // `/fast on` (priority tier) bills premium per-token rates on Opus 4.6
     // ($30/$150 vs $5/$25). The pricing memo key includes the tier so toggling

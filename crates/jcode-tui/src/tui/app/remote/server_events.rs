@@ -1239,13 +1239,18 @@ pub(in crate::tui::app) fn handle_server_event(
             if session_changed || token_usage_totals.is_some() {
                 app.remote_token_usage_totals = token_usage_totals;
             }
-            if token_usage_totals.is_some() {
+            if let Some(totals) = token_usage_totals {
                 app.token_accounting.total_input_tokens = 0;
                 app.token_accounting.total_output_tokens = 0;
                 app.token_accounting.total_cache_reported_input_tokens = 0;
                 app.token_accounting.total_cache_read_tokens = 0;
                 app.token_accounting.total_cache_creation_tokens = 0;
                 app.token_accounting.total_cache_optimal_input_tokens = 0;
+                // Token totals are restored from history above, but the dollar
+                // cost was never reconstructed, so resumed sessions showed `$0`
+                // in the cost widget until a new call happened. Price the
+                // restored totals once to seed the displayed cost.
+                app.seed_cost_from_history_totals(&totals);
             }
             if let Some(totals) = token_usage_totals {
                 crate::logging::info(&format!(

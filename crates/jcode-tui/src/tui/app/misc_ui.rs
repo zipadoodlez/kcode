@@ -277,6 +277,38 @@ impl App {
         self.record_api_key_spend(call_cost);
     }
 
+    /// Seed `cost.total_cost` from token totals restored when resuming a
+    /// session, so the cost widget reflects prior spend instead of showing `$0`
+    /// until a new call happens.
+    ///
+    /// The live path (`accrue_remote_call_cost`) only ever observes per-call
+    /// usage events for calls that happen *during* this client's lifetime. When
+    /// an older session is reopened, its historical token totals are restored
+    /// from the server but the dollar cost was never reconstructed, leaving the
+    /// widget stuck at `$0`. This prices the restored totals once, the same way
+    /// a single completed call is priced, and overwrites `total_cost` (rather
+    /// than accruing) so it is idempotent across repeated history snapshots.
+    pub(super) fn seed_cost_from_history_totals(
+        &mut self,
+        totals: &crate::protocol::TokenUsageTotals,
+    ) {
+        if totals.input_tokens == 0 && totals.output_tokens == 0 {
+            return;
+        }
+        let Some(pricing) = self.resolve_remote_cost_pricing() else {
+            return;
+        };
+        let cost = pricing.cost_for_usage(
+            totals.input_tokens,
+            totals.output_tokens,
+            totals.cache_read_input_tokens,
+            totals.cache_creation_input_tokens,
+        );
+        if cost.is_finite() {
+            self.cost.total_cost = cost;
+        }
+    }
+
     /// Persist an API-key call cost into the cross-provider activity ledger so
     /// `/usage` can show per-login spend (today / month / all-time). Only ever
     /// called from the billed-per-token paths, so every dollar recorded here
