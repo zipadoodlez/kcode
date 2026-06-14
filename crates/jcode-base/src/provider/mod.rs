@@ -71,6 +71,38 @@ pub(crate) use routing::{
     is_transient_transport_error, should_eager_detect_copilot_tier,
 };
 
+/// Process-wide handle to the live agent provider.
+///
+/// The memory sidecar ([`crate::sidecar::Sidecar`]) needs to make small,
+/// cheap model calls (rerank / relevance / extraction). It has dedicated fast
+/// paths for OpenAI (codex-spark) and Claude (haiku) OAuth, but jcode also runs
+/// on Copilot, Antigravity, Gemini, Cursor, Bedrock, and OpenRouter. For those
+/// providers there is no standalone sidecar HTTP client, so the sidecar falls
+/// back to *this* handle and dispatches through the already-working
+/// [`Provider::complete_simple`] path. `Server::new` registers the active
+/// provider here at startup.
+static ACTIVE_PROVIDER: RwLock<Option<Arc<dyn Provider>>> = RwLock::new(None);
+
+/// Register the live agent provider so background helpers (memory sidecar) can
+/// reach whatever provider the user is actually running on. Safe to call more
+/// than once; the most recent registration wins.
+pub fn set_active_provider(provider: Arc<dyn Provider>) {
+    *ACTIVE_PROVIDER
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
+}
+
+/// Fetch the registered active provider, if any. Returns a forked handle so the
+/// caller gets an independent provider instance (per the [`Provider::fork`]
+/// contract) that will not interfere with the main agent's model selection.
+pub fn active_provider_fork() -> Option<Arc<dyn Provider>> {
+    ACTIVE_PROVIDER
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .map(|p| p.fork())
+}
+
 /// Whether reasoning deltas should be persisted in session history for later
 /// provider context reconstruction.
 ///

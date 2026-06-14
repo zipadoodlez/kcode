@@ -450,6 +450,13 @@ impl Server {
     pub fn new(provider: Arc<dyn Provider>) -> Self {
         use crate::id::{new_memorable_server_id, server_icon};
 
+        // Register the live provider so background helpers (the memory sidecar)
+        // can make cheap model calls on whatever provider the user is running.
+        // Without this, the sidecar only works on OpenAI/Claude OAuth and
+        // silently degrades (rerank -> hybrid order, no relevance/extraction) on
+        // Copilot, Antigravity, Gemini, Cursor, Bedrock, and OpenRouter.
+        crate::provider::set_active_provider(Arc::clone(&provider));
+
         let (event_tx, _) = broadcast::channel(1024);
         let (client_debug_response_tx, _) = broadcast::channel(64);
 
