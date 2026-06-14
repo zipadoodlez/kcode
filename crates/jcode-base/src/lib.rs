@@ -31,6 +31,7 @@ pub mod dictation;
 pub mod embedding;
 #[cfg(not(feature = "embeddings"))]
 pub mod embedding_stub;
+pub mod embedding_backend;
 pub mod env;
 pub mod gateway;
 pub mod generated_image;
