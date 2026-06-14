@@ -100,6 +100,11 @@ path = "src/bin/session_memory_bench.rs"
 required-features = ["dev-bins"]
 
 [[bin]]
+name = "memory_recall_bench"
+path = "src/bin/memory_recall_bench.rs"
+required-features = ["dev-bins"]
+
+[[bin]]
 name = "mermaid_side_panel_probe"
 path = "src/bin/mermaid_side_panel_probe.rs"
 required-features = ["dev-bins"]
