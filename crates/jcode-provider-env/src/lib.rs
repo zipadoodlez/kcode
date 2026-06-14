@@ -328,9 +328,15 @@ mod tests {
         );
         assert_eq!(sanitize_secret_value("\u{00A0}sk-key\u{2002}"), "sk-key");
         // Quotes plus invisible padding both stripped.
-        assert_eq!(sanitize_secret_value("\u{FEFF}\"sk-quoted\"\u{200B}"), "sk-quoted");
+        assert_eq!(
+            sanitize_secret_value("\u{FEFF}\"sk-quoted\"\u{200B}"),
+            "sk-quoted"
+        );
         // Interior characters are preserved.
-        assert_eq!(sanitize_secret_value("sk-mid\u{200B}dle"), "sk-mid\u{200B}dle");
+        assert_eq!(
+            sanitize_secret_value("sk-mid\u{200B}dle"),
+            "sk-mid\u{200B}dle"
+        );
         // Empty after sanitize.
         assert_eq!(sanitize_secret_value("\u{200B}\u{FEFF}"), "");
     }
