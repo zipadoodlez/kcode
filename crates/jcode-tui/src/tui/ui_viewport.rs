@@ -957,6 +957,43 @@ pub(super) fn draw_messages(
                 }
             }
         }
+
+        // Look-ahead prefetch: warm inline raster images within a margin band
+        // above/below the viewport so they are already decoded+scaled by the
+        // time they scroll into view, killing the first-scroll "blank then
+        // pop" hitch. Cheap and non-blocking: prefetch dedups against in-flight
+        // and already-warm state, and only the background worker does real
+        // work. Margin scales with viewport height so faster scrolls (which
+        // cover more rows per frame) get a deeper warm band.
+        if content_area.height > 0 {
+            const PREFETCH_VIEWPORTS: usize = 2;
+            let margin_lines = (content_area.height as usize)
+                .saturating_mul(PREFETCH_VIEWPORTS)
+                .max(1);
+            let prefetch_start = scroll.saturating_sub(margin_lines);
+            let prefetch_end = visible_end.saturating_add(margin_lines);
+            let band_start = prepared
+                .image_regions
+                .partition_point(|region| region.end_line <= prefetch_start);
+            let band_end = prepared
+                .image_regions
+                .partition_point(|region| region.abs_line_idx < prefetch_end);
+            for region in &prepared.image_regions[band_start..band_end] {
+                // Only inline raster images use the prewarm pipeline; mermaid
+                // crops build their own state at draw time. In pinned mode the
+                // raster images still render in the flow, so always prefetch.
+                if region.render != jcode_tui_messages::ImageRegionRender::Fit {
+                    continue;
+                }
+                // Skip the ones already on screen; the draw pass above warmed
+                // them via ensure_drawable.
+                let on_screen = region.end_line > scroll && region.abs_line_idx < visible_end;
+                if on_screen {
+                    continue;
+                }
+                super::inline_image_ui::prefetch(region.hash, content_area.width, region.height);
+            }
+        }
     }
 
     let right_x = render_area.x + render_area.width.saturating_sub(1);
