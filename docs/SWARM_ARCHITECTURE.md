@@ -37,6 +37,13 @@ swarm-level plan operations (propose/approve/assign/task-control on the one
 shared plan). Only a root session claims that slot, and only when it is empty or
 stale. A live coordinator no longer blocks anyone else from spawning.
 
+Nested owners coordinate their own subtree through spawn prompts, direct
+messages, and stop, not through the shared plan. Plan/task operations
+(`assign_task`, `assign_next`, `task_control`, `approve_plan`, `reject_plan`)
+deliberately stay gated to the root coordinator because there is exactly one
+`VersionedPlan` per `swarm_id`; allowing multiple coordinators to mutate it
+concurrently would make the shared plan incoherent.
+
 ### Coordinator
 
 - Owns the shared swarm-level plan: creates it, assigns scopes, approves updates.
