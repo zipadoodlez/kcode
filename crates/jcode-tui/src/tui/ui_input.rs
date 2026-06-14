@@ -844,22 +844,22 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 Span::styled("⚠ ", Style::default().fg(warning_color)),
                 Span::styled(warning, Style::default().fg(warning_color)),
             ])
-        } else if let Some(facts) = idle_status_facts(app) {
-            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
         } else if let Some(tip) =
             occasional_status_tip(area.width as usize, app.animation_elapsed() as u64)
         {
             Line::from(vec![Span::styled(tip, Style::default().fg(dim_color()))])
+        } else if let Some(facts) = idle_status_facts(app) {
+            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
         } else {
             Line::from("")
         }
     } else {
-        if let Some(facts) = idle_status_facts(app) {
-            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
-        } else if let Some(tip) =
+        if let Some(tip) =
             occasional_status_tip(area.width as usize, app.animation_elapsed() as u64)
         {
             Line::from(vec![Span::styled(tip, Style::default().fg(dim_color()))])
+        } else if let Some(facts) = idle_status_facts(app) {
+            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
         } else {
             Line::from("")
         }
