@@ -95,6 +95,17 @@ impl App {
     }
 
     pub(super) fn note_client_interaction(&mut self) {
+        // A terminal only delivers key/mouse/paste events to the focused window,
+        // so receiving one is proof this window is focused *right now*. Adopt that
+        // focus state directly instead of relying solely on FocusGained reports:
+        // some compositors/multiplexers (Wayland tiling WMs, tmux, certain SSH
+        // setups) can drop a FocusGained after a FocusLost, leaving the window
+        // wrongly stuck as "unfocused idle". In that state the run loop throttles
+        // repaints to ~1 Hz, so scrolling updates state but the screen only
+        // repaints about once a second -- the intermittent "can't scroll" bug.
+        if !self.client_focused {
+            self.set_client_focused(true);
+        }
         if !crate::perf::tui_policy().enable_focus_change {
             self.note_client_focus(false);
         }

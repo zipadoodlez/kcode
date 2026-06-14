@@ -117,6 +117,32 @@ fn unfocused_redraw_warranted_tracks_live_activity() {
 }
 
 #[test]
+fn client_interaction_restores_focus_so_scroll_redraws_at_full_rate() {
+    // Regression for the intermittent "can't scroll" bug. If a FocusGained is
+    // dropped (flaky under tiling WMs / multiplexers) the window can get stuck
+    // as "unfocused idle", which the run loop throttles to ~1 Hz. Any terminal
+    // input (key/mouse/scroll) is only delivered to the focused window, so it
+    // must restore the focused state and full-rate redraws immediately.
+    let mut app = create_test_app();
+
+    // Simulate a stuck-unfocused window (FocusLost seen, FocusGained dropped).
+    app.set_client_focused(false);
+    assert!(!app.client_focused());
+    assert!(
+        !app.unfocused_redraw_warranted(),
+        "an idle unfocused session is throttled to ~1 Hz redraws"
+    );
+
+    // A mouse-wheel / key event arrives: the terminal only routes input to the
+    // focused window, so interacting proves focus and must restore it.
+    app.note_client_interaction();
+    assert!(
+        app.client_focused(),
+        "interaction must restore focus so scrolling repaints at full rate"
+    );
+}
+
+#[test]
 fn auth_provider_hint_maps_openai_compatible_login_providers() {
     assert_eq!(
         auth_provider_hint_for_login_provider("Azure OpenAI"),

@@ -814,6 +814,193 @@ fn test_prompt_jump_loads_older_history_when_at_top() {
     );
 }
 
+/// Return the first non-empty rendered line of the chat viewport, used as a
+/// proxy for "where the viewport is anchored". If a scroll notch moves the
+/// view, this string must change.
+fn first_visible_content_line(text: &str) -> String {
+    text.lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Reproduction harness for the intermittent "can't scroll" report.
+///
+/// Mimics the real event loop: render a frame (so LAST_MAX_SCROLL reflects the
+/// content), feed one wheel-up notch, drain the momentum the way the tick does,
+/// then render again. Each notch from a scrollable bottom must visibly move the
+/// viewport. Sweeps content/viewport sizes and streaming on/off because the
+/// report is size/timing dependent ("only sometimes").
+#[test]
+fn repro_wheel_up_from_bottom_always_moves_viewport() {
+    let _render_lock = scroll_render_test_lock();
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for &height in &[8u16, 12, 16, 20, 25, 30] {
+        for &padding in &[6usize, 12, 24, 40] {
+            for &streaming in &[false, true] {
+                let (mut app, mut terminal) = create_scroll_test_app(80, height, 1, padding);
+                if streaming {
+                    app.is_processing = true;
+                    app.status = ProcessingStatus::Streaming;
+                }
+
+                // Establish the rendered scroll extent at the bottom.
+                let bottom = render_and_snap(&app, &mut terminal);
+                let max_scroll = crate::tui::ui::last_max_scroll();
+                if max_scroll == 0 {
+                    // Content fits; nothing to scroll. Not a failure.
+                    continue;
+                }
+
+                // One wheel-up notch, drained as the tick would, then re-render.
+                app.handle_mouse_event(MouseEvent {
+                    kind: MouseEventKind::ScrollUp,
+                    column: 10,
+                    row: height / 2,
+                    modifiers: KeyModifiers::empty(),
+                });
+                // Drain any queued momentum the way handle_tick does.
+                for _ in 0..16 {
+                    app.progress_mouse_scroll_animation();
+                }
+                let after = render_and_snap(&app, &mut terminal);
+
+                if after == bottom {
+                    failures.push(format!(
+                        "h={height} pad={padding} streaming={streaming}: \
+                         wheel-up did not move the viewport (max_scroll={max_scroll}, \
+                         offset={}, paused={})",
+                        app.scroll_offset, app.auto_scroll_paused
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "wheel-up dead zones found:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// A burst of wheel notches followed by a single wheel-down notch must move the
+/// view back down. Repro for momentum/queue state leaving the view stuck.
+#[test]
+fn repro_wheel_down_after_up_burst_moves_viewport() {
+    let _render_lock = scroll_render_test_lock();
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for &height in &[10u16, 16, 25] {
+        for &padding in &[12usize, 24, 40] {
+            for &streaming in &[false, true] {
+                let (mut app, mut terminal) = create_scroll_test_app(80, height, 1, padding);
+                if streaming {
+                    app.is_processing = true;
+                    app.status = ProcessingStatus::Streaming;
+                }
+                render_and_snap(&app, &mut terminal);
+                if crate::tui::ui::last_max_scroll() == 0 {
+                    continue;
+                }
+
+                // Flick up several notches.
+                for _ in 0..4 {
+                    app.handle_mouse_event(MouseEvent {
+                        kind: MouseEventKind::ScrollUp,
+                        column: 10,
+                        row: height / 2,
+                        modifiers: KeyModifiers::empty(),
+                    });
+                }
+                for _ in 0..30 {
+                    app.progress_mouse_scroll_animation();
+                }
+                let scrolled = render_and_snap(&app, &mut terminal);
+
+                // One wheel-down notch must move the viewport back toward bottom.
+                app.handle_mouse_event(MouseEvent {
+                    kind: MouseEventKind::ScrollDown,
+                    column: 10,
+                    row: height / 2,
+                    modifiers: KeyModifiers::empty(),
+                });
+                for _ in 0..16 {
+                    app.progress_mouse_scroll_animation();
+                }
+                let after = render_and_snap(&app, &mut terminal);
+
+                if after == scrolled {
+                    failures.push(format!(
+                        "h={height} pad={padding} streaming={streaming}: \
+                         wheel-down after up-burst did not move (offset={}, paused={})",
+                        app.scroll_offset, app.auto_scroll_paused
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "wheel-down dead zones found:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// Keyboard scroll-up via the real key path must move the viewport on the very
+/// first notch from the bottom, across sizes and streaming state.
+#[test]
+fn repro_key_scroll_up_first_notch_moves_viewport() {
+    let _render_lock = scroll_render_test_lock();
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for &height in &[8u16, 12, 16, 20, 25, 30] {
+        for &padding in &[6usize, 12, 24, 40] {
+            for &streaming in &[false, true] {
+                let (mut app, mut terminal) = create_scroll_test_app(80, height, 1, padding);
+                if streaming {
+                    app.is_processing = true;
+                    app.status = ProcessingStatus::Streaming;
+                }
+                let (up_code, up_mods) = scroll_up_key(&app);
+
+                let bottom = render_and_snap(&app, &mut terminal);
+                let max_scroll = crate::tui::ui::last_max_scroll();
+                if max_scroll == 0 {
+                    continue;
+                }
+
+                app.handle_key(up_code.clone(), up_mods).unwrap();
+                let after = render_and_snap(&app, &mut terminal);
+
+                let moved = first_visible_content_line(&after)
+                    != first_visible_content_line(&bottom)
+                    || after != bottom;
+                if !moved {
+                    failures.push(format!(
+                        "h={height} pad={padding} streaming={streaming}: \
+                         key scroll-up first notch did not move (max_scroll={max_scroll}, \
+                         offset={}, paused={})",
+                        app.scroll_offset, app.auto_scroll_paused
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "key scroll-up dead zones found:\n{}",
+        failures.join("\n")
+    );
+}
+
 #[cfg(test)]
 #[path = "../tests_input_scroll.rs"]
 mod input_scroll_tests;
