@@ -48,6 +48,7 @@ pub mod memory;
 pub mod memory_agent;
 pub mod memory_graph;
 pub mod memory_log;
+pub mod memory_rerank;
 pub mod memory_types;
 pub mod message;
 pub mod model_pricing;
