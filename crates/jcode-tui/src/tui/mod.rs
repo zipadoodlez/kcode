@@ -208,6 +208,11 @@ pub trait TuiState {
     fn chat_overscroll_active(&self) -> bool {
         false
     }
+    /// Seconds remaining in the overscroll dwell window, used to render the
+    /// `(overscroll x.x)` countdown. `None` when not shown.
+    fn chat_overscroll_remaining(&self) -> Option<f32> {
+        None
+    }
     /// Whether a mouse drag-selection is currently held at the top/bottom edge of
     /// a pane and should keep auto-scrolling on every tick (browser-style). When
     /// true the redraw loop must stay responsive even if the transcript is
@@ -1342,6 +1347,17 @@ pub(crate) fn redraw_interval_with_policy(
     // catch-up slide still needs smooth frames and must skip the deep-idle
     // short-circuits below.
     if ui::tail_catchup_active() {
+        return match policy.tier {
+            crate::perf::PerformanceTier::Minimal => fast_interval,
+            _ => animation_interval,
+        };
+    }
+
+    // The elastic overscroll line shows a live `(overscroll x.x)` countdown that
+    // depletes over ~1.5s. Without a dedicated branch it falls through to the
+    // 250ms idle cadence and ticks in coarse, steppy jumps. Drive it at the
+    // smooth animation cadence so the countdown reads as continuous.
+    if state.chat_overscroll_active() {
         return match policy.tier {
             crate::perf::PerformanceTier::Minimal => fast_interval,
             _ => animation_interval,

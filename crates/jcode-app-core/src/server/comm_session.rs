@@ -517,7 +517,11 @@ pub(super) async fn spawn_swarm_agent(
         .map(append_swarm_completion_report_instructions);
 
     let visible_spawn = match resolved_spawn_mode {
-        SwarmSpawnMode::Headless => Err(anyhow::anyhow!("headless spawn requested")),
+        // Inline workers run in-process like headless ones; the difference is
+        // purely how the coordinator renders them (a live inline gallery).
+        SwarmSpawnMode::Headless | SwarmSpawnMode::Inline => {
+            Err(anyhow::anyhow!("headless spawn requested"))
+        }
         SwarmSpawnMode::Visible | SwarmSpawnMode::Auto => prepare_visible_spawn_session(
             resolved_working_dir.as_deref(),
             spawn_model.as_deref(),

@@ -79,8 +79,10 @@ impl App {
     /// flick still glides a touch, without long runaway momentum.
     const MOUSE_SCROLL_MAX_QUEUE: i16 = 30;
     /// How long the overscroll status line stays revealed after the last
-    /// downward overscroll tick before it rebounds away.
-    const OVERSCROLL_DWELL: std::time::Duration = std::time::Duration::from_millis(600);
+    /// downward overscroll tick before it rebounds away. Long enough that the
+    /// depleting countdown indicator is perceivable and the line reads as a
+    /// temporary, pull-to-reveal panel.
+    const OVERSCROLL_DWELL: std::time::Duration = std::time::Duration::from_millis(1500);
 
     fn log_mouse_scroll_trace(
         &self,
@@ -1540,6 +1542,19 @@ impl App {
         self.chat_overscroll_last
             .map(|t| t.elapsed() < Self::OVERSCROLL_DWELL)
             .unwrap_or(false)
+    }
+
+    /// Seconds remaining in the overscroll dwell window before the line
+    /// rebounds away. Returns `None` when the overscroll line is not currently
+    /// shown. Drives the visible `(overscroll x.x)` countdown so users can see
+    /// the line is temporary.
+    pub(super) fn chat_overscroll_remaining(&self) -> Option<f32> {
+        let last = self.chat_overscroll_last?;
+        let elapsed = last.elapsed();
+        if elapsed >= Self::OVERSCROLL_DWELL {
+            return None;
+        }
+        Some(Self::OVERSCROLL_DWELL.saturating_sub(elapsed).as_secs_f32())
     }
 
     /// Drive the overscroll dwell timer. Returns `true` when the revealed state

@@ -468,6 +468,9 @@ pub enum SwarmSpawnMode {
     Visible,
     /// Create the worker in-process without opening a terminal window.
     Headless,
+    /// Like headless (no terminal window), but the coordinator renders a live
+    /// inline gallery viewport of each worker's streaming output.
+    Inline,
     /// Try visible first and fall back to headless if a window cannot be opened.
     Auto,
 }
@@ -477,6 +480,7 @@ impl SwarmSpawnMode {
         match value.trim().to_ascii_lowercase().as_str() {
             "visible" | "headed" => Some(Self::Visible),
             "headless" => Some(Self::Headless),
+            "inline" => Some(Self::Inline),
             "auto" => Some(Self::Auto),
             _ => None,
         }
@@ -487,6 +491,7 @@ impl SwarmSpawnMode {
         match self {
             Self::Visible => "visible",
             Self::Headless => "headless",
+            Self::Inline => "inline",
             Self::Auto => "auto",
         }
     }

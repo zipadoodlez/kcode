@@ -43,7 +43,7 @@ pub(super) fn parse_swarm_spawn_mode(
                 let _ = client_event_tx.send(ServerEvent::Error {
                     id,
                     message: format!(
-                        "Invalid spawn_mode '{value}'. Expected one of: visible, headless, auto"
+                        "Invalid spawn_mode '{value}'. Expected one of: visible, headless, inline, auto"
                     ),
                     retry_after_secs: None,
                 });

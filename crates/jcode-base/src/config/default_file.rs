@@ -271,6 +271,7 @@ cross_provider_failover = "countdown"
 # How swarm-created agents are spawned:
 #   "visible"  - open a headed terminal window (default; alias: "headed")
 #   "headless" - create the worker in-process with no terminal window
+#   "inline"   - in-process (no window), shown as a live gallery viewport in the coordinator
 #   "auto"     - try visible first, fall back to headless if no window can open
 # The swarm tool's per-call `spawn_mode` overrides this when set.
 # Env override: JCODE_SWARM_SPAWN_MODE
