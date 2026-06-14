@@ -9,6 +9,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
+        expanded_images_version: 0,
     };
     let key_b = BodyCacheKey {
         width: 41,
@@ -74,6 +75,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
             pin_images: true,
         inline_images_visible: true,
             images_signature: (0, 0),
+        expanded_images_version: 0,
         };
         let prepared = Arc::new(PreparedMessages {
             wrapped_lines: vec![Line::from(format!("{idx}"))],
@@ -110,6 +112,7 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
+        expanded_images_version: 0,
     };
     let prepared = make_prepared_messages_with_content_bytes(3 * 1024 * 1024, "body-large-");
 
@@ -136,6 +139,7 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
+        expanded_images_version: 0,
     };
     let prepared = make_oversized_prepared_messages("body-oversized-");
 
@@ -163,6 +167,7 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
+        expanded_images_version: 0,
     };
     let key_b = BodyCacheKey {
         width: 139,
@@ -197,6 +202,7 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
         pin_images: true,
         inline_images_visible: true,
         images_signature: (0, 0),
+        expanded_images_version: 0,
     };
     let prepared = make_oversized_prepared_messages("body-oversized-base-");
 
@@ -325,6 +331,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         streaming_text_hash: 0,
         batch_progress_hash: 0,
     inline_images_signature: (0, 0),
+        expanded_images_version: 0,
     inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
@@ -394,6 +401,7 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             streaming_text_hash: 0,
             batch_progress_hash: 0,
         inline_images_signature: (0, 0),
+        expanded_images_version: 0,
         inline_images_visible: true,
         };
         let prepared = make_prepared_chat_frame(Arc::new(PreparedMessages {
@@ -434,6 +442,7 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
         streaming_text_hash: 0,
         batch_progress_hash: 0,
     inline_images_signature: (0, 0),
+        expanded_images_version: 0,
     inline_images_visible: true,
     };
     let prepared = make_prepared_chat_frame_with_content_bytes(3 * 1024 * 1024, "full-large-");
@@ -463,6 +472,7 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
     inline_images_signature: (0, 0),
+        expanded_images_version: 0,
     inline_images_visible: true,
     };
     let prepared = make_oversized_prepared_chat_frame("full-oversized-");
@@ -494,6 +504,7 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
     inline_images_signature: (0, 0),
+        expanded_images_version: 0,
     inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {

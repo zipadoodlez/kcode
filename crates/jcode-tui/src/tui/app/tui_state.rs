@@ -1520,6 +1520,18 @@ impl crate::tui::TuiState for App {
     fn inline_images_visible(&self) -> bool {
         self.inline_images_visible
     }
+    fn image_expand_level(
+        &self,
+        image_id: u64,
+    ) -> crate::tui::ui::inline_image_ui::ImageExpandLevel {
+        self.expanded_images
+            .get(&image_id)
+            .copied()
+            .unwrap_or_default()
+    }
+    fn expanded_images_version(&self) -> u64 {
+        self.expanded_images_version
+    }
     fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
         if self.side_panel_user_hidden
             || self.side_panel.focused_page().is_some()

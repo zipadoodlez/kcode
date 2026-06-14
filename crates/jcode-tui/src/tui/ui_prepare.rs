@@ -563,6 +563,7 @@ pub(super) fn prepare_messages(
         batch_progress_hash: active_batch_progress_hash(app),
         inline_images_signature: app.side_pane_images_signature(),
         inline_images_visible: app.inline_images_visible(),
+        expanded_images_version: app.expanded_images_version(),
     };
 
     super::note_full_prep_request();
@@ -628,6 +629,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
                 height,
                 prefix_blank,
                 app.inline_images_visible(),
+                &super::inline_image_ui::AppExpandLevels(app),
             ))
         }
     } else {
@@ -797,6 +799,7 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
         pin_images: app.pin_images(),
         inline_images_visible: app.inline_images_visible(),
         images_signature: app.side_pane_images_signature(),
+        expanded_images_version: app.expanded_images_version(),
     };
     let msg_count = app.display_messages().len();
     let cache_lookup_start = Instant::now();
@@ -953,6 +956,7 @@ pub(super) fn prepare_body_incremental(
                             items,
                             width,
                             inline_images_visible,
+                            &super::inline_image_ui::AppExpandLevels(app),
                         ) {
                             new_lines.push(line);
                             new_line_raw_overrides.push(None);
@@ -1064,6 +1068,7 @@ pub(super) fn prepare_body_incremental(
                             items,
                             width,
                             inline_images_visible,
+                            &super::inline_image_ui::AppExpandLevels(app),
                         ) {
                             new_lines.push(line);
                             new_line_raw_overrides.push(None);
@@ -1446,6 +1451,7 @@ pub(super) fn prepare_body(
                             items,
                             width,
                             inline_images_visible,
+                            &super::inline_image_ui::AppExpandLevels(app),
                         ) {
                             lines.push(line);
                             line_raw_overrides.push(None);
@@ -1586,6 +1592,7 @@ pub(super) fn prepare_body(
                             items,
                             width,
                             inline_images_visible,
+                            &super::inline_image_ui::AppExpandLevels(app),
                         ) {
                             lines.push(line);
                             line_raw_overrides.push(None);

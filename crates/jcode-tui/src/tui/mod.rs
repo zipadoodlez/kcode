@@ -413,6 +413,16 @@ pub trait TuiState {
     fn inline_images_visible(&self) -> bool {
         true
     }
+    /// Per-image inline expand level for `image_id` (Fit when never expanded).
+    /// Cycled by clicking the per-image `expand` badge.
+    fn image_expand_level(&self, _image_id: u64) -> ImageExpandLevel {
+        ImageExpandLevel::Fit
+    }
+    /// Monotonic counter bumped whenever any image's expand level changes, so
+    /// prepared-frame caches that embed anchored image geometry invalidate.
+    fn expanded_images_version(&self) -> u64 {
+        0
+    }
     /// Remaining seconds before the pinned image side pane auto-hides.
     fn pinned_images_auto_hide_remaining_secs(&self) -> Option<u64> {
         None
@@ -1537,6 +1547,7 @@ pub fn render_frame(frame: &mut Frame<'_>, state: &dyn TuiState) {
     ui::draw(frame, state);
 }
 
+pub use ui::inline_image_ui::ImageExpandLevel;
 pub use ui::{
     PinnedDiagramLiveDebugSnapshot, PinnedDiagramProbeRect, SidePanelDebugStats,
     SidePanelMermaidProbe, SidePanelMermaidProbeRect, debug_probe_pinned_diagram,

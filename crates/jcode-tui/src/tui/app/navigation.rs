@@ -177,6 +177,19 @@ impl App {
         self.last_visible_diagram_hash = self.current_visible_diagram_hash();
     }
 
+    /// If a left-click landed on an inline image's `expand` badge, cycle that
+    /// image's size and return `true`. Returns `false` (so the click can fall
+    /// through to link/selection handling) when no badge was hit.
+    pub(super) fn try_cycle_image_expand_at(&mut self, column: u16, row: u16) -> bool {
+        let Some(image_id) =
+            super::super::ui::inline_image_expand_target_from_screen(column, row)
+        else {
+            return false;
+        };
+        self.cycle_image_expand(image_id);
+        true
+    }
+
     pub(super) fn try_open_link_at(&mut self, column: u16, row: u16) -> bool {
         self.try_open_link_at_with(column, row, |url| {
             super::helpers::open_path_or_url_detached(url)
@@ -839,6 +852,35 @@ impl App {
         self.set_status_notice(status);
     }
 
+    /// Cycle the per-image inline expand level (Fit -> Large -> Huge -> Fit)
+    /// for `image_id`. Bumps `expanded_images_version` so the body/full-prep
+    /// caches rebuild with the new placeholder geometry. Returns the new level.
+    pub(super) fn cycle_image_expand(
+        &mut self,
+        image_id: u64,
+    ) -> crate::tui::ui::inline_image_ui::ImageExpandLevel {
+        use crate::tui::ui::inline_image_ui::ImageExpandLevel;
+        let current = self
+            .expanded_images
+            .get(&image_id)
+            .copied()
+            .unwrap_or_default();
+        let next = current.next();
+        if matches!(next, ImageExpandLevel::Fit) {
+            self.expanded_images.remove(&image_id);
+        } else {
+            self.expanded_images.insert(image_id, next);
+        }
+        self.expanded_images_version = self.expanded_images_version.wrapping_add(1);
+        let status = match next {
+            ImageExpandLevel::Fit => "Image size: fit",
+            ImageExpandLevel::Large => "Image size: large",
+            ImageExpandLevel::Huge => "Image size: huge",
+        };
+        self.set_status_notice(status);
+        next
+    }
+
     pub(super) fn toggle_side_panel(&mut self) {
         if self.side_panel_user_hidden {
             self.side_panel_user_hidden = false;
@@ -1393,6 +1435,12 @@ impl App {
 
         if handled_scroll {
             finish_mouse_event!(!immediate_redraw, "pane_or_focused_diagram_scroll");
+        }
+
+        if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))
+            && self.try_cycle_image_expand_at(mouse.column, mouse.row)
+        {
+            finish_mouse_event!(false, "cycle_image_expand");
         }
 
         if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))

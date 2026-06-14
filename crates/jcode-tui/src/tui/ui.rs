@@ -826,6 +826,10 @@ struct BodyCacheKey {
     /// Signature of the inline image set; anchored images render inside the
     /// body, so the body must rebuild when images arrive or change.
     images_signature: (usize, u64),
+    /// Monotonic per-image expand-level version. Anchored images embed their
+    /// expand-level geometry into the body, so a level change must rebuild the
+    /// body exactly like an image-set change does.
+    expanded_images_version: u64,
 }
 
 #[derive(Clone)]
@@ -901,6 +905,7 @@ impl BodyCacheState {
                     && entry.key.pin_images == key.pin_images
                     && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
+                    && entry.key.expanded_images_version == key.expanded_images_version
             })
             .max_by_key(|entry| entry.msg_count)
             .map(|entry| (entry.prepared.clone(), entry.msg_count));
@@ -920,6 +925,7 @@ impl BodyCacheState {
                     && entry.key.pin_images == key.pin_images
                     && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
+                    && entry.key.expanded_images_version == key.expanded_images_version
             })
             .max_by_key(|entry| entry.msg_count)
             .map(|entry| (entry.prepared.clone(), entry.msg_count));
@@ -959,6 +965,7 @@ impl BodyCacheState {
                     && entry.key.pin_images == key.pin_images
                     && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
+                    && entry.key.expanded_images_version == key.expanded_images_version
             })
             .max_by_key(|(_, entry)| entry.msg_count)
             .map(|(idx, entry)| (false, idx, entry.msg_count));
@@ -979,6 +986,7 @@ impl BodyCacheState {
                     && entry.key.pin_images == key.pin_images
                     && entry.key.inline_images_visible == key.inline_images_visible
                     && entry.key.images_signature == key.images_signature
+                    && entry.key.expanded_images_version == key.expanded_images_version
             })
             .max_by_key(|(_, entry)| entry.msg_count)
             .map(|(idx, entry)| (true, idx, entry.msg_count));
@@ -1070,6 +1078,9 @@ struct FullPrepCacheKey {
     inline_images_signature: (usize, u64),
     /// Whether inline images render expanded or as collapsed label stubs.
     inline_images_visible: bool,
+    /// Per-image expand-level version; anchored image geometry is embedded in
+    /// the prepared frame, so a level change must invalidate it.
+    expanded_images_version: u64,
 }
 
 #[derive(Clone)]
@@ -1416,6 +1427,25 @@ impl CopyViewportSnapshot {
             } => wrapped_line_map.get(abs_line).copied(),
             CopyViewportData::ChatFrame { prepared } => prepared.wrapped_line_map(abs_line),
         }
+    }
+
+    /// If `abs_line` is the label line of a visible inline-image region, return
+    /// that image's id. The label line sits exactly one wrapped line above the
+    /// region's first placeholder line (see `anchored_image_lines`), so we map a
+    /// click on the label row back to the image it annotates.
+    fn inline_image_id_for_label_line(&self, abs_line: usize) -> Option<u64> {
+        let prepared = match &self.data {
+            CopyViewportData::ChatFrame { prepared } => prepared,
+            CopyViewportData::Dense { .. } => return None,
+        };
+        prepared
+            .image_regions
+            .iter()
+            .find(|region| {
+                region.render == jcode_tui_messages::ImageRegionRender::Fit
+                    && region.abs_line_idx == abs_line + 1
+            })
+            .map(|region| region.hash)
     }
 }
 
@@ -2097,6 +2127,58 @@ pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
     let point = copy_point_from_screen(column, row)?;
     let snapshot = copy_snapshot_for_pane(point.pane)?;
     link_target_from_snapshot(&snapshot, point)
+}
+
+/// First-dot display column of the inline-image expand badge within a label
+/// line, if present. The badge is the `●○○ expand` suffix that
+/// `image_label_line` appends; we accept a click from the first dot to end of
+/// line as "hit the badge". Returns `None` when the line has no badge (e.g. a
+/// hidden/collapsed image label).
+fn expand_badge_start_col(text: &str) -> Option<usize> {
+    let byte_idx = text.find(['○', '●'])?;
+    Some(line_display_width(&text[..byte_idx]))
+}
+
+#[cfg(test)]
+mod expand_badge_hit_tests {
+    use super::expand_badge_start_col;
+
+    #[test]
+    fn returns_none_without_dots() {
+        assert_eq!(expand_badge_start_col("  🖼 600×400  hide"), None);
+    }
+
+    #[test]
+    fn locates_first_dot_display_column() {
+        // ASCII prefix: the badge starts exactly at the prefix's display width.
+        let text = "abc ●○○ expand";
+        assert_eq!(expand_badge_start_col(text), Some(4));
+    }
+
+    #[test]
+    fn accounts_for_wide_chars_before_badge() {
+        // Multi-byte chars before the badge must be measured by display width,
+        // not byte offset. unicode-width reports the picture glyph as width 1,
+        // so emoji(1) + space(1) = 2.
+        let text = "🖼 ●○○ expand";
+        assert_eq!(expand_badge_start_col(text), Some(2));
+    }
+}
+
+/// If a screen click landed on an inline-image expand badge, return the image
+/// id so the caller can cycle that image's size. Only clicks on the badge
+/// suffix of the label line count, so the rest of the label stays inert.
+pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> Option<u64> {
+    let point = copy_point_from_screen(column, row)?;
+    let snapshot = copy_snapshot_for_pane(point.pane)?;
+    let image_id = snapshot.inline_image_id_for_label_line(point.abs_line)?;
+    let text = snapshot.wrapped_plain_line(point.abs_line)?;
+    let badge_start = expand_badge_start_col(text)?;
+    if point.column >= badge_start {
+        Some(image_id)
+    } else {
+        None
+    }
 }
 
 pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
