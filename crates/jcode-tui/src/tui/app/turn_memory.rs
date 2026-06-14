@@ -242,6 +242,7 @@ impl App {
                         source: Some(self.session.id.clone()),
                         reinforcements: Vec::new(),
                         embedding: None, // Will be generated when stored
+                        embedding_model: None,
                         confidence: 1.0,
                     };
 
