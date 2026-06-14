@@ -116,6 +116,27 @@ pub(super) async fn dispatch_background_task_progress(
     }
 }
 
+/// Update a swarm worker's cached output tail and rebroadcast swarm status so
+/// the coordinator's inline gallery can render the live viewport. The tail is
+/// already capped by the producer; we only store and fan it out.
+pub(super) async fn dispatch_swarm_output_tail(
+    tail: &crate::bus::SwarmOutputTail,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+) {
+    let swarm_id = {
+        let mut members = swarm_members.write().await;
+        let Some(member) = members.get_mut(&tail.session_id) else {
+            return;
+        };
+        member.output_tail = Some(tail.tail.clone());
+        member.swarm_id.clone()
+    };
+    if let Some(swarm_id) = swarm_id {
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+    }
+}
+
 pub(super) async fn dispatch_ui_activity(
     activity: &crate::bus::UiActivity,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,

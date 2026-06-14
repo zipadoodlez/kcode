@@ -381,6 +381,11 @@ pub struct SwarmMemberStatus {
     /// Seconds since the last status change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_age_secs: Option<u64>,
+    /// Recent streamed output tail for live inline rendering (last few lines of
+    /// the agent's in-progress assistant text). Only populated for swarm
+    /// members when inline streaming taps are active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tail: Option<String>,
 }
 
 /// Status of a member being awaited by comm_await_members

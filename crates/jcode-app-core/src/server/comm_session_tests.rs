@@ -66,6 +66,7 @@ fn member(
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
+            output_tail: None,
         },
         event_rx,
     )

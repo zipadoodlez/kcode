@@ -49,7 +49,8 @@ mod util;
 
 pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{
-    dispatch_background_task_completion, dispatch_background_task_progress, dispatch_ui_activity,
+    dispatch_background_task_completion, dispatch_background_task_progress,
+    dispatch_swarm_output_tail, dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
 use self::debug_jobs::DebugJob;
@@ -1812,6 +1813,9 @@ impl Server {
                 // communication actions (comm_propose_plan / comm_approve_plan), not
                 // todowrite broadcasts.
                 Ok(BusEvent::TodoUpdated(_)) => {}
+                Ok(BusEvent::SwarmOutputTail(tail)) => {
+                    dispatch_swarm_output_tail(&tail, &swarm_members, &swarms_by_id).await;
+                }
                 Ok(_) => {
                     // Ignore other events
                 }

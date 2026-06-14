@@ -40,26 +40,39 @@ fn member_label(member: &SwarmMemberStatus) -> String {
         .unwrap_or_else(|| member.session_id.chars().take(8).collect())
 }
 
-/// Build the body lines shown inside a member's viewport. Until live output is
-/// streamed, this surfaces the latest detail plus a couple of status hints.
+/// Build the body lines shown inside a member's viewport. Prefers live streamed
+/// output (the tail) when present; otherwise surfaces the latest detail plus a
+/// status-age hint.
 fn member_body(member: &SwarmMemberStatus) -> Vec<String> {
+    // Live streamed output wins: show the worker's in-progress assistant text.
+    if let Some(tail) = member.output_tail.as_ref().filter(|t| !t.trim().is_empty()) {
+        let mut body: Vec<String> = tail.lines().map(|l| l.to_string()).collect();
+        if let Some(age) = member.status_age_secs {
+            body.push(format!("· {} ago", humanize_age(age)));
+        }
+        return body;
+    }
     let mut body: Vec<String> = Vec::new();
     if let Some(detail) = member.detail.as_ref().filter(|d| !d.trim().is_empty()) {
         body.push(detail.clone());
     }
     if let Some(age) = member.status_age_secs {
-        let age_text = if age < 2 {
-            "now".to_string()
-        } else if age < 60 {
-            format!("{age}s")
-        } else if age < 3600 {
-            format!("{}m", age / 60)
-        } else {
-            format!("{}h", age / 3600)
-        };
-        body.push(format!("· {} ago", age_text));
+        body.push(format!("· {} ago", humanize_age(age)));
     }
     body
+}
+
+/// Compact age formatting for member viewports (now/Ns/Nm/Nh).
+fn humanize_age(age: u64) -> String {
+    if age < 2 {
+        "now".to_string()
+    } else if age < 60 {
+        format!("{age}s")
+    } else if age < 3600 {
+        format!("{}m", age / 60)
+    } else {
+        format!("{}h", age / 3600)
+    }
 }
 
 /// Convert swarm members into gallery tiles, sorted for stable placement
@@ -145,6 +158,7 @@ mod tests {
             is_headless: Some(true),
             live_attachments: None,
             status_age_secs: Some(3),
+            output_tail: None,
         }
     }
 
@@ -177,5 +191,15 @@ mod tests {
     #[test]
     fn empty_members_render_nothing() {
         assert!(render_swarm_gallery_lines(&[], 80, 12).is_empty());
+    }
+
+    #[test]
+    fn output_tail_takes_priority_over_detail() {
+        let mut m = member("alpha", "running", Some("the detail line"), None);
+        m.output_tail = Some("line one\nline two".to_string());
+        let body = member_body(&m);
+        assert_eq!(body[0], "line one");
+        assert_eq!(body[1], "line two");
+        assert!(!body.iter().any(|l| l.contains("the detail line")));
     }
 }

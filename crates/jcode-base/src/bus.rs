@@ -112,6 +112,17 @@ pub struct FileTouch {
     pub detail: Option<String>,
 }
 
+/// Streaming output tail for a swarm worker session, used to render the inline
+/// swarm gallery's live viewports. The text is a short, already-truncated tail
+/// of the worker's in-progress assistant output (not the full transcript).
+#[derive(Clone, Debug)]
+pub struct SwarmOutputTail {
+    /// Session id of the worker producing output.
+    pub session_id: String,
+    /// Recent output tail (capped to a handful of lines by the producer).
+    pub tail: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct LoginCompleted {
     pub provider: String,
@@ -351,6 +362,8 @@ pub enum BusEvent {
     BatchProgress(BatchProgress),
     /// File was touched by an agent (for swarm conflict detection)
     FileTouch(FileTouch),
+    /// Streaming output tail from a swarm worker, for inline gallery viewports.
+    SwarmOutputTail(SwarmOutputTail),
     /// Background task completed
     BackgroundTaskCompleted(BackgroundTaskCompleted),
     /// Background task reported progress

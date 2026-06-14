@@ -1223,6 +1223,7 @@ impl crate::tui::TuiState for App {
                         is_headless: Some(false),
                         live_attachments: Some(1),
                         status_age_secs: Some(0),
+                        output_tail: None,
                     });
                 }
                 (

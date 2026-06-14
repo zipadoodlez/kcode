@@ -274,6 +274,7 @@ async fn broadcast_swarm_status_now(
                     is_headless: Some(m.is_headless),
                     live_attachments: Some(m.event_txs.len()),
                     status_age_secs: Some(status_age_secs(m.last_status_change)),
+                    output_tail: m.output_tail.clone(),
                 })
         })
         .collect();
@@ -1168,6 +1169,7 @@ mod tests {
                 joined_at: Instant::now(),
                 last_status_change: Instant::now(),
                 is_headless,
+                output_tail: None,
             },
             event_rx,
         )

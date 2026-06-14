@@ -41,6 +41,7 @@ fn test_swarm_member(session_id: &str, status: &str) -> SwarmMember {
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
+        output_tail: None,
     }
 }
 

@@ -75,6 +75,29 @@ fn reload_interrupted_tool_result(tc: &ToolCall, elapsed_secs: f64) -> (String, 
     )
 }
 
+/// Build a compact, already-truncated output tail for inline swarm gallery
+/// viewports from the worker's in-progress assistant text. Keeps only the last
+/// few lines and caps total length so the bus payload stays small.
+fn build_inline_output_tail(text: &str) -> String {
+    const MAX_LINES: usize = 6;
+    const MAX_CHARS: usize = 600;
+    let trimmed = text.trim_end_matches('\n');
+    let tail_lines: Vec<&str> = trimmed
+        .lines()
+        .rev()
+        .take(MAX_LINES)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    let mut tail = tail_lines.join("\n");
+    if tail.len() > MAX_CHARS {
+        let start = floor_char_boundary(&tail, tail.len() - MAX_CHARS);
+        tail = tail[start..].to_string();
+    }
+    tail
+}
+
 impl Agent {
     pub(super) async fn run_turn_streaming_mpsc(
         &mut self,
@@ -271,6 +294,14 @@ impl Agent {
 
             let mut text_content = String::new();
             let mut text_wrapped_detected = false;
+            // Inline swarm worker output tap: publish a throttled tail of the
+            // in-progress assistant text to the bus so a coordinator can render
+            // a live inline gallery viewport.
+            let inline_output_tap = self.inline_output_tap();
+            let inline_tap_session_id = self.session.id.clone();
+            let mut inline_tap_last = Instant::now()
+                .checked_sub(std::time::Duration::from_millis(1000))
+                .unwrap_or_else(Instant::now);
             let mut tool_calls: Vec<ToolCall> = Vec::new();
             let mut current_tool: Option<ToolCall> = None;
             let mut current_tool_input = String::new();
@@ -443,6 +474,20 @@ impl Agent {
                             });
                         }
                         text_content.push_str(&text);
+                        if inline_output_tap
+                            && inline_tap_last.elapsed()
+                                >= std::time::Duration::from_millis(200)
+                        {
+                            inline_tap_last = Instant::now();
+                            crate::bus::Bus::global().publish(
+                                crate::bus::BusEvent::SwarmOutputTail(
+                                    crate::bus::SwarmOutputTail {
+                                        session_id: inline_tap_session_id.clone(),
+                                        tail: build_inline_output_tail(&text_content),
+                                    },
+                                ),
+                            );
+                        }
                         if !text_wrapped_detected {
                             // Scan only the new delta (plus a short overlap for
                             // markers straddling the boundary) instead of the
@@ -1402,6 +1447,22 @@ impl Agent {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn inline_output_tail_keeps_last_lines_and_caps_length() {
+        let text = (0..20)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let tail = build_inline_output_tail(&text);
+        assert!(tail.lines().count() <= 6);
+        assert!(tail.ends_with("line 19"));
+        assert!(!tail.contains("line 0\n"));
+
+        let huge = "x".repeat(5000);
+        let capped = build_inline_output_tail(&huge);
+        assert!(capped.len() <= 600);
+    }
 
     fn tool_call(name: &str, input: serde_json::Value) -> ToolCall {
         ToolCall {

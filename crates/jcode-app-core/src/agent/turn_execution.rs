@@ -266,6 +266,18 @@ impl Agent {
         }
     }
 
+    /// Mark this session as an inline swarm worker. When enabled, the streaming
+    /// loop publishes a throttled output tail to the global bus so a
+    /// coordinator can render a live inline gallery viewport for it.
+    pub fn set_inline_output_tap(&mut self, enabled: bool) {
+        self.inline_output_tap = enabled;
+    }
+
+    /// Whether this session streams an inline output tail to the bus.
+    pub(crate) fn inline_output_tap(&self) -> bool {
+        self.inline_output_tap
+    }
+
     /// Check whether memory features are enabled for this session.
     pub fn memory_enabled(&self) -> bool {
         self.memory_enabled

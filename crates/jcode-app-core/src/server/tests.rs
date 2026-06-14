@@ -214,6 +214,7 @@ fn attached_swarm_member(
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
+        output_tail: None,
     }
 }
 
@@ -240,6 +241,7 @@ fn persisted_headless_member(
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: true,
+        output_tail: None,
     }
 }
 

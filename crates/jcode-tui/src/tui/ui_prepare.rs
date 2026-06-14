@@ -324,6 +324,31 @@ fn tool_message_copy_target(
     None
 }
 
+/// Build the inline "what changed" delta lines for a `todo` tool message, if it
+/// is a successful write. `messages` is the full transcript and `abs_idx` is the
+/// absolute index of the todo message, so the previous todo list can be found.
+fn todo_change_lines(
+    messages: &[DisplayMessage],
+    abs_idx: usize,
+    msg: &DisplayMessage,
+    width: u16,
+) -> Vec<Line<'static>> {
+    if tools_ui::tool_output_looks_failed(&msg.content) {
+        return Vec::new();
+    }
+    let Some(tc) = msg.tool_data.as_ref() else {
+        return Vec::new();
+    };
+    if tools_ui::canonical_tool_name(&tc.name) != "todo" {
+        return Vec::new();
+    }
+    let Some(next) = super::todo_changes::todos_from_tool_input(tc) else {
+        return Vec::new();
+    };
+    let prev = super::todo_changes::previous_todos(messages, abs_idx);
+    super::todo_changes::render_todo_change_lines(prev.as_deref(), &next, width)
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "User prompt rendering updates the prepared-line side tables together"
@@ -989,6 +1014,12 @@ pub(super) fn prepare_body_incremental(
                     new_line_raw_overrides.push(None);
                     new_line_copy_offsets.push(0);
                 }
+                for line in todo_change_lines(messages, prev_msg_count + new_msg_offset, msg, width)
+                {
+                    new_lines.push(align_if_unset(line, align));
+                    new_line_raw_overrides.push(None);
+                    new_line_copy_offsets.push(0);
+                }
                 if let Some(ref tc) = msg.tool_data {
                     let is_edit_tool = tools_ui::is_edit_tool_name(&tc.name);
                     if is_edit_tool {
@@ -1379,7 +1410,8 @@ pub(super) fn prepare_body(
     let inline_images_visible = app.inline_images_visible();
     let mut anchor_prompt_ordinal = 0usize;
 
-    for (msg_idx, msg) in app.display_messages().iter().enumerate() {
+    let messages = app.display_messages();
+    for (msg_idx, msg) in messages.iter().enumerate() {
         let role = msg.effective_role();
         let align = default_message_alignment(role, centered);
         if !lines.is_empty() && role != "tool" && role != "meta" && role != "swarm" {
@@ -1497,6 +1529,11 @@ pub(super) fn prepare_body(
                     copy_targets.push(offset_copy_target(target, tool_start_line));
                 }
                 for line in cached {
+                    lines.push(align_if_unset(line, align));
+                    line_raw_overrides.push(None);
+                    line_copy_offsets.push(0);
+                }
+                for line in todo_change_lines(messages, msg_idx, msg, width) {
                     lines.push(align_if_unset(line, align));
                     line_raw_overrides.push(None);
                     line_copy_offsets.push(0);

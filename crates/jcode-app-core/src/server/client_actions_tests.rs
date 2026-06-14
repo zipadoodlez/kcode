@@ -197,6 +197,7 @@ async fn enabling_swarm_does_not_auto_elect_coordinator() {
             joined_at: now,
             last_status_change: now,
             is_headless: false,
+            output_tail: None,
         },
     )])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
@@ -299,6 +300,7 @@ async fn rename_session_event_uses_agent_session_id_even_when_client_id_is_stale
             joined_at: now,
             last_status_change: now,
             is_headless: false,
+            output_tail: None,
         },
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
@@ -395,6 +397,7 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
+            output_tail: None,
         },
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
@@ -506,6 +509,7 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: false,
+            output_tail: None,
         },
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
@@ -587,6 +591,7 @@ fn live_member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<Server
         joined_at: Instant::now(),
         last_status_change: Instant::now(),
         is_headless: false,
+        output_tail: None,
     };
     (member, attach_rx)
 }

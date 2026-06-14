@@ -167,6 +167,10 @@ pub struct SwarmMember {
     /// Whether this is a headless (spawned) session vs a TUI-connected session.
     /// Headless sessions should not be automatically elected as coordinator.
     pub is_headless: bool,
+    /// Recent streamed output tail (last few lines of in-progress assistant
+    /// text), captured for inline swarm gallery rendering. Updated by the bus
+    /// monitor from worker streaming taps; not persisted.
+    pub output_tail: Option<String>,
 }
 
 impl SwarmMember {
@@ -216,6 +220,7 @@ impl SwarmMember {
             joined_at: Instant::now(),
             last_status_change: Instant::now(),
             is_headless: record.is_headless,
+            output_tail: None,
         }
     }
 }

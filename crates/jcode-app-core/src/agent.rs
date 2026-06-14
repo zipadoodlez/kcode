@@ -235,6 +235,10 @@ pub struct Agent {
     stdin_request_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tool::StdinInputRequest>>,
     /// Canonical reducer-backed view of runtime provider/model selection.
     provider_runtime_state: ProviderRuntimeState,
+    /// When true, this session is an inline swarm worker: stream a throttled
+    /// output tail to the global bus so the coordinator's inline gallery can
+    /// render a live viewport. Off for normal sessions to avoid bus traffic.
+    inline_output_tap: bool,
 }
 
 impl Agent {
@@ -286,6 +290,7 @@ impl Agent {
             rewind_undo_snapshot: None,
             stdin_request_tx: None,
             provider_runtime_state: ProviderRuntimeState::observed(initial_provider_model),
+            inline_output_tap: false,
         };
         crate::tool::set_session_tool_policy(
             &agent.session.id,
