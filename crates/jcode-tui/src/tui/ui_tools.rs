@@ -40,7 +40,9 @@ fn infer_selfdev_action_from_display_text(text: Option<&str>) -> Option<&'static
         return None;
     }
 
-    if text.contains("reload") || text.contains("restart") {
+    if text.contains("build-reload") || text.contains("build_reload") {
+        Some("build-reload")
+    } else if text.contains("reload") || text.contains("restart") {
         Some("reload")
     } else if text.contains("build") || text.contains("compile") {
         Some("build")
