@@ -641,29 +641,22 @@ impl Skill {
 
     pub fn as_memory_entry(&self) -> crate::memory::MemoryEntry {
         let now = Utc::now() - chrono::Duration::days(365);
-        crate::memory::MemoryEntry {
-            id: format!("skill:{}", self.name),
-            category: crate::memory::MemoryCategory::Custom("Skills".to_string()),
-            content: format!(
+        let mut entry = crate::memory::MemoryEntry::new(
+            crate::memory::MemoryCategory::Custom("Skills".to_string()),
+            format!(
                 "Use skill `/{} ` when relevant.\n\n{}",
                 self.name,
                 self.get_prompt()
             ),
-            tags: vec!["skill".to_string(), self.name.clone()],
-            search_text: self.search_text.clone(),
-            created_at: now,
-            updated_at: now,
-            access_count: 0,
-            source: Some("skill_registry".to_string()),
-            trust: crate::memory::TrustLevel::Medium,
-            strength: 1,
-            active: true,
-            superseded_by: None,
-            reinforcements: Vec::new(),
-            embedding: None,
-            embedding_model: None,
-            confidence: 1.0,
-        }
+        )
+        .with_id(format!("skill:{}", self.name))
+        .with_tags(vec!["skill".to_string(), self.name.clone()])
+        .with_source("skill_registry")
+        .with_trust(crate::memory::TrustLevel::Medium)
+        .with_timestamps(now, now);
+        // Use the precomputed skill search text rather than the tag-derived one.
+        entry.search_text = self.search_text.clone();
+        entry
     }
 }
 
