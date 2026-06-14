@@ -216,7 +216,7 @@ fn model_picker_route_is_current(
     jcode_provider_core::model_route_provider_labels_match(&route.provider, current_provider)
 }
 
-const RECOMMENDED_MODELS: &[&str] = &["gpt-5.5", "claude-fable-5", "claude-opus-4-8"];
+const RECOMMENDED_MODELS: &[&str] = &["gpt-5.5", "claude-opus-4-8"];
 
 fn model_picker_recommendation_rank(name: &str) -> usize {
     RECOMMENDED_MODELS

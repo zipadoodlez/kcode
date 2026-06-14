@@ -366,8 +366,9 @@ async fn ensure_oauth_preflight(
     Ok(())
 }
 
-/// Default model
-const DEFAULT_MODEL: &str = "claude-fable-5";
+/// Default model. `claude-fable-5` was retired by Anthropic (it 404s), so the
+/// default is the current flagship.
+const DEFAULT_MODEL: &str = "claude-opus-4-8";
 
 /// API version header
 const API_VERSION: &str = "2023-06-01";
@@ -385,7 +386,6 @@ const DEFAULT_MAX_TOKENS: u32 = 32_768;
 
 /// Available models
 pub const AVAILABLE_MODELS: &[&str] = &[
-    "claude-fable-5",
     "claude-opus-4-8",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
@@ -1531,18 +1531,32 @@ async fn run_stream_with_retries(
 
                 // Model not found (e.g. a retired or renamed model id): the
                 // server rejects the request up front with a 404 before any
-                // output streams. Transparently fall back to an available
+                // output streams. Transparently fall back to the *best* available
                 // model so the in-flight request still completes instead of
-                // hard-failing, and persist the switch so later turns reuse
-                // the working model.
+                // hard-failing, and persist the switch so later turns reuse the
+                // working model. The fallback honors any server "Please use X"
+                // recommendation, then the curated flagship-first quality order,
+                // and never downgrades to a cheaper tier when a stronger model is
+                // available (see `anthropic_fallback_model`).
                 if is_model_not_found_error(&error_str)
                     && !saw_output
-                    && let Some(fallback) = anthropic_fallback_model(&tried_models)
+                    && let Some(fallback) = anthropic_fallback_model(&tried_models, &error_str)
                 {
                     crate::logging::warn(&format!(
                         "Anthropic model '{}' is not available ({}); retrying with fallback '{}'",
                         model_name, e, fallback
                     ));
+                    // Surface the substitution so the user is not silently moved
+                    // to a different model than they selected.
+                    let _ = tx
+                        .send(Ok(StreamEvent::StatusDetail {
+                            detail: format!(
+                                "⚠ '{}' is unavailable; falling back to '{}'",
+                                strip_1m_suffix(&model_name),
+                                strip_1m_suffix(&fallback)
+                            ),
+                        }))
+                        .await;
                     request.model = strip_1m_suffix(&fallback).to_string();
                     *model_state
                         .write()
@@ -1894,22 +1908,124 @@ fn is_reasoning_unsupported_error(error_str: &str) -> bool {
     is_bad_request && mentions_reasoning_field && mentions_unsupported
 }
 
+/// Models that have been retired and must never be chosen as a fallback target
+/// (the server 404s them, so picking one just loops). Matched as a substring of
+/// the normalized id so dated variants are covered too.
+const RETIRED_ANTHROPIC_MODEL_MARKERS: &[&str] = &["claude-fable", "claude-mythos"];
+
+fn anthropic_model_is_retired(model: &str) -> bool {
+    let normalized = AnthropicProvider::normalized_model_key(model);
+    RETIRED_ANTHROPIC_MODEL_MARKERS
+        .iter()
+        .any(|marker| normalized.contains(marker))
+}
+
+/// Quality rank for an Anthropic model id: lower is better. Uses the curated
+/// flagship-first `ALL_CLAUDE_MODELS` order (Opus > Sonnet > Haiku > older), so
+/// fallback never silently downgrades to a cheaper tier when a stronger model is
+/// available. Unknown/uncurated ids sort after every curated one but before
+/// retired models, which sort last.
+fn anthropic_model_quality_rank(model: &str) -> usize {
+    if anthropic_model_is_retired(model) {
+        return usize::MAX;
+    }
+    let normalized = jcode_provider_core::model_id::strip_date_suffix(
+        &jcode_provider_core::model_id::canonical(model),
+    )
+    .to_string();
+    crate::provider::ALL_CLAUDE_MODELS
+        .iter()
+        .position(|candidate| {
+            jcode_provider_core::model_id::strip_date_suffix(
+                &jcode_provider_core::model_id::canonical(candidate),
+            ) == normalized
+        })
+        // Curated models keep their position; unknown-but-not-retired models sort
+        // just after the curated list so they only win when nothing curated is
+        // available.
+        .unwrap_or(crate::provider::ALL_CLAUDE_MODELS.len())
+}
+
+/// Parse a server-recommended replacement model from a 404 body, e.g.
+/// "Claude Fable 5 is not available. Please use Opus 4.8." -> the catalog id
+/// `claude-opus-4-8`. Returns the best matching known catalog id, if any.
+/// `error_str` is expected to already be lowercased.
+fn anthropic_recommended_model_from_error(error_str: &str) -> Option<String> {
+    // Look for the phrase after "please use" / "use " and try to match it against
+    // the known catalog by collapsing it to a comparable token form. The server
+    // phrases the recommendation in prose ("Opus 4.8"), so compare on the digits
+    // and family word rather than exact ids.
+    let hint = error_str
+        .split("please use")
+        .nth(1)
+        .or_else(|| error_str.split("use ").nth(1))?;
+    // Take up to the next sentence boundary.
+    let hint = hint.split(['.', '!', '\n']).next().unwrap_or(hint).trim();
+    if hint.is_empty() {
+        return None;
+    }
+    // Reduce the hint to alphanumeric tokens (e.g. "opus", "4", "8").
+    let hint_tokens: Vec<String> = hint
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(|t| t.to_ascii_lowercase())
+        .collect();
+    if hint_tokens.is_empty() {
+        return None;
+    }
+    // Score each known catalog model by how many hint tokens it contains.
+    crate::provider::known_anthropic_model_ids()
+        .into_iter()
+        .filter(|candidate| !anthropic_model_is_retired(candidate))
+        .map(|candidate| {
+            let key = AnthropicProvider::normalized_model_key(&candidate);
+            // The catalog id uses hyphenated digits ("claude-opus-4-8"), so the
+            // hint tokens ["opus","4","8"] should all appear.
+            let score = hint_tokens
+                .iter()
+                .filter(|token| key.contains(token.as_str()))
+                .count();
+            (candidate, score)
+        })
+        // Require at least the family word plus one version digit to match so we
+        // do not pick an arbitrary model from a single shared token.
+        .filter(|(_, score)| *score >= 2)
+        .max_by_key(|(_, score)| *score)
+        .map(|(candidate, _)| candidate)
+}
+
 /// Pick the next Anthropic model to try after a "model not found" failure.
 ///
-/// Walks the known model catalog (live catalog when available, otherwise the
-/// static list) in preference order and returns the first model that has not
-/// already been attempted. Returns `None` once every candidate is exhausted so
-/// the caller can surface the original error.
-fn anthropic_fallback_model(tried: &[String]) -> Option<String> {
+/// Strategy (most authoritative first):
+///   1. Honor any server "Please use X" recommendation parsed from the error.
+///   2. Otherwise pick the highest-quality untried model from the curated
+///      flagship-first catalog, skipping retired families so we never downgrade
+///      to a cheaper tier (e.g. Haiku) while a stronger model is available.
+///
+/// Returns `None` once every viable candidate is exhausted so the caller can
+/// surface the original error.
+fn anthropic_fallback_model(tried: &[String], error_str: &str) -> Option<String> {
     let already_tried = |candidate: &str| {
         tried.iter().any(|model| {
             AnthropicProvider::normalized_model_key(model)
                 == AnthropicProvider::normalized_model_key(candidate)
         })
     };
+
+    // 1. Server recommendation wins when it points at an untried, non-retired
+    //    model.
+    if let Some(recommended) = anthropic_recommended_model_from_error(error_str)
+        && !already_tried(&recommended)
+        && !anthropic_model_is_retired(&recommended)
+    {
+        return Some(recommended);
+    }
+
+    // 2. Best available by curated quality order, skipping retired and tried.
     crate::provider::known_anthropic_model_ids()
         .into_iter()
-        .find(|candidate| !already_tried(candidate))
+        .filter(|candidate| !already_tried(candidate) && !anthropic_model_is_retired(candidate))
+        .min_by_key(|candidate| anthropic_model_quality_rank(candidate))
 }
 
 fn is_oauth_auth_error(error_str: &str) -> bool {

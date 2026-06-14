@@ -1086,7 +1086,7 @@ mod tests {
         // Live Anthropic catalogs list `claude-haiku-4-5-...` before the
         // flagship, and an API-key login supplies no activated model. Plain
         // catalog order would auto-select Haiku; the flagship-first fallback
-        // must land on the curated default (`claude-fable-5`) instead.
+        // must land on the curated default (`claude-opus-4-8`) instead.
         let activation = AuthActivationResult {
             provider_id: Some("claude-api".to_string()),
             provider_label: Some("Anthropic".to_string()),
@@ -1098,13 +1098,12 @@ mod tests {
             route("claude-haiku-4-5-20251001", "Anthropic", "claude-api", true),
             route("claude-opus-4-6", "Anthropic", "claude-api", true),
             route("claude-opus-4-8", "Anthropic", "claude-api", true),
-            route("claude-fable-5", "Anthropic", "claude-api", true),
             route("claude-sonnet-4-6", "Anthropic", "claude-api", true),
         ];
 
         assert_eq!(
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("claude-fable-5"),
+            Some("claude-opus-4-8"),
             "API-key login should auto-select the Anthropic flagship, not the first catalog route"
         );
     }
@@ -1121,12 +1120,11 @@ mod tests {
         let routes = vec![
             route("claude-haiku-4-5", "Anthropic", "claude-oauth", true),
             route("claude-opus-4-8", "Anthropic", "claude-oauth", true),
-            route("claude-fable-5", "Anthropic", "claude-oauth", true),
         ];
 
         assert_eq!(
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("claude-fable-5")
+            Some("claude-opus-4-8")
         );
     }
 
@@ -1312,13 +1310,8 @@ mod tests {
                 "claude",
                 "claude-oauth",
                 "Anthropic",
-                &[
-                    "claude-haiku-4-5",
-                    "claude-sonnet-4-6",
-                    "claude-opus-4-8",
-                    "claude-fable-5",
-                ],
-                "claude-fable-5",
+                &["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-8"],
+                "claude-opus-4-8",
             ),
             (
                 "claude-api",
@@ -1328,9 +1321,8 @@ mod tests {
                     "claude-haiku-4-5-20251001",
                     "claude-sonnet-4-6",
                     "claude-opus-4-8",
-                    "claude-fable-5",
                 ],
-                "claude-fable-5",
+                "claude-opus-4-8",
             ),
             (
                 "openai",

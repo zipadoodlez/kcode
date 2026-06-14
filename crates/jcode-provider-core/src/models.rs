@@ -1,6 +1,10 @@
 /// Available Claude models used by model lists and provider routing.
+///
+/// NOTE: `claude-fable-5` (and the Mythos preview family) were retired by
+/// Anthropic and now 404 with "Please use Opus 4.8", so they are intentionally
+/// NOT listed here. The list is curated best-first; position 0 is the flagship
+/// used for post-login default selection.
 pub const ALL_CLAUDE_MODELS: &[&str] = &[
-    "claude-fable-5",
     "claude-opus-4-8",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
@@ -142,7 +146,6 @@ pub fn provider_for_model(model: &str) -> Option<&'static str> {
 /// covered, while unknown/future Claude ids fall through to the dynamic cache.
 fn base_is_known_claude_model(base: &str) -> bool {
     const KNOWN_CLAUDE_PREFIXES: &[&str] = &[
-        "claude-fable-5",
         "claude-opus-4-8",
         "claude-opus-4.8",
         "claude-opus-4-7",
@@ -285,11 +288,6 @@ mod tests {
         );
         assert_eq!(
             context_limit_for_model_with_provider("claude-opus-4-7", Some("claude")),
-            Some(1_000_000)
-        );
-        // Fable 5 is native-1M as well.
-        assert_eq!(
-            context_limit_for_model_with_provider("claude-fable-5", Some("claude")),
             Some(1_000_000)
         );
         // Opt-in 1M: 200K by default, 1M only via the [1m] suffix.

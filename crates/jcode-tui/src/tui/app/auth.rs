@@ -1215,7 +1215,7 @@ impl App {
             "https://console.anthropic.com/settings/keys",
             "anthropic.env",
             "ANTHROPIC_API_KEY",
-            Some("claude-fable-5"),
+            Some("claude-opus-4-8"),
             Some("https://api.anthropic.com"),
             false,
             None,
