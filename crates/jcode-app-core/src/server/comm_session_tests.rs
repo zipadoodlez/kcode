@@ -2,9 +2,8 @@
 
 use super::{
     CoordinatorSpawnIdentity, ensure_spawn_coordinator_swarm, prepare_visible_spawn_session,
-    register_visible_spawned_member, require_coordinator_swarm, resolve_coordinator_spawn_identity,
-    resolve_spawn_working_dir, resolve_stop_target_session, resolve_swarm_spawn_selection,
-    swarm_stop_allowed_by_owner,
+    register_visible_spawned_member, resolve_coordinator_spawn_identity, resolve_spawn_working_dir,
+    resolve_stop_target_session, resolve_swarm_spawn_selection, swarm_stop_allowed_by_owner,
 };
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
@@ -694,28 +693,32 @@ async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
 }
 
 #[tokio::test]
-async fn spawn_requires_existing_coordinator_when_one_is_set() {
+async fn nested_agent_can_spawn_while_live_coordinator_exists() {
+    // Recursive spawning (option A): a spawned child (depth 1, owned by `coord`)
+    // may spawn its own children even though a live swarm-level coordinator
+    // exists. It must not steal the swarm-level coordinator slot.
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
         "swarm-1".to_string(),
-        HashSet::from(["req".to_string(), "coord".to_string()]),
+        HashSet::from(["child".to_string(), "coord".to_string()]),
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
         "swarm-1".to_string(),
         "coord".to_string(),
     )])));
     let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
-    let (req_member, _req_rx) = member("req", Some("swarm-1"), "agent");
+    let (mut child_member, _child_rx) = member("child", Some("swarm-1"), "agent");
+    child_member.report_back_to_session_id = Some("coord".to_string());
     let (coord_member, _coord_rx) = member("coord", Some("swarm-1"), "coordinator");
     let mut members = swarm_members.write().await;
-    members.insert("req".to_string(), req_member);
+    members.insert("child".to_string(), child_member);
     members.insert("coord".to_string(), coord_member);
     drop(members);
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     let swarm_id = ensure_spawn_coordinator_swarm(
         2,
-        "req",
+        "child",
         "Only the coordinator can spawn new agents.",
         &client_event_tx,
         &swarm_members,
@@ -725,64 +728,88 @@ async fn spawn_requires_existing_coordinator_when_one_is_set() {
     )
     .await;
 
-    assert!(swarm_id.is_none());
-    assert!(matches!(
-        client_event_rx.recv().await,
-        Some(ServerEvent::Error { message, .. })
-            if message == "Only the coordinator can spawn new agents."
-    ));
-    assert_eq!(
-        swarm_members
-            .read()
-            .await
-            .get("req")
-            .map(|member| member.role.as_str()),
-        Some("agent")
-    );
-}
-
-#[tokio::test]
-async fn coordinator_actions_self_promote_when_recorded_coordinator_is_stale() {
-    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
-        "swarm-1".to_string(),
-        "old-coord".to_string(),
-    )])));
-    let (req_member, _req_rx) = member("req", Some("swarm-1"), "agent");
-    let (mut old_coord, _old_rx) = member("old-coord", Some("swarm-1"), "coordinator");
-    old_coord.status = "crashed".to_string();
-    let mut members = swarm_members.write().await;
-    members.insert("req".to_string(), req_member);
-    members.insert("old-coord".to_string(), old_coord);
-    drop(members);
-    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
-
-    let swarm_id = require_coordinator_swarm(
-        3,
-        "req",
-        "Only the coordinator can stop agents.",
-        &client_event_tx,
-        &swarm_members,
-        &swarm_coordinators,
-    )
-    .await;
-
     assert_eq!(swarm_id.as_deref(), Some("swarm-1"));
+    // The swarm-level coordinator slot is untouched.
     assert_eq!(
         swarm_coordinators
             .read()
             .await
             .get("swarm-1")
             .map(String::as_str),
-        Some("req")
+        Some("coord")
     );
+    // The child keeps its agent role; it coordinates its own subtree via
+    // report-back ownership, not the swarm-level coordinator slot.
     assert_eq!(
         swarm_members
             .read()
             .await
-            .get("req")
+            .get("child")
             .map(|member| member.role.as_str()),
-        Some("coordinator")
+        Some("agent")
     );
     assert!(client_event_rx.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn spawn_rejected_when_depth_limit_reached() {
+    // Build a chain root -> a -> b -> c -> d -> e (e is at depth 5 == cap).
+    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        "swarm-1".to_string(),
+        "root".to_string(),
+    )])));
+    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    {
+        let mut members = swarm_members.write().await;
+        let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
+        members.insert("root".to_string(), root);
+        let chain = [
+            ("a", "root"),
+            ("b", "a"),
+            ("c", "b"),
+            ("d", "c"),
+            ("e", "d"),
+        ];
+        for (id, parent) in chain {
+            let (mut m, _rx) = member(id, Some("swarm-1"), "agent");
+            m.report_back_to_session_id = Some(parent.to_string());
+            members.insert(id.to_string(), m);
+        }
+    }
+    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
+
+    // `e` is at depth 5 (== MAX_SWARM_SPAWN_DEPTH) and must be refused.
+    let refused = ensure_spawn_coordinator_swarm(
+        7,
+        "e",
+        "Only the coordinator can spawn new agents.",
+        &client_event_tx,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_coordinators,
+        &swarm_plans,
+    )
+    .await;
+    assert!(refused.is_none());
+    assert!(matches!(
+        client_event_rx.recv().await,
+        Some(ServerEvent::Error { message, .. })
+            if message.contains("Swarm spawn depth limit reached")
+    ));
+
+    // `d` is at depth 4 (< cap) and may still spawn.
+    let allowed = ensure_spawn_coordinator_swarm(
+        8,
+        "d",
+        "Only the coordinator can spawn new agents.",
+        &client_event_tx,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_coordinators,
+        &swarm_plans,
+    )
+    .await;
+    assert_eq!(allowed.as_deref(), Some("swarm-1"));
 }

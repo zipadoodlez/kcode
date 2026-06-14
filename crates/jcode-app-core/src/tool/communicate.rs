@@ -593,7 +593,7 @@ impl Tool for CommunicateTool {
     }
 
     fn description(&self) -> &str {
-        "Coordinate agents. For spawn, prefer providing a prompt so the new agent starts with a concrete task instead of idling. Spawned/assigned agents automatically report their final response back to the owning coordinator."
+        "Coordinate agents. Any agent can spawn child agents, and those children can spawn their own, forming a recursive spawn tree capped at depth 5. For spawn, prefer providing a prompt so the new agent starts with a concrete task instead of idling. Spawned/assigned agents automatically report their final response back to the agent that spawned them; you can stop any agent in the subtree you spawned."
     }
 
     fn parameters_schema(&self) -> Value {

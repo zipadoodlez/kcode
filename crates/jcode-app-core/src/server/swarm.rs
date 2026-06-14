@@ -23,6 +23,62 @@ fn status_age_secs(last_status_change: Instant) -> u64 {
     last_status_change.elapsed().as_secs()
 }
 
+/// Maximum spawn depth for the recursive swarm tree. The root coordinator is at
+/// depth 0; an agent at depth `d` may spawn children at depth `d + 1` only while
+/// `d < MAX_SWARM_SPAWN_DEPTH`. This caps runaway recursive fan-out.
+pub(super) const MAX_SWARM_SPAWN_DEPTH: u32 = 5;
+
+/// Walk the `report_back_to_session_id` chain upward from `session_id`,
+/// returning the list of ancestor session ids (parent first, root last).
+///
+/// The spawner/parent edge is encoded by `report_back_to_session_id`: a child
+/// spawned by `P` reports back to `P`. Walking that chain reconstructs the spawn
+/// tree without persisting a separate parent field. Cycles (which should never
+/// happen) are guarded against with a visited set.
+pub(super) fn swarm_ancestors(
+    members: &HashMap<String, SwarmMember>,
+    session_id: &str,
+) -> Vec<String> {
+    let mut ancestors = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    visited.insert(session_id.to_string());
+    let mut current = session_id.to_string();
+    while let Some(parent) = members
+        .get(&current)
+        .and_then(|member| member.report_back_to_session_id.clone())
+    {
+        if parent == current || !visited.insert(parent.clone()) {
+            break;
+        }
+        ancestors.push(parent.clone());
+        current = parent;
+    }
+    ancestors
+}
+
+/// Depth of `session_id` in the spawn tree: number of ancestors reachable via
+/// the report-back chain. Root coordinators (no report-back owner) are depth 0.
+pub(super) fn swarm_spawn_depth(
+    members: &HashMap<String, SwarmMember>,
+    session_id: &str,
+) -> u32 {
+    swarm_ancestors(members, session_id).len() as u32
+}
+
+/// True when `ancestor` is `session_id` itself or any transitive spawner of it.
+/// Used to decide whether a requester may manage (stop/control) a target: an
+/// agent owns its entire spawned subtree.
+pub(super) fn swarm_is_self_or_ancestor(
+    members: &HashMap<String, SwarmMember>,
+    ancestor: &str,
+    session_id: &str,
+) -> bool {
+    ancestor == session_id
+        || swarm_ancestors(members, session_id)
+            .iter()
+            .any(|candidate| candidate == ancestor)
+}
+
 const DEFAULT_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD: usize = 2;
 const DEFAULT_SWARM_STATUS_DEBOUNCE_MS: u64 = 75;
 const DEFAULT_SWARM_TASK_HEARTBEAT_SECS: u64 = 10;
@@ -1083,7 +1139,8 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 mod tests {
     use super::{
         broadcast_swarm_plan_with_previous, now_unix_ms, parse_swarm_tasks,
-        refresh_swarm_task_staleness, remove_session_from_swarm, touch_swarm_task_progress,
+        refresh_swarm_task_staleness, remove_session_from_swarm, swarm_ancestors,
+        swarm_is_self_or_ancestor, swarm_spawn_depth, touch_swarm_task_progress,
         update_member_status, update_member_status_with_report,
     };
     use crate::plan::PlanItem;
@@ -1182,6 +1239,48 @@ mod tests {
             },
             event_rx,
         )
+    }
+
+    fn member_with_parent(session_id: &str, parent: Option<&str>) -> SwarmMember {
+        let (mut member, _rx) = swarm_member(session_id, "agent", false);
+        member.report_back_to_session_id = parent.map(str::to_string);
+        member
+    }
+
+    #[test]
+    fn swarm_depth_and_ancestry_follow_report_back_chain() {
+        let mut members: HashMap<String, SwarmMember> = HashMap::new();
+        for (id, parent) in [
+            ("root", None),
+            ("a", Some("root")),
+            ("b", Some("a")),
+            ("c", Some("b")),
+        ] {
+            members.insert(id.to_string(), member_with_parent(id, parent));
+        }
+
+        assert_eq!(swarm_spawn_depth(&members, "root"), 0);
+        assert_eq!(swarm_spawn_depth(&members, "a"), 1);
+        assert_eq!(swarm_spawn_depth(&members, "c"), 3);
+        assert_eq!(swarm_ancestors(&members, "c"), vec!["b", "a", "root"]);
+
+        // Ownership: an ancestor (or self) owns the subtree.
+        assert!(swarm_is_self_or_ancestor(&members, "a", "c"));
+        assert!(swarm_is_self_or_ancestor(&members, "root", "c"));
+        assert!(swarm_is_self_or_ancestor(&members, "c", "c"));
+        // A sibling/descendant is not an ancestor.
+        assert!(!swarm_is_self_or_ancestor(&members, "c", "a"));
+        assert!(!swarm_is_self_or_ancestor(&members, "b", "a"));
+    }
+
+    #[test]
+    fn swarm_ancestry_guards_against_cycles() {
+        let mut members: HashMap<String, SwarmMember> = HashMap::new();
+        // x -> y -> x is a (pathological) cycle; depth must terminate.
+        members.insert("x".to_string(), member_with_parent("x", Some("y")));
+        members.insert("y".to_string(), member_with_parent("y", Some("x")));
+        assert_eq!(swarm_spawn_depth(&members, "x"), 1);
+        assert_eq!(swarm_ancestors(&members, "x"), vec!["y"]);
     }
 
     #[tokio::test]

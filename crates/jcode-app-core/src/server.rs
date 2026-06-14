@@ -58,9 +58,10 @@ use self::headless::create_headless_session;
 use self::reload::await_reload_signal;
 use self::runtime::ServerRuntime;
 use self::swarm::{
-    broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
-    record_swarm_event, record_swarm_event_for_session, refresh_swarm_task_staleness,
-    remove_plan_participant, remove_session_from_swarm, rename_plan_participant, run_swarm_message,
+    MAX_SWARM_SPAWN_DEPTH, broadcast_swarm_plan, broadcast_swarm_plan_with_previous,
+    broadcast_swarm_status, record_swarm_event, record_swarm_event_for_session,
+    refresh_swarm_task_staleness, remove_plan_participant, remove_session_from_swarm,
+    rename_plan_participant, run_swarm_message, swarm_is_self_or_ancestor, swarm_spawn_depth,
     update_member_status, update_member_status_with_report,
 };
 use self::swarm_channels::{

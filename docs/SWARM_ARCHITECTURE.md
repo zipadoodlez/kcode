@@ -18,15 +18,34 @@ integrate work with optional git worktrees.
 
 ## Roles
 
+### Recursive spawning (depth-limited tree)
+
+Spawning is recursive. Any swarm member can spawn child agents, and those
+children can spawn their own children, forming a spawn tree. The tree is capped
+at `MAX_SWARM_SPAWN_DEPTH` (currently 5): an agent at depth `d` may spawn
+children (which land at depth `d + 1`) only while `d < 5`. The root session that
+first spawns in a repo is depth 0.
+
+The spawn/parent edge is encoded by `report_back_to_session_id`: a child spawned
+by `P` reports back to `P`. Walking that chain reconstructs ancestry and depth,
+so each agent "owns" the subtree it spawned. An agent may stop any agent in its
+own subtree (itself or a transitive descendant); `force=true` is still required
+to stop sessions outside the requester's subtree (e.g. user-created peers).
+
+The single per-swarm "coordinator" slot still exists, but only for shared,
+swarm-level plan operations (propose/approve/assign/task-control on the one
+shared plan). Only a root session claims that slot, and only when it is empty or
+stale. A live coordinator no longer blocks anyone else from spawning.
+
 ### Coordinator
 
-- Creates the initial, comprehensive plan.
-- Spawns all subagents and assigns scopes.
-- Can shut down agents and spawn replacements as needed.
-- Is the only role allowed to spawn or stop agents.
-- Decides if a git worktree is needed and groups agents per worktree.
+- Owns the shared swarm-level plan: creates it, assigns scopes, approves updates.
 - Reviews plan update proposals and broadcasts approved updates.
 - Can issue plan updates directly when it discovers a plan issue.
+- Decides if a git worktree is needed and groups agents per worktree.
+- Holds the per-swarm coordinator slot for shared plan operations
+  (propose/approve/assign/task-control). This is a root-session role, not a
+  prerequisite for spawning.
 - Does not perform merges or integration.
 
 ### Worktree Manager
@@ -43,7 +62,9 @@ integrate work with optional git worktrees.
 - Propose plan updates when they discover issues or new requirements.
 - Coordinate directly with other agents via DM or channels.
 - Emit lifecycle events when they start, finish, or stop unexpectedly.
-- Cannot spawn or shut down other agents (including agents spawned by non-coordinator agents).
+- May spawn their own child agents (subject to the depth-5 cap) and stop any
+  agent in the subtree they spawned. Stopping agents outside their own subtree
+  still requires `force=true`.
 
 ## Agent Lifecycle States
 
