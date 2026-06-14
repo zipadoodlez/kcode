@@ -30,6 +30,58 @@ fn resolve_api_key_fallback(env_key: &str) -> Option<String> {
     None
 }
 
+/// Characters that editors, terminals, and `cat` render invisibly but that
+/// corrupt a credential when embedded in it. Rust's [`str::trim`] only removes
+/// ASCII whitespace, so these survive a plain trim and silently break auth
+/// (see GitHub issue #376). [`char::is_whitespace`] covers Unicode White_Space
+/// (NBSP U+00A0, the en/em spaces U+2002-U+200A, line/paragraph separators,
+/// etc.); the explicit cases below are zero-width characters and the BOM, which
+/// are not classified as whitespace.
+fn is_invisible_boundary_char(c: char) -> bool {
+    c.is_whitespace()
+        || matches!(
+            c,
+            '\u{200B}' // zero-width space
+                | '\u{200C}' // zero-width non-joiner
+                | '\u{200D}' // zero-width joiner
+                | '\u{2060}' // word joiner
+                | '\u{FEFF}' // BOM / zero-width no-break space
+        )
+}
+
+/// Strip leading/trailing invisible (Unicode whitespace and zero-width)
+/// characters and one optional layer of surrounding quotes from a loaded
+/// secret or config value.
+///
+/// Exposed so other credential loaders (e.g. the Cursor key reader) can apply
+/// the same sanitizing as [`load_api_key_from_env_or_config`].
+pub fn sanitize_secret_value(raw: &str) -> &str {
+    raw.trim_matches(is_invisible_boundary_char)
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches(is_invisible_boundary_char)
+}
+
+/// Sanitize a loaded value and surface a warning when Unicode invisible
+/// characters were present, so the failure mode in issue #376 is no longer
+/// silent. Returns `None` for values that are empty after sanitizing.
+fn clean_loaded_value(raw: &str, env_key: &str) -> Option<String> {
+    let cleaned = sanitize_secret_value(raw);
+    if cleaned.is_empty() {
+        return None;
+    }
+    // A plain ASCII trim is what we previously did; if it leaves a different
+    // result than the Unicode-aware sanitize, hidden characters were stripped.
+    let ascii_only = raw.trim().trim_matches('"').trim_matches('\'').trim();
+    if ascii_only != cleaned {
+        jcode_logging::warn(&format!(
+            "Stripped Unicode invisible or non-ASCII whitespace characters from '{}' while loading credentials; verify the value contains no hidden characters",
+            env_key
+        ));
+    }
+    Some(cleaned.to_string())
+}
+
 pub fn load_api_key_from_env_or_config(env_key: &str, file_name: &str) -> Option<String> {
     if !is_safe_env_key_name(env_key) {
         jcode_logging::warn(&format!(
@@ -47,9 +99,8 @@ pub fn load_api_key_from_env_or_config(env_key: &str, file_name: &str) -> Option
     }
 
     if let Ok(key) = std::env::var(env_key) {
-        let key = key.trim();
-        if !key.is_empty() {
-            return Some(key.to_string());
+        if let Some(key) = clean_loaded_value(&key, env_key) {
+            return Some(key);
         }
     }
 
@@ -60,27 +111,24 @@ pub fn load_api_key_from_env_or_config(env_key: &str, file_name: &str) -> Option
 
     for line in content.lines() {
         if let Some(key) = line.strip_prefix(&prefix) {
-            let key = key.trim().trim_matches('"').trim_matches('\'');
-            if !key.is_empty() {
-                return Some(key.to_string());
+            if let Some(key) = clean_loaded_value(key, env_key) {
+                return Some(key);
             }
         }
     }
 
     if env_key == "ZHIPU_API_KEY" {
         if let Ok(key) = std::env::var("ZAI_API_KEY") {
-            let key = key.trim();
-            if !key.is_empty() {
-                return Some(key.to_string());
+            if let Some(key) = clean_loaded_value(&key, "ZAI_API_KEY") {
+                return Some(key);
             }
         }
 
         let legacy_prefix = "ZAI_API_KEY=";
         for line in content.lines() {
             if let Some(key) = line.strip_prefix(legacy_prefix) {
-                let key = key.trim().trim_matches('"').trim_matches('\'');
-                if !key.is_empty() {
-                    return Some(key.to_string());
+                if let Some(key) = clean_loaded_value(key, "ZAI_API_KEY") {
+                    return Some(key);
                 }
             }
         }
@@ -110,9 +158,8 @@ pub fn load_env_value_from_env_or_config(env_key: &str, file_name: &str) -> Opti
     }
 
     if let Ok(value) = std::env::var(env_key) {
-        let value = value.trim();
-        if !value.is_empty() {
-            return Some(value.to_string());
+        if let Some(value) = clean_loaded_value(&value, env_key) {
+            return Some(value);
         }
     }
 
@@ -123,9 +170,8 @@ pub fn load_env_value_from_env_or_config(env_key: &str, file_name: &str) -> Opti
 
     for line in content.lines() {
         if let Some(value) = line.strip_prefix(&prefix) {
-            let value = value.trim().trim_matches('"').trim_matches('\'');
-            if !value.is_empty() {
-                return Some(value.to_string());
+            if let Some(value) = clean_loaded_value(value, env_key) {
+                return Some(value);
             }
         }
     }
@@ -270,6 +316,60 @@ mod tests {
         assert_eq!(
             load_api_key_from_env_or_config("ZHIPU_API_KEY", "zai.env").as_deref(),
             Some("legacy-zai-key")
+        );
+    }
+
+    #[test]
+    fn sanitize_strips_unicode_invisible_characters() {
+        // Zero-width space, BOM, NBSP, en space around the value.
+        assert_eq!(
+            sanitize_secret_value("\u{200B}sk-key123\u{FEFF}"),
+            "sk-key123"
+        );
+        assert_eq!(sanitize_secret_value("\u{00A0}sk-key\u{2002}"), "sk-key");
+        // Quotes plus invisible padding both stripped.
+        assert_eq!(sanitize_secret_value("\u{FEFF}\"sk-quoted\"\u{200B}"), "sk-quoted");
+        // Interior characters are preserved.
+        assert_eq!(sanitize_secret_value("sk-mid\u{200B}dle"), "sk-mid\u{200B}dle");
+        // Empty after sanitize.
+        assert_eq!(sanitize_secret_value("\u{200B}\u{FEFF}"), "");
+    }
+
+    #[test]
+    fn loads_api_key_with_zero_width_space_from_config_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::new(&["JCODE_HOME", "JCODE_PROVIDER_FOO_API_KEY"]);
+        jcode_core::env::set_var("JCODE_HOME", temp.path());
+
+        // Write an env file with a U+200B zero-width space prefixed onto the key,
+        // mirroring issue #376's reproduction.
+        let config_dir = jcode_storage::app_config_dir().expect("config dir");
+        std::fs::create_dir_all(&config_dir).expect("create config dir");
+        std::fs::write(
+            config_dir.join("provider-foo.env"),
+            "JCODE_PROVIDER_FOO_API_KEY=\u{200B}sk-mykey123\n",
+        )
+        .expect("write env file");
+
+        assert_eq!(
+            load_api_key_from_env_or_config("JCODE_PROVIDER_FOO_API_KEY", "provider-foo.env")
+                .as_deref(),
+            Some("sk-mykey123")
+        );
+    }
+
+    #[test]
+    fn loads_api_key_with_invisible_chars_from_env_var() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::new(&["JCODE_HOME", "JCODE_PROVIDER_BAR_API_KEY"]);
+        jcode_core::env::set_var("JCODE_HOME", temp.path());
+        // NBSP + BOM padding around the env-provided key.
+        jcode_core::env::set_var("JCODE_PROVIDER_BAR_API_KEY", "\u{00A0}sk-env-key\u{FEFF}");
+
+        assert_eq!(
+            load_api_key_from_env_or_config("JCODE_PROVIDER_BAR_API_KEY", "provider-bar.env")
+                .as_deref(),
+            Some("sk-env-key")
         );
     }
 }
