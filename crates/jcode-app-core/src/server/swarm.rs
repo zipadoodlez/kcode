@@ -759,6 +759,15 @@ pub(super) async fn update_member_status_with_report(
             let report_back_to_session_id = member.report_back_to_session_id.clone();
             member.status = status.to_string();
             member.detail = detail;
+            // Clear any live output tail when the worker reaches a terminal or
+            // idle state so the inline gallery viewport doesn't keep showing
+            // stale in-progress text after the turn finishes.
+            if matches!(
+                status,
+                "ready" | "completed" | "done" | "failed" | "crashed" | "stopped"
+            ) {
+                member.output_tail = None;
+            }
             if completion_report.is_some() {
                 member.latest_completion_report = completion_report.clone();
             }
