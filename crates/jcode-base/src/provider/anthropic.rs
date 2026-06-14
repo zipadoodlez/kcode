@@ -1685,6 +1685,7 @@ async fn stream_response(
     oauth_session_id: &str,
 ) -> Result<()> {
     use crate::message::ConnectionPhase;
+    let requested_model_base = strip_1m_suffix(&request.model).to_ascii_lowercase();
     if std::env::var("JCODE_ANTHROPIC_DEBUG")
         .map(|v| v == "1")
         .unwrap_or(false)
@@ -1775,7 +1776,10 @@ async fn stream_response(
     // Parse SSE stream
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
-    let mut sse_state = SseStreamState::default();
+    let mut sse_state = SseStreamState {
+        requested_model_base,
+        ..SseStreamState::default()
+    };
 
     const SSE_CHUNK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
 
@@ -1973,6 +1977,12 @@ struct SseStreamState {
     output_tokens: Option<u64>,
     cache_read_input_tokens: Option<u64>,
     cache_creation_input_tokens: Option<u64>,
+    /// Lowercased base id of the model we asked for, so `message_start` can flag
+    /// a silent server-side substitution (e.g. an unavailable id aliased to a
+    /// different model). Empty when unknown (e.g. in unit tests).
+    requested_model_base: String,
+    /// Set once we have warned about a substitution, so we only warn per stream.
+    warned_model_substitution: bool,
 }
 
 /// Process an SSE event and return StreamEvents if applicable
@@ -1986,17 +1996,48 @@ fn process_sse_event(
     match event.event_type.as_str() {
         "message_start" => {
             // Extract usage from message_start (includes cache info)
-            if let Ok(parsed) = serde_json::from_str::<MessageStartEvent>(&event.data)
-                && let Some(usage) = parsed.message.usage
-            {
-                state.input_tokens = usage.input_tokens.map(|t| t as u64);
-                state.cache_read_input_tokens = usage.cache_read_input_tokens.map(|t| t as u64);
-                state.cache_creation_input_tokens =
-                    usage.cache_creation_input_tokens.map(|t| t as u64);
-                if let Some(tier) = usage.service_tier.as_deref() {
-                    crate::logging::info(&format!("Anthropic granted service_tier={}", tier));
-                    if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
-                        eprintln!("[anthropic] granted service_tier={tier}");
+            if let Ok(parsed) = serde_json::from_str::<MessageStartEvent>(&event.data) {
+                // The server echoes the model that actually served the request.
+                // Log it so we can confirm there was no silent server-side
+                // substitution (and surface it under JCODE_LOG_SERVED_MODEL).
+                if let Some(served) = parsed.message.model.as_deref() {
+                    crate::logging::info(&format!("Anthropic served model={}", served));
+                    if std::env::var("JCODE_LOG_SERVED_MODEL").is_ok() {
+                        eprintln!("[anthropic] served model={served}");
+                    }
+                    // Anthropic can silently alias an unavailable/retired model
+                    // id to a different model (observed: claude-fable-5 ->
+                    // claude-haiku-4-5). That is a correctness hazard: the user
+                    // believes they are on the requested flagship. Warn loudly
+                    // once per stream when the served base id differs.
+                    let served_base = strip_1m_suffix(served).to_ascii_lowercase();
+                    if !state.requested_model_base.is_empty()
+                        && !state.warned_model_substitution
+                        && served_base != state.requested_model_base
+                    {
+                        state.warned_model_substitution = true;
+                        crate::logging::warn(&format!(
+                            "Anthropic served a DIFFERENT model than requested: requested '{}', served '{}'. The requested model is likely unavailable and is being substituted server-side.",
+                            state.requested_model_base, served_base
+                        ));
+                        events.push(StreamEvent::StatusDetail {
+                            detail: format!(
+                                "⚠ Anthropic served '{}' instead of requested '{}' (requested model unavailable)",
+                                served_base, state.requested_model_base
+                            ),
+                        });
+                    }
+                }
+                if let Some(usage) = parsed.message.usage {
+                    state.input_tokens = usage.input_tokens.map(|t| t as u64);
+                    state.cache_read_input_tokens = usage.cache_read_input_tokens.map(|t| t as u64);
+                    state.cache_creation_input_tokens =
+                        usage.cache_creation_input_tokens.map(|t| t as u64);
+                    if let Some(tier) = usage.service_tier.as_deref() {
+                        crate::logging::info(&format!("Anthropic granted service_tier={}", tier));
+                        if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+                            eprintln!("[anthropic] granted service_tier={tier}");
+                        }
                     }
                 }
             }
@@ -2138,6 +2179,8 @@ struct MessageStartEvent {
 
 #[derive(Deserialize)]
 struct MessageStartMessage {
+    #[serde(default)]
+    model: Option<String>,
     usage: Option<UsageInfo>,
 }
 
