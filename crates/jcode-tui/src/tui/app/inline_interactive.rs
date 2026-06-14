@@ -201,8 +201,19 @@ fn model_picker_route_is_current(
     current_model: &str,
     current_provider: &str,
 ) -> bool {
-    model_name == current_model
-        && jcode_provider_core::model_route_provider_labels_match(&route.provider, current_provider)
+    if model_name != current_model {
+        return false;
+    }
+    // Remote sessions whose catalog arrives as names-only do not carry a
+    // provider name, so `current_provider` is the generic "remote"
+    // placeholder. The model name was synthesized into a real provider route
+    // (Copilot/OpenAI/...), so a provider-label comparison would never match
+    // and the current model would not preselect. Fall back to name-only
+    // matching in that case.
+    if current_provider.trim().eq_ignore_ascii_case("remote") {
+        return true;
+    }
+    jcode_provider_core::model_route_provider_labels_match(&route.provider, current_provider)
 }
 
 const RECOMMENDED_MODELS: &[&str] = &["gpt-5.5", "claude-fable-5", "claude-opus-4-8"];

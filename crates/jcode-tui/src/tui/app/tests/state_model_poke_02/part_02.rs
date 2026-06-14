@@ -42,6 +42,16 @@ fn test_agents_review_picker_saves_config_override() {
                 format!("copilot:{}", base)
             } else if route.api_method == "cursor" {
                 format!("cursor:{}", base)
+            } else if route.api_method == "openai-oauth" {
+                format!("openai-oauth:{}", base)
+            } else if route.api_method == "openai-api" {
+                format!("openai-api:{}", base)
+            } else if route.api_method == "claude-oauth" {
+                format!("claude-oauth:{}", base)
+            } else if route.api_method == "claude-api" && route.provider == "Anthropic" {
+                format!("claude-api:{}", base)
+            } else if route.api_method == "bedrock" {
+                format!("bedrock:{}", base)
             } else if route.api_method == "openrouter" && route.provider != "auto" {
                 if base.contains('/') {
                     format!("{}@{}", base, route.provider)
