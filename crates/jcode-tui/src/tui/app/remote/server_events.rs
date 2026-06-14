@@ -878,20 +878,23 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             remote.clear_pending();
             remote.reset_call_output_tokens_seen();
-            if crate::network_retry::classify_message(&message).is_some()
-                && app.schedule_pending_remote_network_wait(&message)
+            // Connectivity failures (DNS, connection reset, no route, transient
+            // TLS, timeouts) are always transient: the request never reached the
+            // provider. Hold the turn and resume when the network recovers,
+            // regardless of the pending message's auto_retry flag. This must run
+            // before the non-retryable auto-poke check so a transient disconnect
+            // is never misclassified as a permanent failure that stops auto-poke.
+            let is_connectivity_error =
+                crate::tui::app::commands::is_auto_poke_connectivity_error(&message)
+                    || crate::network_retry::classify_message(&message).is_some();
+            if is_connectivity_error
+                && app.schedule_pending_remote_network_wait_with_force(&message, true)
             {
                 return false;
             }
             if app.auto_poke_incomplete_todos
                 && crate::tui::app::commands::is_non_retryable_auto_poke_error(&message)
             {
-                if crate::tui::app::commands::is_auto_poke_connectivity_error(&message) {
-                    crate::tui::app::commands::stop_auto_poke_for_non_retryable_error(
-                        app, &message,
-                    );
-                    return false;
-                }
                 if app.schedule_pending_remote_retry_with_limit(
                     "⚠ Remote request failed with a likely non-retryable error.",
                     2,

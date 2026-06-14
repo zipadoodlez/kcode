@@ -95,11 +95,32 @@ impl App {
     }
 
     pub(super) fn schedule_pending_remote_network_wait(&mut self, reason: &str) -> bool {
+        self.schedule_pending_remote_network_wait_with_force(reason, false)
+    }
+
+    /// Hold the in-flight remote turn until the network recovers, then resume it.
+    ///
+    /// Connectivity failures (DNS, connection reset, no route, transient TLS,
+    /// timeouts) are always transient: the request never reached the provider,
+    /// so resending after the network comes back is both safe and correct. When
+    /// `force` is set we wait regardless of the pending message's `auto_retry`
+    /// flag and promote it to auto-retry so the tick-based resume re-sends it.
+    /// This prevents a transient disconnect from being misclassified as a
+    /// permanent, non-retryable failure that stops auto-poke.
+    pub(super) fn schedule_pending_remote_network_wait_with_force(
+        &mut self,
+        reason: &str,
+        force: bool,
+    ) -> bool {
         let Some(pending) = self.rate_limit_pending_message.as_mut() else {
             return false;
         };
         if !pending.auto_retry {
-            return false;
+            if force {
+                pending.auto_retry = true;
+            } else {
+                return false;
+            }
         }
 
         let plan = crate::network_retry::wait_plan();

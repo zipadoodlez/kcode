@@ -279,6 +279,62 @@ fn test_remote_connectivity_error_waits_for_network_without_retry_budget() {
 }
 
 #[test]
+fn test_remote_connectivity_error_without_auto_retry_still_waits_for_network() {
+    // Regression: an auto-poke continuation that carries a visible message gets
+    // auto_retry=false. A transient DNS failure must still hold the turn for
+    // network recovery instead of permanently stopping auto-poke.
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.auto_poke_incomplete_todos = true;
+    app.queued_messages
+        .push("You have 1 incomplete todo. Continue working, or update the todo tool.".to_string());
+    app.rate_limit_pending_message = Some(PendingRemoteMessage {
+        content: "Continue working on the task.".to_string(),
+        images: vec![],
+        is_system: true,
+        system_reminder: None,
+        auto_retry: false,
+        retry_attempts: 0,
+        retry_at: None,
+    });
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Error {
+            id: 16,
+            message: "Failed to send request to Anthropic API: error sending request for url (https://api.anthropic.com/v1/messages): client error (Connect): dns error: failed to lookup address information: Name or service not known".to_string(),
+            retry_after_secs: None,
+        },
+        &mut remote,
+    );
+
+    // Auto-poke must stay enabled and queued work preserved.
+    assert!(app.auto_poke_incomplete_todos);
+    assert!(!app.queued_messages().is_empty());
+    let pending = app
+        .rate_limit_pending_message
+        .as_ref()
+        .expect("offline turn should be held for network recovery");
+    // Promoted to auto_retry so the tick-based resume re-sends it.
+    assert!(pending.auto_retry);
+    assert_eq!(pending.retry_attempts, 0);
+    assert!(app.rate_limit_reset.is_some());
+    assert!(matches!(
+        app.status,
+        ProcessingStatus::WaitingForNetwork { .. }
+    ));
+    assert!(
+        !app.display_messages()
+            .iter()
+            .any(|m| m.role == "system" && m.content.contains("Auto-poke stopped"))
+    );
+}
+
+#[test]
 fn test_schedule_pending_remote_retry_respects_retry_limit() {
     let mut app = create_test_app();
     app.rate_limit_pending_message = Some(PendingRemoteMessage {

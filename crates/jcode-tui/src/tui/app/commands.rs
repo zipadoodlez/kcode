@@ -158,14 +158,18 @@ pub(super) fn is_non_retryable_auto_poke_error(error: &str) -> bool {
     deterministic_markers
         .iter()
         .any(|marker| lower.contains(marker))
-        || is_auto_poke_connectivity_error(error)
 }
 
+/// Whether `error` is a transient connectivity failure (DNS, name resolution,
+/// routing, unreachable host) that the agent itself cannot repair by resending
+/// immediately. These are NOT non-retryable: they resolve once the network
+/// environment recovers, so callers route them to a network-wait/resume path
+/// rather than stopping auto-poke. Kept separate from
+/// [`is_non_retryable_auto_poke_error`] precisely so a transient disconnect is
+/// never treated as a permanent failure.
 pub(super) fn is_auto_poke_connectivity_error(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
 
-    // Auto-poke cannot repair local/network/provider DNS or routing failures. Re-sending the same
-    // poke just creates noise until the user or network environment changes.
     let connectivity_markers = [
         "failed to send openai-compatible chat request",
         "dns error",
