@@ -63,7 +63,7 @@ mod debug;
 mod dictation;
 mod event_wrappers;
 mod handterm_native_scroll;
-mod helpers;
+pub(crate) mod helpers;
 mod inline_interactive;
 mod input;
 mod input_help;

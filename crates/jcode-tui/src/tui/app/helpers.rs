@@ -416,7 +416,7 @@ pub(super) fn effort_display_label(effort: &str) -> &str {
 ///   `claude-opus-4-6[1m]`-> `Claude Opus 4.6 (1M)`
 ///   `gemini-2.5-pro`     -> `Gemini 2.5 Pro`
 /// Unknown shapes are returned mostly as-is so we never hide the real id.
-pub(super) fn pretty_model_display_name(model: &str) -> String {
+pub(crate) fn pretty_model_display_name(model: &str) -> String {
     let model = model.trim();
     if model.is_empty() {
         return "your default model".to_string();

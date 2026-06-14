@@ -1511,7 +1511,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         .unwrap_or_else(|| app.provider_model());
     if !model.is_empty() && !overscroll_is_placeholder(&model) {
         spans.push(Span::styled(
-            model,
+            crate::tui::app::helpers::pretty_model_display_name(&model),
             Style::default().fg(rgb(255, 150, 200)).bold(),
         ));
         // Reasoning level shown inline next to the model, e.g. " high".
@@ -2295,14 +2295,8 @@ fn idle_input_hint(app: &dyn TuiState) -> Option<String> {
 
     let dir = app
         .working_dir()
-        .map(|d| d.trim().to_string())
-        .filter(|d| !d.is_empty())
-        .map(|d| {
-            std::path::Path::new(&d)
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or(d)
-        });
+        .as_deref()
+        .and_then(overscroll_dir_label);
 
     let model = {
         let m = app.provider_model();
@@ -2310,15 +2304,15 @@ fn idle_input_hint(app: &dyn TuiState) -> Option<String> {
         if m.is_empty() {
             None
         } else {
-            Some(crate::tui::info_widget::model::shorten_model_name(m))
+            Some(crate::tui::app::helpers::pretty_model_display_name(m))
         }
     };
 
     format_idle_input_hint(dir, model)
 }
 
-/// Compose the faint idle hint text from an optional directory basename and
-/// optional short model name.
+/// Compose the faint idle hint text from an optional directory path and
+/// optional pretty model name.
 fn format_idle_input_hint(dir: Option<String>, model: Option<String>) -> Option<String> {
     match (dir, model) {
         (Some(d), Some(m)) => Some(format!("{d} · {m}")),
