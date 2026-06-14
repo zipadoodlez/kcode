@@ -277,6 +277,11 @@ cross_provider_failover = "countdown"
 # Env override: JCODE_SWARM_SPAWN_MODE
 swarm_spawn_mode = "visible"
 #
+# Max percentage (1-90) of the chat height the inline swarm gallery band may use.
+# Unset = built-in default (40%). Lower values keep more transcript visible; set
+# near the minimum to collapse the gallery to a thin strip.
+# swarm_gallery_max_pct = 40
+#
 # Model for the memory sidecar (relevance/extraction). Unset = sidecar auto-select.
 # Env override: JCODE_MEMORY_MODEL
 # memory_model = "claude-haiku-4"

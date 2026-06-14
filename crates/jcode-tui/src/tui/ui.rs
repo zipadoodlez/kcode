@@ -2393,8 +2393,15 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // top strip of the chat column to render a live gallery of agent viewports.
     let swarm_gallery_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
         let members = app.inline_swarm_members();
-        // Budget up to ~40% of the chat height for the gallery, capped.
-        let budget = ((chat_area.height as usize * 2) / 5).clamp(0, 18);
+        // Budget a configurable share (default ~40%) of the chat height for the
+        // gallery, capped. `agents.swarm_gallery_max_pct` (1-90) lets the user
+        // shrink the band toward a thin strip or give it more room.
+        let max_pct = crate::config::config()
+            .agents
+            .swarm_gallery_max_pct
+            .map(|p| p.clamp(1, 90) as usize)
+            .unwrap_or(40);
+        let budget = ((chat_area.height as usize * max_pct) / 100).clamp(0, 18);
         if budget >= 5 && chat_area.width >= 24 {
             super::info_widget::swarm_gallery::render_swarm_gallery_lines(
                 &members,

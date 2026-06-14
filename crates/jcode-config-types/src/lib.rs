@@ -453,6 +453,11 @@ pub struct AgentsConfig {
     pub swarm_model: Option<String>,
     /// Default terminal mode for swarm-created agents.
     pub swarm_spawn_mode: SwarmSpawnMode,
+    /// Maximum percentage (1-90) of the chat column height the inline swarm
+    /// gallery band may occupy. Leave unset to use the built-in default (40%).
+    /// Lower values keep more of the transcript visible; set near the minimum
+    /// to effectively collapse the gallery to a thin strip.
+    pub swarm_gallery_max_pct: Option<u8>,
     /// Optional default model override for the memory sidecar.
     pub memory_model: Option<String>,
     /// Whether memory should use the sidecar for relevance/extraction.
