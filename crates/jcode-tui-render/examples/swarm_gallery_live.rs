@@ -26,7 +26,7 @@ use ratatui::crossterm::{
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use jcode_tui_render::swarm_tiles::{render_swarm_gallery, SwarmGalleryConfig, SwarmTile};
+use jcode_tui_render::swarm_gallery::{humanize_age, render_gallery, GalleryMember};
 
 /// A simulated worker, mirroring the fields the real adapter reads from a
 /// `SwarmMemberStatus` (name, role, status, streamed output tail).
@@ -89,52 +89,19 @@ impl MockWorker {
     }
 }
 
-fn status_accent(status: &str) -> Color {
-    match status {
-        "spawned" => Color::Rgb(140, 140, 150),
-        "ready" => Color::Rgb(120, 180, 120),
-        "running" | "streaming" => Color::Rgb(255, 200, 100),
-        "thinking" => Color::Rgb(140, 180, 255),
-        "blocked" | "waiting_network" => Color::Rgb(255, 170, 80),
-        "failed" | "crashed" => Color::Rgb(255, 100, 100),
-        "completed" | "done" => Color::Rgb(100, 200, 100),
-        "stopped" => Color::Rgb(140, 140, 150),
-        _ => Color::Rgb(140, 140, 150),
-    }
-}
-
-fn role_glyph(role: Option<&str>) -> Option<&'static str> {
-    match role {
-        Some("coordinator") => Some("★"),
-        Some("worktree_manager") => Some("◆"),
-        _ => None,
-    }
-}
-
-fn humanize_age(age: u64) -> String {
-    if age < 2 {
-        "now".to_string()
-    } else if age < 60 {
-        format!("{age}s")
-    } else if age < 3600 {
-        format!("{}m", age / 60)
-    } else {
-        format!("{}h", age / 3600)
-    }
-}
-
-fn workers_to_tiles(workers: &[MockWorker]) -> Vec<SwarmTile> {
+fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
     workers
         .iter()
         .map(|w| {
             let mut body: Vec<String> = w.transcript.clone();
             body.push(format!("· {} ago", humanize_age(w.age_secs())));
-            let mut tile = SwarmTile::new(w.name.clone(), w.status.clone(), status_accent(&w.status))
-                .with_body(body);
-            if let Some(g) = role_glyph(w.role) {
-                tile = tile.with_role_glyph(g);
+            GalleryMember {
+                label: w.name.clone(),
+                status: w.status.clone(),
+                role: w.role.map(str::to_string),
+                body,
+                sort_key: w.name.clone(),
             }
-            tile
         })
         .collect()
 }
@@ -242,35 +209,9 @@ fn make_workers(n: usize) -> Vec<MockWorker> {
 }
 
 fn render_gallery_lines(workers: &[MockWorker], width: usize, max_height: usize) -> Vec<Line<'static>> {
-    if workers.is_empty() {
-        return Vec::new();
-    }
-    let tiles = workers_to_tiles(workers);
-    let active = workers
-        .iter()
-        .filter(|w| matches!(w.status.as_str(), "running" | "streaming" | "thinking"))
-        .count();
-    let header = Line::from(vec![
-        Span::styled("🐝 ", Style::default().fg(Color::Rgb(255, 200, 100))),
-        Span::styled(
-            format!(
-                "swarm · {} agent{}{}",
-                workers.len(),
-                if workers.len() == 1 { "" } else { "s" },
-                if active > 0 {
-                    format!(" · {active} active")
-                } else {
-                    String::new()
-                }
-            ),
-            Style::default().fg(Color::Rgb(160, 160, 170)),
-        ),
-    ]);
-    let cfg = SwarmGalleryConfig {
-        max_height: max_height.saturating_sub(1).max(4),
-        ..Default::default()
-    };
-    render_swarm_gallery(&tiles, width, &cfg, Some(header))
+    // Delegate to the exact same shared renderer the live TUI uses; only the
+    // member data (built from mock workers) differs.
+    render_gallery(&workers_to_members(workers), width, max_height)
 }
 
 fn draw(

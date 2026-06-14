@@ -6,5 +6,6 @@ publish = false
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+jcode-tui-style = { path = "../jcode-tui-style" }
 ratatui = "0.30"
 unicode-width = "0.2"

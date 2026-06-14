@@ -1,37 +1,15 @@
 //! Adapter from swarm member status into the inline gallery layout.
 //!
-//! Phase 1 feeds each member's status/detail into a [`SwarmTile`]; once the
-//! server streams per-agent output tails, the body will carry live output.
+//! All presentation logic (status colors, role glyphs, age formatting, header,
+//! sorting, layout config) lives in the shared
+//! [`jcode_tui_render::swarm_gallery`] module so the live TUI and the
+//! `swarm_gallery_live` demo render identically. This adapter only handles
+//! turning a [`SwarmMemberStatus`] into a renderer-agnostic
+//! [`GalleryMember`] (label + body lines).
 
 use crate::protocol::SwarmMemberStatus;
-use crate::tui::color_support::rgb;
-use jcode_tui_render::swarm_tiles::{
-    SwarmGalleryConfig, SwarmTile, render_swarm_gallery,
-};
+use jcode_tui_render::swarm_gallery::{humanize_age, render_gallery, GalleryMember};
 use ratatui::prelude::*;
-
-/// Accent color for a member lifecycle status.
-fn status_accent(status: &str) -> Color {
-    match status {
-        "spawned" => rgb(140, 140, 150),
-        "ready" => rgb(120, 180, 120),
-        "running" | "streaming" => rgb(255, 200, 100),
-        "thinking" => rgb(140, 180, 255),
-        "blocked" | "waiting_network" => rgb(255, 170, 80),
-        "failed" | "crashed" => rgb(255, 100, 100),
-        "completed" | "done" => rgb(100, 200, 100),
-        "stopped" => rgb(140, 140, 150),
-        _ => rgb(140, 140, 150),
-    }
-}
-
-fn role_glyph(role: Option<&str>) -> Option<&'static str> {
-    match role {
-        Some("coordinator") => Some("★"),
-        Some("worktree_manager") => Some("◆"),
-        _ => None,
-    }
-}
 
 fn member_label(member: &SwarmMemberStatus) -> String {
     member
@@ -62,47 +40,16 @@ fn member_body(member: &SwarmMemberStatus) -> Vec<String> {
     body
 }
 
-/// Compact age formatting for member viewports (now/Ns/Nm/Nh).
-fn humanize_age(age: u64) -> String {
-    if age < 2 {
-        "now".to_string()
-    } else if age < 60 {
-        format!("{age}s")
-    } else if age < 3600 {
-        format!("{}m", age / 60)
-    } else {
-        format!("{}h", age / 3600)
-    }
-}
-
-/// Convert swarm members into gallery tiles, sorted for stable placement
-/// (coordinator first, then by session id).
-pub(super) fn members_to_tiles(members: &[SwarmMemberStatus]) -> Vec<SwarmTile> {
-    let mut sorted: Vec<&SwarmMemberStatus> = members.iter().collect();
-    sorted.sort_by(|a, b| {
-        let rank = |m: &SwarmMemberStatus| match m.role.as_deref() {
-            Some("coordinator") => 0,
-            Some("worktree_manager") => 1,
-            _ => 2,
-        };
-        rank(a)
-            .cmp(&rank(b))
-            .then_with(|| a.session_id.cmp(&b.session_id))
-    });
-
-    sorted
-        .into_iter()
-        .map(|member| {
-            let mut tile = SwarmTile::new(
-                member_label(member),
-                member.status.clone(),
-                status_accent(&member.status),
-            )
-            .with_body(member_body(member));
-            if let Some(glyph) = role_glyph(member.role.as_deref()) {
-                tile = tile.with_role_glyph(glyph);
-            }
-            tile
+/// Convert swarm members into renderer-agnostic gallery members.
+fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
+    members
+        .iter()
+        .map(|member| GalleryMember {
+            label: member_label(member),
+            status: member.status.clone(),
+            role: member.role.clone(),
+            body: member_body(member),
+            sort_key: member.session_id.clone(),
         })
         .collect()
 }
@@ -116,37 +63,13 @@ pub(crate) fn render_swarm_gallery_lines(
     if members.is_empty() {
         return Vec::new();
     }
-    let tiles = members_to_tiles(members);
-    let active = members
-        .iter()
-        .filter(|m| matches!(m.status.as_str(), "running" | "streaming" | "thinking"))
-        .count();
-    let header = Line::from(vec![
-        Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
-        Span::styled(
-            format!(
-                "swarm · {} agent{}{}",
-                members.len(),
-                if members.len() == 1 { "" } else { "s" },
-                if active > 0 {
-                    format!(" · {active} active")
-                } else {
-                    String::new()
-                }
-            ),
-            Style::default().fg(rgb(160, 160, 170)),
-        ),
-    ]);
-    let cfg = SwarmGalleryConfig {
-        max_height: max_height.saturating_sub(1).max(4),
-        ..Default::default()
-    };
-    render_swarm_gallery(&tiles, width, &cfg, Some(header))
+    render_gallery(&members_to_gallery(members), width, max_height)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jcode_tui_render::swarm_gallery::members_to_tiles;
 
     fn member(id: &str, status: &str, detail: Option<&str>, role: Option<&str>) -> SwarmMemberStatus {
         SwarmMemberStatus {
@@ -168,7 +91,7 @@ mod tests {
             member("zeta", "running", None, None),
             member("alpha", "running", None, Some("coordinator")),
         ];
-        let tiles = members_to_tiles(&members);
+        let tiles = members_to_tiles(&members_to_gallery(&members));
         assert_eq!(tiles[0].title, "alpha");
         assert_eq!(tiles[0].role_glyph.as_deref(), Some("★"));
     }

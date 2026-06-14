@@ -4238,6 +4238,7 @@ name = "jcode-tui-render"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "jcode-tui-style",
  "ratatui",
  "unicode-width 0.2.0",
 ]
