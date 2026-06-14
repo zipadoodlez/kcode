@@ -211,10 +211,10 @@ jobs:
         run: |
           # The e2e suite (56 tests, each spinning up a server + multiple socket
           # clients) needs more than 15 min of pure execution on hosted runners;
-          # at 900s it consistently timed out around 34/56 with no failures.
-          # Compilation is already done in the dedicated step above, so this
-          # budget is execution-only.
-          python3 .github/scripts/run_with_timeout.py 1500 \
+          # at 900s it consistently timed out at 34/56 with zero failures. Give
+          # it 30 min of execution headroom (compilation is already done in the
+          # dedicated step above; the 50 min job budget accommodates this).
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --test e2e
 
       - name: Check PowerShell script syntax (Windows)
