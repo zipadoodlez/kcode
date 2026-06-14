@@ -103,6 +103,7 @@ audit_ignores=(
   --ignore RUSTSEC-2026-0099 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0104 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0098 # rustls-webpki via rustls stack, awaiting upstream upgrade
+  --ignore RUSTSEC-2026-0049 # rustls-webpki via rustls stack, awaiting upstream upgrade
 )
 if command -v cargo-audit >/dev/null 2>&1; then
   cargo audit "${audit_ignores[@]}"
