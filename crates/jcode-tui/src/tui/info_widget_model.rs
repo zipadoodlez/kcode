@@ -269,7 +269,7 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
     lines
 }
 
-pub(super) fn shorten_model_name(model: &str) -> String {
+pub(crate) fn shorten_model_name(model: &str) -> String {
     if model.contains("claude") {
         if model.contains("opus-4-5") || model.contains("opus-4.5") {
             return "opus-4.5".to_string();

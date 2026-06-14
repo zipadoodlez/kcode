@@ -909,6 +909,23 @@ mod tests {
     use ratatui::style::Modifier;
 
     #[test]
+    fn idle_input_hint_combines_dir_and_model() {
+        assert_eq!(
+            format_idle_input_hint(Some("jcode".to_string()), Some("opus-4.5".to_string())),
+            Some("jcode · opus-4.5".to_string())
+        );
+        assert_eq!(
+            format_idle_input_hint(Some("jcode".to_string()), None),
+            Some("jcode".to_string())
+        );
+        assert_eq!(
+            format_idle_input_hint(None, Some("opus-4.5".to_string())),
+            Some("opus-4.5".to_string())
+        );
+        assert_eq!(format_idle_input_hint(None, None), None);
+    }
+
+    #[test]
     fn overscroll_provider_display_is_credential_neutral() {
         // The credential (OAuth vs API key) is reported by the adjacent auth
         // chip from canonical resolution; the provider name must not bake in a
@@ -2255,13 +2272,64 @@ fn send_mode_indicator(app: &dyn TuiState) -> (&'static str, Color) {
             ("󰖟", rgb(140, 180, 255))
         }
     } else {
-        ("⚡", asap_color())
+        // Idle: no glyph. The faint dir · model hint is drawn instead.
+        ("", asap_color())
+    }
+}
+
+/// Faint right-aligned hint shown in the input line while it is empty and idle:
+/// the working directory basename followed by the short model name.
+fn idle_input_hint(app: &dyn TuiState) -> Option<String> {
+    // Only show when nothing meaningful is happening in the composer.
+    if !app.input().is_empty() {
+        return None;
+    }
+    let mode = composer_mode(app.input(), app.is_remote_mode());
+    if mode.is_shell()
+        || app.next_prompt_new_session_armed()
+        || app.queue_mode()
+        || app.connection_type().is_some()
+    {
+        return None;
+    }
+
+    let dir = app
+        .working_dir()
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty())
+        .map(|d| {
+            std::path::Path::new(&d)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or(d)
+        });
+
+    let model = {
+        let m = app.provider_model();
+        let m = m.trim();
+        if m.is_empty() {
+            None
+        } else {
+            Some(crate::tui::info_widget::model::shorten_model_name(m))
+        }
+    };
+
+    format_idle_input_hint(dir, model)
+}
+
+/// Compose the faint idle hint text from an optional directory basename and
+/// optional short model name.
+fn format_idle_input_hint(dir: Option<String>, model: Option<String>) -> Option<String> {
+    match (dir, model) {
+        (Some(d), Some(m)) => Some(format!("{d} · {m}")),
+        (Some(d), None) => Some(d),
+        (None, Some(m)) => Some(m),
+        (None, None) => None,
     }
 }
 
 fn draw_send_mode_indicator(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
-    let (icon, color) = send_mode_indicator(app);
-    if icon.is_empty() || area.width == 0 || area.height == 0 {
+    if area.width == 0 || area.height == 0 {
         return;
     }
     let indicator_area = Rect {
@@ -2270,9 +2338,28 @@ fn draw_send_mode_indicator(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
         width: area.width,
         height: 1,
     };
-    let line = Line::from(Span::styled(icon, Style::default().fg(color)));
-    let paragraph = Paragraph::new(line).alignment(Alignment::Right);
-    frame.render_widget(paragraph, indicator_area);
+
+    let (icon, color) = send_mode_indicator(app);
+    if !icon.is_empty() {
+        let line = Line::from(Span::styled(icon, Style::default().fg(color)));
+        let paragraph = Paragraph::new(line).alignment(Alignment::Right);
+        frame.render_widget(paragraph, indicator_area);
+        return;
+    }
+
+    if let Some(hint) = idle_input_hint(app) {
+        // Truncate to the available width so we never overrun the line.
+        let max = indicator_area.width as usize;
+        let hint = crate::util::truncate_str(&hint, max).to_string();
+        let line = Line::from(Span::styled(
+            hint,
+            Style::default()
+                .fg(dim_color())
+                .add_modifier(Modifier::DIM),
+        ));
+        let paragraph = Paragraph::new(line).alignment(Alignment::Right);
+        frame.render_widget(paragraph, indicator_area);
+    }
 }
 
 #[derive(Clone, Copy)]

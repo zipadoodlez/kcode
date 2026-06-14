@@ -15,7 +15,7 @@ mod memory_render;
 #[path = "info_widget_memory_utils.rs"]
 mod memory_utils;
 #[path = "info_widget_model.rs"]
-mod model;
+pub(crate) mod model;
 #[path = "info_widget_swarm_background.rs"]
 mod swarm_background;
 #[path = "info_widget_swarm_gallery.rs"]
