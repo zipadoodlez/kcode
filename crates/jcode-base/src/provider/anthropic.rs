@@ -592,8 +592,13 @@ impl AnthropicProvider {
 
     fn model_supports_adaptive_thinking(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
+        // NOTE: `claude-fable-5` is intentionally excluded. It exposes
+        // `output_config` effort levels (low/medium/high/xhigh) but the Messages
+        // API rejects an explicit adaptive `thinking` block with a 400
+        // ("adaptive thinking is not supported on this model"). It controls
+        // reasoning purely through `output_config`, so it must not be treated as
+        // an adaptive-thinking model. See `model_supports_output_effort`.
         model.contains("claude-mythos")
-            || model.contains("claude-fable-5")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
             || model.contains("claude-opus-4-6")
@@ -1546,6 +1551,29 @@ async fn run_stream_with_retries(
                     continue;
                 }
 
+                // Adaptive `thinking` rejected (e.g. a model that exposes
+                // `output_config` effort but does not accept an explicit
+                // adaptive thinking block: "adaptive thinking is not supported
+                // on this model"). Self-heal once by stripping the thinking
+                // block (and restoring an OAuth temperature, which we omit only
+                // because thinking was active) and retrying, so a stale
+                // capability table degrades gracefully instead of hard-failing.
+                if request.thinking.is_some()
+                    && !saw_output
+                    && is_thinking_unsupported_error(&error_str)
+                {
+                    crate::logging::warn(&format!(
+                        "Anthropic model '{}' rejected the thinking request ({}); retrying without adaptive thinking",
+                        model_name, e
+                    ));
+                    request.thinking = None;
+                    if is_oauth {
+                        request.temperature = Some(1.0);
+                    }
+                    last_error = Some(e);
+                    continue;
+                }
+
                 // Check if this is a transient/retryable error
                 if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
                     if saw_output {
@@ -1832,6 +1860,24 @@ fn is_model_not_found_error(error_str: &str) -> bool {
         && (mentions_model
             || error_str.contains("is not available")
             || error_str.contains("please use"))
+}
+
+/// Detect an Anthropic rejection of an explicit `thinking` request.
+///
+/// Some models expose `output_config` effort levels but do *not* accept an
+/// explicit adaptive `thinking` block; the Messages API rejects those with a
+/// 400 `invalid_request_error` whose message is
+/// "adaptive thinking is not supported on this model" (wording varies). When we
+/// hit this we can self-heal by dropping the `thinking` block and retrying,
+/// rather than hard-failing the turn. `error_str` is expected to already be
+/// lowercased.
+fn is_thinking_unsupported_error(error_str: &str) -> bool {
+    let is_bad_request =
+        error_str.contains("invalid_request_error") || error_str.contains("400 bad request");
+    let mentions_thinking = error_str.contains("thinking");
+    let mentions_unsupported =
+        error_str.contains("not supported") || error_str.contains("is not supported");
+    is_bad_request && mentions_thinking && mentions_unsupported
 }
 
 /// Pick the next Anthropic model to try after a "model not found" failure.
