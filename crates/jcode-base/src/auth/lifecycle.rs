@@ -187,6 +187,15 @@ pub fn provider_model_to_select_after_auth(
     // route; ties and unranked providers preserve catalog order.
     let orders = provider_preferred_model_orders(activation);
     if !orders.is_empty() {
+        // 1. Auto-promote a brand-new frontier release that is not yet in the
+        //    curated list. Model ids in these families encode their version
+        //    (`gpt-5.5`, `claude-opus-4-8`), so a strictly-newer *pure* flagship
+        //    id (no cheap/specialized suffix) should become the default the day
+        //    it ships, without waiting for a code change.
+        if let Some(newer) = newest_frontier_release(activation, &matching_routes) {
+            return Some(newer);
+        }
+        // 2. Otherwise pick the best curated model by quality order.
         return matching_routes
             .iter()
             .min_by_key(|route| preferred_model_rank(orders, &route.model))
@@ -258,6 +267,169 @@ fn preferred_model_rank(orders: &[&[&str]], model: &str) -> usize {
 fn normalize_model_for_preference(model: &str) -> String {
     let canonical = jcode_provider_core::model_id::canonical(model);
     jcode_provider_core::model_id::strip_date_suffix(&canonical).to_string()
+}
+
+/// A parsed "frontier flagship" model id: its family prefix (e.g. `claude-opus`
+/// or `gpt`) plus an ordered version vector parsed from the trailing numeric
+/// components, used to compare releases within a family.
+///
+/// Only *pure* flagship ids parse successfully: ids carrying a cheaper or
+/// specialized tier word (`mini`, `nano`, `haiku`, `flash`, `codex`, `pro`,
+/// `chat`, ...) are rejected so a new cheap/specialized model never auto-promotes
+/// over the flagship.
+struct FrontierModel {
+    family: String,
+    version: Vec<u64>,
+}
+
+/// Tier/specialization words that disqualify an id from frontier auto-promotion.
+/// These mark cheaper or non-default variants that must never outrank a clean
+/// flagship id purely because they share a (possibly higher) version number.
+const NON_FLAGSHIP_TIER_WORDS: &[&str] = &[
+    "mini", "nano", "haiku", "flash", "lite", "small", "tiny", "instant", "codex", "pro", "chat",
+    "audio", "realtime", "image", "tts", "embed", "search", "guard", "deep", "thinking",
+];
+
+/// Family prefixes that are eligible for frontier auto-promotion, paired with the
+/// curated order whose flagship (position 0) sets the baseline version to beat.
+/// Only the strongest family per provider is listed (Claude Opus, GPT base) so we
+/// never auto-promote a new Sonnet/Haiku over the curated Opus default.
+fn frontier_families(activation: &AuthActivationResult) -> &'static [&'static str] {
+    match activation.provider_id.as_deref() {
+        Some("claude") | Some("claude-api") => &["claude-opus"],
+        Some("openai") | Some("openai-api") => &["gpt"],
+        // Copilot/Cursor proxy both families under canonical ids.
+        Some("copilot") | Some("cursor") => &["claude-opus", "gpt"],
+        _ => &[],
+    }
+}
+
+/// Parse a model id into a [`FrontierModel`] if it is a clean flagship id for one
+/// of `families`. Returns `None` for non-matching families, ids with a
+/// non-flagship tier word, or ids without a parseable version.
+fn parse_frontier_model(model: &str, families: &[&str]) -> Option<FrontierModel> {
+    let normalized = normalize_model_for_preference(model);
+    // Reject specialized/cheap tiers up front.
+    if NON_FLAGSHIP_TIER_WORDS
+        .iter()
+        .any(|word| normalized.contains(word))
+    {
+        return None;
+    }
+    // Find the family this id belongs to (longest match wins so `claude-opus`
+    // is preferred over a hypothetical `claude`).
+    let family = families
+        .iter()
+        .filter(|fam| normalized.starts_with(*fam))
+        .max_by_key(|fam| fam.len())?;
+    // The remainder after the family prefix must be only version components
+    // (digits separated by `.` or `-`), e.g. `claude-opus-4-8` -> "4-8",
+    // `gpt-5.5` -> "5.5". Anything else (extra words) disqualifies the id.
+    let remainder = normalized[family.len()..].trim_matches(['-', '.', ' ']);
+    if remainder.is_empty() {
+        return None;
+    }
+    let mut version = Vec::new();
+    for part in remainder.split(['.', '-']) {
+        if part.is_empty() {
+            continue;
+        }
+        let number: u64 = part.parse().ok()?; // any non-numeric component => reject
+        version.push(number);
+    }
+    if version.is_empty() {
+        return None;
+    }
+    Some(FrontierModel {
+        family: (*family).to_string(),
+        version,
+    })
+}
+
+/// Compare two version vectors component-wise (semver-like). Missing trailing
+/// components are treated as 0 so `[5]` < `[5, 1]`.
+fn version_cmp(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
+    let len = a.len().max(b.len());
+    for i in 0..len {
+        let av = a.get(i).copied().unwrap_or(0);
+        let bv = b.get(i).copied().unwrap_or(0);
+        match av.cmp(&bv) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+/// Auto-detect a brand-new frontier flagship release among `routes` that is
+/// strictly newer than the curated baseline flagship for the same family, and is
+/// not already the curated #1. Returns the chosen model id, or `None` when the
+/// curated default is still the newest known flagship.
+///
+/// This is the new-release robustness layer: the day Anthropic ships
+/// `claude-opus-4-9` or OpenAI ships `gpt-5.6`, the live catalog will carry it
+/// and it auto-promotes to the post-login default without a code change, while
+/// cheaper/specialized variants are excluded by [`parse_frontier_model`].
+fn newest_frontier_release(
+    activation: &AuthActivationResult,
+    routes: &[&ModelRoute],
+) -> Option<String> {
+    let families = frontier_families(activation);
+    if families.is_empty() {
+        return None;
+    }
+
+    // Baseline: the strongest curated flagship version per family. We only
+    // auto-promote a live model that beats its family's curated baseline, so a
+    // new release must genuinely exceed what we already ship.
+    let curated_baseline = |family: &str| -> Option<Vec<u64>> {
+        let orders = provider_preferred_model_orders(activation);
+        orders
+            .iter()
+            .flat_map(|order| order.iter())
+            .filter_map(|id| parse_frontier_model(id, families))
+            .filter(|m| m.family == family)
+            .map(|m| m.version)
+            .max_by(|a, b| version_cmp(a, b))
+    };
+
+    let mut best: Option<(FrontierModel, String)> = None;
+    for route in routes {
+        let Some(parsed) = parse_frontier_model(&route.model, families) else {
+            continue;
+        };
+        // Must strictly beat the curated baseline for its family.
+        let Some(baseline) = curated_baseline(&parsed.family) else {
+            continue;
+        };
+        if version_cmp(&parsed.version, &baseline) != std::cmp::Ordering::Greater {
+            continue;
+        }
+        // Among qualifying releases, keep the highest version (preferring the
+        // strongest family by the order in `families` on ties).
+        let is_better = match &best {
+            None => true,
+            Some((current, _)) => match version_cmp(&parsed.version, &current.version) {
+                std::cmp::Ordering::Greater => true,
+                std::cmp::Ordering::Equal => {
+                    // Tie on version: prefer the family listed earlier (stronger).
+                    let rank = |fam: &str| {
+                        families
+                            .iter()
+                            .position(|f| *f == fam)
+                            .unwrap_or(usize::MAX)
+                    };
+                    rank(&parsed.family) < rank(&current.family)
+                }
+                std::cmp::Ordering::Less => false,
+            },
+        };
+        if is_better {
+            best = Some((parsed, route.model.clone()));
+        }
+    }
+
+    best.map(|(_, model)| model)
 }
 
 fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResult) -> bool {
@@ -1234,6 +1406,115 @@ mod tests {
             Some("qwen-3-235b-a22b-instruct-2507"),
             "unranked providers should prefer the newest live release when the catalog includes release timestamps"
         );
+    }
+
+    #[test]
+    fn post_auth_auto_promotes_newer_frontier_release_not_yet_in_curated_list() {
+        // The day Anthropic ships a stronger Opus than the curated flagship, the
+        // live catalog carries it and it must auto-promote to the post-login
+        // default without a code change. Here `claude-opus-4-9` beats the curated
+        // baseline `claude-opus-4-8`.
+        let activation = activation_for_provider_id("claude-api");
+        let routes = vec![
+            route("claude-haiku-4-5", "Anthropic", "claude-api", true),
+            route("claude-opus-4-8", "Anthropic", "claude-api", true),
+            route("claude-opus-4-9", "Anthropic", "claude-api", true),
+            route("claude-sonnet-4-6", "Anthropic", "claude-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("claude-opus-4-9"),
+            "a newer pure Opus flagship in the live catalog should auto-promote"
+        );
+
+        // Same for OpenAI: `gpt-5.6` beats curated `gpt-5.5`.
+        let activation = activation_for_provider_id("openai");
+        let routes = vec![
+            route("gpt-5-mini", "OpenAI", "openai", true),
+            route("gpt-5.5", "OpenAI", "openai", true),
+            route("gpt-5.6", "OpenAI", "openai", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("gpt-5.6")
+        );
+    }
+
+    #[test]
+    fn post_auth_frontier_promotion_ignores_cheaper_and_specialized_variants() {
+        // A newer *cheaper/specialized* variant must NOT auto-promote over the
+        // curated flagship: only clean flagship ids qualify. Even though
+        // `claude-haiku-5` and `gpt-6-mini`/`gpt-6-codex` have higher version
+        // numbers, they carry non-flagship tier words and must be rejected, so
+        // selection stays on the curated flagship.
+        let activation = activation_for_provider_id("claude-api");
+        let routes = vec![
+            route("claude-haiku-5", "Anthropic", "claude-api", true),
+            route("claude-opus-4-8", "Anthropic", "claude-api", true),
+            route("claude-sonnet-5", "Anthropic", "claude-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("claude-opus-4-8"),
+            "cheaper/other-family models must not auto-promote over the curated Opus flagship"
+        );
+
+        let activation = activation_for_provider_id("openai");
+        let routes = vec![
+            route("gpt-6-mini", "OpenAI", "openai", true),
+            route("gpt-6-codex", "OpenAI", "openai", true),
+            route("gpt-5.5", "OpenAI", "openai", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("gpt-5.5"),
+            "mini/codex variants must not auto-promote over the clean gpt flagship"
+        );
+    }
+
+    #[test]
+    fn post_auth_frontier_promotion_no_op_when_curated_is_still_newest() {
+        // When the live catalog contains nothing newer than the curated flagship,
+        // the curated quality order decides and frontier promotion is a no-op.
+        let activation = activation_for_provider_id("claude-api");
+        let routes = vec![
+            route("claude-haiku-4-5-20251001", "Anthropic", "claude-api", true),
+            route("claude-opus-4-6", "Anthropic", "claude-api", true),
+            route("claude-opus-4-8", "Anthropic", "claude-api", true),
+        ];
+        assert_eq!(
+            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
+            Some("claude-opus-4-8")
+        );
+    }
+
+    #[test]
+    fn frontier_version_parsing_and_compare() {
+        let fams = &["claude-opus", "gpt"];
+        // Clean flagship ids parse with a version vector.
+        let opus = parse_frontier_model("claude-opus-4-8", fams).expect("opus parses");
+        assert_eq!(opus.family, "claude-opus");
+        assert_eq!(opus.version, vec![4, 8]);
+        let gpt = parse_frontier_model("gpt-5.5", fams).expect("gpt parses");
+        assert_eq!(gpt.family, "gpt");
+        assert_eq!(gpt.version, vec![5, 5]);
+        // Dated id parses on the canonical base.
+        assert_eq!(
+            parse_frontier_model("claude-opus-4-9-20260101", fams)
+                .expect("dated opus parses")
+                .version,
+            vec![4, 9]
+        );
+        // Specialized/cheap tiers and other families are rejected.
+        assert!(parse_frontier_model("claude-haiku-5", fams).is_none());
+        assert!(parse_frontier_model("gpt-6-mini", fams).is_none());
+        assert!(parse_frontier_model("gpt-5-codex", fams).is_none());
+        assert!(parse_frontier_model("claude-sonnet-5", fams).is_none());
+        // Version comparison is component-wise with zero-padding.
+        assert_eq!(version_cmp(&[4, 8], &[4, 9]), std::cmp::Ordering::Less);
+        assert_eq!(version_cmp(&[5], &[5, 1]), std::cmp::Ordering::Less);
+        assert_eq!(version_cmp(&[6], &[5, 9]), std::cmp::Ordering::Greater);
+        assert_eq!(version_cmp(&[5, 5], &[5, 5]), std::cmp::Ordering::Equal);
     }
 
     /// The set of canonical provider ids whose post-login fallback must apply a
