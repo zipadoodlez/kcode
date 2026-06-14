@@ -661,6 +661,7 @@ impl Skill {
             superseded_by: None,
             reinforcements: Vec::new(),
             embedding: None,
+            embedding_model: None,
             confidence: 1.0,
         }
     }
