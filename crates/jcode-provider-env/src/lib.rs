@@ -98,10 +98,10 @@ pub fn load_api_key_from_env_or_config(env_key: &str, file_name: &str) -> Option
         return None;
     }
 
-    if let Ok(key) = std::env::var(env_key) {
-        if let Some(key) = clean_loaded_value(&key, env_key) {
-            return Some(key);
-        }
+    if let Ok(key) = std::env::var(env_key)
+        && let Some(key) = clean_loaded_value(&key, env_key)
+    {
+        return Some(key);
     }
 
     let config_path = jcode_storage::app_config_dir().ok()?.join(file_name);
@@ -110,26 +110,26 @@ pub fn load_api_key_from_env_or_config(env_key: &str, file_name: &str) -> Option
     let prefix = format!("{}=", env_key);
 
     for line in content.lines() {
-        if let Some(key) = line.strip_prefix(&prefix) {
-            if let Some(key) = clean_loaded_value(key, env_key) {
-                return Some(key);
-            }
+        if let Some(key) = line.strip_prefix(&prefix)
+            && let Some(key) = clean_loaded_value(key, env_key)
+        {
+            return Some(key);
         }
     }
 
     if env_key == "ZHIPU_API_KEY" {
-        if let Ok(key) = std::env::var("ZAI_API_KEY") {
-            if let Some(key) = clean_loaded_value(&key, "ZAI_API_KEY") {
-                return Some(key);
-            }
+        if let Ok(key) = std::env::var("ZAI_API_KEY")
+            && let Some(key) = clean_loaded_value(&key, "ZAI_API_KEY")
+        {
+            return Some(key);
         }
 
         let legacy_prefix = "ZAI_API_KEY=";
         for line in content.lines() {
-            if let Some(key) = line.strip_prefix(legacy_prefix) {
-                if let Some(key) = clean_loaded_value(key, "ZAI_API_KEY") {
-                    return Some(key);
-                }
+            if let Some(key) = line.strip_prefix(legacy_prefix)
+                && let Some(key) = clean_loaded_value(key, "ZAI_API_KEY")
+            {
+                return Some(key);
             }
         }
     }
@@ -157,10 +157,10 @@ pub fn load_env_value_from_env_or_config(env_key: &str, file_name: &str) -> Opti
         return None;
     }
 
-    if let Ok(value) = std::env::var(env_key) {
-        if let Some(value) = clean_loaded_value(&value, env_key) {
-            return Some(value);
-        }
+    if let Ok(value) = std::env::var(env_key)
+        && let Some(value) = clean_loaded_value(&value, env_key)
+    {
+        return Some(value);
     }
 
     let config_path = jcode_storage::app_config_dir().ok()?.join(file_name);
@@ -169,10 +169,10 @@ pub fn load_env_value_from_env_or_config(env_key: &str, file_name: &str) -> Opti
     let prefix = format!("{}=", env_key);
 
     for line in content.lines() {
-        if let Some(value) = line.strip_prefix(&prefix) {
-            if let Some(value) = clean_loaded_value(value, env_key) {
-                return Some(value);
-            }
+        if let Some(value) = line.strip_prefix(&prefix)
+            && let Some(value) = clean_loaded_value(value, env_key)
+        {
+            return Some(value);
         }
     }
 
