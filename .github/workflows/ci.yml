@@ -102,7 +102,10 @@ jobs:
   build:
     name: Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    # Cold-cache runs do a full release build (~11 min) + test compiles + the
+    # ~25 min e2e suite, so allow headroom beyond the default. Warm-cache runs
+    # finish far faster.
+    timeout-minutes: 50
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -206,7 +209,12 @@ jobs:
       - name: Run e2e tests
         shell: bash
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          # The e2e suite (56 tests, each spinning up a server + multiple socket
+          # clients) needs more than 15 min of pure execution on hosted runners;
+          # at 900s it consistently timed out around 34/56 with no failures.
+          # Compilation is already done in the dedicated step above, so this
+          # budget is execution-only.
+          python3 .github/scripts/run_with_timeout.py 1500 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --test e2e
 
       - name: Check PowerShell script syntax (Windows)
