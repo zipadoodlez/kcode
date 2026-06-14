@@ -911,16 +911,16 @@ mod tests {
     #[test]
     fn idle_input_hint_combines_dir_and_model() {
         assert_eq!(
-            format_idle_input_hint(Some("jcode".to_string()), Some("opus-4.5".to_string())),
-            Some("jcode · opus-4.5".to_string())
+            format_idle_input_hint(Some("opus-4.5".to_string()), Some("jcode".to_string())),
+            Some("opus-4.5 · jcode".to_string())
         );
         assert_eq!(
-            format_idle_input_hint(Some("jcode".to_string()), None),
-            Some("jcode".to_string())
-        );
-        assert_eq!(
-            format_idle_input_hint(None, Some("opus-4.5".to_string())),
+            format_idle_input_hint(Some("opus-4.5".to_string()), None),
             Some("opus-4.5".to_string())
+        );
+        assert_eq!(
+            format_idle_input_hint(None, Some("jcode".to_string())),
+            Some("jcode".to_string())
         );
         assert_eq!(format_idle_input_hint(None, None), None);
     }
@@ -2308,16 +2308,16 @@ fn idle_input_hint(app: &dyn TuiState) -> Option<String> {
         }
     };
 
-    format_idle_input_hint(dir, model)
+    format_idle_input_hint(model, dir)
 }
 
-/// Compose the faint idle hint text from an optional directory path and
-/// optional pretty model name.
-fn format_idle_input_hint(dir: Option<String>, model: Option<String>) -> Option<String> {
-    match (dir, model) {
-        (Some(d), Some(m)) => Some(format!("{d} · {m}")),
-        (Some(d), None) => Some(d),
-        (None, Some(m)) => Some(m),
+/// Compose the faint idle hint text: pretty model name first, then the
+/// directory path, joined by a dot.
+fn format_idle_input_hint(model: Option<String>, dir: Option<String>) -> Option<String> {
+    match (model, dir) {
+        (Some(m), Some(d)) => Some(format!("{m} · {d}")),
+        (Some(m), None) => Some(m),
+        (None, Some(d)) => Some(d),
         (None, None) => None,
     }
 }
@@ -2342,9 +2342,18 @@ fn draw_send_mode_indicator(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
     }
 
     if let Some(hint) = idle_input_hint(app) {
+        // Leave one character of breathing room at the far right edge.
+        let right_pad = 1u16;
+        let avail = indicator_area.width.saturating_sub(right_pad);
+        if avail == 0 {
+            return;
+        }
+        let hint_area = Rect {
+            width: avail,
+            ..indicator_area
+        };
         // Truncate to the available width so we never overrun the line.
-        let max = indicator_area.width as usize;
-        let hint = crate::util::truncate_str(&hint, max).to_string();
+        let hint = crate::util::truncate_str(&hint, avail as usize).to_string();
         let line = Line::from(Span::styled(
             hint,
             Style::default()
@@ -2352,7 +2361,7 @@ fn draw_send_mode_indicator(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
                 .add_modifier(Modifier::DIM),
         ));
         let paragraph = Paragraph::new(line).alignment(Alignment::Right);
-        frame.render_widget(paragraph, indicator_area);
+        frame.render_widget(paragraph, hint_area);
     }
 }
 
