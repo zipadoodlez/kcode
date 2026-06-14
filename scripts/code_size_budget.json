@@ -31,7 +31,7 @@
     "crates/jcode-base/src/provider/openrouter.rs": 2587,
     "crates/jcode-base/src/session.rs": 1528,
     "crates/jcode-desktop/src/desktop_rich_text.rs": 2069,
-    "crates/jcode-desktop/src/main.rs": 14533,
+    "crates/jcode-desktop/src/main.rs": 14534,
     "crates/jcode-desktop/src/render_helpers.rs": 1345,
     "crates/jcode-desktop/src/session_launch.rs": 1240,
     "crates/jcode-desktop/src/single_session.rs": 9858,
