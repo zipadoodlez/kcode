@@ -581,8 +581,12 @@ impl AnthropicProvider {
 
     fn model_supports_output_effort(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
+        // NOTE: `claude-fable-5` is intentionally excluded. Despite being listed
+        // with effort levels in `GET /v1/models`, the live Messages API rejects
+        // an `output_config` effort with a 400 ("This model does not support the
+        // effort parameter."), just as it rejects an adaptive `thinking` block.
+        // Fable 5 is effectively a non-reasoning model, so it must send neither.
         model.contains("claude-mythos")
-            || model.contains("claude-fable-5")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
             || model.contains("claude-opus-4-6")
@@ -592,12 +596,10 @@ impl AnthropicProvider {
 
     fn model_supports_adaptive_thinking(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
-        // NOTE: `claude-fable-5` is intentionally excluded. It exposes
-        // `output_config` effort levels (low/medium/high/xhigh) but the Messages
-        // API rejects an explicit adaptive `thinking` block with a 400
-        // ("adaptive thinking is not supported on this model"). It controls
-        // reasoning purely through `output_config`, so it must not be treated as
-        // an adaptive-thinking model. See `model_supports_output_effort`.
+        // NOTE: `claude-fable-5` is intentionally excluded. The Messages API
+        // rejects an explicit adaptive `thinking` block with a 400 ("adaptive
+        // thinking is not supported on this model"). See
+        // `model_supports_output_effort` for the matching effort restriction.
         model.contains("claude-mythos")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
@@ -614,9 +616,9 @@ impl AnthropicProvider {
 
     fn model_supports_xhigh_effort(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
-        model.contains("claude-fable-5")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
+        // `claude-fable-5` is excluded: it does not accept the effort parameter
+        // at all (see `model_supports_output_effort`).
+        model.contains("claude-opus-4-8") || model.contains("claude-opus-4-7")
     }
 
     fn model_supports_reasoning_effort(model: &str) -> bool {
@@ -1551,22 +1553,24 @@ async fn run_stream_with_retries(
                     continue;
                 }
 
-                // Adaptive `thinking` rejected (e.g. a model that exposes
-                // `output_config` effort but does not accept an explicit
-                // adaptive thinking block: "adaptive thinking is not supported
-                // on this model"). Self-heal once by stripping the thinking
-                // block (and restoring an OAuth temperature, which we omit only
-                // because thinking was active) and retrying, so a stale
-                // capability table degrades gracefully instead of hard-failing.
-                if request.thinking.is_some()
+                // Reasoning request rejected (e.g. a model listed with effort or
+                // thinking capabilities that the live API does not actually
+                // accept: "adaptive thinking is not supported on this model" or
+                // "This model does not support the effort parameter."). Self-heal
+                // once by stripping the reasoning fields (and restoring an OAuth
+                // temperature, which we omit only because thinking was active)
+                // and retrying, so a stale capability table degrades gracefully
+                // instead of hard-failing.
+                if (request.thinking.is_some() || request.output_config.is_some())
                     && !saw_output
-                    && is_thinking_unsupported_error(&error_str)
+                    && is_reasoning_unsupported_error(&error_str)
                 {
                     crate::logging::warn(&format!(
-                        "Anthropic model '{}' rejected the thinking request ({}); retrying without adaptive thinking",
+                        "Anthropic model '{}' rejected the reasoning request ({}); retrying without thinking/effort",
                         model_name, e
                     ));
                     request.thinking = None;
+                    request.output_config = None;
                     if is_oauth {
                         request.temperature = Some(1.0);
                     }
@@ -1862,22 +1866,28 @@ fn is_model_not_found_error(error_str: &str) -> bool {
             || error_str.contains("please use"))
 }
 
-/// Detect an Anthropic rejection of an explicit `thinking` request.
+/// Detect an Anthropic rejection of an explicit reasoning request.
 ///
-/// Some models expose `output_config` effort levels but do *not* accept an
-/// explicit adaptive `thinking` block; the Messages API rejects those with a
-/// 400 `invalid_request_error` whose message is
-/// "adaptive thinking is not supported on this model" (wording varies). When we
-/// hit this we can self-heal by dropping the `thinking` block and retrying,
-/// rather than hard-failing the turn. `error_str` is expected to already be
-/// lowercased.
-fn is_thinking_unsupported_error(error_str: &str) -> bool {
+/// Some models are listed with reasoning capabilities in `GET /v1/models` but
+/// the live Messages API still rejects them with a 400 `invalid_request_error`:
+///
+/// - an adaptive `thinking` block -> "adaptive thinking is not supported on
+///   this model"
+/// - an `output_config` effort -> "This model does not support the effort
+///   parameter."
+///
+/// (e.g. `claude-fable-5`). When we hit either we can self-heal by dropping the
+/// offending reasoning fields and retrying, rather than hard-failing the turn.
+/// `error_str` is expected to already be lowercased.
+fn is_reasoning_unsupported_error(error_str: &str) -> bool {
     let is_bad_request =
         error_str.contains("invalid_request_error") || error_str.contains("400 bad request");
-    let mentions_thinking = error_str.contains("thinking");
+    let mentions_reasoning_field = error_str.contains("thinking")
+        || error_str.contains("effort")
+        || error_str.contains("output_config");
     let mentions_unsupported =
-        error_str.contains("not supported") || error_str.contains("is not supported");
-    is_bad_request && mentions_thinking && mentions_unsupported
+        error_str.contains("not supported") || error_str.contains("does not support");
+    is_bad_request && mentions_reasoning_field && mentions_unsupported
 }
 
 /// Pick the next Anthropic model to try after a "model not found" failure.

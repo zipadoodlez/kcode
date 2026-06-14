@@ -659,6 +659,62 @@ fn gc_never_runs_while_user_scrolled_up() {
 }
 
 #[test]
+fn repro_reasoning_rendered_then_removed_when_turn_ends_open() {
+    // REPRO: a turn whose reasoning region is still open when `Done` arrives
+    // (reasoning streamed, but no `ReasoningDone` and no answer text followed)
+    // renders the reasoning live, then DROPS it on finish: `Done` commits via
+    // `take_streaming_text` + `collapse_reasoning_for_commit`, which strips every
+    // reasoning-sentinel line, and the region was never closed to anchor a trace.
+    // Expected (correct) behavior: the live-rendered reasoning is preserved (as an
+    // anchored trace) rather than rendered-then-removed.
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+    app.current_message_id = Some(1);
+
+    // Reasoning streams in and renders live (dim+italic) in the stream buffer.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ReasoningDelta {
+            text: "weighing the options before answering\n".to_string(),
+        },
+        &mut remote,
+    );
+    let ops = app.stream_buffer.flush();
+    app.apply_stream_ops(ops);
+    assert!(
+        app.streaming_text()
+            .contains(jcode_tui_markdown::REASONING_SENTINEL),
+        "precondition: reasoning rendered live in the stream"
+    );
+    assert!(app.reasoning_streaming, "region open: no ReasoningDone sent");
+
+    // Turn ends with the region still open (no ReasoningDone, no answer text).
+    app.handle_server_event(crate::protocol::ServerEvent::Done { id: 1 }, &mut remote);
+
+    // The reasoning that was rendered live must not silently vanish on finish.
+    let lingered_in_stream = app
+        .streaming_text()
+        .contains(jcode_tui_markdown::REASONING_SENTINEL);
+    let anchored = app
+        .display_messages
+        .iter()
+        .any(|m| m.role == "reasoning" && m.content.contains("weighing the options"));
+    assert!(
+        anchored || lingered_in_stream,
+        "BUG: reasoning was rendered live then removed on turn finish; \
+         display_messages={:?}, stream={:?}",
+        app.display_messages
+            .iter()
+            .map(|m| (m.role.as_str(), m.content.as_str()))
+            .collect::<Vec<_>>(),
+        app.streaming_text(),
+    );
+}
+
+#[test]
 fn gc_keeps_single_trace_indefinitely() {
     // With only one (current) trace there is nothing stale to collect, no
     // matter how much the transcript grows.

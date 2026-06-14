@@ -507,8 +507,10 @@ pub(super) fn inferred_reasoning_efforts(
         || provider.contains("claude")
         || model.starts_with("claude-");
     if is_anthropic {
+        // NOTE: `claude-fable-5` is intentionally excluded. The live Messages
+        // API rejects both an adaptive `thinking` block and an `output_config`
+        // effort for it, so it exposes no reasoning-effort levels.
         let supports_effort = model.contains("claude-mythos")
-            || model.contains("claude-fable-5")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
             || model.contains("claude-opus-4-6")
@@ -519,10 +521,7 @@ pub(super) fn inferred_reasoning_efforts(
         if !supports_effort {
             return Vec::new();
         }
-        if model.contains("claude-fable-5")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
-        {
+        if model.contains("claude-opus-4-8") || model.contains("claude-opus-4-7") {
             return vec!["none", "low", "medium", "high", "xhigh"];
         }
         return vec!["none", "low", "medium", "high"];
