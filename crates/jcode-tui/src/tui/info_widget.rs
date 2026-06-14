@@ -18,6 +18,8 @@ mod memory_utils;
 mod model;
 #[path = "info_widget_swarm_background.rs"]
 mod swarm_background;
+#[path = "info_widget_swarm_gallery.rs"]
+pub(crate) mod swarm_gallery;
 #[path = "info_widget_text.rs"]
 mod text;
 #[path = "info_widget_tips.rs"]
