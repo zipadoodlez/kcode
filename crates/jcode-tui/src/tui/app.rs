@@ -995,6 +995,9 @@ pub struct App {
     last_injected_memory_signature: Option<(String, Instant)>,
     // Swarm feature toggle for this session
     swarm_enabled: bool,
+    // Debug-only: force the inline swarm gallery active (bypasses spawn-mode
+    // and members-present gating) so visual tests can drive it deterministically.
+    debug_force_inline_gallery: bool,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)

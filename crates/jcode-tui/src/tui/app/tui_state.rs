@@ -1440,6 +1440,9 @@ impl crate::tui::TuiState for App {
     }
 
     fn inline_swarm_gallery_active(&self) -> bool {
+        if self.debug_force_inline_gallery {
+            return !self.inline_swarm_members().is_empty();
+        }
         self.swarm_enabled
             && matches!(
                 crate::config::config().agents.swarm_spawn_mode,
@@ -1449,6 +1452,9 @@ impl crate::tui::TuiState for App {
     }
 
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        if self.debug_force_inline_gallery {
+            return self.remote_swarm_members.clone();
+        }
         if !self.swarm_enabled {
             return Vec::new();
         }

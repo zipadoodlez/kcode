@@ -274,6 +274,50 @@ impl App {
             let raw = raw.trim();
             let limit = raw.parse::<usize>().ok();
             self.debug_picker_state_json(limit)
+        } else if let Some(raw) = cmd.strip_prefix("swarm-gallery:") {
+            // Debug-only: inject synthetic inline swarm members and force the
+            // inline gallery active so the band can be captured in a frame.
+            // Format: swarm-gallery:<N>  (N synthetic agents), or
+            //         swarm-gallery:off  (clear injected members + force flag).
+            let raw = raw.trim();
+            if raw == "off" {
+                self.debug_force_inline_gallery = false;
+                self.remote_swarm_members.clear();
+                "OK: inline swarm gallery cleared".to_string()
+            } else {
+                let n: usize = raw.parse().unwrap_or(3);
+                let statuses = ["running", "thinking", "ready", "completed", "blocked"];
+                let names = [
+                    "fox", "owl", "bee", "elk", "ant", "cat", "dog", "jay", "ram", "yak", "ox",
+                    "emu",
+                ];
+                let samples = [
+                    "Editing crates/jcode-tui/src/tui/ui.rs\n  carving the gallery band off chat_area",
+                    "Thinking about how to wire the bus tap\n  into the streaming loop without",
+                    "Running cargo build --profile selfdev\n  Compiling jcode-app-core",
+                    "Done: 4 tests passed, committed.",
+                    "Waiting on coordinator approval for plan",
+                ];
+                self.remote_swarm_members = (0..n)
+                    .map(|i| crate::protocol::SwarmMemberStatus {
+                        session_id: format!("session_{:02}", i),
+                        friendly_name: Some(names[i % names.len()].to_string()),
+                        status: statuses[i % statuses.len()].to_string(),
+                        detail: Some(format!("task {}", i + 1)),
+                        role: if i == 0 {
+                            Some("coordinator".to_string())
+                        } else {
+                            Some("agent".to_string())
+                        },
+                        is_headless: Some(i != 0),
+                        live_attachments: Some(1),
+                        status_age_secs: Some((i as u64) * 7),
+                        output_tail: Some(samples[i % samples.len()].to_string()),
+                    })
+                    .collect();
+                self.debug_force_inline_gallery = true;
+                format!("OK: injected {n} inline swarm members; gallery forced active")
+            }
         } else if cmd == "swarm" || cmd == "swarm-status" {
             if self.is_remote {
                 serde_json::json!({
