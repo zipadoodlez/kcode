@@ -95,7 +95,7 @@ pub(super) fn members_to_tiles(members: &[SwarmMemberStatus]) -> Vec<SwarmTile> 
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
-pub(super) fn render_swarm_gallery_lines(
+pub(crate) fn render_swarm_gallery_lines(
     members: &[SwarmMemberStatus],
     width: usize,
     max_height: usize,

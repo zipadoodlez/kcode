@@ -1438,6 +1438,22 @@ impl crate::tui::TuiState for App {
         self.diagram_mode
     }
 
+    fn inline_swarm_gallery_active(&self) -> bool {
+        self.swarm_enabled
+            && matches!(
+                crate::config::config().agents.swarm_spawn_mode,
+                crate::config::SwarmSpawnMode::Inline
+            )
+            && !self.inline_swarm_members().is_empty()
+    }
+
+    fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        if !self.swarm_enabled {
+            return Vec::new();
+        }
+        self.remote_swarm_members.clone()
+    }
+
     fn diagram_focus(&self) -> bool {
         self.diagram_focus
     }

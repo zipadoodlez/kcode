@@ -340,6 +340,16 @@ pub trait TuiState {
     /// Get info widget data (todos, client count, etc.)
     fn info_widget_data(&self) -> info_widget::InfoWidgetData;
 
+    /// Whether the inline swarm gallery band should be shown above the chat.
+    /// Active when `agents.swarm_spawn_mode = inline` and the swarm has members.
+    fn inline_swarm_gallery_active(&self) -> bool {
+        false
+    }
+    /// Members to render in the inline swarm gallery band.
+    fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        Vec::new()
+    }
+
     // ---- Workspace ----
     /// Whether workspace mode is enabled for this client.
     fn workspace_mode_enabled(&self) -> bool {

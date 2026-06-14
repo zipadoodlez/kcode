@@ -2387,6 +2387,43 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         (chat_area, None)
     };
 
+    // Inline swarm gallery band: when `swarm_spawn_mode = inline`, reserve a
+    // top strip of the chat column to render a live gallery of agent viewports.
+    let swarm_gallery_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
+        let members = app.inline_swarm_members();
+        // Budget up to ~40% of the chat height for the gallery, capped.
+        let budget = ((chat_area.height as usize * 2) / 5).clamp(0, 18);
+        if budget >= 5 && chat_area.width >= 24 {
+            super::info_widget::swarm_gallery::render_swarm_gallery_lines(
+                &members,
+                chat_area.width as usize,
+                budget,
+            )
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+    let (swarm_gallery_area, chat_area) = if !swarm_gallery_lines.is_empty() {
+        let band_height = (swarm_gallery_lines.len() as u16 + 1).min(chat_area.height / 2);
+        let band = Rect {
+            x: chat_area.x,
+            y: chat_area.y,
+            width: chat_area.width,
+            height: band_height,
+        };
+        let rest = Rect {
+            x: chat_area.x,
+            y: chat_area.y + band_height,
+            width: chat_area.width,
+            height: chat_area.height.saturating_sub(band_height),
+        };
+        (Some(band), rest)
+    } else {
+        (None, chat_area)
+    };
+
     // Calculate pending messages (queued + interleave) for numbering and layout
     let pending_count = input_ui::pending_prompt_count(app);
     let queued_height = pending_count.min(3) as u16;
@@ -2538,6 +2575,15 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         })
         .split(chat_area);
     record_status_area(chunks[2]);
+
+    // Draw the inline swarm gallery band (above the chat) if present.
+    if let Some(band) = swarm_gallery_area {
+        clear_area(frame, band);
+        frame.render_widget(
+            Paragraph::new(swarm_gallery_lines.clone()),
+            band,
+        );
+    }
 
     // Capture layout info for visual debug
     if let Some(ref mut capture) = debug_capture {
