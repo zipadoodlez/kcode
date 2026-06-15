@@ -187,8 +187,16 @@ pub(crate) use viewport::{
 #[cfg(not(test))]
 static LAST_MAX_SCROLL: AtomicUsize = AtomicUsize::new(0);
 /// Whether the chat viewport used a native scrollbar in the most recent frame.
+///
+/// Initialized to `1` (assume visible) so the very first frame of a freshly
+/// resumed/loaded session prepares the narrow (scrollbar-reserved) width FIRST.
+/// Because narrow wraps at least as much as wide, an overflowing transcript is
+/// detected on that single narrow build and kept, avoiding a wasted wide build
+/// (~seconds on a long transcript) that would otherwise be discarded. Short
+/// transcripts that fit still fall through to a (cheap) second wide build, and
+/// the real decision is written back every frame, so steady state is unaffected.
 #[cfg(not(test))]
-static LAST_CHAT_SCROLLBAR_VISIBLE: AtomicUsize = AtomicUsize::new(0);
+static LAST_CHAT_SCROLLBAR_VISIBLE: AtomicUsize = AtomicUsize::new(1);
 /// Total line count in the pinned diff/content pane (set during render).
 #[cfg(not(test))]
 static PINNED_PANE_TOTAL_LINES: AtomicUsize = AtomicUsize::new(0);
