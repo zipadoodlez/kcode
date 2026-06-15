@@ -275,6 +275,23 @@ impl App {
             None
         };
 
+        // On a resumed session, `token_accounting.total_*` is reset to 0 and the
+        // prior usage lives in `remote_total_tokens` (restored from history). Add
+        // them so the widget's "in + out" reflects the whole session, mirroring
+        // the `/cache` stats path, rather than only tokens seen since resume.
+        let (display_input_tokens, display_output_tokens) =
+            if let Some((hist_in, hist_out)) = self.remote_total_tokens {
+                (
+                    hist_in.saturating_add(self.token_accounting.total_input_tokens),
+                    hist_out.saturating_add(self.token_accounting.total_output_tokens),
+                )
+            } else {
+                (
+                    self.token_accounting.total_input_tokens,
+                    self.token_accounting.total_output_tokens,
+                )
+            };
+
         let cost_based_usage = || crate::tui::info_widget::UsageInfo {
             provider: crate::tui::info_widget::UsageProvider::CostBased,
             five_hour: 0.0,
@@ -284,8 +301,8 @@ impl App {
             spark: None,
             spark_resets_at: None,
             total_cost: self.cost.total_cost,
-            input_tokens: self.token_accounting.total_input_tokens,
-            output_tokens: self.token_accounting.total_output_tokens,
+            input_tokens: display_input_tokens,
+            output_tokens: display_output_tokens,
             cache_read_tokens: self.streaming.streaming_cache_read_tokens,
             cache_write_tokens: self.streaming.streaming_cache_creation_tokens,
             output_tps,
@@ -302,13 +319,12 @@ impl App {
                 spark: None,
                 spark_resets_at: None,
                 total_cost: 0.0,
-                input_tokens: self.token_accounting.total_input_tokens,
-                output_tokens: self.token_accounting.total_output_tokens,
+                input_tokens: display_input_tokens,
+                output_tokens: display_output_tokens,
                 cache_read_tokens: None,
                 cache_write_tokens: None,
                 output_tps,
-                available: self.token_accounting.total_input_tokens > 0
-                    || self.token_accounting.total_output_tokens > 0,
+                available: display_input_tokens > 0 || display_output_tokens > 0,
             }),
             WidgetProviderKind::Anthropic => {
                 if matches!(
