@@ -480,8 +480,8 @@ use theme_support::{
 
 pub(crate) use jcode_tui_markdown::{CopyTargetKind, RawCopyTarget};
 pub(crate) use jcode_tui_messages::{
-    CopyTarget, EditToolRange, ImageRegion, PreparedChatFrame, PreparedMessages, PreparedSection,
-    PreparedSectionKind, WrappedLineMap,
+    CopyTarget, EditToolRange, ImageRegion, MessageBoundary, PreparedChatFrame, PreparedMessages,
+    PreparedSection, PreparedSectionKind, WrappedLineMap,
 };
 
 #[derive(Clone, Debug)]
@@ -887,14 +887,13 @@ impl BodyCacheState {
     fn best_incremental_base(
         &self,
         key: &BodyCacheKey,
-        msg_count: usize,
+        _msg_count: usize,
     ) -> Option<(Arc<PreparedMessages>, usize)> {
         let regular = self
             .entries
             .iter()
             .filter(|entry| {
                 entry.msg_count > 0
-                    && msg_count > entry.msg_count
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
@@ -914,7 +913,6 @@ impl BodyCacheState {
             .iter()
             .filter(|entry| {
                 entry.msg_count > 0
-                    && msg_count > entry.msg_count
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
@@ -946,7 +944,6 @@ impl BodyCacheState {
     fn take_best_incremental_base(
         &mut self,
         key: &BodyCacheKey,
-        msg_count: usize,
     ) -> Option<(Arc<PreparedMessages>, usize)> {
         let regular = self
             .entries
@@ -954,7 +951,6 @@ impl BodyCacheState {
             .enumerate()
             .filter(|(_, entry)| {
                 entry.msg_count > 0
-                    && msg_count > entry.msg_count
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode
@@ -975,7 +971,6 @@ impl BodyCacheState {
             .enumerate()
             .filter(|(_, entry)| {
                 entry.msg_count > 0
-                    && msg_count > entry.msg_count
                     && entry.key.width == key.width
                     && entry.key.diff_mode == key.diff_mode
                     && entry.key.diagram_mode == key.diagram_mode

@@ -118,6 +118,7 @@ fn test_active_file_diff_context_resolves_visible_edit() {
             },
         ],
         copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
     };
 
     let prepared = PreparedChatFrame::from_single(Arc::new(prepared));

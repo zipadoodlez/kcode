@@ -52,6 +52,26 @@ pub struct EditToolRange {
     pub expandable: bool,
 }
 
+/// Per-message cumulative boundary, recorded in transcript order during body
+/// preparation. Enables prefix reuse: when a later body rebuild shares a hash
+/// prefix with a cached body, the cached body can be truncated at the longest
+/// matching message boundary and only the changed/new tail re-rendered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MessageBoundary {
+    /// `stable_cache_hash()` of the source `DisplayMessage`.
+    pub msg_hash: u64,
+    /// Cumulative `wrapped_lines` length after this message was rendered
+    /// (including any blank separator line that preceded it).
+    pub wrapped_len: usize,
+    /// Cumulative `raw_plain_lines` length after this message was rendered.
+    /// The body builder seeds a contiguous raw for every rendered line, so
+    /// `raw_plain_lines[..raw_len]` is exactly the raws for messages `0..=i` and
+    /// a prefix-reuse rebuild can truncate the raw array at this point too.
+    pub raw_len: usize,
+    /// Cumulative `user_prompt_texts` length after this message was rendered.
+    pub user_prompt_len: usize,
+}
+
 #[derive(Clone)]
 pub struct PreparedMessages {
     pub wrapped_lines: Vec<Line<'static>>,
@@ -72,6 +92,11 @@ pub struct PreparedMessages {
     /// Line ranges for edit tool messages.
     pub edit_tool_ranges: Vec<EditToolRange>,
     pub copy_targets: Vec<CopyTarget>,
+    /// Per-message cumulative boundaries in transcript order, used for prefix
+    /// reuse on rebuild. Empty when boundary tracking is not available (e.g.
+    /// synthetic/test prepared bodies); prefix reuse simply degrades to a full
+    /// rebuild in that case.
+    pub message_boundaries: Vec<MessageBoundary>,
 }
 
 #[derive(Clone)]

@@ -29,6 +29,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
     });
     let prepared_b = Arc::new(PreparedMessages {
         wrapped_lines: vec![Line::from("b")],
@@ -43,6 +44,7 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
         image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
     });
 
     let mut cache = BodyCacheState::default();
@@ -90,6 +92,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
             image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
         });
         cache.insert(key, prepared, idx);
     }
@@ -352,6 +355,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
     }));
     let prepared_b = make_prepared_chat_frame(Arc::new(PreparedMessages {
         wrapped_lines: vec![Line::from("b")],
@@ -366,6 +370,7 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         image_regions: Vec::new(),
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
     }));
 
     let mut cache = FullPrepCacheState::default();
@@ -417,6 +422,7 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
+        message_boundaries: Vec::new(),
         }));
         cache.insert(key, prepared);
     }
@@ -695,4 +701,200 @@ fn test_prepare_body_collapses_anchored_images_when_inline_images_hidden() {
         text.contains("show image"),
         "show badge should render on the stub: {text:?}"
     );
+}
+
+/// Assert two prepared bodies are byte-for-byte equivalent across every
+/// observable array. Used to prove prefix-reuse output matches a fresh full
+/// build.
+fn assert_prepared_equivalent(a: &PreparedMessages, b: &PreparedMessages, ctx: &str) {
+    let a_lines: Vec<String> = a.wrapped_lines.iter().map(line_to_plain).collect();
+    let b_lines: Vec<String> = b.wrapped_lines.iter().map(line_to_plain).collect();
+    assert_eq!(a_lines, b_lines, "{ctx}: wrapped_lines text differ");
+    assert_eq!(
+        a.wrapped_plain_lines, b.wrapped_plain_lines,
+        "{ctx}: wrapped_plain_lines differ"
+    );
+    assert_eq!(
+        a.wrapped_copy_offsets, b.wrapped_copy_offsets,
+        "{ctx}: wrapped_copy_offsets differ"
+    );
+    assert_eq!(
+        a.raw_plain_lines, b.raw_plain_lines,
+        "{ctx}: raw_plain_lines differ"
+    );
+    assert_eq!(
+        a.user_prompt_texts, b.user_prompt_texts,
+        "{ctx}: user_prompt_texts differ"
+    );
+    assert_eq!(
+        a.wrapped_user_indices, b.wrapped_user_indices,
+        "{ctx}: wrapped_user_indices differ"
+    );
+    assert_eq!(
+        a.wrapped_user_prompt_starts, b.wrapped_user_prompt_starts,
+        "{ctx}: wrapped_user_prompt_starts differ"
+    );
+    assert_eq!(
+        a.wrapped_user_prompt_ends, b.wrapped_user_prompt_ends,
+        "{ctx}: wrapped_user_prompt_ends differ"
+    );
+    let a_map: Vec<usize> = a.wrapped_line_map.iter().map(|m| m.raw_line).collect();
+    let b_map: Vec<usize> = b.wrapped_line_map.iter().map(|m| m.raw_line).collect();
+    assert_eq!(a_map, b_map, "{ctx}: wrapped_line_map raw_line differ");
+    assert_eq!(
+        a.image_regions.len(),
+        b.image_regions.len(),
+        "{ctx}: image_regions count differ"
+    );
+    for (x, y) in a.image_regions.iter().zip(b.image_regions.iter()) {
+        assert_eq!(
+            x.abs_line_idx, y.abs_line_idx,
+            "{ctx}: image_region abs_line_idx differ"
+        );
+        assert_eq!(x.end_line, y.end_line, "{ctx}: image_region end_line differ");
+    }
+    assert_eq!(
+        a.edit_tool_ranges.len(),
+        b.edit_tool_ranges.len(),
+        "{ctx}: edit_tool_ranges count differ"
+    );
+    for (x, y) in a.edit_tool_ranges.iter().zip(b.edit_tool_ranges.iter()) {
+        assert_eq!(
+            x.start_line, y.start_line,
+            "{ctx}: edit_tool_range start_line differ"
+        );
+        assert_eq!(x.end_line, y.end_line, "{ctx}: edit_tool_range end_line differ");
+    }
+    assert_eq!(
+        a.copy_targets.len(),
+        b.copy_targets.len(),
+        "{ctx}: copy_targets count differ"
+    );
+    for (x, y) in a.copy_targets.iter().zip(b.copy_targets.iter()) {
+        assert_eq!(
+            x.start_line, y.start_line,
+            "{ctx}: copy_target start_line differ"
+        );
+        assert_eq!(x.end_line, y.end_line, "{ctx}: copy_target end_line differ");
+    }
+    let a_b: Vec<_> = a
+        .message_boundaries
+        .iter()
+        .map(|b| (b.msg_hash, b.wrapped_len, b.raw_len, b.user_prompt_len))
+        .collect();
+    let b_b: Vec<_> = b
+        .message_boundaries
+        .iter()
+        .map(|b| (b.msg_hash, b.wrapped_len, b.raw_len, b.user_prompt_len))
+        .collect();
+    assert_eq!(a_b, b_b, "{ctx}: message_boundaries differ");
+}
+
+fn line_to_plain(line: &Line) -> String {
+    line.spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
+/// Prefix-reuse must produce a body byte-identical to a fresh full build when
+/// the tail message is edited in place (e.g. a streaming tool result is
+/// finalized). This exercises truncate + re-append on the changed tail.
+#[test]
+fn test_prefix_reuse_tail_edit_matches_full_build() {
+    let width = 64;
+    let base_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("first prompt"),
+            DisplayMessage::assistant("a fairly long answer that wraps across the width boundary here"),
+            DisplayMessage::user("second prompt"),
+            DisplayMessage::assistant("partial"),
+        ],
+        messages_version: 1,
+        ..Default::default()
+    };
+    // Tail (last assistant) edited in place; prefix of 3 messages unchanged.
+    let edited_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("first prompt"),
+            DisplayMessage::assistant("a fairly long answer that wraps across the width boundary here"),
+            DisplayMessage::user("second prompt"),
+            DisplayMessage::assistant("partial answer is now complete and considerably longer than before"),
+        ],
+        messages_version: 2,
+        ..Default::default()
+    };
+
+    let base = Arc::new(super::prepare::prepare_body(&base_state, width, false));
+    let k =
+        super::prepare::matching_prefix_len(base.as_ref(), &edited_state.display_messages);
+    assert_eq!(k, 3, "only the last message changed");
+
+    let mut reuse = base;
+    super::prepare::truncate_prepared_to_boundary(Arc::make_mut(&mut reuse), k);
+    let reuse = super::prepare::prepare_body_incremental(&edited_state, width, reuse, k);
+    let full = super::prepare::prepare_body(&edited_state, width, false);
+    assert_prepared_equivalent(&reuse, &full, "tail_edit");
+}
+
+/// Pure append still matches a full build (k == prev_count path).
+#[test]
+fn test_prefix_reuse_append_matches_full_build() {
+    let width = 50;
+    let base_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("hello there"),
+            DisplayMessage::assistant("hi, how can I help you today with this task"),
+        ],
+        messages_version: 1,
+        ..Default::default()
+    };
+    let grown_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("hello there"),
+            DisplayMessage::assistant("hi, how can I help you today with this task"),
+            DisplayMessage::user("another question that is fairly long and wraps too"),
+            DisplayMessage::assistant("sure, here is the answer to your second question"),
+        ],
+        messages_version: 2,
+        ..Default::default()
+    };
+
+    let base = Arc::new(super::prepare::prepare_body(&base_state, width, false));
+    let k = super::prepare::matching_prefix_len(base.as_ref(), &grown_state.display_messages);
+    assert_eq!(k, 2);
+    let reuse = super::prepare::prepare_body_incremental(&grown_state, width, base, k);
+    let full = super::prepare::prepare_body(&grown_state, width, false);
+    assert_prepared_equivalent(&reuse, &full, "append");
+}
+
+/// Truncation (transcript shrank, e.g. a rewind) reuses the surviving prefix
+/// and matches a full build.
+#[test]
+fn test_prefix_reuse_truncation_matches_full_build() {
+    let width = 48;
+    let long_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("q1 that is reasonably long to force wrapping in body"),
+            DisplayMessage::assistant("answer one spanning multiple wrapped lines for sure"),
+            DisplayMessage::user("q2 also long enough to wrap across the configured width"),
+            DisplayMessage::assistant("answer two also spanning several wrapped output lines"),
+        ],
+        messages_version: 1,
+        ..Default::default()
+    };
+    let short_state = TestState {
+        display_messages: vec![
+            DisplayMessage::user("q1 that is reasonably long to force wrapping in body"),
+            DisplayMessage::assistant("answer one spanning multiple wrapped lines for sure"),
+        ],
+        messages_version: 2,
+        ..Default::default()
+    };
+
+    let base = Arc::new(super::prepare::prepare_body(&long_state, width, false));
+    let k = super::prepare::matching_prefix_len(base.as_ref(), &short_state.display_messages);
+    assert_eq!(k, 2);
+    let mut reuse = base;
+    super::prepare::truncate_prepared_to_boundary(Arc::make_mut(&mut reuse), k);
+    // After truncation alone (no new tail to append) it must already match.
+    let full = super::prepare::prepare_body(&short_state, width, false);
+    assert_prepared_equivalent(&reuse, &full, "truncation");
 }
