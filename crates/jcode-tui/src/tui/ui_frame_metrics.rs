@@ -414,7 +414,7 @@ pub(super) fn note_body_built(
     with_frame_perf_stats_mut(|stats| {
         let elapsed_ms = duration_ms(elapsed);
         stats.body_build_ms += elapsed_ms;
-        if build_path == "incremental" {
+        if build_path == "incremental" || build_path == "prefix_reuse" {
             stats.body_incremental_build_ms += elapsed_ms;
         }
         stats.body_last_path = build_path.to_string();
