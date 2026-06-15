@@ -288,6 +288,12 @@ swarm_spawn_mode = "visible"
 #
 # Whether the memory sidecar handles relevance/extraction.
 # memory_sidecar_enabled = false
+#
+# Minimum turns between Mode-2 memory reranks (cadence floor). The expensive
+# listwise LLM rerank runs at most once per this many turns; skipped turns fall
+# back to hybrid-ordered surfacing. A topic change always forces a rerank. Set 1
+# to rerank every turn. Default 3.
+# memory_rerank_cadence = 3
 
 [terminal]
 # External command that takes over headed session spawns (swarm agents,

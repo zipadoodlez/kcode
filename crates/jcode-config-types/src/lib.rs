@@ -462,6 +462,17 @@ pub struct AgentsConfig {
     pub memory_model: Option<String>,
     /// Whether memory should use the sidecar for relevance/extraction.
     pub memory_sidecar_enabled: bool,
+    /// Minimum turns between Mode-2 memory reranks (cadence floor). The
+    /// expensive listwise LLM rerank runs at most once per this many turns;
+    /// skipped turns fall back to hybrid-ordered surfacing. A topic change or
+    /// the first turn always forces a rerank regardless of cadence. 0 or 1 =
+    /// rerank every turn (no gating). Default 3.
+    #[serde(default = "default_memory_rerank_cadence")]
+    pub memory_rerank_cadence: usize,
+}
+
+fn default_memory_rerank_cadence() -> usize {
+    3
 }
 
 /// How swarm-created agents should be spawned.
