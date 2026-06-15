@@ -1485,6 +1485,11 @@ impl App {
             self.pending_history_anchor = Some(anchor);
             self.auto_scroll_paused = true;
             self.maybe_queue_compacted_history_load();
+            // Force a full repaint: ratatui's diff does not re-emit the trailing
+            // cell after a wide grapheme (emoji/CJK) when the symbol is unchanged,
+            // so terminals like kitty/foot leave a stale "ghost" char from the
+            // previous frame. See ratatui issue #2357. A clean redraw avoids it.
+            self.force_full_redraw = true;
             return true;
         }
         let before = (self.scroll_offset, self.auto_scroll_paused);
@@ -1505,7 +1510,13 @@ impl App {
         // overshoot so the newly loaded history scrolls into view smoothly.
         let overshoot = if self.scroll_offset == 0 { amount } else { 0 };
         self.maybe_queue_compacted_history_load_with_overshoot(overshoot);
-        before != (self.scroll_offset, self.auto_scroll_paused)
+        let changed = before != (self.scroll_offset, self.auto_scroll_paused);
+        if changed {
+            // See note above (ratatui #2357): force a clean repaint on scroll so
+            // wide-grapheme trailing cells cannot leave a ghost character.
+            self.force_full_redraw = true;
+        }
+        changed
     }
 
     pub(super) fn pause_chat_auto_scroll(&mut self) {
@@ -1536,6 +1547,8 @@ impl App {
             }
             anchor.lines_from_bottom = anchor.lines_from_bottom.saturating_sub(amount);
             self.pending_history_anchor = Some(anchor);
+            // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
+            self.force_full_redraw = true;
             return true;
         }
         if !self.auto_scroll_paused {
@@ -1559,7 +1572,7 @@ impl App {
             0
         };
         self.scroll_offset = self.scroll_offset.saturating_add(amount);
-        if self.scroll_offset >= bottom_threshold {
+        let changed = if self.scroll_offset >= bottom_threshold {
             self.follow_chat_bottom();
             true
         } else {
@@ -1569,7 +1582,12 @@ impl App {
             // later has to be undone before scrolling up moves the view again.
             self.scroll_offset = self.scroll_offset.min(bottom_threshold);
             self.scroll_offset != before
+        };
+        if changed {
+            // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
+            self.force_full_redraw = true;
         }
+        changed
     }
 
     pub(super) fn follow_chat_bottom(&mut self) {

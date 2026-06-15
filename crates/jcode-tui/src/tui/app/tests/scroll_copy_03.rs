@@ -334,6 +334,54 @@ fn test_scroll_key_then_render() {
     let _text_after = render_and_snap(&app, &mut terminal);
 }
 
+/// Regression for the wide-emoji "ghost" artifact (ratatui issue #2357): when
+/// the chat view actually scrolls, `scroll_up`/`scroll_down` must arm a forced
+/// full redraw so the next frame issues a `terminal.clear()`. Ratatui's diff
+/// does not re-emit the trailing cell after a wide grapheme when its symbol is
+/// unchanged, so incremental-only diffs leave stale characters on kitty/foot.
+#[test]
+fn scroll_arms_force_full_redraw_to_clear_wide_grapheme_ghosts() {
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 60);
+
+    // Render at bottom first so LAST_MAX_SCROLL is populated and there is room
+    // to actually move the viewport upward.
+    let _ = render_and_snap(&app, &mut terminal);
+
+    let (up_code, up_mods) = scroll_up_key(&app);
+
+    app.force_full_redraw = false;
+    app.handle_key(up_code.clone(), up_mods).unwrap();
+
+    // The scroll moved the viewport, so a clean repaint must be armed.
+    assert!(app.auto_scroll_paused, "scroll up should pause auto-scroll");
+    assert!(app.scroll_offset > 0, "scroll up should move the viewport");
+    assert!(
+        app.force_full_redraw,
+        "a viewport-moving scroll must arm force_full_redraw to clear ghosts"
+    );
+
+    // Scrolling back down to the bottom should likewise arm a full redraw.
+    let (down_code, down_mods) = scroll_down_key(&app);
+    app.force_full_redraw = false;
+    let mut armed_on_down = false;
+    for _ in 0..80 {
+        app.force_full_redraw = false;
+        let moved = app.handle_key(down_code.clone(), down_mods).is_ok();
+        let _ = moved;
+        if app.force_full_redraw {
+            armed_on_down = true;
+        }
+        if !app.auto_scroll_paused {
+            break;
+        }
+    }
+    assert!(
+        armed_on_down,
+        "a viewport-moving downward scroll must also arm force_full_redraw"
+    );
+}
+
 #[test]
 fn test_scroll_round_trip() {
     let _render_lock = scroll_render_test_lock();
