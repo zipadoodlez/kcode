@@ -538,10 +538,20 @@ impl App {
                 Some(false)
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                let had_pending = self.copy_selection_pending_anchor.take().is_some();
+                // Clear any armed (un-dragged) press anchor; a plain click does
+                // not start a selection.
+                self.copy_selection_pending_anchor = None;
                 self.copy_selection_edge_autoscroll = None;
                 if !self.copy_selection_dragging {
-                    return if self.copy_selection_mode || had_pending {
+                    // A press+release with no drag is a plain click, not a
+                    // selection. While actively in copy-selection mode we still
+                    // consume it (so a stray click does not leak into the chat),
+                    // but in normal mode we must let it fall through to the
+                    // click handlers (inline-image expand badge, link open).
+                    // Returning `Some(false)` here would swallow those clicks,
+                    // since the `Down` arms `copy_selection_pending_anchor` and
+                    // this branch runs before the expand/link checks.
+                    return if self.copy_selection_mode {
                         Some(false)
                     } else {
                         None
