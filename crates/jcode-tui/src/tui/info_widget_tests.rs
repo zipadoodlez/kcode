@@ -299,7 +299,7 @@ fn lines_text(lines: &[ratatui::text::Line<'_>]) -> String {
 }
 
 #[test]
-fn memory_widget_shows_sidecar_model_when_idle() {
+fn memory_widget_hides_sidecar_model_when_idle() {
     let info = MemoryInfo {
         total_count: 3,
         project_count: 2,
@@ -322,11 +322,9 @@ fn memory_widget_shows_sidecar_model_when_idle() {
         .to_lowercase();
 
     assert!(text.contains("memory"));
-    assert!(text.contains("model:"));
-    assert!(text.contains("openai"));
-    assert!(text.contains("gpt-5.3"));
-    assert!(!text.contains("3 total"));
-    assert!(!text.contains("2p/1g"));
+    assert!(!text.contains("model:"));
+    assert!(!text.contains("gpt-5.3"));
+    assert!(text.contains("3 memories"));
 }
 
 #[test]
@@ -392,9 +390,8 @@ fn memory_widget_renders_current_cycle_activity() {
     assert!(text.contains("update memory"));
     assert!(text.contains("now:"));
     assert!(text.contains("checking 3 candidate"));
-    assert!(text.contains("model:"));
-    assert!(text.contains("openai"));
-    assert!(text.contains("gpt-5.3"));
+    assert!(!text.contains("model:"));
+    assert!(!text.contains("gpt-5.3"));
     assert!(!text.contains("4 project"));
     assert!(!text.contains("3 global"));
 }
@@ -536,7 +533,7 @@ fn memory_widget_uses_distinct_trace_label_when_idle() {
 }
 
 #[test]
-fn memory_compact_shows_short_model_only() {
+fn memory_compact_does_not_show_model() {
     let lines = render_memory_compact(
         &MemoryInfo {
             sidecar_model: Some("openai · gpt-5.3-codex-spark".to_string()),
@@ -553,8 +550,7 @@ fn memory_compact_shows_short_model_only() {
         .join("\n")
         .to_lowercase();
 
-    assert!(text.contains("gpt-5.3"), "{text}");
-    assert!(!text.contains("openai"), "{text}");
+    assert!(!text.contains("gpt-5.3"), "{text}");
     assert!(!text.contains("codex-spark"), "{text}");
 }
 

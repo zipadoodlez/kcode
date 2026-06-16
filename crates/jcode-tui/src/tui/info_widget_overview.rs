@@ -118,7 +118,7 @@ fn compact_todos_height(data: &InfoWidgetData) -> u16 {
 
 fn compact_memory_height(data: &InfoWidgetData) -> u16 {
     if let Some(info) = &data.memory_info
-        && (info.total_count > 0 || info.activity.is_some() || info.sidecar_model.is_some())
+        && (info.total_count > 0 || info.activity.is_some())
     {
         return 1;
     }
@@ -214,14 +214,11 @@ fn expanded_todos_height(data: &InfoWidgetData) -> u16 {
 
 fn expanded_memory_height(data: &InfoWidgetData) -> u16 {
     if let Some(info) = &data.memory_info
-        && (info.total_count > 0 || info.activity.is_some() || info.sidecar_model.is_some())
+        && (info.total_count > 0 || info.activity.is_some())
     {
         let mut height = 1u16;
         if info.activity.is_some() {
             height += 1 + 4;
-        }
-        if info.sidecar_model.is_some() {
-            height += 1;
         }
         if let Some(activity) = &info.activity
             && activity
