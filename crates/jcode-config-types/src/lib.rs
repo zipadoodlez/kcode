@@ -469,10 +469,29 @@ pub struct AgentsConfig {
     /// rerank every turn (no gating). Default 3.
     #[serde(default = "default_memory_rerank_cadence")]
     pub memory_rerank_cadence: usize,
+    /// Number of independent LLM rerank "judges" to run per fired rerank. Their
+    /// votes are combined and only memories meeting `memory_rerank_min_agree`
+    /// agreement are injected. 1 = single judge (cheapest). 2 = two judges must
+    /// agree, which lifts injection precision to ~1.0 with ~100% clean-rate on
+    /// no-memory turns (offline adjudication), at 2 LLM calls per fired turn.
+    #[serde(default = "default_memory_rerank_votes")]
+    pub memory_rerank_votes: usize,
+    /// Minimum judge agreement (of `memory_rerank_votes`) required to inject a
+    /// memory. Clamped to 1..=votes. Higher = stricter precision, lower recall.
+    #[serde(default = "default_memory_rerank_min_agree")]
+    pub memory_rerank_min_agree: usize,
 }
 
 fn default_memory_rerank_cadence() -> usize {
     3
+}
+
+fn default_memory_rerank_votes() -> usize {
+    2
+}
+
+fn default_memory_rerank_min_agree() -> usize {
+    2
 }
 
 /// How swarm-created agents should be spawned.

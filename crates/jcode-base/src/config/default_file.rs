@@ -294,6 +294,14 @@ swarm_spawn_mode = "visible"
 # back to hybrid-ordered surfacing. A topic change always forces a rerank. Set 1
 # to rerank every turn. Default 3.
 # memory_rerank_cadence = 3
+#
+# High-precision consensus rerank: run N independent LLM judges per fired rerank
+# and inject only memories that >= memory_rerank_min_agree of them agree on.
+# Default 2 judges / 2 agreement -> injection precision ~1.0 with ~100% clean
+# (zero memory) on no-memory turns, at 2 LLM calls per fired turn. Set votes=1
+# for the cheaper single-judge path (precision ~0.77).
+# memory_rerank_votes = 2
+# memory_rerank_min_agree = 2
 
 [terminal]
 # External command that takes over headed session spawns (swarm agents,
