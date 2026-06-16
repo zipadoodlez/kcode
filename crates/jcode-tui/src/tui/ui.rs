@@ -2147,13 +2147,18 @@ pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
     link_target_from_snapshot(&snapshot, point)
 }
 
-/// First-dot display column of the inline-image expand badge within a label
-/// line, if present. The badge is the `●○○ expand` suffix that
-/// `image_label_line` appends; we accept a click from the first dot to end of
-/// line as "hit the badge". Returns `None` when the line has no badge (e.g. a
+/// First display column of the inline-image expand badge within a label line,
+/// if present. The badge is the `🖱 ●○○ expand` suffix that `image_label_line`
+/// appends; we accept a click from the leading click-icon to end of line as
+/// "hit the badge". Returns `None` when the line has no badge (e.g. a
 /// hidden/collapsed image label).
 fn expand_badge_start_col(text: &str) -> Option<usize> {
-    let byte_idx = text.find(['○', '●'])?;
+    let icon = crate::tui::ui::inline_image_ui::EXPAND_BADGE_CLICK_ICON;
+    // Prefer the click icon (the badge's first cell); fall back to the dots so a
+    // future icon change can never silently drop the whole hit-region.
+    let byte_idx = text
+        .find(icon)
+        .or_else(|| text.find(['○', '●']))?;
     Some(line_display_width(&text[..byte_idx]))
 }
 
@@ -2180,6 +2185,16 @@ mod expand_badge_hit_tests {
         // so emoji(1) + space(1) = 2.
         let text = "🖼 ●○○ expand";
         assert_eq!(expand_badge_start_col(text), Some(2));
+    }
+
+    #[test]
+    fn anchors_on_the_click_icon_when_present() {
+        // The real label puts a click icon ahead of the dots; the hit-region
+        // must start at the icon so users can click the whole affordance.
+        let icon = crate::tui::ui::inline_image_ui::EXPAND_BADGE_CLICK_ICON;
+        let text = format!("abc {icon} ●○○ expand");
+        // Prefix is "abc " (display width 4); the icon is the first badge cell.
+        assert_eq!(expand_badge_start_col(&text), Some(4));
     }
 }
 
