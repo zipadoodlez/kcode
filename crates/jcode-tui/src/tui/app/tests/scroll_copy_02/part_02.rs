@@ -623,3 +623,124 @@ fn test_mouse_click_in_wrapped_input_moves_cursor_to_second_visual_line() {
 
     assert_eq!(app.cursor_pos, 5);
 }
+
+/// End-to-end: a real left-click on an inline image's `expand` badge maps the
+/// screen point back through a recorded `ChatFrame` snapshot to the image id and
+/// cycles its expand level. This exercises the full click path
+/// (`handle_mouse_event` -> `try_cycle_image_expand_at` ->
+/// `inline_image_expand_target_from_screen` -> `cycle_image_expand`), not just
+/// the isolated helpers.
+#[test]
+fn test_click_on_inline_image_expand_badge_cycles_level() {
+    use crate::tui::ui::inline_image_ui::{
+        AllFit, ImageExpandLevel, InlineImageItem, build_section,
+    };
+    use jcode_tui_messages::PreparedChatFrame;
+
+    let _render_lock = scroll_render_test_lock();
+    let mut app = create_test_app();
+
+    const IMAGE_ID: u64 = 0xFEED;
+    let chat_width: u16 = 80;
+
+    // Build a real inline-image section: a `🖼 … ●○○ expand` label line followed
+    // by Fit-rendered placeholder rows with a scanned `image_regions` entry.
+    let items = vec![InlineImageItem {
+        id: IMAGE_ID,
+        width: 600,
+        height: 400,
+        label: "shot.png".to_string(),
+    }];
+    let section = build_section(&items, chat_width, 40, false, true, &AllFit);
+
+    // Locate the badge label line (the one carrying the `expand` dots) and the
+    // column where the clickable badge begins, so we click a real cell.
+    let label_line = section
+        .wrapped_plain_lines
+        .iter()
+        .position(|line| line.contains("expand"))
+        .expect("section should contain an expand-badge label line");
+    let label_text = &section.wrapped_plain_lines[label_line];
+    let badge_byte = label_text
+        .find(['○', '●'])
+        .expect("label line should carry the expand dots");
+    let badge_col =
+        unicode_width::UnicodeWidthStr::width(&label_text[..badge_byte]) as u16;
+
+    // The Fit image region must sit exactly one line below the label line, which
+    // is how `inline_image_id_for_label_line` maps a click back to the image.
+    assert!(
+        section
+            .image_regions
+            .iter()
+            .any(|r| r.hash == IMAGE_ID && r.abs_line_idx == label_line + 1),
+        "expected a Fit image region anchored under the label line"
+    );
+
+    let prepared = std::sync::Arc::new(PreparedChatFrame::from_single(std::sync::Arc::new(section)));
+    let visible_end = prepared.wrapped_plain_line_count();
+    let content_area = Rect::new(0, 0, chat_width, visible_end as u16 + 1);
+
+    crate::tui::ui::clear_copy_viewport_snapshot();
+    crate::tui::ui::record_copy_viewport_frame_snapshot_for_test(
+        prepared,
+        0,
+        visible_end,
+        content_area,
+        &vec![0u16; visible_end],
+    );
+
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Fit,
+        "image should start at Fit"
+    );
+
+    // Click the badge cell (button up is what fires the cycle).
+    let handled = app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: content_area.x + badge_col,
+        row: content_area.y + label_line as u16,
+        modifiers: KeyModifiers::empty(),
+    });
+    assert!(!handled, "handled click should request an immediate redraw");
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Large,
+        "first badge click should expand Fit -> Large"
+    );
+    assert_eq!(app.status_notice(), Some("Image size: large".to_string()));
+
+    // A click to the LEFT of the badge must not cycle (badge suffix only).
+    if badge_col > 0 {
+        app.handle_mouse_event(MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: content_area.x,
+            row: content_area.y + label_line as u16,
+            modifiers: KeyModifiers::empty(),
+        });
+        assert_eq!(
+            app.image_expand_level(IMAGE_ID),
+            ImageExpandLevel::Large,
+            "click left of the badge must not cycle the image"
+        );
+    }
+
+    // Two more badge clicks complete the cycle: Large -> Huge -> Fit.
+    let click_badge = |app: &mut App| {
+        app.handle_mouse_event(MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Left),
+            column: content_area.x + badge_col,
+            row: content_area.y + label_line as u16,
+            modifiers: KeyModifiers::empty(),
+        });
+    };
+    click_badge(&mut app);
+    assert_eq!(app.image_expand_level(IMAGE_ID), ImageExpandLevel::Huge);
+    click_badge(&mut app);
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Fit,
+        "cycle should wrap Huge -> Fit"
+    );
+}

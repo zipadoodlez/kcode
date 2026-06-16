@@ -1670,6 +1670,21 @@ pub(crate) fn record_copy_viewport_snapshot(
     );
 }
 
+/// Record a real `ChatFrame` viewport snapshot for tests. Unlike
+/// `record_copy_viewport_snapshot` (which records a `Dense` snapshot that cannot
+/// resolve inline-image label lines), this preserves the `PreparedChatFrame` so
+/// `inline_image_id_for_label_line` works end to end.
+#[cfg(test)]
+pub(crate) fn record_copy_viewport_frame_snapshot_for_test(
+    prepared: Arc<PreparedChatFrame>,
+    scroll: usize,
+    visible_end: usize,
+    content_area: Rect,
+    left_margins: &[u16],
+) {
+    record_copy_viewport_frame_snapshot(prepared, scroll, visible_end, content_area, left_margins);
+}
+
 pub(crate) fn line_left_margins_for_area(lines: &[Line<'static>], area_width: u16) -> Vec<u16> {
     lines
         .iter()
