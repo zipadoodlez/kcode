@@ -63,6 +63,7 @@ impl Config {
 - Swarm: {}
 - Message timestamps: {}
 - Persist memory injections: {}
+- KV cache miss notices: {}
 - Update channel: {}
 
 **Tools:**
@@ -184,6 +185,7 @@ impl Config {
             self.features.swarm,
             self.features.message_timestamps,
             self.features.persist_memory_injections,
+            self.features.kv_cache_miss_notices,
             self.features.update_channel,
             if self.tools.profile.trim().is_empty() {
                 "full"

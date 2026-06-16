@@ -272,6 +272,11 @@ impl Config {
                 self.features.persist_memory_injections = parsed;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_KV_CACHE_MISS_NOTICES") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.features.kv_cache_miss_notices = parsed;
+            }
+        }
         if let Ok(v) = std::env::var("JCODE_UPDATE_CHANNEL")
             && let Some(channel) = UpdateChannel::parse(&v)
         {
