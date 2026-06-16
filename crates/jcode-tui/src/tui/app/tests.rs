@@ -176,6 +176,104 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
 }
 
 #[test]
+fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
+    // A warm session whose system prompt hash silently changes between turns is
+    // the exact failure mode of the skill-ordering bug: the conversation only
+    // grew, yet the cached prefix is invalidated. We must surface that loudly.
+    let mut app = create_test_app();
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+
+    let messages = vec![
+        Message::user("first prompt"),
+        Message::assistant_text("first answer"),
+        Message::user("second prompt"),
+    ];
+
+    // Baseline captured last turn with a *different* system static hash.
+    let baseline_signature =
+        App::kv_cache_request_signature(&messages, &[], "system PROMPT A", "");
+    let session_id = app.kv_cache_session_id();
+    // Match the live provider/model exactly so the miss is classified as a
+    // harness system change rather than a provider/model switch.
+    let provider = app.kv_cache_provider_name();
+    let model = app.kv_cache_provider_model();
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id,
+        input_tokens: 50_000,
+        completed_at: Instant::now(),
+        provider,
+        model,
+        upstream_provider: None,
+        signature: Some(baseline_signature),
+    });
+
+    // This turn: same provider/model, conversation grew, but the system prompt
+    // changed (hash differs). Register the pending request, then complete the
+    // stream with a near-zero cache read to model the bust.
+    app.begin_kv_cache_request(&messages, &[], "system PROMPT B", "");
+    app.streaming.streaming_input_tokens = 50_000;
+    app.streaming.streaming_cache_read_tokens = Some(0);
+    app.streaming.streaming_cache_creation_tokens = Some(50_000);
+    app.kv_cache.current_api_usage_recorded = false;
+    app.record_completed_stream_cache_usage();
+
+    let alarm = app
+        .display_messages()
+        .iter()
+        .find(|message| {
+            message.role == "system" && message.content.contains("KV cache miss")
+        })
+        .expect("harness-caused cache miss should push an in-chat alarm");
+    assert!(
+        alarm.content.contains("harness: system changed"),
+        "{alarm:?}"
+    );
+    assert!(alarm.content.contains("50K"), "{alarm:?}");
+}
+
+#[test]
+fn legitimate_model_switch_miss_does_not_push_in_chat_alarm() {
+    // Switching models legitimately invalidates the cache; that is user-driven,
+    // not a harness bug, so it must NOT raise the alarm.
+    let mut app = create_test_app();
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+
+    let messages = vec![
+        Message::user("first prompt"),
+        Message::assistant_text("first answer"),
+        Message::user("second prompt"),
+    ];
+    let baseline_signature = App::kv_cache_request_signature(&messages, &[], "system", "");
+    let session_id = app.kv_cache_session_id();
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id,
+        input_tokens: 50_000,
+        completed_at: Instant::now(),
+        provider: "anthropic".to_string(),
+        // Different model than the current request -> ModelSwitch.
+        model: "claude-opus-4-5".to_string(),
+        upstream_provider: None,
+        signature: Some(baseline_signature),
+    });
+
+    app.begin_kv_cache_request(&messages, &[], "system", "");
+    app.streaming.streaming_input_tokens = 50_000;
+    app.streaming.streaming_cache_read_tokens = Some(0);
+    app.streaming.streaming_cache_creation_tokens = Some(50_000);
+    app.kv_cache.current_api_usage_recorded = false;
+    app.record_completed_stream_cache_usage();
+
+    assert!(
+        !app
+            .display_messages()
+            .iter()
+            .any(|message| message.role == "system"
+                && message.content.contains("KV cache miss")),
+        "model-switch miss must not raise the harness alarm"
+    );
+}
+
+#[test]
 fn kv_cache_baseline_from_other_session_is_ignored() {
     // A single App can stream multiple sessions over its lifetime. A baseline
     // captured for a large session must not be diffed against a fresh, smaller
