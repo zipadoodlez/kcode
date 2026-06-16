@@ -321,9 +321,19 @@ impl SkillRegistry {
         self.skills.get(name)
     }
 
-    /// List all available skills
+    /// List all available skills.
+    ///
+    /// Sorted by skill name so the ordering is deterministic. The backing store
+    /// is a `HashMap`, whose iteration order is randomized per instance; without
+    /// this sort, two snapshots of the same skill set (e.g. the lock-contended
+    /// `self.skills.clone()` fallback in `current_skills_snapshot`) could emit
+    /// the "Available Skills" prompt section in different orders. That produces a
+    /// system prompt with identical length but different bytes, silently busting
+    /// the Anthropic strict-prefix KV cache mid-conversation.
     pub fn list(&self) -> Vec<&Skill> {
-        self.skills.values().collect()
+        let mut skills: Vec<&Skill> = self.skills.values().collect();
+        skills.sort_by(|a, b| a.name.cmp(&b.name));
+        skills
     }
 
     /// Reload a specific skill by name
@@ -703,6 +713,43 @@ mod tests {
             format!("---\nname: {name}\ndescription: Test skill {name}\n---\n\nUse {name}.\n"),
         )
         .expect("write skill");
+    }
+
+    #[test]
+    fn list_is_sorted_by_name_regardless_of_insertion_order() {
+        // The "Available Skills" system-prompt section is built from `list()`.
+        // The backing store is a HashMap (per-instance randomized iteration
+        // order), and `current_skills_snapshot` can hand back a *different*
+        // HashMap instance via its lock-contended `self.skills.clone()` fallback.
+        // If `list()` did not sort, two snapshots of the same skill set could
+        // serialize the section in different orders: a same-length but
+        // different-bytes system prompt that silently busts the KV cache.
+        let names = ["zebra", "alpha", "mango", "beta", "yak"];
+
+        let mut reg_a = SkillRegistry::default();
+        for name in names {
+            reg_a
+                .skills
+                .insert(name.to_string(), test_skill(name, "d", "c"));
+        }
+
+        // Build a second registry with the reverse insertion order to maximize
+        // the chance of a differing HashMap layout.
+        let mut reg_b = SkillRegistry::default();
+        for name in names.iter().rev() {
+            reg_b
+                .skills
+                .insert(name.to_string(), test_skill(name, "d", "c"));
+        }
+
+        let order_a: Vec<&str> = reg_a.list().iter().map(|s| s.name.as_str()).collect();
+        let order_b: Vec<&str> = reg_b.list().iter().map(|s| s.name.as_str()).collect();
+
+        assert_eq!(order_a, vec!["alpha", "beta", "mango", "yak", "zebra"]);
+        assert_eq!(
+            order_a, order_b,
+            "list() ordering must be identical across HashMap instances"
+        );
     }
 
     #[test]
