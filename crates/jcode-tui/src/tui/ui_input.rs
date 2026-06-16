@@ -563,6 +563,9 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
         String::new()
     };
 
+    // Idle session facts (context bar + provider) are pinned to the right edge
+    // so they read like a status readout rather than left-flush body text.
+    let mut right_align_facts = false;
     let line = if let Some(build_progress) = crate::build::read_build_progress() {
         let spinner = super::activity_indicator(elapsed, 12.5);
         Line::from(vec![
@@ -849,7 +852,8 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
         {
             Line::from(vec![Span::styled(tip, Style::default().fg(dim_color()))])
         } else if let Some(facts) = idle_status_facts(app) {
-            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
+            right_align_facts = true;
+            Line::from(facts)
         } else {
             Line::from("")
         }
@@ -859,7 +863,8 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
         {
             Line::from(vec![Span::styled(tip, Style::default().fg(dim_color()))])
         } else if let Some(facts) = idle_status_facts(app) {
-            Line::from(vec![Span::styled(facts, Style::default().fg(dim_color()))])
+            right_align_facts = true;
+            Line::from(facts)
         } else {
             Line::from("")
         }
@@ -869,6 +874,8 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
 
     let aligned_line = if app.centered_mode() {
         line.alignment(Alignment::Center)
+    } else if right_align_facts {
+        line.alignment(Alignment::Right)
     } else {
         line
     };
@@ -2313,26 +2320,17 @@ fn format_idle_input_hint(model: Option<String>, dir: Option<String>) -> Option<
 /// shown by the info-widget HUD nor by the idle input hint (which owns model
 /// and dir). The status line therefore fills in context usage and provider.
 ///
+/// Returns styled spans (right-aligned by the caller) including a short glyph
+/// context bar that mirrors the overscroll bar but at a much shorter length.
 /// Returns `None` when everything important is already visible elsewhere, so
 /// the caller can fall back to the occasional tip / blank line.
-fn idle_status_facts(app: &dyn TuiState) -> Option<String> {
+fn idle_status_facts(app: &dyn TuiState) -> Option<Vec<Span<'static>>> {
     use session_facts::Fact;
     let data = app.info_widget_data();
     let ledger = crate::tui::info_widget::widget_visible_facts(&data);
     // The idle input hint owns model + dir, so treat them as already shown.
-    let mut parts: Vec<String> = Vec::new();
-
-    if ledger.is_missing(Fact::Context)
-        && let Some((used, limit)) = overscroll_context_usage(&data)
-    {
-        let pct = (used as f64 / limit as f64 * 100.0).round() as u64;
-        parts.push(format!(
-            "{}% context ({}/{})",
-            pct,
-            overscroll_format_tokens(used),
-            overscroll_format_tokens(limit)
-        ));
-    }
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let sep = || Span::styled(" · ", Style::default().fg(rgb(100, 100, 110)));
 
     if ledger.is_missing(Fact::Provider) {
         let provider = data
@@ -2341,14 +2339,36 @@ fn idle_status_facts(app: &dyn TuiState) -> Option<String> {
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| app.provider_name());
         if !provider.is_empty() && !overscroll_is_runtime_placeholder(&provider) {
-            parts.push(overscroll_provider_display(&provider));
+            spans.push(Span::styled(
+                overscroll_provider_display(&provider),
+                Style::default().fg(dim_color()),
+            ));
         }
     }
 
-    if parts.is_empty() {
+    if ledger.is_missing(Fact::Context)
+        && let Some((used, limit)) = overscroll_context_usage(&data)
+    {
+        if !spans.is_empty() {
+            spans.push(sep());
+        }
+        spans.push(Span::styled(
+            format!(
+                "{}/{} ",
+                overscroll_format_tokens(used),
+                overscroll_format_tokens(limit)
+            ),
+            Style::default().fg(dim_color()),
+        ));
+        // Short glyph bar: same style as the overscroll context bar but a much
+        // shorter total length so it reads as a compact right-aligned hint.
+        spans.extend(overscroll_context_bar(used, limit, 5));
+    }
+
+    if spans.is_empty() {
         None
     } else {
-        Some(parts.join(" · "))
+        Some(spans)
     }
 }
 
