@@ -28,6 +28,13 @@ fn copy_badge_shortcut_width(key_label: &str) -> usize {
     UnicodeWidthStr::width(format!("{} [⇧] [{key_label}]", copy_badge_alt_badge()).as_str())
 }
 
+/// Display width reserved for the inline expand-edit badge (`[Alt] [⇧] [E] …`).
+/// The badge text differs between the collapsed (` expand`) and just-activated
+/// (` ✓ Expanded`) states, so callers pass the suffix that will actually render.
+pub(crate) fn expand_badge_reserved_width(badge_text: &str) -> usize {
+    UnicodeWidthStr::width(format!(" {} [⇧] [E]{badge_text}", copy_badge_alt_badge()).as_str())
+}
+
 fn lower_bound(values: &[usize], target: usize) -> usize {
     values.partition_point(|&v| v < target)
 }
@@ -684,11 +691,20 @@ pub(super) fn draw_messages(
                 } else {
                     " expand"
                 };
-                let reserved = UnicodeWidthStr::width(
-                    format!(" {} [⇧] [E] expand", copy_badge_alt_badge()).as_str(),
-                );
+                let reserved = expand_badge_reserved_width(badge_text);
                 let max_content_width = (content_area.width as usize).saturating_sub(reserved);
                 truncate_line_in_place_to_width(line, max_content_width);
+
+                // Reserve the badge's width in the info-widget margin profile so a
+                // floating widget (e.g. the KV cache panel) docks far enough left to
+                // clear the appended `[Alt] [⇧] [E] expand` block instead of being
+                // squeezed into a too-narrow slot that wraps/collides with it. The
+                // margin row for `visible_lines[rel_idx]` is offset by the synthetic
+                // prompt-preview band, matching the image-region carve above.
+                let margin_row = prompt_preview_lines as usize + rel_idx;
+                if let Some(width) = margins.right_widths.get_mut(margin_row) {
+                    *width = (*width).saturating_sub(reserved as u16);
+                }
 
                 let alt_style = if copy_badge_ui.alt_is_active(copy_badge_now) {
                     Style::default().fg(queued_color()).bold()

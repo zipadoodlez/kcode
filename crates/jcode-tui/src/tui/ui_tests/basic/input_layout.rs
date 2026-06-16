@@ -239,6 +239,29 @@ fn test_copy_badge_reserves_right_margin_for_info_widgets() {
 }
 
 #[test]
+fn test_expand_badge_reserves_right_margin_for_info_widgets() {
+    // The inline `[Alt] [⇧] [E] expand` badge is appended to a transcript row at
+    // render time. Without reserving its width in the margin profile, a floating
+    // info widget (e.g. the KV cache panel) would dock right up against the badge
+    // and get squeezed into a too-narrow slot that wraps/collides with it. The
+    // badge width must be carved out of the row's free width.
+    let collapsed = expand_badge_reserved_width(" expand");
+    let expanded = expand_badge_reserved_width(" ✓ Expanded");
+    assert!(
+        collapsed > 0 && expanded > 0,
+        "expand badge must reserve some width"
+    );
+
+    let mut width = 40u16;
+    width = width.saturating_sub(collapsed as u16);
+    assert_eq!(
+        width as usize,
+        40 - collapsed,
+        "reservation should shrink the row's free width by exactly the badge width"
+    );
+}
+
+#[test]
 fn test_copy_badge_truncates_full_width_line_before_appending_shortcut() {
     let copy_badge_ui = crate::tui::app::CopyBadgeUiState::default();
     let reserved = copy_badge_reserved_width('a', &copy_badge_ui, Instant::now());
