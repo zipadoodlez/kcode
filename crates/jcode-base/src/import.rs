@@ -11,7 +11,7 @@ use jcode_import_core::{
     ClaudeCodeContent, ClaudeCodeContentBlock, ClaudeCodeEntry, ClaudeCodeSessionInfo,
     SessionIndexEntry, SessionsIndex, claude_code_session_info_from_index,
     claude_text_from_content, clean_optional_text, codex_title_candidate, collect_files_recursive,
-    collect_recent_files_recursive, extract_text_from_json_value,
+    collect_recent_files_recursive, extract_opencode_part_text, extract_text_from_json_value,
     ordered_claude_code_message_entries, parse_rfc3339_json, parse_rfc3339_string,
     resolve_claude_session_path, truncate_title,
 };
@@ -919,6 +919,7 @@ pub fn import_opencode_session_from_path(
         ".local/share/opencode/storage/message/{}",
         session_id
     ))?;
+    let parts_base = crate::storage::user_home_path(".local/share/opencode/storage/part")?;
     let mut messages: Vec<(Option<DateTime<Utc>>, Role, String)> = Vec::new();
     let mut model: Option<String> = None;
     let mut provider_key = session.provider_key.clone();
@@ -935,10 +936,20 @@ pub fn import_opencode_session_from_path(
                 Some("assistant") => Role::Assistant,
                 _ => continue,
             };
+            // Modern OpenCode (Go storage) stores message body text in
+            // storage/part/<messageID>/*.json; fall back to legacy inline
+            // content/summary for older stores.
             let text = msg_value
-                .get("content")
-                .map(extract_text_from_json_value)
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| extract_opencode_part_text(&parts_base, id, true))
                 .filter(|text| !text.trim().is_empty())
+                .or_else(|| {
+                    msg_value
+                        .get("content")
+                        .map(extract_text_from_json_value)
+                        .filter(|text| !text.trim().is_empty())
+                })
                 .or_else(|| msg_value.get("summary").map(extract_text_from_json_value))
                 .unwrap_or_default();
             if model.is_none() {

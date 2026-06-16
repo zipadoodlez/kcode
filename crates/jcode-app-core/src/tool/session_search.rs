@@ -1191,10 +1191,14 @@ fn collect_opencode_external_sessions(
     else {
         return;
     };
+    let Ok(parts_base) = crate::storage::user_home_path(".local/share/opencode/storage/part") else {
+        return;
+    };
     for path in collect_recent_files_recursive(&root, "json", options.max_scan_sessions) {
         match load_opencode_external_session(
             &path,
             &messages_base,
+            &parts_base,
             options.include_tools,
             options.max_scan_sessions,
         ) {

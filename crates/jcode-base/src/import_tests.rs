@@ -347,8 +347,16 @@ fn test_import_opencode_session_creates_jcode_snapshot() {
     let message_dir = temp
         .path()
         .join("external/.local/share/opencode/storage/message/ses_test_opencode");
+    let user_part_dir = temp
+        .path()
+        .join("external/.local/share/opencode/storage/part/msg-user");
+    let assistant_part_dir = temp
+        .path()
+        .join("external/.local/share/opencode/storage/part/msg-assistant");
     std::fs::create_dir_all(&session_dir).unwrap();
     std::fs::create_dir_all(&message_dir).unwrap();
+    std::fs::create_dir_all(&user_part_dir).unwrap();
+    std::fs::create_dir_all(&assistant_part_dir).unwrap();
 
     std::fs::write(
         session_dir.join("ses_test_opencode.json"),
@@ -367,9 +375,9 @@ fn test_import_opencode_session_creates_jcode_snapshot() {
         message_dir.join("msg-user.json"),
         concat!(
             "{",
+            "\"id\":\"msg-user\",",
             "\"role\":\"user\",",
             "\"time\":{\"created\":1775415601000},",
-            "\"summary\":{\"title\":\"Investigate provider routing\"},",
             "\"model\":{\"providerID\":\"opencode\",\"modelID\":\"big-pickle\"}",
             "}"
         ),
@@ -380,11 +388,38 @@ fn test_import_opencode_session_creates_jcode_snapshot() {
         message_dir.join("msg-assistant.json"),
         concat!(
             "{",
+            "\"id\":\"msg-assistant\",",
             "\"role\":\"assistant\",",
             "\"time\":{\"created\":1775415602000},",
-            "\"summary\":{\"title\":\"Found the bad provider switch\"},",
             "\"providerID\":\"opencode\",",
             "\"modelID\":\"big-pickle\"",
+            "}"
+        ),
+    )
+    .unwrap();
+
+    // Modern OpenCode (Go storage) keeps message body text in part files.
+    std::fs::write(
+        user_part_dir.join("prt-user.json"),
+        concat!(
+            "{",
+            "\"id\":\"prt-user\",",
+            "\"messageID\":\"msg-user\",",
+            "\"type\":\"text\",",
+            "\"text\":\"Investigate provider routing\"",
+            "}"
+        ),
+    )
+    .unwrap();
+
+    std::fs::write(
+        assistant_part_dir.join("prt-assistant.json"),
+        concat!(
+            "{",
+            "\"id\":\"prt-assistant\",",
+            "\"messageID\":\"msg-assistant\",",
+            "\"type\":\"text\",",
+            "\"text\":\"Found the bad provider switch\"",
             "}"
         ),
     )
@@ -399,6 +434,24 @@ fn test_import_opencode_session_creates_jcode_snapshot() {
     assert_eq!(imported.model.as_deref(), Some("big-pickle"));
     assert_eq!(imported.working_dir.as_deref(), Some("/tmp/opencode-demo"));
     assert_eq!(imported.messages.len(), 2);
+    let all_text: String = imported
+        .messages
+        .iter()
+        .flat_map(|m| m.content.iter())
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        all_text.contains("Investigate provider routing"),
+        "expected user part text to be imported: {all_text:?}"
+    );
+    assert!(
+        all_text.contains("Found the bad provider switch"),
+        "expected assistant part text to be imported: {all_text:?}"
+    );
 }
 
 #[test]

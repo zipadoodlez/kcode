@@ -727,6 +727,33 @@ fn extract_text_from_value(value: &serde_json::Value) -> String {
     out.join(" ")
 }
 
+/// Extract message body text from OpenCode part files for the session-picker
+/// preview. Modern OpenCode (Go storage) stores message bodies in
+/// `storage/part/<messageID>/*.json`; only plain `text` parts are used for the
+/// lightweight preview.
+fn extract_opencode_part_preview(parts_base: &Path, message_id: &str) -> String {
+    let message_parts = parts_base.join(message_id);
+    if !message_parts.exists() {
+        return String::new();
+    }
+    let mut out: Vec<String> = Vec::new();
+    for part_path in collect_files_recursive(&message_parts, "json") {
+        let Ok(file) = std::fs::File::open(&part_path) else {
+            continue;
+        };
+        let Ok(part) = serde_json::from_reader::<_, serde_json::Value>(file) else {
+            continue;
+        };
+        if part.get("type").and_then(|v| v.as_str()) == Some("text")
+            && let Some(text) = part.get("text").and_then(|v| v.as_str())
+            && !text.trim().is_empty()
+        {
+            out.push(text.trim().to_string());
+        }
+    }
+    out.join(" ")
+}
+
 fn extract_block_text_from_value(value: &serde_json::Value) -> String {
     fn extract(value: &serde_json::Value, separator: &str) -> Option<String> {
         match value {
@@ -2496,6 +2523,7 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         ".local/share/opencode/storage/message/{}",
         session_id
     ))?;
+    let parts_base = crate::storage::user_home_path(".local/share/opencode/storage/part")?;
     let mut preview = Vec::new();
     let mut user_message_count = 0usize;
     let mut assistant_message_count = 0usize;
@@ -2513,9 +2541,14 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
                 .get("role")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default();
+            // Modern OpenCode (Go storage) stores body text in part files keyed
+            // by message id; fall back to the legacy inline summary.
             let text = msg_value
-                .get("summary")
-                .map(extract_text_from_value)
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| extract_opencode_part_preview(&parts_base, id))
+                .filter(|text| !text.trim().is_empty())
+                .or_else(|| msg_value.get("summary").map(extract_text_from_value))
                 .unwrap_or_default();
             match role {
                 "user" => user_message_count += 1,
