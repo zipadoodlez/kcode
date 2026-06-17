@@ -291,6 +291,8 @@ objc2-foundation = { version = "0.3", features = [
     "NSTimer",
     "NSUserDefaults",
     "NSValue",
+    "NSAttributedString",
+    "NSDictionary",
     "block2",
 ] }
 objc2-app-kit = { version = "0.3", features = [
@@ -301,10 +303,12 @@ objc2-app-kit = { version = "0.3", features = [
     "NSStatusBarButton",
     "NSButton",
     "NSCell",
+    "NSColor",
     "NSControl",
     "NSFont",
     "NSFontDescriptor",
     "NSImage",
+    "NSAttributedString",
     "NSMenu",
     "NSMenuItem",
     "NSRunningApplication",
