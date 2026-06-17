@@ -1339,6 +1339,42 @@ impl OpenRouterProvider {
         jcode_provider_openrouter::is_kimi_model(model)
     }
 
+    /// Strip a session-routing `<profile>:` prefix from a model spec.
+    ///
+    /// Session restore persists models as `<provider-key>:<model>` (see
+    /// `MultiProvider::model_switch_request_for_session_*`). For a standalone
+    /// `OpenRouterProvider` bound to a named OpenAI-compatible profile, that
+    /// prefix is a routing token, not part of the model id, and must not reach
+    /// the wire. We strip it when:
+    /// - the spec has a `:` separator, and
+    /// - the prefix is NOT a built-in routing prefix
+    ///   (`explicit_model_provider_prefix`), and
+    /// - the prefix matches either this provider's own `profile_id` or a known
+    ///   built-in OpenAI-compatible profile id.
+    ///
+    /// Built-in routing prefixes (`claude:`, `openai:`, `copilot:`, ...) are
+    /// left intact so switching the active provider from a saved session still
+    /// round-trips verbatim.
+    fn strip_session_profile_prefix<'a>(&self, model: &'a str) -> &'a str {
+        let Some((prefix, rest)) = model.split_once(':') else {
+            return model;
+        };
+        if crate::provider::explicit_model_provider_prefix(model).is_some() {
+            return model;
+        }
+        let rest = rest.trim();
+        if rest.is_empty() {
+            return model;
+        }
+        let prefix = prefix.trim();
+        let matches_known_profile = self
+            .profile_id
+            .as_deref()
+            .is_some_and(|id| id.eq_ignore_ascii_case(prefix))
+            || openai_compatible_profile_by_id(prefix).is_some();
+        if matches_known_profile { rest } else { model }
+    }
+
     /// Return true when this request targets Moonshot's dedicated Kimi coding
     /// endpoint (`https://api.kimi.com/coding/v1`, default model
     /// `kimi-for-coding`). That endpoint enables thinking server-side and
