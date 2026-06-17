@@ -13,6 +13,7 @@ mod dispatch;
 mod failover;
 mod fingerprint;
 pub mod gemini;
+mod image_clamp;
 pub mod jcode;
 pub mod models;
 mod multi_provider;
@@ -343,6 +344,13 @@ impl MultiProvider {
     ) -> Result<EventStream> {
         self.spawn_anthropic_catalog_refresh_if_needed();
         self.spawn_openai_catalog_refresh_if_needed();
+
+        // Downscale any images whose pixel dimensions exceed provider per-image
+        // limits before they reach the wire. Resuming a session with >20 large
+        // screenshots otherwise trips Anthropic's many-image 2000px cap and the
+        // whole turn is rejected (#381). Only clones when a clamp is required.
+        let clamped_messages = image_clamp::clamp_outbound_images(messages);
+        let messages: &[Message] = clamped_messages.as_deref().unwrap_or(messages);
 
         let detected_active = self.active_provider();
         let active = if let Some(forced) = self.forced_provider {
