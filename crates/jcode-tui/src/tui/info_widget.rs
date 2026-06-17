@@ -495,6 +495,9 @@ pub struct MemoryInfo {
     pub by_category: HashMap<String, usize>,
     /// Whether sidecar is available
     pub sidecar_available: bool,
+    /// Whether the memory feature is disabled for this session.
+    /// When true, stored counts are still shown but recall/extraction are off.
+    pub disabled: bool,
     /// Selected sidecar model/backend label for memory work
     pub sidecar_model: Option<String>,
     /// Current memory activity

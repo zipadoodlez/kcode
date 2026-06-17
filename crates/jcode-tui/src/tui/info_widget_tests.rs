@@ -584,6 +584,43 @@ fn memory_compact_shows_memory_count_before_status() {
 }
 
 #[test]
+fn memory_widget_shows_disabled_badge_when_disabled() {
+    let data = InfoWidgetData {
+        memory_info: Some(MemoryInfo {
+            total_count: 12,
+            project_count: 8,
+            global_count: 4,
+            disabled: true,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    // Header/expanded view should render a DISABLED badge alongside the count.
+    let text = render_memory_widget(&data, Rect::new(0, 0, 40, 5))
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+
+    assert!(text.contains("disabled"), "{text}");
+    assert!(text.contains("12 memories"), "{text}");
+
+    // Compact (overview) view should also show the disabled state.
+    let compact = render_memory_compact(data.memory_info.as_ref().unwrap(), 40)
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase();
+
+    assert!(compact.contains("disabled"), "{compact}");
+}
+
+#[test]
 fn memory_widget_shows_option_a_steps_without_pipeline_object() {
     let data = InfoWidgetData {
         memory_info: Some(MemoryInfo {

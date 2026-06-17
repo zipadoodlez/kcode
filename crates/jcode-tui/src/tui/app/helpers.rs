@@ -1098,12 +1098,15 @@ pub(super) fn gather_memory_info(memory_enabled: bool) -> Option<MemoryInfo> {
     static CACHE: Mutex<Option<(Instant, Option<MemoryInfo>, bool)>> = Mutex::new(None);
     const TTL: Duration = Duration::from_secs(2);
 
-    if !memory_enabled {
-        return None;
-    }
-
-    let activity = crate::memory::get_activity();
-    let sidecar_model = if crate::memory::memory_sidecar_enabled() {
+    // When memory is disabled we still surface the stored counts (with a
+    // DISABLED badge) so the user can see they have memories but recall is off.
+    // Live activity and the sidecar model are suppressed in that case.
+    let activity = if memory_enabled {
+        crate::memory::get_activity()
+    } else {
+        None
+    };
+    let sidecar_model = if memory_enabled && crate::memory::memory_sidecar_enabled() {
         let sidecar = crate::sidecar::Sidecar::new();
         Some(format!(
             "{} · {}",
@@ -1114,35 +1117,24 @@ pub(super) fn gather_memory_info(memory_enabled: bool) -> Option<MemoryInfo> {
         None
     };
 
+    let finalize = |mut info: MemoryInfo| {
+        info.activity = activity.clone();
+        info.sidecar_model = sidecar_model.clone();
+        info.disabled = !memory_enabled;
+        info
+    };
+
     if let Ok(mut guard) = CACHE.lock() {
         if let Some((ts, cached, refreshing)) = guard.as_mut() {
             if ts.elapsed() < TTL || *refreshing {
                 return match cached.clone() {
-                    Some(mut info) => {
-                        info.activity = activity.clone();
-                        info.sidecar_model = sidecar_model.clone();
-                        Some(info)
-                    }
-                    None => activity.clone().map(|activity| MemoryInfo {
-                        sidecar_available: crate::memory::memory_sidecar_enabled(),
-                        sidecar_model: sidecar_model.clone(),
-                        activity: Some(activity),
-                        ..Default::default()
-                    }),
+                    Some(info) => Some(finalize(info)),
+                    None => fallback_memory_info(memory_enabled, &activity, &sidecar_model),
                 };
             }
             let stale = match cached.clone() {
-                Some(mut info) => {
-                    info.activity = activity.clone();
-                    info.sidecar_model = sidecar_model.clone();
-                    Some(info)
-                }
-                None => activity.clone().map(|activity| MemoryInfo {
-                    sidecar_available: crate::memory::memory_sidecar_enabled(),
-                    sidecar_model: sidecar_model.clone(),
-                    activity: Some(activity),
-                    ..Default::default()
-                }),
+                Some(info) => Some(finalize(info)),
+                None => fallback_memory_info(memory_enabled, &activity, &sidecar_model),
             };
             *refreshing = true;
             std::thread::spawn(|| {
@@ -1163,10 +1155,23 @@ pub(super) fn gather_memory_info(memory_enabled: bool) -> Option<MemoryInfo> {
         });
     }
 
-    activity.map(|activity| MemoryInfo {
+    fallback_memory_info(memory_enabled, &activity, &sidecar_model)
+}
+
+fn fallback_memory_info(
+    memory_enabled: bool,
+    activity: &Option<crate::memory_types::MemoryActivity>,
+    sidecar_model: &Option<String>,
+) -> Option<MemoryInfo> {
+    // No cached counts yet. Show whatever live signal we have.
+    if activity.is_none() && sidecar_model.is_none() && memory_enabled {
+        return None;
+    }
+    Some(MemoryInfo {
         sidecar_available: crate::memory::memory_sidecar_enabled(),
-        sidecar_model,
-        activity: Some(activity),
+        sidecar_model: sidecar_model.clone(),
+        activity: activity.clone(),
+        disabled: !memory_enabled,
         ..Default::default()
     })
 }
@@ -1228,6 +1233,7 @@ fn gather_memory_info_inner() -> Option<MemoryInfo> {
             sidecar_available: crate::memory::memory_sidecar_enabled(),
             sidecar_model,
             activity,
+            disabled: false,
             graph_nodes,
             graph_edges,
         })
