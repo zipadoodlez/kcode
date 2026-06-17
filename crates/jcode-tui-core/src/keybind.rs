@@ -325,9 +325,21 @@ impl ScrollKeys {
             }
         }
 
-        // NOTE: On macOS, Cmd+J / Cmd+K move by prompt (see `prompt_jump`) rather than
-        // line-scrolling. We intentionally do not add a Command line-scroll fallback here so
-        // those keys reach the prompt-jump handler.
+        // macOS: Cmd+Shift+K / Cmd+Shift+J mirror Ctrl+Shift+K / Ctrl+Shift+J for line
+        // scrolling (move up / down), matching native expectations for Command-based
+        // navigation. Terminals with the Kitty keyboard protocol report these as
+        // Char('k'/'j') (or shifted 'K'/'J') with SUPER|SHIFT.
+        if modifiers.contains(KeyModifiers::SUPER) && modifiers.contains(KeyModifiers::SHIFT) {
+            match code {
+                KeyCode::Char('k') | KeyCode::Char('K') => return Some(-LINE_SCROLL_AMOUNT),
+                KeyCode::Char('j') | KeyCode::Char('J') => return Some(LINE_SCROLL_AMOUNT),
+                _ => {}
+            }
+        }
+
+        // NOTE: On macOS, Cmd+J / Cmd+K (without Shift) move by prompt (see `prompt_jump`)
+        // rather than line-scrolling. We intentionally do not add a plain Command line-scroll
+        // fallback here so those keys reach the prompt-jump handler.
         None
     }
 
@@ -609,6 +621,28 @@ mod tests {
             keys.scroll_amount(KeyCode::Char('j'), KeyModifiers::SUPER),
             None
         );
+    }
+
+    #[test]
+    fn test_scroll_amount_cmd_shift_jk_line_scroll() {
+        // Cmd+Shift+K / Cmd+Shift+J mirror Ctrl+Shift+K / Ctrl+Shift+J: they
+        // line-scroll up / down on macOS regardless of the configured bindings.
+        let mut keys = test_scroll_keys();
+        keys.up_fallback = None;
+        keys.down_fallback = None;
+
+        for code in [KeyCode::Char('k'), KeyCode::Char('K')] {
+            assert_eq!(
+                keys.scroll_amount(code, KeyModifiers::SUPER | KeyModifiers::SHIFT),
+                Some(-LINE_SCROLL_AMOUNT)
+            );
+        }
+        for code in [KeyCode::Char('j'), KeyCode::Char('J')] {
+            assert_eq!(
+                keys.scroll_amount(code, KeyModifiers::SUPER | KeyModifiers::SHIFT),
+                Some(LINE_SCROLL_AMOUNT)
+            );
+        }
     }
 
     #[test]
