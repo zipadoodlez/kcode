@@ -381,6 +381,12 @@ pub fn render_messages_and_images_with_compacted_history(
         };
         let message_role = msg.role.clone();
         let mut text = String::new();
+        // Reasoning is accumulated separately so it can be rendered *before* the
+        // answer text, matching the live streaming order. Providers persist the
+        // assistant turn as `[Text, ReasoningTrace, ToolUse]`, so appending
+        // reasoning into `text` in block order would otherwise show the thinking
+        // *after* the answer on resume/re-render.
+        let mut reasoning = String::new();
         let mut tool_calls: Vec<String> = Vec::new();
         let mut current_tool: Option<ToolCall> = None;
         let mut last_image_idx: Option<usize> = None;
@@ -421,13 +427,16 @@ pub fn render_messages_and_images_with_compacted_history(
                     content,
                     ..
                 } => {
-                    if !text.is_empty() {
+                    let combined = format!("{}{}", reasoning, text);
+                    if !combined.is_empty() {
                         if role == "user" && !is_attached_image_label_text(&text) {
                             user_prompt_count += 1;
                         }
+                        text.clear();
+                        reasoning.clear();
                         rendered.push(RenderedMessage {
                             role: role.to_string(),
-                            content: std::mem::take(&mut text),
+                            content: combined,
                             tool_calls: tool_calls.clone(),
                             tool_data: None,
                         });
@@ -452,7 +461,7 @@ pub fn render_messages_and_images_with_compacted_history(
                     });
                 }
                 ContentBlock::Reasoning { text: t } | ContentBlock::ReasoningTrace { text: t } => {
-                    text.push_str(&format_reasoning_markup(t));
+                    reasoning.push_str(&format_reasoning_markup(t));
                 }
                 ContentBlock::AnthropicThinking { .. } | ContentBlock::OpenAIReasoning { .. } => {}
                 ContentBlock::Image { media_type, data } => {
@@ -480,13 +489,14 @@ pub fn render_messages_and_images_with_compacted_history(
             }
         }
 
-        if !text.is_empty() {
+        let combined = format!("{}{}", reasoning, text);
+        if !combined.is_empty() {
             if role == "user" && !is_attached_image_label_text(&text) {
                 user_prompt_count += 1;
             }
             rendered.push(RenderedMessage {
                 role: role.to_string(),
-                content: text,
+                content: combined,
                 tool_calls,
                 tool_data: None,
             });
