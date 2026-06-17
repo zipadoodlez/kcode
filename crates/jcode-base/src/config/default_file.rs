@@ -378,6 +378,9 @@ swarm_spawn_mode = "visible"
 # turn_complete_todo_min_secs = 30
 # Only notify while the terminal window is unfocused (default: true)
 # turn_complete_only_when_unfocused = true
+# macOS Notification Center sound played on completion (e.g. "Glass", "Ping",
+# "Hero"). Empty string disables the sound. Ignored on non-macOS. (default: "Glass")
+# turn_complete_sound = "Glass"
 
 [hooks]
 # Lifecycle hooks: external commands jcode runs at well-defined points so other

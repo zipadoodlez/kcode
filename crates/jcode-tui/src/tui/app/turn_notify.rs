@@ -13,9 +13,14 @@ use crate::todo::TodoItem;
 /// Notification banners truncate aggressively; keep the payload tight.
 const SNIPPET_MAX_CHARS: usize = 120;
 
+/// Per-todo title clip length for the notification body. Banners are narrow and
+/// we may show two todos, so keep each tight.
+const TODO_MAX_CHARS: usize = 48;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct TurnNotification {
     pub title: String,
+    pub subtitle: Option<String>,
     pub body: String,
 }
 
@@ -58,7 +63,14 @@ impl App {
             &todos,
             self.last_assistant_text_for_notification().as_deref(),
         );
-        crate::notifications::send_desktop_notification(&notification.title, &notification.body);
+        let sound = cfg.turn_complete_sound.trim();
+        let sound = (!sound.is_empty()).then_some(sound);
+        crate::notifications::send_desktop_notification_rich(
+            &notification.title,
+            notification.subtitle.as_deref(),
+            &notification.body,
+            sound,
+        );
     }
 
     fn runtime_mode_allows_turn_notifications(&self) -> bool {
@@ -80,6 +92,13 @@ fn load_session_todos(session_id: &str) -> Vec<TodoItem> {
 }
 
 /// Build the compact notification. Kept free of `App` for testability.
+///
+/// Layout (macOS):
+///   title:    jcode · <session> · done in <dur>
+///   subtitle: <todo progress, e.g. "3/5 todos · 1 blocked">
+///   body:     names the work — "✓ <just done> · → <in progress>" or a
+///             blocker ("⊘ <todo> needs <dep>"), falling back to the
+///             assistant snippet when there are no todos.
 pub(super) fn build_turn_notification(
     session_name: Option<&str>,
     duration_secs: f32,
@@ -94,24 +113,29 @@ pub(super) fn build_turn_notification(
     title.push_str(" · done in ");
     title.push_str(&format_duration_compact(duration_secs));
 
-    let mut body = String::new();
-    if let Some(progress) = todo_progress_line(todos) {
-        body.push_str(&progress);
-    }
-    if let Some(snippet) = last_assistant_text
+    let subtitle = todo_progress_line(todos);
+
+    // Prefer naming the actual work; fall back to the assistant snippet.
+    let work_line = todo_work_line(todos);
+    let snippet = last_assistant_text
         .map(summary_snippet)
-        .filter(|s| !s.is_empty())
-    {
-        if !body.is_empty() {
-            body.push_str(" — ");
-        }
+        .filter(|s| !s.is_empty());
+
+    let mut body = String::new();
+    if let Some(work) = work_line {
+        body.push_str(&work);
+    } else if let Some(snippet) = snippet {
         body.push_str(&snippet);
     }
     if body.is_empty() {
         body.push_str("Turn finished");
     }
 
-    TurnNotification { title, body }
+    TurnNotification {
+        title,
+        subtitle,
+        body,
+    }
 }
 
 /// "3/5 todos" plus "· 1 blocked" when relevant; None when no todos exist.
@@ -134,6 +158,75 @@ fn todo_progress_line(todos: &[TodoItem]) -> Option<String> {
         line.push_str(&format!(" · {} blocked", blocked));
     }
     Some(line)
+}
+
+/// Names the salient todo work for the body: a blocker if one is the reason the
+/// turn stopped, otherwise the most recently completed item and what's next.
+/// Returns None when there are no todos (caller falls back to the snippet).
+fn todo_work_line(todos: &[TodoItem]) -> Option<String> {
+    if todos.is_empty() {
+        return None;
+    }
+
+    // A blocked, not-yet-done todo is the most actionable thing to surface.
+    if let Some(blocked) = todos
+        .iter()
+        .find(|t| t.status != "completed" && !t.blocked_by.is_empty())
+    {
+        let dep = blocked
+            .blocked_by
+            .iter()
+            .find_map(|id| resolve_todo_title(todos, id))
+            .unwrap_or_else(|| blocked.blocked_by.join(", "));
+        return Some(format!(
+            "⊘ {} needs {}",
+            clip_todo(&blocked.content),
+            clip_todo(&dep)
+        ));
+    }
+
+    let in_progress = todos
+        .iter()
+        .find(|t| t.status == "in_progress" || t.status == "in-progress");
+    let last_done = todos.iter().rev().find(|t| t.status == "completed");
+
+    let mut parts = Vec::new();
+    if let Some(done) = last_done {
+        let mut seg = format!("✓ {}", clip_todo(&done.content));
+        if let Some(conf) = done.completion_confidence
+            && conf < 50
+        {
+            seg.push_str(&format!(" (low conf {}%)", conf));
+        }
+        parts.push(seg);
+    }
+    if let Some(next) = in_progress {
+        parts.push(format!("→ {}", clip_todo(&next.content)));
+    } else if last_done.is_none() {
+        // Nothing completed and nothing in progress: name the next pending item.
+        if let Some(pending) = todos.iter().find(|t| t.status == "pending") {
+            parts.push(format!("→ {}", clip_todo(&pending.content)));
+        }
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
+}
+
+fn resolve_todo_title(todos: &[TodoItem], id: &str) -> Option<String> {
+    todos
+        .iter()
+        .find(|t| t.id == id)
+        .map(|t| t.content.clone())
+}
+
+/// Clip a single todo title for inline display in the notification body.
+fn clip_todo(s: &str) -> String {
+    let cleaned = strip_markdown_inline(s.trim());
+    truncate_chars(cleaned.trim(), TODO_MAX_CHARS)
 }
 
 /// First meaningful line of the assistant text, markdown-stripped and clipped.
@@ -197,47 +290,93 @@ mod tests {
     use super::*;
 
     fn todo(status: &str, blocked: bool) -> TodoItem {
+        todo_named("x", status, &[])
+            .tap(|t| {
+                if blocked {
+                    t.blocked_by = vec!["other".to_string()];
+                }
+            })
+    }
+
+    fn todo_named(content: &str, status: &str, blocked_by: &[&str]) -> TodoItem {
         TodoItem {
-            content: "x".to_string(),
+            content: content.to_string(),
             status: status.to_string(),
             priority: "medium".to_string(),
-            id: "t".to_string(),
+            id: content.to_string(),
             group: None,
             confidence: None,
             completion_confidence: None,
-            blocked_by: if blocked {
-                vec!["other".to_string()]
-            } else {
-                Vec::new()
-            },
+            blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
             assigned_to: None,
         }
     }
+
+    trait Tap: Sized {
+        fn tap(mut self, f: impl FnOnce(&mut Self)) -> Self {
+            f(&mut self);
+            self
+        }
+    }
+    impl Tap for TodoItem {}
 
     #[test]
     fn title_includes_session_and_compact_duration() {
         let n = build_turn_notification(Some("fox"), 754.0, &[], Some("All done."));
         assert_eq!(n.title, "jcode · fox · done in 12m 34s");
+        assert_eq!(n.subtitle, None);
         assert_eq!(n.body, "All done.");
     }
 
     #[test]
-    fn body_combines_todo_progress_and_snippet() {
-        let todos = vec![todo("completed", false), todo("pending", false)];
+    fn subtitle_holds_progress_and_body_names_the_work() {
+        let todos = vec![
+            todo_named("wire up parser", "completed", &[]),
+            todo_named("handle reconnect", "in_progress", &[]),
+        ];
         let n = build_turn_notification(None, 200.0, &todos, Some("Fixed the parser bug."));
         assert_eq!(n.title, "jcode · done in 3m 20s");
-        assert_eq!(n.body, "1/2 todos — Fixed the parser bug.");
+        assert_eq!(n.subtitle.as_deref(), Some("1/2 todos"));
+        // Names actual todo work, not the prose snippet.
+        assert_eq!(n.body, "✓ wire up parser · → handle reconnect");
     }
 
     #[test]
-    fn body_celebrates_all_todos_complete_and_counts_blocked() {
-        let done = vec![todo("completed", false), todo("completed", false)];
-        let n = build_turn_notification(None, 200.0, &done, None);
-        assert_eq!(n.body, "✓ all 2 todos");
+    fn body_names_blocker_and_its_dependency() {
+        let todos = vec![
+            todo_named("run migration", "pending", &[]),
+            todo_named("deploy", "pending", &["run migration"]),
+        ];
+        let n = build_turn_notification(None, 200.0, &todos, None);
+        assert_eq!(n.subtitle.as_deref(), Some("0/2 todos · 1 blocked"));
+        assert_eq!(n.body, "⊘ deploy needs run migration");
+    }
 
-        let blocked = vec![todo("completed", false), todo("pending", true)];
-        let n = build_turn_notification(None, 200.0, &blocked, None);
-        assert_eq!(n.body, "1/2 todos · 1 blocked");
+    #[test]
+    fn low_confidence_completion_is_flagged() {
+        let mut done = todo_named("risky refactor", "completed", &[]);
+        done.completion_confidence = Some(35);
+        let n = build_turn_notification(None, 200.0, &[done], None);
+        assert_eq!(n.subtitle.as_deref(), Some("✓ all 1 todos"));
+        assert_eq!(n.body, "✓ risky refactor (low conf 35%)");
+    }
+
+    #[test]
+    fn all_complete_celebrated_in_subtitle() {
+        let done = vec![
+            todo_named("a", "completed", &[]),
+            todo_named("b", "completed", &[]),
+        ];
+        let n = build_turn_notification(None, 200.0, &done, None);
+        assert_eq!(n.subtitle.as_deref(), Some("✓ all 2 todos"));
+        assert_eq!(n.body, "✓ b");
+    }
+
+    #[test]
+    fn snippet_used_when_no_todos() {
+        let n = build_turn_notification(None, 200.0, &[], Some("Fixed the parser bug."));
+        assert_eq!(n.subtitle, None);
+        assert_eq!(n.body, "Fixed the parser bug.");
     }
 
     #[test]
@@ -258,7 +397,15 @@ mod tests {
     fn empty_inputs_fall_back_to_minimal_body() {
         let n = build_turn_notification(None, 65.0, &[], None);
         assert_eq!(n.title, "jcode · done in 1m 5s");
+        assert_eq!(n.subtitle, None);
         assert_eq!(n.body, "Turn finished");
+    }
+
+    #[test]
+    fn still_counts_blocked_in_subtitle() {
+        let blocked = vec![todo("completed", false), todo("pending", true)];
+        let n = build_turn_notification(None, 200.0, &blocked, None);
+        assert_eq!(n.subtitle.as_deref(), Some("1/2 todos · 1 blocked"));
     }
 
     #[test]

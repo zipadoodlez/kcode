@@ -1168,6 +1168,10 @@ pub struct NotificationsConfig {
     /// Only notify while the terminal window is unfocused (default: true).
     /// Requires a terminal that reports focus events (most modern terminals).
     pub turn_complete_only_when_unfocused: bool,
+    /// macOS Notification Center sound name played on turn completion
+    /// (e.g. "Glass", "Ping", "Hero"). Empty string disables the sound.
+    /// Ignored on non-macOS platforms. Default: "Glass".
+    pub turn_complete_sound: String,
 }
 
 impl Default for NotificationsConfig {
@@ -1177,6 +1181,7 @@ impl Default for NotificationsConfig {
             turn_complete_min_secs: 120,
             turn_complete_todo_min_secs: 30,
             turn_complete_only_when_unfocused: true,
+            turn_complete_sound: "Glass".to_string(),
         }
     }
 }
