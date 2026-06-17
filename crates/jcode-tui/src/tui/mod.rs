@@ -11,6 +11,7 @@ pub struct ContextSnapshot {
 pub mod backend;
 pub(crate) mod color_support;
 mod core;
+pub(crate) mod fuzzy;
 // Terminal image display + metadata helpers now live in the dependency-free
 // `jcode-terminal-image` crate (shared with the `read` tool). Re-exported here
 // so existing `crate::tui::image` / `crate::tui::image_metadata` paths keep working.

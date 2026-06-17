@@ -12,7 +12,7 @@ use crate::tui::detect_kv_cache_problem;
 use crate::tui::info_widget::occasional_status_tip;
 use crate::tui::layout_utils;
 use crate::tui::session_facts;
-use ratatui::{prelude::*, widgets::Paragraph};
+use ratatui::{prelude::*, style::Modifier, widgets::Paragraph};
 
 fn shell_mode_color() -> Color {
     rgb(110, 214, 151)
@@ -100,16 +100,21 @@ fn command_suggestion_lines(
     app: &dyn TuiState,
     suggestions: &[(String, &'static str)],
 ) -> Vec<Line<'static>> {
+    // Highlight the characters of each command that the typed query matched.
+    // We only highlight the command token itself (the part before the first
+    // space), matched against the corresponding leading token of the input.
+    let needle = command_suggestion_needle(app.input());
+    let highlight = |cmd: &str, base: Style| -> Vec<Span<'static>> {
+        highlight_command_spans(cmd, needle.as_deref(), base)
+    };
+
     let mut lines = Vec::new();
     if suggestions.len() == 1 {
         let (cmd, desc) = &suggestions[0];
-        lines.push(Line::from(vec![
-            Span::styled(cmd.to_string(), Style::default().fg(rgb(255, 213, 128))),
-            Span::styled(
-                format!("  {}", desc),
-                Style::default().fg(rgb(255, 213, 128)),
-            ),
-        ]));
+        let base = Style::default().fg(rgb(255, 213, 128));
+        let mut spans = highlight(cmd, base);
+        spans.push(Span::styled(format!("  {}", desc), base));
+        lines.push(Line::from(spans));
     } else if !suggestions.is_empty() {
         let selected = app
             .command_suggestion_selected()
@@ -136,8 +141,7 @@ fn command_suggestion_lines(
             } else {
                 Style::default().fg(rgb(128, 203, 196))
             };
-            let mut spans = Vec::new();
-            spans.push(Span::styled(cmd.to_string(), command_style));
+            let mut spans = highlight(cmd, command_style);
             spans.push(Span::styled(format!("  {}", desc), description_style));
             if i == 0 && window_start > 0 {
                 spans.push(Span::styled(
@@ -155,6 +159,48 @@ fn command_suggestion_lines(
         }
     }
     lines
+}
+
+/// Extract the slash-command portion of the typed input that should be matched
+/// against suggestion command tokens for highlighting purposes.
+fn command_suggestion_needle(input: &str) -> Option<String> {
+    let trimmed = input.trim_start();
+    if !trimmed.starts_with('/') {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+/// Build spans for a suggestion command, underlining the characters that the
+/// fuzzy matcher aligned with the typed query. Falls back to a single
+/// unhighlighted span when there is nothing (useful) to highlight.
+fn highlight_command_spans(cmd: &str, needle: Option<&str>, base: Style) -> Vec<Span<'static>> {
+    let positions: Vec<usize> = match needle {
+        Some(n) if !n.is_empty() && n != "/" => crate::tui::fuzzy::fuzzy_match_positions(n, cmd),
+        _ => Vec::new(),
+    };
+    if positions.is_empty() {
+        return vec![Span::styled(cmd.to_string(), base)];
+    }
+
+    let highlight_style = base.add_modifier(Modifier::UNDERLINED | Modifier::BOLD);
+    let chars: Vec<char> = cmd.chars().collect();
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut run_start = 0usize;
+    let mut run_is_match = !chars.is_empty() && positions.contains(&0);
+    for i in 1..=chars.len() {
+        let cur_is_match = i < chars.len() && positions.contains(&i);
+        if cur_is_match != run_is_match || i == chars.len() {
+            let chunk: String = chars[run_start..i].iter().collect();
+            spans.push(Span::styled(
+                chunk,
+                if run_is_match { highlight_style } else { base },
+            ));
+            run_start = i;
+            run_is_match = cur_is_match;
+        }
+    }
+    spans
 }
 
 pub(super) fn input_hint_line_height(app: &dyn TuiState) -> u16 {
@@ -1611,9 +1657,8 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
     // space of breathing room, drop the info entirely and just show the
     // countdown (truncated as a last resort). The affordance survives.
     if total_width <= countdown_width + 1 {
-        let countdown_line =
-            Line::from(overscroll_truncate_spans(vec![countdown], total_width))
-                .alignment(Alignment::Right);
+        let countdown_line = Line::from(overscroll_truncate_spans(vec![countdown], total_width))
+            .alignment(Alignment::Right);
         frame.render_widget(Paragraph::new(countdown_line), area);
         return;
     }
@@ -2365,11 +2410,7 @@ fn idle_status_facts(app: &dyn TuiState) -> Option<Vec<Span<'static>>> {
         spans.extend(overscroll_context_bar(used, limit, 5));
     }
 
-    if spans.is_empty() {
-        None
-    } else {
-        Some(spans)
-    }
+    if spans.is_empty() { None } else { Some(spans) }
 }
 
 fn draw_send_mode_indicator(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
@@ -2406,9 +2447,7 @@ fn draw_send_mode_indicator(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
         let hint = crate::util::truncate_str(&hint, avail as usize).to_string();
         let line = Line::from(Span::styled(
             hint,
-            Style::default()
-                .fg(dim_color())
-                .add_modifier(Modifier::DIM),
+            Style::default().fg(dim_color()).add_modifier(Modifier::DIM),
         ));
         let paragraph = Paragraph::new(line).alignment(Alignment::Right);
         frame.render_widget(paragraph, hint_area);

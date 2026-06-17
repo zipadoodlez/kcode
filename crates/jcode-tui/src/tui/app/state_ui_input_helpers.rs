@@ -240,34 +240,11 @@ impl App {
         self.cursor_pos = self.input.len();
     }
 
-    pub(super) fn fuzzy_score(needle: &str, haystack: &str) -> Option<usize> {
-        if needle.is_empty() {
-            return Some(0);
-        }
-        // Both needle and haystack should start with '/', match from char 1 onward
-        let n = needle.strip_prefix('/').unwrap_or(needle);
-        let h = haystack.strip_prefix('/').unwrap_or(haystack);
-        if n.is_empty() {
-            return Some(0);
-        }
-        // First char of the command (after /) must match
-        if let Some(first_char) = n.chars().next()
-            && !h.starts_with(&n[..first_char.len_utf8()])
-        {
-            return None;
-        }
-        let mut score = 0usize;
-        let mut pos = 0usize;
-        for ch in n.chars() {
-            let idx = h[pos..].find(ch)?;
-            score += idx;
-            pos += idx + ch.len_utf8();
-        }
-        // Penalize large gaps - reject if average gap is too big
-        if n.len() > 1 && score > n.len() * 3 {
-            return None;
-        }
-        Some(score)
+    /// Typo-resistant fuzzy score. Higher is better; `None` means no match.
+    /// Delegates to the shared [`crate::tui::fuzzy`] matcher so slash-command
+    /// ranking and highlight positions stay in sync.
+    pub(super) fn fuzzy_score(needle: &str, haystack: &str) -> Option<i32> {
+        crate::tui::fuzzy::fuzzy_score(needle, haystack)
     }
 
     pub(super) fn rank_suggestions(
@@ -276,18 +253,21 @@ impl App {
         candidates: Vec<(String, &'static str)>,
     ) -> Vec<(String, &'static str)> {
         let needle = needle.to_lowercase();
-        let mut scored: Vec<(bool, usize, String, &'static str)> = Vec::new();
+        // Bucket 1 = literal prefix matches (kept ahead of looser fuzzy hits so
+        // exact typing always wins). Bucket 0 = typo-tolerant fuzzy matches,
+        // ordered by descending fuzzy score.
+        let mut scored: Vec<(u8, i32, String, &'static str)> = Vec::new();
         for (cmd, help) in candidates {
             let lower = cmd.to_lowercase();
             if lower.starts_with(&needle) {
-                scored.push((true, 0, cmd, help));
+                scored.push((1, i32::MAX, cmd, help));
             } else if let Some(score) = Self::fuzzy_score(&needle, &lower) {
-                scored.push((false, score, cmd, help));
+                scored.push((0, score, cmd, help));
             }
         }
         scored.sort_by(|a, b| {
             b.0.cmp(&a.0)
-                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| b.1.cmp(&a.1))
                 .then_with(|| a.2.len().cmp(&b.2.len()))
                 .then_with(|| a.2.cmp(&b.2))
         });
