@@ -192,8 +192,15 @@ struct ConfigCache {
 
 static CONFIG_CACHE: LazyLock<RwLock<ConfigCache>> = LazyLock::new(|| {
     let fingerprint = ConfigCacheFingerprint::current();
+    let config = leak_config(Config::load());
+    // Seed the global context-limit cache from named provider configs on first
+    // load so every codepath (TUI info widget, compaction budget, model
+    // switching) sees user-configured `context_window` values from the start.
+    // Read from the loaded config directly to avoid recursing into config(),
+    // which would deadlock on the still-initializing CONFIG_CACHE.
+    populate_context_limits_from_config_ref(config);
     RwLock::new(ConfigCache {
-        config: leak_config(Config::load()),
+        config,
         fingerprint,
         last_checked: Instant::now(),
         force_reload: false,
@@ -202,6 +209,29 @@ static CONFIG_CACHE: LazyLock<RwLock<ConfigCache>> = LazyLock::new(|| {
 
 fn leak_config(config: Config) -> &'static Config {
     Box::leak(Box::new(config))
+}
+
+/// Seed the global context-limit cache from a config reference directly.
+///
+/// Used during CONFIG_CACHE initialization (where calling config() would
+/// deadlock) and shares its logic with
+/// `crate::provider::populate_context_limits_from_config`.
+fn populate_context_limits_from_config_ref(cfg: &Config) {
+    let mut limits = std::collections::HashMap::new();
+    for provider_cfg in cfg.providers.values() {
+        for model in &provider_cfg.models {
+            let id = model.id.trim();
+            if id.is_empty() {
+                continue;
+            }
+            if let Some(limit) = model.context_window {
+                limits.insert(id.to_ascii_lowercase(), limit);
+            }
+        }
+    }
+    if !limits.is_empty() {
+        crate::provider::populate_context_limits(limits);
+    }
 }
 
 /// Get the global config instance.
@@ -251,6 +281,9 @@ pub fn config() -> &'static Config {
     if let Some(reason) = reload_reason {
         crate::logging::info(&format!("CONFIG_RELOAD {}", reason));
         notify_config_reloaded();
+        // Re-seed the global context-limit cache so user edits to named
+        // provider `context_window` values take effect without a restart.
+        crate::provider::populate_context_limits_from_config();
     }
 
     config

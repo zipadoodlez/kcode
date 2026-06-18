@@ -1,6 +1,7 @@
 use super::{
     AmbientConfig, Config, DiffDisplayMode, DisplayConfig, ProviderConfig,
     SessionPickerResumeAction, SwarmSpawnMode, ToolConfig, config_env_fingerprint,
+    populate_context_limits_from_config_ref,
 };
 use std::ffi::OsString;
 use std::path::Path;
@@ -793,4 +794,35 @@ impl Config {
             .iter()
             .any(|value| value.trim().eq_ignore_ascii_case(&entry))
     }
+}
+
+#[test]
+fn populate_context_limits_from_config_ref_seeds_global_cache() {
+    use super::{NamedProviderConfig, NamedProviderModelConfig};
+
+    // Regression test for issue #366: a named OpenAI-compatible provider with a
+    // per-model `context_window` must be honored by the global context-limit
+    // resolution path, not just the provider instance's own context_window().
+    let model_id = "issue366-custom-gateway-model";
+    let mut cfg = Config::default();
+    cfg.providers.insert(
+        "issue366-gateway".to_string(),
+        NamedProviderConfig {
+            base_url: "https://gateway.example.test/v1".to_string(),
+            models: vec![NamedProviderModelConfig {
+                id: model_id.to_string(),
+                context_window: Some(1_000_000),
+                input: Vec::new(),
+            }],
+            ..Default::default()
+        },
+    );
+
+    populate_context_limits_from_config_ref(&cfg);
+
+    assert_eq!(
+        crate::provider::context_limit_for_model(model_id),
+        Some(1_000_000),
+        "global context-limit resolution should respect named provider context_window"
+    );
 }

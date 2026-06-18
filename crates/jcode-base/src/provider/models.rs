@@ -473,6 +473,36 @@ pub fn populate_context_limits(models: HashMap<String, usize>) {
     }
 }
 
+/// Populate the context limit cache from named provider model configs in the
+/// user's config file.
+///
+/// Custom OpenAI-compatible providers that lack a usable `/v1/models` endpoint
+/// rely on per-model `context_window` config. That value is honored by the
+/// provider instance's own `context_window()` method, but every other
+/// resolution path (TUI info widget, compaction budget, model switching) goes
+/// through the global [`CONTEXT_LIMIT_CACHE`] via
+/// [`context_limit_for_model_with_provider`]. Seed that cache here so the
+/// configured limit is respected globally instead of falling back to
+/// [`DEFAULT_CONTEXT_LIMIT`].
+pub fn populate_context_limits_from_config() {
+    let cfg = crate::config::config();
+    let mut limits = HashMap::new();
+    for provider_cfg in cfg.providers.values() {
+        for model in &provider_cfg.models {
+            let id = model.id.trim();
+            if id.is_empty() {
+                continue;
+            }
+            if let Some(limit) = model.context_window {
+                limits.insert(id.to_ascii_lowercase(), limit);
+            }
+        }
+    }
+    if !limits.is_empty() {
+        populate_context_limits(limits);
+    }
+}
+
 /// Populate the account-available model list (called once at startup from the Codex API).
 pub fn populate_account_models(slugs: Vec<String>) {
     populate_account_models_for_scope(&current_openai_account_scope(), slugs);
