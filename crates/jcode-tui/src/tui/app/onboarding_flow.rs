@@ -156,10 +156,11 @@ pub(crate) enum OnboardingPhase {
     /// Ask the user whether to log in to OpenAI. Shown on a fresh install when
     /// no importable external logins were detected. A highlightable Yes/No
     /// selector (default "Yes") matching the import walkthrough: Yes starts the
-    /// OpenAI sign-in, No opens the full provider picker so the user can choose
-    /// a different provider. Unlike the import/telemetry prompts this one has no
-    /// auto-timeout: logging in is a required first step, so we wait for the
-    /// user rather than opening a browser on a countdown.
+    /// OpenAI sign-in, No exits onboarding to the normal new-session screen with
+    /// a system message telling the user to run `/login` when ready (we avoid the
+    /// inline provider picker here). Unlike the import/telemetry prompts this one
+    /// has no auto-timeout: logging in is a meaningful first step, so we wait for
+    /// the user rather than opening a browser on a countdown.
     LoginOpenAi {
         /// Which option is highlighted (true = "Yes, log in to OpenAI").
         yes_highlighted: bool,

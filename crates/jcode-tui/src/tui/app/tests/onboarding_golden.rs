@@ -81,7 +81,7 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("First, log in to get started."), "{text}");
         assert!(text.contains("Log in to OpenAI?"), "{text}");
         assert!(
-            text.contains("Choose \"No\" to pick a different provider."),
+            text.contains("Choose \"No\" to skip for now (run /login anytime)."),
             "{text}"
         );
         assert!(text.contains("Yes") && text.contains("No"), "{text}");

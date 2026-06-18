@@ -173,7 +173,7 @@ fn login_openai_phase_is_default_when_no_imports() {
 }
 
 #[test]
-fn login_openai_no_opens_provider_picker() {
+fn login_openai_no_finishes_onboarding_with_login_hint() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.onboarding_flow = None;
@@ -184,9 +184,24 @@ fn login_openai_no_opens_provider_picker() {
             };
         }
         assert!(app.inline_interactive_state.is_none());
-        // 'n' opens the full provider picker so the user can choose another.
+        let before = app.display_messages().len();
+        // 'n' exits onboarding straight to the normal screen (no flaky inline
+        // provider picker) and tells the user to run /login when ready.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
-        assert!(app.inline_interactive_state.is_some());
+        // No inline picker is opened.
+        assert!(app.inline_interactive_state.is_none());
+        // Onboarding is finished (Done phase is inactive, so the accessor
+        // reports no active phase).
+        assert!(app.onboarding_phase().is_none());
+        assert!(!app.onboarding_flow_active());
+        // A system message guides the user to /login.
+        let messages = app.display_messages();
+        assert_eq!(messages.len(), before + 1, "exactly one guidance message");
+        assert!(
+            messages.last().unwrap().content.contains("/login"),
+            "guidance message should mention /login: {:?}",
+            messages.last().unwrap().content
+        );
     });
 }
 

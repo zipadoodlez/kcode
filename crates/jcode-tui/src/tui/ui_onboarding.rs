@@ -205,7 +205,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             lines.push(
                 Line::from(Span::styled(
-                    "Choose \"No\" to pick a different provider.",
+                    "Choose \"No\" to skip for now (run /login anytime).",
                     Style::default().fg(dim_color()),
                 ))
                 .alignment(align),
