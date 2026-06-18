@@ -549,7 +549,12 @@ pub fn openai_compatible_profile_context_limit(profile_id: &str, model: &str) ->
         // direct profile runs through the OpenRouter/OpenAI-compatible provider
         // implementation, whose live catalog can be unavailable during startup.
         "deepseek" if model.starts_with("deepseek-v4-") => Some(1_000_000),
-        _ => None,
+        // Fall back to the shared open-weight family classifier. Many bundled
+        // OpenAI-compatible gateways (Z.AI/GLM, Moonshot/Kimi, MiniMax, Qwen,
+        // etc.) serve `/v1/models` entries without a `context_length`, so this
+        // static table is the only reliable source before a live catalog (or an
+        // explicit user `context_window` override) is available.
+        _ => jcode_provider_core::models::open_weight_family_context_limit(&model),
     }
 }
 

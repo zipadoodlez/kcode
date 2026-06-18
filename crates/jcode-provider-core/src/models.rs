@@ -227,6 +227,123 @@ pub fn context_limit_for_model_with_provider_and_cache(
         return Some(1_000_000);
     }
 
+    // Open-weight model families served by many OpenAI-compatible gateways
+    // (Z.AI, Moonshot, MiniMax, Alibaba, etc.). Their `/v1/models` endpoints
+    // frequently omit `context_length`, so without this classifier these models
+    // fall back to the generic 200K default even when their real window is
+    // larger (e.g. GLM-5.2's 1M). This is checked AFTER the dynamic cache so a
+    // live catalog or user `context_window` config always wins.
+    if let Some(limit) = open_weight_family_context_limit(model) {
+        return Some(limit);
+    }
+
+    None
+}
+
+/// Best-effort context window for well-known open-weight model families.
+///
+/// Keyed on the canonical (lowercased, slash-stripped) model id so the same
+/// family resolves consistently regardless of which gateway serves it and how
+/// it spells version numbers (`glm-4.7`, `glm-47`, `glm-4p7`). Values reflect
+/// each family's published context window; a live `/v1/models` catalog or an
+/// explicit user `context_window` config overrides these upstream.
+pub fn open_weight_family_context_limit(model: &str) -> Option<usize> {
+    let m = model;
+
+    // --- Z.AI GLM family ---
+    if m.contains("glm") {
+        // GLM-5.2: first GLM with a truly usable 1M-token context window.
+        if m.contains("glm-5.2") || m.contains("glm-52") || m.contains("glm-5p2") {
+            return Some(1_000_000);
+        }
+        // GLM-5 / GLM-5.1 and GLM-4.6 / GLM-4.7: 200K context.
+        if m.contains("glm-5")
+            || m.contains("glm-4.7")
+            || m.contains("glm-47")
+            || m.contains("glm-4p7")
+            || m.contains("glm-4-7")
+            || m.contains("glm-4.6")
+            || m.contains("glm-46")
+            || m.contains("glm-4p6")
+        {
+            return Some(200_000);
+        }
+        // GLM-4.5 and earlier GLM-4: 128K context.
+        if m.contains("glm-4") {
+            return Some(128_000);
+        }
+    }
+
+    // --- DeepSeek (check V4 before V3 so the more specific match wins) ---
+    if m.contains("deepseek-v4") {
+        return Some(1_000_000);
+    }
+    if m.contains("deepseek-v3.2") || m.contains("deepseek-v3p2") || m.contains("deepseek-v3-2") {
+        return Some(163_840);
+    }
+    if m.contains("deepseek-v3") {
+        return Some(131_072);
+    }
+
+    // --- Moonshot Kimi K2 family: 256K context ---
+    if m.contains("kimi") {
+        return Some(262_144);
+    }
+
+    // --- MiniMax M2 family: 204,800 context ---
+    if m.contains("minimax") {
+        return Some(204_800);
+    }
+
+    // --- Xiaomi MiMo V2 family: 256K context ---
+    if m.contains("mimo") {
+        return Some(262_144);
+    }
+
+    // --- Alibaba GTE-Qwen2 retrieval models: 32K context ---
+    if m.contains("gte-qwen") {
+        return Some(32_768);
+    }
+    // --- Alibaba Qwen3 / Qwen3.5 family: 256K context ---
+    if m.contains("qwen3") || m.contains("qwen-3") {
+        return Some(262_144);
+    }
+
+    // --- OpenAI gpt-oss open weights: 131K context ---
+    if m.contains("gpt-oss") {
+        return Some(131_072);
+    }
+
+    // --- Meta Llama 3.x: 128K context ---
+    if m.contains("llama-3") {
+        return Some(131_072);
+    }
+
+    // --- Nous Hermes 4 (Llama-based): 128K context ---
+    if m.contains("hermes-4") {
+        return Some(131_072);
+    }
+
+    // --- Google Gemma 3: 128K context ---
+    if m.contains("gemma-3") {
+        return Some(131_072);
+    }
+
+    // --- Mistral small 3.x: 128K context ---
+    if m.contains("mistral-small-3") {
+        return Some(131_072);
+    }
+
+    // --- xAI grok-code-fast: 256K context ---
+    if m.contains("grok-code-fast") {
+        return Some(256_000);
+    }
+
+    // --- Perplexity Sonar: 128K context ---
+    if m.contains("sonar") {
+        return Some(128_000);
+    }
+
     None
 }
 

@@ -1029,3 +1029,80 @@ fn newest_release_picker_uses_recency_within_a_tier() {
         "within one quality tier the newest release should win"
     );
 }
+
+/// Exhaustiveness guard: every model shipped in a profile's static catalog must
+/// resolve to a concrete context window. Open-weight gateways frequently omit
+/// `context_length` from `/v1/models`, so a missing entry here means that model
+/// would silently fall back to the generic 200K default. First-party
+/// OpenAI/Claude/Gemini ids are resolved by their own providers (not this static
+/// table) and are exempted.
+#[test]
+fn every_static_profile_model_has_a_known_context_limit() {
+    use jcode_provider_core::models::context_limit_for_model_with_provider;
+
+    // Ids handled by dedicated first-party providers rather than the
+    // OpenAI-compatible static table.
+    fn is_first_party(model: &str) -> bool {
+        let m = model.to_ascii_lowercase();
+        m.starts_with("claude-")
+            || m.starts_with("gpt-")
+            || m.starts_with("gemini-")
+            || m.starts_with("o3")
+            || m.starts_with("o4")
+    }
+
+    let mut missing: Vec<(String, String)> = Vec::new();
+    for profile in jcode_provider_metadata::openai_compatible_profiles()
+        .iter()
+        .copied()
+    {
+        for model in openai_compatible_profile_static_models(profile) {
+            if is_first_party(&model) {
+                continue;
+            }
+
+            let via_profile = openai_compatible_profile_context_limit(profile.id, &model);
+            let via_global =
+                context_limit_for_model_with_provider(&model, Some("openrouter"));
+
+            if via_profile.is_none() && via_global.is_none() {
+                missing.push((profile.id.to_string(), model));
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "static profile models without a known context limit (would fall back to the \
+         generic default); add them to open_weight_family_context_limit: {missing:?}"
+    );
+}
+
+#[test]
+fn open_weight_family_context_limits_match_published_windows() {
+    use jcode_provider_core::models::open_weight_family_context_limit as f;
+
+    // GLM family spelling variants across gateways.
+    assert_eq!(f("glm-4.5"), Some(128_000));
+    assert_eq!(f("glm-4.7"), Some(200_000));
+    assert_eq!(f("zai-org/glm-4.7"), Some(200_000));
+    assert_eq!(f("accounts/fireworks/models/glm-4p7"), Some(200_000));
+    assert_eq!(f("glm-5"), Some(200_000));
+    assert_eq!(f("glm-5.1"), Some(200_000));
+    assert_eq!(f("zai-glm-5-1"), Some(200_000));
+    assert_eq!(f("glm-5.2"), Some(1_000_000));
+
+    // Other open-weight families.
+    assert_eq!(f("kimi-k2.5"), Some(262_144));
+    assert_eq!(f("minimax-m2.7"), Some(204_800));
+    assert_eq!(f("mimo-v2.5"), Some(262_144));
+    assert_eq!(f("deepseek-v3.2"), Some(163_840));
+    assert_eq!(f("deepseek-v4-pro"), Some(1_000_000));
+    assert_eq!(f("qwen3-235b-a22b-instruct-2507"), Some(262_144));
+    assert_eq!(f("gpt-oss-120b"), Some(131_072));
+    assert_eq!(f("llama-3.3-70b-instruct"), Some(131_072));
+    assert_eq!(f("sonar-pro"), Some(128_000));
+
+    // Unknown families stay unresolved so the dynamic cache/default can act.
+    assert_eq!(f("some-unknown-model"), None);
+}
