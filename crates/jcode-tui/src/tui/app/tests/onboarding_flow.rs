@@ -260,6 +260,38 @@ fn login_phase_enter_opens_login_picker() {
 }
 
 #[test]
+fn pending_login_entry_is_not_intercepted_by_onboarding_login_phase() {
+    // Regression for the OpenRouter (and any API-key provider) login loop:
+    // after selecting a provider during onboarding, the Login phase stays
+    // active while the user types their API key. Pressing Enter to submit the
+    // key must NOT be intercepted by the onboarding welcome-screen handler
+    // (which would re-open the provider picker), and key characters must not be
+    // swallowed as Yes/No navigation.
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
+        // Simulate having chosen OpenRouter: the picker closed and a pending
+        // API-key login prompt is now active.
+        app.inline_interactive_state = None;
+        app.start_login_provider(crate::provider_catalog::resolve_login_provider("openrouter").unwrap());
+        assert!(app.pending_login.is_some());
+        assert!(app.inline_interactive_state.is_none());
+
+        // Enter must fall through to the normal input/pending-login handler
+        // instead of re-opening the provider picker.
+        assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(app.inline_interactive_state.is_none());
+        // Letters that double as Yes/No navigation must also fall through.
+        assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Char('y')));
+        assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
+    });
+}
+
+#[test]
 fn import_failure_resets_login_to_manual_prompt() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::ImportReview;

@@ -337,6 +337,17 @@ impl App {
     ///
     /// Returns true if the key was consumed.
     pub(super) fn handle_onboarding_continue_prompt_key(&mut self, code: KeyCode) -> bool {
+        // While a provider login is awaiting typed input (an API key, env var
+        // value, endpoint, etc.) the onboarding flow is still parked in a
+        // `Login`/`LoginOpenAi` phase, but the user is now typing into the
+        // pending-login prompt rather than driving the welcome-screen Yes/No.
+        // If we kept intercepting keys here, Enter would re-open the provider
+        // picker (the reported "pick provider -> enter key -> asks again" loop)
+        // and characters like h/l/j/k/y/n would be eaten as navigation. Let the
+        // normal input path handle everything until the pending entry resolves.
+        if self.pending_login.is_some() || self.pending_account_input.is_some() {
+            return false;
+        }
         match self.onboarding_phase() {
             Some(OnboardingPhase::Login { import }) => {
                 // No detected imports remaining: this is the recovery fallback
