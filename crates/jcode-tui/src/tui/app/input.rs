@@ -2633,6 +2633,19 @@ impl App {
         if text.is_empty() {
             return;
         }
+        // Invariant: answer text is never appended *into* an open reasoning
+        // region. If a region is still open when real (non-whitespace) answer
+        // text arrives, close it first so the next `open_reasoning_region` still
+        // inserts its blank-line separator. Without this, a stale
+        // `reasoning_streaming` flag makes `open_reasoning_region` early-return
+        // and the answer tail gets glued directly onto the next reasoning run
+        // (e.g. `...patch + build.Ah, I see...`). Whitespace-only appends (the
+        // separators emitted by the reasoning helpers themselves) never trip
+        // this. `open_reasoning_region` only appends its separator *before*
+        // setting the flag, so this cannot recurse.
+        if self.reasoning_streaming && !text.trim().is_empty() {
+            self.close_reasoning_region(None);
+        }
         self.streaming.streaming_text.push_str(text);
         self.refresh_split_view_if_needed();
     }
@@ -2652,13 +2665,11 @@ impl App {
             match op {
                 StreamOp::Text(text) => {
                     if !text.is_empty() {
-                        // Real output: make sure any still-open reasoning region is
-                        // closed first so the answer renders as normal text. The
-                        // buffer queues an explicit CloseReasoning before
-                        // non-whitespace text, but be defensive about ordering.
-                        if self.reasoning_streaming && !text.trim().is_empty() {
-                            self.close_reasoning_region(None);
-                        }
+                        // `append_streaming_text` enforces the invariant that real
+                        // answer text closes any still-open reasoning region first
+                        // (so the region's blank-line separator is preserved). The
+                        // buffer also queues an explicit CloseReasoning before
+                        // non-whitespace text, so this is normally already closed.
                         self.append_streaming_text(&text);
                         changed = true;
                     }

@@ -780,3 +780,37 @@ fn gc_keeps_single_trace_indefinitely() {
     assert!(!app.gc_offscreen_reasoning_traces());
     assert_eq!(trace_count(&app), 1, "the current thought is never GC'd");
 }
+
+#[test]
+fn answer_text_appended_into_open_region_does_not_glue_next_reasoning() {
+    // Regression: if answer text is appended while a reasoning region is still
+    // open (a stale `reasoning_streaming` flag), the next reasoning chunk must
+    // still be separated from the answer tail. Previously the answer ran
+    // straight into the reasoning run with no break (e.g.
+    // `...patch + build.Ah, I see what's happening now.`).
+    let mut app = create_test_app();
+    let sentinel = jcode_tui_markdown::REASONING_SENTINEL;
+
+    app.open_reasoning_region();
+    app.append_reasoning_text("first thinking\n");
+    // Append real answer text directly (this path does not go through the close
+    // marker), leaving the region flagged open if the invariant is not enforced.
+    app.append_streaming_text("Say the word and I'll patch + build.");
+    // Appending real answer text must have closed the open reasoning region so a
+    // later `open_reasoning_region` re-inserts its separator.
+    assert!(
+        !app.reasoning_streaming,
+        "appending real answer text must close the open reasoning region"
+    );
+    // More reasoning arrives (opens a fresh region).
+    app.append_reasoning_text("Ah, I see what's happening now.");
+
+    let text = app.streaming_text();
+    // The answer tail must be separated from the next reasoning run: there must
+    // not be answer text immediately followed by the opening reasoning emphasis.
+    let glued = format!("build.*{sentinel}");
+    assert!(
+        !text.contains(&glued),
+        "answer text must not be glued onto reasoning: {text:?}"
+    );
+}
