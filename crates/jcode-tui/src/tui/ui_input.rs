@@ -171,7 +171,7 @@ fn command_suggestion_needle(input: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-/// Build spans for a suggestion command, underlining the characters that the
+/// Build spans for a suggestion command, recoloring the characters that the
 /// fuzzy matcher aligned with the typed query. Falls back to a single
 /// unhighlighted span when there is nothing (useful) to highlight.
 fn highlight_command_spans(cmd: &str, needle: Option<&str>, base: Style) -> Vec<Span<'static>> {
@@ -183,7 +183,14 @@ fn highlight_command_spans(cmd: &str, needle: Option<&str>, base: Style) -> Vec<
         return vec![Span::styled(cmd.to_string(), base)];
     }
 
-    let highlight_style = base.add_modifier(Modifier::UNDERLINED | Modifier::BOLD);
+    // Recolor (rather than underline) the matched characters so they stay in
+    // the command palette's own hue: matched chars are a brighter version of
+    // the line's base color, while unmatched chars are dimmed so the match
+    // visually pops.
+    let highlight_style = base
+        .fg(brighten_command_color(base.fg))
+        .add_modifier(Modifier::BOLD);
+    let rest_style = base.fg(dim_command_color(base.fg));
     let chars: Vec<char> = cmd.chars().collect();
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut run_start = 0usize;
@@ -194,13 +201,37 @@ fn highlight_command_spans(cmd: &str, needle: Option<&str>, base: Style) -> Vec<
             let chunk: String = chars[run_start..i].iter().collect();
             spans.push(Span::styled(
                 chunk,
-                if run_is_match { highlight_style } else { base },
+                if run_is_match {
+                    highlight_style
+                } else {
+                    rest_style
+                },
             ));
             run_start = i;
             run_is_match = cur_is_match;
         }
     }
     spans
+}
+
+/// Blend a palette color toward white to emphasize a matched character while
+/// keeping its original hue.
+fn brighten_command_color(color: Option<Color>) -> Color {
+    match color {
+        Some(Color::Rgb(r, g, b)) => {
+            let lift = |c: u8| -> u8 { c.saturating_add((255 - c) / 2) };
+            rgb(lift(r), lift(g), lift(b))
+        }
+        _ => rgb(255, 255, 255),
+    }
+}
+
+/// Blend a palette color toward black so unmatched characters recede.
+fn dim_command_color(color: Option<Color>) -> Color {
+    match color {
+        Some(Color::Rgb(r, g, b)) => rgb(r / 2, g / 2, b / 2),
+        other => other.unwrap_or_else(dim_color),
+    }
 }
 
 pub(super) fn input_hint_line_height(app: &dyn TuiState) -> u16 {
