@@ -192,3 +192,187 @@ fn source_provider_labels_reports_supported_oauth_and_api_key_imports() {
         crate::env::remove_var("JCODE_HOME");
     }
 }
+
+#[test]
+fn openclaw_api_key_imports_from_trusted_file() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    let path = ExternalAuthSource::OpenClaw.path().unwrap();
+    write_auth_file(
+        &path,
+        serde_json::json!({
+            "anthropic": { "type": "api_key", "key": "sk-ant-openclaw" }
+        }),
+    );
+
+    assert!(load_api_key_for_env("ANTHROPIC_API_KEY").is_none());
+    trust_external_auth_source(ExternalAuthSource::OpenClaw).unwrap();
+    assert_eq!(
+        load_api_key_for_env("ANTHROPIC_API_KEY").as_deref(),
+        Some("sk-ant-openclaw")
+    );
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn openclaw_oauth_tokens_import_like_pi() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    let path = ExternalAuthSource::OpenClaw.path().unwrap();
+    write_auth_file(
+        &path,
+        serde_json::json!({
+            "anthropic": {
+                "type": "oauth",
+                "access": "claude-access",
+                "refresh": "claude-refresh",
+                "expires": chrono::Utc::now().timestamp_millis() + 60_000
+            }
+        }),
+    );
+
+    assert!(load_anthropic_oauth_tokens().is_none());
+    trust_external_auth_source(ExternalAuthSource::OpenClaw).unwrap();
+    let tokens = load_anthropic_oauth_tokens().expect("oauth tokens imported");
+    assert_eq!(tokens.access_token, "claude-access");
+    assert_eq!(tokens.refresh_token, "claude-refresh");
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn hermes_api_key_imports_from_credential_pool() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    let path = ExternalAuthSource::Hermes.path().unwrap();
+    write_auth_file(
+        &path,
+        serde_json::json!({
+            "version": 1,
+            "active_provider": "anthropic",
+            "credential_pool": {
+                "anthropic": [
+                    {
+                        "id": "abc123",
+                        "label": "manual",
+                        "auth_type": "api_key",
+                        "priority": 0,
+                        "source": "manual:1",
+                        "access_token": "sk-ant-hermes"
+                    }
+                ]
+            }
+        }),
+    );
+
+    assert!(load_api_key_for_env("ANTHROPIC_API_KEY").is_none());
+    trust_external_auth_source(ExternalAuthSource::Hermes).unwrap();
+    assert_eq!(
+        load_api_key_for_env("ANTHROPIC_API_KEY").as_deref(),
+        Some("sk-ant-hermes")
+    );
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn hermes_oauth_tokens_import_from_credential_pool() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    let path = ExternalAuthSource::Hermes.path().unwrap();
+    write_auth_file(
+        &path,
+        serde_json::json!({
+            "version": 1,
+            "credential_pool": {
+                "openai-codex": [
+                    {
+                        "id": "def456",
+                        "label": "loopback_pkce",
+                        "auth_type": "oauth_external",
+                        "priority": 0,
+                        "source": "loopback_pkce",
+                        "access_token": "codex-access",
+                        "refresh_token": "codex-refresh",
+                        "expires_at_ms": chrono::Utc::now().timestamp_millis() + 60_000
+                    }
+                ]
+            }
+        }),
+    );
+
+    assert!(load_openai_oauth_tokens().is_none());
+    trust_external_auth_source(ExternalAuthSource::Hermes).unwrap();
+    let tokens = load_openai_oauth_tokens().expect("oauth tokens imported");
+    assert_eq!(tokens.access_token, "codex-access");
+    assert_eq!(tokens.refresh_token, "codex-refresh");
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn hermes_oauth_tokens_parse_rfc3339_expiry() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    let future = chrono::Utc::now() + chrono::Duration::minutes(5);
+    let path = ExternalAuthSource::Hermes.path().unwrap();
+    write_auth_file(
+        &path,
+        serde_json::json!({
+            "version": 1,
+            "credential_pool": {
+                "anthropic": [
+                    {
+                        "auth_type": "oauth_external",
+                        "access_token": "claude-access",
+                        "refresh_token": "claude-refresh",
+                        "expires_at": future.to_rfc3339()
+                    }
+                ]
+            }
+        }),
+    );
+
+    trust_external_auth_source(ExternalAuthSource::Hermes).unwrap();
+    let tokens = load_anthropic_oauth_tokens().expect("oauth tokens imported");
+    assert_eq!(tokens.access_token, "claude-access");
+    assert!(tokens.expires_at > chrono::Utc::now().timestamp_millis());
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}

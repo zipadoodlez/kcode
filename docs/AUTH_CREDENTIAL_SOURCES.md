@@ -95,3 +95,33 @@ jcode auth-test --provider <id>
    API key → `ANTHROPIC_API_KEY` env or `~/.config/jcode/<provider>.env`.
 3. Ignore `auth-validation.json` verdicts older than 7 days (shown as `stale`);
    re-run `jcode auth-test` instead.
+
+## Importing credentials from other agent tools
+
+On a fresh install jcode can **reuse logins left behind by other coding
+agents**, both OAuth tokens and API keys. Detection is consent-gated: jcode
+lists the sources it found and only reads them after you approve each one
+(`crates/jcode-base/src/auth/external.rs`, `unconsented_sources` /
+`trust_external_auth_source`). Nothing is copied into jcode's own stores; the
+external file is read in place.
+
+Shared `auth.json`-style sources (`ExternalAuthSource`):
+
+| Tool      | Auth file path                     | On-disk shape                                                                 |
+|-----------|------------------------------------|------------------------------------------------------------------------------|
+| OpenCode  | `~/.local/share/opencode/auth.json`| flat `{ provider: { type: "oauth", access, refresh, expires } \| { type: "api", key } }` |
+| pi        | `~/.pi/agent/auth.json`            | flat `{ provider: { type: "oauth", ... } \| { type: "api_key", key } }` (key may be `$ENV` ref) |
+| OpenClaw  | `~/.openclaw/agent/auth.json`      | same shape as pi (OpenClaw is a pi fork)                                      |
+| Hermes    | `~/.hermes/auth.json`              | nested `{ credential_pool: { provider: [ { auth_type, access_token, refresh_token, expires_at_ms } ] }, providers: {...} }` |
+
+Notes:
+
+- pi/OpenClaw API-key values that are `$ENV_VAR` references are resolved against
+  the environment; values that begin with `!` (shell commands) are **never
+  executed** and are skipped.
+- Hermes stores literal API keys in the `access_token` field of `api_key`
+  credential-pool entries; many of its providers store only env-var *names*, so
+  those import nothing unless the env var is set.
+- Other tool-specific importers exist for Claude Code, Codex, Gemini CLI,
+  GitHub Copilot, and Cursor (see `auth/claude.rs`, `auth/codex.rs`,
+  `auth/gemini.rs`, `auth/copilot.rs`, `auth/cursor.rs`).

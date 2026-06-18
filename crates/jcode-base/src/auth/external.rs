@@ -5,11 +5,15 @@ use std::path::PathBuf;
 
 pub const OPENCODE_AUTH_JSON_SOURCE_ID: &str = "opencode_auth_json";
 pub const PI_AUTH_JSON_SOURCE_ID: &str = "pi_auth_json";
+pub const OPENCLAW_AUTH_JSON_SOURCE_ID: &str = "openclaw_auth_json";
+pub const HERMES_AUTH_JSON_SOURCE_ID: &str = "hermes_auth_json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExternalAuthSource {
     OpenCode,
     Pi,
+    OpenClaw,
+    Hermes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +28,8 @@ impl ExternalAuthSource {
         match self {
             Self::OpenCode => OPENCODE_AUTH_JSON_SOURCE_ID,
             Self::Pi => PI_AUTH_JSON_SOURCE_ID,
+            Self::OpenClaw => OPENCLAW_AUTH_JSON_SOURCE_ID,
+            Self::Hermes => HERMES_AUTH_JSON_SOURCE_ID,
         }
     }
 
@@ -31,6 +37,8 @@ impl ExternalAuthSource {
         match self {
             Self::OpenCode => "OpenCode auth.json",
             Self::Pi => "pi auth.json",
+            Self::OpenClaw => "OpenClaw auth.json",
+            Self::Hermes => "Hermes auth.json",
         }
     }
 
@@ -38,11 +46,18 @@ impl ExternalAuthSource {
         match self {
             Self::OpenCode => crate::storage::user_home_path(".local/share/opencode/auth.json"),
             Self::Pi => crate::storage::user_home_path(".pi/agent/auth.json"),
+            Self::OpenClaw => crate::storage::user_home_path(".openclaw/agent/auth.json"),
+            Self::Hermes => crate::storage::user_home_path(".hermes/auth.json"),
         }
     }
 }
 
-const SOURCES: [ExternalAuthSource; 2] = [ExternalAuthSource::OpenCode, ExternalAuthSource::Pi];
+const SOURCES: [ExternalAuthSource; 4] = [
+    ExternalAuthSource::OpenCode,
+    ExternalAuthSource::Pi,
+    ExternalAuthSource::OpenClaw,
+    ExternalAuthSource::Hermes,
+];
 
 pub fn trust_external_auth_source(source: ExternalAuthSource) -> Result<()> {
     crate::config::Config::allow_external_auth_source_for_path(
@@ -191,7 +206,7 @@ pub fn source_allowed(source: ExternalAuthSource) -> bool {
                 &path,
             )
         }
-        ExternalAuthSource::Pi => false,
+        ExternalAuthSource::Pi | ExternalAuthSource::OpenClaw | ExternalAuthSource::Hermes => false,
     }
 }
 
@@ -209,7 +224,7 @@ fn load_oauth_tokens_for_candidates(provider_keys: &[&str]) -> Option<ExternalOA
         };
         for key in provider_keys {
             if let Some(entry) = auth_map.get(*key)
-                && let Some(tokens) = extract_oauth_tokens(entry)
+                && let Some(tokens) = extract_oauth_tokens(source, entry)
             {
                 if tokens.expires_at > now_ms {
                     return Some(tokens);
@@ -272,7 +287,7 @@ fn source_contains_oauth_provider(
     let auth = load_auth_map(source)?;
     Ok(provider_keys.iter().any(|provider_key| {
         auth.get(*provider_key)
-            .and_then(extract_oauth_tokens)
+            .and_then(|entry| extract_oauth_tokens(source, entry))
             .is_some()
     }))
 }
@@ -294,7 +309,59 @@ fn load_auth_map(source: ExternalAuthSource) -> Result<HashMap<String, Value>> {
     let path = crate::storage::validate_external_auth_file(&source.path()?)?;
     let raw = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
-    serde_json::from_str(&raw).with_context(|| format!("Failed to parse {}", path.display()))
+    let value: Value =
+        serde_json::from_str(&raw).with_context(|| format!("Failed to parse {}", path.display()))?;
+    match source {
+        ExternalAuthSource::OpenCode | ExternalAuthSource::Pi | ExternalAuthSource::OpenClaw => {
+            // Flat `provider -> credential` maps.
+            Ok(value
+                .as_object()
+                .map(|object| {
+                    object
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect()
+                })
+                .unwrap_or_default())
+        }
+        ExternalAuthSource::Hermes => Ok(flatten_hermes_auth_store(&value)),
+    }
+}
+
+/// Hermes persists credentials in a nested store:
+///
+/// ```json
+/// {
+///   "version": 1,
+///   "active_provider": "anthropic",
+///   "credential_pool": { "<provider>": [ { "auth_type": ..., "access_token": ... }, ... ] },
+///   "providers": { "<provider>": { ...singleton state... } }
+/// }
+/// ```
+///
+/// Normalize it to a flat `provider -> representative credential` map so the
+/// shared extraction logic can treat it like the other sources. The highest
+/// priority (first) credential-pool entry wins; legacy `providers.<id>` blocks
+/// are used only when the pool has no entry for that provider.
+fn flatten_hermes_auth_store(value: &Value) -> HashMap<String, Value> {
+    let mut map: HashMap<String, Value> = HashMap::new();
+
+    if let Some(providers) = value.get("providers").and_then(Value::as_object) {
+        for (provider, state) in providers {
+            map.insert(provider.clone(), state.clone());
+        }
+    }
+
+    if let Some(pool) = value.get("credential_pool").and_then(Value::as_object) {
+        for (provider, entries) in pool {
+            if let Some(first) = entries.as_array().and_then(|entries| entries.first()) {
+                // Credential-pool entries are authoritative over legacy blocks.
+                map.insert(provider.clone(), first.clone());
+            }
+        }
+    }
+
+    map
 }
 
 fn extract_api_key(source: ExternalAuthSource, entry: &Value) -> Option<String> {
@@ -311,11 +378,25 @@ fn extract_api_key(source: ExternalAuthSource, entry: &Value) -> Option<String> 
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned)
         }
-        ExternalAuthSource::Pi => {
+        ExternalAuthSource::Pi | ExternalAuthSource::OpenClaw => {
             if object.get("type")?.as_str()? != "api_key" {
                 return None;
             }
             resolve_pi_api_key_value(object.get("key")?.as_str()?)
+        }
+        ExternalAuthSource::Hermes => {
+            // Hermes stores API keys as credential-pool entries whose
+            // `auth_type` is `api_key` and whose literal key lives in
+            // `access_token`.
+            if object.get("auth_type")?.as_str()? != "api_key" {
+                return None;
+            }
+            object
+                .get("access_token")?
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
         }
     }
 }
@@ -336,7 +417,18 @@ fn resolve_pi_api_key_value(raw: &str) -> Option<String> {
     Some(raw.to_string())
 }
 
-fn extract_oauth_tokens(entry: &Value) -> Option<ExternalOAuthTokens> {
+fn extract_oauth_tokens(source: ExternalAuthSource, entry: &Value) -> Option<ExternalOAuthTokens> {
+    match source {
+        ExternalAuthSource::OpenCode | ExternalAuthSource::Pi | ExternalAuthSource::OpenClaw => {
+            extract_oauth_tokens_pi_style(entry)
+        }
+        ExternalAuthSource::Hermes => extract_oauth_tokens_hermes_style(entry),
+    }
+}
+
+/// OpenCode / pi / OpenClaw share the `{ type: "oauth", access, refresh,
+/// expires }` shape (epoch milliseconds in `expires`).
+fn extract_oauth_tokens_pi_style(entry: &Value) -> Option<ExternalOAuthTokens> {
     let object = entry.as_object()?;
     let token_type = object.get("type").and_then(Value::as_str);
     if let Some(token_type) = token_type
@@ -360,11 +452,55 @@ fn extract_oauth_tokens(entry: &Value) -> Option<ExternalOAuthTokens> {
     })
 }
 
+/// Hermes credential-pool entries use `access_token` / `refresh_token` and
+/// store the expiry either as `expires_at_ms` (epoch milliseconds) or
+/// `expires_at` (RFC 3339 string). `auth_type` distinguishes OAuth entries
+/// (`oauth_device_code`, `oauth_external`, `oauth_minimax`) from API keys.
+fn extract_oauth_tokens_hermes_style(entry: &Value) -> Option<ExternalOAuthTokens> {
+    let object = entry.as_object()?;
+    if let Some(auth_type) = object.get("auth_type").and_then(Value::as_str)
+        && !auth_type.starts_with("oauth")
+    {
+        return None;
+    }
+
+    let access_token = object.get("access_token")?.as_str()?.trim().to_string();
+    let refresh_token = object
+        .get("refresh_token")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let expires_at = hermes_expires_at_ms(object)?;
+
+    if access_token.is_empty() || refresh_token.is_empty() {
+        return None;
+    }
+
+    Some(ExternalOAuthTokens {
+        access_token,
+        refresh_token,
+        expires_at,
+    })
+}
+
+fn hermes_expires_at_ms(object: &serde_json::Map<String, Value>) -> Option<i64> {
+    if let Some(ms) = object.get("expires_at_ms").and_then(Value::as_i64) {
+        return Some(ms);
+    }
+    if let Some(text) = object.get("expires_at").and_then(Value::as_str) {
+        if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(text.trim()) {
+            return Some(parsed.timestamp_millis());
+        }
+    }
+    None
+}
+
 fn provider_keys_for_env(env_key: &str) -> &'static [&'static str] {
     match env_key {
         "ANTHROPIC_API_KEY" => &["anthropic", "claude"],
         "AZURE_OPENAI_API_KEY" => &["azure-openai-responses", "azure", "azure-openai"],
-        "OPENAI_API_KEY" => &["openai"],
+        "OPENAI_API_KEY" => &["openai", "openai-api"],
         "GEMINI_API_KEY" => &["google", "gemini"],
         "MISTRAL_API_KEY" => &["mistral"],
         "GROQ_API_KEY" => &["groq"],
