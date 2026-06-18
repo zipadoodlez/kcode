@@ -346,6 +346,22 @@ fn openrouter_key_typed_through_full_key_path_does_not_reopen_picker() {
             "Enter must not re-open the provider picker"
         );
         assert!(app.input.is_empty(), "input buffer should clear after submit");
+
+        // Crucially: the key must actually be *persisted*, not just "not loop".
+        // It is written to $JCODE_HOME/config/jcode/openrouter.env and exported
+        // to OPENROUTER_API_KEY so the provider can authenticate.
+        let env_file = crate::storage::app_config_dir().unwrap().join("openrouter.env");
+        let contents = std::fs::read_to_string(&env_file)
+            .unwrap_or_else(|e| panic!("openrouter.env should exist at {env_file:?}: {e}"));
+        assert!(
+            contents.contains(&format!("OPENROUTER_API_KEY={key}")),
+            "saved env file must contain the typed key, got:\n{contents}"
+        );
+        assert_eq!(
+            std::env::var("OPENROUTER_API_KEY").ok().as_deref(),
+            Some(key),
+            "key must be exported to the process env for immediate use"
+        );
     });
 }
 
