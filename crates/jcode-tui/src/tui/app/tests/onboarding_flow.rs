@@ -292,6 +292,64 @@ fn pending_login_entry_is_not_intercepted_by_onboarding_login_phase() {
 }
 
 #[test]
+fn openrouter_key_typed_through_full_key_path_does_not_reopen_picker() {
+    // End-to-end regression for the OpenRouter login loop, driven through the
+    // real production key dispatch (`handle_key`) instead of calling the
+    // onboarding helper directly. This reproduces exactly what the user does:
+    // they are mid-onboarding (Login phase still active), a pending API-key
+    // login prompt is showing, and they type a key like "sk-or-..." then press
+    // Enter. Before the fix, the onboarding welcome handler intercepted the
+    // typed characters (y/n/h/l/j/k as Yes/No nav) and Enter (re-opening the
+    // provider picker), creating the infinite loop. Now every keystroke must
+    // flow to the input buffer and Enter must submit the key.
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
+        // Simulate having chosen OpenRouter from the picker: the picker is closed
+        // and a pending API-key login prompt is active.
+        app.inline_interactive_state = None;
+        app.start_login_provider(
+            crate::provider_catalog::resolve_login_provider("openrouter").unwrap(),
+        );
+        assert!(app.pending_login.is_some());
+        assert!(app.inline_interactive_state.is_none());
+
+        // Type a fake key. It deliberately contains characters that doubled as
+        // Yes/No navigation in the buggy code path (k, n, l, y) to prove they
+        // are no longer swallowed.
+        let key = "sk-or-key-no-loop";
+        for ch in key.chars() {
+            app.handle_key(KeyCode::Char(ch), KeyModifiers::NONE).unwrap();
+            // The picker must never re-open while typing.
+            assert!(
+                app.inline_interactive_state.is_none(),
+                "picker re-opened while typing '{ch}'"
+            );
+        }
+        assert_eq!(app.input, key, "every typed character must reach the input buffer");
+
+        // Pressing Enter submits the key to the pending-login handler instead of
+        // re-opening the provider picker (the old loop).
+        app.handle_key(KeyCode::Enter, KeyModifiers::NONE).unwrap();
+        assert!(
+            app.pending_login.is_none(),
+            "Enter must consume the pending login, not bounce back to the picker"
+        );
+        assert!(
+            app.inline_interactive_state.is_none(),
+            "Enter must not re-open the provider picker"
+        );
+        assert!(app.input.is_empty(), "input buffer should clear after submit");
+    });
+}
+
+#[test]
 fn import_failure_resets_login_to_manual_prompt() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::ImportReview;
