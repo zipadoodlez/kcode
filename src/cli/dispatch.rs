@@ -730,9 +730,11 @@ async fn run_default_command(args: Args) -> Result<()> {
         // surface the keybinding-conflict heads-up when nothing else is queued,
         // so we never clobber an early-launch tip. The conflict hint is
         // self-debouncing (shown once per distinct conflict set).
-        setup_hints::maybe_show_setup_hints().or_else(|| {
-            setup_hints::maybe_show_keymap_conflict_hint(&crate::config::config().keybindings)
-        })
+        setup_hints::maybe_show_setup_hints()
+            .or_else(|| {
+                setup_hints::maybe_show_keymap_conflict_hint(&crate::config::config().keybindings)
+            })
+            .or_else(setup_hints::maybe_show_glyph_safe_notice)
     };
     startup_profile::mark("setup_hints");
 

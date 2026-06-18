@@ -205,13 +205,13 @@ pub fn tui_policy_for(
     }
 
     // Glyph-safe mode for terminals with a fragile GPU glyph atlas (macOS 26
-    // VS Code integrated terminal / Apple Terminal). Continuous per-cell
-    // truecolor animation churn (shimmer, rainbow, pulsing tool colors) plus
-    // frequent full-frame repaints overflow the atlas and corrupt cached
-    // glyphs (n/m/r/w -> boxes). Suppress decorative color churn and cap
-    // repaints so the atlas stays stable. See issue #330.
+    // VS Code integrated terminal / Apple Terminal). The primary fix lives in
+    // `jcode-tui-style`: colors are quantized to the 256-palette there, which
+    // bounds the distinct (glyph, color) atlas keys so the animations no longer
+    // overflow the cache (#330). Here we only trim full-frame repaint pressure
+    // as cheap insurance; decorative animations stay ON so the experience is
+    // unchanged apart from slightly reduced color fidelity.
     if profile.fragile_glyph_cache {
-        enable_decorative_animations = false;
         redraw_fps = redraw_fps.min(30);
     }
 
@@ -845,19 +845,18 @@ mod tests {
     }
 
     #[test]
-    fn test_glyph_safe_mode_disables_color_churn_and_caps_redraw() {
+    fn test_glyph_safe_mode_keeps_animations_and_caps_redraw() {
         // VS Code integrated terminal / Apple Terminal on macOS 26 corrupt the
-        // GPU glyph atlas under decorative per-cell color churn (#330). The
-        // glyph-safe policy must suppress decorative animation and cap repaints
-        // even though the machine itself is a healthy Full-tier host.
+        // GPU glyph atlas under truecolor color churn (#330). The root-cause fix
+        // is color quantization in jcode-tui-style, so the perf policy keeps
+        // decorative animations ON and only trims full-frame repaint pressure.
         let profile = glyph_safe_profile("vscode");
         let mut display = crate::config::DisplayConfig::default();
         display.redraw_fps = 60;
         display.animation_fps = 60;
         let policy = tui_policy_for(&profile, &display);
         assert_eq!(policy.tier, PerformanceTier::Full);
-        assert!(!policy.enable_decorative_animations);
-        assert_eq!(policy.animation_fps, 1);
+        assert!(policy.enable_decorative_animations);
         assert_eq!(policy.redraw_fps, 30);
         // Interactive features stay on; this is purely a rendering mitigation.
         assert!(policy.enable_focus_change);

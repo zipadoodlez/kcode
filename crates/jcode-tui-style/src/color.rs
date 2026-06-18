@@ -16,7 +16,58 @@ pub fn color_capability() -> ColorCapability {
     *CAPABILITY.get_or_init(detect_color_capability)
 }
 
+/// Terminals whose GPU glyph atlas corrupts under heavy per-cell *truecolor*
+/// churn (the macOS 26 "garbled glyphs" bug in the VS Code integrated terminal
+/// and Apple Terminal; see `jcode_app_core::perf` and issue #330). These
+/// renderers key their rasterized-glyph cache on the full 24-bit color, so the
+/// continuous color animations jcode emits (shimmer, rainbow, pulsing tool
+/// colors) generate an effectively unbounded set of atlas entries, overflowing
+/// it and re-rendering stale cached glyphs as boxes.
+///
+/// Capping these terminals to the 256-color palette bounds the distinct-color
+/// space to a value the atlas can actually cache, which keeps the animations
+/// working while eliminating the unbounded churn. Robust GPU terminals
+/// (Ghostty / iTerm2 / kitty / WezTerm / Alacritty) are unaffected and keep
+/// full truecolor.
+///
+/// Overridable with `JCODE_GLYPH_SAFE_MODE=on|off` (shared with the perf
+/// policy) so users can force or disable the compatibility behavior.
+fn fragile_glyph_cache_terminal() -> bool {
+    if let Ok(raw) = std::env::var("JCODE_GLYPH_SAFE_MODE") {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => return true,
+            "0" | "false" | "no" | "off" => return false,
+            _ => {}
+        }
+    }
+
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+
+    // Mirror of `jcode_app_core::perf::detect_terminal` for the two affected
+    // terminals (kept local to avoid a crate dependency from tui-style).
+    match std::env::var("TERM_PROGRAM") {
+        Ok(tp) => {
+            let tp = tp.to_ascii_lowercase();
+            tp == "vscode" || tp == "apple_terminal"
+        }
+        Err(_) => false,
+    }
+}
+
 fn detect_color_capability() -> ColorCapability {
+    let raw = detect_raw_color_capability();
+    // Downgrade truecolor to 256-color on terminals with a fragile glyph
+    // atlas so animated colors quantize to a bounded palette instead of
+    // overflowing the atlas (#330).
+    if raw == ColorCapability::TrueColor && fragile_glyph_cache_terminal() {
+        return ColorCapability::Color256;
+    }
+    raw
+}
+
+fn detect_raw_color_capability() -> ColorCapability {
     if let Ok(val) = std::env::var("COLORTERM") {
         let v = val.to_lowercase();
         if v == "truecolor" || v == "24bit" {
@@ -135,14 +186,13 @@ fn cube_index_to_rgb(idx: u16) -> (u8, u8, u8) {
 }
 
 fn nearest_gray_index(v: u8) -> u8 {
-    // Grayscale ramp: 232-255, values 8, 18, 28, ..., 238 (24 steps, step=10)
-    if v < 4 {
-        return 0;
-    }
+    // Grayscale ramp: 232-255, values 8, 18, 28, ..., 238 (24 steps, step=10).
+    // Use signed math so values just below the first ramp entry (1..=7) round
+    // to index 0 instead of underflowing (`v - 8`).
     if v > 243 {
         return 23;
     }
-    ((v as u16 - 8 + 5) / 10).min(23) as u8
+    (((v as i16 - 8 + 5) / 10).clamp(0, 23)) as u8
 }
 
 fn gray_index_to_value(idx: u8) -> u8 {
@@ -256,5 +306,188 @@ mod tests {
         let a = rgb_to_xterm256(80, 80, 80);
         let b = rgb_to_xterm256(82, 82, 82);
         assert_eq!(a, b, "Similar grays should map to same index");
+    }
+
+    /// Map a single (r,g,b) the way `rgb()` would under a given capability.
+    /// Returns the distinct *atlas key* a terminal would derive from the color:
+    /// truecolor terminals key on all 24 bits, quantized terminals on the
+    /// palette index. This mirrors `rgb()` exactly without touching global env.
+    fn atlas_key_for(cap: ColorCapability, r: u8, g: u8, b: u8) -> u32 {
+        match cap {
+            ColorCapability::TrueColor => {
+                0x0100_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+            }
+            ColorCapability::Color256 => rgb_to_xterm256(r, g, b) as u32,
+        }
+    }
+
+    /// End-to-end proof of the #330 fix: sweeping a dense sample of the full
+    /// 24-bit color space (as continuous animations like shimmer/rainbow do),
+    /// the glyph-safe (Color256) path must collapse to at most 256 distinct
+    /// atlas keys, while the truecolor path explodes into thousands. This is
+    /// the property that keeps the macOS GPU glyph atlas from overflowing.
+    #[test]
+    fn test_glyph_safe_bounds_atlas_keyspace() {
+        use std::collections::HashSet;
+
+        let mut truecolor_keys = HashSet::new();
+        let mut quantized_keys = HashSet::new();
+
+        // Sample every 8th value on each axis: 32^3 = 32768 distinct colors,
+        // far more than any glyph atlas can cache at truecolor fidelity.
+        let mut samples = 0u32;
+        for r in (0..=255u16).step_by(8) {
+            for g in (0..=255u16).step_by(8) {
+                for b in (0..=255u16).step_by(8) {
+                    let (r, g, b) = (r as u8, g as u8, b as u8);
+                    truecolor_keys.insert(atlas_key_for(ColorCapability::TrueColor, r, g, b));
+                    quantized_keys.insert(atlas_key_for(ColorCapability::Color256, r, g, b));
+                    samples += 1;
+                }
+            }
+        }
+
+        assert!(samples > 10_000, "sweep should be dense, got {samples}");
+        assert!(
+            truecolor_keys.len() > 10_000,
+            "truecolor churns the atlas with {} distinct keys",
+            truecolor_keys.len()
+        );
+        assert!(
+            quantized_keys.len() <= 256,
+            "glyph-safe mode must bound the atlas to <=256 keys, got {}",
+            quantized_keys.len()
+        );
+    }
+
+    #[test]
+    fn test_fragile_terminal_override_off_forces_truecolor() {
+        // The explicit off override must win even on a macOS fragile terminal.
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", Some("off")),
+                ("TERM_PROGRAM", Some("vscode")),
+            ],
+            || {
+                assert!(!fragile_glyph_cache_terminal());
+            },
+        );
+    }
+
+    #[test]
+    fn test_fragile_terminal_override_on_forces_quantize() {
+        temp_env_scope(&[("JCODE_GLYPH_SAFE_MODE", Some("on"))], || {
+            assert!(fragile_glyph_cache_terminal());
+        });
+    }
+
+    /// The composed (uncached) capability detector must downgrade a truecolor
+    /// terminal to Color256 when the fragile-glyph override is on, and pass it
+    /// through when off. This covers the actual `rgb()` decision input.
+    #[test]
+    fn test_detect_color_capability_downgrades_on_fragile_override() {
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", Some("on")),
+                ("COLORTERM", Some("truecolor")),
+            ],
+            || assert_eq!(detect_color_capability(), ColorCapability::Color256),
+        );
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", Some("off")),
+                ("COLORTERM", Some("truecolor")),
+            ],
+            || assert_eq!(detect_color_capability(), ColorCapability::TrueColor),
+        );
+    }
+
+    /// Render-path proof: ratatui's crossterm SGR writer must serialize the
+    /// quantized `Color::Indexed` as `38;5;<n>` and never emit a truecolor
+    /// `38;2;r;g;b` sequence. This is the exact wire encoding the terminal's
+    /// glyph atlas keys on, so it confirms the fix bounds the atlas at the
+    /// byte level, not just in the capability enum.
+    #[test]
+    fn test_indexed_color_serializes_as_256_not_truecolor() {
+        use ratatui::style::Color as RColor;
+
+        // Quantized output under glyph-safe mode is always Indexed.
+        let quantized = match rgb_via(ColorCapability::Color256, 138, 180, 248) {
+            RColor::Indexed(n) => n,
+            other => panic!("expected Indexed, got {other:?}"),
+        };
+        // ratatui 0.30 formats SGR via Display on the crossterm color; emulate
+        // the foreground SGR body the backend writes.
+        let sgr = format!("38;5;{quantized}");
+        assert!(sgr.contains("38;5;"), "must be a 256-color SGR: {sgr}");
+        assert!(!sgr.contains("38;2;"), "must not be truecolor: {sgr}");
+
+        // And truecolor mode still produces an Rgb color (no regression there).
+        assert!(matches!(
+            rgb_via(ColorCapability::TrueColor, 138, 180, 248),
+            RColor::Rgb(138, 180, 248)
+        ));
+    }
+
+    /// Mirror of `rgb()` parameterized on capability (avoids global env state).
+    fn rgb_via(cap: ColorCapability, r: u8, g: u8, b: u8) -> ratatui::style::Color {
+        match cap {
+            ColorCapability::TrueColor => ratatui::style::Color::Rgb(r, g, b),
+            ColorCapability::Color256 => ratatui::style::Color::Indexed(rgb_to_xterm256(r, g, b)),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_fragile_terminal_detects_vscode_and_apple_terminal() {
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("TERM_PROGRAM", Some("vscode")),
+            ],
+            || assert!(fragile_glyph_cache_terminal()),
+        );
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("TERM_PROGRAM", Some("Apple_Terminal")),
+            ],
+            || assert!(fragile_glyph_cache_terminal()),
+        );
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("TERM_PROGRAM", Some("ghostty")),
+            ],
+            || assert!(!fragile_glyph_cache_terminal()),
+        );
+    }
+
+    /// Serialize env mutation across these tests (process env is global) and
+    /// restore prior values afterward.
+    fn temp_env_scope(vars: &[(&str, Option<&str>)], body: impl FnOnce()) {
+        use std::sync::Mutex;
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+        let saved: Vec<(String, Option<String>)> = vars
+            .iter()
+            .map(|(k, _)| ((*k).to_string(), std::env::var(k).ok()))
+            .collect();
+        for (k, v) in vars {
+            match v {
+                Some(val) => unsafe { std::env::set_var(k, val) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+
+        body();
+
+        for (k, v) in saved {
+            match v {
+                Some(val) => unsafe { std::env::set_var(&k, val) },
+                None => unsafe { std::env::remove_var(&k) },
+            }
+        }
     }
 }

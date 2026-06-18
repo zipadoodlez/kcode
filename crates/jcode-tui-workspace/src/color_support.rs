@@ -16,7 +16,47 @@ pub fn color_capability() -> ColorCapability {
     *CAPABILITY.get_or_init(detect_color_capability)
 }
 
+/// Terminals whose GPU glyph atlas corrupts under heavy per-cell *truecolor*
+/// churn (the macOS 26 "garbled glyphs" bug in the VS Code integrated terminal
+/// and Apple Terminal; see issue #330 and `jcode_tui_style::color`). Capping
+/// these to the 256-color palette bounds the distinct-color space the atlas
+/// must cache, keeping markdown/mermaid colors readable. Mirrors the detection
+/// in `jcode_tui_style::color::fragile_glyph_cache_terminal`. Overridable with
+/// `JCODE_GLYPH_SAFE_MODE=on|off`.
+fn fragile_glyph_cache_terminal() -> bool {
+    if let Ok(raw) = std::env::var("JCODE_GLYPH_SAFE_MODE") {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => return true,
+            "0" | "false" | "no" | "off" => return false,
+            _ => {}
+        }
+    }
+
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+
+    match std::env::var("TERM_PROGRAM") {
+        Ok(tp) => {
+            let tp = tp.to_ascii_lowercase();
+            tp == "vscode" || tp == "apple_terminal"
+        }
+        Err(_) => false,
+    }
+}
+
 fn detect_color_capability() -> ColorCapability {
+    let raw = detect_raw_color_capability();
+    // Downgrade truecolor to 256-color on fragile-glyph terminals so animated
+    // colors quantize to a bounded palette instead of overflowing the GPU
+    // glyph atlas (#330).
+    if raw == ColorCapability::TrueColor && fragile_glyph_cache_terminal() {
+        return ColorCapability::Color256;
+    }
+    raw
+}
+
+fn detect_raw_color_capability() -> ColorCapability {
     if let Ok(val) = std::env::var("COLORTERM") {
         let v = val.to_lowercase();
         if v == "truecolor" || v == "24bit" {
@@ -135,14 +175,13 @@ fn cube_index_to_rgb(idx: u16) -> (u8, u8, u8) {
 }
 
 fn nearest_gray_index(v: u8) -> u8 {
-    // Grayscale ramp: 232-255, values 8, 18, 28, ..., 238 (24 steps, step=10)
-    if v < 4 {
-        return 0;
-    }
+    // Grayscale ramp: 232-255, values 8, 18, 28, ..., 238 (24 steps, step=10).
+    // Use signed math so values just below the first ramp entry (1..=7) round
+    // to index 0 instead of underflowing (`v - 8`).
     if v > 243 {
         return 23;
     }
-    ((v as u16 - 8 + 5) / 10).min(23) as u8
+    (((v as i16 - 8 + 5) / 10).clamp(0, 23)) as u8
 }
 
 fn gray_index_to_value(idx: u8) -> u8 {
@@ -256,5 +295,78 @@ mod tests {
         let a = rgb_to_xterm256(80, 80, 80);
         let b = rgb_to_xterm256(82, 82, 82);
         assert_eq!(a, b, "Similar grays should map to same index");
+    }
+}
+
+#[cfg(test)]
+mod fragile_glyph_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn temp_env_scope(vars: &[(&str, Option<&str>)], body: impl FnOnce()) {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let saved: Vec<(String, Option<String>)> = vars
+            .iter()
+            .map(|(k, _)| ((*k).to_string(), std::env::var(k).ok()))
+            .collect();
+        for (k, v) in vars {
+            match v {
+                Some(val) => unsafe { std::env::set_var(k, val) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+        body();
+        for (k, v) in saved {
+            match v {
+                Some(val) => unsafe { std::env::set_var(&k, val) },
+                None => unsafe { std::env::remove_var(&k) },
+            }
+        }
+    }
+
+    #[test]
+    fn override_off_forces_truecolor() {
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", Some("off")),
+                ("TERM_PROGRAM", Some("vscode")),
+            ],
+            || assert!(!fragile_glyph_cache_terminal()),
+        );
+    }
+
+    #[test]
+    fn override_on_forces_quantize() {
+        temp_env_scope(&[("JCODE_GLYPH_SAFE_MODE", Some("on"))], || {
+            assert!(fragile_glyph_cache_terminal())
+        });
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn detects_vscode_and_apple_terminal() {
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("TERM_PROGRAM", Some("vscode")),
+            ],
+            || assert!(fragile_glyph_cache_terminal()),
+        );
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("TERM_PROGRAM", Some("Apple_Terminal")),
+            ],
+            || assert!(fragile_glyph_cache_terminal()),
+        );
+        temp_env_scope(
+            &[
+                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("TERM_PROGRAM", Some("ghostty")),
+            ],
+            || assert!(!fragile_glyph_cache_terminal()),
+        );
     }
 }
