@@ -139,6 +139,7 @@ struct TestState {
     side_pane_images: Vec<crate::session::RenderedImage>,
     pin_images: bool,
     inline_images_visible: bool,
+    chat_overscroll_active: bool,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -249,6 +250,9 @@ impl crate::tui::TuiState for TestState {
     }
     fn time_since_activity(&self) -> Option<Duration> {
         self.time_since_activity
+    }
+    fn chat_overscroll_active(&self) -> bool {
+        self.chat_overscroll_active
     }
     fn total_session_tokens(&self) -> Option<(u64, u64)> {
         None

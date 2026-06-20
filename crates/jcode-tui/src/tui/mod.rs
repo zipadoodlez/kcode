@@ -1493,6 +1493,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         && state.streaming_text().is_empty()
         && !state.has_pending_mouse_scroll_animation()
         && !state.copy_selection_edge_autoscroll_active()
+        && !state.chat_overscroll_active()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
