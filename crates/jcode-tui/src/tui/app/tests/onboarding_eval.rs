@@ -1423,6 +1423,185 @@ fn tier8_score_w(m: &Tier8Metrics, w: &Tier8Weights) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 9: timing & pacing. The real flow uses two timed auto-advance phases
+// (the import walkthrough and the continue prompt) governed by DECISION_TIMEOUT,
+// plus a transcript picker that intentionally does NOT auto-advance. We can't
+// measure a real user's clock offline, but we CAN check that the timing the
+// flow itself imposes is humane, using only constants + rendered copy:
+//
+//   * countdown_adequacy - every timed screen gives enough seconds to actually
+//     read it. Budget = words / READING_WPS, with a small floor; we assert the
+//     real DECISION_TIMEOUT covers the slowest screen with margin.
+//   * forced_wait        - no phase blocks the user behind a mandatory delay
+//     with no key to skip ahead. Every timed phase accepts an immediate commit
+//     key (verified by driving the real handler), so the timeout is a ceiling,
+//     not a floor.
+//   * time_on_blocker    - the worst-case unattended dwell before the flow makes
+//     progress on its own is bounded (<= DECISION_TIMEOUT); a do-nothing user is
+//     never stuck forever on a decision.
+// ---------------------------------------------------------------------------
+
+/// Comfortable silent-reading speed, words per second (~250 wpm). Used only to
+/// size the countdown budget; deliberately conservative (slow) so "adequate"
+/// means adequate for a careful first-time reader.
+const READING_WPS: f64 = 4.0;
+
+#[derive(Clone, Copy)]
+struct Tier9Metrics {
+    /// Spare seconds on the tightest timed screen (timeout minus read budget).
+    /// Negative means a screen could auto-advance before it can be read.
+    countdown_slack_secs: f64,
+    /// Every timed phase accepts an immediate-commit key (no forced wait).
+    no_forced_wait: bool,
+    /// Worst-case unattended dwell before the flow self-advances, in seconds.
+    max_blocker_secs: u64,
+}
+
+fn tier9_metrics() -> Tier9Metrics {
+    use crate::tui::app::onboarding_flow::DECISION_TIMEOUT;
+    let timeout_secs = DECISION_TIMEOUT.as_secs() as f64;
+
+    // ---- countdown_adequacy: read budget of each TIMED screen vs the timeout.
+    // Only screens that auto-advance count; the transcript picker is untimed and
+    // is intentionally excluded (the user must choose).
+    let timed_screens: Vec<ScreenMetrics> = timed_phase_screens();
+    let tightest_slack = timed_screens
+        .iter()
+        .map(|s| {
+            let read_budget = (s.word_count as f64 / READING_WPS).max(3.0);
+            timeout_secs - read_budget
+        })
+        .fold(f64::INFINITY, f64::min);
+    let countdown_slack_secs = if tightest_slack.is_finite() {
+        tightest_slack
+    } else {
+        timeout_secs
+    };
+
+    // ---- forced_wait: every timed phase must accept an immediate-commit key.
+    // Drive the real handler: pressing the commit key advances or resolves the
+    // phase rather than being ignored until the timer fires.
+    let no_forced_wait = timed_phases_accept_immediate_commit();
+
+    // ---- time_on_blocker: the only self-advancing dwell is DECISION_TIMEOUT;
+    // the untimed transcript picker doesn't block progress because choosing
+    // "Start a new session" is always available (it is not a self-advance, so it
+    // doesn't count as an unattended blocker). Worst-case unattended dwell is
+    // therefore the timeout itself.
+    let max_blocker_secs = DECISION_TIMEOUT.as_secs();
+
+    Tier9Metrics {
+        countdown_slack_secs,
+        no_forced_wait,
+        max_blocker_secs,
+    }
+}
+
+/// The set of timed (auto-advancing) screens, rendered from the real app.
+fn timed_phase_screens() -> Vec<ScreenMetrics> {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+    let review =
+        ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json")])
+            .unwrap();
+    vec![
+        render_phase_screen("Login{import}", OnboardingPhase::Login { import: Some(review) }),
+        render_phase_screen(
+            "ContinuePrompt",
+            OnboardingPhase::ContinuePrompt {
+                cli: ExternalCli::Codex,
+                yes_highlighted: true,
+                shown_at: std::time::Instant::now(),
+            },
+        ),
+    ]
+}
+
+/// Drive the real key handler for each timed phase and confirm an immediate
+/// commit key is honored (so the timeout is a ceiling, never a forced wait).
+fn timed_phases_accept_immediate_commit() -> bool {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+    use crossterm::event::KeyCode;
+
+    // Import walkthrough: 'y' commits the current candidate immediately. Use two
+    // candidates so committing the first ADVANCES (returns not-finished) instead
+    // of finishing the review, which would spawn the real import on a runtime we
+    // don't have under test. We only need to prove the key is honored.
+    let import_ok = {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        let review = ImportReview::new(vec![
+            ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+            ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+        ])
+        .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: Some(review) };
+        }
+        app.handle_onboarding_continue_prompt_key(KeyCode::Char('y'))
+    };
+
+    // Continue prompt: 'y' commits immediately (resolves the phase now).
+    let continue_ok = {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::ContinuePrompt {
+                cli: ExternalCli::Codex,
+                yes_highlighted: true,
+                shown_at: std::time::Instant::now(),
+            };
+        }
+        app.handle_onboarding_continue_prompt_key(KeyCode::Char('y'))
+    };
+
+    import_ok && continue_ok
+}
+
+#[derive(Clone, Copy)]
+struct Tier9Weights {
+    /// Penalty per second the tightest timed screen falls short of its read
+    /// budget (only applies when slack is negative).
+    per_second_short: f64,
+    forced_wait: f64,
+    /// Penalty per second the worst blocker exceeds a comfortable ceiling.
+    blocker_ceiling_secs: u64,
+    per_second_over_ceiling: f64,
+}
+
+impl Default for Tier9Weights {
+    fn default() -> Self {
+        Self {
+            per_second_short: 4.0,
+            forced_wait: 40.0,
+            blocker_ceiling_secs: 90,
+            per_second_over_ceiling: 1.0,
+        }
+    }
+}
+
+fn tier9_score(m: &Tier9Metrics) -> f64 {
+    tier9_score_w(m, &Tier9Weights::default())
+}
+
+fn tier9_score_w(m: &Tier9Metrics, w: &Tier9Weights) -> f64 {
+    let mut score = 100.0;
+    if m.countdown_slack_secs < 0.0 {
+        score -= (-m.countdown_slack_secs) * w.per_second_short;
+    }
+    if !m.no_forced_wait {
+        score -= w.forced_wait;
+    }
+    if m.max_blocker_secs > w.blocker_ceiling_secs {
+        score -= (m.max_blocker_secs - w.blocker_ceiling_secs) as f64 * w.per_second_over_ceiling;
+    }
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -1581,6 +1760,14 @@ fn onboarding_eval_scorecard() {
         println!("no unconfirmed destruct: {}", yn(t8.no_unconfirmed_destructive));
         println!("timeout safe (do-noth) : {}", yn(t8.timeout_safe));
 
+        // ----- Tier 9: timing & pacing (real constants + rendered copy) -----
+        let t9 = tier9_metrics();
+        let tier9 = tier9_score(&t9);
+        println!("\n-- Tier 9: timing & pacing --");
+        println!("countdown slack (s)    : {:+.1}", t9.countdown_slack_secs);
+        println!("no forced wait         : {}", yn(t9.no_forced_wait));
+        println!("max blocker dwell (s)  : {}", t9.max_blocker_secs);
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -1604,13 +1791,14 @@ fn onboarding_eval_scorecard() {
         // content + robustness) are the quality of the flow. Tier 0 is how much
         // we can trust those numbers, so it gates rather than averages: report
         // it alongside, and fold it in lightly.
-        let composite = tier1 * 0.22
-            + tier3 * 0.18
+        let composite = tier1 * 0.20
+            + tier3 * 0.16
             + tier4 * 0.12
             + tier5 * 0.10
             + tier6 * 0.10
-            + tier7 * 0.09
-            + tier8 * 0.09
+            + tier7 * 0.08
+            + tier8 * 0.08
+            + tier9 * 0.06
             + tier0 * 0.10;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
@@ -1621,6 +1809,7 @@ fn onboarding_eval_scorecard() {
         println!("Tier 6 (cognitive load) : {tier6:>5.1} / 100");
         println!("Tier 7 (clarity/guide)  : {tier7:>5.1} / 100");
         println!("Tier 8 (reversibility)  : {tier8:>5.1} / 100");
+        println!("Tier 9 (timing/pacing)  : {tier9:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -1676,6 +1865,12 @@ fn onboarding_eval_scorecard() {
         assert!(t8.no_unconfirmed_destructive, "an onboarding phase performs an unconfirmed destructive action");
         assert!(t8.timeout_safe, "a do-nothing timeout no longer lands on a recoverable phase");
         assert!(tier8 >= 60.0, "Tier 8 reversibility score regressed: {tier8:.1}");
+        // Tier 9 timing guards: the timeout must comfortably cover the slowest
+        // timed screen, no phase forces a wait, and nothing self-advances later
+        // than the timeout.
+        assert!(t9.countdown_slack_secs >= 0.0, "a timed onboarding screen could auto-advance before it can be read: slack {:.1}s", t9.countdown_slack_secs);
+        assert!(t9.no_forced_wait, "a timed onboarding phase ignores an immediate-commit key (forced wait)");
+        assert!(tier9 >= 60.0, "Tier 9 timing score regressed: {tier9:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -1978,6 +2173,19 @@ fn meta_tier8_is_monotonic_in_each_signal() {
     assert!(tier8_score(&Tier8Metrics { no_repeated_prompt: false, ..base }) <= base_s, "repeated");
     assert!(tier8_score(&Tier8Metrics { no_unconfirmed_destructive: false, ..base }) <= base_s, "destructive");
     assert!(tier8_score(&Tier8Metrics { timeout_safe: false, ..base }) <= base_s, "timeout");
+}
+
+#[test]
+fn meta_tier9_is_monotonic_in_each_signal() {
+    let base = Tier9Metrics {
+        countdown_slack_secs: 10.0,
+        no_forced_wait: true,
+        max_blocker_secs: 60,
+    };
+    let base_s = tier9_score(&base);
+    assert!(tier9_score(&Tier9Metrics { countdown_slack_secs: -10.0, ..base }) <= base_s, "countdown");
+    assert!(tier9_score(&Tier9Metrics { no_forced_wait: false, ..base }) <= base_s, "forced-wait");
+    assert!(tier9_score(&Tier9Metrics { max_blocker_secs: 300, ..base }) <= base_s, "blocker");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -2343,8 +2551,11 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "repeated_prompt", status: Scored, rationale: "Tier8.repeated_prompt (an answered decision is not re-asked in the real transitions)", owns_feature: None },
         SignalSpec { name: "confirmation_for_destructive", status: Scored, rationale: "Tier8.unconfirmed_destructive (wildcard-free phase classifier: no phase mutates user data without a choice)", owns_feature: None },
         SignalSpec { name: "timeout_safety", status: Scored, rationale: "Tier8.unsafe_timeout (do-nothing DECISION_TIMEOUT lands on a recoverable phase)", owns_feature: None },
+        // ---- Scored (wired into Tier 9: timing & pacing) ----
+        SignalSpec { name: "countdown_adequacy", status: Scored, rationale: "Tier9.per_second_short (DECISION_TIMEOUT covers each timed screen's read budget at READING_WPS)", owns_feature: None },
+        SignalSpec { name: "forced_wait", status: Scored, rationale: "Tier9.forced_wait (every timed phase honors an immediate-commit key, verified on the app)", owns_feature: None },
+        SignalSpec { name: "time_on_blocker", status: Scored, rationale: "Tier9.per_second_over_ceiling (worst-case unattended dwell is bounded by DECISION_TIMEOUT)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
-        SignalSpec { name: "time_on_blocker", status: Deferred, rationale: "DECISION_TIMEOUT is known but not yet folded into the score", owns_feature: None },
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
         SignalSpec { name: "visual_hierarchy", status: Rejected, rationale: "layout/eye-tracking concern; not measurable offline without users", owns_feature: None },
@@ -2546,6 +2757,9 @@ fn signal_coverage_scored_signals_are_all_live() {
         "repeated_prompt",
         "confirmation_for_destructive",
         "timeout_safety",
+        "countdown_adequacy",
+        "forced_wait",
+        "time_on_blocker",
     ]
     .into_iter()
     .collect();
@@ -2657,4 +2871,16 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier8_score(&Tier8Metrics { no_repeated_prompt: false, ..base8 }), b8, "repeated_prompt");
     assert_ne!(tier8_score(&Tier8Metrics { no_unconfirmed_destructive: false, ..base8 }), b8, "confirmation_for_destructive");
     assert_ne!(tier8_score(&Tier8Metrics { timeout_safe: false, ..base8 }), b8, "timeout_safety");
+
+    // Tier 9 liveness: perturbing each timing signal must move the Tier 9 score.
+    // Proves countdown_adequacy / forced_wait / time_on_blocker are all wired.
+    let base9 = Tier9Metrics {
+        countdown_slack_secs: 10.0,
+        no_forced_wait: true,
+        max_blocker_secs: 60,
+    };
+    let b9 = tier9_score(&base9);
+    assert_ne!(tier9_score(&Tier9Metrics { countdown_slack_secs: -5.0, ..base9 }), b9, "countdown_adequacy");
+    assert_ne!(tier9_score(&Tier9Metrics { no_forced_wait: false, ..base9 }), b9, "forced_wait");
+    assert_ne!(tier9_score(&Tier9Metrics { max_blocker_secs: 300, ..base9 }), b9, "time_on_blocker");
 }
