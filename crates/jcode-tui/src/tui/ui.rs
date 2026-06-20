@@ -1,37 +1,12 @@
 #![cfg_attr(
     test,
-    allow(
-        clippy::bind_instead_of_map,
-        clippy::clone_on_copy,
-        clippy::collapsible_if,
-        clippy::if_same_then_else,
-        clippy::implicit_saturating_sub,
+    expect(
         clippy::items_after_test_module,
-        clippy::large_enum_variant,
         clippy::let_and_return,
-        clippy::manual_abs_diff,
-        clippy::manual_div_ceil,
-        clippy::manual_find,
-        clippy::manual_is_multiple_of,
-        clippy::manual_pattern_char_comparison,
-        clippy::manual_repeat_n,
-        clippy::manual_strip,
-        clippy::map_entry,
         clippy::missing_const_for_thread_local,
         clippy::needless_borrow,
-        clippy::needless_borrows_for_generic_args,
-        clippy::needless_lifetimes,
-        clippy::needless_range_loop,
         clippy::needless_return,
-        clippy::question_mark,
-        clippy::redundant_closure,
-        clippy::too_many_arguments,
-        clippy::type_complexity,
-        clippy::unnecessary_cast,
-        clippy::unnecessary_lazy_evaluations,
-        clippy::unnecessary_map_or,
-        clippy::unwrap_or_default,
-        clippy::while_let_loop
+        clippy::too_many_arguments
     )
 )]
 
