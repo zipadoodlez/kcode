@@ -93,7 +93,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(
                         Line::from(Span::styled(
-                            "Press Enter to choose a provider.",
+                            "Press Enter to pick who to log in with (OpenAI, Anthropic, and more).",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),
@@ -114,13 +114,18 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         .alignment(align),
                     );
                     lines.push(Line::from(""));
-                    lines.push(
-                        Line::from(Span::styled(
-                            format!("Login {} of {}", prompt.position, prompt.total),
-                            Style::default().fg(dim_color()),
-                        ))
-                        .alignment(align),
-                    );
+                    // Only show the "Login N of M" position when there is more
+                    // than one to step through; "Login 1 of 1" is meaningless
+                    // noise for the common single-login case.
+                    if prompt.total > 1 {
+                        lines.push(
+                            Line::from(Span::styled(
+                                format!("Login {} of {}", prompt.position, prompt.total),
+                                Style::default().fg(dim_color()),
+                            ))
+                            .alignment(align),
+                        );
+                    }
                     lines.push(
                         Line::from(vec![
                             Span::styled("Import ", Style::default().fg(rgb(200, 200, 200))),

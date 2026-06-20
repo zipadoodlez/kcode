@@ -94,7 +94,10 @@ fn onboarding_golden_walks_every_phase() {
         let text = render_onboarding_text(&app, width, height);
         dump("Login (no imports, recovery)", &text);
         assert!(text.contains("First, log in to get started."), "{text}");
-        assert!(text.contains("Press Enter to choose a provider."), "{text}");
+        assert!(
+            text.contains("Press Enter to pick who to log in with"),
+            "{text}"
+        );
     }
 
     // 2. Login with detected imports (per-candidate review).
@@ -136,7 +139,9 @@ fn onboarding_golden_walks_every_phase() {
             text.contains("We found 1 existing login."),
             "singular count: {text}"
         );
-        assert!(text.contains("Login 1 of 1"), "{text}");
+        // A single login no longer shows the meaningless "Login 1 of 1"
+        // position line; the multi-login case (test above) still does.
+        assert!(!text.contains("Login 1 of 1"), "single-login should omit position: {text}");
     }
 
     // 4. Continue prompt (resume an external session).
