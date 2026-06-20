@@ -857,6 +857,221 @@ fn tier5_score_w(m: &Tier5Metrics, w: &Tier5Weights) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 6: cognitive load per screen (Hick's law + reading burden), measured
+// from the REAL rendered body prose. We first strip the fixed chrome (the
+// telemetry consent header, the ASCII logo, and the movement key-hint line) so
+// the analysis sees only the human sentences the user must actually read:
+//
+//   * reading_grade_level   - Flesch-Kincaid grade estimate (syllable-based).
+//   * options_per_screen     - simultaneous choices (Hick's law).
+//   * jargon_density         - unexplained technical terms per 100 words.
+//   * new_concepts_per_screen- distinct domain concepts named on the screen.
+//   * number_of_questions    - interrogatives the user must resolve.
+//   * negation_count         - confusing "don't / not / never" phrasing.
+// ---------------------------------------------------------------------------
+
+/// Extract just the human body prose from a rendered onboarding screen,
+/// dropping the telemetry consent header, the ASCII logo art, and the
+/// movement key-hint line. Returns the kept prose lines.
+fn body_prose_lines(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let lower = t.to_ascii_lowercase();
+        // Telemetry consent boilerplate (fixed 3-line header).
+        if lower.contains("anonymous usage")
+            || lower.contains("no code, prompts")
+            || lower.contains("opt out anytime")
+        {
+            continue;
+        }
+        // Movement key hint (chrome, not prose to "read").
+        if t.contains(CANONICAL_YESNO_HINT) {
+            continue;
+        }
+        // ASCII logo art: lines dominated by non-alphabetic symbols.
+        let alpha = t.chars().filter(|c| c.is_ascii_alphabetic()).count();
+        let nonspace = t.chars().filter(|c| !c.is_whitespace()).count();
+        if nonspace > 0 && (alpha as f64) / (nonspace as f64) < 0.5 {
+            continue;
+        }
+        out.push(t.to_string());
+    }
+    out
+}
+
+/// Rough syllable count for an English word (vowel-group heuristic with a
+/// silent-e adjustment). Good enough for a Flesch-Kincaid grade estimate.
+fn syllables(word: &str) -> u32 {
+    let w: String = word.chars().filter(|c| c.is_ascii_alphabetic()).collect::<String>().to_ascii_lowercase();
+    if w.is_empty() {
+        return 0;
+    }
+    let vowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+    let mut count = 0u32;
+    let mut prev_vowel = false;
+    for c in w.chars() {
+        let is_v = vowels.contains(&c);
+        if is_v && !prev_vowel {
+            count += 1;
+        }
+        prev_vowel = is_v;
+    }
+    // Silent trailing 'e'.
+    if w.ends_with('e') && count > 1 {
+        count -= 1;
+    }
+    count.max(1)
+}
+
+/// A small, explicit jargon lexicon: technical terms a brand-new user may not
+/// know without explanation. Kept deliberately short and reviewable.
+const JARGON_TERMS: &[&str] = &[
+    "oauth", "api", "endpoint", "token", "cli", "env", "provider", "transcript",
+];
+
+/// Domain "concepts" the onboarding introduces. Used to count how many distinct
+/// new ideas a single screen puts in front of the user.
+const CONCEPT_TERMS: &[&str] = &[
+    "login", "log in", "provider", "import", "session", "model", "resume",
+    "telemetry", "onboarding", "openai", "codex", "claude",
+];
+
+#[derive(Clone, Copy)]
+struct ScreenLoad {
+    label: &'static str,
+    grade_level: f64,
+    options: u32,
+    jargon_per_100w: f64,
+    new_concepts: u32,
+    questions: u32,
+    negations: u32,
+}
+
+fn screen_load(label: &'static str, text: &str) -> ScreenLoad {
+    let prose = body_prose_lines(text);
+    let joined = prose.join(" ");
+    let lower = joined.to_ascii_lowercase();
+    let words: Vec<&str> = joined.split_whitespace().collect();
+    let word_count = words.len().max(1) as f64;
+    let sentence_count = joined
+        .chars()
+        .filter(|c| *c == '.' || *c == '?' || *c == '!')
+        .count()
+        .max(1) as f64;
+    let syllable_total: u32 = words.iter().map(|w| syllables(w)).sum();
+
+    // Flesch-Kincaid grade level.
+    let grade_level = 0.39 * (word_count / sentence_count)
+        + 11.8 * (syllable_total as f64 / word_count)
+        - 15.59;
+
+    // Options (Hick's law): the Yes/No selector exposes 2 choices; other screens
+    // are 0 (informational) or measured from a list.
+    let options = if lower.contains("yes") && lower.contains("no") { 2 } else { 0 };
+
+    let jargon_hits: u32 = JARGON_TERMS
+        .iter()
+        .map(|t| lower.matches(t).count() as u32)
+        .sum();
+    let jargon_per_100w = (jargon_hits as f64) / word_count * 100.0;
+
+    let new_concepts = CONCEPT_TERMS
+        .iter()
+        .filter(|c| lower.contains(*c))
+        .count() as u32;
+
+    let questions = joined.matches('?').count() as u32;
+
+    // Negations in prose (the literal "No" option is chrome, excluded by only
+    // counting whole negation words inside sentences).
+    let negations = lower
+        .split(|c: char| !c.is_ascii_alphabetic())
+        .filter(|w| matches!(*w, "not" | "dont" | "don" | "never" | "cant" | "cannot" | "wont"))
+        .count() as u32;
+
+    ScreenLoad {
+        label,
+        grade_level,
+        options,
+        jargon_per_100w,
+        new_concepts,
+        questions,
+        negations,
+    }
+}
+
+/// The real screens analyzed for cognitive load (same set Tier 3 scores).
+fn tier6_screen_loads() -> Vec<ScreenLoad> {
+    all_welcome_screen_texts()
+        .into_iter()
+        .map(|(label, text)| screen_load(label, &text))
+        .collect()
+}
+
+/// Tunable Tier 6 weights for the meta sensitivity analysis. Thresholds are the
+/// "comfortable" ceilings; only the excess past them is penalized.
+#[derive(Clone, Copy)]
+struct Tier6Weights {
+    grade_budget: f64,
+    per_excess_grade: f64,
+    option_budget: u32,
+    per_excess_option: f64,
+    per_jargon_per_100w: f64,
+    concept_budget: u32,
+    per_excess_concept: f64,
+    per_question_over_one: f64,
+    per_negation: f64,
+}
+
+impl Default for Tier6Weights {
+    fn default() -> Self {
+        Self {
+            // Grade 9 is a reasonable ceiling for setup copy.
+            grade_budget: 9.0,
+            per_excess_grade: 4.0,
+            // Two options (Yes/No) is fine; more starts to tax the user.
+            option_budget: 2,
+            per_excess_option: 6.0,
+            per_jargon_per_100w: 1.5,
+            // A screen can name a few concepts before it feels dense.
+            concept_budget: 3,
+            per_excess_concept: 5.0,
+            // One question per screen is ideal; extra questions compound load.
+            per_question_over_one: 8.0,
+            per_negation: 4.0,
+        }
+    }
+}
+
+/// Per-screen cognitive-load score, 0..=100.
+fn tier6_screen_score(m: &ScreenLoad) -> f64 {
+    tier6_screen_score_w(m, &Tier6Weights::default())
+}
+
+fn tier6_screen_score_w(m: &ScreenLoad, w: &Tier6Weights) -> f64 {
+    let mut score = 100.0;
+    if m.grade_level > w.grade_budget {
+        score -= (m.grade_level - w.grade_budget) * w.per_excess_grade;
+    }
+    if m.options > w.option_budget {
+        score -= (m.options - w.option_budget) as f64 * w.per_excess_option;
+    }
+    score -= m.jargon_per_100w * w.per_jargon_per_100w;
+    if m.new_concepts > w.concept_budget {
+        score -= (m.new_concepts - w.concept_budget) as f64 * w.per_excess_concept;
+    }
+    if m.questions > 1 {
+        score -= (m.questions - 1) as f64 * w.per_question_over_one;
+    }
+    score -= (m.negations as f64) * w.per_negation;
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -964,6 +1179,24 @@ fn onboarding_eval_scorecard() {
         println!("dead-end screens       : {}", t5.dead_end_screens);
         println!("acyclic (DAG)          : {}", yn(t5.acyclic));
 
+        // ----- Tier 6: cognitive load per screen (from real prose) -----
+        let loads = tier6_screen_loads();
+        let mut t6_sum = 0.0;
+        println!("\n-- Tier 6: cognitive load (per real screen) --");
+        println!(
+            "{:<18} {:>6} {:>4} {:>7} {:>5} {:>5} {:>4} {:>6}",
+            "screen", "grade", "opts", "jrg/100", "cpts", "qstn", "neg", "score"
+        );
+        for m in &loads {
+            let s = tier6_screen_score(m);
+            t6_sum += s;
+            println!(
+                "{:<18} {:>6.1} {:>4} {:>7.1} {:>5} {:>5} {:>4} {:>6.0}",
+                m.label, m.grade_level, m.options, m.jargon_per_100w, m.new_concepts, m.questions, m.negations, s
+            );
+        }
+        let tier6 = t6_sum / loads.len() as f64;
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -987,14 +1220,19 @@ fn onboarding_eval_scorecard() {
         // content + robustness) are the quality of the flow. Tier 0 is how much
         // we can trust those numbers, so it gates rather than averages: report
         // it alongside, and fold it in lightly.
-        let composite =
-            tier1 * 0.35 + tier3 * 0.30 + tier4 * 0.15 + tier5 * 0.10 + tier0 * 0.10;
+        let composite = tier1 * 0.30
+            + tier3 * 0.25
+            + tier4 * 0.13
+            + tier5 * 0.10
+            + tier6 * 0.12
+            + tier0 * 0.10;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
         println!("Tier 1 (flow structure) : {tier1:>5.1} / 100");
         println!("Tier 3 (screen quality) : {tier3:>5.1} / 100");
         println!("Tier 4 (content/robust) : {tier4:>5.1} / 100");
         println!("Tier 5 (path efficiency): {tier5:>5.1} / 100");
+        println!("Tier 6 (cognitive load) : {tier6:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -1029,6 +1267,13 @@ fn onboarding_eval_scorecard() {
         assert_eq!(t5.dead_end_screens, 0, "a non-terminal screen has no forward transition (dead end)");
         assert!(t5.first_input_latency == 0, "a user must now spend keystrokes before the first real action");
         assert!(tier5 >= 60.0, "Tier 5 path-efficiency score regressed: {tier5:.1}");
+        // Tier 6 cognitive-load guards: no screen should ask more than one
+        // question or use confusing negations, and the tier must stay healthy.
+        for m in &loads {
+            assert!(m.questions <= 1, "screen '{}' asks {} questions (cognitive overload)", m.label, m.questions);
+            assert!(m.negations == 0, "screen '{}' uses {} negation(s) in prose", m.label, m.negations);
+        }
+        assert!(tier6 >= 60.0, "Tier 6 cognitive-load score regressed: {tier6:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -1277,6 +1522,26 @@ fn meta_tier5_is_monotonic_in_each_signal() {
     assert!(tier5_score(&Tier5Metrics { irreducible_decisions: 3, ..base }) <= base_s, "irreducible");
     assert!(tier5_score(&Tier5Metrics { dead_end_screens: 1, ..base }) <= base_s, "dead_end");
     assert!(tier5_score(&Tier5Metrics { acyclic: false, ..base }) <= base_s, "cycle");
+}
+
+#[test]
+fn meta_tier6_is_monotonic_in_each_signal() {
+    let base = ScreenLoad {
+        label: "synthetic",
+        grade_level: 12.0,
+        options: 2,
+        jargon_per_100w: 0.0,
+        new_concepts: 3,
+        questions: 1,
+        negations: 0,
+    };
+    let base_s = tier6_screen_score(&base);
+    assert!(tier6_screen_score(&ScreenLoad { grade_level: 16.0, ..base }) <= base_s, "grade");
+    assert!(tier6_screen_score(&ScreenLoad { options: 5, ..base }) <= base_s, "options");
+    assert!(tier6_screen_score(&ScreenLoad { jargon_per_100w: 20.0, ..base }) <= base_s, "jargon");
+    assert!(tier6_screen_score(&ScreenLoad { new_concepts: 8, ..base }) <= base_s, "concepts");
+    assert!(tier6_screen_score(&ScreenLoad { questions: 4, ..base }) <= base_s, "questions");
+    assert!(tier6_screen_score(&ScreenLoad { negations: 3, ..base }) <= base_s, "negations");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -1624,13 +1889,18 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "irreducible_decisions", status: Scored, rationale: "Tier5.per_irreducible_decision (forced choices with no auto default)", owns_feature: None },
         SignalSpec { name: "dead_end_screens", status: Scored, rationale: "Tier5.per_dead_end (non-terminal node with no forward edge)", owns_feature: None },
         SignalSpec { name: "cycle_freedom", status: Scored, rationale: "Tier5.has_cycle (flow graph must be a DAG)", owns_feature: None },
+        // ---- Scored (wired into Tier 6: cognitive load per screen) ----
+        SignalSpec { name: "reading_grade_level", status: Scored, rationale: "Tier6.per_excess_grade (Flesch-Kincaid over real body prose)", owns_feature: None },
+        SignalSpec { name: "options_per_screen", status: Scored, rationale: "Tier6.per_excess_option (Hick's law on simultaneous choices)", owns_feature: InteractiveOptions },
+        SignalSpec { name: "jargon_density", status: Scored, rationale: "Tier6.per_jargon_per_100w (unexplained technical terms)", owns_feature: None },
+        SignalSpec { name: "new_concepts_per_screen", status: Scored, rationale: "Tier6.per_excess_concept (distinct domain concepts introduced)", owns_feature: None },
+        SignalSpec { name: "number_of_questions", status: Scored, rationale: "Tier6.per_question_over_one (interrogatives to resolve)", owns_feature: None },
+        SignalSpec { name: "negation_count", status: Scored, rationale: "Tier6.per_negation (confusing don't/not/never phrasing)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
-        SignalSpec { name: "reading_grade_level", status: Deferred, rationale: "needs a syllable/grade estimator; word_count is a usable proxy for now", owns_feature: None },
         SignalSpec { name: "single_primary_action", status: Deferred, rationale: "needs CTA-salience parsing; decisions count is a partial proxy", owns_feature: None },
         SignalSpec { name: "error_recovery_depth", status: Deferred, rationale: "needs to drive failure paths through the real app and count steps back", owns_feature: None },
         SignalSpec { name: "time_on_blocker", status: Deferred, rationale: "DECISION_TIMEOUT is known but not yet folded into the score", owns_feature: None },
         SignalSpec { name: "back_navigation", status: Deferred, rationale: "onboarding is forward-only today; a real measure needs an undo affordance to exist first", owns_feature: None },
-        SignalSpec { name: "jargon_density", status: Deferred, rationale: "needs a maintained jargon lexicon; word_count is a crude proxy for now", owns_feature: None },
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
         SignalSpec { name: "visual_hierarchy", status: Rejected, rationale: "layout/eye-tracking concern; not measurable offline without users", owns_feature: None },
@@ -1817,6 +2087,12 @@ fn signal_coverage_scored_signals_are_all_live() {
         "irreducible_decisions",
         "dead_end_screens",
         "cycle_freedom",
+        "reading_grade_level",
+        "options_per_screen",
+        "jargon_density",
+        "new_concepts_per_screen",
+        "number_of_questions",
+        "negation_count",
     ]
     .into_iter()
     .collect();
@@ -1873,4 +2149,25 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier5_score(&Tier5Metrics { irreducible_decisions: 2, ..base5 }), b5, "irreducible_decisions");
     assert_ne!(tier5_score(&Tier5Metrics { dead_end_screens: 1, ..base5 }), b5, "dead_end_screens");
     assert_ne!(tier5_score(&Tier5Metrics { acyclic: false, ..base5 }), b5, "cycle_freedom");
+
+    // Tier 6 liveness: perturbing each cognitive-load signal must move the
+    // Tier 6 score. Proves reading_grade_level / options_per_screen /
+    // jargon_density / new_concepts_per_screen / number_of_questions /
+    // negation_count are all wired.
+    let base6 = ScreenLoad {
+        label: "synthetic",
+        grade_level: 12.0, // above the grade budget so a delta is visible
+        options: 2,
+        jargon_per_100w: 0.0,
+        new_concepts: 3,
+        questions: 1,
+        negations: 0,
+    };
+    let b6 = tier6_screen_score(&base6);
+    assert_ne!(tier6_screen_score(&ScreenLoad { grade_level: 14.0, ..base6 }), b6, "reading_grade_level");
+    assert_ne!(tier6_screen_score(&ScreenLoad { options: 4, ..base6 }), b6, "options_per_screen");
+    assert_ne!(tier6_screen_score(&ScreenLoad { jargon_per_100w: 10.0, ..base6 }), b6, "jargon_density");
+    assert_ne!(tier6_screen_score(&ScreenLoad { new_concepts: 6, ..base6 }), b6, "new_concepts_per_screen");
+    assert_ne!(tier6_screen_score(&ScreenLoad { questions: 3, ..base6 }), b6, "number_of_questions");
+    assert_ne!(tier6_screen_score(&ScreenLoad { negations: 2, ..base6 }), b6, "negation_count");
 }
