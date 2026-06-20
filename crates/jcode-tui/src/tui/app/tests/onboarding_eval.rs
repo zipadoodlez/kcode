@@ -2804,6 +2804,14 @@ fn signal_registry() -> Vec<SignalSpec> {
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
         SignalSpec { name: "visual_hierarchy", status: Rejected, rationale: "layout/eye-tracking concern; not measurable offline without users", owns_feature: None },
+        // These are genuinely valuable but FUNDAMENTALLY need real users or live
+        // telemetry, which this evaluator refuses to collect by design. Listing
+        // them keeps the rejection conscious (not a silent omission) and documents
+        // exactly why each is out of scope for an offline, data-free evaluator.
+        SignalSpec { name: "actual_completion_rate", status: Rejected, rationale: "needs a real-user funnel; the evaluator scores the artifact, never collects user data", owns_feature: None },
+        SignalSpec { name: "time_to_value_real", status: Rejected, rationale: "wall-clock time-to-first-value needs live telemetry; we only bound the flow's own timing (Tier 9)", owns_feature: None },
+        SignalSpec { name: "subjective_confusion", status: Rejected, rationale: "needs surveys / think-aloud; proxied (not replaced) by Tier 6 cognitive-load signals", owns_feature: None },
+        SignalSpec { name: "drop_off_point", status: Rejected, rationale: "needs analytics on real sessions; proxied structurally by Tier 5 dead_end_screens", owns_feature: None },
     ]
 }
 
