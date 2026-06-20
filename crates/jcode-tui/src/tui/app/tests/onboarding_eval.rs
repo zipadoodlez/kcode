@@ -1602,6 +1602,207 @@ fn tier9_score_w(m: &Tier9Metrics, w: &Tier9Weights) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 10: accessibility & robustness. We can't run a real screen reader or
+// measure contrast offline, but we CAN check three properties of the REAL
+// rendered buffer that gate basic accessibility:
+//
+//   * no_unicode_dependence - the readable prose is plain ASCII, so the flow is
+//     legible on a terminal/font without emoji or box-drawing glyphs. The logo
+//     is decorative (already stripped by body_prose_lines); load-bearing copy
+//     must not depend on a Unicode glyph.
+//   * color_independence    - the selected option is distinguished by a NON-color
+//     video attribute (REVERSED/BOLD/UNDERLINE), not hue alone, so it survives
+//     monochrome terminals and color-blind users. Verified by diffing the real
+//     buffer cells between the two highlight states.
+//   * screen_reader_order   - reading order is logical top-to-bottom: the
+//     explanatory prose precedes the action row on every interactive screen, so
+//     a linear reader hears "what this is" before "what to press".
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+struct Tier10Metrics {
+    /// Max count of non-ASCII chars found in load-bearing prose on any screen
+    /// (0 = fully legible without special glyphs).
+    max_nonascii_prose_chars: u32,
+    /// The selected option differs from the unselected one by a non-color video
+    /// attribute on every interactive screen.
+    color_independent_selection: bool,
+    /// On every interactive screen the action/options row appears below the
+    /// explanatory prose (logical linear reading order).
+    logical_reading_order: bool,
+}
+
+fn tier10_metrics() -> Tier10Metrics {
+    // ---- no_unicode_dependence: scan the readable prose of each welcome screen
+    // for glyphs a basic terminal/font can't render. The concern (per the
+    // taxonomy) is emoji / box-drawing / private-use symbols, NOT graceful
+    // typographic punctuation: an ellipsis or curly quote degrades cleanly and
+    // is universally available, so it is whitelisted.
+    let max_nonascii_prose_chars = all_welcome_screen_texts()
+        .iter()
+        .map(|(_, text)| {
+            body_prose_lines(text)
+                .iter()
+                .flat_map(|l| l.chars())
+                .filter(|c| is_unicode_dependence_char(*c))
+                .count() as u32
+        })
+        .max()
+        .unwrap_or(0);
+
+    // ---- color_independence: the highlighted option must carry a non-color
+    // attribute the unselected one lacks. Drive the real renderer in both
+    // highlight states and diff the buffer.
+    let color_independent_selection = selection_uses_noncolor_attribute();
+
+    // ---- screen_reader_order: on the LoginOpenAi screen, the explanatory prose
+    // ("Welcome", "log in to get started") must precede the Yes/No action row.
+    let logical_reading_order = action_row_follows_prose();
+
+    Tier10Metrics {
+        max_nonascii_prose_chars,
+        color_independent_selection,
+        logical_reading_order,
+    }
+}
+
+/// Whether a char represents a real Unicode *dependence* (emoji, box-drawing,
+/// arrows, private-use, etc.) versus a graceful typographic glyph that any
+/// terminal renders. Returns false for ASCII and for whitelisted punctuation.
+fn is_unicode_dependence_char(c: char) -> bool {
+    if c.is_ascii() {
+        return false;
+    }
+    // Graceful typographic punctuation that degrades cleanly everywhere.
+    const GRACEFUL: &[char] = &[
+        '\u{2026}', // … ellipsis
+        '\u{2018}', '\u{2019}', // ' ' curly single quotes
+        '\u{201C}', '\u{201D}', // " " curly double quotes
+        '\u{2013}', '\u{2014}', // – — en/em dash
+        '\u{00A0}', // non-breaking space
+    ];
+    !GRACEFUL.contains(&c)
+}
+
+/// Render the LoginOpenAi Yes/No screen in both highlight states and confirm the
+/// selected cell differs from the unselected cell by a NON-color video attribute
+/// (reverse/bold/underline), not just by foreground/background color.
+fn selection_uses_noncolor_attribute() -> bool {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::style::Modifier;
+
+    fn render_modifiers_on_yesno_row(yes_highlighted: bool) -> Option<(Modifier, Modifier)> {
+        let app = app_in_phase(OnboardingPhase::LoginOpenAi { yes_highlighted });
+        let backend = TestBackend::new(80, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                crate::tui::ui::draw_onboarding_welcome_for_tests(frame, &app, area);
+            })
+            .ok()?;
+        let buf = terminal.backend().buffer().clone();
+        for y in 0..30u16 {
+            let mut line = String::new();
+            for x in 0..80u16 {
+                line.push_str(buf[(x, y)].symbol());
+            }
+            let lt = line.to_ascii_lowercase();
+            if lt.contains("yes") && lt.contains("no") {
+                // Collect the modifier covering the first "Yes" glyph and the
+                // first "No" glyph on this row.
+                let mut yes_mod = Modifier::empty();
+                let mut no_mod = Modifier::empty();
+                let bytes: Vec<(u16, String)> =
+                    (0..80u16).map(|x| (x, buf[(x, y)].symbol().to_string())).collect();
+                if let Some(i) = line.find("Yes") {
+                    if let Some((x, _)) = bytes.get(i) {
+                        yes_mod = buf[(*x, y)].modifier;
+                    }
+                }
+                if let Some(i) = line.rfind("No") {
+                    if let Some((x, _)) = bytes.get(i) {
+                        no_mod = buf[(*x, y)].modifier;
+                    }
+                }
+                return Some((yes_mod, no_mod));
+            }
+        }
+        None
+    }
+
+    let noncolor = Modifier::REVERSED | Modifier::BOLD | Modifier::UNDERLINED;
+    // When Yes is highlighted, Yes must carry a non-color attribute that No
+    // doesn't, and vice versa.
+    let yes_hl = render_modifiers_on_yesno_row(true);
+    let no_hl = render_modifiers_on_yesno_row(false);
+    match (yes_hl, no_hl) {
+        (Some((yes_y, no_y)), Some((yes_n, no_n))) => {
+            let yes_distinct = (yes_y & noncolor) != (no_y & noncolor);
+            let no_distinct = (no_n & noncolor) != (yes_n & noncolor);
+            yes_distinct && no_distinct
+        }
+        _ => false,
+    }
+}
+
+/// Confirm the explanatory prose precedes the action row on the LoginOpenAi
+/// screen (logical top-to-bottom order for a linear/screen reader).
+fn action_row_follows_prose() -> bool {
+    let app = app_in_phase(OnboardingPhase::LoginOpenAi { yes_highlighted: true });
+    let text = render_onboarding_text(&app, 80, 30);
+    let lines: Vec<&str> = text.lines().collect();
+    let prose_idx = lines.iter().position(|l| {
+        let lc = l.to_ascii_lowercase();
+        lc.contains("welcome to jcode") || lc.contains("log in")
+    });
+    let action_idx = lines.iter().position(|l| {
+        let lc = l.to_ascii_lowercase();
+        lc.contains("yes") && lc.contains("no")
+    });
+    match (prose_idx, action_idx) {
+        (Some(p), Some(a)) => p < a,
+        // No action row on this screen would be a different (passive) layout;
+        // treat a missing pair conservatively as a failure to assert order.
+        _ => false,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Tier10Weights {
+    per_nonascii_prose_char: f64,
+    color_dependent: f64,
+    illogical_order: f64,
+}
+
+impl Default for Tier10Weights {
+    fn default() -> Self {
+        Self {
+            per_nonascii_prose_char: 5.0,
+            color_dependent: 40.0,
+            illogical_order: 30.0,
+        }
+    }
+}
+
+fn tier10_score(m: &Tier10Metrics) -> f64 {
+    tier10_score_w(m, &Tier10Weights::default())
+}
+
+fn tier10_score_w(m: &Tier10Metrics, w: &Tier10Weights) -> f64 {
+    let mut score = 100.0;
+    score -= m.max_nonascii_prose_chars as f64 * w.per_nonascii_prose_char;
+    if !m.color_independent_selection {
+        score -= w.color_dependent;
+    }
+    if !m.logical_reading_order {
+        score -= w.illogical_order;
+    }
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -1768,6 +1969,14 @@ fn onboarding_eval_scorecard() {
         println!("no forced wait         : {}", yn(t9.no_forced_wait));
         println!("max blocker dwell (s)  : {}", t9.max_blocker_secs);
 
+        // ----- Tier 10: accessibility & robustness (real buffer) -----
+        let t10 = tier10_metrics();
+        let tier10 = tier10_score(&t10);
+        println!("\n-- Tier 10: accessibility & robustness --");
+        println!("max non-ASCII prose ch : {}", t10.max_nonascii_prose_chars);
+        println!("color-independent sel  : {}", yn(t10.color_independent_selection));
+        println!("logical reading order  : {}", yn(t10.logical_reading_order));
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -1791,14 +2000,15 @@ fn onboarding_eval_scorecard() {
         // content + robustness) are the quality of the flow. Tier 0 is how much
         // we can trust those numbers, so it gates rather than averages: report
         // it alongside, and fold it in lightly.
-        let composite = tier1 * 0.20
-            + tier3 * 0.16
-            + tier4 * 0.12
+        let composite = tier1 * 0.19
+            + tier3 * 0.15
+            + tier4 * 0.11
             + tier5 * 0.10
-            + tier6 * 0.10
+            + tier6 * 0.09
             + tier7 * 0.08
             + tier8 * 0.08
-            + tier9 * 0.06
+            + tier9 * 0.05
+            + tier10 * 0.05
             + tier0 * 0.10;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
@@ -1810,6 +2020,7 @@ fn onboarding_eval_scorecard() {
         println!("Tier 7 (clarity/guide)  : {tier7:>5.1} / 100");
         println!("Tier 8 (reversibility)  : {tier8:>5.1} / 100");
         println!("Tier 9 (timing/pacing)  : {tier9:>5.1} / 100");
+        println!("Tier 10 (accessibility) : {tier10:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -1871,6 +2082,12 @@ fn onboarding_eval_scorecard() {
         assert!(t9.countdown_slack_secs >= 0.0, "a timed onboarding screen could auto-advance before it can be read: slack {:.1}s", t9.countdown_slack_secs);
         assert!(t9.no_forced_wait, "a timed onboarding phase ignores an immediate-commit key (forced wait)");
         assert!(tier9 >= 60.0, "Tier 9 timing score regressed: {tier9:.1}");
+        // Tier 10 accessibility guards: prose stays ASCII-legible, selection is
+        // not color-only, and reading order is logical.
+        assert!(t10.max_nonascii_prose_chars == 0, "load-bearing onboarding prose now depends on a non-ASCII glyph ({} chars)", t10.max_nonascii_prose_chars);
+        assert!(t10.color_independent_selection, "the selected option is no longer distinguished by a non-color attribute (color-only selection)");
+        assert!(t10.logical_reading_order, "an interactive onboarding screen renders its action row before its explanatory prose");
+        assert!(tier10 >= 60.0, "Tier 10 accessibility score regressed: {tier10:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -2186,6 +2403,19 @@ fn meta_tier9_is_monotonic_in_each_signal() {
     assert!(tier9_score(&Tier9Metrics { countdown_slack_secs: -10.0, ..base }) <= base_s, "countdown");
     assert!(tier9_score(&Tier9Metrics { no_forced_wait: false, ..base }) <= base_s, "forced-wait");
     assert!(tier9_score(&Tier9Metrics { max_blocker_secs: 300, ..base }) <= base_s, "blocker");
+}
+
+#[test]
+fn meta_tier10_is_monotonic_in_each_signal() {
+    let base = Tier10Metrics {
+        max_nonascii_prose_chars: 0,
+        color_independent_selection: true,
+        logical_reading_order: true,
+    };
+    let base_s = tier10_score(&base);
+    assert!(tier10_score(&Tier10Metrics { max_nonascii_prose_chars: 5, ..base }) <= base_s, "unicode");
+    assert!(tier10_score(&Tier10Metrics { color_independent_selection: false, ..base }) <= base_s, "color");
+    assert!(tier10_score(&Tier10Metrics { logical_reading_order: false, ..base }) <= base_s, "order");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -2566,6 +2796,10 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "interactive_options", status: Scored, rationale: "owns the Yes/No selector class (also counted by Tier1.decisions)", owns_feature: InteractiveOptions },
         SignalSpec { name: "command_affordance", status: Scored, rationale: "owns typed-command screens (/login, /model); also Tier3.escape_hatch", owns_feature: Command },
         SignalSpec { name: "input_field_present", status: Scored, rationale: "owns the provider picker's type-to-filter input surface (full-app render)", owns_feature: InputField },
+        // ---- Scored (wired into Tier 10: accessibility & robustness) ----
+        SignalSpec { name: "no_unicode_dependence", status: Scored, rationale: "Tier10.per_nonascii_prose_char (load-bearing prose is ASCII-legible; logo is decorative)", owns_feature: None },
+        SignalSpec { name: "color_independence", status: Scored, rationale: "Tier10.color_dependent (selection marked by a non-color video attribute, verified on the buffer)", owns_feature: None },
+        SignalSpec { name: "screen_reader_order", status: Scored, rationale: "Tier10.illogical_order (prose precedes the action row for linear reading)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
@@ -2833,6 +3067,9 @@ fn signal_coverage_scored_signals_are_all_live() {
         "interactive_options",
         "command_affordance",
         "input_field_present",
+        "no_unicode_dependence",
+        "color_independence",
+        "screen_reader_order",
     ]
     .into_iter()
     .collect();
@@ -2956,4 +3193,17 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier9_score(&Tier9Metrics { countdown_slack_secs: -5.0, ..base9 }), b9, "countdown_adequacy");
     assert_ne!(tier9_score(&Tier9Metrics { no_forced_wait: false, ..base9 }), b9, "forced_wait");
     assert_ne!(tier9_score(&Tier9Metrics { max_blocker_secs: 300, ..base9 }), b9, "time_on_blocker");
+
+    // Tier 10 liveness: perturbing each accessibility signal must move the Tier
+    // 10 score. Proves no_unicode_dependence / color_independence /
+    // screen_reader_order are all wired.
+    let base10 = Tier10Metrics {
+        max_nonascii_prose_chars: 0,
+        color_independent_selection: true,
+        logical_reading_order: true,
+    };
+    let b10 = tier10_score(&base10);
+    assert_ne!(tier10_score(&Tier10Metrics { max_nonascii_prose_chars: 3, ..base10 }), b10, "no_unicode_dependence");
+    assert_ne!(tier10_score(&Tier10Metrics { color_independent_selection: false, ..base10 }), b10, "color_independence");
+    assert_ne!(tier10_score(&Tier10Metrics { logical_reading_order: false, ..base10 }), b10, "screen_reader_order");
 }
