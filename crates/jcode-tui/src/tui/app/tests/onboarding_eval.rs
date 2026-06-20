@@ -268,8 +268,19 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
     let app = app_in_phase(phase);
     let text = render_onboarding_text(&app, 80, 30);
     let is_yesno = text.contains("  Yes  ") || text.contains("Yes") && text.contains("No");
-    let line_count = text.lines().filter(|l| !l.trim().is_empty()).count() as u32;
-    let word_count = text.split_whitespace().count() as u32;
+    // Reading load must be measured from the human body prose only, NOT the raw
+    // buffer. The raw buffer also contains the decorative idle donut, whose lit
+    // glyph count varies with wall-clock `animation_elapsed()` (so the raw count
+    // is both non-deterministic AND counts pure decoration as "words to read").
+    // `body_prose_lines` strips the telemetry header, the ASCII art, and the
+    // movement key-hint, leaving exactly the sentences the user must read - the
+    // same chrome-stripping Tier 6 already relies on.
+    let prose = body_prose_lines(&text);
+    let line_count = prose.len() as u32;
+    let word_count = prose
+        .iter()
+        .map(|l| l.split_whitespace().count())
+        .sum::<usize>() as u32;
     let keyhint_consistent = !is_yesno || text.contains(CANONICAL_YESNO_HINT);
     let lower = text.to_ascii_lowercase();
     let has_escape_hatch = lower.contains("skip")
