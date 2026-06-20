@@ -164,7 +164,9 @@ fn entry_paths() -> Vec<Path> {
             weight: 0.10,
             reaches_ready: true,
             steps: vec![
-                Step { phase: "Login{import}", keystrokes: 2, is_decision: true, external_boundary: false },
+                // Single-screen checkbox list, all pre-checked: one Enter imports
+                // every detected login at once (no per-candidate page).
+                Step { phase: "Login{import}", keystrokes: 1, is_decision: true, external_boundary: false },
                 Step { phase: "Suggestions", keystrokes: 0, is_decision: false, external_boundary: false },
             ],
         },
@@ -430,7 +432,7 @@ fn terminology_is_consistent(screens: &[(&'static str, String)]) -> bool {
                 // login", "a login", "your login").
                 let prev = i.checked_sub(1).and_then(|j| words.get(j)).copied().unwrap_or("");
                 let prev_w = prev.trim_matches(|c: char| !c.is_ascii_alphanumeric());
-                let is_noun = matches!(prev_w, "existing" | "detected" | "saved" | "a" | "an" | "your" | "one")
+                let is_noun = matches!(prev_w, "existing" | "detected" | "saved" | "selected" | "a" | "an" | "your" | "one")
                     || prev_w.chars().all(|c| c.is_ascii_digit()) && !prev_w.is_empty();
                 if !is_command && !is_progress_header && !is_noun {
                     return false;
@@ -450,8 +452,12 @@ fn tier4_metrics() -> Tier4Metrics {
     // ---- terminology_consistency: scan every welcome screen's prose ----
     let terminology_consistent = terminology_is_consistent(&all_welcome_screen_texts());
 
-    // ---- progress_visibility: the 2-candidate import is a multi-step context
-    // and must show position ("Login 1 of 2"). Rendered from the real screen. ----
+    // ---- progress_visibility: the multi-login import is a multi-step context
+    // and must set scope up front. The single-screen checkbox list does this by
+    // (a) stating the total ("We found 2 existing logins") and (b) showing all N
+    // logins as visible rows at once, so the user always knows how many there
+    // are and what they are. We verify both: the count statement AND that every
+    // detected login is actually listed. Rendered from the real screen. ----
     let review = ImportReview::new(vec![
         ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
         ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
@@ -459,7 +465,9 @@ fn tier4_metrics() -> Tier4Metrics {
     .unwrap();
     let multi = app_in_phase(OnboardingPhase::Login { import: Some(review) });
     let multi_text = render_onboarding_text(&multi, 80, 30).to_ascii_lowercase();
-    let progress_visible = multi_text.contains(" of 2") || multi_text.contains(" of 1");
+    let states_total = multi_text.contains("we found 2 existing logins");
+    let lists_all = multi_text.contains("openai/codex") && multi_text.contains("claude");
+    let progress_visible = states_total && lists_all;
 
     // ---- default_safety: drive the real ContinuePrompt timeout. The highlighted
     // default is "Yes", and a timeout must resolve to a non-destructive outcome
@@ -1138,6 +1146,9 @@ const ACTION_VERBS: &[&str] = &[
 const NEXT_STEP_CUES: &[&str] = &[
     "to choose", "to skip", "to get started", "opens", "auto-selects",
     "automatically", "to choose a provider", "anytime", "resume",
+    // The import list describes its outcome: "Press Enter to import ..." and
+    // "Imports all checked in Ns".
+    "to import", "imports all",
 ];
 
 #[derive(Clone, Copy)]
@@ -1205,11 +1216,11 @@ fn screen_clarity(label: &'static str, text: &str) -> ScreenClarity {
 
     let next_step_visible = NEXT_STEP_CUES.iter().any(|c| lower_all.contains(c));
 
-    // Multi-step contexts announce themselves with "we found N" / "login N of M".
-    let is_multistep = lower_all.contains("we found") || lower_all.contains(" of 2") || lower_all.contains(" of 1");
-    let expectation_set = !is_multistep
-        || lower_all.contains("we found")
-        || lower_all.contains(" of ");
+    // Multi-step contexts announce themselves with "we found N existing
+    // logins". The single-screen import list sets scope by stating the total
+    // and listing every login, so "we found" is the cue and also satisfies it.
+    let is_multistep = lower_all.contains("we found");
+    let expectation_set = !is_multistep || lower_all.contains("we found");
 
     ScreenClarity {
         label,
@@ -1347,9 +1358,10 @@ fn tier8_metrics() -> Tier8Metrics {
         }
     };
 
-    // ---- repeated_prompt: declining every import advances to recovery, it does
-    // NOT loop back to re-ask the same candidate. Drive a single-candidate
-    // review, decline it, and confirm we left the import phase. ----
+    // ---- repeated_prompt: declining every import (uncheck all, then commit)
+    // advances to recovery, it does NOT loop back to re-ask. Drive a single-
+    // candidate list, uncheck it with 'n', commit with Enter, and confirm we
+    // left the import phase. ----
     let no_repeated_prompt = {
         use crate::external_auth::ExternalAuthReviewCandidate;
         use crate::tui::app::onboarding_flow::ImportReview;
@@ -1362,9 +1374,10 @@ fn tier8_metrics() -> Tier8Metrics {
         if let Some(flow) = app.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::Login { import: Some(review) };
         }
-        // Decline the only candidate with 'n'.
+        // Uncheck the only login with 'n', then commit the (empty) list.
         app.handle_onboarding_continue_prompt_key(KeyCode::Char('n'));
-        // The same import candidate must not still be the active prompt.
+        app.handle_onboarding_continue_prompt_key(KeyCode::Enter);
+        // The import list must not still be the active prompt.
         !matches!(
             app.onboarding_phase(),
             Some(OnboardingPhase::Login { import: Some(_) })

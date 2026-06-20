@@ -736,23 +736,30 @@ pub enum OnboardingWelcomeKind {
     Suggestions,
 }
 
-/// Render-friendly snapshot of the current step in the per-candidate login
-/// import walkthrough. Describes which detected login is being reviewed and
-/// which Yes/No option is currently highlighted.
+/// Render-friendly snapshot of the single-screen login-import checkbox list.
+/// Carries every detected login plus which ones are checked and which row the
+/// cursor is on, so the welcome card can draw the whole list at once.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoginImportPrompt {
+    /// One entry per detected login, in display order.
+    pub rows: Vec<LoginImportRow>,
+    /// Index of the row the cursor is currently on.
+    pub cursor: usize,
+    /// How many rows are currently checked for import.
+    pub checked_count: usize,
+    /// Seconds left before the screen auto-imports all checked logins.
+    pub seconds_left: u64,
+}
+
+/// One row in the login-import checkbox list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoginImportRow {
     /// Human-readable provider summary (e.g. "OpenAI/Codex").
     pub provider_summary: String,
     /// Where the credentials came from (e.g. "Codex auth.json").
     pub source_name: String,
-    /// 1-based position of this candidate.
-    pub position: usize,
-    /// Total number of detected candidates.
-    pub total: usize,
-    /// Whether the "Yes" option is currently highlighted (vs. "No").
-    pub yes_highlighted: bool,
-    /// Seconds left before this candidate auto-commits its default.
-    pub seconds_left: u64,
+    /// Whether this login is checked for import.
+    pub checked: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

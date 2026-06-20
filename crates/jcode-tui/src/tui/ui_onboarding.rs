@@ -100,12 +100,13 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                 }
                 Some(prompt) => {
+                    let total = prompt.rows.len();
                     lines.push(
                         Line::from(Span::styled(
                             format!(
                                 "We found {} existing login{}.",
-                                prompt.total,
-                                if prompt.total == 1 { "" } else { "s" },
+                                total,
+                                if total == 1 { "" } else { "s" },
                             ),
                             Style::default()
                                 .fg(welcome_accent())
@@ -113,72 +114,69 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         ))
                         .alignment(align),
                     );
-                    lines.push(Line::from(""));
-                    // Only show the "Login N of M" position when there is more
-                    // than one to step through; "Login 1 of 1" is meaningless
-                    // noise for the common single-login case.
-                    if prompt.total > 1 {
-                        lines.push(
-                            Line::from(Span::styled(
-                                format!("Login {} of {}", prompt.position, prompt.total),
-                                Style::default().fg(dim_color()),
-                            ))
-                            .alignment(align),
-                        );
-                    }
                     lines.push(
-                        Line::from(vec![
-                            Span::styled("Import ", Style::default().fg(rgb(200, 200, 200))),
-                            Span::styled(
-                                prompt.provider_summary.clone(),
-                                Style::default()
-                                    .fg(welcome_accent())
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(
-                                format!(" ({})?", prompt.source_name),
-                                Style::default().fg(dim_color()),
-                            ),
-                        ])
+                        Line::from(Span::styled(
+                            "Import them so you're ready right away:",
+                            Style::default().fg(dim_color()),
+                        ))
                         .alignment(align),
                     );
                     lines.push(Line::from(""));
 
-                    // Yes / No options; the highlighted one is bold + accented.
-                    let (yes_style, no_style) = if prompt.yes_highlighted {
-                        (
+                    // One checkbox row per detected login. The cursor row is
+                    // reverse-highlighted; the checkbox itself shows checked
+                    // state with a NON-color marker ([x] vs [ ]) so it reads
+                    // correctly without color.
+                    for (i, row) in prompt.rows.iter().enumerate() {
+                        let is_cursor = i == prompt.cursor;
+                        let marker = if row.checked { "[x] " } else { "[ ] " };
+                        let label_style = if is_cursor {
                             Style::default()
                                 .fg(welcome_accent())
-                                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                            Style::default().fg(dim_color()),
-                        )
-                    } else {
-                        (
-                            Style::default().fg(dim_color()),
-                            Style::default()
-                                .fg(welcome_accent())
-                                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                        )
-                    };
-                    lines.push(
-                        Line::from(vec![
-                            Span::styled("  Yes  ", yes_style),
-                            Span::raw("   "),
-                            Span::styled("  No  ", no_style),
-                        ])
-                        .alignment(align),
-                    );
+                                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                        } else if row.checked {
+                            Style::default().fg(rgb(200, 200, 200))
+                        } else {
+                            Style::default().fg(dim_color())
+                        };
+                        lines.push(
+                            Line::from(vec![
+                                Span::styled(marker, label_style),
+                                Span::styled(row.provider_summary.clone(), label_style),
+                                Span::styled(
+                                    format!(" ({})", row.source_name),
+                                    Style::default().fg(dim_color()),
+                                ),
+                            ])
+                            .alignment(align),
+                        );
+                    }
                     lines.push(Line::from(""));
+
+                    // The single "Import" action commits all checked logins.
                     lines.push(
                         Line::from(Span::styled(
-                            "Left/right or h/l to move, Enter or Space to choose (y / n also work).",
+                            format!(
+                                "Press Enter to import {} selected login{}.",
+                                prompt.checked_count,
+                                if prompt.checked_count == 1 { "" } else { "s" },
+                            ),
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Up/down to move, Space to toggle a login on or off.",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),
                     );
                     lines.push(
                         Line::from(Span::styled(
-                            format!("Auto-selects in {}s.", prompt.seconds_left),
+                            format!("Imports all checked in {}s.", prompt.seconds_left),
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),

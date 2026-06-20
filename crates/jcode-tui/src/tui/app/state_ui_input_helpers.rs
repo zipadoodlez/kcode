@@ -1137,17 +1137,23 @@ impl App {
         use crate::tui::app::onboarding_flow::OnboardingPhase;
         match self.onboarding_phase() {
             Some(OnboardingPhase::Login { import }) => {
-                let prompt = import.as_ref().and_then(|review| {
-                    review
-                        .current()
-                        .map(|candidate| crate::tui::LoginImportPrompt {
+                let prompt = import.as_ref().map(|review| {
+                    let rows = review
+                        .candidates
+                        .iter()
+                        .enumerate()
+                        .map(|(i, candidate)| crate::tui::LoginImportRow {
                             provider_summary: candidate.provider_summary().to_string(),
                             source_name: candidate.source_name().to_string(),
-                            position: review.position(),
-                            total: review.total(),
-                            yes_highlighted: review.yes_highlighted,
-                            seconds_left: review.seconds_remaining(),
+                            checked: review.checked.get(i).copied().unwrap_or(false),
                         })
+                        .collect();
+                    crate::tui::LoginImportPrompt {
+                        rows,
+                        cursor: review.cursor,
+                        checked_count: review.checked_count(),
+                        seconds_left: review.seconds_remaining(),
+                    }
                 });
                 OnboardingWelcomeKind::Login { import: prompt }
             }

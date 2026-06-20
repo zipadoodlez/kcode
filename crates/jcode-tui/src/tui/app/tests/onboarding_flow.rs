@@ -50,7 +50,7 @@ fn onboarding_can_begin_at_login_phase() {
 }
 
 #[test]
-fn login_welcome_kind_shows_first_import_candidate() {
+fn login_welcome_kind_shows_import_checkbox_list() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::OnboardingWelcomeKind;
     use crate::tui::app::onboarding_flow::ImportReview;
@@ -58,8 +58,8 @@ fn login_welcome_kind_shows_first_import_candidate() {
     let mut app = create_test_app();
     app.onboarding_flow = None;
     app.begin_onboarding_flow_at_login();
-    // Inject a per-candidate import walkthrough as if external logins were
-    // detected at startup.
+    // Inject a multi-select import list as if external logins were detected at
+    // startup.
     let review = ImportReview::new(vec![
         ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
         ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
@@ -72,18 +72,20 @@ fn login_welcome_kind_shows_first_import_candidate() {
     }
     match app.onboarding_welcome_kind() {
         OnboardingWelcomeKind::Login { import: Some(prompt) } => {
-            assert_eq!(prompt.provider_summary, "OpenAI/Codex");
-            assert_eq!(prompt.source_name, "Codex auth.json");
-            assert_eq!(prompt.position, 1);
-            assert_eq!(prompt.total, 2);
-            assert!(prompt.yes_highlighted);
+            assert_eq!(prompt.rows.len(), 2);
+            assert_eq!(prompt.rows[0].provider_summary, "OpenAI/Codex");
+            assert_eq!(prompt.rows[0].source_name, "Codex auth.json");
+            // Every login is pre-checked by default.
+            assert!(prompt.rows.iter().all(|r| r.checked));
+            assert_eq!(prompt.checked_count, 2);
+            assert_eq!(prompt.cursor, 0);
         }
         other => panic!("expected Login welcome with import prompt, got {other:?}"),
     }
 }
 
 #[test]
-fn import_review_walks_candidates_and_collects_approvals() {
+fn import_review_collects_checked_logins() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::ImportReview;
 
@@ -95,31 +97,40 @@ fn import_review_walks_candidates_and_collects_approvals() {
     .unwrap();
     assert_eq!(review.position(), 1);
     assert_eq!(review.total(), 3);
+    // All pre-checked: the default action imports everything.
+    assert_eq!(review.approved_indices(), vec![0, 1, 2]);
+    assert_eq!(review.checked_count(), 3);
 
-    // Candidate 1: approve (Yes is default).
-    assert!(!review.commit_current());
-    // Candidate 2: decline.
-    review.set_yes(false);
-    assert!(!review.commit_current());
-    // Candidate 3: approve. Now finished.
-    review.set_yes(true);
-    assert!(review.commit_current());
-
-    assert_eq!(review.approved, vec![0, 2]);
+    // Uncheck the middle login (cursor on row 1).
+    review.cursor_down();
+    review.toggle_current();
+    assert_eq!(review.approved_indices(), vec![0, 2]);
+    assert_eq!(review.checked_count(), 2);
 }
 
 #[test]
-fn import_review_highlight_navigation() {
+fn import_review_cursor_navigation_wraps() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::ImportReview;
 
-    let mut review =
-        ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")]).unwrap();
-    assert!(review.yes_highlighted);
-    review.toggle();
-    assert!(!review.yes_highlighted);
-    review.set_yes(true);
-    assert!(review.yes_highlighted);
+    let mut review = ImportReview::new(vec![
+        ExternalAuthReviewCandidate::fixture("Cursor", "Cursor"),
+        ExternalAuthReviewCandidate::fixture("Gemini", "Gemini CLI"),
+    ])
+    .unwrap();
+    assert_eq!(review.position(), 1);
+    review.cursor_down();
+    assert_eq!(review.position(), 2);
+    // Wrap forward to the top.
+    review.cursor_down();
+    assert_eq!(review.position(), 1);
+    // Wrap backward to the bottom.
+    review.cursor_up();
+    assert_eq!(review.position(), 2);
+    // Toggling the current row flips just that row.
+    assert!(review.current_checked());
+    review.toggle_current();
+    assert!(!review.current_checked());
 }
 
 #[test]
@@ -433,10 +444,11 @@ fn import_review_decline_all_falls_back_to_manual_login() {
                 import: Some(review),
             };
         }
-        // Decline the only candidate ("No" then Enter). With nothing approved we
-        // don't spawn an import, the walkthrough clears, and the card falls back
-        // to the manual-login prompt.
+        // Uncheck the only login ("n"), then commit with Enter. With nothing
+        // checked we don't spawn an import, the list clears, and the card falls
+        // back to the manual-login prompt.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
         assert!(matches!(
             app.onboarding_phase(),
             Some(OnboardingPhase::Login { import: None })

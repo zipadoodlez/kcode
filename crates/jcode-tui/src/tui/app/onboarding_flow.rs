@@ -51,53 +51,53 @@ impl ExternalCli {
     }
 }
 
-/// Per-candidate yes/no walkthrough for importing detected external logins.
+/// Single-screen multi-select review for importing detected external logins.
 ///
 /// On a fresh install we may detect logins left behind by other tools (Codex,
-/// Claude Code, Copilot, ...). Instead of a single "type 1,3" prompt, we walk
-/// the user through each detected login one at a time and ask whether to import
-/// it. The highlighted Yes/No option moves with the arrow / vim keys and is
-/// committed with Enter or Space.
+/// Claude Code, Copilot, ...). Rather than walking the user through one yes/no
+/// page per login, we show them ALL at once as a checkbox list. Every login is
+/// pre-checked (the safe, common default is "import everything"), the user can
+/// move a cursor and toggle any row off, and a single "Import" action commits
+/// all checked logins together. This collapses N pages into one screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ImportReview {
     /// All detected importable logins, in display order.
     pub(crate) candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
-    /// Index of the candidate currently being reviewed.
-    pub(crate) index: usize,
-    /// Which option (Yes/No) is highlighted for the current candidate.
-    pub(crate) yes_highlighted: bool,
-    /// Zero-based indices of candidates the user chose to import so far.
-    pub(crate) approved: Vec<usize>,
-    /// When the current candidate was first shown, for the decision countdown.
+    /// Per-candidate checked state (parallel to `candidates`). `true` = import.
+    /// All start checked so the default action imports everything.
+    pub(crate) checked: Vec<bool>,
+    /// Index of the row the cursor is currently on (for toggling/highlight).
+    pub(crate) cursor: usize,
+    /// When the screen was first shown, for the single decision countdown.
     pub(crate) shown_at: Instant,
 }
 
 impl ImportReview {
-    /// Create a review for the given candidates, starting on the first with
-    /// "Yes" highlighted by default. Returns `None` if there are no candidates.
+    /// Create a review for the given candidates with every login pre-checked.
+    /// Returns `None` if there are no candidates.
     pub(crate) fn new(
         candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
     ) -> Option<Self> {
         if candidates.is_empty() {
             return None;
         }
+        let checked = vec![true; candidates.len()];
         Some(Self {
             candidates,
-            index: 0,
-            yes_highlighted: true,
-            approved: Vec::new(),
+            checked,
+            cursor: 0,
             shown_at: Instant::now(),
         })
     }
 
-    /// The candidate currently under review, if any.
+    /// The candidate the cursor is currently on, if any.
     pub(crate) fn current(&self) -> Option<&crate::external_auth::ExternalAuthReviewCandidate> {
-        self.candidates.get(self.index)
+        self.candidates.get(self.cursor)
     }
 
-    /// 1-based position of the current candidate (for "1 of 3" display).
+    /// 1-based position of the cursor row (for "1 of 3" display).
     pub(crate) fn position(&self) -> usize {
-        self.index + 1
+        self.cursor + 1
     }
 
     /// Total number of candidates being reviewed.
@@ -105,37 +105,68 @@ impl ImportReview {
         self.candidates.len()
     }
 
-    /// Move the Yes/No highlight (true = highlight Yes, false = highlight No).
-    pub(crate) fn set_yes(&mut self, yes: bool) {
-        self.yes_highlighted = yes;
-    }
-
-    /// Toggle the Yes/No highlight (used by left/right or tab-style keys).
-    pub(crate) fn toggle(&mut self) {
-        self.yes_highlighted = !self.yes_highlighted;
-    }
-
-    /// Record the current decision and advance to the next candidate.
-    /// Returns `true` if the walkthrough is now complete (no more candidates).
-    pub(crate) fn commit_current(&mut self) -> bool {
-        if self.yes_highlighted && !self.approved.contains(&self.index) {
-            self.approved.push(self.index);
+    /// Move the cursor to the previous row (wrapping to the bottom).
+    pub(crate) fn cursor_up(&mut self) {
+        if self.candidates.is_empty() {
+            return;
         }
-        self.index += 1;
-        self.yes_highlighted = true;
-        // Restart the decision countdown for the next candidate.
-        self.shown_at = Instant::now();
-        self.index >= self.candidates.len()
+        self.cursor = if self.cursor == 0 {
+            self.candidates.len() - 1
+        } else {
+            self.cursor - 1
+        };
     }
 
-    /// Seconds left before the current candidate auto-commits its default.
+    /// Move the cursor to the next row (wrapping to the top).
+    pub(crate) fn cursor_down(&mut self) {
+        if self.candidates.is_empty() {
+            return;
+        }
+        self.cursor = (self.cursor + 1) % self.candidates.len();
+    }
+
+    /// Toggle the checked state of the row under the cursor.
+    pub(crate) fn toggle_current(&mut self) {
+        if let Some(slot) = self.checked.get_mut(self.cursor) {
+            *slot = !*slot;
+        }
+    }
+
+    /// Set the checked state of the row under the cursor.
+    pub(crate) fn set_current(&mut self, checked: bool) {
+        if let Some(slot) = self.checked.get_mut(self.cursor) {
+            *slot = checked;
+        }
+    }
+
+    /// Whether the row under the cursor is currently checked.
+    pub(crate) fn current_checked(&self) -> bool {
+        self.checked.get(self.cursor).copied().unwrap_or(false)
+    }
+
+    /// The zero-based indices of all checked (to-be-imported) candidates.
+    pub(crate) fn approved_indices(&self) -> Vec<usize> {
+        self.checked
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &c)| c.then_some(i))
+            .collect()
+    }
+
+    /// How many logins are currently checked for import.
+    pub(crate) fn checked_count(&self) -> usize {
+        self.checked.iter().filter(|&&c| c).count()
+    }
+
+    /// Seconds left before the screen auto-commits its default (import all
+    /// currently-checked logins).
     pub(crate) fn seconds_remaining(&self) -> u64 {
         DECISION_TIMEOUT
             .saturating_sub(self.shown_at.elapsed())
             .as_secs()
     }
 
-    /// Whether the current candidate's decision countdown has elapsed.
+    /// Whether the decision countdown has elapsed.
     pub(crate) fn timed_out(&self) -> bool {
         self.shown_at.elapsed() >= DECISION_TIMEOUT
     }

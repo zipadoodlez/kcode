@@ -100,7 +100,7 @@ fn onboarding_golden_walks_every_phase() {
         );
     }
 
-    // 2. Login with detected imports (per-candidate review).
+    // 2. Login with detected imports (single-screen multi-select checkbox list).
     {
         let review = ImportReview::new(vec![
             ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
@@ -111,18 +111,22 @@ fn onboarding_golden_walks_every_phase() {
             import: Some(review),
         });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (import review, candidate 1/2)", &text);
+        dump("Login (import checkbox list, 2 logins)", &text);
         assert!(text.contains("We found 2 existing logins."), "count: {text}");
-        assert!(text.contains("Login 1 of 2"), "position: {text}");
-        assert!(text.contains("OpenAI/Codex"), "provider: {text}");
-        assert!(text.contains("Codex auth.json"), "source: {text}");
-        assert!(text.contains("Yes"), "yes option: {text}");
-        assert!(text.contains("No"), "no option: {text}");
+        // Both logins are listed at once, each as a checkbox row (pre-checked).
+        assert!(text.contains("OpenAI/Codex"), "provider 1: {text}");
+        assert!(text.contains("Codex auth.json"), "source 1: {text}");
+        assert!(text.contains("Claude"), "provider 2: {text}");
+        assert!(text.contains("[x]"), "checkbox marker: {text}");
         assert!(
-            text.contains("Left/right or h/l to move, Enter or Space to choose (y / n also work)."),
-            "keys hint: {text}"
+            text.contains("Press Enter to import 2 selected logins."),
+            "import action: {text}"
         );
-        assert!(text.contains("Auto-selects in"), "countdown: {text}");
+        assert!(
+            text.contains("Space to toggle"),
+            "toggle hint: {text}"
+        );
+        assert!(text.contains("Imports all checked in"), "countdown: {text}");
     }
 
     // 2b. Singular phrasing for a single detected login.
@@ -134,14 +138,15 @@ fn onboarding_golden_walks_every_phase() {
             import: Some(review),
         });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (import review, single login)", &text);
+        dump("Login (import checkbox list, single login)", &text);
         assert!(
             text.contains("We found 1 existing login."),
             "singular count: {text}"
         );
-        // A single login no longer shows the meaningless "Login 1 of 1"
-        // position line; the multi-login case (test above) still does.
-        assert!(!text.contains("Login 1 of 1"), "single-login should omit position: {text}");
+        assert!(
+            text.contains("Press Enter to import 1 selected login."),
+            "singular import action: {text}"
+        );
     }
 
     // 4. Continue prompt (resume an external session).

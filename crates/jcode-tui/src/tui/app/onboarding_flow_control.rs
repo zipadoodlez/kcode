@@ -455,44 +455,38 @@ impl App {
         }
     }
 
-    /// Handle a key while the per-candidate import walkthrough is active.
+    /// Handle a key while the single-screen import checkbox list is active.
     /// Returns true if the key was consumed.
     ///
-    /// The Yes / No options sit side by side, so any movement key simply moves
-    /// the highlight between them:
-    ///   - Left / h  -> highlight "Yes"
-    ///   - Right / l -> highlight "No"
-    ///   - Up / Down / k / j / Tab -> toggle between Yes and No
-    ///   - y / Y     -> choose "Yes" and commit
-    ///   - n / N     -> choose "No" and commit
-    ///   - Enter / Space -> commit the highlighted choice, advance
+    /// All detected logins are shown at once, pre-checked. Keys:
+    ///   - Up / Down / k / j -> move the cursor between rows
+    ///   - Space / Left / Right / h / l -> toggle the highlighted row's checkbox
+    ///   - y / Y -> check the highlighted row;  n / N -> uncheck it
+    ///   - Enter -> import every checked login and finish
     fn handle_onboarding_import_review_key(&mut self, code: KeyCode) -> bool {
-        // Mutate the live review in place, and report whether the walkthrough
-        // finished so we can kick off the import outside the borrow.
+        // The import screen is a single multi-select checkbox list: move a cursor
+        // with the arrow / vim keys, toggle a row with Space, and commit ALL
+        // checked logins at once with Enter. `finished` means the user committed
+        // the whole list (so we kick off the import outside the borrow).
         let mut finished = false;
         {
             let Some(review) = self.onboarding_import_review_mut() else {
                 return false;
             };
             match code {
-                KeyCode::Left | KeyCode::Char('h') => review.set_yes(true),
-                KeyCode::Right | KeyCode::Char('l') => review.set_yes(false),
-                KeyCode::Up
-                | KeyCode::Down
-                | KeyCode::Char('k')
-                | KeyCode::Char('j')
-                | KeyCode::Tab => review.toggle(),
-                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                    review.set_yes(true);
-                    finished = review.commit_current();
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') => {
-                    review.set_yes(false);
-                    finished = review.commit_current();
-                }
-                KeyCode::Enter | KeyCode::Char(' ') => {
-                    finished = review.commit_current();
-                }
+                KeyCode::Up | KeyCode::Char('k') => review.cursor_up(),
+                KeyCode::Down | KeyCode::Char('j') => review.cursor_down(),
+                // Space (or left/right/h/l) toggles the highlighted row.
+                KeyCode::Char(' ')
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Char('h')
+                | KeyCode::Char('l') => review.toggle_current(),
+                // y / n set the highlighted row explicitly.
+                KeyCode::Char('y') | KeyCode::Char('Y') => review.set_current(true),
+                KeyCode::Char('n') | KeyCode::Char('N') => review.set_current(false),
+                // Enter commits the whole list (import all checked logins).
+                KeyCode::Enter => finished = true,
                 _ => return false,
             }
         }
@@ -607,17 +601,15 @@ impl App {
         }
     }
 
-    /// Refresh the status notice to reflect the current import-review position.
+    /// Refresh the status notice to reflect the current import-list selection.
     fn update_onboarding_import_review_status(&mut self) {
-        if let Some(review) = self.onboarding_import_review_mut()
-            && let Some(candidate) = review.current()
-        {
+        if let Some(review) = self.onboarding_import_review_mut() {
+            let checked = review.checked_count();
+            let total = review.total();
+            let secs = review.seconds_remaining();
             let notice = format!(
-                "Import {} ({} of {})? Yes/No - hl to move, Enter to choose, auto in {}s",
-                candidate.provider_summary(),
-                review.position(),
-                review.total(),
-                review.seconds_remaining(),
+                "Import {checked} of {total} login{} - Space toggles, arrows move, Enter imports (auto in {secs}s)",
+                if total == 1 { "" } else { "s" },
             );
             self.set_status_notice(notice);
         }
@@ -629,7 +621,7 @@ impl App {
         // Take the candidates and approved indices out of the phase, then clear
         // the import sub-state so the welcome card stops rendering the prompt.
         let (candidates, approved) = match self.onboarding_import_review_mut() {
-            Some(review) => (review.candidates.clone(), review.approved.clone()),
+            Some(review) => (review.candidates.clone(), review.approved_indices()),
             None => return,
         };
         if let Some(flow) = self.onboarding_flow.as_mut()
@@ -1281,19 +1273,11 @@ impl App {
                 import: Some(_), ..
             }) => {
                 if decision_timed_out {
-                    // Auto-commit the currently highlighted choice and advance.
-                    let mut finished = false;
-                    if let Some(review) = self.onboarding_import_review_mut() {
-                        finished = review.commit_current();
-                    }
-                    if finished {
-                        self.onboarding_finish_import_review();
-                    } else {
-                        self.update_onboarding_import_review_status();
-                    }
+                    // Timeout default: import every currently-checked login.
+                    self.onboarding_finish_import_review();
                     return true;
                 }
-                // Keep the per-candidate countdown notice fresh.
+                // Keep the countdown notice fresh.
                 self.update_onboarding_import_review_status();
                 return true;
             }
