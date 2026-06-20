@@ -206,6 +206,15 @@ fn test_env_override_focus_hook() {
 }
 
 #[test]
+fn test_memory_sidecar_enabled_defaults_true() {
+    // The LLM precision-judge path is the only reliably productive memory mode,
+    // so memory uses it by default. Users opt into the no-LLM hybrid path
+    // explicitly by setting this false.
+    let cfg = Config::default();
+    assert!(cfg.agents.memory_sidecar_enabled);
+}
+
+#[test]
 fn test_env_override_memory_sidecar() {
     let _guard = crate::storage::lock_test_env();
     let prev_model = std::env::var_os("JCODE_MEMORY_MODEL");

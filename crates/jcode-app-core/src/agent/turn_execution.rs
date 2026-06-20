@@ -809,8 +809,8 @@ impl Agent {
             transcript.push('\n');
         }
 
-        if !crate::memory::memory_sidecar_enabled() {
-            logging::info("Memory extraction skipped: memory sidecar disabled");
+        if !crate::memory::memory_llm_judge_available() {
+            logging::info("Memory extraction skipped: LLM judge unavailable");
             return 0;
         }
 

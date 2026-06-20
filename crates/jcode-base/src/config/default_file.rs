@@ -290,8 +290,12 @@ swarm_spawn_mode = "visible"
 # Env override: JCODE_MEMORY_MODEL
 # memory_model = "claude-haiku-4"
 #
-# Whether the memory sidecar handles relevance/extraction.
-# memory_sidecar_enabled = false
+# Whether the memory sidecar (LLM precision judge) handles relevance/extraction.
+# Default true: the LLM precision-judge path is the only reliably productive
+# memory mode. Set false only to opt into the lower-precision no-LLM hybrid path.
+# When this is true but no LLM backend is reachable (logged out), memory goes
+# dormant instead of degrading to the no-LLM path. Env: JCODE_MEMORY_SIDECAR_ENABLED
+# memory_sidecar_enabled = true
 #
 # Minimum turns between Mode-2 memory reranks (cadence floor). The expensive
 # listwise LLM rerank runs at most once per this many turns; skipped turns fall
@@ -306,6 +310,17 @@ swarm_spawn_mode = "visible"
 # for the cheaper single-judge path (precision ~0.77).
 # memory_rerank_votes = 2
 # memory_rerank_min_agree = 2
+#
+# Embedding backend for memory dense-retrieval. "local" (default) uses the
+# bundled all-MiniLM-L6-v2 ONNX model (no network); "openai" uses a remote
+# OpenAI / OpenAI-compatible /v1/embeddings endpoint (requires OPENAI_API_KEY;
+# silently falls back to local when no key is found). Vectors from different
+# models live in separate spaces and are never compared, so switching is safe.
+# Env override: JCODE_MEMORY_EMBEDDING_BACKEND
+# memory_embedding_backend = "local"
+# memory_embedding_model = "text-embedding-3-small"
+# memory_embedding_base_url = "https://api.openai.com/v1"
+# memory_embedding_dim = 1536
 
 [terminal]
 # External command that takes over headed session spawns (swarm agents,

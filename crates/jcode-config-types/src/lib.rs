@@ -441,7 +441,7 @@ pub struct AuthConfig {
 }
 
 /// Agent-specific model defaults.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentsConfig {
     /// Optional default model override for spawned swarm/subagent sessions.
@@ -461,6 +461,14 @@ pub struct AgentsConfig {
     /// Optional default model override for the memory sidecar.
     pub memory_model: Option<String>,
     /// Whether memory should use the sidecar for relevance/extraction.
+    ///
+    /// Defaults to `true`: the LLM precision-judge path is the only memory mode
+    /// that is reliably productive (injection precision ~1.0), so memory uses it
+    /// by default. Set to `false` only to deliberately opt into the lower-
+    /// precision no-LLM hybrid path. When sidecar mode is on but no LLM backend
+    /// is reachable, the memory runtime goes dormant instead of degrading to the
+    /// no-LLM path.
+    #[serde(default = "default_memory_sidecar_enabled")]
     pub memory_sidecar_enabled: bool,
     /// Minimum turns between Mode-2 memory reranks (cadence floor). The
     /// expensive listwise LLM rerank runs at most once per this many turns;
@@ -480,6 +488,34 @@ pub struct AgentsConfig {
     /// memory. Clamped to 1..=votes. Higher = stricter precision, lower recall.
     #[serde(default = "default_memory_rerank_min_agree")]
     pub memory_rerank_min_agree: usize,
+    /// Which embedding backend memory dense-retrieval uses: `"local"` (bundled
+    /// all-MiniLM-L6-v2 ONNX, default, no network) or `"openai"` (remote
+    /// OpenAI/openai-compatible `/v1/embeddings`, opt-in, requires an
+    /// `OPENAI_API_KEY`). A keyless `"openai"` setting silently degrades to
+    /// local. Env override: `JCODE_MEMORY_EMBEDDING_BACKEND`.
+    #[serde(default = "default_memory_embedding_backend")]
+    pub memory_embedding_backend: String,
+    /// OpenAI embedding model name when `memory_embedding_backend = "openai"`.
+    /// Unset = `text-embedding-3-small`. Env: `JCODE_MEMORY_EMBEDDING_MODEL`.
+    #[serde(default)]
+    pub memory_embedding_model: Option<String>,
+    /// Optional override for the embeddings API base URL (no trailing slash),
+    /// for OpenAI-compatible gateways. Unset = `https://api.openai.com/v1`.
+    /// Env: `JCODE_MEMORY_EMBEDDING_BASE_URL`.
+    #[serde(default)]
+    pub memory_embedding_base_url: Option<String>,
+    /// Optional override for the remote embedding dimensionality (vector-space
+    /// metadata / sanity checks). Unset = inferred from the model name.
+    #[serde(default)]
+    pub memory_embedding_dim: Option<usize>,
+}
+
+fn default_memory_embedding_backend() -> String {
+    "local".to_string()
+}
+
+fn default_memory_sidecar_enabled() -> bool {
+    true
 }
 
 fn default_memory_rerank_cadence() -> usize {
@@ -492,6 +528,25 @@ fn default_memory_rerank_votes() -> usize {
 
 fn default_memory_rerank_min_agree() -> usize {
     2
+}
+
+impl Default for AgentsConfig {
+    fn default() -> Self {
+        Self {
+            swarm_model: None,
+            swarm_spawn_mode: SwarmSpawnMode::default(),
+            swarm_gallery_max_pct: None,
+            memory_model: None,
+            memory_sidecar_enabled: default_memory_sidecar_enabled(),
+            memory_rerank_cadence: default_memory_rerank_cadence(),
+            memory_rerank_votes: default_memory_rerank_votes(),
+            memory_rerank_min_agree: default_memory_rerank_min_agree(),
+            memory_embedding_backend: default_memory_embedding_backend(),
+            memory_embedding_model: None,
+            memory_embedding_base_url: None,
+            memory_embedding_dim: None,
+        }
+    }
 }
 
 /// How swarm-created agents should be spawned.

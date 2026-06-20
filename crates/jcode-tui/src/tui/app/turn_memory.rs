@@ -176,8 +176,8 @@ impl App {
             transcript.push('\n');
         }
 
-        if !crate::memory::memory_sidecar_enabled() {
-            crate::logging::info("Memory extraction skipped: memory sidecar disabled");
+        if !crate::memory::memory_llm_judge_available() {
+            crate::logging::info("Memory extraction skipped: LLM judge unavailable");
             return;
         }
 
