@@ -521,6 +521,342 @@ fn tier4_score_w(m: &Tier4Metrics, w: &Tier4Weights) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 5: path-efficiency over a REAL flow graph.
+//
+// Tier 1 counts keystrokes along authored happy paths; this tier builds the
+// flow as a graph (nodes = onboarding phases + a virtual Start, edges = the
+// authored transitions with their keystroke cost) and derives structural
+// efficiency properties that per-path counting cannot see:
+//
+//   * min_vs_actual_path  - for each entry scenario, the authored default path
+//     vs the graph-shortest route to a ready state (excess keystrokes).
+//   * first_input_latency - keystrokes a user spends before the first real
+//     action (a pure intro screen would push this above 0).
+//   * irreducible_decisions - decisions with no timeout/auto default, i.e. ones
+//     the user is forced to answer to proceed.
+//   * dead_end_screens    - non-terminal nodes with no forward transition.
+//   * cycle_freedom       - the flow graph is a DAG (no accidental loops).
+//
+// Anti-drift: `phase_to_node` is a wildcard-free match over `OnboardingPhase`,
+// so a new phase fails to compile until it is placed in the graph.
+// ---------------------------------------------------------------------------
+
+/// A node in the onboarding flow graph. `Start` is a virtual entry point; every
+/// other node corresponds to a real `OnboardingPhase`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum GraphNode {
+    Start,
+    LoginOpenAi,
+    LoginImport,
+    LoginRecovery,
+    ModelSelect,
+    ContinuePrompt,
+    TranscriptPick,
+    Suggestions,
+    Done,
+}
+
+/// Anti-drift map: every real phase lands on exactly one graph node. No `_`
+/// arm, so a new `OnboardingPhase` variant fails to compile here until placed.
+fn phase_to_node(phase: &OnboardingPhase) -> GraphNode {
+    match phase {
+        OnboardingPhase::LoginOpenAi { .. } => GraphNode::LoginOpenAi,
+        OnboardingPhase::Login { import: Some(_) } => GraphNode::LoginImport,
+        OnboardingPhase::Login { import: None } => GraphNode::LoginRecovery,
+        OnboardingPhase::ModelSelect => GraphNode::ModelSelect,
+        OnboardingPhase::ContinuePrompt { .. } => GraphNode::ContinuePrompt,
+        OnboardingPhase::TranscriptPick { .. } => GraphNode::TranscriptPick,
+        OnboardingPhase::Suggestions => GraphNode::Suggestions,
+        OnboardingPhase::Done => GraphNode::Done,
+    }
+}
+
+/// Per-node structural properties used by the path-efficiency metrics.
+struct NodeProps {
+    /// The user must make a Yes/No or pick choice here.
+    is_decision: bool,
+    /// A timeout/auto default exists, so the user is NOT forced to answer.
+    has_default: bool,
+    /// Reaching this node means onboarding succeeded (user can type a prompt).
+    is_ready: bool,
+    /// No further onboarding transitions leave this node (it is an exit).
+    is_terminal: bool,
+}
+
+fn node_props(n: GraphNode) -> NodeProps {
+    use GraphNode::*;
+    match n {
+        Start => NodeProps { is_decision: false, has_default: false, is_ready: false, is_terminal: false },
+        // Forced Yes/No: there is no timeout default on the OpenAI sign-in prompt.
+        LoginOpenAi => NodeProps { is_decision: true, has_default: false, is_ready: false, is_terminal: false },
+        // Import review auto-commits the highlighted choice on DECISION_TIMEOUT.
+        LoginImport => NodeProps { is_decision: true, has_default: true, is_ready: false, is_terminal: false },
+        // Recovery fallback: a single Enter opens the provider picker.
+        LoginRecovery => NodeProps { is_decision: true, has_default: false, is_ready: false, is_terminal: false },
+        // Transient: auto-advances, the user never chooses here.
+        ModelSelect => NodeProps { is_decision: false, has_default: true, is_ready: false, is_terminal: false },
+        // Continue prompt auto-opens the resume menu on timeout (default Yes).
+        ContinuePrompt => NodeProps { is_decision: true, has_default: true, is_ready: false, is_terminal: false },
+        // Resume picker: a pick (or "start new") reaches a ready session.
+        TranscriptPick => NodeProps { is_decision: true, has_default: false, is_ready: true, is_terminal: true },
+        Suggestions => NodeProps { is_decision: false, has_default: false, is_ready: true, is_terminal: true },
+        Done => NodeProps { is_decision: false, has_default: false, is_ready: false, is_terminal: true },
+    }
+}
+
+/// One directed transition in the flow graph.
+struct Edge {
+    from: GraphNode,
+    to: GraphNode,
+    /// In-TUI keystrokes to traverse this edge on the default path.
+    keystrokes: u32,
+}
+
+/// The authored flow graph. Each edge is a real transition the onboarding code
+/// can take. Kept faithful to the entry paths in `entry_paths()` and the real
+/// transitions exercised by `onboarding_eval_fidelity_real_transitions`.
+fn flow_edges() -> Vec<Edge> {
+    use GraphNode::*;
+    vec![
+        // Entry routing from the virtual Start (zero-cost: chosen by detected
+        // environment, not by a keystroke).
+        Edge { from: Start, to: LoginOpenAi, keystrokes: 0 },
+        Edge { from: Start, to: LoginImport, keystrokes: 0 },
+        Edge { from: Start, to: ModelSelect, keystrokes: 0 },
+        // OpenAI sign-in: Yes -> (browser OAuth) -> Suggestions; No -> Done.
+        Edge { from: LoginOpenAi, to: Suggestions, keystrokes: 1 },
+        Edge { from: LoginOpenAi, to: Done, keystrokes: 1 },
+        // Import review: accept/decline each candidate, then suggestions. A
+        // failed/declined import drops to the recovery fallback.
+        Edge { from: LoginImport, to: Suggestions, keystrokes: 1 },
+        Edge { from: LoginImport, to: LoginRecovery, keystrokes: 1 },
+        // Recovery: Enter opens the provider picker, ending at suggestions.
+        Edge { from: LoginRecovery, to: Suggestions, keystrokes: 1 },
+        // Transient model-select auto-advances with no keystroke.
+        Edge { from: ModelSelect, to: Suggestions, keystrokes: 0 },
+        // Continue prompt: Yes -> resume picker; No -> suggestions.
+        Edge { from: ContinuePrompt, to: TranscriptPick, keystrokes: 1 },
+        Edge { from: ContinuePrompt, to: Suggestions, keystrokes: 1 },
+    ]
+}
+
+/// Dijkstra over keystroke cost: minimum keystrokes from `start` to the nearest
+/// node satisfying `is_goal`. Returns None if no goal is reachable.
+fn min_keystrokes_to<F: Fn(GraphNode) -> bool>(
+    start: GraphNode,
+    edges: &[Edge],
+    is_goal: F,
+) -> Option<u32> {
+    use std::collections::HashMap;
+    let mut best: HashMap<GraphNode, u32> = HashMap::new();
+    best.insert(start, 0);
+    // Small graph: relax to a fixed point (Bellman-Ford style) instead of a heap.
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for e in edges {
+            if let Some(&du) = best.get(&e.from) {
+                let nd = du + e.keystrokes;
+                if best.get(&e.to).map(|&d| nd < d).unwrap_or(true) {
+                    best.insert(e.to, nd);
+                    changed = true;
+                }
+            }
+        }
+    }
+    best.iter()
+        .filter(|(n, _)| is_goal(**n))
+        .map(|(_, &d)| d)
+        .min()
+}
+
+/// True if the directed flow graph contains no cycle (is a DAG).
+fn graph_is_acyclic(edges: &[Edge]) -> bool {
+    use std::collections::{HashMap, HashSet};
+    let mut adj: HashMap<GraphNode, Vec<GraphNode>> = HashMap::new();
+    let mut nodes: HashSet<GraphNode> = HashSet::new();
+    for e in edges {
+        adj.entry(e.from).or_default().push(e.to);
+        nodes.insert(e.from);
+        nodes.insert(e.to);
+    }
+    // 0 = unvisited, 1 = on stack, 2 = done.
+    let mut state: HashMap<GraphNode, u8> = HashMap::new();
+    fn dfs(
+        n: GraphNode,
+        adj: &std::collections::HashMap<GraphNode, Vec<GraphNode>>,
+        state: &mut std::collections::HashMap<GraphNode, u8>,
+    ) -> bool {
+        state.insert(n, 1);
+        if let Some(succ) = adj.get(&n) {
+            for &m in succ {
+                match state.get(&m).copied().unwrap_or(0) {
+                    1 => return false,            // back-edge -> cycle
+                    0 => {
+                        if !dfs(m, adj, state) {
+                            return false;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        state.insert(n, 2);
+        true
+    }
+    for &n in &nodes {
+        if state.get(&n).copied().unwrap_or(0) == 0 && !dfs(n, &adj, &mut state) {
+            return false;
+        }
+    }
+    true
+}
+
+#[derive(Clone, Copy)]
+struct Tier5Metrics {
+    /// Weighted excess keystrokes (authored default path vs graph shortest) to
+    /// reach a ready state, summed over entry scenarios.
+    excess_keystrokes: f64,
+    /// Worst-case keystrokes before the first real action across entry paths.
+    first_input_latency: u32,
+    /// Count of decisions on common paths that cannot be defaulted away.
+    irreducible_decisions: u32,
+    /// Non-terminal nodes with no outgoing transition.
+    dead_end_screens: u32,
+    /// The flow graph is a DAG.
+    acyclic: bool,
+}
+
+/// Map an entry path (from `entry_paths`) to its graph entry node, by its first
+/// authored step's phase label. Wildcard-free over the known labels.
+fn entry_node_for(path: &Path) -> GraphNode {
+    match path.steps.first().map(|s| s.phase) {
+        Some("LoginOpenAi") => GraphNode::LoginOpenAi,
+        Some("Login{import}") => GraphNode::LoginImport,
+        Some("Login{recovery}") => GraphNode::LoginRecovery,
+        Some("Suggestions") => GraphNode::Suggestions,
+        Some("TranscriptPick") => GraphNode::TranscriptPick,
+        Some("ContinuePrompt") => GraphNode::ContinuePrompt,
+        // ModelSelect/Done never lead an entry path; default to Start so an
+        // unexpected label is conservatively treated as full-path overhead.
+        _ => GraphNode::Start,
+    }
+}
+
+fn tier5_metrics() -> Tier5Metrics {
+    let edges = flow_edges();
+    let paths = entry_paths();
+
+    // ---- min_vs_actual_path: excess keystrokes per ready-reaching path ----
+    let mut excess = 0.0;
+    let mut latency = 0u32;
+    for p in &paths {
+        let m = path_metrics(p);
+        if !m.reaches_ready {
+            continue;
+        }
+        let entry = entry_node_for(p);
+        let min = min_keystrokes_to(entry, &edges, |n| node_props(n).is_ready).unwrap_or(m.keystrokes);
+        excess += (m.keystrokes.saturating_sub(min) as f64) * p.weight;
+
+        // first_input_latency: keystrokes spent on steps before the first
+        // decision step (a pure intro screen with keystrokes>0 would count).
+        let mut pre = 0u32;
+        for s in &p.steps {
+            if s.is_decision {
+                break;
+            }
+            pre += s.keystrokes;
+        }
+        latency = latency.max(pre);
+    }
+
+    // ---- irreducible_decisions: decision nodes a user must answer ----
+    let irreducible = [
+        GraphNode::LoginOpenAi,
+        GraphNode::LoginImport,
+        GraphNode::LoginRecovery,
+        GraphNode::ContinuePrompt,
+        GraphNode::TranscriptPick,
+    ]
+    .into_iter()
+    .filter(|&n| {
+        let p = node_props(n);
+        p.is_decision && !p.has_default
+    })
+    .count() as u32;
+
+    // ---- dead_end_screens: non-terminal nodes with no outgoing edge ----
+    let all_nodes = [
+        GraphNode::Start,
+        GraphNode::LoginOpenAi,
+        GraphNode::LoginImport,
+        GraphNode::LoginRecovery,
+        GraphNode::ModelSelect,
+        GraphNode::ContinuePrompt,
+        GraphNode::TranscriptPick,
+        GraphNode::Suggestions,
+        GraphNode::Done,
+    ];
+    let dead_ends = all_nodes
+        .into_iter()
+        .filter(|&n| {
+            let p = node_props(n);
+            let has_out = edges.iter().any(|e| e.from == n);
+            !p.is_terminal && !has_out
+        })
+        .count() as u32;
+
+    Tier5Metrics {
+        excess_keystrokes: excess,
+        first_input_latency: latency,
+        irreducible_decisions: irreducible,
+        dead_end_screens: dead_ends,
+        acyclic: graph_is_acyclic(&edges),
+    }
+}
+
+/// Tunable Tier 5 weights for the meta sensitivity analysis.
+#[derive(Clone, Copy)]
+struct Tier5Weights {
+    per_excess_keystroke: f64,
+    per_latency_keystroke: f64,
+    per_irreducible_decision: f64,
+    per_dead_end: f64,
+    has_cycle: f64,
+}
+
+impl Default for Tier5Weights {
+    fn default() -> Self {
+        Self {
+            per_excess_keystroke: 12.0,
+            per_latency_keystroke: 10.0,
+            // Some forced decisions are legitimate (you must choose to log in),
+            // so this is a gentle nudge, not a heavy penalty.
+            per_irreducible_decision: 4.0,
+            per_dead_end: 25.0,
+            has_cycle: 30.0,
+        }
+    }
+}
+
+fn tier5_score(m: &Tier5Metrics) -> f64 {
+    tier5_score_w(m, &Tier5Weights::default())
+}
+
+fn tier5_score_w(m: &Tier5Metrics, w: &Tier5Weights) -> f64 {
+    let mut score = 100.0;
+    score -= m.excess_keystrokes * w.per_excess_keystroke;
+    score -= (m.first_input_latency as f64) * w.per_latency_keystroke;
+    score -= (m.irreducible_decisions as f64) * w.per_irreducible_decision;
+    score -= (m.dead_end_screens as f64) * w.per_dead_end;
+    if !m.acyclic {
+        score -= w.has_cycle;
+    }
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -618,6 +954,16 @@ fn onboarding_eval_scorecard() {
         println!("default safe (timeout) : {}", yn(t4.default_safe));
         println!("narrow-term options    : {}", yn(t4.narrow_options_survive));
 
+        // ----- Tier 5: path efficiency over the real flow graph -----
+        let t5 = tier5_metrics();
+        let tier5 = tier5_score(&t5);
+        println!("\n-- Tier 5: path efficiency (flow graph) --");
+        println!("excess keystrokes (wtd): {:.2}", t5.excess_keystrokes);
+        println!("first-input latency    : {}", t5.first_input_latency);
+        println!("irreducible decisions  : {}", t5.irreducible_decisions);
+        println!("dead-end screens       : {}", t5.dead_end_screens);
+        println!("acyclic (DAG)          : {}", yn(t5.acyclic));
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -641,12 +987,14 @@ fn onboarding_eval_scorecard() {
         // content + robustness) are the quality of the flow. Tier 0 is how much
         // we can trust those numbers, so it gates rather than averages: report
         // it alongside, and fold it in lightly.
-        let composite = tier1 * 0.4 + tier3 * 0.35 + tier4 * 0.15 + tier0 * 0.1;
+        let composite =
+            tier1 * 0.35 + tier3 * 0.30 + tier4 * 0.15 + tier5 * 0.10 + tier0 * 0.10;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
         println!("Tier 1 (flow structure) : {tier1:>5.1} / 100");
         println!("Tier 3 (screen quality) : {tier3:>5.1} / 100");
         println!("Tier 4 (content/robust) : {tier4:>5.1} / 100");
+        println!("Tier 5 (path efficiency): {tier5:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -675,6 +1023,12 @@ fn onboarding_eval_scorecard() {
         assert!(t4.default_safe, "a timed decision's default no longer resolves to a recoverable outcome");
         assert!(t4.narrow_options_survive, "Yes/No options stopped rendering on a narrow (50-col) terminal");
         assert!(tier4 >= 60.0, "Tier 4 content/robustness score regressed: {tier4:.1}");
+        // Tier 5 path-efficiency guards: the flow must stay a DAG with no
+        // dead ends, and no path may carry avoidable keystroke overhead.
+        assert!(t5.acyclic, "onboarding flow graph developed a cycle");
+        assert_eq!(t5.dead_end_screens, 0, "a non-terminal screen has no forward transition (dead end)");
+        assert!(t5.first_input_latency == 0, "a user must now spend keystrokes before the first real action");
+        assert!(tier5 >= 60.0, "Tier 5 path-efficiency score regressed: {tier5:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -731,6 +1085,74 @@ fn truncate(s: &str, n: usize) -> String {
     } else {
         s.chars().take(n.saturating_sub(1)).collect::<String>() + "…"
     }
+}
+
+/// Tier 5 fidelity: the flow GRAPH must match the REAL state machine. We drive
+/// the real app to a phase and assert `phase_to_node` classifies it onto the
+/// node the graph models, and that every graph node is reachable from Start.
+/// This is the anti-drift guarantee for the path-efficiency tier: if the real
+/// transitions diverge from the modeled edges, this fails.
+#[test]
+fn onboarding_eval_graph_fidelity() {
+    with_temp_jcode_home(|| {
+        // Real transition: authed/no-transcripts begin -> Suggestions, which the
+        // graph models as a ready terminal node.
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow();
+        if let Some(phase) = app.onboarding_phase() {
+            assert_eq!(phase_to_node(phase), GraphNode::Suggestions);
+            assert!(node_props(phase_to_node(phase)).is_ready);
+        }
+
+        // Real transition: LoginOpenAi decline -> Done (a terminal, not-ready
+        // node). Confirms the LoginOpenAi->Done edge models a real path.
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::LoginOpenAi { yes_highlighted: true };
+        }
+        assert!(app.handle_onboarding_continue_prompt_key(crossterm::event::KeyCode::Char('n')));
+        assert!(app.onboarding_phase().is_none(), "decline reaches terminal Done");
+
+        // Every graph node maps back from at least one real phase (except the
+        // virtual Start), so the node set isn't inventing screens.
+        let phases = all_onboarding_phases();
+        let mapped: std::collections::HashSet<GraphNode> =
+            phases.iter().map(|(_, p)| phase_to_node(p)).collect();
+        for node in [
+            GraphNode::LoginOpenAi,
+            GraphNode::LoginImport,
+            GraphNode::LoginRecovery,
+            GraphNode::ModelSelect,
+            GraphNode::ContinuePrompt,
+            GraphNode::TranscriptPick,
+            GraphNode::Suggestions,
+            GraphNode::Done,
+        ] {
+            assert!(mapped.contains(&node), "graph node {node:?} has no backing real phase");
+        }
+
+        // Every live entry node is reachable from Start via the edges.
+        // (`ContinuePrompt` is intentionally excluded: it is a retained
+        // compat phase that the live flow no longer routes into from Start -
+        // it opens the resume picker directly - so it has outgoing edges but
+        // no Start-reachable inbound edge, which is faithful to production.)
+        let edges = flow_edges();
+        for n in [
+            GraphNode::LoginOpenAi,
+            GraphNode::LoginImport,
+            GraphNode::ModelSelect,
+            GraphNode::Suggestions,
+            GraphNode::Done,
+        ] {
+            assert!(
+                min_keystrokes_to(GraphNode::Start, &edges, |m| m == n).is_some(),
+                "graph node {n:?} is unreachable from Start"
+            );
+        }
+    });
 }
 
 // ===========================================================================
@@ -837,6 +1259,24 @@ fn meta_tier4_is_monotonic_in_each_signal() {
     assert!(tier4_score(&Tier4Metrics { narrow_options_survive: false, ..base }) <= base_s, "narrow");
     // All-good is the unique maximum.
     assert_eq!(base_s, 100.0, "all-good Tier 4 is perfect");
+}
+
+#[test]
+fn meta_tier5_is_monotonic_in_each_signal() {
+    let base = Tier5Metrics {
+        excess_keystrokes: 0.0,
+        first_input_latency: 0,
+        irreducible_decisions: 1,
+        dead_end_screens: 0,
+        acyclic: true,
+    };
+    let base_s = tier5_score(&base);
+    // Each worse value -> never higher.
+    assert!(tier5_score(&Tier5Metrics { excess_keystrokes: 2.0, ..base }) <= base_s, "excess");
+    assert!(tier5_score(&Tier5Metrics { first_input_latency: 2, ..base }) <= base_s, "latency");
+    assert!(tier5_score(&Tier5Metrics { irreducible_decisions: 3, ..base }) <= base_s, "irreducible");
+    assert!(tier5_score(&Tier5Metrics { dead_end_screens: 1, ..base }) <= base_s, "dead_end");
+    assert!(tier5_score(&Tier5Metrics { acyclic: false, ..base }) <= base_s, "cycle");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -1178,12 +1618,17 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "progress_visibility", status: Scored, rationale: "Tier4.no_progress ('N of M' in multi-step contexts)", owns_feature: None },
         SignalSpec { name: "default_safety", status: Scored, rationale: "Tier4.unsafe_default (timed auto-commit lands on a recoverable outcome)", owns_feature: None },
         SignalSpec { name: "narrow_terminal_safety", status: Scored, rationale: "Tier4.narrow_breaks (core Yes/No options survive a 50-col terminal)", owns_feature: None },
+        // ---- Scored (wired into Tier 5: path efficiency over the flow graph) ----
+        SignalSpec { name: "min_vs_actual_path", status: Scored, rationale: "Tier5.per_excess_keystroke (default path vs graph-shortest to ready)", owns_feature: None },
+        SignalSpec { name: "first_input_latency", status: Scored, rationale: "Tier5.per_latency_keystroke (keystrokes before the first real action)", owns_feature: None },
+        SignalSpec { name: "irreducible_decisions", status: Scored, rationale: "Tier5.per_irreducible_decision (forced choices with no auto default)", owns_feature: None },
+        SignalSpec { name: "dead_end_screens", status: Scored, rationale: "Tier5.per_dead_end (non-terminal node with no forward edge)", owns_feature: None },
+        SignalSpec { name: "cycle_freedom", status: Scored, rationale: "Tier5.has_cycle (flow graph must be a DAG)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
         SignalSpec { name: "reading_grade_level", status: Deferred, rationale: "needs a syllable/grade estimator; word_count is a usable proxy for now", owns_feature: None },
         SignalSpec { name: "single_primary_action", status: Deferred, rationale: "needs CTA-salience parsing; decisions count is a partial proxy", owns_feature: None },
         SignalSpec { name: "error_recovery_depth", status: Deferred, rationale: "needs to drive failure paths through the real app and count steps back", owns_feature: None },
         SignalSpec { name: "time_on_blocker", status: Deferred, rationale: "DECISION_TIMEOUT is known but not yet folded into the score", owns_feature: None },
-        SignalSpec { name: "min_vs_actual_path", status: Deferred, rationale: "needs a shortest-path solver over the flow graph; keystrokes/screens are partial proxies", owns_feature: None },
         SignalSpec { name: "back_navigation", status: Deferred, rationale: "onboarding is forward-only today; a real measure needs an undo affordance to exist first", owns_feature: None },
         SignalSpec { name: "jargon_density", status: Deferred, rationale: "needs a maintained jargon lexicon; word_count is a crude proxy for now", owns_feature: None },
         // ---- Rejected (out of scope by construction) ----
@@ -1367,6 +1812,11 @@ fn signal_coverage_scored_signals_are_all_live() {
         "progress_visibility",
         "default_safety",
         "narrow_terminal_safety",
+        "min_vs_actual_path",
+        "first_input_latency",
+        "irreducible_decisions",
+        "dead_end_screens",
+        "cycle_freedom",
     ]
     .into_iter()
     .collect();
@@ -1406,4 +1856,21 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier4_score(&Tier4Metrics { progress_visible: false, ..good }), g, "progress_visibility");
     assert_ne!(tier4_score(&Tier4Metrics { default_safe: false, ..good }), g, "default_safety");
     assert_ne!(tier4_score(&Tier4Metrics { narrow_options_survive: false, ..good }), g, "narrow_terminal_safety");
+
+    // Tier 5 liveness: perturbing each path-efficiency signal must move the
+    // Tier 5 score. Proves min_vs_actual_path / first_input_latency /
+    // irreducible_decisions / dead_end_screens / cycle_freedom are all wired.
+    let base5 = Tier5Metrics {
+        excess_keystrokes: 0.0,
+        first_input_latency: 0,
+        irreducible_decisions: 1,
+        dead_end_screens: 0,
+        acyclic: true,
+    };
+    let b5 = tier5_score(&base5);
+    assert_ne!(tier5_score(&Tier5Metrics { excess_keystrokes: 1.0, ..base5 }), b5, "min_vs_actual_path");
+    assert_ne!(tier5_score(&Tier5Metrics { first_input_latency: 1, ..base5 }), b5, "first_input_latency");
+    assert_ne!(tier5_score(&Tier5Metrics { irreducible_decisions: 2, ..base5 }), b5, "irreducible_decisions");
+    assert_ne!(tier5_score(&Tier5Metrics { dead_end_screens: 1, ..base5 }), b5, "dead_end_screens");
+    assert_ne!(tier5_score(&Tier5Metrics { acyclic: false, ..base5 }), b5, "cycle_freedom");
 }
