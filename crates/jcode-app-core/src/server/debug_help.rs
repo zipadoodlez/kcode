@@ -47,6 +47,7 @@ SERVER COMMANDS (server: prefix or no prefix):
   background:tasks         - List background tasks
   server:memory            - Get global server memory breakdown
   server:memory-history    - Recent server process memory samples
+  memory-judge             - No-LLM memory-mode conversion + degradation rates
   embeddings:stats         - Get embedding model/cache runtime stats
   embeddings:load          - Force-load the shared embedding model
   embeddings:unload        - Force-unload the shared embedding model and cache

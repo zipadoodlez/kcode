@@ -143,6 +143,16 @@ pub(super) async fn maybe_handle_server_state_command(
         ));
     }
 
+    if cmd == "memory-judge" || cmd == "memory:judge" || cmd == "server:memory-judge" {
+        // Attribution of no-LLM memory-mode conversions: how often a surfacing
+        // turn ran the LLM judge vs converted (intended opt-out/cadence vs the
+        // degradations we drive to zero). See `memory_judge_metrics`.
+        return Ok(Some(
+            serde_json::to_string_pretty(&jcode_base::memory_judge_metrics::snapshot())
+                .unwrap_or_else(|_| "{}".to_string()),
+        ));
+    }
+
     if cmd == "embeddings" || cmd == "embeddings:stats" {
         return Ok(Some(
             serde_json::to_string_pretty(&crate::embedding::stats())
