@@ -127,7 +127,7 @@ fn choose_grid(tile_count: usize, total_width: usize, cfg: &SwarmGalleryConfig) 
         let rows_needed = tile_count.div_ceil(cols);
         let rows = rows_needed.min(max_rows_by_height).max(1);
         let shown = (cols * rows).min(tile_count).min(max_visible_cells);
-        let cell_h = (cfg.max_height.saturating_sub((rows - 1) * 0)) / rows;
+        let cell_h = (cfg.max_height.saturating_sub((rows - 1) * cfg.gap)) / rows;
         if cell_h == 0 {
             continue;
         }
