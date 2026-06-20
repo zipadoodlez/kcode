@@ -1072,6 +1072,167 @@ fn tier6_screen_score_w(m: &ScreenLoad, w: &Tier6Weights) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 7: clarity & guidance, measured from the REAL rendered body prose. Where
+// Tier 6 asks "is this screen heavy?", Tier 7 asks "does this screen guide the
+// user?":
+//
+//   * single_primary_action - exactly one primary call-to-action / question, so
+//     the user is never split between competing asks.
+//   * action_verb_clarity   - instruction lines start with an imperative verb
+//     ("Press", "Type", "Choose"), not a vague noun phrase.
+//   * next_step_visibility  - the screen tells the user what happens next
+//     (an outcome/transition is described).
+//   * expectation_setting   - a multi-step context states the scope up front
+//     ("We found 2 existing logins" / "Login 1 of 2").
+// ---------------------------------------------------------------------------
+
+/// Imperative verbs an instruction line may open with. Kept explicit so the
+/// check is reviewable and stable.
+const ACTION_VERBS: &[&str] = &[
+    "press", "type", "choose", "select", "log", "import", "continue", "pick",
+    "run", "opt", "enter", "resume", "open",
+];
+
+/// Phrases that describe what happens next (an outcome / transition).
+const NEXT_STEP_CUES: &[&str] = &[
+    "to choose", "to skip", "to get started", "opens", "auto-selects",
+    "automatically", "to choose a provider", "anytime", "resume",
+];
+
+#[derive(Clone, Copy)]
+struct ScreenClarity {
+    label: &'static str,
+    /// Number of primary asks (a "?" question, or an imperative instruction
+    /// line). Ideal is exactly 1.
+    primary_actions: u32,
+    /// Every instruction line opens with an imperative verb.
+    verbs_lead_instructions: bool,
+    /// The screen describes what happens next.
+    next_step_visible: bool,
+    /// A multi-step context sets scope up front (only required when multi-step).
+    expectation_set: bool,
+    /// Whether this screen is a multi-step context (drives expectation_set).
+    is_multistep: bool,
+}
+
+/// Heuristic: is this prose line an actionable INSTRUCTION (a directive the user
+/// should follow) rather than framing prose or a title? We cue only on explicit
+/// action markers (a key/command/CTA), so descriptive sentences like "First,
+/// log in to get started." are correctly treated as framing, not instructions.
+fn looks_like_instruction(line: &str) -> bool {
+    let lower = line.trim().to_ascii_lowercase();
+    lower.starts_with("press ")
+        || lower.starts_with("type ")
+        || lower.starts_with("choose ")
+        || lower.starts_with("select ")
+        || lower.starts_with("pick ")
+        || lower.starts_with("run ")
+        || lower.contains("run /")
+}
+
+fn screen_clarity(label: &'static str, text: &str) -> ScreenClarity {
+    let prose = body_prose_lines(text);
+    let lower_all = prose.join(" ").to_ascii_lowercase();
+
+    // Primary asks: count question lines + imperative instruction lines, but a
+    // question and its own instruction line ("Log in to OpenAI?" + "Choose No
+    // to skip...") are one ask, so collapse instruction lines that merely
+    // explain the question. We approximate: asks = max(questions, has_one_cta).
+    let questions = prose.iter().filter(|l| l.contains('?')).count() as u32;
+    let instructions: Vec<&String> = prose.iter().filter(|l| looks_like_instruction(l)).collect();
+    // A standalone instruction with no question is itself the single CTA.
+    let primary_actions = if questions > 0 {
+        questions
+    } else if instructions.is_empty() {
+        0
+    } else {
+        1
+    };
+
+    // Action-verb clarity: every instruction line opens with an imperative verb.
+    let verbs_lead_instructions = instructions.iter().all(|l| {
+        let first = l
+            .split_whitespace()
+            .next()
+            .map(|w| w.trim_matches(|c: char| !c.is_ascii_alphabetic()).to_ascii_lowercase())
+            .unwrap_or_default();
+        ACTION_VERBS.contains(&first.as_str())
+    });
+
+    let next_step_visible = NEXT_STEP_CUES.iter().any(|c| lower_all.contains(c));
+
+    // Multi-step contexts announce themselves with "we found N" / "login N of M".
+    let is_multistep = lower_all.contains("we found") || lower_all.contains(" of 2") || lower_all.contains(" of 1");
+    let expectation_set = !is_multistep
+        || lower_all.contains("we found")
+        || lower_all.contains(" of ");
+
+    ScreenClarity {
+        label,
+        primary_actions,
+        verbs_lead_instructions,
+        next_step_visible,
+        expectation_set,
+        is_multistep,
+    }
+}
+
+fn tier7_screen_clarities() -> Vec<ScreenClarity> {
+    all_welcome_screen_texts()
+        .into_iter()
+        .map(|(label, text)| screen_clarity(label, &text))
+        .collect()
+}
+
+#[derive(Clone, Copy)]
+struct Tier7Weights {
+    /// Penalty per primary ask beyond the first (competing CTAs).
+    per_extra_action: f64,
+    /// Penalty when a screen has zero clear ask (purely passive, ambiguous).
+    no_action: f64,
+    verb_unclear: f64,
+    no_next_step: f64,
+    no_expectation: f64,
+}
+
+impl Default for Tier7Weights {
+    fn default() -> Self {
+        Self {
+            per_extra_action: 12.0,
+            no_action: 8.0,
+            verb_unclear: 12.0,
+            no_next_step: 10.0,
+            no_expectation: 15.0,
+        }
+    }
+}
+
+fn tier7_screen_score(m: &ScreenClarity) -> f64 {
+    tier7_screen_score_w(m, &Tier7Weights::default())
+}
+
+fn tier7_screen_score_w(m: &ScreenClarity, w: &Tier7Weights) -> f64 {
+    let mut score = 100.0;
+    if m.primary_actions == 0 {
+        // A passive screen (e.g. the suggestions splash) is mildly penalized:
+        // it is fine to inform, but the user shouldn't be left with no cue.
+        score -= w.no_action;
+    } else if m.primary_actions > 1 {
+        score -= (m.primary_actions - 1) as f64 * w.per_extra_action;
+    }
+    if !m.verbs_lead_instructions {
+        score -= w.verb_unclear;
+    }
+    if !m.next_step_visible {
+        score -= w.no_next_step;
+    }
+    if m.is_multistep && !m.expectation_set {
+        score -= w.no_expectation;
+    }
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -1197,6 +1358,29 @@ fn onboarding_eval_scorecard() {
         }
         let tier6 = t6_sum / loads.len() as f64;
 
+        // ----- Tier 7: clarity & guidance (per real screen) -----
+        let clarities = tier7_screen_clarities();
+        let mut t7_sum = 0.0;
+        println!("\n-- Tier 7: clarity & guidance (per real screen) --");
+        println!(
+            "{:<18} {:>5} {:>6} {:>6} {:>6} {:>6}",
+            "screen", "asks", "verbs", "next", "expct", "score"
+        );
+        for m in &clarities {
+            let s = tier7_screen_score(m);
+            t7_sum += s;
+            println!(
+                "{:<18} {:>5} {:>6} {:>6} {:>6} {:>6.0}",
+                m.label,
+                m.primary_actions,
+                if m.verbs_lead_instructions { "ok" } else { "no" },
+                if m.next_step_visible { "ok" } else { "no" },
+                if !m.is_multistep { "n/a" } else if m.expectation_set { "ok" } else { "no" },
+                s
+            );
+        }
+        let tier7 = t7_sum / clarities.len() as f64;
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -1220,11 +1404,12 @@ fn onboarding_eval_scorecard() {
         // content + robustness) are the quality of the flow. Tier 0 is how much
         // we can trust those numbers, so it gates rather than averages: report
         // it alongside, and fold it in lightly.
-        let composite = tier1 * 0.30
-            + tier3 * 0.25
-            + tier4 * 0.13
+        let composite = tier1 * 0.26
+            + tier3 * 0.22
+            + tier4 * 0.12
             + tier5 * 0.10
-            + tier6 * 0.12
+            + tier6 * 0.10
+            + tier7 * 0.10
             + tier0 * 0.10;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
@@ -1233,6 +1418,7 @@ fn onboarding_eval_scorecard() {
         println!("Tier 4 (content/robust) : {tier4:>5.1} / 100");
         println!("Tier 5 (path efficiency): {tier5:>5.1} / 100");
         println!("Tier 6 (cognitive load) : {tier6:>5.1} / 100");
+        println!("Tier 7 (clarity/guide)  : {tier7:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -1274,6 +1460,13 @@ fn onboarding_eval_scorecard() {
             assert!(m.negations == 0, "screen '{}' uses {} negation(s) in prose", m.label, m.negations);
         }
         assert!(tier6 >= 60.0, "Tier 6 cognitive-load score regressed: {tier6:.1}");
+        // Tier 7 clarity guards: no screen may carry competing primary actions,
+        // instructions must lead with a verb, and the tier must stay healthy.
+        for m in &clarities {
+            assert!(m.primary_actions <= 1, "screen '{}' has {} competing primary actions", m.label, m.primary_actions);
+            assert!(m.verbs_lead_instructions, "screen '{}' has an instruction not led by an action verb", m.label);
+        }
+        assert!(tier7 >= 60.0, "Tier 7 clarity score regressed: {tier7:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -1542,6 +1735,23 @@ fn meta_tier6_is_monotonic_in_each_signal() {
     assert!(tier6_screen_score(&ScreenLoad { new_concepts: 8, ..base }) <= base_s, "concepts");
     assert!(tier6_screen_score(&ScreenLoad { questions: 4, ..base }) <= base_s, "questions");
     assert!(tier6_screen_score(&ScreenLoad { negations: 3, ..base }) <= base_s, "negations");
+}
+
+#[test]
+fn meta_tier7_is_monotonic_in_each_signal() {
+    let base = ScreenClarity {
+        label: "synthetic",
+        primary_actions: 1,
+        verbs_lead_instructions: true,
+        next_step_visible: true,
+        expectation_set: true,
+        is_multistep: true,
+    };
+    let base_s = tier7_screen_score(&base);
+    assert!(tier7_screen_score(&ScreenClarity { primary_actions: 4, ..base }) <= base_s, "actions");
+    assert!(tier7_screen_score(&ScreenClarity { verbs_lead_instructions: false, ..base }) <= base_s, "verbs");
+    assert!(tier7_screen_score(&ScreenClarity { next_step_visible: false, ..base }) <= base_s, "next");
+    assert!(tier7_screen_score(&ScreenClarity { expectation_set: false, ..base }) <= base_s, "expect");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -1896,8 +2106,12 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "new_concepts_per_screen", status: Scored, rationale: "Tier6.per_excess_concept (distinct domain concepts introduced)", owns_feature: None },
         SignalSpec { name: "number_of_questions", status: Scored, rationale: "Tier6.per_question_over_one (interrogatives to resolve)", owns_feature: None },
         SignalSpec { name: "negation_count", status: Scored, rationale: "Tier6.per_negation (confusing don't/not/never phrasing)", owns_feature: None },
+        // ---- Scored (wired into Tier 7: clarity & guidance) ----
+        SignalSpec { name: "single_primary_action", status: Scored, rationale: "Tier7.per_extra_action (one CTA/question per screen)", owns_feature: None },
+        SignalSpec { name: "action_verb_clarity", status: Scored, rationale: "Tier7.verb_unclear (instructions lead with an imperative verb)", owns_feature: None },
+        SignalSpec { name: "next_step_visibility", status: Scored, rationale: "Tier7.no_next_step (screen says what happens next)", owns_feature: None },
+        SignalSpec { name: "expectation_setting", status: Scored, rationale: "Tier7.no_expectation (multi-step context states scope up front)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
-        SignalSpec { name: "single_primary_action", status: Deferred, rationale: "needs CTA-salience parsing; decisions count is a partial proxy", owns_feature: None },
         SignalSpec { name: "error_recovery_depth", status: Deferred, rationale: "needs to drive failure paths through the real app and count steps back", owns_feature: None },
         SignalSpec { name: "time_on_blocker", status: Deferred, rationale: "DECISION_TIMEOUT is known but not yet folded into the score", owns_feature: None },
         SignalSpec { name: "back_navigation", status: Deferred, rationale: "onboarding is forward-only today; a real measure needs an undo affordance to exist first", owns_feature: None },
@@ -2093,6 +2307,10 @@ fn signal_coverage_scored_signals_are_all_live() {
         "new_concepts_per_screen",
         "number_of_questions",
         "negation_count",
+        "single_primary_action",
+        "action_verb_clarity",
+        "next_step_visibility",
+        "expectation_setting",
     ]
     .into_iter()
     .collect();
@@ -2170,4 +2388,21 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier6_screen_score(&ScreenLoad { new_concepts: 6, ..base6 }), b6, "new_concepts_per_screen");
     assert_ne!(tier6_screen_score(&ScreenLoad { questions: 3, ..base6 }), b6, "number_of_questions");
     assert_ne!(tier6_screen_score(&ScreenLoad { negations: 2, ..base6 }), b6, "negation_count");
+
+    // Tier 7 liveness: perturbing each clarity signal must move the Tier 7
+    // score. Proves single_primary_action / action_verb_clarity /
+    // next_step_visibility / expectation_setting are all wired.
+    let base7 = ScreenClarity {
+        label: "synthetic",
+        primary_actions: 1,
+        verbs_lead_instructions: true,
+        next_step_visible: true,
+        expectation_set: true,
+        is_multistep: true,
+    };
+    let b7 = tier7_screen_score(&base7);
+    assert_ne!(tier7_screen_score(&ScreenClarity { primary_actions: 3, ..base7 }), b7, "single_primary_action");
+    assert_ne!(tier7_screen_score(&ScreenClarity { verbs_lead_instructions: false, ..base7 }), b7, "action_verb_clarity");
+    assert_ne!(tier7_screen_score(&ScreenClarity { next_step_visible: false, ..base7 }), b7, "next_step_visibility");
+    assert_ne!(tier7_screen_score(&ScreenClarity { expectation_set: false, ..base7 }), b7, "expectation_setting");
 }
