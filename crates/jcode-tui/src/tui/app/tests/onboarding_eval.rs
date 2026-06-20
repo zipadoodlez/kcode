@@ -355,6 +355,172 @@ fn tier3_screens() -> Vec<ScreenMetrics> {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 4: content & robustness. Cross-screen and behavioral signals that the
+// per-screen Tier 3 rubric cannot see, each measured from the REAL screens or
+// by driving the REAL app:
+//
+//   * terminology_consistency - the same concept is named the same way across
+//     every screen (e.g. the human prose says "log in", never also "sign in").
+//   * progress_visibility      - a multi-step context tells the user where they
+//     are ("Login 1 of 2"), so a sequence never feels open-ended.
+//   * default_safety           - when a timed decision auto-commits, the default
+//     lands on a non-destructive / recoverable outcome.
+//   * narrow_terminal_safety   - the core affordances (the Yes/No options) still
+//     render on a cramped terminal.
+//
+// These are deliberately the signals that ARE derivable offline. Several
+// neighbours (min-path overhead, back-navigation depth, jargon density) are
+// left Deferred in the registry because an honest measurement needs more
+// machinery than we have; we do not fake them as Scored.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+struct Tier4Metrics {
+    /// The login concept is phrased consistently across all welcome screens.
+    terminology_consistent: bool,
+    /// A multi-step context surfaces "N of M" position.
+    progress_visible: bool,
+    /// A timed auto-commit resolves to a non-destructive default.
+    default_safe: bool,
+    /// The Yes/No options survive a cramped (50-col) terminal.
+    narrow_options_survive: bool,
+}
+
+/// Detect whether the human-facing prose names the login concept consistently.
+/// The canonical phrasing is the two-word verb "log in". A drift to "sign in"
+/// or the one-word "login" *as a verb in prose* (the `/login` command is fine)
+/// is an inconsistency. Measured over the real rendered welcome screens.
+fn terminology_is_consistent(screens: &[(&'static str, String)]) -> bool {
+    for (_, text) in screens {
+        let lower = text.to_ascii_lowercase();
+        // A competing synonym for the same action is a hard inconsistency.
+        if lower.contains("sign in") || lower.contains("sign-in") || lower.contains("log on") {
+            return false;
+        }
+        // "login" as a standalone prose word (not the `/login` command and not
+        // the "Login N of M" progress label) would compete with "log in".
+        for raw in lower.split_whitespace() {
+            let w = raw.trim_matches(|c: char| !c.is_ascii_alphabetic());
+            if w == "login" {
+                // Allowed: the `/login` command token and the "Login N of M"
+                // progress header. Both are recognizable by their surroundings.
+                let is_command = raw.contains('/');
+                let is_progress_header = lower.contains("login 1 of") || lower.contains("login 2 of");
+                if !is_command && !is_progress_header {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Compute the four Tier 4 signals by reading the real screens and driving the
+/// real app. `with_temp_jcode_home` must already be active.
+fn tier4_metrics() -> Tier4Metrics {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    // ---- terminology_consistency: scan every welcome screen's prose ----
+    let terminology_consistent = terminology_is_consistent(&all_welcome_screen_texts());
+
+    // ---- progress_visibility: the 2-candidate import is a multi-step context
+    // and must show position ("Login 1 of 2"). Rendered from the real screen. ----
+    let review = ImportReview::new(vec![
+        ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+        ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+    ])
+    .unwrap();
+    let multi = app_in_phase(OnboardingPhase::Login { import: Some(review) });
+    let multi_text = render_onboarding_text(&multi, 80, 30).to_ascii_lowercase();
+    let progress_visible = multi_text.contains(" of 2") || multi_text.contains(" of 1");
+
+    // ---- default_safety: drive the real ContinuePrompt timeout. The highlighted
+    // default is "Yes", and a timeout must resolve to a non-destructive outcome
+    // (open the resume picker), never silently discard the user's history. ----
+    let default_safe = {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            // Place the prompt in the past so the decision has already timed out.
+            let past = std::time::Instant::now()
+                - (crate::tui::app::onboarding_flow::DECISION_TIMEOUT
+                    + std::time::Duration::from_secs(1));
+            flow.phase = OnboardingPhase::ContinuePrompt {
+                cli: ExternalCli::Codex,
+                yes_highlighted: true,
+                shown_at: past,
+            };
+        }
+        // Tick the flow: the timeout fires and auto-commits the highlighted Yes.
+        app.onboarding_tick();
+        // A SAFE default lands on a recoverable phase the user can still act on
+        // (the resume picker, or the suggestion cards when no transcript exists)
+        // rather than a terminal that silently discards their session. An UNSAFE
+        // default would be `Done` (login/session lost) or leaving the flow.
+        matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::TranscriptPick { .. } | OnboardingPhase::Suggestions)
+        )
+    };
+
+    // ---- narrow_terminal_safety: the core Yes/No affordance must still render
+    // on a cramped 50-col terminal (real renderer, smaller buffer). ----
+    let narrow = app_in_phase(OnboardingPhase::LoginOpenAi { yes_highlighted: true });
+    let narrow_text = render_onboarding_text(&narrow, 50, 30);
+    let narrow_options_survive = narrow_text.contains("Yes") && narrow_text.contains("No");
+
+    Tier4Metrics {
+        terminology_consistent,
+        progress_visible,
+        default_safe,
+        narrow_options_survive,
+    }
+}
+
+/// Tunable Tier 4 weights, factored out for the meta sensitivity analysis.
+#[derive(Clone, Copy)]
+struct Tier4Weights {
+    inconsistent_terminology: f64,
+    no_progress: f64,
+    unsafe_default: f64,
+    narrow_breaks: f64,
+}
+
+impl Default for Tier4Weights {
+    fn default() -> Self {
+        Self {
+            inconsistent_terminology: 25.0,
+            no_progress: 15.0,
+            unsafe_default: 30.0,
+            narrow_breaks: 20.0,
+        }
+    }
+}
+
+fn tier4_score(m: &Tier4Metrics) -> f64 {
+    tier4_score_w(m, &Tier4Weights::default())
+}
+
+fn tier4_score_w(m: &Tier4Metrics, w: &Tier4Weights) -> f64 {
+    let mut score = 100.0;
+    if !m.terminology_consistent {
+        score -= w.inconsistent_terminology;
+    }
+    if !m.progress_visible {
+        score -= w.no_progress;
+    }
+    if !m.default_safe {
+        score -= w.unsafe_default;
+    }
+    if !m.narrow_options_survive {
+        score -= w.narrow_breaks;
+    }
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -442,6 +608,16 @@ fn onboarding_eval_scorecard() {
         }
         let tier3 = t3_sum / screens.len() as f64;
 
+        // ----- Tier 4: content & robustness (cross-screen + behavioral) -----
+        let t4 = tier4_metrics();
+        let tier4 = tier4_score(&t4);
+        println!("\n-- Tier 4: content & robustness --");
+        let yn = |b: bool| if b { "ok" } else { "FAIL" };
+        println!("terminology consistent : {}", yn(t4.terminology_consistent));
+        println!("progress visible       : {}", yn(t4.progress_visible));
+        println!("default safe (timeout) : {}", yn(t4.default_safe));
+        println!("narrow-term options    : {}", yn(t4.narrow_options_survive));
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -461,14 +637,16 @@ fn onboarding_eval_scorecard() {
             / 2.0;
 
         // ----- Composite -----
-        // Tier 1 (structure) and Tier 3 (copy) are the quality of the flow.
-        // Tier 0 is how much we can trust those two numbers, so it gates rather
-        // than averages: report it alongside, and fold it in lightly.
-        let composite = tier1 * 0.5 + tier3 * 0.4 + tier0 * 0.1;
+        // Tier 1 (structure), Tier 3 (per-screen copy), and Tier 4 (cross-screen
+        // content + robustness) are the quality of the flow. Tier 0 is how much
+        // we can trust those numbers, so it gates rather than averages: report
+        // it alongside, and fold it in lightly.
+        let composite = tier1 * 0.4 + tier3 * 0.35 + tier4 * 0.15 + tier0 * 0.1;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
         println!("Tier 1 (flow structure) : {tier1:>5.1} / 100");
         println!("Tier 3 (screen quality) : {tier3:>5.1} / 100");
+        println!("Tier 4 (content/robust) : {tier4:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -490,6 +668,13 @@ fn onboarding_eval_scorecard() {
         // Guard the headline numbers so a regression that bloats the flow fails.
         assert!(tier1 >= 60.0, "Tier 1 flow score regressed: {tier1:.1}");
         assert!(tier3 >= 60.0, "Tier 3 screen score regressed: {tier3:.1}");
+        // Tier 4 content/robustness guards: each is a real, currently-passing
+        // property; a regression in any of them fails CI with a clear message.
+        assert!(t4.terminology_consistent, "terminology drift: a competing synonym for 'log in' appeared in onboarding prose");
+        assert!(t4.progress_visible, "a multi-step onboarding context stopped showing 'N of M' progress");
+        assert!(t4.default_safe, "a timed decision's default no longer resolves to a recoverable outcome");
+        assert!(t4.narrow_options_survive, "Yes/No options stopped rendering on a narrow (50-col) terminal");
+        assert!(tier4 >= 60.0, "Tier 4 content/robustness score regressed: {tier4:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -634,6 +819,24 @@ fn meta_tier3_is_monotonic_in_each_signal() {
         tier3_screen_score(&sm(60, true, true, false)) <= base_s,
         "escape"
     );
+}
+
+#[test]
+fn meta_tier4_is_monotonic_in_each_signal() {
+    let base = Tier4Metrics {
+        terminology_consistent: true,
+        progress_visible: true,
+        default_safe: true,
+        narrow_options_survive: true,
+    };
+    let base_s = tier4_score(&base);
+    // Losing any content/robustness property -> never higher.
+    assert!(tier4_score(&Tier4Metrics { terminology_consistent: false, ..base }) <= base_s, "terminology");
+    assert!(tier4_score(&Tier4Metrics { progress_visible: false, ..base }) <= base_s, "progress");
+    assert!(tier4_score(&Tier4Metrics { default_safe: false, ..base }) <= base_s, "default");
+    assert!(tier4_score(&Tier4Metrics { narrow_options_survive: false, ..base }) <= base_s, "narrow");
+    // All-good is the unique maximum.
+    assert_eq!(base_s, 100.0, "all-good Tier 4 is perfect");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -970,11 +1173,19 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "escape_hatch", status: Scored, rationale: "Tier3.no_escape_hatch", owns_feature: Command },
         SignalSpec { name: "countdown_present", status: Scored, rationale: "covered via word_count + keyhint on timed yes/no screens", owns_feature: Countdown },
         SignalSpec { name: "suggestion_list", status: Scored, rationale: "covered via word_count on the Suggestions screen", owns_feature: List },
+        // ---- Scored (wired into Tier 4: content & robustness) ----
+        SignalSpec { name: "terminology_consistency", status: Scored, rationale: "Tier4.inconsistent_terminology (one verb for 'log in' across screens)", owns_feature: None },
+        SignalSpec { name: "progress_visibility", status: Scored, rationale: "Tier4.no_progress ('N of M' in multi-step contexts)", owns_feature: None },
+        SignalSpec { name: "default_safety", status: Scored, rationale: "Tier4.unsafe_default (timed auto-commit lands on a recoverable outcome)", owns_feature: None },
+        SignalSpec { name: "narrow_terminal_safety", status: Scored, rationale: "Tier4.narrow_breaks (core Yes/No options survive a 50-col terminal)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
         SignalSpec { name: "reading_grade_level", status: Deferred, rationale: "needs a syllable/grade estimator; word_count is a usable proxy for now", owns_feature: None },
         SignalSpec { name: "single_primary_action", status: Deferred, rationale: "needs CTA-salience parsing; decisions count is a partial proxy", owns_feature: None },
         SignalSpec { name: "error_recovery_depth", status: Deferred, rationale: "needs to drive failure paths through the real app and count steps back", owns_feature: None },
         SignalSpec { name: "time_on_blocker", status: Deferred, rationale: "DECISION_TIMEOUT is known but not yet folded into the score", owns_feature: None },
+        SignalSpec { name: "min_vs_actual_path", status: Deferred, rationale: "needs a shortest-path solver over the flow graph; keystrokes/screens are partial proxies", owns_feature: None },
+        SignalSpec { name: "back_navigation", status: Deferred, rationale: "onboarding is forward-only today; a real measure needs an undo affordance to exist first", owns_feature: None },
+        SignalSpec { name: "jargon_density", status: Deferred, rationale: "needs a maintained jargon lexicon; word_count is a crude proxy for now", owns_feature: None },
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
         SignalSpec { name: "visual_hierarchy", status: Rejected, rationale: "layout/eye-tracking concern; not measurable offline without users", owns_feature: None },
@@ -1152,6 +1363,10 @@ fn signal_coverage_scored_signals_are_all_live() {
         "escape_hatch",
         "countdown_present",
         "suggestion_list",
+        "terminology_consistency",
+        "progress_visibility",
+        "default_safety",
+        "narrow_terminal_safety",
     ]
     .into_iter()
     .collect();
@@ -1177,4 +1392,18 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier3_screen_score(&sm(80, true, true, true)), s);
     assert_ne!(tier3_screen_score(&sm(60, true, false, true)), s);
     assert_ne!(tier3_screen_score(&sm(60, true, true, false)), s);
+
+    // Tier 4 liveness: flipping each content/robustness signal must move the
+    // Tier 4 score. Proves none of the four new signals are decorative.
+    let good = Tier4Metrics {
+        terminology_consistent: true,
+        progress_visible: true,
+        default_safe: true,
+        narrow_options_survive: true,
+    };
+    let g = tier4_score(&good);
+    assert_ne!(tier4_score(&Tier4Metrics { terminology_consistent: false, ..good }), g, "terminology_consistency");
+    assert_ne!(tier4_score(&Tier4Metrics { progress_visible: false, ..good }), g, "progress_visibility");
+    assert_ne!(tier4_score(&Tier4Metrics { default_safe: false, ..good }), g, "default_safety");
+    assert_ne!(tier4_score(&Tier4Metrics { narrow_options_survive: false, ..good }), g, "narrow_terminal_safety");
 }
