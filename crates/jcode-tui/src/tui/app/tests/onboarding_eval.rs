@@ -408,16 +408,31 @@ fn terminology_is_consistent(screens: &[(&'static str, String)]) -> bool {
         if lower.contains("sign in") || lower.contains("sign-in") || lower.contains("log on") {
             return false;
         }
-        // "login" as a standalone prose word (not the `/login` command and not
-        // the "Login N of M" progress label) would compete with "log in".
-        for raw in lower.split_whitespace() {
+        // "login" as a standalone prose word (not the `/login` command, the
+        // "Login N of M" progress label, or the legitimate NOUN) would compete
+        // with the verb "log in". English distinguishes the noun "a login" / "N
+        // logins" (a stored credential) from the verb "to log in"; only the verb
+        // spelling "login" is the drift we guard against.
+        let words: Vec<&str> = lower.split_whitespace().collect();
+        for (i, raw) in words.iter().enumerate() {
             let w = raw.trim_matches(|c: char| !c.is_ascii_alphabetic());
+            // Plural "logins" is unambiguously the noun (credentials), allowed.
+            if w == "logins" {
+                continue;
+            }
             if w == "login" {
                 // Allowed: the `/login` command token and the "Login N of M"
                 // progress header. Both are recognizable by their surroundings.
                 let is_command = raw.contains('/');
                 let is_progress_header = lower.contains("login 1 of") || lower.contains("login 2 of");
-                if !is_command && !is_progress_header {
+                // Allowed: the NOUN "login" (a credential), recognizable when
+                // preceded by a determiner/quantifier ("existing login", "1
+                // login", "a login", "your login").
+                let prev = i.checked_sub(1).and_then(|j| words.get(j)).copied().unwrap_or("");
+                let prev_w = prev.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+                let is_noun = matches!(prev_w, "existing" | "detected" | "saved" | "a" | "an" | "your" | "one")
+                    || prev_w.chars().all(|c| c.is_ascii_digit()) && !prev_w.is_empty();
+                if !is_command && !is_progress_header && !is_noun {
                     return false;
                 }
             }
@@ -944,11 +959,24 @@ const JARGON_TERMS: &[&str] = &[
     "oauth", "api", "endpoint", "token", "cli", "env", "provider", "transcript",
 ];
 
-/// Domain "concepts" the onboarding introduces. Used to count how many distinct
-/// new ideas a single screen puts in front of the user.
-const CONCEPT_TERMS: &[&str] = &[
-    "login", "log in", "provider", "import", "session", "model", "resume",
-    "telemetry", "onboarding", "openai", "codex", "claude",
+/// Domain "concepts" the onboarding introduces, grouped by synonym so a single
+/// idea phrased two ways counts ONCE. The login concept in particular surfaces
+/// as both the prose verb "log in" and the `/login` command on the same screen;
+/// charging the user for two "new concepts" there double-counts one idea (the
+/// same class of inflation the Tier 3 donut fix removed). Used to count how many
+/// distinct new ideas a single screen puts in front of the user.
+const CONCEPT_GROUPS: &[&[&str]] = &[
+    &["login", "log in"],
+    &["provider"],
+    &["import"],
+    &["session"],
+    &["model"],
+    &["resume"],
+    &["telemetry"],
+    &["onboarding"],
+    &["openai"],
+    &["codex"],
+    &["claude"],
 ];
 
 #[derive(Clone, Copy)]
@@ -990,9 +1018,11 @@ fn screen_load(label: &'static str, text: &str) -> ScreenLoad {
         .sum();
     let jargon_per_100w = (jargon_hits as f64) / word_count * 100.0;
 
-    let new_concepts = CONCEPT_TERMS
+    // Count each distinct concept GROUP at most once, so "log in" + "/login"
+    // (one idea, two spellings) is a single new concept, not two.
+    let new_concepts = CONCEPT_GROUPS
         .iter()
-        .filter(|c| lower.contains(*c))
+        .filter(|group| group.iter().any(|term| lower.contains(*term)))
         .count() as u32;
 
     let questions = joined.matches('?').count() as u32;
@@ -1138,7 +1168,10 @@ fn looks_like_instruction(line: &str) -> bool {
         || lower.starts_with("select ")
         || lower.starts_with("pick ")
         || lower.starts_with("run ")
+        // A "<command>" CTA: jcode phrases these as both "run /login" and
+        // "type /login", so recognize both spellings of the same directive.
         || lower.contains("run /")
+        || lower.contains("type /")
 }
 
 fn screen_clarity(label: &'static str, text: &str) -> ScreenClarity {
