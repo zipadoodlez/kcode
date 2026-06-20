@@ -952,12 +952,15 @@ fn test_chat_overscroll_reveals_status_line_then_rebounds() {
     };
     app.context_limit = 200_000;
 
-    // Pinned to the bottom: no overscroll line yet.
+    // Pinned to the bottom: no overscroll line yet. (The idle status line now
+    // renders its own short ▰▱ context bar, so the overscroll-specific
+    // affordance to assert on is the `(overscroll x.x)` countdown, not the
+    // glyphs alone.)
     let pinned = render_and_snap(&app, &mut terminal);
     assert!(!app.chat_overscroll_active(), "should start without overscroll");
     assert!(
-        !pinned.contains("▰") && !pinned.contains("▱"),
-        "overscroll bar should be hidden while pinned"
+        !pinned.contains("(overscroll"),
+        "overscroll countdown should be hidden while pinned: {pinned:?}"
     );
 
     // Scroll down at the bottom => overscroll registered, line revealed.
@@ -973,8 +976,8 @@ fn test_chat_overscroll_reveals_status_line_then_rebounds() {
     );
     let revealed = render_and_snap(&app, &mut terminal);
     assert!(
-        revealed.contains("▰") || revealed.contains("▱"),
-        "overscroll status line should show context bar: {revealed:?}"
+        revealed.contains("(overscroll"),
+        "overscroll status line should show the countdown affordance: {revealed:?}"
     );
 
     // Scrolling up cancels the overscroll line immediately.
