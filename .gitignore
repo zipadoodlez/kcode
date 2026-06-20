@@ -11,3 +11,10 @@ ios_simulator_screenshot.png
 /telemetry-worker/backups/
 target-ttest/
 target-ttest*/
+
+# Stray experiment/debug artifacts at the repo root. Real assets live under
+# assets/, docs/, ios/, and tests/ and are committed explicitly.
+/*.log
+/*.avif
+/*.mp4
+/*.png
