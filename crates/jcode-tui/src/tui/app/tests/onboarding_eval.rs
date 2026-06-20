@@ -211,12 +211,38 @@ fn path_metrics(path: &Path) -> PathMetrics {
 /// screens; reward reaching a ready state. The weights are deliberately simple
 /// and transparent so the number is explainable.
 fn tier1_path_score(m: &PathMetrics) -> f64 {
+    tier1_path_score_w(m, &Tier1Weights::default())
+}
+
+/// Tunable Tier 1 weights, factored out so the meta-evaluation layer can
+/// perturb them for sensitivity analysis. The `default()` values are the ones
+/// used by the live scorecard.
+#[derive(Clone, Copy)]
+struct Tier1Weights {
+    per_keystroke: f64,
+    per_decision: f64,
+    per_extra_screen: f64,
+    not_ready: f64,
+}
+
+impl Default for Tier1Weights {
+    fn default() -> Self {
+        Self {
+            per_keystroke: 6.0,
+            per_decision: 8.0,
+            per_extra_screen: 5.0,
+            not_ready: 20.0,
+        }
+    }
+}
+
+fn tier1_path_score_w(m: &PathMetrics, w: &Tier1Weights) -> f64 {
     let mut score = 100.0;
-    score -= (m.keystrokes as f64) * 6.0; // each in-TUI keystroke
-    score -= (m.decisions as f64) * 8.0; // each forced decision
-    score -= (m.screens.saturating_sub(1) as f64) * 5.0; // each screen past the first
+    score -= (m.keystrokes as f64) * w.per_keystroke;
+    score -= (m.decisions as f64) * w.per_decision;
+    score -= (m.screens.saturating_sub(1) as f64) * w.per_extra_screen;
     if !m.reaches_ready {
-        score -= 20.0; // settled but still needs a login later
+        score -= w.not_ready;
     }
     score.clamp(0.0, 100.0)
 }
@@ -264,19 +290,42 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
 /// Tier 3 score for one screen, 0..=100. Reading load dominates; consistency and
 /// an escape hatch are smaller bonuses.
 fn tier3_screen_score(m: &ScreenMetrics) -> f64 {
+    tier3_screen_score_w(m, &Tier3Weights::default())
+}
+
+/// Tunable Tier 3 weights, factored out for sensitivity analysis.
+#[derive(Clone, Copy)]
+struct Tier3Weights {
+    word_budget: u32,
+    per_excess_word: f64,
+    inconsistent_keyhint: f64,
+    no_escape_hatch: f64,
+}
+
+impl Default for Tier3Weights {
+    fn default() -> Self {
+        Self {
+            word_budget: 45,
+            per_excess_word: 1.2,
+            inconsistent_keyhint: 15.0,
+            no_escape_hatch: 10.0,
+        }
+    }
+}
+
+fn tier3_screen_score_w(m: &ScreenMetrics, w: &Tier3Weights) -> f64 {
     let mut score = 100.0;
     // Reading load: the telemetry header (~3 lines) is fixed overhead, so a
     // lean screen sits around 8-12 lines. Penalize words past a comfortable
-    // budget of 45 (telemetry + title + one prompt + options + hint).
-    let word_budget = 45u32;
-    if m.word_count > word_budget {
-        score -= (m.word_count - word_budget) as f64 * 1.2;
+    // budget (telemetry + title + one prompt + options + hint).
+    if m.word_count > w.word_budget {
+        score -= (m.word_count - w.word_budget) as f64 * w.per_excess_word;
     }
     if m.is_yesno && !m.keyhint_consistent {
-        score -= 15.0;
+        score -= w.inconsistent_keyhint;
     }
     if !m.has_escape_hatch {
-        score -= 10.0;
+        score -= w.no_escape_hatch;
     }
     score.clamp(0.0, 100.0)
 }
@@ -497,4 +546,353 @@ fn truncate(s: &str, n: usize) -> String {
     } else {
         s.chars().take(n.saturating_sub(1)).collect::<String>() + "…"
     }
+}
+
+// ===========================================================================
+// Tier M: meta-evaluation. Validates the SCORING SYSTEM itself (not the
+// onboarding flow) along five properties:
+//
+//   1. Monotonicity   - making a flow/screen strictly worse never raises its
+//                        score (and better never lowers it). Guards sign errors
+//                        and direction.
+//   2. Anchoring      - hand-built known-good / known-bad reference artifacts
+//                        land in the right score bands. Gives the 0-100 scale
+//                        meaning.
+//   3. Discrimination - the good vs bad anchors are separated by a wide margin,
+//                        so the metric actually distinguishes quality.
+//   4. Robustness     - the RANKING of artifacts is stable when every weight is
+//                        perturbed +/-50%. If the order is robust to the exact
+//                        weights, hand-picking them is acceptable.
+//   5. Signal liveness- every signal demonstrably moves the score: a pair of
+//                        artifacts differing in exactly one signal must score
+//                        differently. Catches dead/decorative signals.
+//
+// This sits ABOVE Tier 0: Tier 0 says "we measured the whole real flow"; Tier M
+// says "the way we score that measurement is sane, discriminating, robust, and
+// fully wired".
+// ===========================================================================
+
+/// Build a `PathMetrics` directly from signal values (for synthetic tests).
+fn pm(keystrokes: u32, decisions: u32, screens: u32, reaches_ready: bool) -> PathMetrics {
+    PathMetrics {
+        keystrokes,
+        decisions,
+        screens,
+        external_boundaries: 0,
+        reaches_ready,
+    }
+}
+
+/// Build a `ScreenMetrics` directly from signal values (for synthetic tests).
+fn sm(
+    word_count: u32,
+    is_yesno: bool,
+    keyhint_consistent: bool,
+    has_escape_hatch: bool,
+) -> ScreenMetrics {
+    ScreenMetrics {
+        label: "synthetic",
+        line_count: word_count / 8 + 1,
+        word_count,
+        is_yesno,
+        keyhint_consistent,
+        has_escape_hatch,
+    }
+}
+
+// ---- Property 1: monotonicity ----
+
+#[test]
+fn meta_tier1_is_monotonic_in_each_signal() {
+    let base = pm(1, 1, 2, true);
+    let base_s = tier1_path_score(&base);
+    // More keystrokes -> not higher.
+    assert!(tier1_path_score(&pm(2, 1, 2, true)) <= base_s, "keystrokes");
+    // More decisions -> not higher.
+    assert!(tier1_path_score(&pm(1, 2, 2, true)) <= base_s, "decisions");
+    // More screens -> not higher.
+    assert!(tier1_path_score(&pm(1, 1, 3, true)) <= base_s, "screens");
+    // Failing to reach ready -> not higher.
+    assert!(tier1_path_score(&pm(1, 1, 2, false)) <= base_s, "ready");
+    // The perfect path (0/0/1/ready) is the unique maximum.
+    assert!(tier1_path_score(&pm(0, 0, 1, true)) >= base_s, "best is best");
+}
+
+#[test]
+fn meta_tier3_is_monotonic_in_each_signal() {
+    let base = sm(60, true, true, true);
+    let base_s = tier3_screen_score(&base);
+    // More words -> not higher.
+    assert!(tier3_screen_score(&sm(120, true, true, true)) <= base_s, "words");
+    // Inconsistent key hint -> not higher.
+    assert!(
+        tier3_screen_score(&sm(60, true, false, true)) <= base_s,
+        "keyhint"
+    );
+    // Losing the escape hatch -> not higher.
+    assert!(
+        tier3_screen_score(&sm(60, true, true, false)) <= base_s,
+        "escape"
+    );
+}
+
+// ---- Properties 2 + 3: anchoring and discrimination ----
+
+/// Deliberately awful vs deliberately lean reference artifacts.
+fn anchor_paths() -> (PathMetrics, PathMetrics) {
+    // Worst realistic onboarding: many keystrokes, several decisions, many
+    // screens, never reaches ready.
+    let bad = pm(6, 4, 6, false);
+    // Ideal: land ready with zero friction.
+    let good = pm(0, 0, 1, true);
+    (good, bad)
+}
+
+fn anchor_screens() -> (ScreenMetrics, ScreenMetrics) {
+    // Wall of text, inconsistent hint, dead-end.
+    let bad = sm(220, true, false, false);
+    // Lean, consistent, with an escape hatch.
+    let good = sm(30, true, true, true);
+    (good, bad)
+}
+
+#[test]
+fn meta_anchors_land_in_expected_bands() {
+    let (good_p, bad_p) = anchor_paths();
+    let (good_s, bad_s) = anchor_screens();
+    let gp = tier1_path_score(&good_p);
+    let bp = tier1_path_score(&bad_p);
+    let gs = tier3_screen_score(&good_s);
+    let bs = tier3_screen_score(&bad_s);
+
+    // Good anchors must score high; bad anchors must score low.
+    assert!(gp >= 90.0, "good path anchor should be excellent, got {gp:.1}");
+    assert!(bp <= 30.0, "bad path anchor should be poor, got {bp:.1}");
+    assert!(gs >= 85.0, "good screen anchor should be excellent, got {gs:.1}");
+    assert!(bs <= 30.0, "bad screen anchor should be poor, got {bs:.1}");
+}
+
+#[test]
+fn meta_metric_discriminates_good_from_bad() {
+    const MIN_SEPARATION: f64 = 40.0;
+    let (good_p, bad_p) = anchor_paths();
+    let (good_s, bad_s) = anchor_screens();
+    let path_gap = tier1_path_score(&good_p) - tier1_path_score(&bad_p);
+    let screen_gap = tier3_screen_score(&good_s) - tier3_screen_score(&bad_s);
+    assert!(
+        path_gap >= MIN_SEPARATION,
+        "Tier 1 must separate good/bad by >= {MIN_SEPARATION}, got {path_gap:.1}"
+    );
+    assert!(
+        screen_gap >= MIN_SEPARATION,
+        "Tier 3 must separate good/bad by >= {MIN_SEPARATION}, got {screen_gap:.1}"
+    );
+}
+
+// ---- Property 4: robustness / sensitivity ----
+
+/// A tiny deterministic LCG so the sweep is reproducible without an RNG dep.
+struct Lcg(u64);
+impl Lcg {
+    fn next_f64(&mut self) -> f64 {
+        // Numerical Recipes constants.
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        // Top 53 bits -> [0,1).
+        ((self.0 >> 11) as f64) / ((1u64 << 53) as f64)
+    }
+    /// Jitter factor in [1-amount, 1+amount].
+    fn jitter(&mut self, amount: f64) -> f64 {
+        1.0 + (self.next_f64() * 2.0 - 1.0) * amount
+    }
+}
+
+fn jittered_tier1_weights(rng: &mut Lcg, amount: f64) -> Tier1Weights {
+    let d = Tier1Weights::default();
+    Tier1Weights {
+        per_keystroke: d.per_keystroke * rng.jitter(amount),
+        per_decision: d.per_decision * rng.jitter(amount),
+        per_extra_screen: d.per_extra_screen * rng.jitter(amount),
+        not_ready: d.not_ready * rng.jitter(amount),
+    }
+}
+
+fn jittered_tier3_weights(rng: &mut Lcg, amount: f64) -> Tier3Weights {
+    let d = Tier3Weights::default();
+    Tier3Weights {
+        // Budget jitters by +/- a few words (kept integer).
+        word_budget: ((d.word_budget as f64) * rng.jitter(amount)).round() as u32,
+        per_excess_word: d.per_excess_word * rng.jitter(amount),
+        inconsistent_keyhint: d.inconsistent_keyhint * rng.jitter(amount),
+        no_escape_hatch: d.no_escape_hatch * rng.jitter(amount),
+    }
+}
+
+#[test]
+fn meta_ranking_is_robust_to_weight_perturbation() {
+    const TRIALS: usize = 400;
+    const JITTER: f64 = 0.5; // +/- 50%
+
+    // Reference ladder of paths, strictly improving. Under ANY sane weights the
+    // ranking (worst -> best) must be preserved.
+    let path_ladder = [
+        pm(6, 4, 6, false), // worst
+        pm(3, 2, 3, false),
+        pm(2, 1, 2, true),
+        pm(1, 1, 2, true),
+        pm(0, 0, 1, true), // best
+    ];
+    // Reference ladder of screens, strictly improving.
+    let screen_ladder = [
+        sm(220, true, false, false), // worst
+        sm(140, true, false, true),
+        sm(90, true, true, true),
+        sm(60, true, true, true),
+        sm(30, true, true, true), // best
+    ];
+
+    let mut rng = Lcg(0x9E3779B97F4A7C15);
+    let mut path_violations = 0;
+    let mut screen_violations = 0;
+    for _ in 0..TRIALS {
+        let w1 = jittered_tier1_weights(&mut rng, JITTER);
+        let w3 = jittered_tier3_weights(&mut rng, JITTER);
+        if !is_nondecreasing(&path_ladder.iter().map(|m| tier1_path_score_w(m, &w1)).collect::<Vec<_>>()) {
+            path_violations += 1;
+        }
+        if !is_nondecreasing(&screen_ladder.iter().map(|m| tier3_screen_score_w(m, &w3)).collect::<Vec<_>>()) {
+            screen_violations += 1;
+        }
+    }
+    // The ordering must hold in EVERY trial: the ladders are separated enough
+    // that no +/-50% weight change should reorder them.
+    assert_eq!(
+        path_violations, 0,
+        "path ranking flipped in {path_violations}/{TRIALS} jittered-weight trials"
+    );
+    assert_eq!(
+        screen_violations, 0,
+        "screen ranking flipped in {screen_violations}/{TRIALS} jittered-weight trials"
+    );
+}
+
+fn is_nondecreasing(xs: &[f64]) -> bool {
+    xs.windows(2).all(|w| w[1] >= w[0] - 1e-9)
+}
+
+// ---- Property 5: signal liveness ----
+
+#[test]
+fn meta_every_signal_moves_the_score() {
+    // Tier 1: each signal, toggled in isolation, must change the score.
+    let base_p = pm(1, 1, 2, true);
+    let base_ps = tier1_path_score(&base_p);
+    assert_ne!(tier1_path_score(&pm(2, 1, 2, true)), base_ps, "keystroke signal is dead");
+    assert_ne!(tier1_path_score(&pm(1, 2, 2, true)), base_ps, "decision signal is dead");
+    assert_ne!(tier1_path_score(&pm(1, 1, 3, true)), base_ps, "screen signal is dead");
+    assert_ne!(tier1_path_score(&pm(1, 1, 2, false)), base_ps, "ready signal is dead");
+
+    // Tier 3: each signal, toggled in isolation, must change the score. Use a
+    // base already over the word budget so the word signal is active.
+    let base_s = sm(60, true, true, true);
+    let base_ss = tier3_screen_score(&base_s);
+    assert_ne!(tier3_screen_score(&sm(80, true, true, true)), base_ss, "word signal is dead");
+    assert_ne!(tier3_screen_score(&sm(60, true, false, true)), base_ss, "keyhint signal is dead");
+    assert_ne!(tier3_screen_score(&sm(60, true, true, false)), base_ss, "escape signal is dead");
+}
+
+// ---- The meta scorecard ----
+
+#[test]
+fn onboarding_meta_scorecard() {
+    // Each property is a boolean; the meta-trust score is the fraction passing.
+    // We re-run the property logic here (cheaply) so the scorecard prints a
+    // single consolidated trust report. The dedicated #[test]s above are the
+    // hard CI guards; this is the readable summary.
+    let mut results: Vec<(&str, bool, &str)> = Vec::new();
+
+    // 1. Monotonicity.
+    let mono = {
+        let p = pm(1, 1, 2, true);
+        let ps = tier1_path_score(&p);
+        let s = sm(60, true, true, true);
+        let ss = tier3_screen_score(&s);
+        tier1_path_score(&pm(2, 1, 2, true)) <= ps
+            && tier1_path_score(&pm(1, 2, 2, true)) <= ps
+            && tier1_path_score(&pm(1, 1, 3, true)) <= ps
+            && tier1_path_score(&pm(1, 1, 2, false)) <= ps
+            && tier3_screen_score(&sm(120, true, true, true)) <= ss
+            && tier3_screen_score(&sm(60, true, false, true)) <= ss
+            && tier3_screen_score(&sm(60, true, true, false)) <= ss
+    };
+    results.push(("monotonicity", mono, "worse never scores higher"));
+
+    // 2. Anchoring.
+    let (gp, bp) = anchor_paths();
+    let (gs, bs) = anchor_screens();
+    let gps = tier1_path_score(&gp);
+    let bps = tier1_path_score(&bp);
+    let gss = tier3_screen_score(&gs);
+    let bss = tier3_screen_score(&bs);
+    let anchoring = gps >= 90.0 && bps <= 30.0 && gss >= 85.0 && bss <= 30.0;
+    results.push(("anchoring", anchoring, "known good/bad in right bands"));
+
+    // 3. Discrimination.
+    let path_gap = gps - bps;
+    let screen_gap = gss - bss;
+    let discrimination = path_gap >= 40.0 && screen_gap >= 40.0;
+    results.push(("discrimination", discrimination, "good/bad separated >= 40"));
+
+    // 4. Robustness (small sweep for the report; the #[test] runs the full one).
+    let robustness = {
+        let path_ladder = [pm(6, 4, 6, false), pm(2, 1, 2, true), pm(0, 0, 1, true)];
+        let screen_ladder = [sm(220, true, false, false), sm(90, true, true, true), sm(30, true, true, true)];
+        let mut rng = Lcg(0x1234_5678_9ABC_DEF0);
+        let mut ok = true;
+        for _ in 0..200 {
+            let w1 = jittered_tier1_weights(&mut rng, 0.5);
+            let w3 = jittered_tier3_weights(&mut rng, 0.5);
+            if !is_nondecreasing(&path_ladder.iter().map(|m| tier1_path_score_w(m, &w1)).collect::<Vec<_>>())
+                || !is_nondecreasing(&screen_ladder.iter().map(|m| tier3_screen_score_w(m, &w3)).collect::<Vec<_>>())
+            {
+                ok = false;
+                break;
+            }
+        }
+        ok
+    };
+    results.push(("robustness", robustness, "ranking stable under +/-50% weights"));
+
+    // 5. Signal liveness.
+    let liveness = {
+        let p = tier1_path_score(&pm(1, 1, 2, true));
+        let s = tier3_screen_score(&sm(60, true, true, true));
+        tier1_path_score(&pm(2, 1, 2, true)) != p
+            && tier1_path_score(&pm(1, 2, 2, true)) != p
+            && tier1_path_score(&pm(1, 1, 3, true)) != p
+            && tier1_path_score(&pm(1, 1, 2, false)) != p
+            && tier3_screen_score(&sm(80, true, true, true)) != s
+            && tier3_screen_score(&sm(60, true, false, true)) != s
+            && tier3_screen_score(&sm(60, true, true, false)) != s
+    };
+    results.push(("signal liveness", liveness, "every signal moves the score"));
+
+    let passed = results.iter().filter(|(_, ok, _)| *ok).count();
+    let meta_trust = (passed as f64 / results.len() as f64) * 100.0;
+
+    println!("\n============ META-EVALUATION (Tier M): is the scorer trustworthy? ============");
+    println!("{:<16} {:>6}  {}", "property", "result", "guarantees");
+    for (name, ok, desc) in &results {
+        println!("{:<16} {:>6}  {}", name, if *ok { "PASS" } else { "FAIL" }, desc);
+    }
+    println!("--");
+    println!("path good/bad anchors : {gps:.1} vs {bps:.1}  (gap {path_gap:.1})");
+    println!("screen good/bad anchors: {gss:.1} vs {bss:.1}  (gap {screen_gap:.1})");
+    println!("META-TRUST            : {meta_trust:.0} / 100 ({passed}/{} properties)", results.len());
+    println!("=============================================================================\n");
+
+    assert_eq!(
+        passed,
+        results.len(),
+        "meta-evaluation found an untrustworthy property; see report above"
+    );
 }
