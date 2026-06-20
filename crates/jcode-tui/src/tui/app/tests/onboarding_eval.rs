@@ -253,9 +253,14 @@ fn tier1_path_score_w(m: &PathMetrics, w: &Tier1Weights) -> f64 {
 // Tier 3: per-screen quality, scored from the REAL rendered copy.
 // ---------------------------------------------------------------------------
 
-/// The canonical Yes/No movement hint. Tier 3 checks that every yes/no screen
-/// uses this exact wording (consistency = lower learning cost).
-const CANONICAL_YESNO_HINT: &str = "Left/right or h/l to move, Enter or Space to choose";
+/// The canonical Yes/No selector affordance. The real screens render the
+/// choice as a pair of rounded pills flanked by chevrons (`< ( Yes )   ( No )
+/// >`); the selection and the "you can move left/right" affordance are shown
+/// VISUALLY, not via a sentence. Tier 3 checks every yes/no screen renders this
+/// same pill row (consistency = lower learning cost).
+const CANONICAL_YESNO_PILL: &str = "( Yes )";
+/// The chevron that flanks the pill row, signalling left/right movability.
+const YESNO_PILL_CHEVRON: &str = "<";
 
 struct ScreenMetrics {
     label: &'static str,
@@ -269,13 +274,13 @@ struct ScreenMetrics {
 fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMetrics {
     let app = app_in_phase(phase);
     let text = render_onboarding_text(&app, 80, 30);
-    let is_yesno = text.contains("  Yes  ") || text.contains("Yes") && text.contains("No");
+    let is_yesno = text.contains(CANONICAL_YESNO_PILL) || text.contains("Yes") && text.contains("No");
     // Reading load must be measured from the human body prose only, NOT the raw
     // buffer. The raw buffer also contains the decorative idle donut, whose lit
     // glyph count varies with wall-clock `animation_elapsed()` (so the raw count
     // is both non-deterministic AND counts pure decoration as "words to read").
     // `body_prose_lines` strips the telemetry header, the ASCII art, and the
-    // movement key-hint, leaving exactly the sentences the user must read - the
+    // Yes/No pill row, leaving exactly the sentences the user must read - the
     // same chrome-stripping Tier 6 already relies on.
     let prose = body_prose_lines(&text);
     let line_count = prose.len() as u32;
@@ -283,7 +288,12 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
         .iter()
         .map(|l| l.split_whitespace().count())
         .sum::<usize>() as u32;
-    let keyhint_consistent = !is_yesno || text.contains(CANONICAL_YESNO_HINT);
+    // A yes/no screen is consistent when it renders the canonical pill row AND
+    // the movability chevrons (the visual affordance), not a bespoke widget.
+    let keyhint_consistent = !is_yesno
+        || (text.contains(CANONICAL_YESNO_PILL)
+            && text.contains("( No )")
+            && text.contains(YESNO_PILL_CHEVRON));
     let lower = text.to_ascii_lowercase();
     let has_escape_hatch = lower.contains("skip")
         || lower.contains("anytime")
@@ -905,8 +915,8 @@ fn tier5_score_w(m: &Tier5Metrics, w: &Tier5Weights) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// Extract just the human body prose from a rendered onboarding screen,
-/// dropping the telemetry consent header, the ASCII logo art, and the
-/// movement key-hint line. Returns the kept prose lines.
+/// dropping the telemetry consent header, the ASCII logo art, and the Yes/No
+/// pill row. Returns the kept prose lines.
 fn body_prose_lines(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
@@ -922,8 +932,8 @@ fn body_prose_lines(text: &str) -> Vec<String> {
         {
             continue;
         }
-        // Movement key hint (chrome, not prose to "read").
-        if t.contains(CANONICAL_YESNO_HINT) {
+        // The Yes/No pill row is an interactive widget, not prose to "read".
+        if t.contains(CANONICAL_YESNO_PILL) {
             continue;
         }
         // ASCII logo art: lines dominated by non-alphabetic symbols.
@@ -2876,7 +2886,7 @@ fn signal_registry() -> Vec<SignalSpec> {
 fn detect_feature_classes(text: &str) -> Vec<FeatureClass> {
     let lower = text.to_ascii_lowercase();
     let mut found = Vec::new();
-    if text.contains("  Yes  ") || (text.contains("Yes") && text.contains("No")) {
+    if text.contains("( Yes )") || (text.contains("Yes") && text.contains("No")) {
         found.push(FeatureClass::InteractiveOptions);
     }
     // A countdown: "auto-selects in 12s" / "in 60s" / "automatically in 9s".

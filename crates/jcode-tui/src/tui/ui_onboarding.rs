@@ -28,6 +28,43 @@ fn welcome_accent() -> Color {
     rgb(138, 180, 248)
 }
 
+/// Build the Yes/No selector as a pair of rounded "pills" with the selection
+/// indicated *visually* rather than with a sentence of instructions.
+///
+/// Design goals (per onboarding UX review):
+///   * Rounded/pill look instead of a hard rectangle: parentheses `( Yes )`
+///     read as a soft capsule in a terminal.
+///   * The selected pill is filled (REVERSED) + BOLD; the unselected one is a
+///     dim hollow outline. The fill is a NON-color attribute so the selection
+///     survives on monochrome terminals (Tier 10 color-independence).
+///   * Dim ASCII chevrons `<` ... `>` flank the row to imply "this slides
+///     left/right" without the user having to read a hint line. They are pure
+///     ASCII so they never depend on Unicode glyph support.
+fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
+    let selected = Style::default()
+        .fg(welcome_accent())
+        .add_modifier(Modifier::BOLD | Modifier::REVERSED);
+    let unselected = Style::default().fg(dim_color());
+    let chevron = Style::default().fg(dim_color());
+
+    let (yes_style, no_style) = if yes_highlighted {
+        (selected, unselected)
+    } else {
+        (unselected, selected)
+    };
+
+    Line::from(vec![
+        // Left chevron hints "press left to move here".
+        Span::styled("< ", chevron),
+        Span::styled("( Yes )", yes_style),
+        Span::styled("   ", unselected),
+        Span::styled("( No )", no_style),
+        // Right chevron hints "press right to move here".
+        Span::styled(" >", chevron),
+    ])
+    .alignment(align)
+}
+
 /// Grayed telemetry notice shown at the very top of the onboarding screen.
 fn telemetry_header_lines(width: u16) -> Vec<Line<'static>> {
     let align = Alignment::Center;
@@ -215,34 +252,13 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             lines.push(Line::from(""));
 
-            // Yes / No options; the highlighted one is bold + accented.
-            let (yes_style, no_style) = if yes_highlighted {
-                (
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                    Style::default().fg(dim_color()),
-                )
-            } else {
-                (
-                    Style::default().fg(dim_color()),
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                )
-            };
-            lines.push(
-                Line::from(vec![
-                    Span::styled("  Yes  ", yes_style),
-                    Span::raw("   "),
-                    Span::styled("  No  ", no_style),
-                ])
-                .alignment(align),
-            );
+            // Rounded Yes/No pills; the selection is shown visually (filled
+            // pill + flanking chevrons), so the hint can stay short.
+            lines.push(yes_no_pill_line(yes_highlighted, align));
             lines.push(Line::from(""));
             lines.push(
                 Line::from(Span::styled(
-                    "Left/right or h/l to move, Enter or Space to choose (y / n also work).",
+                    "Enter to confirm.",
                     Style::default().fg(dim_color()),
                 ))
                 .alignment(align),
@@ -266,38 +282,10 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             );
             lines.push(Line::from(""));
 
-            // Yes / No options; the highlighted one is bold + accented.
-            let (yes_style, no_style) = if yes_highlighted {
-                (
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                    Style::default().fg(dim_color()),
-                )
-            } else {
-                (
-                    Style::default().fg(dim_color()),
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                )
-            };
-            lines.push(
-                Line::from(vec![
-                    Span::styled("  Yes  ", yes_style),
-                    Span::raw("   "),
-                    Span::styled("  No  ", no_style),
-                ])
-                .alignment(align),
-            );
+            // Rounded Yes/No pills; selection shown visually so the hint stays
+            // short. The countdown line below already explains the default.
+            lines.push(yes_no_pill_line(yes_highlighted, align));
             lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    "Left/right or h/l to move, Enter or Space to choose (y / n also work).",
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
             lines.push(
                 Line::from(Span::styled(
                     format!("Opens the resume menu automatically in {seconds_left}s…"),

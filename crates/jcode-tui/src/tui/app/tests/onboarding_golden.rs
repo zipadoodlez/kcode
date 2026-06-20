@@ -163,12 +163,12 @@ fn onboarding_golden_walks_every_phase() {
             "continue prompt: {text}"
         );
         assert!(
-            text.contains("Yes") && text.contains("No"),
-            "continue prompt Yes/No selector: {text}"
+            text.contains("( Yes )") && text.contains("( No )"),
+            "continue prompt Yes/No pills: {text}"
         );
         assert!(
-            text.contains("Left/right or h/l to move"),
-            "continue prompt movement hint: {text}"
+            text.contains('<') && text.contains('>'),
+            "continue prompt movability chevrons: {text}"
         );
         assert!(
             text.contains("Opens the resume menu automatically in"),
