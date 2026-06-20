@@ -160,6 +160,12 @@ fn base_is_known_claude_model(base: &str) -> bool {
         "claude-sonnet-4.5",
         "claude-haiku-4-5",
         "claude-haiku-4.5",
+        // Fable 5 is a native-1M flagship (see `anthropic_context_mode`). It is
+        // not in `ALL_CLAUDE_MODELS` because Anthropic retired its public id (it
+        // 404s and is served as Opus 4.8), but sessions can still be pinned to
+        // it, so it must classify as 1M instead of falling through to 200K.
+        "claude-fable-5",
+        "claude-fable",
     ];
     KNOWN_CLAUDE_PREFIXES
         .iter()
@@ -424,6 +430,21 @@ mod tests {
         assert_eq!(
             context_limit_for_model_with_provider("claude-haiku-4-5", Some("claude")),
             Some(200_000)
+        );
+    }
+
+    #[test]
+    fn context_limit_classifies_retired_fable_as_native_1m() {
+        // `claude-fable-5` is a native-1M flagship. Even though Anthropic retired
+        // its public id, sessions pinned to it must report 1M, not the 200K
+        // default that would result from falling through the known-model gate.
+        assert_eq!(
+            context_limit_for_model_with_provider("claude-fable-5", Some("claude")),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            context_limit_for_model_with_provider("claude-fable-5[1m]", Some("claude")),
+            Some(1_000_000)
         );
     }
 

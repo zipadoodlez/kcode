@@ -213,6 +213,14 @@ impl Agent {
                 &messages_with_memory
             };
             let provider = Arc::clone(&self.provider);
+            // Capture the model id the request was issued with. A provider may
+            // transparently switch models mid-request (e.g. Anthropic's retired
+            // `claude-fable-5` falls back to `claude-opus-4-8`). When that
+            // happens the provider mutates its own model state, but the session
+            // and clients still believe they are on the originally requested
+            // model. Compare against this after the stream so we can emit a
+            // `ModelChanged` and resync the UI/context-limit.
+            let model_at_request_start = provider.model().to_string();
             let resume_session_id = self.provider_session_id.clone();
             self.last_status_detail = None;
             let _ = event_tx.send(kv_cache_request_event(
@@ -938,6 +946,34 @@ impl Agent {
                 cache_read_input_tokens: usage_cache_read,
                 cache_creation_input_tokens: usage_cache_creation,
             };
+
+            // Detect a transparent mid-request model switch (e.g. Anthropic's
+            // retired `claude-fable-5` falling back to `claude-opus-4-8`). The
+            // provider mutates its own model state during the stream, so the
+            // session and clients would otherwise keep showing the originally
+            // requested model with a stale context-limit. Resync the session and
+            // notify clients with a `ModelChanged` so the header, picker, and
+            // context budget all reflect the model that actually served.
+            let model_after_stream = self.provider.model();
+            if model_after_stream != model_at_request_start {
+                let provider_name = self.provider.display_name();
+                logging::warn(&format!(
+                    "Provider switched model mid-request: '{}' -> '{}' (resyncing session/UI)",
+                    model_at_request_start, model_after_stream
+                ));
+                self.session.model = Some(model_after_stream.clone());
+                self.provider_runtime_state
+                    .apply(crate::provider::ProviderStateEvent::RuntimeModelObserved {
+                        model: model_after_stream.clone(),
+                    });
+                self.persist_session_best_effort("model fallback");
+                let _ = event_tx.send(ServerEvent::ModelChanged {
+                    id: 0,
+                    model: model_after_stream,
+                    provider_name: Some(provider_name),
+                    error: None,
+                });
+            }
 
             let had_tool_calls_before = !tool_calls.is_empty();
             self.recover_text_wrapped_tool_call(&mut text_content, &mut tool_calls);

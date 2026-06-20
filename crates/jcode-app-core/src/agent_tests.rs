@@ -216,6 +216,102 @@ async fn run_turn_streaming_mpsc_emits_keepalive_while_provider_is_quiet() {
     task.await.unwrap().unwrap();
 }
 
+/// Provider that transparently switches its model mid-stream, mimicking the
+/// Anthropic retired-model fallback (`claude-fable-5` -> `claude-opus-4-8`).
+struct MidStreamModelSwitchProvider {
+    model: std::sync::Mutex<String>,
+    switch_to: String,
+}
+
+#[async_trait]
+impl Provider for MidStreamModelSwitchProvider {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        // Emulate the provider switching its own model state during the request.
+        *self.model.lock().unwrap() = self.switch_to.clone();
+        let (tx, rx) = tokio_mpsc::channel::<Result<StreamEvent>>(8);
+        tokio::spawn(async move {
+            let _ = tx
+                .send(Ok(StreamEvent::TextDelta("hello".to_string())))
+                .await;
+            let _ = tx
+                .send(Ok(StreamEvent::MessageEnd {
+                    stop_reason: Some("end_turn".to_string()),
+                }))
+                .await;
+        });
+        Ok(Box::pin(ReceiverStream::new(rx)))
+    }
+
+    fn name(&self) -> &str {
+        "claude"
+    }
+
+    fn model(&self) -> String {
+        self.model.lock().unwrap().clone()
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(Self {
+            model: std::sync::Mutex::new(self.model.lock().unwrap().clone()),
+            switch_to: self.switch_to.clone(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn run_turn_streaming_mpsc_emits_model_changed_on_midstream_switch() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(MidStreamModelSwitchProvider {
+        model: std::sync::Mutex::new("claude-fable-5".to_string()),
+        switch_to: "claude-opus-4-8".to_string(),
+    });
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+    agent.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "test".to_string(),
+            cache_control: None,
+        }],
+    );
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let task = tokio::spawn(async move { agent.run_turn_streaming_mpsc(tx).await });
+
+    let mut switched_model = None;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
+            Ok(Some(ServerEvent::ModelChanged { model, error, .. })) => {
+                assert!(error.is_none(), "unexpected model-change error: {error:?}");
+                switched_model = Some(model);
+                break;
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(_) => {
+                if task.is_finished() {
+                    break;
+                }
+            }
+        }
+    }
+
+    task.await.unwrap().unwrap();
+    assert_eq!(
+        switched_model.as_deref(),
+        Some("claude-opus-4-8"),
+        "expected a ModelChanged event resyncing to the served model"
+    );
+}
+
+
 #[tokio::test]
 async fn messages_for_provider_replays_persisted_native_compaction_in_auto_mode() {
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
