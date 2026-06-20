@@ -2491,6 +2491,9 @@ enum FeatureClass {
     List,
     /// A typed command (e.g. "/login") is shown.
     Command,
+    /// A free-text input / filter field is shown (e.g. the provider picker's
+    /// type-to-filter box, or an API-key entry line).
+    InputField,
     /// None of the above structural features (plain prose only).
     None,
 }
@@ -2555,6 +2558,14 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "countdown_adequacy", status: Scored, rationale: "Tier9.per_second_short (DECISION_TIMEOUT covers each timed screen's read budget at READING_WPS)", owns_feature: None },
         SignalSpec { name: "forced_wait", status: Scored, rationale: "Tier9.forced_wait (every timed phase honors an immediate-commit key, verified on the app)", owns_feature: None },
         SignalSpec { name: "time_on_blocker", status: Scored, rationale: "Tier9.per_second_over_ceiling (worst-case unattended dwell is bounded by DECISION_TIMEOUT)", owns_feature: None },
+        // ---- Scored (Layer C: structural / on-screen feature ownership) ----
+        // These bind a registry signal to a specific on-screen feature class so
+        // the completeness tripwire (Layer C) can prove every visible structural
+        // dimension is owned. They drive the REAL full-app render of the provider
+        // picker, a surface the welcome card alone never shows.
+        SignalSpec { name: "interactive_options", status: Scored, rationale: "owns the Yes/No selector class (also counted by Tier1.decisions)", owns_feature: InteractiveOptions },
+        SignalSpec { name: "command_affordance", status: Scored, rationale: "owns typed-command screens (/login, /model); also Tier3.escape_hatch", owns_feature: Command },
+        SignalSpec { name: "input_field_present", status: Scored, rationale: "owns the provider picker's type-to-filter input surface (full-app render)", owns_feature: InputField },
         // ---- Deferred (matters, not yet scored, with reason) ----
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
@@ -2573,13 +2584,24 @@ fn detect_feature_classes(text: &str) -> Vec<FeatureClass> {
     if lower.contains("auto-selects in") || lower.contains("automatically in") {
         found.push(FeatureClass::Countdown);
     }
-    // A numbered list: "[1]" "[2]" or "Press 1-N".
-    if text.contains("[1]") || lower.contains("press 1-") {
+    // A numbered list, or a multi-row selectable list (the provider picker's
+    // boxed rows with a "▸" selection caret over several entries).
+    if text.contains("[1]")
+        || lower.contains("press 1-")
+        || (text.contains('▸') && text.matches("setup").count() >= 2)
+    {
         found.push(FeatureClass::List);
     }
     // A typed command.
     if text.contains('/') && (lower.contains("/login") || lower.contains("/model") || lower.contains("type /")) {
         found.push(FeatureClass::Command);
+    }
+    // A free-text input / filter field: the provider picker shows a status line
+    // and a row of selectable PROVIDER/ACTION columns you type to filter; the
+    // boxed header "ITEM ... ACTION" plus the "1>" composer prompt is the typed
+    // entry affordance the user can fall through to.
+    if text.contains("ITEM") && lower.contains("provider") && lower.contains("action") {
+        found.push(FeatureClass::InputField);
     }
     if found.is_empty() {
         found.push(FeatureClass::None);
@@ -2614,6 +2636,51 @@ fn all_welcome_screen_texts() -> Vec<(&'static str, String)> {
         .collect()
 }
 
+/// Layer C probe surfaces: every welcome screen PLUS the provider-login picker.
+/// The picker is a real onboarding surface the welcome card alone never renders
+/// (a long selectable List with a type-to-filter InputField and Command
+/// affordances), so structural ownership must see it. Kept separate from
+/// `all_welcome_screen_texts` because the picker's terse list chrome is not
+/// readable "prose" and would skew the per-screen prose rubrics.
+fn all_probe_surface_texts() -> Vec<(&'static str, String)> {
+    let mut out = all_welcome_screen_texts();
+    out.push(("LoginPicker", render_login_picker_overlay_text()));
+    out
+}
+
+/// Drive the real app into the open provider-login picker and render the FULL
+/// app frame (welcome card + inline picker overlay) to text.
+fn render_login_picker_overlay_text() -> String {
+    use crossterm::event::KeyCode;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let mut app = create_test_app();
+    app.onboarding_flow = None;
+    app.begin_onboarding_flow_at_login();
+    if let Some(flow) = app.onboarding_flow.as_mut() {
+        flow.phase = OnboardingPhase::Login { import: None };
+    }
+    // Enter opens the inline provider picker from the recovery screen.
+    app.handle_onboarding_continue_prompt_key(KeyCode::Enter);
+
+    let backend = TestBackend::new(90, 36);
+    let mut terminal = Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| crate::tui::ui::draw(frame, &app as &dyn crate::tui::TuiState))
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let mut rows: Vec<String> = Vec::new();
+    for y in 0..36u16 {
+        let mut row = String::new();
+        for x in 0..90u16 {
+            row.push_str(buffer[(x, y)].symbol());
+        }
+        rows.push(row.trim_end().to_string());
+    }
+    rows.join("\n")
+}
+
 #[test]
 fn signal_coverage_scorecard() {
     with_temp_jcode_home(|| {
@@ -2634,7 +2701,7 @@ fn signal_coverage_scorecard() {
             .map(|s| s.owns_feature)
             .filter(|f| *f != FeatureClass::None)
             .collect();
-        let screens = all_welcome_screen_texts();
+        let screens = all_probe_surface_texts();
         let mut unowned: Vec<(String, FeatureClass)> = Vec::new();
         let mut present: std::collections::HashSet<FeatureClass> = std::collections::HashSet::new();
         for (label, text) in &screens {
@@ -2760,6 +2827,12 @@ fn signal_coverage_scored_signals_are_all_live() {
         "countdown_adequacy",
         "forced_wait",
         "time_on_blocker",
+        // Layer C structural ownership signals: proven live by the feature-class
+        // probe (they own a class that is present on a real screen), the same
+        // way countdown_present / suggestion_list are.
+        "interactive_options",
+        "command_affordance",
+        "input_field_present",
     ]
     .into_iter()
     .collect();
