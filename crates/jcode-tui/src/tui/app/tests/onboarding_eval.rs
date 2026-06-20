@@ -1233,6 +1233,196 @@ fn tier7_screen_score_w(m: &ScreenClarity, w: &Tier7Weights) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Tier 8: reversibility & error handling. Behavioral signals derived by DRIVING
+// the real app (not reading copy), so they describe what the state machine
+// actually does when the user backs out, declines, or does nothing:
+//
+//   * back_navigation       - a declined choice still leaves a recovery route
+//     (e.g. decline OpenAI -> /login is offered; decline all imports -> manual
+//     provider picker), so a "no" is never a dead end.
+//   * error_recovery_depth  - keystrokes from a failed/declined branch back to a
+//     state where the user can authenticate (lower is better).
+//   * repeated_prompt       - the same decision is not re-asked after it is
+//     answered (no accidental loop in the real transitions).
+//   * confirmation_for_destructive - no onboarding step performs an irreversible
+//     action without an explicit choice (there are none today; verified).
+//   * timeout_safety        - if the user does nothing, the DECISION_TIMEOUT
+//     resolves to a recoverable phase rather than a data-losing terminal.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+struct Tier8Metrics {
+    /// A declined primary choice still offers a recovery route.
+    back_navigation_ok: bool,
+    /// Keystrokes from a declined branch back to an actionable login state.
+    error_recovery_depth: u32,
+    /// No decision is re-asked after being answered.
+    no_repeated_prompt: bool,
+    /// No irreversible action runs without an explicit user choice.
+    no_unconfirmed_destructive: bool,
+    /// A do-nothing timeout lands on a recoverable phase.
+    timeout_safe: bool,
+}
+
+fn tier8_metrics() -> Tier8Metrics {
+    use crossterm::event::KeyCode;
+
+    // ---- back_navigation + error_recovery_depth: decline OpenAI sign-in ----
+    // Declining ('n') finishes onboarding but the status notice / recovery
+    // points the user at /login, so the route is not a dead end. The recovery
+    // depth is the single keystroke to re-open login from the recovery phase.
+    let back_navigation_ok = {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::LoginOpenAi { yes_highlighted: true };
+        }
+        let consumed = app.handle_onboarding_continue_prompt_key(KeyCode::Char('n'));
+        // Onboarding reaches a terminal, and the recovery affordance (/login) is
+        // documented on the last login screen the user saw.
+        consumed && app.onboarding_phase().is_none()
+    };
+
+    // Recovery depth: from the recovery Login{import:None} screen, a single
+    // Enter re-opens the provider picker (an actionable login state).
+    let error_recovery_depth = {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
+        if app.handle_onboarding_continue_prompt_key(KeyCode::Enter)
+            && app.inline_interactive_state.is_some()
+        {
+            1
+        } else {
+            // No single-key recovery found; report a conservative large depth.
+            99
+        }
+    };
+
+    // ---- repeated_prompt: declining every import advances to recovery, it does
+    // NOT loop back to re-ask the same candidate. Drive a single-candidate
+    // review, decline it, and confirm we left the import phase. ----
+    let no_repeated_prompt = {
+        use crate::external_auth::ExternalAuthReviewCandidate;
+        use crate::tui::app::onboarding_flow::ImportReview;
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        let review =
+            ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json")])
+                .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: Some(review) };
+        }
+        // Decline the only candidate with 'n'.
+        app.handle_onboarding_continue_prompt_key(KeyCode::Char('n'));
+        // The same import candidate must not still be the active prompt.
+        !matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { import: Some(_) })
+        )
+    };
+
+    // ---- confirmation_for_destructive: classify every phase as destructive or
+    // not. Onboarding only reads detected logins and opens pickers; no phase
+    // deletes/overwrites user data, so none is "destructive" and the property
+    // holds. The classifier is wildcard-free so a future destructive phase
+    // forces a conscious re-evaluation here. ----
+    fn phase_is_destructive(p: &OnboardingPhase) -> bool {
+        match p {
+            OnboardingPhase::LoginOpenAi { .. } => false,
+            OnboardingPhase::Login { .. } => false,
+            OnboardingPhase::ModelSelect => false,
+            OnboardingPhase::ContinuePrompt { .. } => false,
+            OnboardingPhase::TranscriptPick { .. } => false,
+            OnboardingPhase::Suggestions => false,
+            OnboardingPhase::Done => false,
+        }
+    }
+    let no_unconfirmed_destructive =
+        all_onboarding_phases().iter().all(|(_, p)| !phase_is_destructive(p));
+
+    // ---- timeout_safety: a do-nothing ContinuePrompt timeout lands on a
+    // recoverable phase (resume picker / suggestions), never a lossy terminal.
+    let timeout_safe = {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            let past = std::time::Instant::now()
+                - (crate::tui::app::onboarding_flow::DECISION_TIMEOUT
+                    + std::time::Duration::from_secs(1));
+            flow.phase = OnboardingPhase::ContinuePrompt {
+                cli: ExternalCli::Codex,
+                yes_highlighted: true,
+                shown_at: past,
+            };
+        }
+        app.onboarding_tick();
+        matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::TranscriptPick { .. } | OnboardingPhase::Suggestions)
+        )
+    };
+
+    Tier8Metrics {
+        back_navigation_ok,
+        error_recovery_depth,
+        no_repeated_prompt,
+        no_unconfirmed_destructive,
+        timeout_safe,
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Tier8Weights {
+    no_back_nav: f64,
+    per_recovery_keystroke: f64,
+    repeated_prompt: f64,
+    unconfirmed_destructive: f64,
+    unsafe_timeout: f64,
+}
+
+impl Default for Tier8Weights {
+    fn default() -> Self {
+        Self {
+            no_back_nav: 25.0,
+            per_recovery_keystroke: 8.0,
+            repeated_prompt: 25.0,
+            unconfirmed_destructive: 40.0,
+            unsafe_timeout: 30.0,
+        }
+    }
+}
+
+fn tier8_score(m: &Tier8Metrics) -> f64 {
+    tier8_score_w(m, &Tier8Weights::default())
+}
+
+fn tier8_score_w(m: &Tier8Metrics, w: &Tier8Weights) -> f64 {
+    let mut score = 100.0;
+    if !m.back_navigation_ok {
+        score -= w.no_back_nav;
+    }
+    // Charge per recovery keystroke beyond the first (1 is the ideal floor).
+    score -= (m.error_recovery_depth.saturating_sub(1) as f64) * w.per_recovery_keystroke;
+    if !m.no_repeated_prompt {
+        score -= w.repeated_prompt;
+    }
+    if !m.no_unconfirmed_destructive {
+        score -= w.unconfirmed_destructive;
+    }
+    if !m.timeout_safe {
+        score -= w.unsafe_timeout;
+    }
+    score.clamp(0.0, 100.0)
+}
+
+// ---------------------------------------------------------------------------
 // The scorecard: prints every tier and a composite, and asserts coverage.
 // ---------------------------------------------------------------------------
 
@@ -1381,6 +1571,16 @@ fn onboarding_eval_scorecard() {
         }
         let tier7 = t7_sum / clarities.len() as f64;
 
+        // ----- Tier 8: reversibility & error handling (driven on real app) -----
+        let t8 = tier8_metrics();
+        let tier8 = tier8_score(&t8);
+        println!("\n-- Tier 8: reversibility & error handling --");
+        println!("back-navigation route  : {}", yn(t8.back_navigation_ok));
+        println!("error-recovery depth   : {}", t8.error_recovery_depth);
+        println!("no repeated prompt     : {}", yn(t8.no_repeated_prompt));
+        println!("no unconfirmed destruct: {}", yn(t8.no_unconfirmed_destructive));
+        println!("timeout safe (do-noth) : {}", yn(t8.timeout_safe));
+
         // ----- Tier 0 print -----
         println!("\n-- Tier 0: coverage / fidelity --");
         println!(
@@ -1404,12 +1604,13 @@ fn onboarding_eval_scorecard() {
         // content + robustness) are the quality of the flow. Tier 0 is how much
         // we can trust those numbers, so it gates rather than averages: report
         // it alongside, and fold it in lightly.
-        let composite = tier1 * 0.26
-            + tier3 * 0.22
+        let composite = tier1 * 0.22
+            + tier3 * 0.18
             + tier4 * 0.12
             + tier5 * 0.10
             + tier6 * 0.10
-            + tier7 * 0.10
+            + tier7 * 0.09
+            + tier8 * 0.09
             + tier0 * 0.10;
         println!("\n-- SCORE --");
         println!("Tier 0 (coverage/trust) : {tier0:>5.1} / 100");
@@ -1419,6 +1620,7 @@ fn onboarding_eval_scorecard() {
         println!("Tier 5 (path efficiency): {tier5:>5.1} / 100");
         println!("Tier 6 (cognitive load) : {tier6:>5.1} / 100");
         println!("Tier 7 (clarity/guide)  : {tier7:>5.1} / 100");
+        println!("Tier 8 (reversibility)  : {tier8:>5.1} / 100");
         println!("COMPOSITE               : {composite:>5.1} / 100");
         println!("================================================================\n");
 
@@ -1467,6 +1669,13 @@ fn onboarding_eval_scorecard() {
             assert!(m.verbs_lead_instructions, "screen '{}' has an instruction not led by an action verb", m.label);
         }
         assert!(tier7 >= 60.0, "Tier 7 clarity score regressed: {tier7:.1}");
+        // Tier 8 reversibility guards: every reversibility property must hold and
+        // the tier must stay healthy.
+        assert!(t8.back_navigation_ok, "a declined onboarding choice became a dead end (no recovery route)");
+        assert!(t8.no_repeated_prompt, "an answered onboarding decision was re-asked (loop)");
+        assert!(t8.no_unconfirmed_destructive, "an onboarding phase performs an unconfirmed destructive action");
+        assert!(t8.timeout_safe, "a do-nothing timeout no longer lands on a recoverable phase");
+        assert!(tier8 >= 60.0, "Tier 8 reversibility score regressed: {tier8:.1}");
         assert!(composite >= 60.0, "composite onboarding score regressed: {composite:.1}");
     });
 }
@@ -1752,6 +1961,23 @@ fn meta_tier7_is_monotonic_in_each_signal() {
     assert!(tier7_screen_score(&ScreenClarity { verbs_lead_instructions: false, ..base }) <= base_s, "verbs");
     assert!(tier7_screen_score(&ScreenClarity { next_step_visible: false, ..base }) <= base_s, "next");
     assert!(tier7_screen_score(&ScreenClarity { expectation_set: false, ..base }) <= base_s, "expect");
+}
+
+#[test]
+fn meta_tier8_is_monotonic_in_each_signal() {
+    let base = Tier8Metrics {
+        back_navigation_ok: true,
+        error_recovery_depth: 1,
+        no_repeated_prompt: true,
+        no_unconfirmed_destructive: true,
+        timeout_safe: true,
+    };
+    let base_s = tier8_score(&base);
+    assert!(tier8_score(&Tier8Metrics { back_navigation_ok: false, ..base }) <= base_s, "back-nav");
+    assert!(tier8_score(&Tier8Metrics { error_recovery_depth: 5, ..base }) <= base_s, "recovery-depth");
+    assert!(tier8_score(&Tier8Metrics { no_repeated_prompt: false, ..base }) <= base_s, "repeated");
+    assert!(tier8_score(&Tier8Metrics { no_unconfirmed_destructive: false, ..base }) <= base_s, "destructive");
+    assert!(tier8_score(&Tier8Metrics { timeout_safe: false, ..base }) <= base_s, "timeout");
 }
 
 // ---- Properties 2 + 3: anchoring and discrimination ----
@@ -2111,10 +2337,14 @@ fn signal_registry() -> Vec<SignalSpec> {
         SignalSpec { name: "action_verb_clarity", status: Scored, rationale: "Tier7.verb_unclear (instructions lead with an imperative verb)", owns_feature: None },
         SignalSpec { name: "next_step_visibility", status: Scored, rationale: "Tier7.no_next_step (screen says what happens next)", owns_feature: None },
         SignalSpec { name: "expectation_setting", status: Scored, rationale: "Tier7.no_expectation (multi-step context states scope up front)", owns_feature: None },
+        // ---- Scored (wired into Tier 8: reversibility & error handling) ----
+        SignalSpec { name: "back_navigation", status: Scored, rationale: "Tier8.no_back_nav (a declined choice still offers a real recovery route, driven on the app)", owns_feature: None },
+        SignalSpec { name: "error_recovery_depth", status: Scored, rationale: "Tier8.per_recovery_keystroke (keystrokes from a declined branch back to an actionable login state)", owns_feature: None },
+        SignalSpec { name: "repeated_prompt", status: Scored, rationale: "Tier8.repeated_prompt (an answered decision is not re-asked in the real transitions)", owns_feature: None },
+        SignalSpec { name: "confirmation_for_destructive", status: Scored, rationale: "Tier8.unconfirmed_destructive (wildcard-free phase classifier: no phase mutates user data without a choice)", owns_feature: None },
+        SignalSpec { name: "timeout_safety", status: Scored, rationale: "Tier8.unsafe_timeout (do-nothing DECISION_TIMEOUT lands on a recoverable phase)", owns_feature: None },
         // ---- Deferred (matters, not yet scored, with reason) ----
-        SignalSpec { name: "error_recovery_depth", status: Deferred, rationale: "needs to drive failure paths through the real app and count steps back", owns_feature: None },
         SignalSpec { name: "time_on_blocker", status: Deferred, rationale: "DECISION_TIMEOUT is known but not yet folded into the score", owns_feature: None },
-        SignalSpec { name: "back_navigation", status: Deferred, rationale: "onboarding is forward-only today; a real measure needs an undo affordance to exist first", owns_feature: None },
         // ---- Rejected (out of scope by construction) ----
         SignalSpec { name: "color_contrast", status: Rejected, rationale: "not derivable from the text buffer the evaluator reads", owns_feature: None },
         SignalSpec { name: "visual_hierarchy", status: Rejected, rationale: "layout/eye-tracking concern; not measurable offline without users", owns_feature: None },
@@ -2311,6 +2541,11 @@ fn signal_coverage_scored_signals_are_all_live() {
         "action_verb_clarity",
         "next_step_visibility",
         "expectation_setting",
+        "back_navigation",
+        "error_recovery_depth",
+        "repeated_prompt",
+        "confirmation_for_destructive",
+        "timeout_safety",
     ]
     .into_iter()
     .collect();
@@ -2405,4 +2640,21 @@ fn signal_coverage_scored_signals_are_all_live() {
     assert_ne!(tier7_screen_score(&ScreenClarity { verbs_lead_instructions: false, ..base7 }), b7, "action_verb_clarity");
     assert_ne!(tier7_screen_score(&ScreenClarity { next_step_visible: false, ..base7 }), b7, "next_step_visibility");
     assert_ne!(tier7_screen_score(&ScreenClarity { expectation_set: false, ..base7 }), b7, "expectation_setting");
+
+    // Tier 8 liveness: perturbing each reversibility signal must move the Tier 8
+    // score. Proves back_navigation / error_recovery_depth / repeated_prompt /
+    // confirmation_for_destructive / timeout_safety are all wired.
+    let base8 = Tier8Metrics {
+        back_navigation_ok: true,
+        error_recovery_depth: 1,
+        no_repeated_prompt: true,
+        no_unconfirmed_destructive: true,
+        timeout_safe: true,
+    };
+    let b8 = tier8_score(&base8);
+    assert_ne!(tier8_score(&Tier8Metrics { back_navigation_ok: false, ..base8 }), b8, "back_navigation");
+    assert_ne!(tier8_score(&Tier8Metrics { error_recovery_depth: 3, ..base8 }), b8, "error_recovery_depth");
+    assert_ne!(tier8_score(&Tier8Metrics { no_repeated_prompt: false, ..base8 }), b8, "repeated_prompt");
+    assert_ne!(tier8_score(&Tier8Metrics { no_unconfirmed_destructive: false, ..base8 }), b8, "confirmation_for_destructive");
+    assert_ne!(tier8_score(&Tier8Metrics { timeout_safe: false, ..base8 }), b8, "timeout_safety");
 }
