@@ -112,7 +112,9 @@ fn onboarding_golden_walks_every_phase() {
         });
         let text = render_onboarding_text(&app, width, height);
         dump("Login (import two-column list, 2 logins)", &text);
-        assert!(text.contains("We found 2 existing logins."), "count: {text}");
+        // The section is labeled "Import:" (lean header; the list itself shows
+        // how many and which logins were found).
+        assert!(text.contains("Import:"), "import label: {text}");
         // Both logins are listed at once, each with a Yes/No choice.
         assert!(text.contains("OpenAI/Codex"), "provider 1: {text}");
         assert!(text.contains("Codex auth.json"), "source 1: {text}");
@@ -122,24 +124,18 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Yes") && text.contains("No"), "yes/no header: {text}");
         assert!(text.contains('●'), "filled choice circle: {text}");
         assert!(text.contains('○'), "hollow choice circle: {text}");
-        // A navigable "Continue" pill sits above and below the list so the user
-        // can reach the commit action by arrowing out of the list.
+        // A navigable "Continue" pill sits above the list (between the label and
+        // the rows) so the user can reach the commit action by arrowing out of
+        // the list. It is drawn as a real lozenge: half-circle end caps (◖ ◗)
+        // around the label.
+        assert!(text.contains("Continue"), "continue pill label: {text}");
         assert!(
-            text.matches("( Continue )").count() >= 2,
-            "continue pills above and below list: {text}"
+            text.contains('\u{25D6}') && text.contains('\u{25D7}'),
+            "continue pill rounded end caps: {text}"
         );
-        assert!(
-            text.contains("Select Continue or press Enter to import."),
-            "continue action: {text}"
-        );
-        assert!(
-            text.contains("Left/Right for Yes/No"),
-            "toggle hint: {text}"
-        );
-        assert!(text.contains("Imports all checked in"), "countdown: {text}");
     }
 
-    // 2b. Singular phrasing for a single detected login.
+    // 2b. A single detected login still renders the labeled list + one row.
     {
         let review =
             ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")])
@@ -149,10 +145,8 @@ fn onboarding_golden_walks_every_phase() {
         });
         let text = render_onboarding_text(&app, width, height);
         dump("Login (import two-column list, single login)", &text);
-        assert!(
-            text.contains("We found 1 existing login."),
-            "singular count: {text}"
-        );
+        assert!(text.contains("Import:"), "import label: {text}");
+        assert!(text.contains("Cursor"), "single login row: {text}");
         assert!(text.contains("Yes") && text.contains("No"), "yes/no header: {text}");
         assert!(text.contains('●'), "filled choice circle: {text}");
     }
@@ -217,10 +211,6 @@ fn onboarding_golden_walks_failure_and_async_states() {
         assert!(
             text.contains("Welcome to jcode onboarding"),
             "{title}: must render the welcome title\n{text}"
-        );
-        assert!(
-            text.contains("Let's get you set up."),
-            "{title}: must render the tagline\n{text}"
         );
         assert!(
             text.contains("Esc to skip onboarding"),

@@ -469,10 +469,10 @@ fn tier4_metrics() -> Tier4Metrics {
 
     // ---- progress_visibility: the multi-login import is a multi-step context
     // and must set scope up front. The single-screen checkbox list does this by
-    // (a) stating the total ("We found 2 existing logins") and (b) showing all N
-    // logins as visible rows at once, so the user always knows how many there
-    // are and what they are. We verify both: the count statement AND that every
-    // detected login is actually listed. Rendered from the real screen. ----
+    // (a) labeling the section ("Import:") and (b) showing all N logins as
+    // visible rows at once, so the user always knows how many there are and what
+    // they are. We verify both: the label AND that every detected login is
+    // actually listed. Rendered from the real screen. ----
     let review = ImportReview::new(vec![
         ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
         ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
@@ -480,7 +480,7 @@ fn tier4_metrics() -> Tier4Metrics {
     .unwrap();
     let multi = app_in_phase(OnboardingPhase::Login { import: Some(review) });
     let multi_text = render_onboarding_text(&multi, 80, 30).to_ascii_lowercase();
-    let states_total = multi_text.contains("we found 2 existing logins");
+    let states_total = multi_text.contains("import:");
     let lists_all = multi_text.contains("openai/codex") && multi_text.contains("claude");
     let progress_visible = states_total && lists_all;
 
@@ -941,6 +941,12 @@ fn body_prose_lines(text: &str) -> Vec<String> {
         if t.contains(CANONICAL_YESNO_PILL) {
             continue;
         }
+        // The Continue pill is likewise an interactive widget (a rounded button
+        // drawn with half-circle end caps ◖ ◗), not prose. Strip it so its
+        // glyphs aren't counted as load-bearing reading text.
+        if t.contains('\u{25D6}') || t.contains('\u{25D7}') {
+            continue;
+        }
         // The import rows carry their own Yes/No pills (skipped above via
         // CANONICAL_YESNO_PILL); legacy circle/divider chrome is also dropped.
         if t.contains('●') || t.contains('○') || t.contains('│') {
@@ -1166,9 +1172,8 @@ const ACTION_VERBS: &[&str] = &[
 const NEXT_STEP_CUES: &[&str] = &[
     "to choose", "to skip", "to get started", "opens", "auto-selects",
     "automatically", "to choose a provider", "anytime", "resume",
-    // The import list describes its outcome: "Press Enter to import ..." and
-    // "Imports all checked in Ns".
-    "to import", "imports all",
+    // The import screen labels its section and lists the logins to import.
+    "to import", "import:",
 ];
 
 #[derive(Clone, Copy)]

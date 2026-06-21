@@ -14,7 +14,7 @@
 //! it animates every frame, matching the idle-donut behavior elsewhere.
 
 use super::animations;
-use super::{dim_color, header_name_color};
+use super::dim_color;
 use crate::tui::TuiState;
 use crate::tui::color_support::rgb;
 use ratatui::{prelude::*, widgets::Paragraph};
@@ -83,17 +83,37 @@ fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
 
 /// A rounded "Continue" pill button. Rendered both above and below the import
 /// list so the user can reach the commit action just by arrowing up or down
-/// out of the list (no need to read the "Press Enter" instruction). When
-/// `focused`, the pill is filled/reversed to show it is the active element.
+/// out of the list (no need to read the "Press Enter" instruction).
+///
+/// This draws an *actual* lozenge shape, not `( label )` text on a hard
+/// rectangle: the two ends are half-circle glyphs (`◖` / `◗`) colored to match
+/// the pill fill, and the label sits on a solid background between them. When
+/// `focused`, the fill is the bright accent; otherwise it is a muted gray so it
+/// still reads as a button but recedes.
 fn continue_pill_line(focused: bool, align: Alignment) -> Line<'static> {
-    let style = if focused {
-        Style::default()
-            .fg(welcome_accent())
-            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+    // Pill fill + the text drawn on top of it. The half-circle end caps use the
+    // fill color as their *foreground* (the glyph's filled half), so the rounded
+    // ends visually merge with the background-filled middle.
+    let (fill, text_fg) = if focused {
+        (welcome_accent(), rgb(20, 24, 32))
     } else {
-        Style::default().fg(dim_color())
+        (rgb(70, 74, 82), rgb(210, 210, 210))
     };
-    Line::from(Span::styled("( Continue )", style)).alignment(align)
+
+    let cap = Style::default().fg(fill);
+    let body = Style::default()
+        .fg(text_fg)
+        .bg(fill)
+        .add_modifier(Modifier::BOLD);
+
+    Line::from(vec![
+        // Left rounded end: the filled left half of the circle forms the cap.
+        Span::styled("\u{25D6}", cap),
+        Span::styled(" Continue ", body),
+        // Right rounded end: the filled right half of the circle.
+        Span::styled("\u{25D7}", cap),
+    ])
+    .alignment(align)
 }
 
 /// Render the import screen body: a "Yes / No" header row, then one row per
@@ -218,27 +238,34 @@ fn telemetry_header_lines(width: u16) -> Vec<Line<'static>> {
         .collect()
 }
 
-/// Welcome title + the getting-started prompt/suggestions.
+/// Welcome title line, rendered just above the donut.
+fn welcome_title_line() -> Line<'static> {
+    Line::from(Span::styled(
+        "Welcome to jcode onboarding",
+        Style::default()
+            .fg(welcome_accent())
+            .add_modifier(Modifier::BOLD),
+    ))
+    .alignment(Alignment::Center)
+}
+
+/// Short keyboard hint rendered just below the donut on guided phases. Replaces
+/// the old multi-line instruction prose: the interactive pills/rows already show
+/// what is selectable, so a one-liner is enough.
+fn keyboard_hint_line() -> Line<'static> {
+    Line::from(Span::styled(
+        "Use your keyboard to navigate.",
+        Style::default().fg(dim_color()),
+    ))
+    .alignment(Alignment::Center)
+}
+
+/// The phase-specific body of the welcome screen (everything below the donut and
+/// keyboard hint). The title now lives above the donut, so this no longer emits
+/// it.
 fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
     let align = Alignment::Center;
     let mut lines: Vec<Line<'static>> = Vec::new();
-
-    lines.push(
-        Line::from(Span::styled(
-            "Welcome to jcode onboarding",
-            Style::default()
-                .fg(welcome_accent())
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(align),
-    );
-    lines.push(
-        Line::from(Span::styled(
-            "Let's get you set up.",
-            Style::default().fg(header_name_color()),
-        ))
-        .alignment(align),
-    );
 
     use crate::tui::OnboardingWelcomeKind;
     match app.onboarding_welcome_kind() {
@@ -248,7 +275,6 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             error,
             repair_agent_label,
         } => {
-            lines.push(Line::from(""));
             match import {
                 None if importing => {
                     // The user committed the import; it's running. Show progress
@@ -342,69 +368,29 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                 }
                 Some(prompt) => {
-                    let total = prompt.rows.len();
+                    // Lean layout: a short "Import:" label, the Continue pill,
+                    // then the per-login rows. The interactive pill + rows show
+                    // what is selectable, so we drop the old instruction prose
+                    // and countdown sentence to keep the screen uncluttered.
                     lines.push(
                         Line::from(Span::styled(
-                            format!(
-                                "We found {} existing login{}.",
-                                total,
-                                if total == 1 { "" } else { "s" },
-                            ),
+                            "Import:",
                             Style::default()
                                 .fg(welcome_accent())
                                 .add_modifier(Modifier::BOLD),
                         ))
                         .alignment(align),
                     );
-                    lines.push(
-                        Line::from(Span::styled(
-                            "All set to import. Switch any to No to skip it:",
-                            Style::default().fg(dim_color()),
-                        ))
-                        .alignment(align),
-                    );
                     lines.push(Line::from(""));
 
-                    // Continue pill above the list: arrowing up out of the
-                    // first row lands here.
+                    // Continue pill: arrowing up out of the first row (or down
+                    // past the last) focuses it; Enter commits the import.
                     lines.push(continue_pill_line(prompt.continue_focused, align));
                     lines.push(Line::from(""));
 
-                    // Per-login rows: each provider is followed by a Yes/No
-                    // pair with "Yes" (import) lit by default. The user moves the
-                    // cursor up/down and flips a login to "No" to skip it.
+                    // Per-login rows: each provider has a Yes/No choice, "Yes"
+                    // (import) lit by default. Up/down move, Left/Right flip.
                     lines.extend(import_two_column_lines(&prompt));
-                    lines.push(Line::from(""));
-
-                    // Continue pill below the list: arrowing down out of the
-                    // last row lands here. Selecting it (Enter) commits the
-                    // import, so the user never has to read an instruction line.
-                    lines.push(continue_pill_line(prompt.continue_focused, align));
-                    lines.push(Line::from(""));
-
-                    lines.push(
-                        Line::from(Span::styled(
-                            "Up/down to move, Left/Right for Yes/No.",
-                            Style::default().fg(dim_color()),
-                        ))
-                        .alignment(align),
-                    );
-                    lines.push(
-                        Line::from(Span::styled(
-                            "Select Continue or press Enter to import.",
-                            Style::default()
-                                .fg(welcome_accent())
-                                .add_modifier(Modifier::BOLD),
-                        ))
-                        .alignment(align),
-                    );
-                    lines.push(
-                        Line::from(Span::styled(
-                            format!("Imports all checked in {}s.", prompt.seconds_left),
-                            Style::default().fg(dim_color()),
-                        ))
-                        .alignment(align),
-                    );
                 }
             }
             push_esc_skip_hint(&mut lines, align);
@@ -533,10 +519,16 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 }
 
 /// Draw the full onboarding welcome screen into `area`.
+///
+/// Vertical structure (top to bottom):
+///   telemetry header, gap, title, donut, keyboard hint, gap, phase body.
+/// The title sits directly above the donut and a one-line keyboard hint sits
+/// directly below it, so the phase body underneath can stay lean.
 pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
     if area.width < 4 || area.height < 6 {
         // Too small for the full treatment: fall back to a minimal welcome.
-        let lines = welcome_body_lines(app);
+        let mut lines = vec![welcome_title_line()];
+        lines.extend(welcome_body_lines(app));
         frame.render_widget(Paragraph::new(lines), area);
         return;
     }
@@ -545,20 +537,31 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
     let body = welcome_body_lines(app);
     let telemetry_h = (telemetry.len() as u16).min(TELEMETRY_LINES);
     let body_h = body.len() as u16;
+    // Title above the donut, keyboard hint below it. Both are single lines and
+    // only shown when there is room for the donut treatment.
+    const TITLE_H: u16 = 1;
+    const HINT_H: u16 = 1;
 
-    // Donut shrinks if the area is short so the welcome text always fits.
-    let donut_h = DONUT_HEIGHT.min(
-        area.height
-            .saturating_sub(telemetry_h + body_h + GAP * 2 + 1),
-    );
+    // Donut shrinks if the area is short so the welcome text always fits. The
+    // title + hint lines that hug the donut are part of the reserved chrome.
+    let donut_h = DONUT_HEIGHT.min(area.height.saturating_sub(
+        telemetry_h + TITLE_H + HINT_H + body_h + GAP * 2 + 1,
+    ));
+    let show_donut_block = donut_h > 0;
 
-    let used = telemetry_h + GAP + donut_h + GAP + body_h;
+    let used = if show_donut_block {
+        telemetry_h + GAP + TITLE_H + donut_h + HINT_H + GAP + body_h
+    } else {
+        telemetry_h + GAP + body_h
+    };
     let pad_top = area.height.saturating_sub(used) / 2;
 
     let mut constraints = vec![Constraint::Length(pad_top), Constraint::Length(telemetry_h)];
-    if donut_h > 0 {
+    if show_donut_block {
         constraints.push(Constraint::Length(GAP));
+        constraints.push(Constraint::Length(TITLE_H));
         constraints.push(Constraint::Length(donut_h));
+        constraints.push(Constraint::Length(HINT_H));
     }
     constraints.push(Constraint::Length(GAP));
     constraints.push(Constraint::Length(body_h));
@@ -569,21 +572,30 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
         .constraints(constraints)
         .split(area);
 
-    // chunks[0] = top pad, [1] = telemetry, then optional gap+donut, gap, body.
+    // chunks[0] = top pad, [1] = telemetry, then optional gap/title/donut/hint,
+    // gap, body.
     frame.render_widget(
         Paragraph::new(telemetry).alignment(Alignment::Center),
         chunks[1],
     );
 
     let mut idx = 2;
-    if donut_h > 0 {
-        // skip gap chunk
-        idx += 1;
+    if show_donut_block {
+        idx += 1; // skip gap chunk
+        frame.render_widget(
+            Paragraph::new(welcome_title_line()).alignment(Alignment::Center),
+            chunks[idx],
+        );
+        idx += 1; // title -> donut
         animations::draw_idle_animation(frame, app, chunks[idx]);
-        idx += 1;
+        idx += 1; // donut -> hint
+        frame.render_widget(
+            Paragraph::new(keyboard_hint_line()).alignment(Alignment::Center),
+            chunks[idx],
+        );
+        idx += 1; // hint -> gap
     }
-    // skip gap chunk
-    idx += 1;
+    idx += 1; // skip gap chunk
     frame.render_widget(
         Paragraph::new(body).alignment(Alignment::Center),
         chunks[idx],
