@@ -288,14 +288,17 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
         .iter()
         .map(|l| l.split_whitespace().count())
         .sum::<usize>() as u32;
-    // A yes/no screen is consistent when it renders the canonical pill labels
-    // AND a movability affordance: either the flanking chevrons (single Yes/No
-    // prompts) or the `> ` cursor gutter (the per-login import list, which puts a
-    // Yes/No pair on each row).
-    let keyhint_consistent = !is_yesno
-        || (text.contains(CANONICAL_YESNO_PILL)
-            && text.contains("( No )")
-            && (text.contains(YESNO_PILL_CHEVRON) || text.contains("> ")));
+    // A yes/no screen is consistent when it renders one of the two canonical
+    // affordances:
+    //   * the single-prompt pill row: `( Yes )` / `( No )` flanked by chevrons, or
+    //   * the per-login import list: a "Yes"/"No" header above filled/hollow
+    //     circle columns, with a `> ` cursor gutter for movability.
+    let canonical_pill = text.contains(CANONICAL_YESNO_PILL)
+        && text.contains("( No )")
+        && text.contains(YESNO_PILL_CHEVRON);
+    let canonical_import_list =
+        text.contains('●') && text.contains('○') && text.contains("> ");
+    let keyhint_consistent = !is_yesno || canonical_pill || canonical_import_list;
     let lower = text.to_ascii_lowercase();
     let has_escape_hatch = lower.contains("skip")
         || lower.contains("anytime")

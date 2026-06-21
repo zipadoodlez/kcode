@@ -117,9 +117,11 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("OpenAI/Codex"), "provider 1: {text}");
         assert!(text.contains("Codex auth.json"), "source 1: {text}");
         assert!(text.contains("Claude"), "provider 2: {text}");
-        // Each login carries a Yes/No pair, pre-set to Yes (import).
-        assert!(text.contains("( Yes )"), "yes pill: {text}");
-        assert!(text.contains("( No )"), "no pill: {text}");
+        // A Yes/No header sits above the per-login circle columns, with the
+        // filled circle marking the current (pre-selected: Yes) choice.
+        assert!(text.contains("Yes") && text.contains("No"), "yes/no header: {text}");
+        assert!(text.contains('●'), "filled choice circle: {text}");
+        assert!(text.contains('○'), "hollow choice circle: {text}");
         assert!(
             text.contains("Press Enter to continue."),
             "continue action: {text}"
@@ -145,7 +147,8 @@ fn onboarding_golden_walks_every_phase() {
             text.contains("We found 1 existing login."),
             "singular count: {text}"
         );
-        assert!(text.contains("( Yes )"), "yes pill: {text}");
+        assert!(text.contains("Yes") && text.contains("No"), "yes/no header: {text}");
+        assert!(text.contains('●'), "filled choice circle: {text}");
     }
 
     // 4. Continue prompt (resume an external session).

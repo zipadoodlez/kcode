@@ -65,21 +65,22 @@ fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     .alignment(align)
 }
 
-/// Render the import screen body: one row per detected login, each followed by
-/// a `( Yes )  ( No )` pair where the *current* choice is filled (accent) and
-/// the other is a dim outline. Every login defaults to "Yes" (import), so the
-/// pre-selected state is obvious: the Yes pill is already lit. The cursor row is
-/// marked with a `>` gutter, and Left/Right move the choice between Yes and No.
+/// Render the import screen body: a "Yes / No" header row, then one row per
+/// detected login. Each login has a circle under the Yes column and a circle
+/// under the No column; the *filled* circle is the current choice. Every login
+/// defaults to "Yes" (import), so the pre-selected state is obvious: the Yes
+/// column is already filled. The cursor row is marked with a `>` gutter, and
+/// Left/Right move the choice between Yes and No.
 ///
-/// The pills and gutter are interactive-widget glyphs, not load-bearing prose:
-/// the surrounding ASCII copy ("We found N existing logins", "Imports all
-/// checked in Ns") already conveys state in plain text.
+/// The header, circles, and gutter are interactive-widget glyphs, not
+/// load-bearing prose: the surrounding ASCII copy ("We found N existing
+/// logins", "Imports all checked in Ns") already conveys state in plain text.
 fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
     let mut out: Vec<Line<'static>> = Vec::new();
 
     // Left column width: the widest "<cursor>Provider (source)" entry, so the
-    // Yes/No pills line up in a clean column. The 2-cell cursor gutter is
-    // included so the pills do not shift when the cursor moves.
+    // Yes/No circle columns line up cleanly. The 2-cell cursor gutter is
+    // included so the columns do not shift when the cursor moves.
     let left_width = prompt
         .rows
         .iter()
@@ -88,16 +89,35 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
         .unwrap_or(0)
         .max(12);
 
-    // A filled pill (the current choice) is bold accent; the other is dim. We
-    // intentionally avoid REVERSED color blocks so it reads as soft text, and
-    // the fill is conveyed by bold + the surrounding parentheses so it survives
-    // on monochrome terminals.
+    // Fixed-width Yes/No columns so the header labels sit directly above the
+    // circles. Each column is `COL_W` cells with the glyph centered; a small gap
+    // separates the two columns.
+    const COL_W: usize = 5;
+    const GAP: &str = "  ";
+    let center_cell = |s: &str| {
+        let len = s.chars().count();
+        let total = COL_W.saturating_sub(len);
+        let left = total / 2;
+        let right = total - left;
+        format!("{}{}{}", " ".repeat(left), s, " ".repeat(right))
+    };
+
     let yes_color = rgb(126, 211, 159);
-    let chosen_yes = Style::default().fg(yes_color).add_modifier(Modifier::BOLD);
-    let chosen_no = Style::default()
-        .fg(rgb(230, 230, 230))
-        .add_modifier(Modifier::BOLD);
-    let unchosen = Style::default().fg(dim_color());
+    let filled = Style::default().fg(yes_color).add_modifier(Modifier::BOLD);
+    let empty = Style::default().fg(dim_color());
+    let header_style = Style::default().fg(dim_color()).add_modifier(Modifier::BOLD);
+
+    // Header row: blank under the provider column, then "Yes" and "No" labels
+    // centered over their circle columns.
+    out.push(
+        Line::from(vec![
+            Span::raw(" ".repeat(left_width)),
+            Span::styled(center_cell("Yes"), header_style),
+            Span::raw(GAP),
+            Span::styled(center_cell("No"), header_style),
+        ])
+        .alignment(Alignment::Center),
+    );
 
     for (i, row) in prompt.rows.iter().enumerate() {
         let is_cursor = i == prompt.cursor;
@@ -110,18 +130,19 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
             Style::default().fg(dim_color())
         };
 
-        // Compose the left cell, then pad it out to left_width so the pills
-        // align regardless of provider/source length.
+        // Compose the left cell, then pad it out to left_width so the circle
+        // columns align regardless of provider/source length.
         let left_text = format!(
             "{}{} ({})",
             cursor_marker, row.provider_summary, row.source_name
         );
         let pad = left_width.saturating_sub(left_text.chars().count());
 
-        let (yes_style, no_style) = if row.checked {
-            (chosen_yes, unchosen)
+        // Filled circle marks the chosen column; the other is a hollow outline.
+        let (yes_glyph, yes_style, no_glyph, no_style) = if row.checked {
+            ("●", filled, "○", empty)
         } else {
-            (unchosen, chosen_no)
+            ("○", empty, "●", filled)
         };
 
         let spans: Vec<Span<'static>> = vec![
@@ -129,8 +150,9 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
             Span::styled(row.provider_summary.clone(), label_style),
             Span::styled(format!(" ({})", row.source_name), Style::default().fg(dim_color())),
             Span::raw(" ".repeat(pad)),
-            Span::styled("  ( Yes )", yes_style),
-            Span::styled("  ( No )", no_style),
+            Span::styled(center_cell(yes_glyph), yes_style),
+            Span::raw(GAP),
+            Span::styled(center_cell(no_glyph), no_style),
         ];
         out.push(Line::from(spans).alignment(Alignment::Center));
     }
