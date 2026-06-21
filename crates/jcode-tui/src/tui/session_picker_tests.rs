@@ -1974,3 +1974,72 @@ fn search_highlights_matching_title_in_rendered_rows() {
         .any(|s| s.content.as_ref() == "sess" && s.style.add_modifier.contains(Modifier::BOLD));
     assert!(has_highlight, "query substring in title should be highlighted");
 }
+
+#[test]
+fn search_highlights_match_in_preview_and_scrolls_to_it() {
+    // A long transcript where a distinctive term ("flibbertigibbet") appears only
+    // in an early message. Searching for it should both highlight the match in the
+    // preview pane and scroll the preview to the match rather than to the bottom.
+    let mut session = make_session_with_many_turns("long", 60);
+    // Inject the unique term near the top of the transcript.
+    session.messages_preview[4].content = "the magic flibbertigibbet token".to_string();
+    let mut picker = SessionPicker::new(vec![session]);
+    picker.focus = PaneFocus::Preview;
+
+    let w = 100u16;
+    let h = 16u16;
+
+    // Baseline: no search -> auto-scrolls to bottom.
+    let _ = buffer_text(&mut picker, w, h);
+    let bottom_scroll = picker.scroll_offset;
+    assert!(bottom_scroll > 0, "long preview should scroll to bottom by default");
+
+    // Now search for the unique early term. Reset auto-scroll like a keystroke would.
+    picker.search_query = "flibbertigibbet".to_string();
+    picker.auto_scroll_preview = true;
+    let text = buffer_text(&mut picker, w, h);
+
+    // The preview should have scrolled to the match (near the top), not the bottom.
+    assert!(
+        picker.scroll_offset < bottom_scroll,
+        "preview should scroll up to the match (got {}, bottom was {})",
+        picker.scroll_offset,
+        bottom_scroll
+    );
+    assert!(
+        text.contains("flibbertigibbet"),
+        "matched term should be visible in the preview after scrolling"
+    );
+
+    // The match should be highlighted (bold) in the cached wrapped lines.
+    let highlighted = picker
+        .preview_cache
+        .as_ref()
+        .expect("preview cache built")
+        .wrapped_lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .any(|s| {
+            s.content.to_lowercase().contains("flibbertigibbet")
+                && s.style.add_modifier.contains(Modifier::BOLD)
+        });
+    assert!(highlighted, "matched term in preview body should be highlighted");
+}
+
+#[test]
+fn preview_without_search_has_no_highlight_and_scrolls_to_bottom() {
+    let session = make_session_with_many_turns("nosrch", 60);
+    let mut picker = SessionPicker::new(vec![session]);
+    picker.focus = PaneFocus::Preview;
+    let _ = buffer_text(&mut picker, 100, 16);
+    assert!(picker.scroll_offset > 0, "should scroll to bottom without search");
+    let any_highlight = picker
+        .preview_cache
+        .as_ref()
+        .expect("preview cache built")
+        .wrapped_lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .any(|s| s.style.add_modifier.contains(Modifier::BOLD) && s.style.fg == Some(rgb(255, 214, 90)));
+    assert!(!any_highlight, "no search means no highlight color in preview");
+}

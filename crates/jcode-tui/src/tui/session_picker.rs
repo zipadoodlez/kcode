@@ -164,6 +164,10 @@ struct PreviewCacheKey {
     inner_height: u16,
     centered: bool,
     diff_mode: crate::config::DiffDisplayMode,
+    /// Normalized (trimmed + lowercased) active search query. Included so the
+    /// wrapped-line cache is rebuilt (and match highlighting reapplied) whenever
+    /// the `/resume` search text changes.
+    search_query: String,
 }
 
 /// Cached, fully-wrapped preview content. Built on a cache miss (selection
@@ -181,6 +185,9 @@ struct PreviewRenderCache {
     user_prompt_markers: Vec<(usize, usize, String)>,
     /// Whether the content overflows and a scrollbar column is reserved.
     show_scrollbar: bool,
+    /// First wrapped-line index that contains a highlighted search match, if
+    /// any. Used to auto-scroll the preview to the first hit when searching.
+    first_match_line: Option<usize>,
 }
 
 pub struct SessionPicker {
@@ -1143,6 +1150,7 @@ impl SessionPicker {
             inner_height: inner.height,
             centered,
             diff_mode,
+            search_query: self.search_query.trim().to_lowercase(),
         };
         let cache_valid = self
             .preview_cache
@@ -1154,12 +1162,16 @@ impl SessionPicker {
         }
         // Read cache geometry through a short-lived borrow so the scroll-offset
         // clamp below can take `&mut self` without conflict.
-        let (show_scrollbar, total_lines) = {
+        let (show_scrollbar, total_lines, first_match_line) = {
             let cache = self
                 .preview_cache
                 .as_ref()
                 .expect("preview cache populated above");
-            (cache.show_scrollbar, cache.wrapped_lines.len())
+            (
+                cache.show_scrollbar,
+                cache.wrapped_lines.len(),
+                cache.first_match_line,
+            )
         };
 
         let visible_height = inner.height as usize;
@@ -1169,7 +1181,15 @@ impl SessionPicker {
         let max_scroll = total_lines.saturating_sub(visible_height) as u16;
         self.preview_max_scroll = max_scroll;
         if self.auto_scroll_preview {
-            self.scroll_offset = max_scroll;
+            // When a search is active and the selected session has a match in the
+            // preview body, scroll the first hit into view (a few lines of lead-in
+            // context) instead of jumping to the bottom of the transcript.
+            self.scroll_offset = match first_match_line {
+                Some(line) if !self.search_query.trim().is_empty() => {
+                    (line.saturating_sub(2) as u16).min(max_scroll)
+                }
+                _ => max_scroll,
+            };
             self.auto_scroll_preview = false;
         } else {
             self.scroll_offset = self.scroll_offset.min(max_scroll);
@@ -1666,7 +1686,7 @@ impl SessionPicker {
         let show_scrollbar =
             super::ui::native_scrollbar_visible(true, full_lines.len(), visible_height);
 
-        let (wrapped_lines, prewrap_to_wrapped) = if show_scrollbar {
+        let (mut wrapped_lines, prewrap_to_wrapped) = if show_scrollbar {
             let content_width = inner.width.saturating_sub(1) as usize;
             wrap_lines_tracked(content_width)
         } else {
@@ -1674,13 +1694,52 @@ impl SessionPicker {
             (full_lines, full_map)
         };
 
+        // Highlight active search matches in the wrapped preview body and record
+        // the first wrapped line that contains a hit, so the caller can scroll it
+        // into view. Highlighting after wrapping keeps wrapped-line indices exact.
+        let first_match_line =
+            Self::highlight_lines_in_place(&mut wrapped_lines, &self.search_query);
+
         PreviewRenderCache {
             key,
             wrapped_lines,
             prewrap_to_wrapped,
             user_prompt_markers,
             show_scrollbar,
+            first_match_line,
         }
+    }
+
+    /// Apply search-match highlighting to already-built preview lines in place.
+    /// Returns the index of the first line that contains a highlighted match, if
+    /// any. `query` is trimmed and lowercased internally.
+    fn highlight_lines_in_place(lines: &mut [Line<'static>], query: &str) -> Option<usize> {
+        let needle = query.trim().to_lowercase();
+        if needle.is_empty() {
+            return None;
+        }
+        let mut first_match: Option<usize> = None;
+        for (idx, line) in lines.iter_mut().enumerate() {
+            let mut new_spans: Vec<Span<'static>> = Vec::with_capacity(line.spans.len());
+            let mut line_had_match = false;
+            for span in line.spans.drain(..) {
+                if span.content.to_lowercase().contains(&needle) {
+                    line_had_match = true;
+                    new_spans.extend(Self::highlight_spans(
+                        span.content.as_ref(),
+                        Some(&needle),
+                        span.style,
+                    ));
+                } else {
+                    new_spans.push(span);
+                }
+            }
+            line.spans = new_spans;
+            if line_had_match && first_match.is_none() {
+                first_match = Some(idx);
+            }
+        }
+        first_match
     }
 
     /// Render the pinned "previous prompt" header for the preview pane. Mirrors
