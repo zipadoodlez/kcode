@@ -49,7 +49,9 @@ const SERVER_MODIFIERS: &[(&str, &str)] = &[
 
 /// Session/client names with their icons.
 const SESSION_NAMES: &[(&str, &str)] = &[
-    // Animals and client entities
+    // Animals and client entities. Every emoji here is a single, widely-supported
+    // codepoint (Unicode <= 12.0, no ZWJ sequences) so it renders as one glyph on
+    // older terminal fonts instead of tofu boxes or split pieces.
     ("ant", "🐜"),
     ("bat", "🦇"),
     ("bee", "🐝"),
@@ -59,32 +61,24 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("chicken", "🐔"),
     ("chick", "🐥"),
     ("chipmunk", "🐿️"),
-    ("cockroach", "🪳"),
     ("cow", "🐄"),
     ("crocodile", "🐊"),
     ("cricket", "🦗"),
-    ("dodo", "🦤"),
     ("dog", "🐕"),
     ("dove", "🕊️"),
     ("eagle", "🦅"),
-    ("falcon", "🦅"),
     ("fish", "🐟"),
-    ("fly", "🪰"),
     ("fox", "🦊"),
     ("giraffe", "🦒"),
     ("hamster", "🐹"),
-    ("hawk", "🦅"),
     ("ladybug", "🐞"),
     ("lobster", "🦞"),
-    ("mammoth", "🦣"),
     ("mosquito", "🦟"),
     ("owl", "🦉"),
     ("ox", "🐂"),
     ("pig", "🐷"),
-    ("polar-bear", "🐻‍❄️"),
     ("rat", "🐀"),
     ("ram", "🐏"),
-    ("raven", "🐦‍⬛"),
     ("rooster", "🐓"),
     ("shrimp", "🦐"),
     ("sauropod", "🦕"),
@@ -94,19 +88,15 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("badger", "🦡"),
     ("bear", "🐻"),
     ("crab", "🦀"),
-    ("crow", "🐦‍⬛"),
     ("deer", "🦌"),
     ("duck", "🦆"),
     ("frog", "🐸"),
     ("goat", "🐐"),
     ("lion", "🦁"),
-    ("moth", "🦋"),
     ("wolf", "🐺"),
-    ("goose", "🪿"),
     ("horse", "🐴"),
     ("koala", "🐨"),
     ("llama", "🦙"),
-    ("moose", "🫎"),
     ("mouse", "🐭"),
     ("otter", "🦦"),
     ("panda", "🐼"),
@@ -124,7 +114,6 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("tiger", "🐯"),
     ("turkey", "🦃"),
     ("whale", "🐋"),
-    ("worm", "🪱"),
     ("turtle", "🐢"),
     ("rabbit", "🐰"),
     ("parrot", "🦜"),
@@ -133,27 +122,37 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("monkey", "🐒"),
     ("gorilla", "🦍"),
     ("orangutan", "🦧"),
-    ("donkey", "🫏"),
     ("camel", "🐫"),
     ("elephant", "🐘"),
     ("rhino", "🦏"),
     ("hippo", "🦛"),
-    ("bison", "🦬"),
     ("boar", "🐗"),
     ("unicorn", "🦄"),
     ("kangaroo", "🦘"),
     ("hedgehog", "🦔"),
-    ("beaver", "🦫"),
     ("skunk", "🦨"),
     ("raccoon", "🦝"),
-    ("seal", "🦭"),
     ("flamingo", "🦩"),
     ("dolphin", "🐬"),
     ("octopus", "🐙"),
-    ("jellyfish", "🪼"),
     ("scorpion", "🦂"),
-    ("beetle", "🪲"),
     ("zebra", "🦓"),
+    ("stallion", "🐎"),
+    ("dromedary", "🐪"),
+    ("hog", "🐖"),
+    ("kitten", "🐈"),
+    ("poodle", "🐩"),
+    ("hare", "🐇"),
+    ("vole", "🐁"),
+    ("dragon", "🐉"),
+    ("humpback", "🐳"),
+    ("guppy", "🐠"),
+    ("nautilus", "🐚"),
+    ("hatchling", "🐣"),
+    ("wyvern", "🐲"),
+    ("calf", "🐮"),
+    ("macaque", "🐵"),
+    ("tigress", "🐅"),
 ];
 
 /// Get an emoji icon for a session/client name word.
@@ -302,6 +301,72 @@ mod tests {
             let icon = session_icon(name);
             assert_eq!(icon, *expected_icon, "Icon mismatch for '{}'", name);
             assert_ne!(icon, "💫", "Name '{}' should have a specific icon", name);
+        }
+    }
+
+    /// Returns true for emoji that commonly fail to render as a single glyph on
+    /// older terminal fonts: ZWJ sequences (split into pieces) and codepoints
+    /// added in Unicode 13.0 or later (rendered as tofu boxes on fonts that
+    /// predate them). We avoid a broad block range here because the
+    /// Supplemental Symbols block mixes safe Unicode 11/12 emoji (otter, sloth)
+    /// with risky Unicode 13+ ones (mammoth, beaver), so we list the unsafe
+    /// codepoints explicitly.
+    fn is_fragile_emoji(emoji: &str) -> bool {
+        // Unicode 13.0+ additions in the Supplemental Symbols block (U+1F900..U+1F9FF).
+        const UNSAFE_SUPPLEMENTAL: &[u32] = &[
+            0x1F9A3, // 🦣 mammoth (13.0)
+            0x1F9A4, // 🦤 dodo (13.0)
+            0x1F9AB, // 🦫 beaver (13.0)
+            0x1F9AC, // 🦬 bison (13.0)
+            0x1F9AD, // 🦭 seal (13.0)
+        ];
+        emoji.chars().any(|c| {
+            let cp = c as u32;
+            c == '\u{200D}'
+                // Symbols and Pictographs Extended-A (entirely Unicode 13+).
+                || (0x1FA70..=0x1FAFF).contains(&cp)
+                || UNSAFE_SUPPLEMENTAL.contains(&cp)
+        })
+    }
+
+    #[test]
+    fn session_icons_render_as_single_safe_glyphs() {
+        for (name, emoji) in SESSION_NAMES {
+            assert!(
+                !is_fragile_emoji(emoji),
+                "session name '{}' uses fragile emoji '{}' (ZWJ or Unicode 13+); \
+                 pick a single widely-supported codepoint instead",
+                name,
+                emoji
+            );
+        }
+    }
+
+    #[test]
+    fn session_names_and_icons_are_unique() {
+        let mut names = std::collections::HashSet::new();
+        let mut icons = std::collections::HashSet::new();
+        for (name, emoji) in SESSION_NAMES {
+            assert!(names.insert(*name), "duplicate session name '{}'", name);
+            assert!(
+                icons.insert(*emoji),
+                "duplicate session icon '{}' (reused by '{}')",
+                emoji,
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn server_icons_render_as_single_safe_glyphs() {
+        for (name, emoji) in SERVER_MODIFIERS {
+            assert!(
+                !is_fragile_emoji(emoji),
+                "server name '{}' uses fragile emoji '{}' (ZWJ or Unicode 13+); \
+                 pick a single widely-supported codepoint instead",
+                name,
+                emoji
+            );
         }
     }
 

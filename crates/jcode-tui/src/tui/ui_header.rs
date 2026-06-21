@@ -592,8 +592,12 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     let model = app.provider_model();
     let session_name = app.session_display_name().unwrap_or_default();
     let server_name = app.server_display_name();
-    let icon = connection_type_icon(app.connection_type().as_deref())
-        .unwrap_or_else(|| crate::id::session_icon(&session_name));
+    // The client line is identified by its session name, so show that name's
+    // icon (e.g. "ram" -> 🐏). Previously a remote http/ws connection icon
+    // (🌐/🕸️) replaced it entirely, which hid the name icon for every remote
+    // client. Keep the connection icon as a separate trailing hint instead.
+    let icon = crate::id::session_icon(&session_name);
+    let connection_icon = connection_type_icon(app.connection_type().as_deref());
     let nice_model = header_model_display_name(&model, &app.provider_name());
     let build_info = binary_age().unwrap_or_else(|| "unknown".to_string());
     let align = Alignment::Center;
@@ -683,7 +687,10 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     }
 
     if !session_name.is_empty() {
-        let client_text = format!("client: {} {}", capitalize(&session_name), icon);
+        let client_text = match connection_icon {
+            Some(conn) => format!("client: {} {} {}", capitalize(&session_name), icon, conn),
+            None => format!("client: {} {}", capitalize(&session_name), icon),
+        };
         let mut spans = vec![Span::styled(
             client_text.clone(),
             Style::default().fg(header_name_color()),
@@ -1180,6 +1187,63 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("client:") && line.contains(" · v")),
             "local mode client line should not carry a version label: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn persistent_header_client_line_shows_name_icon_with_connection_hint() {
+        let mut app = create_test_app();
+        app.set_remote_server_identity_for_tests(
+            Some("blazing"),
+            Some("🔥"),
+            Some("v0.14.2-dev (old1234)"),
+            Some("session_ram_1705012345678"),
+        );
+        app.set_connection_type_for_tests(Some("https/sse"));
+
+        let lines = rendered_header_lines(&app, 120);
+        let client_line = lines
+            .iter()
+            .find(|line| line.contains("client:"))
+            .expect("client line");
+
+        // The session name's own icon (ram -> 🐏) must be present rather than
+        // being replaced by the connection icon.
+        assert!(
+            client_line.contains("client: Ram 🐏"),
+            "client line should show the name icon: {client_line}"
+        );
+        // The connection icon is kept as a trailing hint, not a replacement.
+        assert!(
+            client_line.contains('🌐'),
+            "client line should keep the connection hint icon: {client_line}"
+        );
+    }
+
+    #[test]
+    fn persistent_header_client_line_has_no_connection_hint_when_unknown() {
+        let mut app = create_test_app();
+        app.set_remote_server_identity_for_tests(
+            Some("blazing"),
+            Some("🔥"),
+            Some("v0.14.2-dev (old1234)"),
+            Some("session_fox_1705012345678"),
+        );
+        app.set_connection_type_for_tests(None);
+
+        let lines = rendered_header_lines(&app, 120);
+        let client_line = lines
+            .iter()
+            .find(|line| line.contains("client:"))
+            .expect("client line");
+
+        assert!(
+            client_line.contains("client: Fox 🦊"),
+            "client line should show the name icon: {client_line}"
+        );
+        assert!(
+            !client_line.contains('🌐') && !client_line.contains('🕸'),
+            "client line should not carry a connection hint when unknown: {client_line}"
         );
     }
 
