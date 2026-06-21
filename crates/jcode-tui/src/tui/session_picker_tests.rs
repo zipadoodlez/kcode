@@ -1937,3 +1937,40 @@ fn test_current_dir_highlight_absent_without_current_dir() {
     // No current_dir set: nothing is highlighted.
     assert!(!picker.session_in_current_dir(&session));
 }
+
+#[test]
+fn highlight_spans_marks_query_occurrences() {
+    let base = Style::default().fg(Color::White);
+    let spans = SessionPicker::highlight_spans("Fix the Resume bug", Some("resume"), base);
+    let combined: String = spans.iter().map(|s| s.content.as_ref()).collect();
+    assert_eq!(combined, "Fix the Resume bug");
+
+    let highlighted: Vec<&str> = spans
+        .iter()
+        .filter(|s| s.style.add_modifier.contains(Modifier::BOLD))
+        .map(|s| s.content.as_ref())
+        .collect();
+    assert_eq!(highlighted, vec!["Resume"], "match should be highlighted case-insensitively");
+}
+
+#[test]
+fn highlight_spans_without_query_returns_single_span() {
+    let base = Style::default().fg(Color::White);
+    let spans = SessionPicker::highlight_spans("hello world", None, base);
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].content.as_ref(), "hello world");
+}
+
+#[test]
+fn search_highlights_matching_title_in_rendered_rows() {
+    let session = make_session("abc", "deploy pipeline", false, SessionStatus::Closed);
+    let mut picker = SessionPicker::new(vec![session]);
+    // make_session sets title = "Test session"; search a substring of the title.
+    picker.search_query = "sess".to_string();
+    let rows = picker.render_session_item_lines(picker.all_sessions.first().unwrap(), false);
+    let has_highlight = rows[0]
+        .spans
+        .iter()
+        .any(|s| s.content.as_ref() == "sess" && s.style.add_modifier.contains(Modifier::BOLD));
+    assert!(has_highlight, "query substring in title should be highlighted");
+}

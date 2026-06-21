@@ -69,6 +69,77 @@ impl SessionPicker {
         }
     }
 
+    /// Normalized (trimmed + lowercased) search query used for highlighting, or
+    /// `None` when there is no active search.
+    pub(super) fn active_highlight_query(&self) -> Option<String> {
+        let query = self.search_query.trim().to_lowercase();
+        (!query.is_empty()).then_some(query)
+    }
+
+    /// Split `text` into spans, applying `base` to non-matching segments and a
+    /// distinct highlight style to case-insensitive occurrences of `query`.
+    /// `query` is expected to already be lowercased.
+    pub(super) fn highlight_spans(
+        text: &str,
+        query: Option<&str>,
+        base: Style,
+    ) -> Vec<Span<'static>> {
+        let query = match query {
+            Some(q) if !q.is_empty() => q,
+            _ => return vec![Span::styled(text.to_string(), base)],
+        };
+
+        let highlight = base
+            .fg(rgb(255, 214, 90))
+            .add_modifier(Modifier::BOLD);
+
+        let chars: Vec<char> = text.chars().collect();
+        let lower: Vec<char> = chars
+            .iter()
+            .map(|c| c.to_lowercase().next().unwrap_or(*c))
+            .collect();
+        let needle: Vec<char> = query
+            .chars()
+            .map(|c| c.to_lowercase().next().unwrap_or(c))
+            .collect();
+
+        if needle.is_empty() || needle.len() > lower.len() {
+            return vec![Span::styled(text.to_string(), base)];
+        }
+
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut i = 0;
+        let mut plain_start = 0;
+        while i + needle.len() <= lower.len() {
+            if lower[i..i + needle.len()] == needle[..] {
+                if plain_start < i {
+                    spans.push(Span::styled(
+                        chars[plain_start..i].iter().collect::<String>(),
+                        base,
+                    ));
+                }
+                spans.push(Span::styled(
+                    chars[i..i + needle.len()].iter().collect::<String>(),
+                    highlight,
+                ));
+                i += needle.len();
+                plain_start = i;
+            } else {
+                i += 1;
+            }
+        }
+        if plain_start < chars.len() {
+            spans.push(Span::styled(
+                chars[plain_start..].iter().collect::<String>(),
+                base,
+            ));
+        }
+        if spans.is_empty() {
+            spans.push(Span::styled(text.to_string(), base));
+        }
+        spans
+    }
+
     fn primary_title_display(session: &SessionInfo) -> String {
         let title = session.title.trim();
         let short_name = session.short_name.trim();
@@ -96,6 +167,7 @@ impl SessionPicker {
         let is_marked = self.selected_session_ids.contains(&session.id);
         let same_dir = self.session_in_current_dir(session);
         let same_dir_clr: Color = rgb(120, 200, 140);
+        let highlight_query = self.active_highlight_query();
 
         let name_style = if is_selected {
             Style::default()
@@ -139,8 +211,12 @@ impl SessionPicker {
                 format!("{} ", session.icon),
                 Style::default().fg(rgb(110, 210, 255)),
             ),
-            Span::styled(primary_title, name_style),
         ];
+        line1_spans.extend(Self::highlight_spans(
+            &primary_title,
+            highlight_query.as_deref(),
+            name_style,
+        ));
         line1_spans.extend([
             Span::styled(canary_marker, Style::default().fg(rgb(255, 193, 7))),
             Span::styled(debug_marker, Style::default().fg(rgb(180, 180, 180))),
@@ -152,10 +228,14 @@ impl SessionPicker {
             Span::styled(format!("  {}", time_label), Style::default().fg(dim)),
         ]);
         if let Some(ref label) = session.save_label {
-            line1_spans.push(Span::styled(
-                format!("  \"{}\"", label),
-                Style::default().fg(rgb(255, 200, 140)),
+            let label_style = Style::default().fg(rgb(255, 200, 140));
+            line1_spans.push(Span::styled("  \"".to_string(), label_style));
+            line1_spans.extend(Self::highlight_spans(
+                label,
+                highlight_query.as_deref(),
+                label_style,
             ));
+            line1_spans.push(Span::styled("\"".to_string(), label_style));
         }
         if let Some(source_badge) = session.source.badge() {
             line1_spans.push(Span::styled(
@@ -236,17 +316,22 @@ impl SessionPicker {
         } else {
             String::new()
         };
-        let line3 = Line::from(vec![
+        let dir_style = Style::default().fg(if same_dir { same_dir_clr } else { dimmer });
+        let mut line3_spans = vec![
             Span::styled("     ", Style::default()),
             Span::styled(
                 format!("created: {}", created_ago),
                 Style::default().fg(dimmer),
             ),
-            Span::styled(
-                dir_part,
-                Style::default().fg(if same_dir { same_dir_clr } else { dimmer }),
-            ),
-        ]);
+        ];
+        if !dir_part.is_empty() {
+            line3_spans.extend(Self::highlight_spans(
+                &dir_part,
+                highlight_query.as_deref(),
+                dir_style,
+            ));
+        }
+        let line3 = Line::from(line3_spans);
 
         let mut rows = vec![line1, line2];
         if let Some(prompt) = session.first_user_prompt.as_deref().map(str::trim)
@@ -258,11 +343,16 @@ impl SessionPicker {
             } else {
                 prompt
             };
-            rows.push(Line::from(vec![
+            let mut prompt_spans = vec![
                 Span::styled("     ", Style::default()),
                 Span::styled("prompt: ", Style::default().fg(dimmer)),
-                Span::styled(prompt_display, Style::default().fg(rgb(180, 180, 220))),
-            ]));
+            ];
+            prompt_spans.extend(Self::highlight_spans(
+                &prompt_display,
+                highlight_query.as_deref(),
+                Style::default().fg(rgb(180, 180, 220)),
+            ));
+            rows.push(Line::from(prompt_spans));
         }
         rows.push(line3);
         if let Some(reason_line) = Self::crash_reason_line(session) {
