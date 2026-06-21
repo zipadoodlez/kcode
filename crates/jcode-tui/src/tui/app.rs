@@ -74,6 +74,7 @@ mod navigation;
 mod observe;
 pub(crate) mod onboarding_flow;
 mod onboarding_flow_control;
+mod onboarding_repair;
 mod productivity;
 mod remote;
 mod remote_notifications;
@@ -860,6 +861,10 @@ pub struct App {
     /// `None` when there is no failure to report. Cleared when the user leaves
     /// the recovery screen (opens the picker) or onboarding advances.
     onboarding_import_error: Option<String>,
+    /// The provider id we were importing/validating when onboarding failed, used
+    /// to target the agent repair brief (`jcode auth-test --provider X`). `None`
+    /// when unknown.
+    onboarding_import_failed_provider: Option<String>,
     /// Pending first-run model-validation request for the new-session screen.
     /// In remote/client mode the live default model is reported by the server
     /// asynchronously, so we record that a validation is wanted and let the

@@ -637,3 +637,38 @@ fn restart_save_auto_restore_flag_parses() {
         other => panic!("unexpected command: {:?}", other),
     }
 }
+
+/// Contract test for the onboarding agent-repair brief (see
+/// `jcode-tui::tui::app::onboarding_repair::build_repair_brief`). The brief
+/// tells a coding agent to run these exact commands to diagnose and fix a
+/// failed login. If any flag here stops parsing, the brief would hand the agent
+/// a broken command, so this guards the agent-facing CLI contract.
+#[test]
+fn onboarding_repair_brief_commands_are_valid_cli() {
+    // Diagnose.
+    Args::try_parse_from(["jcode", "auth-test", "--provider", "openai", "--json"])
+        .expect("auth-test --provider --json must parse");
+    Args::try_parse_from(["jcode", "auth-test", "--all-configured", "--json"])
+        .expect("auth-test --all-configured --json must parse");
+    Args::try_parse_from(["jcode", "auth", "doctor"]).expect("auth doctor must parse");
+
+    // Fix: OAuth and API-key logins.
+    Args::try_parse_from(["jcode", "login", "--provider", "openai"])
+        .expect("login --provider must parse");
+    Args::try_parse_from(["jcode", "login", "--provider", "openai", "--api-key", "k"])
+        .expect("login --provider --api-key must parse");
+
+    // Fix: custom OpenAI-compatible endpoint via provider add + key on stdin.
+    Args::try_parse_from([
+        "jcode",
+        "provider",
+        "add",
+        "my-endpoint",
+        "--base-url",
+        "https://api.example.com/v1",
+        "--model",
+        "some-model",
+        "--api-key-stdin",
+    ])
+    .expect("provider add --base-url --model --api-key-stdin must parse");
+}

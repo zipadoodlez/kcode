@@ -727,6 +727,11 @@ pub enum OnboardingWelcomeKind {
         import: Option<LoginImportPrompt>,
         importing: bool,
         error: Option<String>,
+        /// When a prior import failed and we detected a coding agent the user
+        /// recently used, its display label (e.g. "Codex"). The recovery screen
+        /// offers "Press H to have <label> help fix this". `None` hides that
+        /// option.
+        repair_agent_label: Option<String>,
     },
     /// Ask the user whether to log in to OpenAI (no detected imports). A
     /// highlightable Yes/No selector; `yes_highlighted` reflects the current

@@ -400,6 +400,14 @@ impl App {
                             self.show_interactive_login();
                             true
                         }
+                        // On the failure screen, H hands the fix to a coding
+                        // agent the user recently used (prepares a repair brief).
+                        KeyCode::Char('h') | KeyCode::Char('H')
+                            if self.onboarding_import_error.is_some() =>
+                        {
+                            self.onboarding_prepare_agent_repair_brief();
+                            true
+                        }
                         _ => false,
                     };
                 }
@@ -1336,6 +1344,29 @@ impl App {
             s.push('…');
         }
         s
+    }
+
+    /// Prepare the agent-assisted repair brief for the import-failure recovery
+    /// screen (triggered by `H`). We detect the coding agent the user used most
+    /// recently, build a plain-text brief listing the exact non-interactive
+    /// commands the agent can run (`jcode auth-test --json`, `jcode login
+    /// --api-key-stdin`, `jcode provider add`), copy it to the clipboard, and
+    /// surface it as a system message so the user can paste it into that agent.
+    fn onboarding_prepare_agent_repair_brief(&mut self) {
+        use crate::tui::app::onboarding_repair;
+        let Some(failure) = self.onboarding_import_error.clone() else {
+            return;
+        };
+        let agent = onboarding_repair::detect_preferred_repair_agent();
+        let provider = self.onboarding_import_failed_provider.as_deref();
+        let brief = onboarding_repair::build_repair_brief(agent, &failure, provider);
+        let copied = super::helpers::copy_to_clipboard(&brief);
+        // Show the brief in the transcript so it is visible even if the
+        // clipboard is unavailable (SSH, no display server).
+        self.push_display_message(DisplayMessage::system(format!(
+            "Agent repair brief (paste into your coding agent):\n\n{brief}"
+        )));
+        self.set_status_notice(onboarding_repair::repair_brief_status(agent, copied));
     }
 
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if

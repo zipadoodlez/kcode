@@ -230,6 +230,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             import,
             importing,
             error,
+            repair_agent_label,
         } => {
             lines.push(Line::from(""));
             match import {
@@ -293,6 +294,18 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         ))
                         .alignment(align),
                     );
+                    // If we detected a coding agent the user recently used, offer
+                    // to hand the fix to it (it can run jcode's auth-test and add
+                    // the key non-interactively).
+                    if let Some(agent) = repair_agent_label {
+                        lines.push(
+                            Line::from(Span::styled(
+                                format!("Press H to have {agent} help fix this for you."),
+                                Style::default().fg(welcome_accent()),
+                            ))
+                            .alignment(align),
+                        );
+                    }
                 }
                 None => {
                     lines.push(

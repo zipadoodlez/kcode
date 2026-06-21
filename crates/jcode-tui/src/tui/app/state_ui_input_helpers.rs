@@ -1159,6 +1159,12 @@ impl App {
                     import: prompt,
                     importing: self.onboarding_import_in_progress.is_some(),
                     error: self.onboarding_import_error.clone(),
+                    // Only offer the agent-repair option on the failure screen,
+                    // and only when we can name an agent the user recently used.
+                    repair_agent_label: self.onboarding_import_error.as_ref().and_then(|_| {
+                        crate::tui::app::onboarding_repair::detect_preferred_repair_agent()
+                            .map(|a| a.label().to_string())
+                    }),
                 }
             }
             Some(OnboardingPhase::LoginOpenAi { yes_highlighted }) => {

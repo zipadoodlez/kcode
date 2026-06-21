@@ -1248,3 +1248,57 @@ fn import_failure_reason_is_cleaned_and_capitalized() {
         );
     });
 }
+
+#[test]
+fn import_failure_h_key_prepares_agent_repair_brief() {
+    use crate::tui::app::onboarding_flow::OnboardingPhase;
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
+        // Simulate a failed import that recorded a reason.
+        app.onboarding_import_error = Some("the saved credential was rejected".to_string());
+        app.onboarding_import_failed_provider = Some("openai".to_string());
+        let before = app.display_messages.len();
+
+        // H on the failure screen prepares the agent repair brief.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('H')));
+
+        // A brief was pushed into the transcript with the agent-runnable
+        // commands and the failure reason, so it works even without a clipboard.
+        assert!(app.display_messages.len() > before, "brief message pushed");
+        let brief = app
+            .display_messages
+            .iter()
+            .rev()
+            .find(|m| m.content.contains("Agent repair brief"))
+            .map(|m| m.content.clone())
+            .expect("repair brief message");
+        assert!(brief.contains("jcode auth-test --provider openai --json"), "{brief}");
+        assert!(brief.contains("--api-key-stdin"), "{brief}");
+        assert!(brief.contains("the saved credential was rejected"), "{brief}");
+        // Staying on the recovery screen, Enter still opens the provider picker.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(app.inline_interactive_state.is_some());
+    });
+}
+
+#[test]
+fn import_failure_h_key_is_inert_without_a_recorded_error() {
+    use crate::tui::app::onboarding_flow::OnboardingPhase;
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
+        // Recovery screen reached by declining all (no error reason recorded):
+        // H must NOT be intercepted, so normal input handling can use it.
+        app.onboarding_import_error = None;
+        assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Char('H')));
+    });
+}
