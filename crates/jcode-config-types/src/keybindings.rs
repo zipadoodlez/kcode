@@ -308,10 +308,13 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "new_terminal",
         description: "Spawn a fresh jcode session in a new terminal window",
-        // Unbound by default: Alt/Shift+Enter inserts a newline, so users opt in
-        // (e.g. `new_terminal = "alt+enter"`).
-        macos: PlatformDefault::unbound(KeybindingProvenance::Ai),
-        other: PlatformDefault::unbound(KeybindingProvenance::Ai),
+        // Companion to the system-wide launch hotkey (Cmd+; / Alt+;): the
+        // shifted variant spawns a new session from inside jcode, reusing the
+        // current session's working directory. Note: many macOS terminals
+        // intercept Cmd combos, so this only fires when the terminal forwards
+        // the key to the TUI.
+        macos: PlatformDefault::dev("cmd+shift+;"),
+        other: PlatformDefault::dev("alt+shift+;"),
     },
 ];
 

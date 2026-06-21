@@ -67,9 +67,12 @@ typing_scroll_lock_toggle = "alt+s"
 diff_mode_cycle = "alt+g"
 info_widget_toggle = "alt+i"
 
-# Spawn a fresh jcode session in a new terminal window.
-# Unbound by default (Alt/Shift+Enter inserts a newline). Example: "alt+enter"
-new_terminal = ""
+# Spawn a fresh jcode session in a new terminal window, reusing the current
+# session's working directory. Companion to the system-wide launch hotkey
+# (Cmd+; on macOS, Alt+; on Windows/Linux).
+# Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
+# Note: some macOS terminals intercept Cmd combos; if so, pick another binding.
+# new_terminal = "cmd+shift+;"
 
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.
