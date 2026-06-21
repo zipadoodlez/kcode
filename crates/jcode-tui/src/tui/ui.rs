@@ -2556,10 +2556,31 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         })
     };
 
-    // The first-run onboarding welcome screen draws its own (prominent,
-    // top-positioned) donut, so suppress the default bottom idle donut while it
-    // is active to avoid two donuts on screen.
     let onboarding_welcome = app.onboarding_welcome_active();
+
+    // The guided onboarding phases (login import, OpenAI prompt, continue prompt)
+    // are entirely key-driven and own the whole chat column: they render their own
+    // telemetry header, a prominent donut, and the welcome body. Suppress the
+    // normal chat chrome (status line, input box, notification, idle hint) so the
+    // screen stays focused and the donut gets the full height. The resting
+    // Suggestions screen keeps the input box so the user can type to start.
+    let onboarding_takes_over = onboarding_welcome
+        && !matches!(
+            app.onboarding_welcome_kind(),
+            crate::tui::OnboardingWelcomeKind::Suggestions
+        );
+    if onboarding_takes_over {
+        onboarding::draw_onboarding_welcome(frame, app, chat_area);
+        finalize_frame_metrics(
+            app,
+            total_start,
+            prep_start.elapsed(),
+            total_start.elapsed(),
+            None,
+        );
+        return;
+    }
+
     let show_donut = !onboarding_welcome && super::idle_donut_active(app);
     let donut_height: u16 = if show_donut { 14 } else { 0 };
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };

@@ -19,7 +19,7 @@ use crate::tui::TuiState;
 use crate::tui::color_support::rgb;
 use ratatui::{prelude::*, widgets::Paragraph};
 
-const DONUT_HEIGHT: u16 = 12;
+const DONUT_HEIGHT: u16 = 18;
 const TELEMETRY_LINES: u16 = 4;
 const GAP: u16 = 1;
 
