@@ -44,52 +44,38 @@ fn push_esc_skip_hint(lines: &mut Vec<Line<'static>>, align: Alignment) {
     );
 }
 
-/// Build the Yes/No selector as a pair of rounded "pills" with the selection
-/// indicated *visually* rather than with a sentence of instructions.
-///
-/// Design goals (per onboarding UX review):
-///   * Rounded/pill look instead of a hard rectangle: parentheses `( Yes )`
-///     read as a soft capsule in a terminal.
-///   * The selected pill is filled (REVERSED) + BOLD; the unselected one is a
-///     dim hollow outline. The fill is a NON-color attribute so the selection
-///     survives on monochrome terminals (Tier 10 color-independence).
-///   * Dim ASCII chevrons `<` ... `>` flank the row to imply "this slides
-///     left/right" without the user having to read a hint line. They are pure
-///     ASCII so they never depend on Unicode glyph support.
 /// Build one rounded "lozenge" pill: half-circle end caps (`◖` / `◗`) around a
-/// padded label. When `filled`, the pill has a solid accent fill + BOLD label
-/// (the selected/active look); otherwise it is a hollow outline in a muted color
-/// (the unselected look). The BOLD-on-filled / not-bold-on-hollow contrast is a
-/// non-color attribute, so the selection survives on monochrome terminals
-/// (Tier 10 color-independence).
+/// padded label. Both states are solid capsules; the selected pill has a bright
+/// accent fill + BOLD label, the unselected one a muted dark-gray fill with no
+/// bold. The BOLD-vs-not-bold contrast is a non-color attribute, so the
+/// selection survives on monochrome terminals (Tier 10 color-independence).
 fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
-    if filled {
-        let fill = welcome_accent();
-        let cap = Style::default().fg(fill);
-        let body = Style::default()
-            .fg(rgb(20, 24, 32))
-            .bg(fill)
-            .add_modifier(Modifier::BOLD);
-        vec![
-            Span::styled("\u{25D6}", cap),
-            Span::styled(format!(" {label} "), body),
-            Span::styled("\u{25D7}", cap),
-        ]
+    // Both states are solid capsules (the ◖/◗ caps are filled half-circles, so a
+    // "hollow" outline reads as stray half-moons). The selected pill uses the
+    // bright accent fill + BOLD label; the unselected one a muted dark-gray fill
+    // with no bold. The BOLD-vs-not contrast is a non-color attribute, so the
+    // selection survives on monochrome terminals (Tier 10 color-independence).
+    let (fill, text_fg, bold) = if filled {
+        (welcome_accent(), rgb(20, 24, 32), true)
     } else {
-        // Hollow: the caps and label share a muted color and the label is NOT
-        // bold, so a filled (bold) pill is always distinguishable without color.
-        let dim = Style::default().fg(rgb(120, 124, 132));
-        vec![
-            Span::styled("\u{25D6}", dim),
-            Span::styled(format!(" {label} "), dim),
-            Span::styled("\u{25D7}", dim),
-        ]
+        (rgb(58, 62, 70), rgb(170, 174, 182), false)
+    };
+
+    let cap = Style::default().fg(fill);
+    let mut body = Style::default().fg(text_fg).bg(fill);
+    if bold {
+        body = body.add_modifier(Modifier::BOLD);
     }
+    vec![
+        Span::styled("\u{25D6}", cap),
+        Span::styled(format!(" {label} "), body),
+        Span::styled("\u{25D7}", cap),
+    ]
 }
 
 /// Build the Yes/No selector as a pair of rounded lozenge pills. The selected
-/// option is a solid filled pill; the other is a hollow outline. The shape and
-/// fill carry the selection visually so no instruction sentence is needed.
+/// option is a bright filled pill; the other is a muted dark capsule. The shape
+/// and fill carry the selection visually so no instruction sentence is needed.
 fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     let mut spans = Vec::new();
     spans.extend(lozenge_pill_spans("Yes", yes_highlighted));
