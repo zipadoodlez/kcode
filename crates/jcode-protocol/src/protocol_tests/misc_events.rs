@@ -197,7 +197,9 @@ fn test_set_feature_roundtrip() -> Result<()> {
 
 #[test]
 fn test_set_route_deserializes_as_set_model_compat_alias() -> Result<()> {
-    let decoded = parse_request_json(r#"{"type":"set_route","id":42,"model":"claude-opus-4-5"}"#)?;
+    // Legacy/desktop compatibility shape: a bare model string under the
+    // `set_route` tag. `decode_request` (not raw serde) normalizes it.
+    let decoded = decode_request(r#"{"type":"set_route","id":42,"model":"claude-opus-4-5"}"#)?;
     let Request::SetModel { id, model } = decoded else {
         return Err(anyhow!(
             "expected set_route compatibility alias to decode as SetModel"
@@ -211,6 +213,36 @@ fn test_set_route_deserializes_as_set_model_compat_alias() -> Result<()> {
         model: "gpt-5.5".to_string(),
     })?;
     assert!(encoded.contains("\"type\":\"set_model\""));
+    Ok(())
+}
+
+#[test]
+fn test_structured_set_route_decodes_as_set_route_not_set_model() -> Result<()> {
+    // Regression for the "Invalid request: missing field `model`" bug seen when
+    // switching models via the picker: a structured `set_route` request (with a
+    // `selection` object, no `model` field) must decode as `Request::SetRoute`,
+    // not be shadowed by the legacy `set_model` compatibility path.
+    let request = Request::SetRoute {
+        id: 7,
+        selection: jcode_provider_core::RouteSelection {
+            model: "gpt-5.5".to_string(),
+            runtime_key: jcode_provider_core::RuntimeKey::OpenAIApiKey,
+            api_method: "openai-api".to_string(),
+            provider_label: "OpenAI".to_string(),
+            detail: String::new(),
+        },
+    };
+    let line = serde_json::to_string(&request)?;
+    assert!(line.contains("\"type\":\"set_route\""));
+
+    let decoded = decode_request(&line)?;
+    let Request::SetRoute { id, selection } = decoded else {
+        return Err(anyhow!(
+            "expected structured set_route to decode as SetRoute, got {decoded:?}"
+        ));
+    };
+    assert_eq!(id, 7);
+    assert_eq!(selection.model, "gpt-5.5");
     Ok(())
 }
 

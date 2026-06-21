@@ -523,9 +523,47 @@ pub fn encode_event(event: &ServerEvent) -> String {
     json
 }
 
-/// Decode a request from a JSON string
+/// Decode a request from a JSON string.
+///
+/// Handles a legacy/desktop compatibility shape where a model switch was sent as
+/// `{"type":"set_route","model":"..."}` (a bare model string under the
+/// `set_route` tag). The current protocol reserves the `set_route` tag for the
+/// structured [`Request::SetRoute`] variant (which carries a `selection`
+/// object), so this older shape is normalized into [`Request::SetModel`] here
+/// instead of via a serde `alias`. Using an alias would make `SetModel` also
+/// claim the `set_route` tag and, because serde dispatches internally-tagged
+/// enums by tag rather than by fields, shadow the structured variant entirely
+/// (every real route switch would then fail with `missing field \`model\``).
 pub fn decode_request(line: &str) -> Result<Request, serde_json::Error> {
-    serde_json::from_str(line)
+    match serde_json::from_str::<Request>(line) {
+        Ok(request) => Ok(request),
+        Err(error) => {
+            if let Some(request) = decode_legacy_set_route_model(line) {
+                Ok(request)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+/// Recognize the legacy `{"type":"set_route","id":N,"model":"..."}` shape and
+/// translate it into [`Request::SetModel`]. Returns `None` for anything else
+/// (including the current structured `set_route` payload that carries a
+/// `selection` object) so the original decode error is surfaced unchanged.
+fn decode_legacy_set_route_model(line: &str) -> Option<Request> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    let obj = value.as_object()?;
+    if obj.get("type")?.as_str()? != "set_route" {
+        return None;
+    }
+    // The structured route switch carries `selection`; never reinterpret it.
+    if obj.contains_key("selection") {
+        return None;
+    }
+    let model = obj.get("model")?.as_str()?.to_string();
+    let id = obj.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+    Some(Request::SetModel { id, model })
 }
 
 #[cfg(test)]

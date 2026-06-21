@@ -183,10 +183,15 @@ pub enum Request {
 
     /// Set the active model by name.
     ///
-    /// `set_route` is accepted as a legacy/desktop compatibility alias for
-    /// clients that briefly emitted route-oriented model switch requests.
+    /// A legacy/desktop compatibility shape (`{"type":"set_route","model":...}`)
+    /// is also accepted, but it is normalized into this variant inside
+    /// [`crate::decode_request`] rather than via a serde `alias`. A serde alias
+    /// would make this variant *also* answer to the `set_route` tag, and serde's
+    /// internally-tagged enums pick the first matching variant by tag (not by
+    /// fields), so it would shadow the structured [`Request::SetRoute`] variant
+    /// below and make every structured route switch fail with
+    /// `missing field \`model\``.
     #[serde(rename = "set_model")]
-    #[serde(alias = "set_route")]
     SetModel { id: u64, model: String },
 
     /// Set the active model by structured route identity.
