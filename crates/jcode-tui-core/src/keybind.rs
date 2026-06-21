@@ -499,6 +499,51 @@ pub fn format_binding(binding: &KeyBinding) -> String {
 mod tests {
     use super::*;
 
+    /// Decode a kitty CSI-u modifier byte (bitfield + 1) into `KeyModifiers`.
+    /// This mirrors the sequences we ask Ghostty to forward for Cmd hotkeys, so
+    /// the test fails if our binding parsing drifts from that wire encoding.
+    fn kitty_mods(modbyte: u8) -> KeyModifiers {
+        let bits = modbyte - 1;
+        let mut mods = KeyModifiers::empty();
+        if bits & 1 != 0 {
+            mods |= KeyModifiers::SHIFT;
+        }
+        if bits & 2 != 0 {
+            mods |= KeyModifiers::ALT;
+        }
+        if bits & 4 != 0 {
+            mods |= KeyModifiers::CONTROL;
+        }
+        if bits & 8 != 0 {
+            mods |= KeyModifiers::SUPER;
+        }
+        mods
+    }
+
+    #[test]
+    fn ghostty_cmd_r_sequence_matches_open_resume_binding() {
+        // Ghostty forwards Cmd+R as ESC[114;9u (114='r', super-only).
+        let code = KeyCode::Char(char::from_u32(114).unwrap());
+        let mods = kitty_mods(9);
+        let binding = parse_keybinding("cmd+r").expect("cmd+r parses");
+        assert!(
+            binding.matches_for_platform(code, mods, true),
+            "Cmd+R kitty sequence must trigger the open_resume binding"
+        );
+    }
+
+    #[test]
+    fn ghostty_cmd_shift_semicolon_sequence_matches_new_terminal_binding() {
+        // Ghostty forwards Cmd+Shift+; as ESC[59;10u (59=';', shift+super).
+        let code = KeyCode::Char(char::from_u32(59).unwrap());
+        let mods = kitty_mods(10);
+        let binding = parse_keybinding("cmd+shift+;").expect("cmd+shift+; parses");
+        assert!(
+            binding.matches_for_platform(code, mods, true),
+            "Cmd+Shift+; kitty sequence must trigger the new_terminal binding"
+        );
+    }
+
     fn test_scroll_keys() -> ScrollKeys {
         ScrollKeys {
             up: KeyBinding {
