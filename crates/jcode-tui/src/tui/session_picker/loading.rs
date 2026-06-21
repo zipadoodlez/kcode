@@ -1925,16 +1925,18 @@ pub(crate) fn latest_external_cli_session_secs(
     cli: crate::tui::app::onboarding_flow::ExternalCli,
 ) -> Option<u64> {
     use crate::tui::app::onboarding_flow::ExternalCli;
-    let rel_root = match cli {
-        ExternalCli::Codex => ".codex/sessions",
-        ExternalCli::ClaudeCode => ".claude/projects",
+    let (rel_root, ext) = match cli {
+        ExternalCli::Codex => (".codex/sessions", "jsonl"),
+        ExternalCli::ClaudeCode => (".claude/projects", "jsonl"),
+        ExternalCli::Pi => (".pi/agent/sessions", "jsonl"),
+        ExternalCli::OpenCode => (".local/share/opencode/storage/session", "json"),
     };
     let root = crate::storage::user_home_path(rel_root).ok()?;
     if !root.exists() {
         return None;
     }
     // One file is enough to learn the newest mtime.
-    collect_recent_files_recursive(&root, "jsonl", 1)
+    collect_recent_files_recursive(&root, ext, 1)
         .first()
         .and_then(|path| path.metadata().ok())
         .and_then(|meta| meta.modified().ok())
@@ -2717,6 +2719,8 @@ pub(crate) fn load_external_cli_sessions_grouped(
     let sessions = match cli {
         ExternalCli::Codex => load_external_codex_sessions(scan_limit),
         ExternalCli::ClaudeCode => load_external_claude_code_sessions(scan_limit),
+        ExternalCli::Pi => load_external_pi_sessions(scan_limit),
+        ExternalCli::OpenCode => load_external_opencode_sessions(scan_limit),
     };
     (Vec::new(), sessions)
 }
@@ -2738,6 +2742,8 @@ pub(crate) fn load_external_cli_sessions_grouped_multi(
     let mut sessions = Vec::new();
     let mut seen_codex = false;
     let mut seen_claude = false;
+    let mut seen_pi = false;
+    let mut seen_opencode = false;
     for cli in clis {
         match cli {
             ExternalCli::Codex if !seen_codex => {
@@ -2747,6 +2753,14 @@ pub(crate) fn load_external_cli_sessions_grouped_multi(
             ExternalCli::ClaudeCode if !seen_claude => {
                 seen_claude = true;
                 sessions.extend(load_external_claude_code_sessions(scan_limit));
+            }
+            ExternalCli::Pi if !seen_pi => {
+                seen_pi = true;
+                sessions.extend(load_external_pi_sessions(scan_limit));
+            }
+            ExternalCli::OpenCode if !seen_opencode => {
+                seen_opencode = true;
+                sessions.extend(load_external_opencode_sessions(scan_limit));
             }
             _ => {}
         }

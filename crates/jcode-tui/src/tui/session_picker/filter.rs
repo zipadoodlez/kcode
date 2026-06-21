@@ -150,7 +150,10 @@ impl SessionPicker {
             SessionFilterMode::Pi => Self::session_is_pi(session),
             SessionFilterMode::OpenCode => Self::session_is_open_code(session),
             SessionFilterMode::ExternalClis => {
-                Self::session_is_codex(session) || Self::session_is_claude_code(session)
+                Self::session_is_codex(session)
+                    || Self::session_is_claude_code(session)
+                    || Self::session_is_pi(session)
+                    || Self::session_is_open_code(session)
             }
         }
     }

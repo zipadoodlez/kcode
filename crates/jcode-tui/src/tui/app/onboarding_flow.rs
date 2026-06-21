@@ -40,6 +40,8 @@ pub(crate) const DECISION_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) enum ExternalCli {
     Codex,
     ClaudeCode,
+    Pi,
+    OpenCode,
 }
 
 impl ExternalCli {
@@ -47,6 +49,8 @@ impl ExternalCli {
         match self {
             ExternalCli::Codex => "Codex",
             ExternalCli::ClaudeCode => "Claude Code",
+            ExternalCli::Pi => "Pi",
+            ExternalCli::OpenCode => "OpenCode",
         }
     }
 }
@@ -346,11 +350,12 @@ impl OnboardingFlow {
     }
 }
 
-/// Detect whether an external Codex or Claude Code OAuth login is present.
+/// Detect whether an external Codex, Claude Code, Pi, or OpenCode OAuth login
+/// is present.
 ///
 /// Returns every detected CLI (sandbox-aware), so the caller can choose which
-/// one to offer (e.g. by most-recent activity). The order is Codex first,
-/// Claude second, but callers should not treat that as a preference.
+/// one to offer (e.g. by most-recent activity). The order is Codex, Claude, Pi,
+/// then OpenCode, but callers should not treat that as a preference.
 pub(crate) fn detect_external_cli_oauths() -> Vec<ExternalCli> {
     let mut found = Vec::new();
     if external_oauth_present(&external_home_path(".codex/auth.json")) {
@@ -358,6 +363,12 @@ pub(crate) fn detect_external_cli_oauths() -> Vec<ExternalCli> {
     }
     if external_oauth_present(&external_home_path(".claude/.credentials.json")) {
         found.push(ExternalCli::ClaudeCode);
+    }
+    if external_oauth_present(&external_home_path(".pi/agent/auth.json")) {
+        found.push(ExternalCli::Pi);
+    }
+    if external_oauth_present(&external_home_path(".local/share/opencode/auth.json")) {
+        found.push(ExternalCli::OpenCode);
     }
     found
 }

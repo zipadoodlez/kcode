@@ -358,6 +358,33 @@ impl App {
         if self.pending_login.is_some() || self.pending_account_input.is_some() {
             return false;
         }
+        // Universal escape hatch. From any guided pre-ready phase, Esc always
+        // leaves onboarding to the normal new-session screen. This is the last
+        // line of the liveness guarantee: no matter what state the flow is in
+        // (including async-wait states), one key the user always has gets them
+        // out. We only handle it on the welcome card itself; when an inline
+        // overlay (picker / sign-in) is open we let Esc close that first.
+        if code == KeyCode::Esc
+            && self.inline_interactive_state.is_none()
+            && self.session_picker_overlay.is_none()
+            && self.login_picker_overlay.is_none()
+            && self.account_picker_overlay.is_none()
+            && matches!(
+                self.onboarding_phase(),
+                Some(
+                    OnboardingPhase::Login { .. }
+                        | OnboardingPhase::LoginOpenAi { .. }
+                        | OnboardingPhase::ModelSelect
+                        | OnboardingPhase::ContinuePrompt { .. }
+                )
+            )
+        {
+            self.onboarding_import_in_progress = None;
+            self.onboarding_import_error = None;
+            self.onboarding_finish();
+            self.set_status_notice("Onboarding skipped - run /login when you're ready");
+            return true;
+        }
         match self.onboarding_phase() {
             Some(OnboardingPhase::Login { import }) => {
                 // No detected imports remaining: this is the recovery fallback

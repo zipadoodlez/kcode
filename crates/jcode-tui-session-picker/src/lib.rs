@@ -84,7 +84,7 @@ impl SessionFilterMode {
             Self::Codex => Some("🧠 Codex"),
             Self::Pi => Some("π Pi"),
             Self::OpenCode => Some("◌ OpenCode"),
-            Self::ExternalClis => Some("🧠 Codex + 🧵 Claude Code"),
+            Self::ExternalClis => Some("🧠 Codex + 🧵 Claude Code + π Pi + ◌ OpenCode"),
         }
     }
 }
