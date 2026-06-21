@@ -1697,8 +1697,9 @@ impl SessionPicker {
         // Highlight active search matches in the wrapped preview body and record
         // the first wrapped line that contains a hit, so the caller can scroll it
         // into view. Highlighting after wrapping keeps wrapped-line indices exact.
+        let highlight_tokens = self.active_highlight_tokens();
         let first_match_line =
-            Self::highlight_lines_in_place(&mut wrapped_lines, &self.search_query);
+            Self::highlight_lines_in_place(&mut wrapped_lines, &highlight_tokens);
 
         PreviewRenderCache {
             key,
@@ -1712,10 +1713,12 @@ impl SessionPicker {
 
     /// Apply search-match highlighting to already-built preview lines in place.
     /// Returns the index of the first line that contains a highlighted match, if
-    /// any. `query` is trimmed and lowercased internally.
-    fn highlight_lines_in_place(lines: &mut [Line<'static>], query: &str) -> Option<usize> {
-        let needle = query.trim().to_lowercase();
-        if needle.is_empty() {
+    /// any. Each token highlights independently (matching the AND-token filter).
+    fn highlight_lines_in_place(
+        lines: &mut [Line<'static>],
+        tokens: &[String],
+    ) -> Option<usize> {
+        if tokens.is_empty() {
             return None;
         }
         let mut first_match: Option<usize> = None;
@@ -1723,11 +1726,12 @@ impl SessionPicker {
             let mut new_spans: Vec<Span<'static>> = Vec::with_capacity(line.spans.len());
             let mut line_had_match = false;
             for span in line.spans.drain(..) {
-                if span.content.to_lowercase().contains(&needle) {
+                let lower = span.content.to_lowercase();
+                if tokens.iter().any(|token| lower.contains(token)) {
                     line_had_match = true;
                     new_spans.extend(Self::highlight_spans(
                         span.content.as_ref(),
-                        Some(&needle),
+                        tokens,
                         span.style,
                     ));
                 } else {

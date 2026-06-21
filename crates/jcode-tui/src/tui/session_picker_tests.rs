@@ -1941,7 +1941,8 @@ fn test_current_dir_highlight_absent_without_current_dir() {
 #[test]
 fn highlight_spans_marks_query_occurrences() {
     let base = Style::default().fg(Color::White);
-    let spans = SessionPicker::highlight_spans("Fix the Resume bug", Some("resume"), base);
+    let tokens = vec!["resume".to_string()];
+    let spans = SessionPicker::highlight_spans("Fix the Resume bug", &tokens, base);
     let combined: String = spans.iter().map(|s| s.content.as_ref()).collect();
     assert_eq!(combined, "Fix the Resume bug");
 
@@ -1954,9 +1955,26 @@ fn highlight_spans_marks_query_occurrences() {
 }
 
 #[test]
+fn highlight_spans_marks_each_token_independently() {
+    // Multi-word queries highlight every token (order independent), matching the
+    // AND-token filter semantics.
+    let base = Style::default().fg(Color::White);
+    let tokens = vec!["resume".to_string(), "bug".to_string()];
+    let spans = SessionPicker::highlight_spans("Fix the Resume bug now", &tokens, base);
+    let combined: String = spans.iter().map(|s| s.content.as_ref()).collect();
+    assert_eq!(combined, "Fix the Resume bug now");
+    let highlighted: Vec<&str> = spans
+        .iter()
+        .filter(|s| s.style.add_modifier.contains(Modifier::BOLD))
+        .map(|s| s.content.as_ref())
+        .collect();
+    assert_eq!(highlighted, vec!["Resume", "bug"], "every token should be highlighted");
+}
+
+#[test]
 fn highlight_spans_without_query_returns_single_span() {
     let base = Style::default().fg(Color::White);
-    let spans = SessionPicker::highlight_spans("hello world", None, base);
+    let spans = SessionPicker::highlight_spans("hello world", &[], base);
     assert_eq!(spans.len(), 1);
     assert_eq!(spans[0].content.as_ref(), "hello world");
 }

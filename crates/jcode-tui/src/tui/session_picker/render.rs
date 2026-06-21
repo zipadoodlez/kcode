@@ -69,73 +69,76 @@ impl SessionPicker {
         }
     }
 
-    /// Normalized (trimmed + lowercased) search query used for highlighting, or
-    /// `None` when there is no active search.
-    pub(super) fn active_highlight_query(&self) -> Option<String> {
-        let query = self.search_query.trim().to_lowercase();
-        (!query.is_empty()).then_some(query)
+    /// Normalized search tokens used for highlighting, or an empty vec when there
+    /// is no active search. Mirrors the matcher's tokenization so highlighting and
+    /// filtering agree on what counts as a match.
+    pub(super) fn active_highlight_tokens(&self) -> Vec<String> {
+        super::loading::search_query_tokens(&self.search_query)
     }
 
     /// Split `text` into spans, applying `base` to non-matching segments and a
-    /// distinct highlight style to case-insensitive occurrences of `query`.
-    /// `query` is expected to already be lowercased.
+    /// distinct highlight style to case-insensitive occurrences of any of the
+    /// `tokens`. Tokens are matched independently (logical OR for highlighting),
+    /// matching the AND-token filter's notion of "this word matched". Overlapping
+    /// or adjacent matches are merged via a per-character highlight mask.
     pub(super) fn highlight_spans(
         text: &str,
-        query: Option<&str>,
+        tokens: &[String],
         base: Style,
     ) -> Vec<Span<'static>> {
-        let query = match query {
-            Some(q) if !q.is_empty() => q,
-            _ => return vec![Span::styled(text.to_string(), base)],
-        };
-
-        let highlight = base
-            .fg(rgb(255, 214, 90))
-            .add_modifier(Modifier::BOLD);
-
-        let chars: Vec<char> = text.chars().collect();
-        let lower: Vec<char> = chars
-            .iter()
-            .map(|c| c.to_lowercase().next().unwrap_or(*c))
-            .collect();
-        let needle: Vec<char> = query
-            .chars()
-            .map(|c| c.to_lowercase().next().unwrap_or(c))
-            .collect();
-
-        if needle.is_empty() || needle.len() > lower.len() {
+        if tokens.is_empty() || text.is_empty() {
             return vec![Span::styled(text.to_string(), base)];
         }
 
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        let mut i = 0;
-        let mut plain_start = 0;
-        while i + needle.len() <= lower.len() {
-            if lower[i..i + needle.len()] == needle[..] {
-                if plain_start < i {
-                    spans.push(Span::styled(
-                        chars[plain_start..i].iter().collect::<String>(),
-                        base,
-                    ));
+        let chars: Vec<char> = text.chars().collect();
+        let lower: String = text.to_lowercase();
+        // Map lowercased byte offsets back to char indices so multi-byte and
+        // case-folding-width changes can't desync the mask.
+        let lower_chars: Vec<char> = lower.chars().collect();
+
+        let mut mask = vec![false; lower_chars.len()];
+        let mut any = false;
+        for token in tokens {
+            if token.is_empty() || token.chars().count() > lower_chars.len() {
+                continue;
+            }
+            let needle: Vec<char> = token.chars().collect();
+            let mut i = 0;
+            while i + needle.len() <= lower_chars.len() {
+                if lower_chars[i..i + needle.len()] == needle[..] {
+                    for slot in mask.iter_mut().skip(i).take(needle.len()) {
+                        *slot = true;
+                    }
+                    any = true;
+                    i += needle.len();
+                } else {
+                    i += 1;
                 }
-                spans.push(Span::styled(
-                    chars[i..i + needle.len()].iter().collect::<String>(),
-                    highlight,
-                ));
-                i += needle.len();
-                plain_start = i;
-            } else {
-                i += 1;
             }
         }
-        if plain_start < chars.len() {
-            spans.push(Span::styled(
-                chars[plain_start..].iter().collect::<String>(),
-                base,
-            ));
+
+        if !any {
+            return vec![Span::styled(text.to_string(), base)];
         }
-        if spans.is_empty() {
-            spans.push(Span::styled(text.to_string(), base));
+
+        // The lowercase char count can differ from the original char count when
+        // case folding changes length (rare); fall back to no highlight rather
+        // than risk a slice mismatch.
+        if mask.len() != chars.len() {
+            return vec![Span::styled(text.to_string(), base)];
+        }
+
+        let highlight = base.fg(rgb(255, 214, 90)).add_modifier(Modifier::BOLD);
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut idx = 0;
+        while idx < chars.len() {
+            let hot = mask[idx];
+            let start = idx;
+            while idx < chars.len() && mask[idx] == hot {
+                idx += 1;
+            }
+            let segment: String = chars[start..idx].iter().collect();
+            spans.push(Span::styled(segment, if hot { highlight } else { base }));
         }
         spans
     }
@@ -167,7 +170,7 @@ impl SessionPicker {
         let is_marked = self.selected_session_ids.contains(&session.id);
         let same_dir = self.session_in_current_dir(session);
         let same_dir_clr: Color = rgb(120, 200, 140);
-        let highlight_query = self.active_highlight_query();
+        let highlight_tokens = self.active_highlight_tokens();
 
         let name_style = if is_selected {
             Style::default()
@@ -214,7 +217,7 @@ impl SessionPicker {
         ];
         line1_spans.extend(Self::highlight_spans(
             &primary_title,
-            highlight_query.as_deref(),
+            &highlight_tokens,
             name_style,
         ));
         line1_spans.extend([
@@ -232,7 +235,7 @@ impl SessionPicker {
             line1_spans.push(Span::styled("  \"".to_string(), label_style));
             line1_spans.extend(Self::highlight_spans(
                 label,
-                highlight_query.as_deref(),
+                &highlight_tokens,
                 label_style,
             ));
             line1_spans.push(Span::styled("\"".to_string(), label_style));
@@ -327,7 +330,7 @@ impl SessionPicker {
         if !dir_part.is_empty() {
             line3_spans.extend(Self::highlight_spans(
                 &dir_part,
-                highlight_query.as_deref(),
+                &highlight_tokens,
                 dir_style,
             ));
         }
@@ -349,7 +352,7 @@ impl SessionPicker {
             ];
             prompt_spans.extend(Self::highlight_spans(
                 &prompt_display,
-                highlight_query.as_deref(),
+                &highlight_tokens,
                 Style::default().fg(rgb(180, 180, 220)),
             ));
             rows.push(Line::from(prompt_spans));

@@ -336,13 +336,28 @@ pub(super) fn session_matches_query(session: &SessionInfo, query: &str) -> bool 
 
 /// Fast in-memory matcher for interactive picker filtering.
 ///
-/// This intentionally avoids transcript file I/O because it runs on every
-/// keystroke while the `/resume` overlay is open. Transcript-backed content can
+/// Splits the query into whitespace-separated tokens and requires *every* token
+/// to appear somewhere in the session's search index (logical AND, order
+/// independent). This is far more forgiving than a single contiguous substring
+/// match - `api deploy` now matches a session mentioning "deploy ... api" - while
+/// staying cheap: it runs on every keystroke and only does N case-insensitive
+/// substring scans over an already-lowercased index.
+///
+/// This intentionally avoids transcript file I/O. Transcript-backed content can
 /// still become searchable after preview load because the picker refreshes the
 /// session's cached `search_index` from the loaded preview.
 pub(super) fn session_matches_picker_query(session: &SessionInfo, query: &str) -> bool {
-    let normalized = query.trim().to_lowercase();
-    normalized.is_empty() || session.search_index.contains(&normalized)
+    let tokens = search_query_tokens(query);
+    tokens.is_empty() || tokens.iter().all(|token| session.search_index.contains(token))
+}
+
+/// Split a raw query into normalized (lowercased, whitespace-trimmed) search
+/// tokens. Empty/whitespace-only queries yield no tokens (match everything).
+pub(super) fn search_query_tokens(query: &str) -> Vec<String> {
+    query
+        .split_whitespace()
+        .map(|token| token.to_lowercase())
+        .collect()
 }
 
 #[cfg(test)]

@@ -1012,3 +1012,45 @@ fn parallel_fill_skips_many_recent_empty_sessions_to_reach_scan_limit() {
         "empty sessions must be filtered out of the loaded list"
     );
 }
+
+#[test]
+fn session_matches_picker_query_requires_all_tokens_order_independent() {
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+
+    let mut session = Session::create_with_id(
+        "session_token_match".to_string(),
+        Some("/tmp/token-match".to_string()),
+        Some("Token Match".to_string()),
+    );
+    session.append_stored_message(crate::session::StoredMessage {
+        id: "msg1".to_string(),
+        role: crate::message::Role::User,
+        content: vec![crate::message::ContentBlock::Text {
+            text: "please deploy the production api gateway now".to_string(),
+            cache_control: None,
+        }],
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    session.save().expect("save session");
+
+    let sessions = load_sessions().expect("load sessions");
+    let loaded = sessions
+        .iter()
+        .find(|candidate| candidate.id == "session_token_match")
+        .expect("session present");
+
+    // All tokens present, any order -> match (the old contiguous-substring matcher
+    // would have failed on reordered / non-adjacent words).
+    assert!(session_matches_picker_query(loaded, "api deploy"));
+    assert!(session_matches_picker_query(loaded, "deploy api"));
+    assert!(session_matches_picker_query(loaded, "  DEPLOY   Gateway  "));
+    // A token that doesn't appear anywhere -> no match, even if others do.
+    assert!(!session_matches_picker_query(loaded, "deploy staging"));
+    // Empty query matches everything.
+    assert!(session_matches_picker_query(loaded, "   "));
+}
