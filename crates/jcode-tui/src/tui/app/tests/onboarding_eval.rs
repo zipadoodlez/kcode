@@ -254,13 +254,13 @@ fn tier1_path_score_w(m: &PathMetrics, w: &Tier1Weights) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// The canonical Yes/No selector affordance. The real screens render the
-/// choice as a pair of rounded pills flanked by chevrons (`< ( Yes )   ( No )
-/// >`); the selection and the "you can move left/right" affordance are shown
-/// VISUALLY, not via a sentence. Tier 3 checks every yes/no screen renders this
-/// same pill row (consistency = lower learning cost).
-const CANONICAL_YESNO_PILL: &str = "( Yes )";
-/// The chevron that flanks the pill row, signalling left/right movability.
-const YESNO_PILL_CHEVRON: &str = "<";
+/// choice as a pair of rounded lozenge pills (`◖ Yes ◗   ◖ No ◗`); the selected
+/// option is a filled capsule and the other a hollow outline, so the selection
+/// is shown VISUALLY, not via a sentence. Tier 3 checks every yes/no screen
+/// renders this same pill row (consistency = lower learning cost).
+const CANONICAL_YESNO_PILL: &str = "Yes \u{25D7}";
+/// A pill end-cap glyph (the rounded lozenge end), signalling the capsule shape.
+const YESNO_PILL_CHEVRON: &str = "\u{25D6}";
 
 struct ScreenMetrics {
     label: &'static str,
@@ -290,11 +290,11 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
         .sum::<usize>() as u32;
     // A yes/no screen is consistent when it renders one of the two canonical
     // affordances:
-    //   * the single-prompt pill row: `( Yes )` / `( No )` flanked by chevrons, or
+    //   * the single-prompt pill row: `◖ Yes ◗` / `◖ No ◗` lozenge capsules, or
     //   * the per-login import list: a "Yes"/"No" header above filled/hollow
     //     circle columns, with a `> ` cursor gutter for movability.
     let canonical_pill = text.contains(CANONICAL_YESNO_PILL)
-        && text.contains("( No )")
+        && text.contains("No \u{25D7}")
         && text.contains(YESNO_PILL_CHEVRON);
     let canonical_import_list =
         text.contains('●') && text.contains('○') && text.contains("> ");
@@ -1786,27 +1786,30 @@ fn selection_uses_noncolor_attribute() -> bool {
             .ok()?;
         let buf = terminal.backend().buffer().clone();
         for y in 0..30u16 {
-            let mut line = String::new();
-            for x in 0..80u16 {
-                line.push_str(buf[(x, y)].symbol());
-            }
+            // Build a per-cell symbol list so we can locate the "Yes"/"No"
+            // labels by COLUMN, not by byte offset (the lozenge pill caps ◖/◗
+            // are multi-byte, so a string byte index would not map to a cell x).
+            let cells: Vec<String> = (0..80u16).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            let line: String = cells.concat();
             let lt = line.to_ascii_lowercase();
             if lt.contains("yes") && lt.contains("no") {
-                // Collect the modifier covering the first "Yes" glyph and the
-                // first "No" glyph on this row.
+                // Find the column where "Y","e","s" appear in consecutive cells,
+                // and likewise the first "N","o".
+                let find_seq = |needle: &[&str]| -> Option<usize> {
+                    (0..cells.len()).find(|&i| {
+                        needle
+                            .iter()
+                            .enumerate()
+                            .all(|(k, ch)| cells.get(i + k).map(|c| c == ch).unwrap_or(false))
+                    })
+                };
                 let mut yes_mod = Modifier::empty();
                 let mut no_mod = Modifier::empty();
-                let bytes: Vec<(u16, String)> =
-                    (0..80u16).map(|x| (x, buf[(x, y)].symbol().to_string())).collect();
-                if let Some(i) = line.find("Yes") {
-                    if let Some((x, _)) = bytes.get(i) {
-                        yes_mod = buf[(*x, y)].modifier;
-                    }
+                if let Some(i) = find_seq(&["Y", "e", "s"]) {
+                    yes_mod = buf[(i as u16, y)].modifier;
                 }
-                if let Some(i) = line.rfind("No") {
-                    if let Some((x, _)) = bytes.get(i) {
-                        no_mod = buf[(*x, y)].modifier;
-                    }
+                if let Some(i) = find_seq(&["N", "o"]) {
+                    no_mod = buf[(i as u16, y)].modifier;
                 }
                 return Some((yes_mod, no_mod));
             }

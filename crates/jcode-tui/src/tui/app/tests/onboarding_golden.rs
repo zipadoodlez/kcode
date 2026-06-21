@@ -78,13 +78,19 @@ fn onboarding_golden_walks_every_phase() {
         });
         let text = render_onboarding_text(&app, width, height);
         dump("LoginOpenAi (no imports)", &text);
-        assert!(text.contains("First, log in to get started."), "{text}");
+        // Lean prompt: just the question + the Yes/No lozenge pills. The Esc hint
+        // already covers the "skip / log in later" path, so no extra prose.
         assert!(text.contains("Log in to OpenAI?"), "{text}");
-        assert!(
-            text.contains("Choose \"No\" to skip for now (run /login anytime)."),
-            "{text}"
-        );
         assert!(text.contains("Yes") && text.contains("No"), "{text}");
+        assert!(
+            text.contains("\u{25D6} Yes \u{25D7}") && text.contains("\u{25D6} No \u{25D7}"),
+            "yes/no lozenge pills: {text}"
+        );
+        // The redundant "Choose No to skip" line was removed.
+        assert!(
+            !text.contains("Choose \"No\" to skip"),
+            "redundant skip line should be gone: {text}"
+        );
     }
 
     // 1b. Recovery fallback: bare Login phase with no import (import declined or
@@ -165,12 +171,8 @@ fn onboarding_golden_walks_every_phase() {
             "continue prompt: {text}"
         );
         assert!(
-            text.contains("( Yes )") && text.contains("( No )"),
-            "continue prompt Yes/No pills: {text}"
-        );
-        assert!(
-            text.contains('<') && text.contains('>'),
-            "continue prompt movability chevrons: {text}"
+            text.contains("\u{25D6} Yes \u{25D7}") && text.contains("\u{25D6} No \u{25D7}"),
+            "continue prompt Yes/No lozenge pills: {text}"
         );
         assert!(
             text.contains("Opens the resume menu automatically in"),

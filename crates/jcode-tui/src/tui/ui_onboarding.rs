@@ -56,64 +56,54 @@ fn push_esc_skip_hint(lines: &mut Vec<Line<'static>>, align: Alignment) {
 ///   * Dim ASCII chevrons `<` ... `>` flank the row to imply "this slides
 ///     left/right" without the user having to read a hint line. They are pure
 ///     ASCII so they never depend on Unicode glyph support.
-fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
-    let selected = Style::default()
-        .fg(welcome_accent())
-        .add_modifier(Modifier::BOLD | Modifier::REVERSED);
-    let unselected = Style::default().fg(dim_color());
-    let chevron = Style::default().fg(dim_color());
-
-    let (yes_style, no_style) = if yes_highlighted {
-        (selected, unselected)
+/// Build one rounded "lozenge" pill: half-circle end caps (`◖` / `◗`) around a
+/// padded label. When `filled`, the pill has a solid accent fill + BOLD label
+/// (the selected/active look); otherwise it is a hollow outline in a muted color
+/// (the unselected look). The BOLD-on-filled / not-bold-on-hollow contrast is a
+/// non-color attribute, so the selection survives on monochrome terminals
+/// (Tier 10 color-independence).
+fn lozenge_pill_spans(label: &str, filled: bool) -> Vec<Span<'static>> {
+    if filled {
+        let fill = welcome_accent();
+        let cap = Style::default().fg(fill);
+        let body = Style::default()
+            .fg(rgb(20, 24, 32))
+            .bg(fill)
+            .add_modifier(Modifier::BOLD);
+        vec![
+            Span::styled("\u{25D6}", cap),
+            Span::styled(format!(" {label} "), body),
+            Span::styled("\u{25D7}", cap),
+        ]
     } else {
-        (unselected, selected)
-    };
-
-    Line::from(vec![
-        // Left chevron hints "press left to move here".
-        Span::styled("< ", chevron),
-        Span::styled("( Yes )", yes_style),
-        Span::styled("   ", unselected),
-        Span::styled("( No )", no_style),
-        // Right chevron hints "press right to move here".
-        Span::styled(" >", chevron),
-    ])
-    .alignment(align)
+        // Hollow: the caps and label share a muted color and the label is NOT
+        // bold, so a filled (bold) pill is always distinguishable without color.
+        let dim = Style::default().fg(rgb(120, 124, 132));
+        vec![
+            Span::styled("\u{25D6}", dim),
+            Span::styled(format!(" {label} "), dim),
+            Span::styled("\u{25D7}", dim),
+        ]
+    }
 }
 
-/// A rounded "Continue" pill button. Rendered both above and below the import
-/// list so the user can reach the commit action just by arrowing up or down
-/// out of the list (no need to read the "Press Enter" instruction).
-///
-/// This draws an *actual* lozenge shape, not `( label )` text on a hard
-/// rectangle: the two ends are half-circle glyphs (`◖` / `◗`) colored to match
-/// the pill fill, and the label sits on a solid background between them. When
-/// `focused`, the fill is the bright accent; otherwise it is a muted gray so it
-/// still reads as a button but recedes.
+/// Build the Yes/No selector as a pair of rounded lozenge pills. The selected
+/// option is a solid filled pill; the other is a hollow outline. The shape and
+/// fill carry the selection visually so no instruction sentence is needed.
+fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
+    let mut spans = Vec::new();
+    spans.extend(lozenge_pill_spans("Yes", yes_highlighted));
+    spans.push(Span::raw("   "));
+    spans.extend(lozenge_pill_spans("No", !yes_highlighted));
+    Line::from(spans).alignment(align)
+}
+
+/// A rounded "Continue" pill button. Rendered above the import list so the user
+/// can reach the commit action just by arrowing up out of the rows (no need to
+/// read a "Press Enter" instruction). Uses the same lozenge style as the Yes/No
+/// pills: a filled accent capsule when `focused`, a hollow outline otherwise.
 fn continue_pill_line(focused: bool, align: Alignment) -> Line<'static> {
-    // Pill fill + the text drawn on top of it. The half-circle end caps use the
-    // fill color as their *foreground* (the glyph's filled half), so the rounded
-    // ends visually merge with the background-filled middle.
-    let (fill, text_fg) = if focused {
-        (welcome_accent(), rgb(20, 24, 32))
-    } else {
-        (rgb(70, 74, 82), rgb(210, 210, 210))
-    };
-
-    let cap = Style::default().fg(fill);
-    let body = Style::default()
-        .fg(text_fg)
-        .bg(fill)
-        .add_modifier(Modifier::BOLD);
-
-    Line::from(vec![
-        // Left rounded end: the filled left half of the circle forms the cap.
-        Span::styled("\u{25D6}", cap),
-        Span::styled(" Continue ", body),
-        // Right rounded end: the filled right half of the circle.
-        Span::styled("\u{25D7}", cap),
-    ])
-    .alignment(align)
+    Line::from(lozenge_pill_spans("Continue", focused)).alignment(align)
 }
 
 /// Render the import screen body: a "Yes / No" header row, then one row per
@@ -397,17 +387,6 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
             return lines;
         }
         OnboardingWelcomeKind::LoginOpenAi { yes_highlighted } => {
-            lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    "First, log in to get started.",
-                    Style::default()
-                        .fg(welcome_accent())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .alignment(align),
-            );
-            lines.push(Line::from(""));
             lines.push(
                 Line::from(Span::styled(
                     "Log in to OpenAI?",
@@ -417,26 +396,13 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                 ))
                 .alignment(align),
             );
-            lines.push(
-                Line::from(Span::styled(
-                    "Choose \"No\" to skip for now (run /login anytime).",
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
             lines.push(Line::from(""));
 
-            // Rounded Yes/No pills; the selection is shown visually (filled
-            // pill + flanking chevrons), so the hint can stay short.
+            // Rounded Yes/No lozenge pills; the selection is shown visually (the
+            // filled capsule), so no instruction sentence is needed.
             lines.push(yes_no_pill_line(yes_highlighted, align));
-            lines.push(Line::from(""));
-            lines.push(
-                Line::from(Span::styled(
-                    "Enter to confirm.",
-                    Style::default().fg(dim_color()),
-                ))
-                .alignment(align),
-            );
+            // The Esc hint below already says you can log in later with /login,
+            // so we don't repeat a "choose No to skip" line here.
             push_esc_skip_hint(&mut lines, align);
             return lines;
         }
