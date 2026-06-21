@@ -28,6 +28,22 @@ fn welcome_accent() -> Color {
     rgb(138, 180, 248)
 }
 
+/// Append the universal "Esc to skip" hint shown on every guided onboarding
+/// phase. This advertises the escape hatch that guarantees the user can always
+/// leave onboarding (see `handle_onboarding_continue_prompt_key`), so a first-
+/// run user is never visibly trapped. Kept dim and on its own line so it never
+/// competes with the primary action.
+fn push_esc_skip_hint(lines: &mut Vec<Line<'static>>, align: Alignment) {
+    lines.push(Line::from(""));
+    lines.push(
+        Line::from(Span::styled(
+            "Esc to skip onboarding (log in later with /login).",
+            Style::default().fg(dim_color()),
+        ))
+        .alignment(align),
+    );
+}
+
 /// Build the Yes/No selector as a pair of rounded "pills" with the selection
 /// indicated *visually* rather than with a sentence of instructions.
 ///
@@ -351,6 +367,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                 }
             }
+            push_esc_skip_hint(&mut lines, align);
             return lines;
         }
         OnboardingWelcomeKind::LoginOpenAi { yes_highlighted } => {
@@ -394,6 +411,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                 ))
                 .alignment(align),
             );
+            push_esc_skip_hint(&mut lines, align);
             return lines;
         }
         OnboardingWelcomeKind::ContinuePrompt {
@@ -424,6 +442,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                 ))
                 .alignment(align),
             );
+            push_esc_skip_hint(&mut lines, align);
             return lines;
         }
         OnboardingWelcomeKind::Suggestions => {}

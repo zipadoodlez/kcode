@@ -1128,3 +1128,87 @@ fn liveness_stuck_import_is_recovered_by_the_tick_watchdog() {
         assert!(onboarding_state_is_escapable(&app));
     });
 }
+
+#[test]
+fn liveness_esc_always_exits_onboarding_from_every_guided_phase() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::{ImportReview, OnboardingPhase};
+    with_temp_jcode_home(|| {
+        // The universal escape hatch: from ANY guided pre-ready phase, a single
+        // Esc must leave onboarding to the normal screen. This is the strongest
+        // liveness guarantee - it doesn't matter how the flow got wedged, Esc
+        // always works. We cover every interactive/transient phase, including the
+        // async "importing" wait (where Esc must abandon the in-flight import).
+        let make_import = || {
+            ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
+                "OpenAI/Codex",
+                "Codex auth.json",
+            )])
+            .unwrap()
+        };
+        let phases: Vec<(&str, OnboardingPhase, bool)> = vec![
+            (
+                "LoginOpenAi",
+                OnboardingPhase::LoginOpenAi {
+                    yes_highlighted: true,
+                },
+                false,
+            ),
+            (
+                "Login{import:Some}",
+                OnboardingPhase::Login {
+                    import: Some(make_import()),
+                },
+                false,
+            ),
+            (
+                "Login{import:None} recovery",
+                OnboardingPhase::Login { import: None },
+                false,
+            ),
+            // The async "importing" wait: import committed, LoginCompleted not yet
+            // arrived. Esc must still bail out cleanly.
+            (
+                "Login importing wait",
+                OnboardingPhase::Login { import: None },
+                true,
+            ),
+            ("ModelSelect", OnboardingPhase::ModelSelect, false),
+            (
+                "ContinuePrompt",
+                OnboardingPhase::ContinuePrompt {
+                    cli: ExternalCli::Codex,
+                    yes_highlighted: true,
+                    shown_at: std::time::Instant::now(),
+                },
+                false,
+            ),
+        ];
+        for (label, phase, importing) in phases {
+            let mut app = create_test_app();
+            app.onboarding_flow = None;
+            app.begin_onboarding_flow_at_login();
+            if let Some(flow) = app.onboarding_flow.as_mut() {
+                flow.phase = phase;
+            }
+            if importing {
+                app.onboarding_import_in_progress = Some(std::time::Instant::now());
+            }
+            assert!(
+                !onboarding_state_is_escapable(&app),
+                "{label}: precondition - should start trapped in the flow"
+            );
+            let consumed = app.handle_onboarding_continue_prompt_key(KeyCode::Esc);
+            assert!(consumed, "{label}: Esc must be consumed");
+            assert!(
+                onboarding_state_is_escapable(&app),
+                "{label}: Esc must reach an escapable state"
+            );
+            // Esc must not leave a stale import-progress flag spinning.
+            assert!(
+                app.onboarding_import_in_progress.is_none(),
+                "{label}: Esc must clear any in-flight import progress"
+            );
+        }
+    });
+}
