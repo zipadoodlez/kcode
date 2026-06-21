@@ -1323,8 +1323,15 @@ impl App {
         } else {
             cleaned
         };
-        // Keep it to a single, screen-friendly line.
-        let mut s: String = cleaned.chars().take(120).collect();
+        // Keep it to a single, screen-friendly line, and capitalize the first
+        // letter so a lowercase validator message reads as a clean sentence.
+        let truncated: String = cleaned.chars().take(120).collect();
+        let mut s = String::with_capacity(truncated.len() + 1);
+        let mut chars = truncated.chars();
+        if let Some(first) = chars.next() {
+            s.extend(first.to_uppercase());
+            s.push_str(chars.as_str());
+        }
         if cleaned.chars().count() > 120 {
             s.push('…');
         }

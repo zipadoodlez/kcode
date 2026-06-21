@@ -1212,3 +1212,39 @@ fn liveness_esc_always_exits_onboarding_from_every_guided_phase() {
         }
     });
 }
+
+#[test]
+fn import_failure_reason_is_cleaned_and_capitalized() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::{ImportReview, OnboardingPhase};
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        // Must be in the Login phase for the failure handler to apply.
+        let review =
+            ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")])
+                .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login {
+                import: Some(review),
+            };
+        }
+        // A multi-line markdown failure message with marker noise and a
+        // lowercase first word, mimicking the importer's render_markdown output.
+        let raw = "**Logins imported**\n\nthe token has expired\n- \u{2715} Cursor (from Cursor): bad";
+        app.onboarding_handle_login_failed(Some(raw.to_string()));
+        let shown = app
+            .onboarding_import_error
+            .as_deref()
+            .expect("failure reason should be recorded");
+        // Markdown bold headers and the "Logins imported" line are stripped; the
+        // first meaningful line is kept, marker trimmed, first letter uppercased.
+        assert!(!shown.contains("**"), "markdown bold stripped: {shown}");
+        assert!(!shown.contains('\u{2715}'), "marker glyph stripped: {shown}");
+        assert!(
+            shown.starts_with("The token has expired"),
+            "first meaningful line kept + capitalized: {shown}"
+        );
+    });
+}

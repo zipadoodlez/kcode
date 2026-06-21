@@ -186,3 +186,119 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Welcome to jcode onboarding"), "{text}");
     }
 }
+
+/// Comprehensive state-space walkthrough that also covers the async-wait and
+/// failure screens the basic golden walk omits (the "Importing your logins..."
+/// progress screen and the failure-aware recovery screen), and enforces polish
+/// invariants on every guided screen:
+///
+///   * It always renders the welcome title + tagline (no blank/garbled card).
+///   * Every guided screen advertises the universal Esc escape hatch, so the
+///     user can always see a way out (the liveness guarantee, made visible).
+///   * The failure screen states what went wrong AND the concrete next step.
+///
+/// Run with `--nocapture` to eyeball every screen, including the edge states.
+#[test]
+fn onboarding_golden_walks_failure_and_async_states() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    let width = 80u16;
+    let height = 32u16;
+
+    // Helper: assert the shared polish invariants for a guided screen.
+    let assert_guided_polish = |title: &str, text: &str| {
+        assert!(
+            text.contains("Welcome to jcode onboarding"),
+            "{title}: must render the welcome title\n{text}"
+        );
+        assert!(
+            text.contains("Let's get you set up."),
+            "{title}: must render the tagline\n{text}"
+        );
+        assert!(
+            text.contains("Esc to skip onboarding"),
+            "{title}: every guided screen must advertise the Esc escape hatch\n{text}"
+        );
+    };
+
+    // (a) Import committed, async LoginCompleted not yet arrived: progress card.
+    {
+        let mut app = app_in_phase(OnboardingPhase::Login { import: None });
+        app.onboarding_import_in_progress = Some(std::time::Instant::now());
+        let text = render_onboarding_text(&app, width, height);
+        dump("Login (importing in progress)", &text);
+        assert!(
+            text.contains("Importing your logins"),
+            "progress headline: {text}"
+        );
+        assert!(
+            text.contains("Hang tight"),
+            "progress reassurance: {text}"
+        );
+        // The progress screen must NOT show the manual-login recovery copy.
+        assert!(
+            !text.contains("Press Enter to pick who to log in with"),
+            "progress screen must not tell the user to log in again: {text}"
+        );
+        assert_guided_polish("Login (importing in progress)", &text);
+    }
+
+    // (b) Import failed: failure-aware recovery card with reason + next step.
+    {
+        let mut app = app_in_phase(OnboardingPhase::Login { import: None });
+        app.onboarding_import_error =
+            Some("the saved credential was rejected".to_string());
+        let text = render_onboarding_text(&app, width, height);
+        dump("Login (import failed, recovery)", &text);
+        assert!(
+            text.contains("We couldn't import those logins."),
+            "failure headline: {text}"
+        );
+        assert!(
+            text.contains("the saved credential was rejected"),
+            "failure reason must be shown verbatim: {text}"
+        );
+        assert!(
+            text.contains("you can log in directly"),
+            "failure must offer a concrete recovery: {text}"
+        );
+        assert!(
+            text.contains("Press Enter to choose a provider"),
+            "failure must state the exact next key: {text}"
+        );
+        assert_guided_polish("Login (import failed, recovery)", &text);
+    }
+
+    // (c) The import list, recovery, OpenAI prompt, and continue prompt must all
+    // advertise the Esc escape hatch (polish invariant across guided screens).
+    {
+        let review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
+            "OpenAI/Codex",
+            "Codex auth.json",
+        )])
+        .unwrap();
+        let app = app_in_phase(OnboardingPhase::Login {
+            import: Some(review),
+        });
+        let text = render_onboarding_text(&app, width, height);
+        dump("Login (import list, Esc hint)", &text);
+        assert_guided_polish("Login (import list)", &text);
+    }
+    {
+        let app = app_in_phase(OnboardingPhase::LoginOpenAi {
+            yes_highlighted: true,
+        });
+        let text = render_onboarding_text(&app, width, height);
+        assert_guided_polish("LoginOpenAi", &text);
+    }
+    {
+        let app = app_in_phase(OnboardingPhase::ContinuePrompt {
+            cli: ExternalCli::Codex,
+            yes_highlighted: true,
+            shown_at: std::time::Instant::now(),
+        });
+        let text = render_onboarding_text(&app, width, height);
+        assert_guided_polish("ContinuePrompt", &text);
+    }
+}
