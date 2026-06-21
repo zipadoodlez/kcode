@@ -1151,6 +1151,7 @@ impl App {
                     crate::tui::LoginImportPrompt {
                         rows,
                         cursor: review.cursor,
+                        continue_focused: review.continue_focused,
                         checked_count: review.checked_count(),
                         seconds_left: review.seconds_remaining(),
                     }

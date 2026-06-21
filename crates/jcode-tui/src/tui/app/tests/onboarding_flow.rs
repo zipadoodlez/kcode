@@ -119,18 +119,34 @@ fn import_review_cursor_navigation_wraps() {
     ])
     .unwrap();
     assert_eq!(review.position(), 1);
+    assert!(!review.continue_focused);
     review.cursor_down();
     assert_eq!(review.position(), 2);
-    // Wrap forward to the top.
+    assert!(!review.continue_focused);
+    // Down past the last row lands on the navigable Continue pill.
     review.cursor_down();
+    assert!(review.continue_focused);
+    // Down again wraps from Continue to the first row.
+    review.cursor_down();
+    assert!(!review.continue_focused);
     assert_eq!(review.position(), 1);
-    // Wrap backward to the bottom.
+    // Up from the first row lands on the Continue pill.
     review.cursor_up();
+    assert!(review.continue_focused);
+    // Up from Continue lands on the last row.
+    review.cursor_up();
+    assert!(!review.continue_focused);
     assert_eq!(review.position(), 2);
     // Toggling the current row flips just that row.
     assert!(review.current_checked());
     review.toggle_current();
     assert!(!review.current_checked());
+    // Toggling while Continue is focused is a no-op (no row changes).
+    review.cursor_down(); // back onto Continue
+    assert!(review.continue_focused);
+    let before = review.approved_indices();
+    review.toggle_current();
+    assert_eq!(review.approved_indices(), before);
 }
 
 #[test]

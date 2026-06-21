@@ -122,8 +122,14 @@ fn onboarding_golden_walks_every_phase() {
         assert!(text.contains("Yes") && text.contains("No"), "yes/no header: {text}");
         assert!(text.contains('●'), "filled choice circle: {text}");
         assert!(text.contains('○'), "hollow choice circle: {text}");
+        // A navigable "Continue" pill sits above and below the list so the user
+        // can reach the commit action by arrowing out of the list.
         assert!(
-            text.contains("Press Enter to continue."),
+            text.matches("( Continue )").count() >= 2,
+            "continue pills above and below list: {text}"
+        );
+        assert!(
+            text.contains("Select Continue or press Enter to import."),
             "continue action: {text}"
         );
         assert!(

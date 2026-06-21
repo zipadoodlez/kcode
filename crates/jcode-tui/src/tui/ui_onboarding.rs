@@ -81,6 +81,21 @@ fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     .alignment(align)
 }
 
+/// A rounded "Continue" pill button. Rendered both above and below the import
+/// list so the user can reach the commit action just by arrowing up or down
+/// out of the list (no need to read the "Press Enter" instruction). When
+/// `focused`, the pill is filled/reversed to show it is the active element.
+fn continue_pill_line(focused: bool, align: Alignment) -> Line<'static> {
+    let style = if focused {
+        Style::default()
+            .fg(welcome_accent())
+            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+    } else {
+        Style::default().fg(dim_color())
+    };
+    Line::from(Span::styled("( Continue )", style)).alignment(align)
+}
+
 /// Render the import screen body: a "Yes / No" header row, then one row per
 /// detected login. Each login has a circle under the Yes column and a circle
 /// under the No column; the *filled* circle is the current choice. Every login
@@ -136,7 +151,8 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
     );
 
     for (i, row) in prompt.rows.iter().enumerate() {
-        let is_cursor = i == prompt.cursor;
+        // While the Continue pill is focused, no login row shows the `>` gutter.
+        let is_cursor = !prompt.continue_focused && i == prompt.cursor;
         // A `> ` gutter marks the row the arrow keys act on.
         let cursor_marker = if is_cursor { "> " } else { "  " };
         let cursor_style = Style::default().fg(welcome_accent());
@@ -349,10 +365,21 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(Line::from(""));
 
+                    // Continue pill above the list: arrowing up out of the
+                    // first row lands here.
+                    lines.push(continue_pill_line(prompt.continue_focused, align));
+                    lines.push(Line::from(""));
+
                     // Per-login rows: each provider is followed by a Yes/No
                     // pair with "Yes" (import) lit by default. The user moves the
                     // cursor up/down and flips a login to "No" to skip it.
                     lines.extend(import_two_column_lines(&prompt));
+                    lines.push(Line::from(""));
+
+                    // Continue pill below the list: arrowing down out of the
+                    // last row lands here. Selecting it (Enter) commits the
+                    // import, so the user never has to read an instruction line.
+                    lines.push(continue_pill_line(prompt.continue_focused, align));
                     lines.push(Line::from(""));
 
                     lines.push(
@@ -364,7 +391,7 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(
                         Line::from(Span::styled(
-                            "Press Enter to continue.",
+                            "Select Continue or press Enter to import.",
                             Style::default()
                                 .fg(welcome_accent())
                                 .add_modifier(Modifier::BOLD),

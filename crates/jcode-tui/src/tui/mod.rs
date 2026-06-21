@@ -758,6 +758,10 @@ pub struct LoginImportPrompt {
     pub rows: Vec<LoginImportRow>,
     /// Index of the row the cursor is currently on.
     pub cursor: usize,
+    /// When `true`, the navigable "Continue" pill (above and below the list) is
+    /// focused instead of a login row, so it renders highlighted and Enter
+    /// commits the import.
+    pub continue_focused: bool,
     /// How many rows are currently checked for import.
     pub checked_count: usize,
     /// Seconds left before the screen auto-imports all checked logins.

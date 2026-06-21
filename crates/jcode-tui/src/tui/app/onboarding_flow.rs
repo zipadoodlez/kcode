@@ -72,6 +72,12 @@ pub(crate) struct ImportReview {
     pub(crate) checked: Vec<bool>,
     /// Index of the row the cursor is currently on (for toggling/highlight).
     pub(crate) cursor: usize,
+    /// When `true`, focus is on the "Continue" pill (rendered above and below
+    /// the list) rather than on a login row. Moving down past the last row, or
+    /// up past the first row, lands here; pressing Enter commits the import.
+    /// This lets the user reach the commit action purely by arrowing, instead
+    /// of relying on the "Press Enter" instruction text.
+    pub(crate) continue_focused: bool,
     /// When the screen was first shown, for the single decision countdown.
     pub(crate) shown_at: Instant,
 }
@@ -90,12 +96,17 @@ impl ImportReview {
             candidates,
             checked,
             cursor: 0,
+            continue_focused: false,
             shown_at: Instant::now(),
         })
     }
 
-    /// The candidate the cursor is currently on, if any.
+    /// The candidate the cursor is currently on, if any. Returns `None` while
+    /// the "Continue" pill is focused.
     pub(crate) fn current(&self) -> Option<&crate::external_auth::ExternalAuthReviewCandidate> {
+        if self.continue_focused {
+            return None;
+        }
         self.candidates.get(self.cursor)
     }
 
@@ -109,42 +120,71 @@ impl ImportReview {
         self.candidates.len()
     }
 
-    /// Move the cursor to the previous row (wrapping to the bottom).
+    /// Move focus to the previous item, treating the "Continue" pill as a single
+    /// element that sits both above and below the list. The cycle is:
+    /// Continue -> last row -> ... -> first row -> Continue.
     pub(crate) fn cursor_up(&mut self) {
         if self.candidates.is_empty() {
             return;
         }
-        self.cursor = if self.cursor == 0 {
-            self.candidates.len() - 1
+        if self.continue_focused {
+            // From Continue, step up onto the last row.
+            self.continue_focused = false;
+            self.cursor = self.candidates.len() - 1;
+        } else if self.cursor == 0 {
+            // Above the first row sits the Continue pill.
+            self.continue_focused = true;
         } else {
-            self.cursor - 1
-        };
+            self.cursor -= 1;
+        }
     }
 
-    /// Move the cursor to the next row (wrapping to the top).
+    /// Move focus to the next item. The cycle is:
+    /// first row -> ... -> last row -> Continue -> first row.
     pub(crate) fn cursor_down(&mut self) {
         if self.candidates.is_empty() {
             return;
         }
-        self.cursor = (self.cursor + 1) % self.candidates.len();
+        if self.continue_focused {
+            // From Continue, step down onto the first row.
+            self.continue_focused = false;
+            self.cursor = 0;
+        } else if self.cursor + 1 >= self.candidates.len() {
+            // Below the last row sits the Continue pill.
+            self.continue_focused = true;
+        } else {
+            self.cursor += 1;
+        }
     }
 
-    /// Toggle the checked state of the row under the cursor.
+    /// Toggle the checked state of the row under the cursor. No-op while the
+    /// "Continue" pill is focused.
     pub(crate) fn toggle_current(&mut self) {
+        if self.continue_focused {
+            return;
+        }
         if let Some(slot) = self.checked.get_mut(self.cursor) {
             *slot = !*slot;
         }
     }
 
-    /// Set the checked state of the row under the cursor.
+    /// Set the checked state of the row under the cursor. No-op while the
+    /// "Continue" pill is focused.
     pub(crate) fn set_current(&mut self, checked: bool) {
+        if self.continue_focused {
+            return;
+        }
         if let Some(slot) = self.checked.get_mut(self.cursor) {
             *slot = checked;
         }
     }
 
-    /// Whether the row under the cursor is currently checked.
+    /// Whether the row under the cursor is currently checked. False while the
+    /// "Continue" pill is focused.
     pub(crate) fn current_checked(&self) -> bool {
+        if self.continue_focused {
+            return false;
+        }
         self.checked.get(self.cursor).copied().unwrap_or(false)
     }
 
