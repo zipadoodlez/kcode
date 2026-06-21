@@ -1157,7 +1157,8 @@ impl App {
                 });
                 OnboardingWelcomeKind::Login {
                     import: prompt,
-                    importing: self.onboarding_import_in_progress,
+                    importing: self.onboarding_import_in_progress.is_some(),
+                    error: self.onboarding_import_error.clone(),
                 }
             }
             Some(OnboardingPhase::LoginOpenAi { yes_highlighted }) => {

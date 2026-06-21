@@ -844,13 +844,22 @@ pub struct App {
     /// TUI launches, so no in-TUI login event fires; this lets us still begin the
     /// flow once the TUI is ready and already authenticated.
     onboarding_startup_checked: bool,
-    /// True between committing the login-import screen (Enter on the Yes/No list)
-    /// and the async import resolving via `LoginCompleted`. While set, the
-    /// onboarding welcome card shows an "Importing your logins..." progress state
-    /// instead of the manual-login recovery copy, so the user isn't told to "log
-    /// in again" right after choosing to import. Cleared when the flow advances
-    /// past the Login phase or the import fails.
-    onboarding_import_in_progress: bool,
+    /// `Some(started_at)` between committing the login-import screen (Enter on
+    /// the Yes/No list) and the async import resolving via `LoginCompleted`.
+    /// While set, the onboarding welcome card shows an "Importing your
+    /// logins..." progress state instead of the manual-login recovery copy, so
+    /// the user isn't told to "log in again" right after choosing to import. The
+    /// timestamp lets the onboarding tick watchdog recover the flow if the async
+    /// `LoginCompleted` event never arrives (e.g. a wedged runtime), so the user
+    /// can never be permanently stranded on the progress screen. `None` when no
+    /// import is in flight.
+    onboarding_import_in_progress: Option<Instant>,
+    /// Set when a login import attempt failed (or imported nothing), so the
+    /// onboarding recovery screen can explain what went wrong and give concrete
+    /// next steps instead of the generic first-run "log in to get started" copy.
+    /// `None` when there is no failure to report. Cleared when the user leaves
+    /// the recovery screen (opens the picker) or onboarding advances.
+    onboarding_import_error: Option<String>,
     /// Pending first-run model-validation request for the new-session screen.
     /// In remote/client mode the live default model is reported by the server
     /// asynchronously, so we record that a validation is wanted and let the

@@ -413,7 +413,7 @@ fn import_failure_resets_login_to_manual_prompt() {
         // The async import later fails -> handle_login_failed must reset the
         // Login phase to the clean manual-login prompt so the welcome card stops
         // fighting the error message / donut.
-        app.onboarding_handle_login_failed();
+        app.onboarding_handle_login_failed(Some("Auto import failed: token expired".to_string()));
         assert!(matches!(
             app.onboarding_phase(),
             Some(OnboardingPhase::Login { import: None })
@@ -607,6 +607,69 @@ fn onboarding_picker_shows_both_codex_and_claude_transcripts() {
         assert!(
             saw_claude,
             "Claude Code session should be present in combined picker"
+        );
+    });
+}
+
+#[test]
+fn onboarding_picker_shows_pi_and_opencode_transcripts() {
+    use std::fs;
+    with_temp_jcode_home(|| {
+        // Seed one Pi transcript and one OpenCode session under the
+        // sandbox-aware external home, mirroring a user logged into both.
+        let home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME");
+        let external = std::path::Path::new(&home).join("external");
+
+        let pi_dir = external.join(".pi/agent/sessions/demo-project");
+        fs::create_dir_all(&pi_dir).expect("pi dir");
+        fs::write(
+            pi_dir.join("pi-session-both.jsonl"),
+            concat!(
+                "{\"type\":\"session\",\"id\":\"pi-both-0001\",\"timestamp\":\"2026-04-05T19:00:00Z\",\"cwd\":\"/tmp/pi-demo\"}\n",
+                "{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"PI_MARKER\"}]}\n",
+            ),
+        )
+        .expect("write pi transcript");
+
+        let oc_dir = external.join(".local/share/opencode/storage/session/global");
+        fs::create_dir_all(&oc_dir).expect("opencode dir");
+        fs::write(
+            oc_dir.join("ses_both.json"),
+            concat!(
+                "{\"id\":\"ses_both\",\"directory\":\"/tmp/opencode-demo\",",
+                "\"title\":\"OPENCODE_MARKER demo\",",
+                "\"time\":{\"created\":1775415600000,\"updated\":1775415660000}}",
+            ),
+        )
+        .expect("write opencode session");
+
+        let mut app = onboarding_test_app();
+        app.onboarding_open_transcript_picker(&[ExternalCli::Pi, ExternalCli::OpenCode]);
+
+        let picker_cell = app
+            .session_picker_overlay
+            .as_ref()
+            .expect("picker overlay should be open");
+        let picker = picker_cell.borrow();
+        assert!(
+            picker.visible_session_count() >= 2,
+            "combined picker should list both CLIs' sessions, got {}",
+            picker.visible_session_count()
+        );
+
+        let mut saw_pi = false;
+        let mut saw_opencode = false;
+        for session in picker.visible_session_iter_for_test() {
+            match session.source {
+                jcode_tui_session_picker::SessionSource::Pi => saw_pi = true,
+                jcode_tui_session_picker::SessionSource::OpenCode => saw_opencode = true,
+                _ => {}
+            }
+        }
+        assert!(saw_pi, "Pi session should be present in combined picker");
+        assert!(
+            saw_opencode,
+            "OpenCode session should be present in combined picker"
         );
     });
 }
@@ -901,5 +964,167 @@ fn startup_check_imported_transcripts_do_not_count_as_history() {
             app.onboarding_flow.is_some(),
             "imported transcripts alone should still onboard a fresh install"
         );
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Liveness: a first-run user can never be permanently stranded.
+//
+// The dangerous failure mode is a phase whose only exit depends on an external
+// async event (a `LoginCompleted` bus message) that might never arrive. These
+// tests prove that from every reachable phase there is *always* a forward path
+// using only inputs the user is guaranteed to have: a key press, or the passage
+// of time via the tick watchdog. No test here depends on an async event firing.
+// ---------------------------------------------------------------------------
+
+/// A phase is a "safe resting/exit state" if the user is no longer trapped by
+/// the guided flow: onboarding finished (`None`/`Done`), they reached a ready
+/// surface (`Suggestions`/`TranscriptPick`), or an interactive picker overlay is
+/// open for them to act in.
+fn onboarding_state_is_escapable(app: &App) -> bool {
+    use crate::tui::app::onboarding_flow::OnboardingPhase;
+    if app.inline_interactive_state.is_some() || app.session_picker_overlay.is_some() {
+        return true;
+    }
+    match app.onboarding_phase() {
+        None => true, // flow finished / inactive
+        Some(OnboardingPhase::Suggestions) => true,
+        Some(OnboardingPhase::TranscriptPick { .. }) => true,
+        Some(OnboardingPhase::Done) => true,
+        _ => false,
+    }
+}
+
+#[test]
+fn liveness_every_login_phase_has_a_single_keypress_exit() {
+    use crate::tui::app::onboarding_flow::OnboardingPhase;
+    with_temp_jcode_home(|| {
+        // Each interactive Login-family phase must leave itself after exactly one
+        // decisive key, with no dependence on an async event. We use the "skip /
+        // decline" key, which is always synchronous (it never spawns an import).
+        let cases: Vec<(&str, OnboardingPhase, KeyCode)> = vec![
+            // OpenAI prompt: "n" declines and finishes onboarding immediately.
+            (
+                "LoginOpenAi",
+                OnboardingPhase::LoginOpenAi {
+                    yes_highlighted: true,
+                },
+                KeyCode::Char('n'),
+            ),
+            // Recovery fallback: Enter opens the provider picker overlay.
+            (
+                "Login{import:None}",
+                OnboardingPhase::Login { import: None },
+                KeyCode::Enter,
+            ),
+        ];
+        for (label, phase, key) in cases {
+            let mut app = create_test_app();
+            app.onboarding_flow = None;
+            app.begin_onboarding_flow_at_login();
+            if let Some(flow) = app.onboarding_flow.as_mut() {
+                flow.phase = phase;
+            }
+            assert!(
+                !onboarding_state_is_escapable(&app),
+                "{label}: precondition - should start trapped in the flow"
+            );
+            let consumed = app.handle_onboarding_continue_prompt_key(key);
+            assert!(consumed, "{label}: the exit key must be consumed");
+            assert!(
+                onboarding_state_is_escapable(&app),
+                "{label}: one key press must reach an escapable state"
+            );
+        }
+    });
+}
+
+#[test]
+fn liveness_import_review_decline_all_then_enter_escapes() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::{ImportReview, OnboardingPhase};
+    with_temp_jcode_home(|| {
+        // The import list is the richest interactive phase. Declining every login
+        // ("n") then committing (Enter) must never spawn an async import (so it
+        // can't hang) and must land on the recovery screen, from which a final
+        // Enter opens the provider picker. Whole path is synchronous.
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        let review = ImportReview::new(vec![
+            ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+            ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+        ])
+        .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login {
+                import: Some(review),
+            };
+        }
+        // Decline both logins, then commit.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Down));
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        // No async import was spawned (declined all), so we are not stuck on the
+        // progress screen; we are on the recovery screen.
+        assert!(app.onboarding_import_in_progress.is_none());
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { import: None })
+        ));
+        // Final Enter opens the provider picker -> escapable.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(
+            onboarding_state_is_escapable(&app),
+            "recovery screen + Enter must open the provider picker"
+        );
+    });
+}
+
+#[test]
+fn liveness_stuck_import_is_recovered_by_the_tick_watchdog() {
+    use crate::tui::app::onboarding_flow::OnboardingPhase;
+    with_temp_jcode_home(|| {
+        // Simulate the dangerous state: the import was committed (progress screen
+        // showing) but its `LoginCompleted` event never arrived. The flow sits in
+        // Login{import:None} with `onboarding_import_in_progress` set. Without the
+        // watchdog the user is stranded forever. We backdate the start time past
+        // the watchdog window and assert a single tick recovers the flow into the
+        // failure-aware recovery screen (which has a guaranteed keypress exit).
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login { import: None };
+        }
+        // Enter the "importing" wait, backdated so the watchdog fires immediately.
+        app.onboarding_import_in_progress =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(120));
+        app.onboarding_import_error = None;
+
+        // Precondition: with the import flag set and no error yet, the screen
+        // shows progress and offers no keypress exit.
+        assert!(app.onboarding_import_in_progress.is_some());
+
+        let changed = app.onboarding_tick();
+        assert!(changed, "watchdog tick should change state");
+        // Recovered: no longer "importing", and an error is set so the recovery
+        // screen explains what happened.
+        assert!(
+            app.onboarding_import_in_progress.is_none(),
+            "watchdog must clear the stuck import progress flag"
+        );
+        assert!(
+            app.onboarding_import_error.is_some(),
+            "watchdog recovery must surface a failure reason to the user"
+        );
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { import: None })
+        ));
+        // And from there a single Enter still reaches the provider picker.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(onboarding_state_is_escapable(&app));
     });
 }

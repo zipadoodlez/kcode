@@ -11,9 +11,16 @@ use super::{App, DisplayMessage, SessionPickerMode};
 use crate::tui::session_picker::{self, SessionFilterMode, SessionPicker};
 use crossterm::event::KeyCode;
 use std::cell::RefCell;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 impl App {
+    /// How long the onboarding flow waits on an in-flight login import before
+    /// the tick watchdog assumes the async `LoginCompleted` event is never
+    /// coming and recovers into the failure screen. Generous enough that a slow
+    /// (network) credential validation completes normally, short enough that a
+    /// genuinely wedged import can't trap a first-run user.
+    const ONBOARDING_IMPORT_WATCHDOG: Duration = Duration::from_secs(20);
+
     /// Whether the guided onboarding flow is currently driving the UI.
     pub(super) fn onboarding_flow_active(&self) -> bool {
         self.onboarding_flow
@@ -252,7 +259,8 @@ impl App {
             return;
         }
         // The import (if any) has resolved; leave the progress state.
-        self.onboarding_import_in_progress = false;
+        self.onboarding_import_in_progress = None;
+        self.onboarding_import_error = None;
         // Prompt/transcript content sharing is opt-in and off by default; we
         // intentionally don't prompt for it during onboarding.
         crate::telemetry::set_content_sharing_enabled(false);
@@ -359,6 +367,9 @@ impl App {
                 if import.is_none() {
                     return match code {
                         KeyCode::Enter if self.inline_interactive_state.is_none() => {
+                            // Clear the failure notice now that the user is acting
+                            // on it, so a later retry starts from a clean screen.
+                            self.onboarding_import_error = None;
                             self.show_interactive_login();
                             true
                         }
@@ -638,7 +649,7 @@ impl App {
         if approved.is_empty() {
             // The user declined every detected login. Fall back to manual login
             // so they can still authenticate.
-            self.onboarding_import_in_progress = false;
+            self.onboarding_import_in_progress = None;
             self.set_status_notice("No logins imported. Press Enter to choose a provider.");
             return;
         }
@@ -646,7 +657,7 @@ impl App {
         // Mark the import as in-flight so the welcome card shows an "Importing
         // your logins..." progress state (not the manual-login recovery copy)
         // until the async LoginCompleted event advances or fails the flow.
-        self.onboarding_import_in_progress = true;
+        self.onboarding_import_in_progress = Some(Instant::now());
         // Kick off the import on the runtime; the LoginCompleted event advances
         // onboarding and activates the provider.
         self.set_status_notice("Login: importing selected logins...");
@@ -710,6 +721,8 @@ impl App {
             match headline_cli {
                 ExternalCli::Codex => SessionFilterMode::Codex,
                 ExternalCli::ClaudeCode => SessionFilterMode::ClaudeCode,
+                ExternalCli::Pi => SessionFilterMode::Pi,
+                ExternalCli::OpenCode => SessionFilterMode::OpenCode,
             }
         };
 
@@ -739,7 +752,8 @@ impl App {
             };
         }
         let resume_label = if multi {
-            "Resume a Codex or Claude Code session".to_string()
+            let labels = Self::onboarding_cli_label_list(clis);
+            format!("Resume a {labels} session")
         } else {
             format!("Resume a {} session", headline_cli.label())
         };
@@ -748,14 +762,10 @@ impl App {
         ));
     }
 
-    /// Formatted onboarding prompt shown in the reserved top band of the
-    /// resume picker on first run.
-    fn onboarding_resume_banner_lines(clis: &[ExternalCli]) -> Vec<ratatui::text::Line<'static>> {
-        use ratatui::style::{Color, Modifier, Style};
-        use ratatui::text::{Line, Span};
-        let accent = crate::tui::color_support::rgb(186, 139, 255);
-        // Describe whichever CLIs were detected: "Codex", "Claude Code", or
-        // "Codex and Claude Code" when both are present.
+    /// Join the detected CLI labels into a human-readable list, e.g.
+    /// "Codex", "Codex and Claude Code", or "Codex, Claude Code and Pi".
+    /// De-duplicates while preserving detection order.
+    fn onboarding_cli_label_list(clis: &[ExternalCli]) -> String {
         let mut labels: Vec<&'static str> = Vec::new();
         for cli in clis {
             let label = cli.label();
@@ -763,12 +773,23 @@ impl App {
                 labels.push(label);
             }
         }
-        let found = match labels.as_slice() {
+        match labels.as_slice() {
             [] => "external".to_string(),
             [only] => (*only).to_string(),
             [first, second] => format!("{first} and {second}"),
-            _ => labels.join(", "),
-        };
+            [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        }
+    }
+
+    /// Formatted onboarding prompt shown in the reserved top band of the
+    /// resume picker on first run.
+    fn onboarding_resume_banner_lines(clis: &[ExternalCli]) -> Vec<ratatui::text::Line<'static>> {
+        use ratatui::style::{Color, Modifier, Style};
+        use ratatui::text::{Line, Span};
+        let accent = crate::tui::color_support::rgb(186, 139, 255);
+        // Describe whichever CLIs were detected, e.g. "Codex", "Codex and
+        // Claude Code", or "Codex, Claude Code and Pi" when several are present.
+        let found = Self::onboarding_cli_label_list(clis);
         vec![
             Line::from(vec![Span::styled(
                 "Welcome to jcode 🎉",
@@ -1229,7 +1250,7 @@ impl App {
     /// the Login phase to the clean manual-login prompt so the user can pick a
     /// provider and try again; the pushed error message tells them what went
     /// wrong.
-    pub(super) fn onboarding_handle_login_failed(&mut self) {
+    pub(super) fn onboarding_handle_login_failed(&mut self, reason: Option<String>) {
         let in_login_phase = matches!(
             self.onboarding_flow.as_ref().map(|f| &f.phase),
             Some(OnboardingPhase::Login { .. })
@@ -1242,10 +1263,45 @@ impl App {
         {
             *import = None;
         }
-        self.onboarding_import_in_progress = false;
+        self.onboarding_import_in_progress = None;
+        // Remember a short reason so the recovery screen can explain what went
+        // wrong; fall back to a generic line when no detail is available.
+        self.onboarding_import_error = Some(
+            reason
+                .map(|r| Self::summarize_import_error(&r))
+                .unwrap_or_else(|| "We couldn't import those logins.".to_string()),
+        );
         self.set_status_notice(
             "Import failed. Press Enter to choose a provider and log in manually.",
         );
+    }
+
+    /// Condense a (possibly multi-line markdown) import-failure message into a
+    /// single short sentence suitable for the recovery screen. Keeps the first
+    /// meaningful line and trims markdown/marker noise.
+    fn summarize_import_error(raw: &str) -> String {
+        let cleaned = raw
+            .lines()
+            .map(|l| l.trim())
+            .find(|l| {
+                !l.is_empty()
+                    && !l.starts_with("**")
+                    && !l.eq_ignore_ascii_case("Logins imported")
+            })
+            .unwrap_or("We couldn't import those logins.")
+            .trim_start_matches(['✕', '✓', '-', ' '])
+            .trim();
+        let cleaned = if cleaned.is_empty() {
+            "We couldn't import those logins."
+        } else {
+            cleaned
+        };
+        // Keep it to a single, screen-friendly line.
+        let mut s: String = cleaned.chars().take(120).collect();
+        if cleaned.chars().count() > 120 {
+            s.push('…');
+        }
+        s
     }
 
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if
@@ -1269,6 +1325,29 @@ impl App {
         }
         if !self.onboarding_flow_active() {
             return changed;
+        }
+
+        // Watchdog: the login-import runs asynchronously and advances the flow
+        // only when its `LoginCompleted` event arrives. If that event never
+        // lands (a wedged runtime, a dropped bus event, a sandbox with no
+        // runtime), the user would otherwise be stranded forever on the
+        // "Importing your logins..." screen. After a hard timeout we recover the
+        // flow into the failure-aware recovery screen so the user always has a
+        // way forward (Enter -> provider picker).
+        if let Some(started_at) = self.onboarding_import_in_progress {
+            if started_at.elapsed() >= Self::ONBOARDING_IMPORT_WATCHDOG
+                && matches!(
+                    self.onboarding_phase(),
+                    Some(OnboardingPhase::Login { import: None })
+                )
+            {
+                self.onboarding_handle_login_failed(Some(
+                    "The import is taking longer than expected.".to_string(),
+                ));
+                return true;
+            }
+            // Keep redrawing so the progress screen animates while we wait.
+            changed = true;
         }
 
         // Drive the longer (60s) yes/no decision phases: the login-import
@@ -1309,7 +1388,9 @@ impl App {
         }
 
         // The transcript/resume picker no longer auto-selects: the user either
-        // resumes a session or chooses "Start a new session" explicitly.
-        false
+        // resumes a session or chooses "Start a new session" explicitly. Return
+        // `changed` so the import-progress watchdog keeps the screen repainting
+        // while it waits.
+        changed
     }
 }

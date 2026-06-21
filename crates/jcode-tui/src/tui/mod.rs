@@ -720,10 +720,13 @@ pub enum OnboardingWelcomeKind {
     /// When `None` and `importing` is false, there was nothing to import and the
     /// card points the user at the provider picker. When `None` and `importing`
     /// is true, the user just committed the import and it is running, so the card
-    /// shows an "Importing your logins..." progress state.
+    /// shows an "Importing your logins..." progress state. When `error` is
+    /// `Some`, a prior import failed and the recovery copy explains what went
+    /// wrong plus the concrete next step.
     Login {
         import: Option<LoginImportPrompt>,
         importing: bool,
+        error: Option<String>,
     },
     /// Ask the user whether to log in to OpenAI (no detected imports). A
     /// highlightable Yes/No selector; `yes_highlighted` reflects the current

@@ -210,7 +210,11 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 
     use crate::tui::OnboardingWelcomeKind;
     match app.onboarding_welcome_kind() {
-        OnboardingWelcomeKind::Login { import, importing } => {
+        OnboardingWelcomeKind::Login {
+            import,
+            importing,
+            error,
+        } => {
             lines.push(Line::from(""));
             match import {
                 None if importing => {
@@ -229,6 +233,46 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     lines.push(
                         Line::from(Span::styled(
                             "Hang tight, this only takes a moment.",
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
+                }
+                None if error.is_some() => {
+                    // A prior import failed. Explain what happened and give a
+                    // concrete, guaranteed next step (Enter opens the picker).
+                    let reason = error.unwrap_or_default();
+                    lines.push(
+                        Line::from(Span::styled(
+                            "We couldn't import those logins.",
+                            Style::default()
+                                .fg(rgb(240, 180, 120))
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    if !reason.is_empty() {
+                        lines.push(
+                            Line::from(Span::styled(
+                                reason,
+                                Style::default().fg(dim_color()),
+                            ))
+                            .alignment(align),
+                        );
+                    }
+                    lines.push(Line::from(""));
+                    lines.push(
+                        Line::from(Span::styled(
+                            "No problem - you can log in directly.",
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Press Enter to choose a provider (OpenAI, Anthropic, and more).",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),

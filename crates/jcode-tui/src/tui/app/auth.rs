@@ -2668,13 +2668,16 @@ impl App {
                 &login.provider,
                 &login.message,
             );
-            self.push_display_message(DisplayMessage::error(message));
-            self.set_status_notice(format!("Login: {} failed", login.provider));
-            // If onboarding is driving the Login phase, a failed auto-import
-            // would otherwise leave the welcome card up forever (fighting the
-            // error message and the spinning donut). Clear the onboarding
-            // takeover so the normal chat view + manual login prompt take over.
-            self.onboarding_handle_login_failed();
+            // During onboarding we route the failure to the recovery screen
+            // (which explains next steps) instead of dumping a raw error message
+            // and a status notice the user can miss.
+            if self.onboarding_flow_active() {
+                self.onboarding_handle_login_failed(Some(message));
+            } else {
+                self.push_display_message(DisplayMessage::error(message));
+                self.set_status_notice(format!("Login: {} failed", login.provider));
+                self.onboarding_handle_login_failed(None);
+            }
         }
         if self.pending_login.is_some() {
             self.pending_login = None;
