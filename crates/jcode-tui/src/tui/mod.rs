@@ -1314,10 +1314,24 @@ fn idle_donut_active_with_policy(
     policy.enable_decorative_animations
         && crate::config::config().display.idle_animation
         && policy.tier.idle_animation_enabled()
-        && state.display_messages().is_empty()
+        && !has_started_conversation(state)
         && !state.is_processing()
         && state.streaming_text().is_empty()
         && state.queued_messages().is_empty()
+}
+
+/// Whether the transcript contains any real conversation yet (a user prompt or
+/// an assistant/tool/reasoning reply). A fresh screen that only holds
+/// non-conversational notices (e.g. the "run /login when you're ready" system
+/// message left after onboarding is declined) is still "idle", so the decorative
+/// donut should keep spinning until the user actually starts chatting.
+fn has_started_conversation(state: &dyn TuiState) -> bool {
+    state.display_messages().iter().any(|m| {
+        matches!(
+            m.role.as_str(),
+            "user" | "assistant" | "tool" | "reasoning"
+        )
+    })
 }
 
 pub(crate) fn idle_donut_active(state: &dyn TuiState) -> bool {
