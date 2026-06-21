@@ -936,6 +936,11 @@ fn body_prose_lines(text: &str) -> Vec<String> {
         if t.contains(CANONICAL_YESNO_PILL) {
             continue;
         }
+        // The import two-column widget rows (circle markers / divider / Next
+        // button) are interactive chrome, not prose to "read".
+        if t.contains('●') || t.contains('○') || t.contains('│') {
+            continue;
+        }
         // ASCII logo art: lines dominated by non-alphabetic symbols.
         let alpha = t.chars().filter(|c| c.is_ascii_alphabetic()).count();
         let nonspace = t.chars().filter(|c| !c.is_whitespace()).count();

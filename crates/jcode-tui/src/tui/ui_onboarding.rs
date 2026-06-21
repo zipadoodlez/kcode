@@ -65,6 +65,71 @@ fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     .alignment(align)
 }
 
+/// Render the import screen's two-column body: the importable logins on the
+/// left (left-aligned, filled circle = will import, hollow = skipped) separated
+/// by a vertical divider from a single "Next" button on the right, centered
+/// vertically against the list.
+///
+/// The circle markers and the divider are interactive-widget glyphs (like the
+/// idle donut and the Yes/No pill), not load-bearing prose: the surrounding
+/// ASCII copy ("We found N existing logins", "Imports all checked in Ns")
+/// already conveys state in plain text, so the checked state never *depends* on
+/// the glyph rendering.
+fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = Vec::new();
+
+    // Left column width: the widest "<circle> Provider (source)" entry, so the
+    // divider lines up in a clean column.
+    let left_width = prompt
+        .rows
+        .iter()
+        .map(|r| 2 + r.provider_summary.chars().count() + 2 + r.source_name.chars().count() + 1)
+        .max()
+        .unwrap_or(0)
+        .max(12);
+
+    // The "Next" button sits vertically centered against the list rows.
+    let button_row = prompt.rows.len() / 2;
+    let next_selected = Style::default()
+        .fg(welcome_accent())
+        .add_modifier(Modifier::BOLD | Modifier::REVERSED);
+
+    for (i, row) in prompt.rows.iter().enumerate() {
+        let is_cursor = i == prompt.cursor;
+        // Filled circle = will import; hollow circle = skipped.
+        let marker = if row.checked { "● " } else { "○ " };
+        let label_style = if is_cursor {
+            Style::default()
+                .fg(welcome_accent())
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else if row.checked {
+            Style::default().fg(rgb(200, 200, 200))
+        } else {
+            Style::default().fg(dim_color())
+        };
+
+        // Compose the left cell, then pad it out to left_width so the divider
+        // aligns regardless of provider/source length.
+        let left_text = format!("{}{} ({})", marker, row.provider_summary, row.source_name);
+        let pad = left_width.saturating_sub(left_text.chars().count());
+        let mut spans: Vec<Span<'static>> = vec![
+            Span::styled(marker, label_style),
+            Span::styled(row.provider_summary.clone(), label_style),
+            Span::styled(format!(" ({})", row.source_name), Style::default().fg(dim_color())),
+            Span::raw(" ".repeat(pad)),
+        ];
+
+        // Divider + (on the centered row) the Next button.
+        spans.push(Span::styled(" │ ", Style::default().fg(dim_color())));
+        if i == button_row {
+            spans.push(Span::styled(" Next > ", next_selected));
+        }
+        out.push(Line::from(spans).alignment(Alignment::Center));
+    }
+
+    out
+}
+
 /// Grayed telemetry notice shown at the very top of the onboarding screen.
 fn telemetry_header_lines(width: u16) -> Vec<Line<'static>> {
     let align = Alignment::Center;
@@ -160,54 +225,27 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(Line::from(""));
 
-                    // One checkbox row per detected login. The cursor row is
-                    // reverse-highlighted; the checkbox itself shows checked
-                    // state with a NON-color marker ([x] vs [ ]) so it reads
-                    // correctly without color.
-                    for (i, row) in prompt.rows.iter().enumerate() {
-                        let is_cursor = i == prompt.cursor;
-                        let marker = if row.checked { "[x] " } else { "[ ] " };
-                        let label_style = if is_cursor {
-                            Style::default()
-                                .fg(welcome_accent())
-                                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
-                        } else if row.checked {
-                            Style::default().fg(rgb(200, 200, 200))
-                        } else {
-                            Style::default().fg(dim_color())
-                        };
-                        lines.push(
-                            Line::from(vec![
-                                Span::styled(marker, label_style),
-                                Span::styled(row.provider_summary.clone(), label_style),
-                                Span::styled(
-                                    format!(" ({})", row.source_name),
-                                    Style::default().fg(dim_color()),
-                                ),
-                            ])
-                            .alignment(align),
-                        );
-                    }
+                    // Two-column widget: the importable logins on the LEFT
+                    // (left-aligned, a filled circle = will import, hollow =
+                    // skipped), a vertical divider in the middle, and a single
+                    // "Next" button on the RIGHT (vertically centered against
+                    // the list).
+                    lines.extend(import_two_column_lines(&prompt));
                     lines.push(Line::from(""));
 
-                    // The single "Import" action commits all checked logins.
                     lines.push(
                         Line::from(Span::styled(
-                            format!(
-                                "Press Enter to import {} selected login{}.",
-                                prompt.checked_count,
-                                if prompt.checked_count == 1 { "" } else { "s" },
-                            ),
-                            Style::default()
-                                .fg(welcome_accent())
-                                .add_modifier(Modifier::BOLD),
+                            "Up/down to move, Space to toggle a login.",
+                            Style::default().fg(dim_color()),
                         ))
                         .alignment(align),
                     );
                     lines.push(
                         Line::from(Span::styled(
-                            "Up/down to move, Space to toggle a login on or off.",
-                            Style::default().fg(dim_color()),
+                            "Press Enter to continue.",
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
                         ))
                         .alignment(align),
                     );

@@ -100,7 +100,7 @@ fn onboarding_golden_walks_every_phase() {
         );
     }
 
-    // 2. Login with detected imports (single-screen multi-select checkbox list).
+    // 2. Login with detected imports (two-column list + Next button).
     {
         let review = ImportReview::new(vec![
             ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
@@ -111,16 +111,19 @@ fn onboarding_golden_walks_every_phase() {
             import: Some(review),
         });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (import checkbox list, 2 logins)", &text);
+        dump("Login (import two-column list, 2 logins)", &text);
         assert!(text.contains("We found 2 existing logins."), "count: {text}");
-        // Both logins are listed at once, each as a checkbox row (pre-checked).
+        // Both logins are listed at once, each with a circle marker.
         assert!(text.contains("OpenAI/Codex"), "provider 1: {text}");
         assert!(text.contains("Codex auth.json"), "source 1: {text}");
         assert!(text.contains("Claude"), "provider 2: {text}");
-        assert!(text.contains("[x]"), "checkbox marker: {text}");
+        assert!(text.contains('●'), "filled circle marker (pre-checked): {text}");
+        // The vertical divider separates the list from the Next button.
+        assert!(text.contains('│'), "column divider: {text}");
+        assert!(text.contains("Next >"), "next button: {text}");
         assert!(
-            text.contains("Press Enter to import 2 selected logins."),
-            "import action: {text}"
+            text.contains("Press Enter to continue."),
+            "continue action: {text}"
         );
         assert!(
             text.contains("Space to toggle"),
@@ -138,15 +141,12 @@ fn onboarding_golden_walks_every_phase() {
             import: Some(review),
         });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (import checkbox list, single login)", &text);
+        dump("Login (import two-column list, single login)", &text);
         assert!(
             text.contains("We found 1 existing login."),
             "singular count: {text}"
         );
-        assert!(
-            text.contains("Press Enter to import 1 selected login."),
-            "singular import action: {text}"
-        );
+        assert!(text.contains("Next >"), "next button: {text}");
     }
 
     // 4. Continue prompt (resume an external session).
