@@ -1162,7 +1162,16 @@ impl App {
                     self.enqueue_mouse_scroll(MouseScrollTarget::ChangelogOverlay, 1);
                     finish_mouse_event!(true, "changelog_overlay_scroll_down");
                 }
-                _ => finish_mouse_event!(false, "changelog_overlay_non_scroll"),
+                _ => {
+                    // Let the shared copy-selection machinery handle press/drag/
+                    // release so text in the overlay can be selected and copied,
+                    // just like the chat viewport. Mouse capture otherwise blocks
+                    // native terminal selection here.
+                    if let Some(scroll_only) = self.handle_copy_selection_mouse(mouse) {
+                        finish_mouse_event!(scroll_only, "changelog_overlay_copy_selection");
+                    }
+                    finish_mouse_event!(false, "changelog_overlay_non_scroll");
+                }
             }
         }
 

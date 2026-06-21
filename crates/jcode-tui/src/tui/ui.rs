@@ -1681,6 +1681,42 @@ pub(crate) fn record_side_pane_snapshot(
     visible_end: usize,
     content_area: Rect,
 ) {
+    record_pane_snapshot_from_lines(
+        crate::tui::CopySelectionPane::SidePane,
+        wrapped_lines,
+        scroll,
+        visible_end,
+        content_area,
+    );
+}
+
+/// Record a copy-selection snapshot for the chat pane from already-wrapped
+/// display lines. Used by full-screen overlays (e.g. `/changelog`) that replace
+/// the chat viewport but still want drag-to-select-and-copy support. Each
+/// display line is treated as a single raw line, so the copied text matches the
+/// rendered text verbatim.
+pub(crate) fn record_chat_overlay_copy_snapshot(
+    wrapped_lines: &[Line<'static>],
+    scroll: usize,
+    visible_end: usize,
+    content_area: Rect,
+) {
+    record_pane_snapshot_from_lines(
+        crate::tui::CopySelectionPane::Chat,
+        wrapped_lines,
+        scroll,
+        visible_end,
+        content_area,
+    );
+}
+
+fn record_pane_snapshot_from_lines(
+    pane: crate::tui::CopySelectionPane,
+    wrapped_lines: &[Line<'static>],
+    scroll: usize,
+    visible_end: usize,
+    content_area: Rect,
+) {
     let left_margins = line_left_margins_for_area(wrapped_lines, content_area.width);
     let raw_plain_lines: Vec<String> = wrapped_lines.iter().map(line_plain_text).collect();
     let wrapped_line_map: Vec<WrappedLineMap> = raw_plain_lines
@@ -1695,7 +1731,8 @@ pub(crate) fn record_side_pane_snapshot(
     let visible_left_margins = left_margins
         .get(scroll..visible_end.min(left_margins.len()))
         .unwrap_or(&[]);
-    record_side_pane_snapshot_precomputed(
+    record_copy_pane_snapshot(
+        pane,
         Arc::new(raw_plain_lines.clone()),
         Arc::new(vec![0; wrapped_lines.len()]),
         Arc::new(raw_plain_lines),
@@ -2219,7 +2256,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     clear_area(frame, area);
 
     if let Some(scroll) = app.changelog_scroll() {
-        overlays::draw_changelog_overlay(frame, area, scroll);
+        overlays::draw_changelog_overlay(frame, area, scroll, app);
         finalize_frame_metrics(
             app,
             total_start,
