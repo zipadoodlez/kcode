@@ -2422,6 +2422,16 @@ pub async fn run_single_message_command(
         super::provider_init::init_provider_for_validation(choice, model).await?
     };
     let registry = crate::tool::Registry::new(provider.clone()).await;
+    // Load MCP servers from ~/.jcode/mcp.json so headless `jcode run` has the
+    // same `mcp__*` tools as interactive/server sessions. This is non-blocking:
+    // `register_mcp_tools` advertises cached tool schemas synchronously (so the
+    // first locked tool snapshot already contains MCP tools, for zero
+    // prompt-cache miss) and connects in the background (connect-on-first-call).
+    // For a short single-message run, startup latency is unchanged.
+    // (#390, #206 Phase 2)
+    if run_command_mcp_enabled() {
+        registry.register_mcp_tools(None, None, None).await;
+    }
     let mut agent = crate::agent::Agent::new(provider.clone(), registry);
     restore_agent_session_if_requested(&mut agent, resume_session)?;
 
@@ -2446,6 +2456,19 @@ pub async fn run_single_message_command(
 
 fn run_command_auto_poke_enabled() -> bool {
     std::env::var("JCODE_RUN_AUTO_POKE")
+        .ok()
+        .map(|value| {
+            let value = value.trim().to_ascii_lowercase();
+            !matches!(value.as_str(), "0" | "false" | "off" | "no")
+        })
+        .unwrap_or(true)
+}
+
+/// Whether headless `jcode run` should load MCP servers from `~/.jcode/mcp.json`.
+/// Enabled by default; set `JCODE_RUN_MCP=0` (or `false`/`off`/`no`) to skip MCP
+/// registration for latency-sensitive scripting. (#390)
+fn run_command_mcp_enabled() -> bool {
+    std::env::var("JCODE_RUN_MCP")
         .ok()
         .map(|value| {
             let value = value.trim().to_ascii_lowercase();
