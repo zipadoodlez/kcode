@@ -108,7 +108,7 @@ impl SessionPicker {
         let canary_marker = if session.is_canary { " 🔬" } else { "" };
         let debug_marker = if session.is_debug { " 🧪" } else { "" };
         let saved_marker = if session.saved { " 📌" } else { "" };
-        let selection_marker = if is_marked { "[x] " } else { "[ ] " };
+        let selection_marker = if is_marked { "● " } else { "○ " };
         let selection_style = if is_marked {
             Style::default()
                 .fg(rgb(140, 220, 160))
