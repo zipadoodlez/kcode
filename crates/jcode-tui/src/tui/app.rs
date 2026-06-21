@@ -92,6 +92,7 @@ mod todos_view;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
 mod tui_state;
+mod shortcut_hints;
 mod turn;
 mod turn_memory;
 mod turn_notify;
@@ -1154,6 +1155,8 @@ pub struct App {
     dictation_key: OptionalBinding,
     // Optional configured keybinding for spawning a fresh session in a new terminal
     new_terminal_key: OptionalBinding,
+    // Optional configured keybinding for opening the /resume session picker
+    open_resume_key: OptionalBinding,
     // Active external dictation session, if one is running
     dictation_session: Option<dictation::ActiveDictation>,
     // Whether an external dictation command is currently running

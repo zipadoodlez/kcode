@@ -140,7 +140,7 @@ impl App {
                 "/split\nSplit the current session into a new window. Clones the full conversation history so both sessions continue from the same point."
             }
             "resume" | "sessions" => {
-                "/resume\nOpen the interactive session picker. Browse and search all sessions, preview conversation history, and resume the highlighted session. By default, Enter resumes in the current terminal and Ctrl+Enter opens a new terminal; keybindings.session_picker_enter can swap those actions.\n\nPress Esc to return to your current session."
+                "/resume\nOpen the interactive session picker. Browse and search all sessions, preview conversation history, and resume the highlighted session. By default, Enter resumes in the current terminal and Ctrl+Enter opens a new terminal; keybindings.session_picker_enter can swap those actions.{resume_shortcut}\n\nPress Esc to return to your current session."
             }
             "info" => "/info\nShow session metadata and token usage.",
             "context" => {
@@ -189,6 +189,11 @@ impl App {
             "{effort_keys}",
             &crate::tui::keybind::effort_switch_keys_label(),
         );
+        let resume_shortcut = match crate::tui::keybind::load_open_resume_key().label {
+            Some(label) => format!(" You can also press {label} to open it directly."),
+            None => String::new(),
+        };
+        let help = help.replace("{resume_shortcut}", &resume_shortcut);
         Some(help)
     }
 }

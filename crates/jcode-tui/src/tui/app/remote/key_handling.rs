@@ -326,6 +326,11 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
+    if app.open_resume_key_matches(code, modifiers) {
+        app.open_session_picker();
+        return Ok(());
+    }
+
     if handle_workspace_navigation_key(app, code, modifiers, remote).await? {
         return Ok(());
     }
@@ -1625,6 +1630,7 @@ async fn handle_remote_key_internal(
 
                 if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
                     app.open_session_picker();
+                    app.hint_resume_shortcut();
                     return Ok(());
                 }
 

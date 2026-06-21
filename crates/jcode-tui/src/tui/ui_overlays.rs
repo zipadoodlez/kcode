@@ -468,6 +468,9 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     if let Some(label) = app.dictation_key_label() {
         lines.push(key_entry(&label, "Run configured dictation"));
     }
+    if let Some(label) = crate::tui::keybind::load_open_resume_key().label {
+        lines.push(key_entry(&label, "Open the /resume session picker"));
+    }
     if let Some(label) = crate::tui::keybind::load_new_terminal_key().label {
         lines.push(key_entry(
             &label,

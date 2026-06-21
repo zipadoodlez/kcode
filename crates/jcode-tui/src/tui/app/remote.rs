@@ -1547,6 +1547,11 @@ fn handle_disconnected_key_internal(
         return Ok(());
     }
 
+    if app.open_resume_key_matches(code, modifiers) {
+        app.open_session_picker();
+        return Ok(());
+    }
+
     if code == KeyCode::Enter && modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) {
         input::insert_input_text(app, "\n");
         return Ok(());

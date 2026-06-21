@@ -457,6 +457,23 @@ pub fn load_new_terminal_key() -> OptionalBinding {
     }
 }
 
+/// Optional binding that opens the `/resume` session picker.
+/// Default: Cmd+R on macOS, Alt+R elsewhere. Set "" to disable.
+pub fn load_open_resume_key() -> OptionalBinding {
+    let cfg = config();
+    let raw = cfg.keybindings.open_resume.trim();
+    if raw.is_empty() || is_disabled(raw) {
+        return OptionalBinding::default();
+    }
+    match parse_keybinding(raw) {
+        Some(binding) => OptionalBinding {
+            label: Some(format_binding(&binding)),
+            binding: Some(binding),
+        },
+        None => OptionalBinding::default(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

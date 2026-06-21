@@ -316,6 +316,14 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
         macos: PlatformDefault::dev("cmd+shift+;"),
         other: PlatformDefault::dev("alt+shift+;"),
     },
+    KeybindingDefault {
+        id: "open_resume",
+        description: "Open the /resume session picker",
+        // Cmd+R is free in jcode on macOS. On Windows/Linux, Ctrl+R is already
+        // taken by session recovery, so use Alt+R there.
+        macos: PlatformDefault::dev("cmd+r"),
+        other: PlatformDefault::dev("alt+r"),
+    },
 ];
 
 /// Look up a keybinding action by id.

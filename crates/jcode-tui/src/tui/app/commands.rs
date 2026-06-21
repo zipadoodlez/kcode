@@ -1669,6 +1669,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
         app.open_session_picker();
+        app.hint_resume_shortcut();
         return true;
     }
 

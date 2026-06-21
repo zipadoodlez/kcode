@@ -754,6 +754,9 @@ pub struct KeybindingsConfig {
     /// Spawn a fresh jcode session in a new terminal window (default: unbound).
     /// Example: "alt+enter".
     pub new_terminal: String,
+    /// Open the `/resume` session picker (default: "cmd+r" on macOS, "ctrl+r"
+    /// elsewhere). Set "" to disable.
+    pub open_resume: String,
     /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
     /// Ctrl+Enter performs the alternate action.
     pub session_picker_enter: SessionPickerResumeAction,
@@ -794,6 +797,7 @@ impl Default for KeybindingsConfig {
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
             new_terminal: get("new_terminal", ""),
+            open_resume: get("open_resume", if cfg!(target_os = "macos") { "cmd+r" } else { "alt+r" }),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }

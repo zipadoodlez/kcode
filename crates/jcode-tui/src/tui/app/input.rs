@@ -1099,6 +1099,15 @@ impl App {
             .unwrap_or(false)
     }
 
+    /// Whether the configured `keybindings.open_resume` chord matches this key.
+    pub(crate) fn open_resume_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        self.open_resume_key
+            .binding
+            .as_ref()
+            .map(|binding| binding.matches(code, modifiers))
+            .unwrap_or(false)
+    }
+
     /// Spawn a brand-new jcode session in a new terminal window.
     pub(crate) fn handle_new_terminal_hotkey(&mut self) {
         let cwd = commands::active_working_dir(self)
@@ -1554,6 +1563,10 @@ pub(super) fn handle_pre_control_shortcuts(
     }
     if app.new_terminal_key_matches(code, modifiers) {
         app.handle_new_terminal_hotkey();
+        return true;
+    }
+    if app.open_resume_key_matches(code, modifiers) {
+        app.open_session_picker();
         return true;
     }
     if let Some(direction) = app.model_switch_keys.direction_for(code, modifiers) {
