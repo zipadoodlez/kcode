@@ -78,30 +78,39 @@ fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
 fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
     let mut out: Vec<Line<'static>> = Vec::new();
 
-    // Left column width: the widest "<circle> Provider (source)" entry, so the
-    // divider lines up in a clean column.
+    // Left column width: the widest "<cursor><circle> Provider (source)" entry,
+    // so the divider lines up in a clean column. The 2-cell cursor gutter is
+    // included so the divider does not shift when the cursor moves.
     let left_width = prompt
         .rows
         .iter()
-        .map(|r| 2 + r.provider_summary.chars().count() + 2 + r.source_name.chars().count() + 1)
+        .map(|r| 2 + 2 + r.provider_summary.chars().count() + 2 + r.source_name.chars().count() + 1)
         .max()
         .unwrap_or(0)
         .max(12);
 
     // The "Next" button sits vertically centered against the list rows.
     let button_row = prompt.rows.len() / 2;
-    let next_selected = Style::default()
+    let next_style = Style::default()
         .fg(welcome_accent())
-        .add_modifier(Modifier::BOLD | Modifier::REVERSED);
+        .add_modifier(Modifier::BOLD);
+
+    // Right column reserves the button's width on *every* row so all lines are
+    // the same total width. Because each line is individually centered, equal
+    // width is what keeps the divider in a single, aligned vertical column.
+    const NEXT_LABEL: &str = " Next > ";
+    let right_width = NEXT_LABEL.chars().count();
 
     for (i, row) in prompt.rows.iter().enumerate() {
         let is_cursor = i == prompt.cursor;
         // Filled circle = will import; hollow circle = skipped.
         let marker = if row.checked { "● " } else { "○ " };
+        // A `> ` gutter marks the cursor row instead of a reversed color block.
+        let cursor_marker = if is_cursor { "> " } else { "  " };
         let label_style = if is_cursor {
             Style::default()
                 .fg(welcome_accent())
-                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+                .add_modifier(Modifier::BOLD)
         } else if row.checked {
             Style::default().fg(rgb(200, 200, 200))
         } else {
@@ -110,19 +119,27 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
 
         // Compose the left cell, then pad it out to left_width so the divider
         // aligns regardless of provider/source length.
-        let left_text = format!("{}{} ({})", marker, row.provider_summary, row.source_name);
+        let left_text = format!(
+            "{}{}{} ({})",
+            cursor_marker, marker, row.provider_summary, row.source_name
+        );
         let pad = left_width.saturating_sub(left_text.chars().count());
         let mut spans: Vec<Span<'static>> = vec![
+            Span::styled(cursor_marker, label_style),
             Span::styled(marker, label_style),
             Span::styled(row.provider_summary.clone(), label_style),
             Span::styled(format!(" ({})", row.source_name), Style::default().fg(dim_color())),
             Span::raw(" ".repeat(pad)),
         ];
 
-        // Divider + (on the centered row) the Next button.
-        spans.push(Span::styled(" │ ", Style::default().fg(dim_color())));
+        // Divider, then the right column. The button only renders on the center
+        // row, but every other row pads the same width so the divider column and
+        // overall line width stay constant (and thus aligned under centering).
+        spans.push(Span::styled("│", Style::default().fg(dim_color())));
         if i == button_row {
-            spans.push(Span::styled(" Next > ", next_selected));
+            spans.push(Span::styled(NEXT_LABEL, next_style));
+        } else {
+            spans.push(Span::raw(" ".repeat(right_width)));
         }
         out.push(Line::from(spans).alignment(Alignment::Center));
     }
