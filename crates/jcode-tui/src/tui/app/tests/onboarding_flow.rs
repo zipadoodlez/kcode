@@ -1280,6 +1280,13 @@ fn import_failure_h_key_prepares_agent_repair_brief() {
         assert!(brief.contains("jcode auth-test --provider openai --json"), "{brief}");
         assert!(brief.contains("--api-key-stdin"), "{brief}");
         assert!(brief.contains("the saved credential was rejected"), "{brief}");
+        // The brief was also persisted to a stable path a helper agent can read.
+        let brief_path = crate::tui::app::onboarding_repair::repair_brief_path()
+            .expect("repair brief path");
+        assert!(brief_path.exists(), "brief file should be written: {brief_path:?}");
+        let on_disk = std::fs::read_to_string(&brief_path).expect("read brief file");
+        assert!(on_disk.contains("jcode auth-test --provider openai --json"), "{on_disk}");
+        assert!(brief.contains(&brief_path.display().to_string()), "brief cites its own path");
         // Staying on the recovery screen, Enter still opens the provider picker.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
         assert!(app.inline_interactive_state.is_some());

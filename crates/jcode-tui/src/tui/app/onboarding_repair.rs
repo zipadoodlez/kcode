@@ -199,6 +199,26 @@ the onboarding screen to choose the provider you just fixed).\n",
     brief
 }
 
+/// Stable path where the latest onboarding repair brief is written, so a helper
+/// agent launched in this directory can simply `cat` it without the user having
+/// to paste anything. Lives under the jcode home so it honors `JCODE_HOME`.
+pub(crate) fn repair_brief_path() -> Option<PathBuf> {
+    crate::storage::jcode_dir()
+        .ok()
+        .map(|dir| dir.join("onboarding-repair-brief.txt"))
+}
+
+/// Write the repair brief to [`repair_brief_path`] so an agent can read it
+/// directly. Returns the path on success.
+pub(crate) fn persist_repair_brief(brief: &str) -> Option<PathBuf> {
+    let path = repair_brief_path()?;
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(&path, brief).ok()?;
+    Some(path)
+}
+
 /// One-line status to show after preparing the brief, naming the agent and how
 /// to use the copied brief.
 pub(crate) fn repair_brief_status(agent: Option<RepairAgent>, copied: bool) -> String {
@@ -244,7 +264,8 @@ mod tests {
     #[test]
     fn brief_without_provider_or_agent_is_still_actionable() {
         let brief = build_repair_brief(None, "unknown failure", None);
-        assert!(brief.contains("jcode auth-test --provider <provider> --json"), "{brief}");
+        // With no provider hint we point the agent at --all-configured.
+        assert!(brief.contains("jcode auth-test --all-configured --json"), "{brief}");
         assert!(brief.contains("jcode auth doctor"), "{brief}");
         // No agent label, but still tells the user what to do.
         assert!(brief.contains("restart jcode"), "{brief}");

@@ -693,6 +693,12 @@ impl App {
         // your logins..." progress state (not the manual-login recovery copy)
         // until the async LoginCompleted event advances or fails the flow.
         self.onboarding_import_in_progress = Some(Instant::now());
+        // Remember the first approved login's provider so a later failure can
+        // target the agent repair brief at the right `jcode auth-test --provider`.
+        self.onboarding_import_failed_provider = approved
+            .first()
+            .and_then(|&i| candidates.get(i))
+            .and_then(|c| c.telemetry_auth_labels().first().map(|(p, _)| p.to_string()));
         // Kick off the import on the runtime; the LoginCompleted event advances
         // onboarding and activates the provider.
         self.set_status_notice("Login: importing selected logins...");
@@ -1359,7 +1365,12 @@ impl App {
         };
         let agent = onboarding_repair::detect_preferred_repair_agent();
         let provider = self.onboarding_import_failed_provider.as_deref();
-        let brief = onboarding_repair::build_repair_brief(agent, &failure, provider);
+        let mut brief = onboarding_repair::build_repair_brief(agent, &failure, provider);
+        // Persist the brief to a stable path so a helper agent launched in this
+        // directory can read it directly (cat it) instead of relying on a paste.
+        if let Some(path) = onboarding_repair::persist_repair_brief(&brief) {
+            brief.push_str(&format!("\nThis brief is saved at: {}\n", path.display()));
+        }
         let copied = super::helpers::copy_to_clipboard(&brief);
         // Show the brief in the transcript so it is visible even if the
         // clipboard is unavailable (SSH, no display server).
