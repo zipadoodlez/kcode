@@ -376,6 +376,17 @@ impl ScrollKeys {
                 _ => {}
             }
         }
+
+        // macOS: Option (Alt) + K / J mirror Cmd+K / Cmd+J for prompt navigation.
+        // Many terminals forward Option as ALT with the bare 'k'/'j' character, so
+        // treat those the same as the Command-based prompt jumps above.
+        if modifiers.contains(KeyModifiers::ALT) {
+            match code {
+                KeyCode::Char('k') | KeyCode::Char('K') => return Some(-1),
+                KeyCode::Char('j') | KeyCode::Char('J') => return Some(1),
+                _ => {}
+            }
+        }
         None
     }
 
@@ -735,6 +746,16 @@ mod tests {
             assert_eq!(keys.prompt_jump(KeyCode::Char('j'), mods), Some(1));
             assert_eq!(keys.prompt_jump(KeyCode::Char('J'), mods), Some(1));
         }
+    }
+
+    #[test]
+    fn test_prompt_jump_option_jk() {
+        // Option (Alt) + K / J mirror Cmd+K / Cmd+J for prompt navigation on macOS.
+        let keys = test_scroll_keys();
+        assert_eq!(keys.prompt_jump(KeyCode::Char('k'), KeyModifiers::ALT), Some(-1));
+        assert_eq!(keys.prompt_jump(KeyCode::Char('K'), KeyModifiers::ALT), Some(-1));
+        assert_eq!(keys.prompt_jump(KeyCode::Char('j'), KeyModifiers::ALT), Some(1));
+        assert_eq!(keys.prompt_jump(KeyCode::Char('J'), KeyModifiers::ALT), Some(1));
     }
 
     #[test]
