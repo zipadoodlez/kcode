@@ -717,9 +717,14 @@ pub enum OnboardingWelcomeKind {
     ///
     /// When `import` is `Some`, we detected importable external logins and are
     /// walking the user through them one at a time (a yes/no prompt per login).
-    /// When `None`, there was nothing to import and the card points the user at
-    /// the provider picker.
-    Login { import: Option<LoginImportPrompt> },
+    /// When `None` and `importing` is false, there was nothing to import and the
+    /// card points the user at the provider picker. When `None` and `importing`
+    /// is true, the user just committed the import and it is running, so the card
+    /// shows an "Importing your logins..." progress state.
+    Login {
+        import: Option<LoginImportPrompt>,
+        importing: bool,
+    },
     /// Ask the user whether to log in to OpenAI (no detected imports). A
     /// highlightable Yes/No selector; `yes_highlighted` reflects the current
     /// choice. Yes starts the OpenAI sign-in, No skips login and finishes

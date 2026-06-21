@@ -210,9 +210,30 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
 
     use crate::tui::OnboardingWelcomeKind;
     match app.onboarding_welcome_kind() {
-        OnboardingWelcomeKind::Login { import } => {
+        OnboardingWelcomeKind::Login { import, importing } => {
             lines.push(Line::from(""));
             match import {
+                None if importing => {
+                    // The user committed the import; it's running. Show progress
+                    // instead of the manual-login recovery copy so we never tell
+                    // the user to "log in again" right after they chose to import.
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Importing your logins…",
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(
+                        Line::from(Span::styled(
+                            "Hang tight, this only takes a moment.",
+                            Style::default().fg(dim_color()),
+                        ))
+                        .alignment(align),
+                    );
+                }
                 None => {
                     lines.push(
                         Line::from(Span::styled(

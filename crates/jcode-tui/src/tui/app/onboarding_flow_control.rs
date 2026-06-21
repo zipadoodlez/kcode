@@ -251,6 +251,8 @@ impl App {
         ) {
             return;
         }
+        // The import (if any) has resolved; leave the progress state.
+        self.onboarding_import_in_progress = false;
         // Prompt/transcript content sharing is opt-in and off by default; we
         // intentionally don't prompt for it during onboarding.
         crate::telemetry::set_content_sharing_enabled(false);
@@ -636,10 +638,15 @@ impl App {
         if approved.is_empty() {
             // The user declined every detected login. Fall back to manual login
             // so they can still authenticate.
+            self.onboarding_import_in_progress = false;
             self.set_status_notice("No logins imported. Press Enter to choose a provider.");
             return;
         }
 
+        // Mark the import as in-flight so the welcome card shows an "Importing
+        // your logins..." progress state (not the manual-login recovery copy)
+        // until the async LoginCompleted event advances or fails the flow.
+        self.onboarding_import_in_progress = true;
         // Kick off the import on the runtime; the LoginCompleted event advances
         // onboarding and activates the provider.
         self.set_status_notice("Login: importing selected logins...");
@@ -1235,6 +1242,7 @@ impl App {
         {
             *import = None;
         }
+        self.onboarding_import_in_progress = false;
         self.set_status_notice(
             "Import failed. Press Enter to choose a provider and log in manually.",
         );

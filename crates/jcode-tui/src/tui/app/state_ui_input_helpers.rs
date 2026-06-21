@@ -1155,7 +1155,10 @@ impl App {
                         seconds_left: review.seconds_remaining(),
                     }
                 });
-                OnboardingWelcomeKind::Login { import: prompt }
+                OnboardingWelcomeKind::Login {
+                    import: prompt,
+                    importing: self.onboarding_import_in_progress,
+                }
             }
             Some(OnboardingPhase::LoginOpenAi { yes_highlighted }) => {
                 OnboardingWelcomeKind::LoginOpenAi {

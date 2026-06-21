@@ -71,7 +71,7 @@ fn login_welcome_kind_shows_import_checkbox_list() {
         };
     }
     match app.onboarding_welcome_kind() {
-        OnboardingWelcomeKind::Login { import: Some(prompt) } => {
+        OnboardingWelcomeKind::Login { import: Some(prompt), .. } => {
             assert_eq!(prompt.rows.len(), 2);
             assert_eq!(prompt.rows[0].provider_summary, "OpenAI/Codex");
             assert_eq!(prompt.rows[0].source_name, "Codex auth.json");
