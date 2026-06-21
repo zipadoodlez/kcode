@@ -93,7 +93,70 @@ pub mod linux {
             .ok()
             .map(|p| p.to_string_lossy().to_string());
 
-        // Check child processes
+        // Check child processes. Use the kernel's direct-children list
+        // (`/proc/<pid>/task/<tid>/children`) instead of scanning every entry
+        // under `/proc`. This poll runs every few hundred ms for each live
+        // shell command, so a full process-table walk here costs ~1 file read
+        // per process on the machine per poll and shows up as a hot tokio worker
+        // burning CPU. The `children` file gives us exactly this command's
+        // children for a single cheap read.
+        for child_pid in direct_children(pid) {
+            if let Some(ref parent_link) = parent_stdin_link {
+                let child_link = std::fs::read_link(format!("/proc/{}/fd/0", child_pid))
+                    .ok()
+                    .map(|p| p.to_string_lossy().to_string());
+                if child_link.as_deref() != Some(parent_link) {
+                    continue;
+                }
+            }
+            if check_inner(child_pid, true) == StdinState::Reading {
+                return StdinState::Reading;
+            }
+        }
+
+        result
+    }
+
+    /// Return the direct child PIDs of `pid` using the kernel's
+    /// `/proc/<pid>/task/<tid>/children` interface, which lists only the
+    /// immediate children of each thread as a space-separated list. This avoids
+    /// scanning the entire `/proc` directory and reading every process's
+    /// `status` file just to filter on `PPid`.
+    ///
+    /// Requires `CONFIG_PROC_CHILDREN` (standard on modern Linux). If the file
+    /// is unavailable we fall back to a `/proc` scan so behavior is preserved on
+    /// older kernels.
+    pub(crate) fn direct_children(pid: u32) -> Vec<u32> {
+        // A process's children are tracked per-thread, so union across all
+        // threads of `pid`.
+        let mut children = Vec::new();
+        if let Ok(threads) = std::fs::read_dir(format!("/proc/{}/task", pid)) {
+            for thread in threads.flatten() {
+                let tid = thread.file_name();
+                let Some(tid) = tid.to_str() else { continue };
+                if let Ok(list) =
+                    std::fs::read_to_string(format!("/proc/{}/task/{}/children", pid, tid))
+                {
+                    for child in list.split_whitespace() {
+                        if let Ok(child_pid) = child.parse::<u32>() {
+                            children.push(child_pid);
+                        }
+                    }
+                }
+            }
+        }
+
+        if !children.is_empty() {
+            return children;
+        }
+
+        // Fallback for kernels without CONFIG_PROC_CHILDREN: scan /proc once.
+        // This preserves the original behavior on those systems.
+        children_via_proc_scan(pid)
+    }
+
+    fn children_via_proc_scan(pid: u32) -> Vec<u32> {
+        let mut children = Vec::new();
         if let Ok(entries) = std::fs::read_dir("/proc") {
             for entry in entries.flatten() {
                 if let Ok(name) = entry.file_name().into_string()
@@ -105,26 +168,14 @@ pub mod linux {
                         if let Some(ppid_str) = line.strip_prefix("PPid:\t")
                             && ppid_str.trim().parse::<u32>().ok() == Some(pid)
                         {
-                            if let Some(ref parent_link) = parent_stdin_link {
-                                let child_link =
-                                    std::fs::read_link(format!("/proc/{}/fd/0", child_pid))
-                                        .ok()
-                                        .map(|p| p.to_string_lossy().to_string());
-                                if child_link.as_deref() != Some(parent_link) {
-                                    continue;
-                                }
-                            }
-                            let child_result = check_inner(child_pid, true);
-                            if child_result == StdinState::Reading {
-                                return StdinState::Reading;
-                            }
+                            children.push(child_pid);
+                            break;
                         }
                     }
                 }
             }
         }
-
-        result
+        children
     }
 }
 
