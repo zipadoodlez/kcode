@@ -455,19 +455,22 @@ impl App {
         }
     }
 
-    /// Handle a key while the single-screen import checkbox list is active.
+    /// Handle a key while the single-screen import list is active.
     /// Returns true if the key was consumed.
     ///
-    /// All detected logins are shown at once, pre-checked. Keys:
-    ///   - Up / Down / k / j -> move the cursor between rows
-    ///   - Space / Left / Right / h / l -> toggle the highlighted row's checkbox
-    ///   - y / Y -> check the highlighted row;  n / N -> uncheck it
-    ///   - Enter -> import every checked login and finish
+    /// All detected logins are shown at once, each with a per-row Yes/No choice
+    /// pre-set to "Yes" (import). Keys:
+    ///   - Up / Down / k / j -> move the cursor between logins
+    ///   - Left / h / y -> choose "Yes" (import) for the highlighted login
+    ///   - Right / l / n -> choose "No" (skip) for the highlighted login
+    ///   - Space -> toggle the highlighted login between Yes and No
+    ///   - Enter -> import every "Yes" login and finish
     fn handle_onboarding_import_review_key(&mut self, code: KeyCode) -> bool {
-        // The import screen is a single multi-select checkbox list: move a cursor
-        // with the arrow / vim keys, toggle a row with Space, and commit ALL
-        // checked logins at once with Enter. `finished` means the user committed
-        // the whole list (so we kick off the import outside the borrow).
+        // The import screen lists each detected login with a per-row Yes/No
+        // choice (Yes = import, pre-selected). Up/Down move between logins,
+        // Left/Right (or h/l, y/n) set the highlighted login's choice, Space
+        // toggles it, and Enter commits ALL logins at once. `finished` means the
+        // user committed (so we kick off the import outside the borrow).
         let mut finished = false;
         {
             let Some(review) = self.onboarding_import_review_mut() else {
@@ -476,16 +479,16 @@ impl App {
             match code {
                 KeyCode::Up | KeyCode::Char('k') => review.cursor_up(),
                 KeyCode::Down | KeyCode::Char('j') => review.cursor_down(),
-                // Space (or left/right/h/l) toggles the highlighted row.
-                KeyCode::Char(' ')
-                | KeyCode::Left
-                | KeyCode::Right
-                | KeyCode::Char('h')
-                | KeyCode::Char('l') => review.toggle_current(),
-                // y / n set the highlighted row explicitly.
-                KeyCode::Char('y') | KeyCode::Char('Y') => review.set_current(true),
-                KeyCode::Char('n') | KeyCode::Char('N') => review.set_current(false),
-                // Enter commits the whole list (import all checked logins).
+                // Left = Yes (import), Right = No (skip), for the highlighted row.
+                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    review.set_current(true)
+                }
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('n') | KeyCode::Char('N') => {
+                    review.set_current(false)
+                }
+                // Space toggles the highlighted row between Yes and No.
+                KeyCode::Char(' ') => review.toggle_current(),
+                // Enter commits the whole list (import all chosen logins).
                 KeyCode::Enter => finished = true,
                 _ => return false,
             }

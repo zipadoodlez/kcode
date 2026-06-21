@@ -113,20 +113,19 @@ fn onboarding_golden_walks_every_phase() {
         let text = render_onboarding_text(&app, width, height);
         dump("Login (import two-column list, 2 logins)", &text);
         assert!(text.contains("We found 2 existing logins."), "count: {text}");
-        // Both logins are listed at once, each with a circle marker.
+        // Both logins are listed at once, each with a Yes/No choice.
         assert!(text.contains("OpenAI/Codex"), "provider 1: {text}");
         assert!(text.contains("Codex auth.json"), "source 1: {text}");
         assert!(text.contains("Claude"), "provider 2: {text}");
-        assert!(text.contains('●'), "filled circle marker (pre-checked): {text}");
-        // The vertical divider separates the list from the Next button.
-        assert!(text.contains('│'), "column divider: {text}");
-        assert!(text.contains("Next >"), "next button: {text}");
+        // Each login carries a Yes/No pair, pre-set to Yes (import).
+        assert!(text.contains("( Yes )"), "yes pill: {text}");
+        assert!(text.contains("( No )"), "no pill: {text}");
         assert!(
             text.contains("Press Enter to continue."),
             "continue action: {text}"
         );
         assert!(
-            text.contains("Space to toggle"),
+            text.contains("Left/Right for Yes/No"),
             "toggle hint: {text}"
         );
         assert!(text.contains("Imports all checked in"), "countdown: {text}");
@@ -146,7 +145,7 @@ fn onboarding_golden_walks_every_phase() {
             text.contains("We found 1 existing login."),
             "singular count: {text}"
         );
-        assert!(text.contains("Next >"), "next button: {text}");
+        assert!(text.contains("( Yes )"), "yes pill: {text}");
     }
 
     // 4. Continue prompt (resume an external session).

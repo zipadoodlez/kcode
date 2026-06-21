@@ -288,12 +288,14 @@ fn render_phase_screen(label: &'static str, phase: OnboardingPhase) -> ScreenMet
         .iter()
         .map(|l| l.split_whitespace().count())
         .sum::<usize>() as u32;
-    // A yes/no screen is consistent when it renders the canonical pill row AND
-    // the movability chevrons (the visual affordance), not a bespoke widget.
+    // A yes/no screen is consistent when it renders the canonical pill labels
+    // AND a movability affordance: either the flanking chevrons (single Yes/No
+    // prompts) or the `> ` cursor gutter (the per-login import list, which puts a
+    // Yes/No pair on each row).
     let keyhint_consistent = !is_yesno
         || (text.contains(CANONICAL_YESNO_PILL)
             && text.contains("( No )")
-            && text.contains(YESNO_PILL_CHEVRON));
+            && (text.contains(YESNO_PILL_CHEVRON) || text.contains("> ")));
     let lower = text.to_ascii_lowercase();
     let has_escape_hatch = lower.contains("skip")
         || lower.contains("anytime")
@@ -936,8 +938,8 @@ fn body_prose_lines(text: &str) -> Vec<String> {
         if t.contains(CANONICAL_YESNO_PILL) {
             continue;
         }
-        // The import two-column widget rows (circle markers / divider / Next
-        // button) are interactive chrome, not prose to "read".
+        // The import rows carry their own Yes/No pills (skipped above via
+        // CANONICAL_YESNO_PILL); legacy circle/divider chrome is also dropped.
         if t.contains('●') || t.contains('○') || t.contains('│') {
             continue;
         }

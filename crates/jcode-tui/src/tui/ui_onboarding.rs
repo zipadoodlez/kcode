@@ -65,82 +65,73 @@ fn yes_no_pill_line(yes_highlighted: bool, align: Alignment) -> Line<'static> {
     .alignment(align)
 }
 
-/// Render the import screen's two-column body: the importable logins on the
-/// left (left-aligned, filled circle = will import, hollow = skipped) separated
-/// by a vertical divider from a single "Next" button on the right, centered
-/// vertically against the list.
+/// Render the import screen body: one row per detected login, each followed by
+/// a `( Yes )  ( No )` pair where the *current* choice is filled (accent) and
+/// the other is a dim outline. Every login defaults to "Yes" (import), so the
+/// pre-selected state is obvious: the Yes pill is already lit. The cursor row is
+/// marked with a `>` gutter, and Left/Right move the choice between Yes and No.
 ///
-/// The circle markers and the divider are interactive-widget glyphs (like the
-/// idle donut and the Yes/No pill), not load-bearing prose: the surrounding
-/// ASCII copy ("We found N existing logins", "Imports all checked in Ns")
-/// already conveys state in plain text, so the checked state never *depends* on
-/// the glyph rendering.
+/// The pills and gutter are interactive-widget glyphs, not load-bearing prose:
+/// the surrounding ASCII copy ("We found N existing logins", "Imports all
+/// checked in Ns") already conveys state in plain text.
 fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
     let mut out: Vec<Line<'static>> = Vec::new();
 
-    // Left column width: the widest "<cursor><circle> Provider (source)" entry,
-    // so the divider lines up in a clean column. The 2-cell cursor gutter is
-    // included so the divider does not shift when the cursor moves.
+    // Left column width: the widest "<cursor>Provider (source)" entry, so the
+    // Yes/No pills line up in a clean column. The 2-cell cursor gutter is
+    // included so the pills do not shift when the cursor moves.
     let left_width = prompt
         .rows
         .iter()
-        .map(|r| 2 + 2 + r.provider_summary.chars().count() + 2 + r.source_name.chars().count() + 1)
+        .map(|r| 2 + r.provider_summary.chars().count() + 2 + r.source_name.chars().count() + 1)
         .max()
         .unwrap_or(0)
         .max(12);
 
-    // The "Next" button sits vertically centered against the list rows.
-    let button_row = prompt.rows.len() / 2;
-    let next_style = Style::default()
-        .fg(welcome_accent())
+    // A filled pill (the current choice) is bold accent; the other is dim. We
+    // intentionally avoid REVERSED color blocks so it reads as soft text, and
+    // the fill is conveyed by bold + the surrounding parentheses so it survives
+    // on monochrome terminals.
+    let yes_color = rgb(126, 211, 159);
+    let chosen_yes = Style::default().fg(yes_color).add_modifier(Modifier::BOLD);
+    let chosen_no = Style::default()
+        .fg(rgb(230, 230, 230))
         .add_modifier(Modifier::BOLD);
-
-    // Right column reserves the button's width on *every* row so all lines are
-    // the same total width. Because each line is individually centered, equal
-    // width is what keeps the divider in a single, aligned vertical column.
-    const NEXT_LABEL: &str = " Next > ";
-    let right_width = NEXT_LABEL.chars().count();
+    let unchosen = Style::default().fg(dim_color());
 
     for (i, row) in prompt.rows.iter().enumerate() {
         let is_cursor = i == prompt.cursor;
-        // Filled circle = will import; hollow circle = skipped.
-        let marker = if row.checked { "● " } else { "○ " };
-        // A `> ` gutter marks the cursor row instead of a reversed color block.
+        // A `> ` gutter marks the row the arrow keys act on.
         let cursor_marker = if is_cursor { "> " } else { "  " };
-        let label_style = if is_cursor {
-            Style::default()
-                .fg(welcome_accent())
-                .add_modifier(Modifier::BOLD)
-        } else if row.checked {
-            Style::default().fg(rgb(200, 200, 200))
+        let cursor_style = Style::default().fg(welcome_accent());
+        let label_style = if row.checked {
+            Style::default().fg(rgb(210, 210, 210))
         } else {
             Style::default().fg(dim_color())
         };
 
-        // Compose the left cell, then pad it out to left_width so the divider
-        // aligns regardless of provider/source length.
+        // Compose the left cell, then pad it out to left_width so the pills
+        // align regardless of provider/source length.
         let left_text = format!(
-            "{}{}{} ({})",
-            cursor_marker, marker, row.provider_summary, row.source_name
+            "{}{} ({})",
+            cursor_marker, row.provider_summary, row.source_name
         );
         let pad = left_width.saturating_sub(left_text.chars().count());
-        let mut spans: Vec<Span<'static>> = vec![
-            Span::styled(cursor_marker, label_style),
-            Span::styled(marker, label_style),
+
+        let (yes_style, no_style) = if row.checked {
+            (chosen_yes, unchosen)
+        } else {
+            (unchosen, chosen_no)
+        };
+
+        let spans: Vec<Span<'static>> = vec![
+            Span::styled(cursor_marker, cursor_style),
             Span::styled(row.provider_summary.clone(), label_style),
             Span::styled(format!(" ({})", row.source_name), Style::default().fg(dim_color())),
             Span::raw(" ".repeat(pad)),
+            Span::styled("  ( Yes )", yes_style),
+            Span::styled("  ( No )", no_style),
         ];
-
-        // Divider, then the right column. The button only renders on the center
-        // row, but every other row pads the same width so the divider column and
-        // overall line width stay constant (and thus aligned under centering).
-        spans.push(Span::styled("│", Style::default().fg(dim_color())));
-        if i == button_row {
-            spans.push(Span::styled(NEXT_LABEL, next_style));
-        } else {
-            spans.push(Span::raw(" ".repeat(right_width)));
-        }
         out.push(Line::from(spans).alignment(Alignment::Center));
     }
 
@@ -235,24 +226,22 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     lines.push(
                         Line::from(Span::styled(
-                            "Import them so you're ready right away:",
+                            "All set to import. Switch any to No to skip it:",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),
                     );
                     lines.push(Line::from(""));
 
-                    // Two-column widget: the importable logins on the LEFT
-                    // (left-aligned, a filled circle = will import, hollow =
-                    // skipped), a vertical divider in the middle, and a single
-                    // "Next" button on the RIGHT (vertically centered against
-                    // the list).
+                    // Per-login rows: each provider is followed by a Yes/No
+                    // pair with "Yes" (import) lit by default. The user moves the
+                    // cursor up/down and flips a login to "No" to skip it.
                     lines.extend(import_two_column_lines(&prompt));
                     lines.push(Line::from(""));
 
                     lines.push(
                         Line::from(Span::styled(
-                            "Up/down to move, Space to toggle a login.",
+                            "Up/down to move, Left/Right for Yes/No.",
                             Style::default().fg(dim_color()),
                         ))
                         .alignment(align),
