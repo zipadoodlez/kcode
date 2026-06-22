@@ -1141,6 +1141,37 @@ fn test_retrieve_pending_message_edits_queued_message() {
 }
 
 #[test]
+fn test_retrieve_pending_message_with_alt_and_super_up() {
+    // Ctrl+Up, Alt(Option)+Up and Cmd(Super)+Up must all recall a queued message
+    // so the gesture works regardless of which modifier the terminal forwards.
+    for modifier in [
+        KeyModifiers::CONTROL,
+        KeyModifiers::ALT,
+        KeyModifiers::SUPER,
+    ] {
+        let mut app = create_test_app();
+        app.queue_mode = true;
+        app.is_processing = true;
+
+        for c in "hello".chars() {
+            app.handle_key(KeyCode::Char(c), KeyModifiers::empty())
+                .unwrap();
+        }
+        app.handle_key(KeyCode::Enter, KeyModifiers::empty())
+            .unwrap();
+
+        assert_eq!(app.queued_count(), 1, "modifier {modifier:?}");
+        assert!(app.input().is_empty(), "modifier {modifier:?}");
+
+        app.handle_key(KeyCode::Up, modifier).unwrap();
+
+        assert_eq!(app.queued_count(), 0, "modifier {modifier:?}");
+        assert_eq!(app.input(), "hello", "modifier {modifier:?}");
+        assert_eq!(app.cursor_pos(), 5, "modifier {modifier:?}");
+    }
+}
+
+#[test]
 fn test_retrieve_pending_message_prefers_pending_interleave_for_editing() {
     let mut app = create_test_app();
     app.is_processing = true;
