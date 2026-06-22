@@ -349,10 +349,17 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(Line::from(""));
     lines.push(key_entry("PageUp / PageDown", "Scroll history"));
     lines.push(key_entry("Up / Down", "Scroll history (when input empty)"));
-    lines.push(key_entry("Ctrl+[ / Ctrl+]", "Jump between user prompts"));
+    lines.push(key_entry(
+        "Ctrl+J / Ctrl+K",
+        "Jump to next / previous user prompt (also Ctrl+] / Ctrl+[)",
+    ));
+    lines.push(key_entry(
+        "Ctrl+Shift+J / Ctrl+Shift+K",
+        "Scroll history down / up one line",
+    ));
     lines.push(key_entry(
         "Cmd/Super+K / J",
-        "Jump to previous / next user prompt (macOS)",
+        "Jump to previous / next user prompt (macOS, if forwarded)",
     ));
     lines.push(key_entry("Ctrl+1..4", "Resize side panel to 25/50/75/100%"));
     lines.push(key_entry(

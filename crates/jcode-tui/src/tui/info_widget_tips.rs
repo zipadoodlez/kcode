@@ -11,8 +11,8 @@ struct Tip {
 
 fn all_tips() -> Vec<Tip> {
     [
-        "Ctrl+J / Ctrl+K to scroll chat up and down (Cmd+J / Cmd+K on macOS terminals that forward Command)",
-        "Ctrl+[ / Ctrl+] to jump between user prompts",
+        "Ctrl+J / Ctrl+K to jump between user prompts (Cmd+J / Cmd+K on macOS terminals that forward Command)",
+        "Ctrl+Shift+J / Ctrl+Shift+K to scroll the chat down and up one line",
         "Ctrl+G to bookmark your scroll position - press again to teleport back",
         "```mermaid code blocks render as diagrams",
         "Swarms form automatically when multiple sessions share a repo - they coordinate plans, share context, and track file conflicts",

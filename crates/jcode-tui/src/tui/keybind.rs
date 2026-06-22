@@ -102,14 +102,15 @@ pub fn load_workspace_navigation_keys() -> WorkspaceNavigationKeys {
 pub fn load_scroll_keys() -> ScrollKeys {
     let cfg = config();
 
-    // Default to Ctrl+K/J for scroll (vim-style), Alt+U/D for page scroll
+    // Default to Ctrl+Shift+K/J for incremental scroll; Ctrl+K/J (un-shifted)
+    // move by prompt. Alt+U/D for page scroll.
     let default_up = KeyBinding {
         code: KeyCode::Char('k'),
-        modifiers: KeyModifiers::CONTROL,
+        modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
     };
     let default_down = KeyBinding {
         code: KeyCode::Char('j'),
-        modifiers: KeyModifiers::CONTROL,
+        modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
     };
     let default_page_up = KeyBinding {
         code: KeyCode::Char('u'),
@@ -120,11 +121,11 @@ pub fn load_scroll_keys() -> ScrollKeys {
         modifiers: KeyModifiers::ALT,
     };
     let default_prompt_up = KeyBinding {
-        code: KeyCode::Char('['),
+        code: KeyCode::Char('k'),
         modifiers: KeyModifiers::CONTROL,
     };
     let default_prompt_down = KeyBinding {
-        code: KeyCode::Char(']'),
+        code: KeyCode::Char('j'),
         modifiers: KeyModifiers::CONTROL,
     };
     let default_bookmark = KeyBinding {
@@ -132,8 +133,8 @@ pub fn load_scroll_keys() -> ScrollKeys {
         modifiers: KeyModifiers::CONTROL,
     };
 
-    let (up, _) = parse_or_default(&cfg.keybindings.scroll_up, default_up, "Ctrl+K");
-    let (down, _) = parse_or_default(&cfg.keybindings.scroll_down, default_down, "Ctrl+J");
+    let (up, _) = parse_or_default(&cfg.keybindings.scroll_up, default_up, "Ctrl+Shift+K");
+    let (down, _) = parse_or_default(&cfg.keybindings.scroll_down, default_down, "Ctrl+Shift+J");
     let default_up_fallback = KeyBinding {
         code: KeyCode::Char('k'),
         modifiers: KeyModifiers::SUPER,
@@ -161,12 +162,12 @@ pub fn load_scroll_keys() -> ScrollKeys {
     let (prompt_up, _) = parse_or_default(
         &cfg.keybindings.scroll_prompt_up,
         default_prompt_up,
-        "Ctrl+[",
+        "Ctrl+K",
     );
     let (prompt_down, _) = parse_or_default(
         &cfg.keybindings.scroll_prompt_down,
         default_prompt_down,
-        "Ctrl+]",
+        "Ctrl+J",
     );
     let (bookmark, _) =
         parse_or_default(&cfg.keybindings.scroll_bookmark, default_bookmark, "Ctrl+G");
