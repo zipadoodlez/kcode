@@ -752,6 +752,15 @@ async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("is_jcode_repo");
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
 
+    // Record where this interactive launch happened so the system-wide launch
+    // hotkeys can reopen jcode in the last project directory (Cmd+') and the
+    // last jcode repo for self-dev (Cmd+Shift+'). Best-effort; ignored unless a
+    // real TTY and not a fresh-spawn re-entry.
+    if !args.fresh_spawn && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        let repo_dir = build::get_repo_dir();
+        setup_hints::record_launch_dirs(&cwd, repo_dir.as_deref());
+    }
+
     if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
         output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
         output::stderr_info("   Using shared server with self-dev session mode");
