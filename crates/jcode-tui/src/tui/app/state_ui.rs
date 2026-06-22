@@ -92,6 +92,30 @@ impl App {
             self.last_client_focus_recorded_at = Some(Instant::now());
             self.last_client_focus_session_id = Some(session_id);
         }
+
+        // Keep the system-wide launch hotkeys (`Cmd+'` last project, `Cmd+Shift+'`
+        // self-dev) pointed at the jcode window the user last focused, rather than
+        // whichever window happened to be launched most recently. The dirs are
+        // otherwise only recorded once at process launch (see `record_launch_dirs`
+        // in the CLI dispatch path), so focusing back into an older window never
+        // updated them. Best-effort and a no-op off macOS.
+        self.record_focus_launch_dirs();
+    }
+
+    /// Record this (focused) window's working directory and enclosing jcode repo
+    /// so the global launch hotkeys reopen jcode where the user last was.
+    ///
+    /// Uses the client process's current directory, which is the directory this
+    /// window was launched in (the client never `chdir`s), matching what the
+    /// launch-time recorder captures. The repo is derived from that same cwd so
+    /// the self-dev hotkey follows the focused window's repository instead of the
+    /// repo the binary was built from.
+    fn record_focus_launch_dirs(&self) {
+        let Ok(cwd) = std::env::current_dir() else {
+            return;
+        };
+        let repo = crate::build::find_repo_in_ancestors(&cwd);
+        crate::setup_hints::record_launch_dirs(&cwd, repo.as_deref());
     }
 
     pub(super) fn note_client_interaction(&mut self) {
