@@ -1125,9 +1125,16 @@ impl App {
 }
 
 pub(super) fn is_next_prompt_new_session_hotkey(code: KeyCode, modifiers: KeyModifiers) -> bool {
-    code == KeyCode::Char(' ')
-        && modifiers.contains(KeyModifiers::SUPER)
-        && !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::HYPER)
+    if code != KeyCode::Char(' ') {
+        return false;
+    }
+    // Accept either Command/Super+Space (macOS Cmd, often eaten by Spotlight) or
+    // Option/Alt+Space (macOS Option) so the fork-to-new-session arming hotkey is
+    // reachable across terminals. Reject Ctrl/Hyper combos so other chords still
+    // route to their own handlers.
+    let has_super = modifiers.contains(KeyModifiers::SUPER);
+    let has_alt = modifiers.contains(KeyModifiers::ALT);
+    (has_super || has_alt) && !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::HYPER)
 }
 
 fn input_routes_to_new_session(app: &App) -> bool {
