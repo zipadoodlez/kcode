@@ -1346,6 +1346,22 @@ fn rate_limit_countdown_redraw_active(state: &dyn TuiState) -> bool {
         .unwrap_or(false)
 }
 
+/// The notification line shows a live prompt-cache indicator (`⏳ cache Ns`
+/// while warm in the final minute, `🧊 cache cold` once expired). Both states
+/// emerge long after the 30s deep-idle cutoff, so without a dedicated wakeup
+/// the idle loop never repaints to reveal them. Keep redrawing whenever the
+/// cache is within the last-minute countdown window or has just gone cold so
+/// the warning actually appears before the next prompt.
+fn cache_cold_countdown_redraw_active(state: &dyn TuiState) -> bool {
+    if state.is_processing() {
+        return false;
+    }
+    state
+        .cache_ttl_status()
+        .map(|info| info.is_cold || info.remaining_secs <= 60)
+        .unwrap_or(false)
+}
+
 fn full_frame_status_animation_active_with_policy(
     state: &dyn TuiState,
     policy: &crate::perf::TuiPerfPolicy,
@@ -1454,6 +1470,7 @@ pub(crate) fn redraw_interval_with_policy(
         && !state.copy_selection_edge_autoscroll_active()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
+        && !cache_cold_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
         && !state.onboarding_welcome_active()
     {
@@ -1534,6 +1551,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         && !state.chat_overscroll_active()
         && !state.remote_startup_phase_active()
         && !rate_limit_countdown_redraw_active(state)
+        && !cache_cold_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
         && !state.onboarding_welcome_active()
     {

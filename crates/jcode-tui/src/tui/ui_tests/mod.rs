@@ -140,6 +140,7 @@ struct TestState {
     pin_images: bool,
     inline_images_visible: bool,
     chat_overscroll_active: bool,
+    cache_ttl_status: Option<crate::tui::CacheTtlInfo>,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -450,7 +451,7 @@ impl crate::tui::TuiState for TestState {
         self.onboarding_preview
     }
     fn cache_ttl_status(&self) -> Option<crate::tui::CacheTtlInfo> {
-        None
+        self.cache_ttl_status.clone()
     }
     fn chat_native_scrollbar(&self) -> bool {
         self.chat_native_scrollbar
