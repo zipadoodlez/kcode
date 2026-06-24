@@ -113,12 +113,34 @@ pub enum ClaudeCodeContentBlock {
     },
     ToolResult {
         tool_use_id: String,
+        // Claude Code (notably newer/macOS builds) sometimes writes
+        // `tool_result.content` as an array of content blocks
+        // (e.g. `[{"type":"text","text":"..."}]`) rather than a plain string.
+        // Accept both so the whole JSONL entry does not fail to parse and get
+        // silently dropped during import.
+        #[serde(default, deserialize_with = "deserialize_tool_result_content")]
         content: String,
         #[serde(default)]
         is_error: Option<bool>,
     },
     #[serde(other)]
     Unknown,
+}
+
+/// Deserialize a Claude Code `tool_result` content value that may be either a
+/// plain string or an array of content blocks. Array forms are flattened to
+/// their textual content so the importer keeps these messages instead of
+/// dropping the entire entry on a type mismatch.
+fn deserialize_tool_result_content<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::String(text) => text,
+        serde_json::Value::Null => String::new(),
+        other => extract_external_text_from_json(&other, true),
+    })
 }
 
 pub fn parse_rfc3339_string(value: Option<&str>) -> Option<DateTime<Utc>> {
@@ -998,6 +1020,38 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![Some("a"), Some("b")]
         );
+    }
+
+    #[test]
+    fn tool_result_content_accepts_array_blocks() {
+        // Newer/macOS Claude Code writes tool_result.content as an array of
+        // content blocks. The entry must still parse (not be dropped) and the
+        // array must flatten to its textual content.
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"hello world"}]}]}}"#;
+        let entry = serde_json::from_str::<ClaudeCodeEntry>(line)
+            .expect("entry with array tool_result content should parse");
+        let ClaudeCodeContent::Blocks(blocks) = entry.message.unwrap().content else {
+            panic!("expected block content");
+        };
+        match &blocks[0] {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => {
+                assert_eq!(content, "hello world");
+            }
+            other => panic!("expected tool_result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_content_accepts_string() {
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"plain"}]}}"#;
+        let entry = serde_json::from_str::<ClaudeCodeEntry>(line).unwrap();
+        let ClaudeCodeContent::Blocks(blocks) = entry.message.unwrap().content else {
+            panic!("expected block content");
+        };
+        match &blocks[0] {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => assert_eq!(content, "plain"),
+            other => panic!("expected tool_result, got {other:?}"),
+        }
     }
 
     #[test]
