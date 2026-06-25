@@ -719,16 +719,34 @@ impl AuthStatus {
                 )
             }
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-                let (source, detail) = summarize_sources(vec![
-                    env_source(&resolved.api_key_env),
-                    config_source(
-                        &resolved.api_key_env,
-                        &resolved.env_file,
-                        format!("~/.config/jcode/{}", resolved.env_file),
-                    ),
-                    external_api_key_source(&resolved.api_key_env),
-                ]);
+                // Prefer the active named config profile's credential location
+                // (set via `--provider-profile`) over the built-in profile env
+                // so the reported source matches what runtime actually uses (#402).
+                let (source, detail) = if let Some((key_env, env_file)) =
+                    crate::provider_catalog::active_named_provider_profile_credential_source()
+                {
+                    summarize_sources(vec![
+                        env_source(&key_env),
+                        config_source(
+                            &key_env,
+                            &env_file,
+                            format!("~/.config/jcode/{}", env_file),
+                        ),
+                        external_api_key_source(&key_env),
+                    ])
+                } else {
+                    let resolved =
+                        crate::provider_catalog::resolve_openai_compatible_profile(profile);
+                    summarize_sources(vec![
+                        env_source(&resolved.api_key_env),
+                        config_source(
+                            &resolved.api_key_env,
+                            &resolved.env_file,
+                            format!("~/.config/jcode/{}", resolved.env_file),
+                        ),
+                        external_api_key_source(&resolved.api_key_env),
+                    ])
+                };
                 (
                     source,
                     detail,

@@ -22,8 +22,20 @@ fn generic_credential_paths_for_provider(
             vec![config_dir.join(crate::provider::bedrock::ENV_FILE)]
         }
         crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-            let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-            vec![config_dir.join(resolved.env_file)]
+            // When a named config profile is active (selected via
+            // `--provider-profile`), its credentials come from the profile's
+            // configured `api_key_env`/`env_file`, not the built-in
+            // `openai-compatible.env`. Report that path so the audit is accurate
+            // (#402).
+            if let Some((_key_env, env_file)) =
+                crate::provider_catalog::active_named_provider_profile_credential_source()
+            {
+                vec![config_dir.join(env_file)]
+            } else {
+                let resolved =
+                    crate::provider_catalog::resolve_openai_compatible_profile(profile);
+                vec![config_dir.join(resolved.env_file)]
+            }
         }
         _ => Vec::new(),
     }

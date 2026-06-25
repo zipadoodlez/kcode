@@ -515,6 +515,16 @@ pub struct AgentsConfig {
     /// metadata / sanity checks). Unset = inferred from the model name.
     #[serde(default)]
     pub memory_embedding_dim: Option<usize>,
+    /// Maximum seconds a direct (blocking) `subagent` tool call will wait for the
+    /// child session to produce its final answer before failing with a timeout
+    /// error. Prevents a stuck/hung child turn from blocking the caller forever.
+    /// `0` disables the bound (wait indefinitely). Default 600 (10 min).
+    #[serde(default = "default_subagent_timeout_secs")]
+    pub subagent_timeout_secs: u64,
+}
+
+fn default_subagent_timeout_secs() -> u64 {
+    600
 }
 
 fn default_memory_embedding_backend() -> String {
@@ -552,6 +562,7 @@ impl Default for AgentsConfig {
             memory_embedding_model: None,
             memory_embedding_base_url: None,
             memory_embedding_dim: None,
+            subagent_timeout_secs: default_subagent_timeout_secs(),
         }
     }
 }

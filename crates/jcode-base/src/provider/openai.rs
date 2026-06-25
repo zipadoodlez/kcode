@@ -30,6 +30,16 @@ const RESPONSES_PATH: &str = "responses";
 const DEFAULT_MODEL: &str = "gpt-5.5";
 const ORIGINATOR: &str = "codex_cli_rs";
 
+/// Whether the hosted `image_generation` tool can be attached for `model_id`.
+///
+/// The Responses backend only exposes `image_generation` to general
+/// ChatGPT/GPT models. Codex models (ids containing `codex`) reject unknown
+/// hosted tools, so they must not receive it. See issue #369.
+fn model_supports_image_generation(model_id: &str) -> bool {
+    !model_id.to_ascii_lowercase().contains("codex")
+}
+
+
 /// Maximum number of retries for transient errors
 const MAX_RETRIES: u32 = 3;
 
@@ -896,7 +906,71 @@ impl OpenAIProvider {
             ));
             return normalized.to_string();
         }
+        // Fall back to the active Codex Responses provider base URL from
+        // `~/.codex/config.toml` so OpenAI-compatible API-key traffic honors a
+        // gateway configured there, before defaulting to api.openai.com (#374).
+        if let Some(base) = Self::codex_config_responses_base() {
+            crate::logging::info(&format!(
+                "OpenAI Responses API base resolved to '{}' from ~/.codex/config.toml",
+                base
+            ));
+            return base;
+        }
         OPENAI_API_BASE.to_string()
+    }
+
+    /// Read the active Codex model_provider's `base_url` from
+    /// `~/.codex/config.toml` when it serves the Responses wire API.
+    ///
+    /// Codex config shape:
+    /// ```toml
+    /// model_provider = "mygw"
+    /// [model_providers.mygw]
+    /// base_url = "https://gateway.example/v1"
+    /// wire_api = "responses"   # only "responses" is honored here
+    /// ```
+    /// Returns `None` when the file/keys are missing, the URL is not absolute
+    /// http(s), or the provider's `wire_api` is not `responses`.
+    fn codex_config_responses_base() -> Option<String> {
+        let path = crate::storage::user_home_path(".codex/config.toml").ok()?;
+        let contents = std::fs::read_to_string(&path).ok()?;
+        let value: toml::Value = contents.parse().ok()?;
+
+        let provider_name = value.get("model_provider")?.as_str()?.trim();
+        if provider_name.is_empty() {
+            return None;
+        }
+        let provider = value
+            .get("model_providers")?
+            .as_table()?
+            .get(provider_name)?
+            .as_table()?;
+
+        // Only honor providers that speak the Responses wire API. When the key
+        // is absent, Codex defaults to the Responses API for OpenAI-style
+        // providers, so treat "missing" as eligible.
+        if let Some(wire_api) = provider.get("wire_api").and_then(|v| v.as_str()) {
+            if !wire_api.trim().eq_ignore_ascii_case("responses") {
+                return None;
+            }
+        }
+
+        let base = provider.get("base_url")?.as_str()?.trim();
+        if !(base.starts_with("http://") || base.starts_with("https://")) {
+            crate::logging::warn(&format!(
+                "Ignoring ~/.codex/config.toml base_url '{}' for provider '{}'; expected an absolute http(s):// URL",
+                base, provider_name
+            ));
+            return None;
+        }
+        let normalized = base
+            .trim_end_matches('/')
+            .trim_end_matches("/responses")
+            .trim_end_matches('/');
+        if normalized.is_empty() {
+            return None;
+        }
+        Some(normalized.to_string())
     }
 
     fn responses_ws_url(credentials: &CodexCredentials) -> String {
@@ -927,7 +1001,10 @@ impl OpenAIProvider {
         native_compaction_threshold: Option<usize>,
     ) -> Value {
         let mut tools = api_tools.to_vec();
-        if is_chatgpt_mode {
+        // The hosted `image_generation` tool is only available to general
+        // ChatGPT/GPT models on the Responses backend. Codex models
+        // (`*-codex*`) reject unknown hosted tools, so don't attach it for them.
+        if is_chatgpt_mode && model_supports_image_generation(model_id) {
             tools.push(serde_json::json!({ "type": "image_generation" }));
         }
 

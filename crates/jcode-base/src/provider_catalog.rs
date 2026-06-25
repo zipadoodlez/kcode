@@ -843,6 +843,15 @@ fn parse_bool_like(value: &str) -> bool {
 }
 
 pub fn openai_compatible_profile_is_configured(profile: OpenAiCompatibleProfile) -> bool {
+    // When a named config profile (`[providers.<name>]`, selected via
+    // `--provider-profile`) is active, its credentials live under the runtime
+    // env vars set by `apply_named_provider_profile_env`, not the built-in
+    // `openai-compatible.env`. Honor those first so auth-test does not report a
+    // false `not_configured` for a correctly-configured named profile (#402).
+    if let Some(configured) = active_named_provider_profile_is_configured() {
+        return configured;
+    }
+
     let resolved = resolve_openai_compatible_profile(profile);
     if load_api_key_from_env_or_config(&resolved.api_key_env, &resolved.env_file).is_some() {
         return true;
@@ -859,6 +868,50 @@ pub fn openai_compatible_profile_is_configured(profile: OpenAiCompatibleProfile)
     load_env_value_from_env_or_config(OPENAI_COMPAT_LOCAL_ENABLED_ENV, &resolved.env_file)
         .map(|value| parse_bool_like(&value))
         .unwrap_or(false)
+}
+
+/// Resolve the active named provider profile's credential env var + env file,
+/// as set by [`apply_named_provider_profile_env`], if one is active.
+///
+/// Returns `(api_key_env, env_file)` describing where to look for the key.
+pub fn active_named_provider_profile_credential_source() -> Option<(String, String)> {
+    // Presence of this var marks an active named profile (set by
+    // `apply_named_provider_profile_env`).
+    let _profile_name = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())?;
+
+    let key_env = std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "OPENROUTER_API_KEY".to_string());
+    let env_file = std::env::var("JCODE_OPENROUTER_ENV_FILE")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "openrouter.env".to_string());
+    Some((key_env, env_file))
+}
+
+/// Whether the active named provider profile has credentials available.
+///
+/// Returns `None` when no named profile is active (so callers fall back to the
+/// built-in profile checks), `Some(true)` when the profile is no-auth or has a
+/// key, and `Some(false)` when a key is required but missing.
+fn active_named_provider_profile_is_configured() -> Option<bool> {
+    let (key_env, env_file) = active_named_provider_profile_credential_source()?;
+
+    // A no-auth profile (localhost or explicit allow-no-auth) is configured.
+    if std::env::var("JCODE_OPENROUTER_ALLOW_NO_AUTH")
+        .map(|v| parse_bool_like(&v))
+        .unwrap_or(false)
+    {
+        return Some(true);
+    }
+
+    Some(load_api_key_from_env_or_config(&key_env, &env_file).is_some())
 }
 
 pub fn configured_api_key_source(

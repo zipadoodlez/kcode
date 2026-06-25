@@ -87,20 +87,34 @@ pub mod linux {
             return result;
         }
 
-        // Get the parent's stdin fd link target so we can verify children
-        // share the same pipe (not just any pipe on fd 0)
+        // Walk the descendant tree (children, grandchildren, ...) so wrapper
+        // chains like `sh -> wrapper -> reader` are detected even when the
+        // intermediate process is not itself reading stdin. At each hop we keep
+        // the existing same-stdin-pipe gate: a descendant only counts if it
+        // shares fd 0 with `pid`, so unrelated background processes that happen
+        // to read their own stdin do not trigger a false positive.
         let parent_stdin_link = std::fs::read_link(format!("/proc/{}/fd/0", pid))
             .ok()
             .map(|p| p.to_string_lossy().to_string());
 
-        // Check child processes. Use the kernel's direct-children list
-        // (`/proc/<pid>/task/<tid>/children`) instead of scanning every entry
-        // under `/proc`. This poll runs every few hundred ms for each live
-        // shell command, so a full process-table walk here costs ~1 file read
-        // per process on the machine per poll and shows up as a hot tokio worker
-        // burning CPU. The `children` file gives us exactly this command's
-        // children for a single cheap read.
-        for child_pid in direct_children(pid) {
+        // Bound the traversal so a pathological/deep tree cannot turn this
+        // few-hundred-ms poll into an expensive scan, and guard against cycles.
+        const MAX_DEPTH: usize = 32;
+        const MAX_VISITED: usize = 512;
+        let mut visited: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        visited.insert(pid);
+        // (pid, depth) work queue for a breadth-first descent.
+        let mut queue: std::collections::VecDeque<(u32, usize)> = direct_children(pid)
+            .into_iter()
+            .map(|child| (child, 1usize))
+            .collect();
+
+        while let Some((child_pid, depth)) = queue.pop_front() {
+            if !visited.insert(child_pid) || visited.len() > MAX_VISITED {
+                continue;
+            }
+
+            // Only descendants sharing the same stdin pipe are relevant.
             if let Some(ref parent_link) = parent_stdin_link {
                 let child_link = std::fs::read_link(format!("/proc/{}/fd/0", child_pid))
                     .ok()
@@ -109,8 +123,15 @@ pub mod linux {
                     continue;
                 }
             }
+
             if check_inner(child_pid, true) == StdinState::Reading {
                 return StdinState::Reading;
+            }
+
+            if depth < MAX_DEPTH {
+                for grandchild in direct_children(child_pid) {
+                    queue.push_back((grandchild, depth + 1));
+                }
             }
         }
 
