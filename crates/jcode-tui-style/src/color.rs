@@ -135,22 +135,25 @@ pub fn rgb(r: u8, g: u8, b: u8) -> Color {
 // Indices 232-255 are a grayscale ramp from rgb(8,8,8) to rgb(238,238,238).
 fn rgb_to_xterm256(r: u8, g: u8, b: u8) -> u8 {
     let gray_avg = (r as u16 + g as u16 + b as u16) / 3;
-    let is_grayish = (r as i16 - g as i16).unsigned_abs() < 15
-        && (g as i16 - b as i16).unsigned_abs() < 15
-        && (r as i16 - b as i16).unsigned_abs() < 15;
 
     let cube_idx = nearest_cube_index(r, g, b);
     let cube_color = cube_index_to_rgb(cube_idx);
     let cube_dist = color_distance(r, g, b, cube_color.0, cube_color.1, cube_color.2);
 
-    if is_grayish {
-        let gray_idx = nearest_gray_index(gray_avg as u8);
-        let gray_val = gray_index_to_value(gray_idx);
-        let gray_dist = color_distance(r, g, b, gray_val, gray_val, gray_val);
+    // Always evaluate the grayscale ramp candidate too and pick whichever is
+    // perceptually closer. The previous `is_grayish` gate (all channels within
+    // 15 of each other) excluded near-neutral colors whose channels happened to
+    // span exactly 15, so subtle dark gray-blues like the user-prompt
+    // background `rgb(35,40,50)` snapped to a saturated navy cube corner
+    // (index 17 = `(0,0,95)`) on 256-color terminals such as Apple Terminal.
+    // Comparing both candidates is strictly never worse and keeps these tones
+    // reading as the intended neutral gray.
+    let gray_idx = nearest_gray_index(gray_avg as u8);
+    let gray_val = gray_index_to_value(gray_idx);
+    let gray_dist = color_distance(r, g, b, gray_val, gray_val, gray_val);
 
-        if gray_dist < cube_dist {
-            return 232 + gray_idx;
-        }
+    if gray_dist < cube_dist {
+        return 232 + gray_idx;
     }
 
     cube_idx as u8 + 16
@@ -306,6 +309,24 @@ mod tests {
         let a = rgb_to_xterm256(80, 80, 80);
         let b = rgb_to_xterm256(82, 82, 82);
         assert_eq!(a, b, "Similar grays should map to same index");
+    }
+
+    /// Regression for the Apple Terminal "navy user prompt" bug: the subtle
+    /// dark gray-blue user-prompt background `rgb(35,40,50)` must quantize to a
+    /// neutral grayscale ramp entry, not a saturated navy cube corner
+    /// (index 17 = `(0,0,95)`). Its channels span exactly 15, which the old
+    /// `is_grayish` gate (`< 15`) excluded, snapping it to navy on 256-color
+    /// terminals.
+    #[test]
+    fn test_near_neutral_dark_blue_quantizes_to_gray_not_navy() {
+        let idx = rgb_to_xterm256(35, 40, 50);
+        assert_ne!(idx, 17, "must not snap to saturated navy (0,0,95)");
+        assert!(
+            (232..=255).contains(&u16::from(idx)),
+            "near-neutral dark tone should map to the grayscale ramp, got {idx}"
+        );
+        let (r, g, b) = indexed_to_rgb(idx);
+        assert_eq!((r, g, b), (38, 38, 38), "expected neutral gray ramp entry");
     }
 
     /// Map a single (r,g,b) the way `rgb()` would under a given capability.
