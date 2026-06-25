@@ -802,7 +802,30 @@ async fn install_extension() -> Result<String> {
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = tokio::process::Command::new("open").arg(&xpi_url).spawn();
+        // macOS has no default handler for `.xpi` files, so a plain `open <url>`
+        // fails with kLSApplicationNotFoundErr. Open the XPI directly with
+        // Firefox, which knows how to install extensions. Try the app name first,
+        // then fall back to the bundle id (covers Firefox installed under a
+        // non-default name or when it is not the default browser).
+        let opened = tokio::process::Command::new("open")
+            .args(["-a", "Firefox", &xpi_url])
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !opened {
+            let opened_by_id = tokio::process::Command::new("open")
+                .args(["-b", "org.mozilla.firefox", &xpi_url])
+                .status()
+                .await
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if !opened_by_id {
+                // Last resort: let Launch Services pick a handler. This likely
+                // fails for `.xpi`, but keeps the previous behavior as a fallback.
+                let _ = tokio::process::Command::new("open").arg(&xpi_url).spawn();
+            }
+        }
     }
     #[cfg(target_os = "windows")]
     {
