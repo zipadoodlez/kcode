@@ -151,6 +151,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "/alignment [status|centered|left]",
         "Show or persist text alignment preference",
     ));
+    lines.push(help_entry(
+        "/compact-notifications [status|on|off]",
+        "Collapse swarm/file-activity notifications to one line",
+    ));
     lines.push(help_entry("/config", "Show active configuration"));
     lines.push(help_entry("/config init", "Create default config file"));
     lines.push(help_entry("/config edit", "Open config in $EDITOR"));

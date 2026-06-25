@@ -171,6 +171,18 @@ impl Config {
         Ok(())
     }
 
+    /// Update the persisted compact-notifications preference.
+    pub fn set_compact_notifications(compact: bool) -> anyhow::Result<()> {
+        let mut cfg = Self::load();
+        cfg.display.compact_notifications = compact;
+        cfg.save()?;
+        crate::logging::info(&format!(
+            "Saved display.compact_notifications to config: {}",
+            compact
+        ));
+        Ok(())
+    }
+
     fn normalize_external_auth_source_id(source_id: &str) -> String {
         source_id.trim().to_ascii_lowercase()
     }

@@ -871,6 +871,9 @@ pub struct DisplayConfig {
     pub redraw_fps: u32,
     /// Show a truncated preview of the previous prompt at the top when it scrolls out of view (default: true)
     pub prompt_preview: bool,
+    /// Render swarm/file-activity notifications in a compact single-line form
+    /// instead of the full multi-line card with diff preview (default: false)
+    pub compact_notifications: bool,
     /// Override the Alt/Option label shown in copy badges. Empty = auto (⌥ on macOS, Alt elsewhere).
     pub copy_badge_alt_label: String,
     /// Native terminal scrollbar configuration for scrollable panes
@@ -900,6 +903,7 @@ impl Default for DisplayConfig {
             animation_fps: 60,
             redraw_fps: 60,
             prompt_preview: true,
+            compact_notifications: false,
             copy_badge_alt_label: String::new(),
             native_scrollbars: NativeScrollbarConfig::default(),
         }

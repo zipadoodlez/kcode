@@ -112,6 +112,60 @@ fn test_alignment_invalid_usage_shows_error() {
 }
 
 #[test]
+fn test_compact_notifications_command_persists_and_applies_immediately() {
+    with_temp_jcode_home(|| {
+        crate::config::Config::set_compact_notifications(false).expect("save default");
+
+        let mut app = create_test_app();
+        app.input = "/compact-notifications on".to_string();
+
+        app.submit_input();
+
+        let cfg = crate::config::Config::load();
+        assert!(cfg.display.compact_notifications);
+        assert_eq!(
+            app.status_notice(),
+            Some("Compact notifications: on".to_string())
+        );
+
+        let last = app.display_messages().last().expect("missing response");
+        assert_eq!(last.role, "system");
+        assert!(last.content.contains("Saved compact notifications: on"));
+    });
+}
+
+#[test]
+fn test_compact_notifications_status_reports_current_value() {
+    with_temp_jcode_home(|| {
+        crate::config::Config::set_compact_notifications(true).expect("save default");
+
+        let mut app = create_test_app();
+        app.input = "/compact-notifications".to_string();
+
+        app.submit_input();
+
+        let last = app.display_messages().last().expect("missing response");
+        assert_eq!(last.role, "system");
+        assert!(
+            last.content
+                .contains("Compact notifications are currently on.")
+        );
+    });
+}
+
+#[test]
+fn test_compact_notifications_invalid_usage_shows_error() {
+    let mut app = create_test_app();
+    app.input = "/compact-notifications maybe".to_string();
+
+    app.submit_input();
+
+    let last = app.display_messages().last().expect("missing response");
+    assert_eq!(last.role, "error");
+    assert!(last.content.contains("Usage: /compact-notifications"));
+}
+
+#[test]
 fn test_help_topic_shows_fix_command_details() {
     let mut app = create_test_app();
     app.input = "/help fix".to_string();
