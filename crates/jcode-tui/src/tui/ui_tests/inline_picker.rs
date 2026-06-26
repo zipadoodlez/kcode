@@ -74,7 +74,7 @@ fn model_picker_hotkey_hint_renders_above_the_box() {
     // the rounded top border of the picker box (which starts with '╭').
     let hint_row = lines
         .iter()
-        .position(|line| line.contains("Ctrl+F favorite"))
+        .position(|line| line.contains("Ctrl+N favorite"))
         .unwrap_or_else(|| panic!("hotkey hint should be rendered:\n{}", lines.join("\n")));
     let border_row = lines
         .iter()

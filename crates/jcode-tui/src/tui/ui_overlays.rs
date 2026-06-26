@@ -528,6 +528,8 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Cycle diff mode (Off/Inline/Pinned/File)",
     ));
     lines.push(key_entry("Shift+Tab", "Cycle favorited models"));
+    lines.push(key_entry("Ctrl+O", "Set default model (in /model picker)"));
+    lines.push(key_entry("Ctrl+N", "Toggle favorite model (in /model picker)"));
 
     lines.push(Line::from(""));
     lines.push(separator());

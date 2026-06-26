@@ -1555,13 +1555,15 @@ impl App {
         if !active {
             return Ok(false);
         }
+        // Use Ctrl+O (set default) and Ctrl+N (toggle favorite) so the picker
+        // preview no longer steals Ctrl+B / Ctrl+F / Alt+F, which are the tmux
+        // prefix and readline word-navigation keys users rely on while editing
+        // the `/model` command line. Cycling favorites stays on Shift+Tab.
         let is_default =
-            modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'b');
+            modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'o');
         let is_favorite =
-            modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'f');
-        let is_cycle_favorite =
-            modifiers.contains(KeyModifiers::ALT) && key_char_eq_ignore_ascii_case(code, 'f');
-        if is_default || is_favorite || is_cycle_favorite {
+            modifiers.contains(KeyModifiers::CONTROL) && key_char_eq_ignore_ascii_case(code, 'n');
+        if is_default || is_favorite {
             self.handle_inline_interactive_key(code, modifiers)?;
             return Ok(true);
         }
@@ -2351,7 +2353,7 @@ impl App {
         if let Some(entry_name) = selected_name {
             self.set_status_notice(format!("Favorite → {}", entry_name));
         } else {
-            self.set_status_notice("No favorited models yet. Use Ctrl+F to favorite one.");
+            self.set_status_notice("No favorited models yet. Use Ctrl+N to favorite one.");
         }
     }
 
@@ -2506,7 +2508,7 @@ impl App {
                 }
             }
             code if modifiers.contains(KeyModifiers::CONTROL)
-                && key_char_eq_ignore_ascii_case(code, 'b') =>
+                && key_char_eq_ignore_ascii_case(code, 'o') =>
             {
                 if let Some(ref picker) = self.inline_interactive_state {
                     if !picker_is_runtime_model_picker(picker) {
@@ -2568,14 +2570,9 @@ impl App {
                 }
             }
             code if modifiers.contains(KeyModifiers::CONTROL)
-                && key_char_eq_ignore_ascii_case(code, 'f') =>
+                && key_char_eq_ignore_ascii_case(code, 'n') =>
             {
                 self.toggle_selected_model_favorite();
-            }
-            code if modifiers.contains(KeyModifiers::ALT)
-                && key_char_eq_ignore_ascii_case(code, 'f') =>
-            {
-                self.cycle_selected_model_favorite();
             }
             KeyCode::Enter => {
                 let Some(ref mut picker) = self.inline_interactive_state else {
