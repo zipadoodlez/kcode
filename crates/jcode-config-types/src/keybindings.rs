@@ -231,6 +231,12 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
         other: PlatformDefault::dev("ctrl+shift+tab"),
     },
     KeybindingDefault {
+        id: "fallback_switch",
+        description: "Accept the post-error fallback offer (switch model/auth-method and resend)",
+        macos: PlatformDefault::dev("ctrl+y"),
+        other: PlatformDefault::dev("ctrl+y"),
+    },
+    KeybindingDefault {
         id: "effort_increase",
         description: "Increase reasoning effort",
         // macOS uses Cmd+Right so Option+Right stays free for word navigation.

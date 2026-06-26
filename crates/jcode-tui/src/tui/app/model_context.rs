@@ -173,6 +173,197 @@ impl App {
         }
     }
 
+    /// The model routes to consider when computing an error fallback, working in
+    /// both local and remote sessions. Mirrors the model-picker's route source so
+    /// the offered fallback matches what `/model` would show.
+    fn fallback_candidate_routes(&self) -> Vec<crate::provider::ModelRoute> {
+        if self.is_remote {
+            if !self.remote_model_options.is_empty() {
+                self.remote_model_options.clone()
+            } else {
+                self.build_remote_model_routes_fallback()
+            }
+        } else {
+            self.provider.model_routes()
+        }
+    }
+
+    /// The api_method string of the route currently in use, used to exclude the
+    /// failed route and to recognize same-model/different-method alternatives.
+    fn current_route_api_method(&self) -> Option<String> {
+        if self.is_remote {
+            return self.session.route_api_method.clone();
+        }
+        // Prefer the explicitly applied route api_method, then derive one from the
+        // active OAuth/API-key credential for the dual-auth providers.
+        if let Some(method) = self.session.route_api_method.clone() {
+            return Some(method);
+        }
+        let provider_name = self.provider.name().to_ascii_lowercase();
+        let credential = self.provider.active_resolved_credential();
+        match (provider_name.as_str(), credential) {
+            ("claude", Some(jcode_provider_core::ResolvedCredential::Oauth)) => {
+                Some("claude-oauth".to_string())
+            }
+            ("claude", Some(jcode_provider_core::ResolvedCredential::ApiKey)) => {
+                Some("claude-api".to_string())
+            }
+            ("openai", Some(jcode_provider_core::ResolvedCredential::Oauth)) => {
+                Some("openai-oauth".to_string())
+            }
+            ("openai", Some(jcode_provider_core::ResolvedCredential::ApiKey)) => {
+                Some("openai-api".to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn current_provider_label_for_fallback(&self) -> String {
+        if self.is_remote {
+            self.remote_provider_name
+                .clone()
+                .unwrap_or_else(|| "remote".to_string())
+        } else {
+            self.provider.name().to_string()
+        }
+    }
+
+    fn current_model_for_fallback(&self) -> String {
+        if self.is_remote {
+            self.remote_provider_model
+                .clone()
+                .unwrap_or_else(|| self.provider.model())
+        } else {
+            self.provider.model()
+        }
+    }
+
+    /// Short label for a route, e.g. "claude-sonnet-4 via OAuth (Anthropic)".
+    fn describe_route(route: &crate::provider::ModelRoute) -> String {
+        let method = crate::provider::ModelRouteApiMethod::parse(&route.api_method).display_label();
+        format!("{} via {} ({})", route.model, method, route.provider)
+    }
+
+    /// Condense a (possibly multi-line JSON) provider error down to a single,
+    /// length-capped line for the fallback offer summary.
+    fn clip_error_one_line(error: &str, max_chars: usize) -> String {
+        let first = error.lines().next().unwrap_or(error).trim();
+        if first.chars().count() <= max_chars {
+            return first.to_string();
+        }
+        let clipped: String = first.chars().take(max_chars).collect();
+        format!("{clipped}…")
+    }
+
+    /// After a provider turn error, compute the next best available route and, if
+    /// one exists, arm an interactive offer the user can accept with a keypress to
+    /// switch and resend. Returns true when an offer was armed.
+    ///
+    /// This is the manual counterpart to automatic cross-provider failover: it can
+    /// switch *auth methods on the same provider* (e.g. from a broken API key to a
+    /// working OAuth login), which the automatic path never does.
+    pub(super) fn offer_fallback_after_error(&mut self, error: &str) -> bool {
+        // Never compete with the automatic countdown switcher.
+        if self.pending_provider_failover.is_some() {
+            return false;
+        }
+        // Remote sessions switch + resend through the server connection, which is
+        // not reachable from this synchronous error path; mirror the failover
+        // countdown's local-only precedent for now.
+        if self.is_remote {
+            return false;
+        }
+        let routes = self.fallback_candidate_routes();
+        if routes.is_empty() {
+            return false;
+        }
+        let current_model = self.current_model_for_fallback();
+        let current_provider = self.current_provider_label_for_fallback();
+        let current_api_method = self.current_route_api_method().unwrap_or_default();
+
+        let Some(index) = crate::provider::pick_next_fallback_route(
+            &routes,
+            &current_model,
+            &current_provider,
+            &current_api_method,
+        ) else {
+            return false;
+        };
+        let route = routes[index].clone();
+        let target_label = Self::describe_route(&route);
+        let from_method = crate::provider::ModelRouteApiMethod::parse(&current_api_method);
+        let from_label = if current_api_method.is_empty() {
+            current_provider.clone()
+        } else {
+            format!("{} via {}", current_provider, from_method.display_label())
+        };
+
+        let key_label = crate::tui::keybind::fallback_switch_key_label();
+        self.push_display_message(DisplayMessage::system(format!(
+            "↪ Fallback available: press {} to switch to {} and resend.\n\nWhat failed: {}\nError: {}",
+            key_label,
+            target_label,
+            from_label,
+            Self::clip_error_one_line(error, 160),
+        )));
+        self.set_status_notice(format!("Press {} to switch to {}", key_label, route.model));
+        self.pending_fallback_offer = Some(super::PendingFallbackOffer {
+            selection: crate::provider::RouteSelection::from_model_route(&route),
+            target_label,
+            from_label,
+        });
+        true
+    }
+
+    pub(super) fn clear_pending_fallback_offer(&mut self) {
+        self.pending_fallback_offer = None;
+    }
+
+    /// Apply the armed fallback offer: switch to the alternative route and resend
+    /// the failed turn. Returns true when an offer was present and consumed.
+    pub(super) fn apply_pending_fallback_offer(&mut self) -> bool {
+        let Some(offer) = self.pending_fallback_offer.take() else {
+            return false;
+        };
+
+        match self.provider.set_route_selection(&offer.selection) {
+            Ok(()) => {
+                let spec = offer.selection.routed_model_spec();
+                self.provider_session_id = None;
+                self.session.provider_session_id = None;
+                self.upstream_provider = None;
+                self.status_detail = None;
+                self.invalidate_model_picker_cache();
+                let active_model = self.provider.model();
+                self.update_context_limit_for_model(&active_model);
+                self.session.provider_key =
+                    crate::provider::MultiProvider::session_provider_key_after_model_switch(
+                        &spec,
+                        self.provider.name(),
+                        self.session.provider_key.as_deref(),
+                    );
+                self.session.model = Some(active_model.clone());
+                self.session.route_api_method = Some(offer.selection.api_method.clone());
+                let _ = self.session.save();
+                self.push_display_message(DisplayMessage::system(format!(
+                    "↪ Switched to {} and resending (was {}).",
+                    offer.target_label, offer.from_label,
+                )));
+                self.set_status_notice(format!("Switched → {} (retrying)", active_model));
+                self.pending_turn = true;
+                true
+            }
+            Err(error) => {
+                self.push_display_message(DisplayMessage::error(format!(
+                    "Failed to switch to {}: {}",
+                    offer.target_label, error
+                )));
+                self.set_status_notice("Fallback switch failed");
+                true
+            }
+        }
+    }
+
     pub(super) fn cycle_model(&mut self, direction: i8) {
         let models = self.provider.available_models_for_switching();
         if models.is_empty() {
@@ -417,10 +608,19 @@ impl App {
                 self.stop_overnight_auto_poke_for_non_retryable_error(&error);
             }
         } else {
-            self.push_display_message(DisplayMessage::error(format!(
-                "Error: {} Run /fix to attempt recovery.",
-                error
-            )));
+            // Offer a one-keypress switch to the next best model/auth-method
+            // (e.g. broken API key -> working OAuth login) before giving up. The
+            // offer is informational; auto-poke still stops so an unattended loop
+            // does not silently keep retrying a path that needs a human decision.
+            let offered = self.offer_fallback_after_error(&error);
+            if offered {
+                self.push_display_message(DisplayMessage::error(format!("Error: {}", error)));
+            } else {
+                self.push_display_message(DisplayMessage::error(format!(
+                    "Error: {} Run /fix to attempt recovery.",
+                    error
+                )));
+            }
             super::commands::stop_auto_poke_for_non_retryable_error(self, &error);
             self.stop_overnight_auto_poke_for_non_retryable_error(&error);
         }

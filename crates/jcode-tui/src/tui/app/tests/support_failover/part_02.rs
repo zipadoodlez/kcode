@@ -580,3 +580,136 @@ fn create_gemini_test_app() -> App {
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app
 }
+
+/// Provider exposing the same model via both a (broken) API key and a working
+/// OAuth login, plus a `set_route_selection` that records the applied route.
+/// Mirrors the user's case: Claude OAuth works but the API key is broken.
+#[derive(Clone)]
+struct DualMethodMockProvider {
+    api_method: StdArc<StdMutex<String>>,
+    applied: StdArc<StdMutex<Option<String>>>,
+}
+
+#[async_trait::async_trait]
+impl Provider for DualMethodMockProvider {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[crate::message::ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<crate::provider::EventStream> {
+        unimplemented!("DualMethodMockProvider")
+    }
+
+    fn name(&self) -> &str {
+        "Claude"
+    }
+
+    fn model(&self) -> String {
+        "claude-sonnet-4".to_string()
+    }
+
+    fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
+        vec![
+            crate::provider::ModelRoute {
+                model: "claude-sonnet-4".to_string(),
+                provider: "Anthropic".to_string(),
+                api_method: "claude-api".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+            crate::provider::ModelRoute {
+                model: "claude-sonnet-4".to_string(),
+                provider: "Anthropic".to_string(),
+                api_method: "claude-oauth".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            },
+        ]
+    }
+
+    fn set_route_selection(&self, selection: &crate::provider::RouteSelection) -> Result<()> {
+        *self.applied.lock().unwrap() = Some(selection.api_method.clone());
+        *self.api_method.lock().unwrap() = selection.api_method.clone();
+        Ok(())
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(self.clone())
+    }
+}
+
+fn create_dual_method_test_app() -> (App, StdArc<StdMutex<Option<String>>>) {
+    ensure_test_jcode_home_if_unset();
+    clear_persisted_test_ui_state();
+    crate::tui::ui::clear_test_render_state_for_tests();
+
+    let applied = StdArc::new(StdMutex::new(None));
+    let provider: Arc<dyn Provider> = Arc::new(DualMethodMockProvider {
+        api_method: StdArc::new(StdMutex::new("claude-api".to_string())),
+        applied: applied.clone(),
+    });
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
+    let mut app = App::new_for_test_harness(provider, registry);
+    app.queue_mode = false;
+    app.diff_mode = crate::config::DiffDisplayMode::Inline;
+    // The active route is the (broken) API key.
+    app.session.route_api_method = Some("claude-api".to_string());
+    (app, applied)
+}
+
+#[test]
+fn test_turn_error_offers_same_model_oauth_fallback() {
+    with_temp_jcode_home(|| {
+        let (mut app, _applied) = create_dual_method_test_app();
+
+        app.handle_turn_error(
+            "Anthropic API error (401 Unauthorized): {\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"invalid x-api-key\"}}",
+        );
+
+        assert!(
+            app.pending_fallback_offer.is_some(),
+            "an auth error with a working OAuth route should arm a fallback offer"
+        );
+        let offer_msg = app
+            .display_messages
+            .iter()
+            .find(|m| m.content.contains("Fallback available"))
+            .expect("offer message should be shown");
+        assert!(offer_msg.content.contains("oauth") || offer_msg.content.contains("OAuth"));
+    });
+}
+
+#[test]
+fn test_apply_fallback_offer_switches_route_and_resends() {
+    with_temp_jcode_home(|| {
+        let (mut app, applied) = create_dual_method_test_app();
+
+        app.handle_turn_error(
+            "Anthropic API error (401 Unauthorized): invalid x-api-key",
+        );
+        assert!(app.pending_fallback_offer.is_some());
+
+        let consumed = app.apply_pending_fallback_offer();
+        assert!(consumed, "applying should consume the offer");
+        assert!(app.pending_fallback_offer.is_none());
+        assert!(app.pending_turn, "applying should queue a resend");
+        assert_eq!(
+            applied.lock().unwrap().as_deref(),
+            Some("claude-oauth"),
+            "should switch to the same-model OAuth route"
+        );
+    });
+}
+
+#[test]
+fn test_apply_fallback_offer_no_offer_is_noop() {
+    with_temp_jcode_home(|| {
+        let (mut app, _applied) = create_dual_method_test_app();
+        assert!(!app.apply_pending_fallback_offer());
+    });
+}

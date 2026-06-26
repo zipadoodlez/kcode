@@ -2,6 +2,7 @@ pub mod anthropic;
 pub mod auth_mode;
 pub mod catalog_refresh;
 pub mod failover;
+pub mod fallback_pick;
 pub mod fingerprint;
 pub mod model_id;
 pub mod models;
@@ -25,6 +26,7 @@ pub use failover::{
     FailoverDecision, ProviderFailoverPrompt, classify_failover_error_message,
     parse_failover_prompt_message,
 };
+pub use fallback_pick::pick_next_fallback_route;
 pub use fingerprint::{log_provider_canonical_input, stable_hash_json, stable_hash_str};
 pub use models::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, DEFAULT_CONTEXT_LIMIT, ModelCapabilities,

@@ -726,6 +726,9 @@ pub struct KeybindingsConfig {
     pub model_switch_next: String,
     /// Model switch previous key (default: "ctrl+shift+tab")
     pub model_switch_prev: String,
+    /// Accept the post-error fallback offer: switch to the next best
+    /// model/auth-method and resend the failed turn (default: "ctrl+y").
+    pub fallback_switch: String,
     /// Effort increase key (default: "cmd+right" on macOS, "alt+right" elsewhere)
     pub effort_increase: String,
     /// Effort decrease key (default: "cmd+left" on macOS, "alt+left" elsewhere)
@@ -789,6 +792,7 @@ impl Default for KeybindingsConfig {
             scroll_page_down: get("scroll_page_down", "alt+d"),
             model_switch_next: get("model_switch_next", "ctrl+tab"),
             model_switch_prev: get("model_switch_prev", "ctrl+shift+tab"),
+            fallback_switch: get("fallback_switch", "ctrl+y"),
             effort_increase: get("effort_increase", "alt+right"),
             effort_decrease: get("effort_decrease", "alt+left"),
             centered_toggle: get("centered_toggle", "alt+c"),

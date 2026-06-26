@@ -61,6 +61,7 @@ pub use jcode_provider_core::{
     shared_http_client, summarize_model_catalog_refresh,
 };
 pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
+pub use jcode_provider_core::{model_route_provider_labels_match, pick_next_fallback_route};
 pub use route_builders::{
     build_anthropic_oauth_route, build_copilot_route, build_openai_api_key_route,
     build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,

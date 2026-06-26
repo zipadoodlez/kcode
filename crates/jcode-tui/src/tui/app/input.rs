@@ -1119,6 +1119,15 @@ impl App {
             .unwrap_or(false)
     }
 
+    /// Whether the configured `keybindings.fallback_switch` chord matches this key.
+    pub(crate) fn fallback_switch_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        self.fallback_switch_key
+            .binding
+            .as_ref()
+            .map(|binding| binding.matches(code, modifiers))
+            .unwrap_or(false)
+    }
+
     /// Spawn a brand-new jcode session in a new terminal window.
     pub(crate) fn handle_new_terminal_hotkey(&mut self) {
         let cwd = commands::active_working_dir(self)
@@ -2103,6 +2112,16 @@ impl App {
             }
         }
 
+        // Accept an armed post-error fallback offer: switch to the next best
+        // model/auth-method and resend the failed turn.
+        if self.pending_fallback_offer.is_some()
+            && !self.is_processing
+            && self.fallback_switch_key_matches(code, modifiers)
+        {
+            self.apply_pending_fallback_offer();
+            return Ok(());
+        }
+
         if is_next_prompt_new_session_hotkey(code, modifiers) {
             self.toggle_next_prompt_new_session_routing();
             return Ok(());
@@ -3063,6 +3082,10 @@ impl App {
         }
         crate::telemetry::record_turn();
         self.session_save_pending = true;
+
+        // A fresh user turn supersedes any post-error fallback offer from the
+        // previous turn; drop it so a stale keypress can't switch+resend.
+        self.clear_pending_fallback_offer();
 
         // Set up processing state - actual processing happens after UI redraws
         self.is_processing = true;

@@ -303,6 +303,23 @@ struct PendingProviderFailover {
     deadline: Instant,
 }
 
+/// An interactive "switch to the next best model/method and resend" offer shown
+/// after a provider turn error (auth failure, broken API key, rate limit, etc.).
+///
+/// Unlike [`PendingProviderFailover`], this is a manual, keypress-activated
+/// affordance and can switch between *auth methods on the same provider* (e.g.
+/// fall back from a broken `claude-api` key to a working `claude-oauth` login),
+/// which is exactly the case automatic cross-provider failover cannot handle.
+#[derive(Debug, Clone)]
+struct PendingFallbackOffer {
+    /// The route selection to apply when the user accepts the offer.
+    selection: crate::provider::RouteSelection,
+    /// Short human label for the target (e.g. "claude-sonnet-4 via OAuth").
+    target_label: String,
+    /// Short label for what just failed (e.g. "Claude via API key").
+    from_label: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum SessionPickerMode {
     #[default]
@@ -760,6 +777,9 @@ pub struct App {
     overnight_auto_poke: Option<OvernightAutoPokeState>,
     // Pending cross-provider resend after a failover warning/countdown.
     pending_provider_failover: Option<PendingProviderFailover>,
+    // Interactive "switch to next best model/method and resend" offer surfaced
+    // after a provider turn error; accepted with a keypress.
+    pending_fallback_offer: Option<PendingFallbackOffer>,
     // Local session file write to flush once the first "sending" frame is visible.
     session_save_pending: bool,
     // Tool calls detected during streaming (shown in real-time with details)
@@ -1156,6 +1176,8 @@ pub struct App {
     new_terminal_key: OptionalBinding,
     // Optional configured keybinding for opening the /resume session picker
     open_resume_key: OptionalBinding,
+    // Optional configured keybinding for accepting the post-error fallback offer
+    fallback_switch_key: OptionalBinding,
     // Active external dictation session, if one is running
     dictation_session: Option<dictation::ActiveDictation>,
     // Whether an external dictation command is currently running
