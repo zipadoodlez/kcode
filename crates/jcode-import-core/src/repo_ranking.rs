@@ -233,6 +233,79 @@ pub fn half_life_from_duration(d: Duration) -> f64 {
     d.num_seconds() as f64 / 86_400.0
 }
 
+/// A planned global launch hotkey: a chord plus the directory it should open
+/// jcode in. Produced by [`build_launch_hotkey_plan`] from a ranking, then
+/// persisted to config so the mapping is baked once and does not move around.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedHotkey {
+    /// jcode-style chord string, e.g. `cmd+;` or `cmd+[`.
+    pub chord: String,
+    /// Absolute directory the hotkey opens jcode in.
+    pub dir: String,
+    /// Short human label (usually the repo's directory name) for notices.
+    pub label: String,
+}
+
+/// The default chord assigned to each launch-hotkey slot, in slot order.
+///
+/// Slot meaning (see [`build_launch_hotkey_plan`]):
+/// 0 = top repo, 1 = home, 2 = repo #2, 3 = repo #3, 4 = repo #4.
+pub const DEFAULT_LAUNCH_HOTKEY_CHORDS: [&str; 5] =
+    ["cmd+;", "cmd+'", "cmd+[", "cmd+]", "cmd+\\"];
+
+/// Build the default launch-hotkey plan from a ranking and the user's home dir.
+///
+/// The layout follows the product spec: the most-active repo gets `Cmd+;`, home
+/// gets `Cmd+'`, and the next three repos get `Cmd+[`, `Cmd+]`, `Cmd+\`. `home`
+/// is always slot 1 even if it also appears in the ranking, and it is skipped
+/// from the repo slots so we never bind two chords to the same directory.
+///
+/// `chords` lets callers override the default chord sequence (e.g. from config);
+/// pass [`DEFAULT_LAUNCH_HOTKEY_CHORDS`] for the standard layout. Only as many
+/// hotkeys as there are available chords and repos are produced.
+pub fn build_launch_hotkey_plan(
+    home: &Path,
+    ranked: &[RankedRepo],
+    chords: &[&str],
+) -> Vec<PlannedHotkey> {
+    let home_norm = normalize_path(home);
+    // Top repos, excluding home itself, in rank order.
+    let repos: Vec<&RankedRepo> = ranked
+        .iter()
+        .filter(|r| normalize_path(Path::new(&r.path)) != home_norm)
+        .collect();
+
+    // Slot order interleaves the top repo, then home, then the remaining repos.
+    // dirs[i] is the directory for chord slot i.
+    let mut dirs: Vec<(String, String)> = Vec::new();
+    if let Some(top) = repos.first() {
+        dirs.push((top.path.clone(), dir_label(&top.path)));
+    }
+    dirs.push((home.to_string_lossy().into_owned(), "home".to_string()));
+    for repo in repos.iter().skip(1) {
+        dirs.push((repo.path.clone(), dir_label(&repo.path)));
+    }
+
+    chords
+        .iter()
+        .zip(dirs.into_iter())
+        .map(|(chord, (dir, label))| PlannedHotkey {
+            chord: (*chord).to_string(),
+            dir,
+            label,
+        })
+        .collect()
+}
+
+/// Final path component as a short label, falling back to the full path.
+fn dir_label(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| path.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,5 +464,88 @@ mod tests {
             Some(PathBuf::from("/x"))
         });
         assert!(ranked.is_empty());
+    }
+
+    fn repo(path: &str, score: f64) -> RankedRepo {
+        RankedRepo {
+            path: path.to_string(),
+            session_count: 1,
+            score,
+            last_used: None,
+        }
+    }
+
+    #[test]
+    fn plan_assigns_top_repo_home_then_next_repos() {
+        let ranked = vec![
+            repo("/u/jeremy/jcode", 600.0),
+            repo("/u/jeremy/scrollwm", 100.0),
+            repo("/u/jeremy/sideproj", 50.0),
+            repo("/u/jeremy/fourth", 10.0),
+            repo("/u/jeremy/fifth", 5.0),
+        ];
+        let plan = build_launch_hotkey_plan(
+            Path::new("/u/jeremy"),
+            &ranked,
+            &DEFAULT_LAUNCH_HOTKEY_CHORDS,
+        );
+        // Slots: top, home, #2, #3, #4 -> 5 chords total.
+        assert_eq!(plan.len(), 5);
+        assert_eq!(plan[0].chord, "cmd+;");
+        assert_eq!(plan[0].dir, "/u/jeremy/jcode");
+        assert_eq!(plan[1].chord, "cmd+'");
+        assert_eq!(plan[1].dir, "/u/jeremy");
+        assert_eq!(plan[1].label, "home");
+        assert_eq!(plan[2].chord, "cmd+[");
+        assert_eq!(plan[2].dir, "/u/jeremy/scrollwm");
+        assert_eq!(plan[3].chord, "cmd+]");
+        assert_eq!(plan[3].dir, "/u/jeremy/sideproj");
+        assert_eq!(plan[4].chord, "cmd+\\");
+        assert_eq!(plan[4].dir, "/u/jeremy/fourth");
+    }
+
+    #[test]
+    fn plan_skips_home_if_it_appears_in_ranking() {
+        let ranked = vec![
+            repo("/u/jeremy", 999.0), // home ranked #1, should not take a repo slot
+            repo("/u/jeremy/jcode", 600.0),
+        ];
+        let plan = build_launch_hotkey_plan(
+            Path::new("/u/jeremy"),
+            &ranked,
+            &DEFAULT_LAUNCH_HOTKEY_CHORDS,
+        );
+        // Top repo slot is jcode (home filtered out), then home gets cmd+'.
+        assert_eq!(plan[0].dir, "/u/jeremy/jcode");
+        assert_eq!(plan[1].dir, "/u/jeremy");
+        // No duplicate dir bound to two chords.
+        let mut dirs: Vec<&str> = plan.iter().map(|p| p.dir.as_str()).collect();
+        dirs.sort();
+        dirs.dedup();
+        assert_eq!(dirs.len(), plan.len());
+    }
+
+    #[test]
+    fn plan_truncates_to_available_repos() {
+        let ranked = vec![repo("/u/jeremy/only", 600.0)];
+        let plan = build_launch_hotkey_plan(
+            Path::new("/u/jeremy"),
+            &ranked,
+            &DEFAULT_LAUNCH_HOTKEY_CHORDS,
+        );
+        // top repo + home only.
+        assert_eq!(plan.len(), 2);
+        assert_eq!(plan[0].dir, "/u/jeremy/only");
+        assert_eq!(plan[1].dir, "/u/jeremy");
+    }
+
+    #[test]
+    fn plan_with_no_repos_still_binds_home() {
+        let plan =
+            build_launch_hotkey_plan(Path::new("/u/jeremy"), &[], &DEFAULT_LAUNCH_HOTKEY_CHORDS);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].chord, "cmd+;");
+        assert_eq!(plan[0].dir, "/u/jeremy");
+        assert_eq!(plan[0].label, "home");
     }
 }

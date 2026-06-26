@@ -313,7 +313,6 @@ impl Config {
         source_id: &str,
         path: &std::path::Path,
     ) -> anyhow::Result<()> {
-        let entry = Self::trusted_external_auth_path_entry(source_id, path)?;
         let mut cfg = Self::load();
         let before = cfg.auth.trusted_external_source_paths.len();
         cfg.auth
