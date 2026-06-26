@@ -1950,10 +1950,10 @@ impl App {
                         .unwrap_or_else(|| session_id.to_string())
                 }
                 ResumeTarget::ClaudeCodeSession { session_id, .. } => {
-                    format!("Claude Code {}", &session_id[..session_id.len().min(8)])
+                    format!("Claude Code {}", jcode_core::util::truncate_str(&session_id, 8))
                 }
                 ResumeTarget::CodexSession { session_id, .. } => {
-                    format!("Codex {}", &session_id[..session_id.len().min(8)])
+                    format!("Codex {}", jcode_core::util::truncate_str(&session_id, 8))
                 }
                 ResumeTarget::PiSession { session_path } => std::path::Path::new(session_path)
                     .file_stem()
@@ -1961,7 +1961,7 @@ impl App {
                     .unwrap_or("Pi session")
                     .to_string(),
                 ResumeTarget::OpenCodeSession { session_id, .. } => {
-                    format!("OpenCode {}", &session_id[..session_id.len().min(8)])
+                    format!("OpenCode {}", jcode_core::util::truncate_str(&session_id, 8))
                 }
             };
             let resolved_target = match crate::import::resolve_resume_target_to_jcode(target) {
@@ -2049,10 +2049,10 @@ impl App {
                     .unwrap_or_else(|| session_id.to_string())
             }
             ResumeTarget::ClaudeCodeSession { session_id, .. } => {
-                format!("Claude Code {}", &session_id[..session_id.len().min(8)])
+                format!("Claude Code {}", jcode_core::util::truncate_str(&session_id, 8))
             }
             ResumeTarget::CodexSession { session_id, .. } => {
-                format!("Codex {}", &session_id[..session_id.len().min(8)])
+                format!("Codex {}", jcode_core::util::truncate_str(&session_id, 8))
             }
             ResumeTarget::PiSession { session_path } => std::path::Path::new(session_path)
                 .file_stem()
@@ -2060,7 +2060,7 @@ impl App {
                 .unwrap_or("Pi session")
                 .to_string(),
             ResumeTarget::OpenCodeSession { session_id, .. } => {
-                format!("OpenCode {}", &session_id[..session_id.len().min(8)])
+                format!("OpenCode {}", jcode_core::util::truncate_str(&session_id, 8))
             }
         };
 

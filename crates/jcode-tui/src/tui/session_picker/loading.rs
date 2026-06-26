@@ -1809,7 +1809,7 @@ fn load_external_claude_code_sessions(scan_limit: usize) -> Vec<SessionInfo> {
                 .and_then(|dir| Path::new(dir).file_name())
                 .and_then(|name| name.to_str())
                 .map(|name| name.to_string())
-                .unwrap_or_else(|| format!("claude {}", &session_id[..session_id.len().min(8)]));
+                .unwrap_or_else(|| format!("claude {}", jcode_core::util::truncate_str(&session_id, 8)));
             // Keep /resume startup focused on cheap metadata. Transcript-backed
             // search text is intentionally loaded lazily through preview loading;
             // reading tens of KiB from every external transcript can dominate the
@@ -1991,8 +1991,8 @@ fn load_codex_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         .get("cwd")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let short_name = format!("codex {}", &session_id[..session_id.len().min(8)]);
-    let title = format!("Codex session {}", &session_id[..session_id.len().min(8)]);
+    let short_name = format!("codex {}", jcode_core::util::truncate_str(&session_id, 8));
+    let title = format!("Codex session {}", jcode_core::util::truncate_str(&session_id, 8));
     let search_index = build_search_index(
         &format!("codex:{session_id}"),
         &short_name,
@@ -2185,8 +2185,8 @@ fn load_pi_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         .get("cwd")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let short_name = format!("pi {}", &session_id[..session_id.len().min(8)]);
-    let title = format!("Pi session {}", &session_id[..session_id.len().min(8)]);
+    let short_name = format!("pi {}", jcode_core::util::truncate_str(&session_id, 8));
+    let title = format!("Pi session {}", jcode_core::util::truncate_str(&session_id, 8));
     let search_index = build_search_index(
         &format!("pi:{session_id}"),
         &short_name,
@@ -2340,9 +2340,9 @@ fn load_pi_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         return Ok(None);
     }
 
-    let short_name = format!("pi {}", &session_id[..session_id.len().min(8)]);
+    let short_name = format!("pi {}", jcode_core::util::truncate_str(&session_id, 8));
     let title =
-        title.unwrap_or_else(|| format!("Pi session {}", &session_id[..session_id.len().min(8)]));
+        title.unwrap_or_else(|| format!("Pi session {}", jcode_core::util::truncate_str(&session_id, 8)));
     let search_index = build_search_index(
         &format!("pi:{session_id}"),
         &short_name,
@@ -2442,7 +2442,7 @@ fn load_opencode_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         .get("directory")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    let short_name = format!("opencode {}", &session_id[..session_id.len().min(8)]);
+    let short_name = format!("opencode {}", jcode_core::util::truncate_str(&session_id, 8));
     let title = value
         .get("title")
         .and_then(|v| v.as_str())
@@ -2450,7 +2450,7 @@ fn load_opencode_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         .unwrap_or_else(|| {
             format!(
                 "OpenCode session {}",
-                &session_id[..session_id.len().min(8)]
+                jcode_core::util::truncate_str(&session_id, 8)
             )
         });
     let search_index = build_search_index(
@@ -2532,7 +2532,7 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         .unwrap_or_else(|| {
             format!(
                 "OpenCode session {}",
-                &session_id[..session_id.len().min(8)]
+                jcode_core::util::truncate_str(&session_id, 8)
             )
         });
 
@@ -2595,7 +2595,7 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         return Ok(None);
     }
 
-    let short_name = format!("opencode {}", &session_id[..session_id.len().min(8)]);
+    let short_name = format!("opencode {}", jcode_core::util::truncate_str(&session_id, 8));
     let search_index = build_search_index(
         &format!("opencode:{session_id}"),
         &short_name,

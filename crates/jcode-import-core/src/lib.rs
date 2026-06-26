@@ -11,6 +11,23 @@ pub mod repo_ranking;
 
 pub type ImportCoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+/// Truncate a string at a valid UTF-8 character boundary.
+///
+/// Returns a slice of at most `max_bytes` bytes, ending at a valid char
+/// boundary so it never panics on multibyte input. This mirrors
+/// `jcode_core::util::truncate_str`, duplicated here to keep this leaf crate
+/// free of the heavier `jcode-core` dependency.
+fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Entry in the Claude Code sessions-index.json file.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -638,10 +655,10 @@ pub fn load_codex_external_session(
     Ok(Some(ExternalSessionRecord {
         source: "codex",
         session_id: session_id.to_string(),
-        short_name: Some(format!("codex {}", &session_id[..session_id.len().min(8)])),
+        short_name: Some(format!("codex {}", truncate_str(&session_id, 8))),
         title: Some(format!(
             "Codex session {}",
-            &session_id[..session_id.len().min(8)]
+            truncate_str(&session_id, 8)
         )),
         working_dir,
         provider_key: Some("openai-codex".to_string()),
@@ -733,10 +750,10 @@ pub fn load_pi_external_session(
     Ok(Some(ExternalSessionRecord {
         source: "pi",
         session_id: session_id.to_string(),
-        short_name: Some(format!("pi {}", &session_id[..session_id.len().min(8)])),
+        short_name: Some(format!("pi {}", truncate_str(&session_id, 8))),
         title: Some(format!(
             "Pi session {}",
-            &session_id[..session_id.len().min(8)]
+            truncate_str(&session_id, 8)
         )),
         working_dir,
         provider_key,
@@ -784,7 +801,7 @@ pub fn load_opencode_external_session(
         .unwrap_or_else(|| {
             format!(
                 "OpenCode session {}",
-                &session_id[..session_id.len().min(8)]
+                truncate_str(&session_id, 8)
             )
         });
     let mut provider_key = Some("opencode".to_string());
@@ -851,7 +868,7 @@ pub fn load_opencode_external_session(
         session_id: session_id.to_string(),
         short_name: Some(format!(
             "opencode {}",
-            &session_id[..session_id.len().min(8)]
+            truncate_str(&session_id, 8)
         )),
         title: Some(title),
         working_dir,

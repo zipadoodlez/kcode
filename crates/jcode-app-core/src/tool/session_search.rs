@@ -1080,7 +1080,7 @@ fn search_external_sessions(query: &QueryProfile, options: &SearchOptions) -> Se
                 session_id: session.session_id.clone(),
                 short_name: Some(format!(
                     "claude {}",
-                    &session.session_id[..session.session_id.len().min(8)]
+                    jcode_core::util::truncate_str(&session.session_id, 8)
                 )),
                 title: Some(title),
                 working_dir: session.project_path,

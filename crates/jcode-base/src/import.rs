@@ -266,7 +266,7 @@ pub fn list_claude_code_sessions_lazy(scan_limit: usize) -> Result<Vec<ClaudeCod
                 .map(|name| name.replace('-', "/"));
             let label = format!(
                 "Claude Code session {}",
-                &session_id[..session_id.len().min(8)]
+                jcode_core::util::truncate_str(&session_id, 8)
             );
             all_sessions.push(ClaudeCodeSessionInfo {
                 session_id: session_id.clone(),
