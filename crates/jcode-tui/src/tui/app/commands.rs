@@ -2665,6 +2665,59 @@ fn parse_alignment_value(raw: &str) -> Option<bool> {
     }
 }
 
+fn parse_on_off_value(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "on" | "compact" | "true" | "1" | "yes" | "enable" | "enabled" => Some(true),
+        "off" | "full" | "false" | "0" | "no" | "disable" | "disabled" => Some(false),
+        _ => None,
+    }
+}
+
+fn handle_compact_notifications_command(app: &mut App, trimmed: &str) -> bool {
+    if trimmed != "/compact-notifications" && !trimmed.starts_with("/compact-notifications ") {
+        return false;
+    }
+
+    let rest = trimmed
+        .strip_prefix("/compact-notifications")
+        .unwrap_or_default()
+        .trim();
+
+    if rest.is_empty() || matches!(rest, "show" | "status") {
+        let current = crate::config::config().display.compact_notifications;
+        app.push_display_message(DisplayMessage::system(format!(
+            "Compact notifications are currently {}.\n\nWhen on, swarm/file-activity notifications collapse to a single line (path · summary) instead of the full multi-line card with diff preview.\n\nUse /compact-notifications on or /compact-notifications off to change it.",
+            if current { "on" } else { "off" }
+        )));
+        return true;
+    }
+
+    let Some(enabled) = parse_on_off_value(rest) else {
+        app.push_display_message(DisplayMessage::error(
+            "Usage: /compact-notifications (show), /compact-notifications on, or /compact-notifications off".to_string(),
+        ));
+        return true;
+    };
+
+    app.set_status_notice(format!(
+        "Compact notifications: {}",
+        if enabled { "on" } else { "off" }
+    ));
+    match crate::config::Config::set_compact_notifications(enabled) {
+        Ok(()) => app.push_display_message(DisplayMessage::system(format!(
+            "Saved compact notifications: {}. Applied to this session immediately.",
+            if enabled { "on" } else { "off" }
+        ))),
+        Err(error) => app.push_display_message(DisplayMessage::error(format!(
+            "Applied compact notifications {} for this session, but failed to save it as the default: {}",
+            if enabled { "on" } else { "off" },
+            error
+        ))),
+    }
+
+    true
+}
+
 fn parse_agents_target(raw: &str) -> Option<crate::tui::AgentModelTarget> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "swarm" | "agent" | "agents" | "subagent" | "subagents" => {
@@ -2808,6 +2861,10 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if handle_reasoning_display_command(app, trimmed) {
+        return true;
+    }
+
+    if handle_compact_notifications_command(app, trimmed) {
         return true;
     }
 

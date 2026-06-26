@@ -726,6 +726,22 @@ async fn run_default_command(args: Args) -> Result<()> {
     let startup_hints = if args.fresh_spawn {
         None
     } else {
+        // One-time: bake per-repo launch hotkeys from session history into config,
+        // then reinstall so the new chords take effect. Scanning session history
+        // can take a few hundred ms, so run it on a detached thread to keep it off
+        // the first-frame critical path. It is gated by an `imported` flag, so it
+        // does real work at most once and no-ops on every later launch.
+        if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+            std::thread::Builder::new()
+                .name("launch-hotkey-bake".to_string())
+                .spawn(|| {
+                    if crate::config::Config::bake_launch_hotkeys_once() {
+                        setup_hints::reinstall_launch_hotkeys_after_config_change();
+                    }
+                })
+                .ok();
+        }
+
         // Prefer existing setup hints (alignment/welcome/terminal nudges); only
         // surface the keybinding-conflict heads-up when nothing else is queued,
         // so we never clobber an early-launch tip. The conflict hint is
@@ -751,6 +767,15 @@ async fn run_default_command(args: Args) -> Result<()> {
     let in_jcode_repo = build::is_jcode_repo(&cwd);
     startup_profile::mark("is_jcode_repo");
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
+
+    // Record where this interactive launch happened so the system-wide launch
+    // hotkeys can reopen jcode in the last project directory (Cmd+') and the
+    // last jcode repo for self-dev (Cmd+Shift+'). Best-effort; ignored unless a
+    // real TTY and not a fresh-spawn re-entry.
+    if !args.fresh_spawn && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        let repo_dir = build::get_repo_dir();
+        setup_hints::record_launch_dirs(&cwd, repo_dir.as_deref());
+    }
 
     if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
         output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");

@@ -7,10 +7,11 @@ pub use jcode_config_types::{
     AgentsConfig, AmbientConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig,
     CompactionMode, CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition,
     DiffDisplayMode, DisplayConfig, FeatureConfig, GatewayConfig, HooksConfig, KeybindingsConfig,
-    MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
-    NamedProviderType, NativeScrollbarConfig, NotificationsConfig, PowerConfig, ProviderConfig,
-    ReasoningDisplayMode, SafetyConfig, SessionPickerResumeAction, SwarmSpawnMode, TerminalConfig,
-    UpdateChannel, WebSearchConfig, WebSearchEngine,
+    LaunchHotkeyEntry, LaunchHotkeysConfig, MarkdownSpacingMode, NamedProviderAuth,
+    NamedProviderConfig, NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig,
+    NotificationsConfig, PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
+    SessionPickerResumeAction, SwarmSpawnMode, TerminalConfig, UpdateChannel, WebSearchConfig,
+    WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -47,6 +48,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_BING_MARKET",
     "JCODE_CENTERED_TOGGLE_KEY",
     "JCODE_CHAT_NATIVE_SCROLLBAR",
+    "JCODE_COMPACT_NOTIFICATIONS",
     "JCODE_COPY_BADGE_ALT_LABEL",
     "JCODE_COPY_SELECTION_TOGGLE_KEY",
     "JCODE_COPILOT_PREMIUM",
@@ -95,7 +97,12 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_JADE_RELAY_TOKEN",
     "JCODE_JADE_RELAY_TOKEN_ID",
     "JCODE_JADE_RELAY_USER_ID",
+    "JCODE_KV_CACHE_MISS_NOTICES",
     "JCODE_MARKDOWN_SPACING",
+    "JCODE_MEMORY_EMBEDDING_BACKEND",
+    "JCODE_MEMORY_EMBEDDING_BASE_URL",
+    "JCODE_MEMORY_EMBEDDING_DIM",
+    "JCODE_MEMORY_EMBEDDING_MODEL",
     "JCODE_MEMORY_ENABLED",
     "JCODE_MEMORY_MODEL",
     "JCODE_MEMORY_SIDECAR_ENABLED",
@@ -493,6 +500,9 @@ pub struct Config {
 
     /// Auto-judge configuration
     pub autojudge: AutoJudgeConfig,
+
+    /// Global "launch a new jcode" hotkeys (macOS). Baked once by auto-import.
+    pub launch_hotkeys: LaunchHotkeysConfig,
 }
 
 /// Agent Client Protocol adapter configuration.

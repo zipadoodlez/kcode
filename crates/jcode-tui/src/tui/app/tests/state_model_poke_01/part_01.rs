@@ -575,6 +575,29 @@ fn test_super_space_toggles_next_prompt_new_session_routing() {
 }
 
 #[test]
+fn test_alt_space_toggles_next_prompt_new_session_routing() {
+    let mut app = create_test_app();
+
+    // Option/Alt+Space mirrors Cmd/Super+Space so the fork hotkey works in
+    // terminals where Cmd+Space is captured by the OS (e.g. Spotlight).
+    app.handle_key(KeyCode::Char(' '), KeyModifiers::ALT)
+        .unwrap();
+    assert!(app.route_next_prompt_to_new_session);
+    assert_eq!(
+        app.status_notice(),
+        Some("Next prompt → new session".to_string())
+    );
+
+    app.handle_key(KeyCode::Char(' '), KeyModifiers::ALT)
+        .unwrap();
+    assert!(!app.route_next_prompt_to_new_session);
+    assert_eq!(
+        app.status_notice(),
+        Some("Next-prompt new session canceled".to_string())
+    );
+}
+
+#[test]
 fn test_handle_key_backspace() {
     let mut app = create_test_app();
 

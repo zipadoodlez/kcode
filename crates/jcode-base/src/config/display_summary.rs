@@ -50,6 +50,7 @@ impl Config {
 - Debug socket: {}
 - Idle animation: {}
 - Prompt entry animation: {}
+- Compact notifications: {}
 - Chat native scrollbar: {}
 - Side panel native scrollbar: {}
 - Disabled animations: {}
@@ -162,6 +163,7 @@ impl Config {
             self.display.debug_socket,
             self.display.idle_animation,
             self.display.prompt_entry_animation,
+            self.display.compact_notifications,
             self.display.native_scrollbars.chat,
             self.display.native_scrollbars.side_panel,
             if self.display.disabled_animations.is_empty() {

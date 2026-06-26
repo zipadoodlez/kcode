@@ -794,6 +794,17 @@ pub(super) fn handle_multiline_input_navigation(
     true
 }
 
+/// True when `modifiers` is exactly one of Ctrl, Alt(Option) or Cmd(Super),
+/// the set of single modifiers we treat as "recall queued prompts / browse
+/// history" when combined with Up/Down. Shift or any combination is excluded so
+/// it doesn't shadow selection-extension or other chords.
+pub(super) fn is_prompt_recall_modifier(modifiers: KeyModifiers) -> bool {
+    matches!(
+        modifiers,
+        KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER
+    )
+}
+
 pub(super) fn handle_prompt_history_navigation(
     app: &mut App,
     code: KeyCode,
@@ -1125,9 +1136,16 @@ impl App {
 }
 
 pub(super) fn is_next_prompt_new_session_hotkey(code: KeyCode, modifiers: KeyModifiers) -> bool {
-    code == KeyCode::Char(' ')
-        && modifiers.contains(KeyModifiers::SUPER)
-        && !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::HYPER)
+    if code != KeyCode::Char(' ') {
+        return false;
+    }
+    // Accept either Command/Super+Space (macOS Cmd, often eaten by Spotlight) or
+    // Option/Alt+Space (macOS Option) so the fork-to-new-session arming hotkey is
+    // reachable across terminals. Reject Ctrl/Hyper combos so other chords still
+    // route to their own handlers.
+    let has_super = modifiers.contains(KeyModifiers::SUPER);
+    let has_alt = modifiers.contains(KeyModifiers::ALT);
+    (has_super || has_alt) && !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::HYPER)
 }
 
 fn input_routes_to_new_session(app: &App) -> bool {
@@ -2101,16 +2119,23 @@ impl App {
         self.normalize_diagram_state();
         let diagram_available = self.diagram_available();
 
-        if modifiers == KeyModifiers::CONTROL && code == KeyCode::Up {
+        // Ctrl / Alt(Option) / Cmd(Super) + Up all recall queued/pending messages
+        // for editing and then walk prompt history. We accept any of the three
+        // single modifiers so the gesture works regardless of which one a given
+        // terminal forwards (some send Option as Alt, some forward Command as
+        // Super), without the user having to rebind anything.
+        if code == KeyCode::Up && is_prompt_recall_modifier(modifiers) {
             if retrieve_pending_message_for_edit(self) {
                 return Ok(());
             }
-            handle_prompt_history_navigation(self, code, modifiers);
+            // Normalize to CONTROL so handle_prompt_history_navigation takes its
+            // explicit-history path (jump straight into history even mid-draft).
+            handle_prompt_history_navigation(self, KeyCode::Up, KeyModifiers::CONTROL);
             return Ok(());
         }
 
-        if modifiers == KeyModifiers::CONTROL && code == KeyCode::Down {
-            handle_prompt_history_navigation(self, code, modifiers);
+        if code == KeyCode::Down && is_prompt_recall_modifier(modifiers) {
+            handle_prompt_history_navigation(self, KeyCode::Down, KeyModifiers::CONTROL);
             return Ok(());
         }
 

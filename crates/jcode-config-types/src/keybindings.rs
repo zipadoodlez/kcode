@@ -196,14 +196,15 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "scroll_up",
         description: "Scroll the transcript up one step",
-        macos: PlatformDefault::dev("ctrl+k"),
-        other: PlatformDefault::dev("ctrl+k"),
+        // Shift+J/K scroll incrementally; the un-shifted Ctrl+J/K move by prompt.
+        macos: PlatformDefault::dev("ctrl+shift+k"),
+        other: PlatformDefault::dev("ctrl+shift+k"),
     },
     KeybindingDefault {
         id: "scroll_down",
         description: "Scroll the transcript down one step",
-        macos: PlatformDefault::dev("ctrl+j"),
-        other: PlatformDefault::dev("ctrl+j"),
+        macos: PlatformDefault::dev("ctrl+shift+j"),
+        other: PlatformDefault::dev("ctrl+shift+j"),
     },
     KeybindingDefault {
         id: "scroll_page_up",
@@ -252,14 +253,16 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "scroll_prompt_up",
         description: "Jump to the previous user prompt",
-        macos: PlatformDefault::dev("ctrl+["),
-        other: PlatformDefault::dev("ctrl+["),
+        // Ctrl+K moves by prompt; Ctrl+[ stays as an equivalent fallback. The
+        // built-in prompt_jump handler also accepts Cmd/Option+K best-effort.
+        macos: PlatformDefault::dev("ctrl+k"),
+        other: PlatformDefault::dev("ctrl+k"),
     },
     KeybindingDefault {
         id: "scroll_prompt_down",
         description: "Jump to the next user prompt",
-        macos: PlatformDefault::dev("ctrl+]"),
-        other: PlatformDefault::dev("ctrl+]"),
+        macos: PlatformDefault::dev("ctrl+j"),
+        other: PlatformDefault::dev("ctrl+j"),
     },
     KeybindingDefault {
         id: "scroll_bookmark",

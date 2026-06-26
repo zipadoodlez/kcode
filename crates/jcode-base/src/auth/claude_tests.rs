@@ -416,3 +416,164 @@ fn active_account_override_roundtrip() {
     set_active_account_override(None);
     assert_eq!(get_active_account_override(), None);
 }
+
+#[test]
+fn parse_blob_accepts_wrapped_file_form() {
+    let json = r#"{
+        "claudeAiOauth": {
+            "accessToken": "at_file",
+            "refreshToken": "rt_file",
+            "expiresAt": 9999999999999,
+            "subscriptionType": "max",
+            "scopes": ["user:inference", "user:profile"]
+        }
+    }"#;
+    let creds = parse_claude_code_credentials_blob(json).expect("parse wrapped");
+    assert_eq!(creds.access_token, "at_file");
+    assert_eq!(creds.refresh_token, "rt_file");
+    assert_eq!(creds.expires_at, 9999999999999);
+    assert_eq!(creds.subscription_type, Some("max".to_string()));
+    assert_eq!(creds.scopes, vec!["user:inference", "user:profile"]);
+}
+
+#[test]
+fn parse_blob_accepts_bare_keychain_form_with_numeric_expiry() {
+    // The macOS Keychain stores a bare OAuth object (no claudeAiOauth wrapper).
+    let json = r#"{
+        "accessToken": "sk-ant-oat01-abc",
+        "refreshToken": "sk-ant-ort01-xyz",
+        "expiresAt": 4102444800000
+    }"#;
+    let creds = parse_claude_code_credentials_blob(json).expect("parse bare numeric");
+    assert_eq!(creds.access_token, "sk-ant-oat01-abc");
+    assert_eq!(creds.refresh_token, "sk-ant-ort01-xyz");
+    assert_eq!(creds.expires_at, 4102444800000);
+}
+
+#[test]
+fn parse_blob_accepts_rfc3339_string_expiry() {
+    // Some Keychain blobs store expiresAt as an RFC 3339 timestamp string.
+    let json = r#"{
+        "accessToken": "at",
+        "refreshToken": "rt",
+        "expiresAt": "2027-02-18T07:00:00.000Z"
+    }"#;
+    let creds = parse_claude_code_credentials_blob(json).expect("parse rfc3339");
+    let expected = chrono::DateTime::parse_from_rfc3339("2027-02-18T07:00:00.000Z")
+        .unwrap()
+        .timestamp_millis();
+    assert_eq!(creds.expires_at, expected);
+    assert!(creds.expires_at > 0);
+}
+
+#[test]
+fn parse_blob_accepts_space_delimited_scope_string() {
+    let json = r#"{
+        "accessToken": "at",
+        "refreshToken": "rt",
+        "expiresAt": 1,
+        "scopes": "user:inference user:profile"
+    }"#;
+    let creds = parse_claude_code_credentials_blob(json).expect("parse scope string");
+    assert_eq!(creds.scopes, vec!["user:inference", "user:profile"]);
+}
+
+#[test]
+fn parse_blob_missing_expiry_defaults_to_zero() {
+    let json = r#"{ "accessToken": "at", "refreshToken": "rt" }"#;
+    let creds = parse_claude_code_credentials_blob(json).expect("parse no expiry");
+    assert_eq!(creds.expires_at, 0);
+}
+
+#[test]
+fn parse_blob_rejects_empty_token() {
+    let json = r#"{ "accessToken": "", "refreshToken": "" }"#;
+    assert!(parse_claude_code_credentials_blob(json).is_err());
+}
+
+#[test]
+fn parse_blob_rejects_empty_input() {
+    assert!(parse_claude_code_credentials_blob("").is_err());
+    assert!(parse_claude_code_credentials_blob("   ").is_err());
+}
+
+#[test]
+fn env_token_credentials_parse_json_blob() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvStringGuard::set(
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        r#"{"accessToken":"at_env","refreshToken":"rt_env","expiresAt":4102444800000}"#,
+    );
+    let creds = load_claude_code_env_credentials().expect("env creds");
+    assert_eq!(creds.access_token, "at_env");
+    assert_eq!(creds.refresh_token, "rt_env");
+    assert_eq!(creds.expires_at, 4102444800000);
+}
+
+#[test]
+fn env_token_credentials_parse_bare_token() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvStringGuard::set("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-bareToken");
+    let creds = load_claude_code_env_credentials().expect("bare env creds");
+    assert_eq!(creds.access_token, "sk-ant-oat01-bareToken");
+    assert!(creds.refresh_token.is_empty());
+    assert_eq!(creds.expires_at, 0);
+}
+
+#[test]
+fn env_token_absent_yields_none() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvStringGuard::remove("CLAUDE_CODE_OAUTH_TOKEN");
+    assert!(load_claude_code_env_credentials().is_none());
+}
+
+/// Live macOS-only check against a real `Claude Code-credentials` Keychain item.
+/// Ignored by default (mutates/reads the user Keychain). Run with:
+///   cargo test -p jcode-base --lib auth::claude::tests::live_keychain -- --ignored --nocapture
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "live: reads the real macOS Keychain"]
+fn live_keychain_native_credentials_detected_and_parsed() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvStringGuard::remove("CLAUDE_CODE_OAUTH_TOKEN");
+
+    assert!(
+        native_credentials_present(),
+        "expected a 'Claude Code-credentials' Keychain item to be present"
+    );
+    let creds = load_native_credentials().expect("load native creds from Keychain");
+    assert!(
+        !creds.access_token.trim().is_empty(),
+        "expected a non-empty access token from the Keychain blob"
+    );
+}
+
+/// Like `EnvVarGuard` but sets/removes string values (not just paths).
+struct EnvStringGuard {
+    key: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvStringGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let previous = std::env::var_os(key);
+        crate::env::set_var(key, value);
+        Self { key, previous }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let previous = std::env::var_os(key);
+        crate::env::remove_var(key);
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvStringGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = &self.previous {
+            crate::env::set_var(self.key, previous);
+        } else {
+            crate::env::remove_var(self.key);
+        }
+    }
+}

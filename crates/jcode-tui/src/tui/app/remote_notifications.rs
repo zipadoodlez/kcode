@@ -143,10 +143,25 @@ fn format_file_activity_message(
     message
 }
 
+/// Single-line file-activity body for compact notifications mode: keeps the
+/// compacted path and the summary line, dropping the intent and diff preview.
+fn format_file_activity_message_compact(
+    path: &str,
+    operation: &str,
+    summary: Option<&str>,
+) -> String {
+    format!(
+        "`{}` · {}",
+        compact_swarm_path(path),
+        file_activity_summary_line(operation, summary)
+    )
+}
+
 pub(super) fn present_swarm_notification(
     sender: &str,
     notification_type: &NotificationType,
     message: &str,
+    compact: bool,
 ) -> SwarmNotificationPresentation {
     let trimmed = message.trim();
     match notification_type {
@@ -239,13 +254,17 @@ pub(super) fn present_swarm_notification(
             detail,
         } => SwarmNotificationPresentation {
             title: format!("File activity · {}", sender),
-            message: format_file_activity_message(
-                path,
-                operation,
-                intent.as_deref(),
-                summary.as_deref(),
-                detail.as_deref(),
-            ),
+            message: if compact {
+                format_file_activity_message_compact(path, operation, summary.as_deref())
+            } else {
+                format_file_activity_message(
+                    path,
+                    operation,
+                    intent.as_deref(),
+                    summary.as_deref(),
+                    detail.as_deref(),
+                )
+            },
             status_notice: format!("File activity · {}", compact_swarm_path(path)),
         },
     }
@@ -279,6 +298,7 @@ mod tests {
                 channel: None,
             },
             "Task assigned to you by coordinator: Implement compaction asymptotic fixes - You own the compaction task.",
+            false,
         );
 
         assert_eq!(presentation.title, "Task · sheep");
@@ -298,6 +318,7 @@ mod tests {
                 channel: None,
             },
             "Background task failed · selfdev-build · exit 101",
+            false,
         );
 
         assert_eq!(presentation.title, "Background task");
@@ -317,6 +338,7 @@ mod tests {
                 channel: None,
             },
             "**Background task progress** `bg123` · `bash`\n\n[#####-------] 42% · Running tests (reported)",
+            false,
         );
 
         assert_eq!(presentation.title, "Background task progress");
@@ -335,6 +357,7 @@ mod tests {
                 channel: None,
             },
             "DM from sheep: I can see your worktree diff.",
+            false,
         );
 
         assert_eq!(presentation.title, "DM from sheep");
@@ -351,6 +374,7 @@ mod tests {
                 channel: None,
             },
             "Plan updated by sheep (4 items, v1)",
+            false,
         );
 
         assert_eq!(presentation.title, "Plan · sheep");
@@ -370,6 +394,7 @@ mod tests {
                 detail: Some("323- old line\n323+ new line".to_string()),
             },
             "⚠ File activity: /home/jeremy/jcode/src/tool/communicate.rs - moss just edited this file you previously worked with: edited lines 323-348 (1 occurrence)",
+            false,
         );
 
         assert_eq!(presentation.title, "File activity · moss");
@@ -392,6 +417,47 @@ mod tests {
             presentation
                 .message
                 .contains("```text\n323- old line\n323+ new line\n```")
+        );
+        assert_eq!(
+            presentation.status_notice,
+            "File activity · …/jcode/src/tool/communicate.rs"
+        );
+    }
+
+    #[test]
+    fn present_swarm_notification_compact_mode_collapses_file_activity_to_single_line() {
+        let presentation = present_swarm_notification(
+            "moss",
+            &NotificationType::FileConflict {
+                path: "/home/jeremy/jcode/src/tool/communicate.rs".to_string(),
+                operation: "edited".to_string(),
+                intent: Some("wire swarm intent display".to_string()),
+                summary: Some("edited lines 323-348 (1 occurrence)".to_string()),
+                detail: Some("323- old line\n323+ new line".to_string()),
+            },
+            "⚠ File activity: /home/jeremy/jcode/src/tool/communicate.rs - moss just edited this file you previously worked with: edited lines 323-348 (1 occurrence)",
+            true,
+        );
+
+        assert_eq!(presentation.title, "File activity · moss");
+        assert_eq!(
+            presentation.message,
+            "`…/jcode/src/tool/communicate.rs` · Edited lines 323-348 (1 occurrence)"
+        );
+        assert!(
+            !presentation.message.contains('\n'),
+            "compact file activity body should be a single line: {:?}",
+            presentation.message
+        );
+        assert!(
+            !presentation.message.contains("Intent:"),
+            "compact mode should drop the intent line: {:?}",
+            presentation.message
+        );
+        assert!(
+            !presentation.message.contains("```"),
+            "compact mode should drop the diff preview: {:?}",
+            presentation.message
         );
         assert_eq!(
             presentation.status_notice,

@@ -68,8 +68,11 @@ diff_mode_cycle = "alt+g"
 info_widget_toggle = "alt+i"
 
 # Spawn a fresh jcode session in a new terminal window, reusing the current
-# session's working directory. Companion to the system-wide launch hotkey
-# (Cmd+; on macOS, Alt+; on Windows/Linux).
+# session's working directory. Companion to the system-wide launch hotkeys.
+# On macOS, `jcode setup-hotkey` installs three global launch hotkeys:
+#   Cmd+;        new jcode in your home directory
+#   Cmd+'        new jcode in your last project directory
+#   Cmd+Shift+'  new jcode self-dev session (last jcode repo)
 # Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
 # Note: some macOS terminals intercept Cmd combos; if so, pick another binding.
 # new_terminal = "cmd+shift+;"
@@ -146,6 +149,10 @@ idle_animation = true
 
 # Briefly animate a user prompt line when it enters the viewport (default: true)
 prompt_entry_animation = true
+
+# Render swarm/file-activity notifications in a compact single-line form
+# instead of the full multi-line card with diff preview (default: false)
+# compact_notifications = false
 
 # Disable specific animation variants by name.
 # Examples: ["donut"] or ["donut", "orbit_rings"]

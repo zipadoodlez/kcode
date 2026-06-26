@@ -124,22 +124,25 @@ pub fn rgb(r: u8, g: u8, b: u8) -> Color {
 // Indices 232-255 are a grayscale ramp from rgb(8,8,8) to rgb(238,238,238).
 fn rgb_to_xterm256(r: u8, g: u8, b: u8) -> u8 {
     let gray_avg = (r as u16 + g as u16 + b as u16) / 3;
-    let is_grayish = (r as i16 - g as i16).unsigned_abs() < 15
-        && (g as i16 - b as i16).unsigned_abs() < 15
-        && (r as i16 - b as i16).unsigned_abs() < 15;
 
     let cube_idx = nearest_cube_index(r, g, b);
     let cube_color = cube_index_to_rgb(cube_idx);
     let cube_dist = color_distance(r, g, b, cube_color.0, cube_color.1, cube_color.2);
 
-    if is_grayish {
-        let gray_idx = nearest_gray_index(gray_avg as u8);
-        let gray_val = gray_index_to_value(gray_idx);
-        let gray_dist = color_distance(r, g, b, gray_val, gray_val, gray_val);
+    // Always evaluate the grayscale ramp candidate too and pick whichever is
+    // perceptually closer. The previous `is_grayish` gate (all channels within
+    // 15 of each other) excluded near-neutral colors whose channels happened to
+    // span exactly 15, so subtle dark gray-blues like the user-prompt
+    // background `rgb(35,40,50)` snapped to a saturated navy cube corner
+    // (index 17 = `(0,0,95)`) on 256-color terminals such as Apple Terminal.
+    // Comparing both candidates is strictly never worse and keeps these tones
+    // reading as the intended neutral gray.
+    let gray_idx = nearest_gray_index(gray_avg as u8);
+    let gray_val = gray_index_to_value(gray_idx);
+    let gray_dist = color_distance(r, g, b, gray_val, gray_val, gray_val);
 
-        if gray_dist < cube_dist {
-            return 232 + gray_idx;
-        }
+    if gray_dist < cube_dist {
+        return 232 + gray_idx;
     }
 
     cube_idx as u8 + 16
@@ -147,9 +150,13 @@ fn rgb_to_xterm256(r: u8, g: u8, b: u8) -> u8 {
 
 const CUBE_VALUES: [u8; 6] = [0, 95, 135, 175, 215, 255];
 
-fn nearest_cube_component(v: u8) -> u8 {
+/// Return the one or two cube axis indices whose value is nearest `v`. There
+/// are exactly two when `v` sits at a midpoint between adjacent steps (e.g.
+/// 115 is equidistant from 95 and 135); those are genuine ties that the older
+/// code silently resolved toward the lower step.
+fn nearest_cube_components(v: u8) -> ([u8; 2], usize) {
     let mut best = 0u8;
-    let mut best_dist = 255u16;
+    let mut best_dist = u16::MAX;
     for (i, &cv) in CUBE_VALUES.iter().enumerate() {
         let d = (v as i16 - cv as i16).unsigned_abs();
         if d < best_dist {
@@ -157,14 +164,78 @@ fn nearest_cube_component(v: u8) -> u8 {
             best = i as u8;
         }
     }
-    best
+    // Check whether the next step up ties the best distance.
+    let next = best as usize + 1;
+    if next < CUBE_VALUES.len()
+        && (v as i16 - CUBE_VALUES[next] as i16).unsigned_abs() == best_dist
+    {
+        ([best, best as u8 + 1], 2)
+    } else {
+        ([best, best], 1)
+    }
 }
 
+/// Hue scaled to 0..1530 (= 6 * 255) using only integer math, mirroring HSV
+/// hue ordering. Achromatic colors return 0 so a gray candidate never looks
+/// "hue-closer" to a tinted target than a same-hue cube color.
+fn hue_scaled(r: u8, g: u8, b: u8) -> i32 {
+    let (r, g, b) = (r as i32, g as i32, b as i32);
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let chroma = max - min;
+    if chroma == 0 {
+        return 0;
+    }
+    let h = if max == r {
+        ((g - b) * 255 / chroma).rem_euclid(1530)
+    } else if max == g {
+        (b - r) * 255 / chroma + 510
+    } else {
+        (r - g) * 255 / chroma + 1020
+    };
+    h.rem_euclid(1530)
+}
+
+fn hue_distance(target_hue: i32, r: u8, g: u8, b: u8) -> i32 {
+    let d = (target_hue - hue_scaled(r, g, b)).abs();
+    d.min(1530 - d)
+}
+
+/// Pick the nearest cube color, breaking exact per-channel ties in favor of the
+/// candidate whose hue best matches the target (then higher chroma). All tie
+/// candidates are equidistant under the weighted metric, so this never picks a
+/// color farther from the target; it only stops light tints like
+/// `rgb(190,210,235)` from collapsing onto a duller, hue-shifted neighbor
+/// (e.g. teal `(175,215,215)` instead of light blue `(175,215,255)`) on
+/// 256-color terminals such as Apple Terminal.
 fn nearest_cube_index(r: u8, g: u8, b: u8) -> u16 {
-    let ri = nearest_cube_component(r) as u16;
-    let gi = nearest_cube_component(g) as u16;
-    let bi = nearest_cube_component(b) as u16;
-    ri * 36 + gi * 6 + bi
+    let (rs, rn) = nearest_cube_components(r);
+    let (gs, gn) = nearest_cube_components(g);
+    let (bs, bn) = nearest_cube_components(b);
+
+    if rn == 1 && gn == 1 && bn == 1 {
+        return rs[0] as u16 * 36 + gs[0] as u16 * 6 + bs[0] as u16;
+    }
+
+    let target_hue = hue_scaled(r, g, b);
+    let mut best_idx = 0u16;
+    let mut best_key = (i32::MAX, i32::MIN);
+    for &ri in &rs[..rn] {
+        for &gi in &gs[..gn] {
+            for &bi in &bs[..bn] {
+                let cr = CUBE_VALUES[ri as usize];
+                let cg = CUBE_VALUES[gi as usize];
+                let cb = CUBE_VALUES[bi as usize];
+                let chroma = cr.max(cg).max(cb) as i32 - cr.min(cg).min(cb) as i32;
+                let key = (hue_distance(target_hue, cr, cg, cb), -chroma);
+                if key < best_key {
+                    best_key = key;
+                    best_idx = ri as u16 * 36 + gi as u16 * 6 + bi as u16;
+                }
+            }
+        }
+    }
+    best_idx
 }
 
 fn cube_index_to_rgb(idx: u16) -> (u8, u8, u8) {
@@ -295,6 +366,42 @@ mod tests {
         let a = rgb_to_xterm256(80, 80, 80);
         let b = rgb_to_xterm256(82, 82, 82);
         assert_eq!(a, b, "Similar grays should map to same index");
+    }
+
+    /// Regression for the Apple Terminal "navy user prompt" bug: the subtle
+    /// dark gray-blue user-prompt background `rgb(35,40,50)` must quantize to a
+    /// neutral grayscale ramp entry, not a saturated navy cube corner
+    /// (index 17 = `(0,0,95)`). Its channels span exactly 15, which the old
+    /// `is_grayish` gate (`< 15`) excluded, snapping it to navy on 256-color
+    /// terminals.
+    #[test]
+    fn test_near_neutral_dark_blue_quantizes_to_gray_not_navy() {
+        let idx = rgb_to_xterm256(35, 40, 50);
+        assert_ne!(idx, 17, "must not snap to saturated navy (0,0,95)");
+        assert!(
+            (232..=255).contains(&u16::from(idx)),
+            "near-neutral dark tone should map to the grayscale ramp, got {idx}"
+        );
+        let (r, g, b) = indexed_to_rgb(idx);
+        assert_eq!((r, g, b), (38, 38, 38), "expected neutral gray ramp entry");
+    }
+
+    /// Light blue tints whose blue channel sits exactly between cube steps
+    /// (e.g. `header_name` = `rgb(190,210,235)`, blue 235 ties 215/255) must
+    /// keep their blue cast instead of collapsing onto the duller teal
+    /// neighbor `(175,215,215)`. The old code always rounded ties down, which
+    /// dropped blue to equal green and shifted the hue ~33 degrees toward cyan
+    /// on 256-color terminals such as Apple Terminal.
+    #[test]
+    fn test_light_blue_tint_keeps_blue_cast_on_tie() {
+        let idx = rgb_to_xterm256(190, 210, 235);
+        let (r, g, b) = indexed_to_rgb(idx);
+        assert_eq!(
+            (r, g, b),
+            (175, 215, 255),
+            "light blue should stay blue, not become teal (175,215,215)"
+        );
+        assert!(b > g, "blue channel must remain dominant over green");
     }
 }
 

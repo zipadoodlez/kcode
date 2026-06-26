@@ -76,6 +76,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/transport", "Show/change connection transport"),
     RegisteredCommand::public("/alignment", "Show/change default text alignment"),
     RegisteredCommand::public(
+        "/compact-notifications",
+        "Show/toggle single-line swarm/file-activity notifications",
+    ),
+    RegisteredCommand::public(
         "/reasoning",
         "Show/change reasoning display (off/full/current)",
     ),
@@ -936,6 +940,26 @@ impl App {
             );
         }
 
+        if prefix.starts_with("/compact-notifications ") {
+            return self.rank_suggestions(
+                input,
+                vec![
+                    (
+                        "/compact-notifications status".into(),
+                        "Show whether notifications are compact",
+                    ),
+                    (
+                        "/compact-notifications on".into(),
+                        "Collapse swarm/file-activity notifications to one line",
+                    ),
+                    (
+                        "/compact-notifications off".into(),
+                        "Show full multi-line notification cards",
+                    ),
+                ],
+            );
+        }
+
         if prefix.starts_with("/config ") {
             return self.rank_suggestions(
                 input,
@@ -1404,6 +1428,7 @@ impl App {
                 | "/compact"
                 | "/compact mode"
                 | "/alignment"
+                | "/compact-notifications"
                 | "/reasoning"
                 | "/config"
                 | "/save"

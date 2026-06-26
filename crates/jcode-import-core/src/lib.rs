@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+pub mod repo_ranking;
+
 pub type ImportCoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// Entry in the Claude Code sessions-index.json file.
