@@ -196,21 +196,27 @@ fn test_set_feature_roundtrip() -> Result<()> {
 }
 
 #[test]
-fn test_set_route_deserializes_as_set_model_compat_alias() -> Result<()> {
-    let decoded = parse_request_json(r#"{"type":"set_route","id":42,"model":"claude-opus-4-5"}"#)?;
-    let Request::SetModel { id, model } = decoded else {
-        return Err(anyhow!(
-            "expected set_route compatibility alias to decode as SetModel"
-        ));
+fn test_set_route_roundtrip_uses_structured_selection() -> Result<()> {
+    let request = Request::SetRoute {
+        id: 42,
+        selection: jcode_provider_core::RouteSelection {
+            model: "gpt-5.5".to_string(),
+            runtime_key: jcode_provider_core::RuntimeKey::OpenAIOAuth,
+            api_method: "openai-oauth".to_string(),
+            provider_label: "OpenAI".to_string(),
+            detail: String::new(),
+        },
+    };
+    let encoded = serde_json::to_string(&request)?;
+    assert!(encoded.contains("\"type\":\"set_route\""));
+
+    let decoded = parse_request_json(&encoded)?;
+    let Request::SetRoute { id, selection } = decoded else {
+        return Err(anyhow!("expected structured SetRoute request"));
     };
     assert_eq!(id, 42);
-    assert_eq!(model, "claude-opus-4-5");
-
-    let encoded = serde_json::to_string(&Request::SetModel {
-        id: 43,
-        model: "gpt-5.5".to_string(),
-    })?;
-    assert!(encoded.contains("\"type\":\"set_model\""));
+    assert_eq!(selection.model, "gpt-5.5");
+    assert_eq!(selection.runtime_key, jcode_provider_core::RuntimeKey::OpenAIOAuth);
     Ok(())
 }
 

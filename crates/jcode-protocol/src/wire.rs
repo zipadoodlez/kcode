@@ -183,10 +183,7 @@ pub enum Request {
 
     /// Set the active model by name.
     ///
-    /// `set_route` is accepted as a legacy/desktop compatibility alias for
-    /// clients that briefly emitted route-oriented model switch requests.
     #[serde(rename = "set_model")]
-    #[serde(alias = "set_route")]
     SetModel { id: u64, model: String },
 
     /// Set the active model by structured route identity.
