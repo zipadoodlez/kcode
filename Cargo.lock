@@ -3995,6 +3995,7 @@ dependencies = [
  "jcode-config-types",
  "jcode-logging",
  "jcode-storage",
+ "jcode-terminal-launch",
  "serde",
  "serde_json",
  "tempfile",
