@@ -296,6 +296,7 @@ objc2-foundation = { version = "0.3", features = [
     "block2",
 ] }
 objc2-app-kit = { version = "0.3", features = [
+    "NSAppearance",
     "NSApplication",
     "NSResponder",
     "NSStatusBar",
