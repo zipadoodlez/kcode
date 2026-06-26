@@ -664,7 +664,17 @@ fn bridge_request(action: &str, input: &BrowserInput) -> Result<(String, Value, 
                 .path
                 .as_deref()
                 .ok_or_else(|| anyhow::anyhow!("path is required for upload"))?;
-            params.insert("path".into(), json!(path));
+            // The native messaging host reads the file from `filePath`, base64-encodes
+            // it, and forwards it to the content script. It also accepts an optional
+            // `fileName` override. (Previously this sent `path`, which the host ignored,
+            // producing a "Missing filePath" error.)
+            params.insert("filePath".into(), json!(path));
+            if let Some(file_name) = std::path::Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+            {
+                params.insert("fileName".into(), json!(file_name));
+            }
         }
         "press" => {
             let script = build_press_script(input.key.as_deref(), input.selector.as_deref())?;

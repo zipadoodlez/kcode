@@ -28,7 +28,7 @@ const REQUIRED_BRIDGE_ACTION_PROBES: &[(&str, &str)] = &[
     ("scroll", r#"{"position":"top"}"#),
     (
         "uploadFile",
-        r#"{"selector":"input[type=file]","path":"/tmp/jcode-browser-capability-probe"}"#,
+        r#"{"selector":"input[type=file]","filePath":"/tmp/jcode-browser-capability-probe"}"#,
     ),
 ];
 
