@@ -1252,18 +1252,20 @@ impl Provider for AnthropicProvider {
         }
 
         let catalog = if is_oauth {
-            match crate::provider::fetch_anthropic_model_catalog_oauth(&token).await {
-                Ok(catalog) => catalog,
-                Err(err) => {
-                    crate::logging::warn(&format!(
-                        "Anthropic OAuth model catalog refresh failed; keeping fallback list: {}",
-                        err
-                    ));
-                    return Ok(());
-                }
-            }
+            crate::provider::fetch_anthropic_model_catalog_oauth(&token).await
         } else {
-            crate::provider::fetch_anthropic_model_catalog(&token).await?
+            crate::provider::fetch_anthropic_model_catalog(&token).await
+        };
+        let catalog = match catalog {
+            Ok(catalog) => catalog,
+            Err(err) => {
+                let credential_label = if is_oauth { "OAuth" } else { "API key" };
+                crate::logging::warn(&format!(
+                    "Anthropic {credential_label} model catalog refresh failed; keeping fallback list: {}",
+                    err
+                ));
+                return Ok(());
+            }
         };
         crate::provider::persist_anthropic_model_catalog(&catalog);
         if !catalog.context_limits.is_empty() {
