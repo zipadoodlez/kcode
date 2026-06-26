@@ -251,7 +251,7 @@ pub fn load_centered_toggle_key() -> CenteredToggleKeys {
         modifiers: KeyModifiers::ALT,
     };
 
-    let (toggle, _) = parse_or_default(&cfg.keybindings.centered_toggle, default_toggle, "Alt+C");
+    let (toggle, _) = parse_optional(&cfg.keybindings.centered_toggle, default_toggle, "Alt+C");
 
     CenteredToggleKeys { toggle }
 }

@@ -391,7 +391,16 @@ pub struct EffortSwitchKeys {
 
 #[derive(Clone, Debug)]
 pub struct CenteredToggleKeys {
-    pub toggle: KeyBinding,
+    /// The toggle binding, or `None` when the user disabled it (e.g. `none`).
+    pub toggle: Option<KeyBinding>,
+}
+
+impl CenteredToggleKeys {
+    pub fn matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+        self.toggle
+            .as_ref()
+            .is_some_and(|binding| binding.matches(code, modifiers))
+    }
 }
 
 #[derive(Clone, Debug, Default)]
