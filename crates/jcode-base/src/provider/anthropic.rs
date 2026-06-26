@@ -1252,7 +1252,17 @@ impl Provider for AnthropicProvider {
         }
 
         let catalog = if is_oauth {
-            crate::provider::fetch_anthropic_model_catalog_oauth(&token).await
+            match crate::provider::fetch_anthropic_model_catalog_oauth(&token).await {
+                Ok(catalog) => Ok(catalog),
+                Err(err) if is_oauth_catalog_auth_error(&err.to_string()) => {
+                    crate::logging::info(
+                        "Anthropic OAuth model catalog auth failed; forcing token refresh and retrying...",
+                    );
+                    let refreshed_token = force_refresh_oauth_token(Arc::clone(&self.credentials)).await?;
+                    crate::provider::fetch_anthropic_model_catalog_oauth(&refreshed_token).await
+                }
+                Err(err) => Err(err),
+            }
         } else {
             crate::provider::fetch_anthropic_model_catalog(&token).await
         };
@@ -2039,6 +2049,13 @@ fn is_oauth_auth_error(error_str: &str) -> bool {
         || error_str.contains("does not meet scope requirement")
         || ((error_str.contains("401 unauthorized") || error_str.contains("403 forbidden"))
             && (error_str.contains("oauth") || error_str.contains("token")))
+}
+
+fn is_oauth_catalog_auth_error(error_str: &str) -> bool {
+    let lower = error_str.to_ascii_lowercase();
+    lower.contains("401 unauthorized")
+        || lower.contains("403 forbidden")
+        || is_oauth_auth_error(&lower)
 }
 
 fn anthropic_beta_header_with_thinking(base: &str, thinking_enabled: bool) -> String {
