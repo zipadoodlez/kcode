@@ -186,6 +186,19 @@ mod tests {
     }
 
     #[test]
+    fn test_truncate_boundary_inside_multibyte_does_not_panic() {
+        // Regression for issue #398: a multibyte char ('改', 3 bytes) straddling
+        // the byte-200 boundary used to panic with a raw `&s[..200]` slice.
+        // 199 ASCII bytes + '改' places the char at bytes 199..202.
+        let s = format!("{}改", "a".repeat(199));
+        let truncated = truncate_str(&s, 200);
+        // Backs up to the previous char boundary (byte 199), never panics.
+        assert_eq!(truncated.len(), 199);
+        assert!(s.starts_with(truncated));
+    }
+
+
+    #[test]
     fn test_sse_data_line_accepts_optional_space() {
         assert_eq!(sse_data_line("data: {\"ok\":true}"), Some("{\"ok\":true}"));
         assert_eq!(sse_data_line("data:{\"ok\":true}"), Some("{\"ok\":true}"));
