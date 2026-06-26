@@ -1546,6 +1546,11 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
+                if trimmed == "/fork" {
+                    app.toggle_next_prompt_new_session_routing();
+                    return Ok(());
+                }
+
                 if trimmed == "/observe"
                     || trimmed == "/observe on"
                     || trimmed == "/observe off"

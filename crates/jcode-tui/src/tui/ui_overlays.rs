@@ -358,6 +358,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(help_entry("/split", "Clone session into a new window"));
     lines.push(help_entry(
+        "/fork",
+        "Arm next prompt to launch in a new forked session (also Opt/Cmd+Space)",
+    ));
+    lines.push(help_entry(
         "/transfer",
         "Open a fresh session with only compacted context + copied todos",
     ));
@@ -529,7 +533,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(key_entry("Shift+Tab", "Cycle favorited models"));
     lines.push(key_entry("Ctrl+O", "Set default model (in /model picker)"));
-    lines.push(key_entry("Ctrl+N", "Toggle favorite model (in /model picker)"));
+    lines.push(key_entry(
+        "Ctrl+N",
+        "Toggle favorite model (in /model picker)",
+    ));
 
     lines.push(Line::from(""));
     lines.push(separator());
