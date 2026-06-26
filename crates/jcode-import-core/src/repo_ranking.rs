@@ -306,6 +306,70 @@ fn dir_label(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+/// Scan a jcode sessions directory and extract one [`SessionLocation`] per
+/// session file that records a `working_dir`.
+///
+/// This is deliberately lightweight: it reads each `*.json` (skipping `.bak`
+/// siblings), pulls just the `working_dir` string and uses the file's mtime as
+/// the recency timestamp, and skips anything it cannot parse. Returns an empty
+/// vec if the directory is missing. The function is filesystem-facing but kept
+/// here so callers get session collection + ranking from one module.
+pub fn collect_jcode_session_locations(sessions_dir: &Path) -> Vec<SessionLocation> {
+    use std::fs;
+
+    let Ok(entries) = fs::read_dir(sessions_dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.ends_with(".json") {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        let Some(wd) = value.get("working_dir").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if wd.trim().is_empty() {
+            continue;
+        }
+        let last_used = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|d| DateTime::from_timestamp(d.as_secs() as i64, 0));
+        out.push(SessionLocation::new(wd, last_used));
+    }
+    out
+}
+
+/// Compute the baked launch-hotkey plan from a jcode sessions directory.
+///
+/// Convenience wrapper that scans `sessions_dir`, ranks the repos (excluding
+/// `home`, requiring real git roots), and assigns the default chord layout. Pass
+/// `now` for the recency anchor. Returns the planned chord -> directory entries
+/// (empty if there is nothing to bind beyond home, which still gets `Cmd+;`).
+pub fn plan_launch_hotkeys_from_sessions(
+    sessions_dir: &Path,
+    home: &Path,
+    now: DateTime<Utc>,
+) -> Vec<PlannedHotkey> {
+    let locations = collect_jcode_session_locations(sessions_dir);
+    let opts = RankOptions {
+        excluded_paths: vec![home.to_path_buf()],
+        ..RankOptions::default()
+    };
+    let ranked = rank_repositories(&locations, now, &opts);
+    build_launch_hotkey_plan(home, &ranked, &DEFAULT_LAUNCH_HOTKEY_CHORDS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -547,5 +611,43 @@ mod tests {
         assert_eq!(plan[0].chord, "cmd+;");
         assert_eq!(plan[0].dir, "/u/jeremy");
         assert_eq!(plan[0].label, "home");
+    }
+
+    #[test]
+    fn collect_reads_working_dirs_and_skips_junk() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let write = |name: &str, body: &str| {
+            std::fs::write(dir.path().join(name), body).unwrap();
+        };
+        write(
+            "session_a.json",
+            r#"{"working_dir":"/Users/jeremy/jcode-github","id":"a"}"#,
+        );
+        write(
+            "session_b.json",
+            r#"{"working_dir":"/Users/jeremy/scrollwm","id":"b"}"#,
+        );
+        // No working_dir -> skipped.
+        write("session_c.json", r#"{"id":"c"}"#);
+        // .bak sibling -> skipped (not .json suffix match).
+        write("session_a.bak", r#"{"working_dir":"/should/not/count"}"#);
+        // Not JSON -> skipped.
+        write("notes.json", "this is not json");
+
+        let mut locs = collect_jcode_session_locations(dir.path());
+        locs.sort_by(|a, b| a.working_dir.cmp(&b.working_dir));
+        let dirs: Vec<&str> = locs.iter().map(|l| l.working_dir.as_str()).collect();
+        assert_eq!(
+            dirs,
+            vec!["/Users/jeremy/jcode-github", "/Users/jeremy/scrollwm"]
+        );
+        // mtime-derived timestamp is populated.
+        assert!(locs.iter().all(|l| l.last_used.is_some()));
+    }
+
+    #[test]
+    fn collect_missing_dir_is_empty() {
+        let locs = collect_jcode_session_locations(Path::new("/nonexistent/jcode/sessions"));
+        assert!(locs.is_empty());
     }
 }

@@ -183,6 +183,139 @@ impl Config {
         Ok(())
     }
 
+    /// Persist the baked global launch-hotkey mapping.
+    ///
+    /// Auto-import calls this once with the per-repo chord -> directory layout it
+    /// inferred. `imported` is set so the bake never runs twice and later manual
+    /// edits are not clobbered.
+    pub fn set_launch_hotkeys(
+        entries: Vec<jcode_config_types::LaunchHotkeyEntry>,
+        enabled: bool,
+    ) -> anyhow::Result<()> {
+        let mut cfg = Self::load();
+        cfg.launch_hotkeys.entries = entries;
+        cfg.launch_hotkeys.enabled = Some(enabled);
+        cfg.launch_hotkeys.imported = true;
+        cfg.save()?;
+        crate::logging::info(&format!(
+            "Saved {} launch hotkey(s) to config (enabled={enabled})",
+            cfg.launch_hotkeys.entries.len()
+        ));
+        Ok(())
+    }
+
+    /// One-time bake of per-repo launch hotkeys from session history.
+    ///
+    /// Scans `~/.jcode/sessions` for the directories the user works in most,
+    /// ranks them (recency-weighted, git-root folded, home excluded), and writes
+    /// a static chord -> directory mapping into config: top repo on `Cmd+;`, home
+    /// on `Cmd+'`, and the next repos on `Cmd+[` / `Cmd+]` / `Cmd+\`.
+    ///
+    /// Idempotent and side-effect-light:
+    /// - Runs only on macOS (the only platform with the global launch hotkeys).
+    /// - No-ops once `launch_hotkeys.imported` is set, so it bakes exactly once
+    ///   and never overwrites later manual edits.
+    /// - No-ops when there are not at least two rankable repos, so we do not
+    ///   commit a degenerate "everything is home" layout on a fresh machine; the
+    ///   built-in 3 hotkeys keep working until there is real history.
+    ///
+    /// Returns `true` when it wrote a baked mapping (so the caller can trigger a
+    /// hotkey reinstall), `false` otherwise. Best-effort: errors are logged and
+    /// swallowed.
+    #[cfg(target_os = "macos")]
+    pub fn bake_launch_hotkeys_once() -> bool {
+        use jcode_import_core::repo_ranking;
+
+        let cfg = Self::load();
+        if cfg.launch_hotkeys.imported {
+            return false;
+        }
+        let Ok(jcode_dir) = jcode_dir() else {
+            return false;
+        };
+        let sessions_dir = jcode_dir.join("sessions");
+        let Some(home) = dirs::home_dir() else {
+            return false;
+        };
+
+        // Cheap gate: count session files without reading them. Skip the full
+        // scan until there is at least a little history, so brand-new installs do
+        // not pay the read cost (and we do not bake a degenerate layout).
+        let session_count = std::fs::read_dir(&sessions_dir)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|e| {
+                        e.file_name()
+                            .to_str()
+                            .is_some_and(|n| n.ends_with(".json"))
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        const MIN_SESSIONS_TO_BAKE: usize = 3;
+        const GIVE_UP_SESSION_COUNT: usize = 50;
+        if session_count < MIN_SESSIONS_TO_BAKE {
+            return false;
+        }
+
+        let plan = repo_ranking::plan_launch_hotkeys_from_sessions(
+            &sessions_dir,
+            &home,
+            chrono::Utc::now(),
+        );
+
+        // `plan` always contains the home slot; a length of 1 means no rankable
+        // repos were found.
+        if plan.len() < 2 {
+            // If the user has lots of history but still no rankable repos, stop
+            // re-scanning on every launch: mark imported with no custom entries
+            // (the built-in 3 hotkeys keep working).
+            if session_count >= GIVE_UP_SESSION_COUNT
+                && let Err(err) = Self::set_launch_hotkeys(Vec::new(), true)
+            {
+                crate::logging::warn(&format!("launch hotkey bake give-up persist failed: {err}"));
+            }
+            crate::logging::info(
+                "launch hotkey bake: not enough repo history yet; keeping defaults",
+            );
+            return false;
+        }
+
+        let entries: Vec<jcode_config_types::LaunchHotkeyEntry> = plan
+            .into_iter()
+            .map(|p| jcode_config_types::LaunchHotkeyEntry {
+                chord: p.chord,
+                // Home keeps the dynamic sentinel so it tracks `$HOME`; repos are
+                // baked to absolute paths.
+                dir: if p.label == "home" {
+                    "$HOME".to_string()
+                } else {
+                    p.dir
+                },
+                label: p.label,
+                self_dev: false,
+            })
+            .collect();
+
+        match Self::set_launch_hotkeys(entries, true) {
+            Ok(()) => {
+                crate::logging::info("launch hotkey bake: wrote per-repo mapping to config");
+                true
+            }
+            Err(err) => {
+                crate::logging::warn(&format!("launch hotkey bake failed to persist: {err}"));
+                false
+            }
+        }
+    }
+
+    /// No-op bake on non-macOS platforms (no global launch hotkeys there).
+    #[cfg(not(target_os = "macos"))]
+    pub fn bake_launch_hotkeys_once() -> bool {
+        false
+    }
+
     fn normalize_external_auth_source_id(source_id: &str) -> String {
         source_id.trim().to_ascii_lowercase()
     }
