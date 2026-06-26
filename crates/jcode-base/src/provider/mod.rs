@@ -1675,6 +1675,7 @@ impl Provider for MultiProvider {
             },
         );
 
+        let active_provider = self.active_provider();
         let mut errors = Vec::new();
         let mut optional_errors = Vec::new();
         for (provider_name, result) in [
@@ -1689,7 +1690,18 @@ impl Provider for MultiProvider {
             ("bedrock", bedrock_result),
         ] {
             if let Err(err) = result {
-                if matches!(provider_name, "bedrock") {
+                let is_active = matches!(
+                    (active_provider, provider_name),
+                    (ActiveProvider::Claude, "anthropic" | "claude")
+                        | (ActiveProvider::OpenAI, "openai")
+                        | (ActiveProvider::OpenRouter, "openrouter")
+                        | (ActiveProvider::Copilot, "copilot")
+                        | (ActiveProvider::Antigravity, "antigravity")
+                        | (ActiveProvider::Gemini, "gemini")
+                        | (ActiveProvider::Cursor, "cursor")
+                        | (ActiveProvider::Bedrock, "bedrock")
+                );
+                if !is_active || matches!(provider_name, "bedrock") {
                     optional_errors.push(format!("{provider_name}: {err}"));
                 } else {
                     errors.push(format!("{provider_name}: {err}"));
