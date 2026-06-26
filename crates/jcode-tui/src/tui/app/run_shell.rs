@@ -362,6 +362,19 @@ impl App {
             }
             if needs_redraw {
                 status_spinner_renderer.draw_full(&mut self, &mut terminal)?;
+                // Close the startup-profile gap: `pre_run_remote` is the last
+                // pre-loop mark, so the first completed paint here is the real
+                // process-to-first-frame point. Logged once via a static guard so
+                // the end-to-end launch cost (including the ~5ms first draw) is
+                // visible in the startup profile without re-marking every frame.
+                {
+                    use std::sync::atomic::{AtomicBool, Ordering};
+                    static FIRST_FRAME_MARKED: AtomicBool = AtomicBool::new(false);
+                    if !FIRST_FRAME_MARKED.swap(true, Ordering::Relaxed) {
+                        crate::startup_profile::mark("first_frame");
+                        crate::startup_profile::report_to_log();
+                    }
+                }
                 reset_status_spinner_interval(&mut status_spinner_interval, &self);
                 needs_redraw = false;
             }
