@@ -40,14 +40,15 @@ Relevant code:
 1. Run `jcode login --provider claude` (recommended), or `jcode login` and choose Claude.
    - For headless / SSH use: `jcode login --provider claude --no-browser`
    - For scriptable remote flows: `jcode login --provider claude --print-auth-url`, then later complete with `--callback-url` or `--auth-code`
-2. Alternative: run `claude` (or `claude setup-token`). jcode can detect `~/.claude/.credentials.json`, ask before reading it, and remember that approval for future sessions.
+2. Alternative: run `claude` (or `claude setup-token`). jcode can detect Claude Code's credentials, ask before reading them, and remember that approval for future sessions. This works whether Claude Code stored them in `~/.claude/.credentials.json` (Linux/Windows), the macOS login Keychain (`Claude Code-credentials`), or the `CLAUDE_CODE_OAUTH_TOKEN` env var. On macOS, approving the Keychain source copies the credentials into `~/.jcode/auth.json` once so later sessions never re-prompt the Keychain.
 3. Verify with `jcode --provider claude run "Say hello from jcode"`.
 
 Credential discovery order is:
 1. `~/.jcode/auth.json`
 2. `~/.claude/.credentials.json`
-3. `~/.local/share/opencode/auth.json`
-4. `~/.pi/agent/auth.json`
+3. Claude Code native credentials (macOS Keychain `Claude Code-credentials`, or `CLAUDE_CODE_OAUTH_TOKEN` env var) once approved
+4. `~/.local/share/opencode/auth.json`
+5. `~/.pi/agent/auth.json`
 
 ### Direct Anthropic API (default)
 `--provider claude` uses the direct Anthropic Messages API by default.

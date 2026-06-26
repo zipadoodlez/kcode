@@ -527,6 +527,27 @@ fn env_token_absent_yields_none() {
     assert!(load_claude_code_env_credentials().is_none());
 }
 
+/// Live macOS-only check against a real `Claude Code-credentials` Keychain item.
+/// Ignored by default (mutates/reads the user Keychain). Run with:
+///   cargo test -p jcode-base --lib auth::claude::tests::live_keychain -- --ignored --nocapture
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "live: reads the real macOS Keychain"]
+fn live_keychain_native_credentials_detected_and_parsed() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvStringGuard::remove("CLAUDE_CODE_OAUTH_TOKEN");
+
+    assert!(
+        native_credentials_present(),
+        "expected a 'Claude Code-credentials' Keychain item to be present"
+    );
+    let creds = load_native_credentials().expect("load native creds from Keychain");
+    assert!(
+        !creds.access_token.trim().is_empty(),
+        "expected a non-empty access token from the Keychain blob"
+    );
+}
+
 /// Like `EnvVarGuard` but sets/removes string values (not just paths).
 struct EnvStringGuard {
     key: &'static str,
