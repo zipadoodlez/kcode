@@ -125,6 +125,7 @@ CLIENT COMMANDS (client: prefix):
   client:mermaid:memory    - Mermaid memory profile (RSS + cache estimates)
   client:mermaid:memory-bench [n] - Synthetic Mermaid memory benchmark
   client:mermaid:flicker-bench [n] - Benchmark viewport protocol churn / flicker risk
+  client:image-scroll-bench [imgs] [frames] [visible] - Benchmark inline-image scroll latency (stat syscalls + fit-state rebuilds)
   client:mermaid:ui-bench[:<j>] - Benchmark live Mermaid UI render path
   client:mermaid:cache     - List mermaid cache entries
   client:mermaid:state     - Get image state (resize modes)

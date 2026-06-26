@@ -511,6 +511,21 @@ impl App {
         } else if cmd == "mermaid:flicker-bench" {
             let result = crate::tui::mermaid::debug_flicker_benchmark(24);
             serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
+        } else if cmd == "image-scroll-bench" || cmd.starts_with("image-scroll-bench ") {
+            // Headless inline-image scroll benchmark. Usage:
+            //   image-scroll-bench [images] [frames] [visible_per_frame]
+            // Defaults model a screenshot-heavy transcript scrolled slowly.
+            let raw = cmd
+                .strip_prefix("image-scroll-bench")
+                .unwrap_or("")
+                .trim();
+            let mut parts = raw.split_whitespace();
+            let images = parts.next().and_then(|v| v.parse().ok()).unwrap_or(60usize);
+            let frames = parts.next().and_then(|v| v.parse().ok()).unwrap_or(600usize);
+            let visible = parts.next().and_then(|v| v.parse().ok()).unwrap_or(3usize);
+            let result =
+                crate::tui::mermaid::debug_image_scroll_benchmark(images, frames, visible);
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".to_string())
         } else if cmd.starts_with("mermaid:flicker-bench ") {
             let raw_steps = cmd
                 .strip_prefix("mermaid:flicker-bench ")
