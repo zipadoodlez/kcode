@@ -13,7 +13,7 @@ rewrite, or permission mutation). Symlinked external auth files are rejected.
 
 Credentials are stored locally:
 - J-Code Claude OAuth (if logged in via `jcode login --provider claude`): `~/.jcode/auth.json`
-- Claude Code CLI: `~/.claude/.credentials.json`
+- Claude Code CLI: `~/.claude/.credentials.json` (Linux/Windows), or the **macOS login Keychain** item `Claude Code-credentials` (the default on macOS, where the JSON file usually does not exist), or the `CLAUDE_CODE_OAUTH_TOKEN` env var (set by `claude setup-token`)
 - OpenCode (optional provider/OAuth import source): `~/.local/share/opencode/auth.json`
 - pi (optional provider/OAuth import source): `~/.pi/agent/auth.json`
 - J-Code OpenAI/Codex OAuth: `~/.jcode/openai-auth.json`

@@ -63,6 +63,9 @@ enum ExternalAuthReviewAction {
     SharedExternal(auth::external::ExternalAuthSource),
     CodexLegacy,
     ClaudeCode,
+    /// Claude Code's native credentials (macOS Keychain item or
+    /// `CLAUDE_CODE_OAUTH_TOKEN` env var), which have no stable on-disk path.
+    ClaudeCodeNative,
     GeminiCli,
     Copilot(auth::copilot::ExternalCopilotAuthSource),
     Cursor(auth::cursor::ExternalCursorAuthSource),
@@ -115,6 +118,7 @@ impl ExternalAuthReviewCandidate {
         match &self.action {
             ExternalAuthReviewAction::CodexLegacy => vec![("openai", METHOD)],
             ExternalAuthReviewAction::ClaudeCode => vec![("claude", METHOD)],
+            ExternalAuthReviewAction::ClaudeCodeNative => vec![("claude", METHOD)],
             ExternalAuthReviewAction::GeminiCli => vec![("gemini", METHOD)],
             ExternalAuthReviewAction::Copilot(_) => vec![("copilot", METHOD)],
             ExternalAuthReviewAction::Cursor(_) => vec![("cursor", METHOD)],
@@ -242,6 +246,24 @@ pub fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthRevie
         });
     }
 
+    // Claude Code's native credentials live in the macOS Keychain (or the
+    // CLAUDE_CODE_OAUTH_TOKEN env var), not in the JSON file. Offer them when
+    // the JSON file was not already detected above, so macOS users (where the
+    // file usually does not exist) can still import their Claude login.
+    if !auth::claude::native_source_allowed()
+        && !candidates
+            .iter()
+            .any(|candidate| matches!(candidate.action, ExternalAuthReviewAction::ClaudeCode))
+        && auth::claude::native_credentials_present()
+    {
+        candidates.push(ExternalAuthReviewCandidate {
+            provider_summary: "Claude".to_string(),
+            source_name: auth::claude::native_source_display_name().to_string(),
+            path: auth::claude::native_source_path_hint(),
+            action: ExternalAuthReviewAction::ClaudeCodeNative,
+        });
+    }
+
     if auth::gemini::has_unconsented_cli_auth() {
         candidates.push(ExternalAuthReviewCandidate {
             provider_summary: "Gemini".to_string(),
@@ -357,6 +379,18 @@ fn approve_external_auth_review_candidate(candidate: &ExternalAuthReviewCandidat
         ExternalAuthReviewAction::ClaudeCode => auth::claude::trust_external_auth_source(
             auth::claude::ExternalClaudeAuthSource::ClaudeCode,
         )?,
+        ExternalAuthReviewAction::ClaudeCodeNative => {
+            // Trust, then snapshot the Keychain/env credentials into jcode's own
+            // auth.json so future loads and refreshes do not depend on the
+            // (possibly prompting) Keychain. A successful trust with a failed
+            // copy still leaves the env-token path usable.
+            auth::claude::trust_native_source()?;
+            if let Err(err) = auth::claude::import_native_credentials_into_account() {
+                crate::logging::warn(&format!(
+                    "Trusted Claude Code native credentials but could not snapshot them into jcode: {err}"
+                ));
+            }
+        }
         ExternalAuthReviewAction::GeminiCli => auth::gemini::trust_cli_auth_for_future_use()?,
         ExternalAuthReviewAction::Copilot(source) => {
             auth::copilot::trust_external_auth_source(source)?
@@ -386,6 +420,11 @@ fn revoke_external_auth_review_candidate(candidate: &ExternalAuthReviewCandidate
             crate::config::Config::revoke_external_auth_source_for_path(
                 auth::claude::CLAUDE_CODE_AUTH_SOURCE_ID,
                 &candidate.path,
+            )?
+        }
+        ExternalAuthReviewAction::ClaudeCodeNative => {
+            crate::config::Config::revoke_external_auth_source(
+                auth::claude::CLAUDE_CODE_NATIVE_AUTH_SOURCE_ID,
             )?
         }
         ExternalAuthReviewAction::GeminiCli => {
@@ -534,6 +573,7 @@ async fn validate_external_auth_review_candidate(
         }
         ExternalAuthReviewAction::CodexLegacy => validate_openai_import().await,
         ExternalAuthReviewAction::ClaudeCode => validate_claude_import().await,
+        ExternalAuthReviewAction::ClaudeCodeNative => validate_claude_import().await,
         ExternalAuthReviewAction::GeminiCli => validate_gemini_import().await,
         ExternalAuthReviewAction::Copilot(_) => validate_copilot_import().await,
         ExternalAuthReviewAction::Cursor(_) => validate_cursor_import().await,

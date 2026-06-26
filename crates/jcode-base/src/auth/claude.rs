@@ -824,6 +824,39 @@ pub fn native_source_allowed() -> bool {
     crate::config::Config::external_auth_source_allowed(CLAUDE_CODE_NATIVE_AUTH_SOURCE_ID)
 }
 
+/// Human-facing name for the Claude Code native credential source, reflecting
+/// where the credentials actually live on this platform.
+pub fn native_source_display_name() -> &'static str {
+    if std::env::var(CLAUDE_CODE_OAUTH_TOKEN_ENV)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return "Claude Code (CLAUDE_CODE_OAUTH_TOKEN)";
+    }
+    if cfg!(target_os = "macos") {
+        "Claude Code (macOS Keychain)"
+    } else {
+        "Claude Code (native credentials)"
+    }
+}
+
+/// A display-only "path" hint for the native source, used by review UIs that
+/// expect a location string. The Keychain/env credentials have no real file
+/// path, so this returns a descriptive pseudo-location.
+pub fn native_source_path_hint() -> PathBuf {
+    if std::env::var(CLAUDE_CODE_OAUTH_TOKEN_ENV)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return PathBuf::from(format!("env:{CLAUDE_CODE_OAUTH_TOKEN_ENV}"));
+    }
+    if cfg!(target_os = "macos") {
+        PathBuf::from(format!("keychain:{CLAUDE_CODE_KEYCHAIN_SERVICE}"))
+    } else {
+        PathBuf::from("claude-code-native")
+    }
+}
+
 /// Remember approval to import Claude Code's native credentials.
 pub fn trust_native_source() -> Result<()> {
     crate::config::Config::allow_external_auth_source(CLAUDE_CODE_NATIVE_AUTH_SOURCE_ID)?;

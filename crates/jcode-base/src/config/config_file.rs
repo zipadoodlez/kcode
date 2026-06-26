@@ -313,6 +313,7 @@ impl Config {
         source_id: &str,
         path: &std::path::Path,
     ) -> anyhow::Result<()> {
+        let entry = Self::trusted_external_auth_path_entry(source_id, path)?;
         let mut cfg = Self::load();
         let before = cfg.auth.trusted_external_source_paths.len();
         cfg.auth
@@ -323,6 +324,28 @@ impl Config {
             crate::logging::info(&format!(
                 "Removed trusted external auth source path: {}",
                 entry
+            ));
+        }
+        Ok(())
+    }
+
+    /// Remove a source-level (non-path) trust decision, e.g. for credentials
+    /// that have no stable on-disk path (macOS Keychain items).
+    pub fn revoke_external_auth_source(source_id: &str) -> anyhow::Result<()> {
+        let source_id = Self::normalize_external_auth_source_id(source_id);
+        if source_id.is_empty() {
+            return Ok(());
+        }
+        let mut cfg = Self::load();
+        let before = cfg.auth.trusted_external_sources.len();
+        cfg.auth
+            .trusted_external_sources
+            .retain(|value| !value.trim().eq_ignore_ascii_case(&source_id));
+        if cfg.auth.trusted_external_sources.len() != before {
+            cfg.save()?;
+            crate::logging::info(&format!(
+                "Removed trusted external auth source: {}",
+                source_id
             ));
         }
         Ok(())
