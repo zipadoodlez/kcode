@@ -1180,6 +1180,18 @@ impl SessionPicker {
 
         let max_scroll = total_lines.saturating_sub(visible_height) as u16;
         self.preview_max_scroll = max_scroll;
+        // The transcript for the selected session may still be loading on a
+        // background thread, in which case this frame only shows a "Loading…"
+        // placeholder (max_scroll == 0). Keep the auto-scroll armed until the
+        // real content lands; otherwise the flag is consumed on the placeholder
+        // frame and the populated transcript stays pinned at the top, hiding the
+        // sticky "previous prompt" header that should appear once we snap to the
+        // bottom.
+        let preview_still_loading = session.messages_preview.is_empty()
+            && self
+                .pending_preview_load
+                .as_ref()
+                .is_some_and(|pending| pending.session_id == session.id);
         if self.auto_scroll_preview {
             // When a search is active and the selected session has a match in the
             // preview body, scroll the first hit into view (a few lines of lead-in
@@ -1190,7 +1202,9 @@ impl SessionPicker {
                 }
                 _ => max_scroll,
             };
-            self.auto_scroll_preview = false;
+            if !preview_still_loading {
+                self.auto_scroll_preview = false;
+            }
         } else {
             self.scroll_offset = self.scroll_offset.min(max_scroll);
         }
