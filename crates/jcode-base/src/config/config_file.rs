@@ -183,6 +183,18 @@ impl Config {
         Ok(())
     }
 
+    /// Update the persisted show-agentgrep-output preference.
+    pub fn set_show_agentgrep_output(show: bool) -> anyhow::Result<()> {
+        let mut cfg = Self::load();
+        cfg.display.show_agentgrep_output = show;
+        cfg.save()?;
+        crate::logging::info(&format!(
+            "Saved display.show_agentgrep_output to config: {}",
+            show
+        ));
+        Ok(())
+    }
+
     /// Persist the baked global launch-hotkey mapping.
     ///
     /// Auto-import calls this once with the per-repo chord -> directory layout it

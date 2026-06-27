@@ -248,6 +248,11 @@ impl Config {
                 self.display.compact_notifications = parsed;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_SHOW_AGENTGREP_OUTPUT") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.display.show_agentgrep_output = parsed;
+            }
+        }
         if let Ok(v) = std::env::var("JCODE_CHAT_NATIVE_SCROLLBAR") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.display.native_scrollbars.chat = parsed;

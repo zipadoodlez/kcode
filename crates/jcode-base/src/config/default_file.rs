@@ -154,6 +154,11 @@ prompt_entry_animation = true
 # instead of the full multi-line card with diff preview (default: false)
 # compact_notifications = false
 
+# Show the full agentgrep tool output inline in the transcript instead of just
+# the one-line summary (default: false). Useful when you want to read search
+# results directly in the chat.
+# show_agentgrep_output = false
+
 # Disable specific animation variants by name.
 # Examples: ["donut"] or ["donut", "orbit_rings"]
 # Legacy aliases such as "three_rings" and "gyroscope" are still accepted.

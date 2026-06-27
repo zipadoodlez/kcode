@@ -80,6 +80,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "Show/toggle single-line swarm/file-activity notifications",
     ),
     RegisteredCommand::public(
+        "/show-agentgrep-output",
+        "Show/toggle full agentgrep search output inline in chat",
+    ),
+    RegisteredCommand::public(
         "/reasoning",
         "Show/change reasoning display (off/full/current)",
     ),
@@ -964,6 +968,26 @@ impl App {
             );
         }
 
+        if prefix.starts_with("/show-agentgrep-output ") {
+            return self.rank_suggestions(
+                input,
+                vec![
+                    (
+                        "/show-agentgrep-output status".into(),
+                        "Show whether agentgrep output is shown inline",
+                    ),
+                    (
+                        "/show-agentgrep-output on".into(),
+                        "Render full agentgrep search results inline in chat",
+                    ),
+                    (
+                        "/show-agentgrep-output off".into(),
+                        "Show only the one-line agentgrep summary",
+                    ),
+                ],
+            );
+        }
+
         if prefix.starts_with("/config ") {
             return self.rank_suggestions(
                 input,
@@ -1433,6 +1457,7 @@ impl App {
                 | "/compact mode"
                 | "/alignment"
                 | "/compact-notifications"
+                | "/show-agentgrep-output"
                 | "/reasoning"
                 | "/config"
                 | "/save"

@@ -254,6 +254,62 @@ fn render_plaintext_lines(content: &str, wrap_width: usize) -> Vec<Line<'static>
     lines
 }
 
+/// Render the full agentgrep tool output inline beneath the tool summary line.
+/// Each output line is prefixed with a dim left border and indented so it reads
+/// as a nested block. Long lines are hard-split to the available width and the
+/// block is capped so a giant search result cannot flood the transcript.
+fn render_agentgrep_output_body(content: &str, row_width: usize) -> Vec<Line<'static>> {
+    const MAX_BODY_LINES: usize = 400;
+    let border = "    │ ";
+    let border_width = UnicodeWidthStr::width(border);
+    let avail = row_width.saturating_sub(border_width).max(1);
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let source_lines: Vec<&str> = content.split('\n').collect();
+    let total = source_lines.len();
+    let mut truncated_extra = 0usize;
+
+    for raw_line in source_lines {
+        if out.len() >= MAX_BODY_LINES {
+            truncated_extra = total.saturating_sub(out.len());
+            break;
+        }
+        let raw_line = raw_line.trim_end_matches('\r');
+        if raw_line.is_empty() {
+            out.push(Line::from(Span::styled(
+                border.to_string(),
+                Style::default().fg(dim_color()),
+            )));
+            continue;
+        }
+        if UnicodeWidthStr::width(raw_line) <= avail {
+            out.push(Line::from(vec![
+                Span::styled(border.to_string(), Style::default().fg(dim_color())),
+                Span::styled(raw_line.to_string(), Style::default().fg(dim_color())),
+            ]));
+        } else {
+            for chunk in split_by_display_width(raw_line, avail) {
+                if out.len() >= MAX_BODY_LINES {
+                    break;
+                }
+                out.push(Line::from(vec![
+                    Span::styled(border.to_string(), Style::default().fg(dim_color())),
+                    Span::styled(chunk, Style::default().fg(dim_color())),
+                ]));
+            }
+        }
+    }
+
+    if truncated_extra > 0 {
+        out.push(Line::from(Span::styled(
+            format!("    │ … {} more lines …", truncated_extra),
+            Style::default().fg(dim_color()),
+        )));
+    }
+
+    out
+}
+
 pub(crate) fn render_system_message(
     msg: &DisplayMessage,
     width: u16,
@@ -1797,6 +1853,18 @@ pub(crate) fn render_tool_message(
     );
     let rendered_tool_line_text = super::line_plain_text(&rendered_tool_line);
     lines.push(rendered_tool_line);
+
+    // Optionally render the full agentgrep search output inline in the
+    // transcript. Gated behind `display.show_agentgrep_output` (default false)
+    // so most users keep the compact one-line summary.
+    if tools_ui::canonical_tool_name(&tc.name) == "agentgrep"
+        && crate::config::config().display.show_agentgrep_output
+        && !msg.content.trim().is_empty()
+    {
+        for line in render_agentgrep_output_body(&msg.content, row_width) {
+            lines.push(line);
+        }
+    }
 
     if tools_ui::canonical_tool_name(&tc.name) == "bash"
         && !rendered_tool_line_text.contains('$')

@@ -1079,3 +1079,38 @@ fn render_tool_message_batch_subcall_shows_swarm_dm_details() {
         "rendered={rendered}"
     );
 }
+
+#[test]
+fn render_agentgrep_output_body_borders_each_line() {
+    let content = "crates/foo.rs\n  symbols: 1 matched\n    - fn bar @ 1-5";
+    let lines = super::render_agentgrep_output_body(content, 120);
+    let rendered = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(rendered.contains("│ crates/foo.rs"), "rendered={rendered}");
+    assert!(
+        rendered.contains("│   symbols: 1 matched"),
+        "rendered={rendered}"
+    );
+    assert!(
+        rendered.contains("│     - fn bar @ 1-5"),
+        "rendered={rendered}"
+    );
+    assert_eq!(lines.len(), 3, "one bordered line per source line");
+}
+
+#[test]
+fn render_agentgrep_output_body_caps_huge_output() {
+    let content = (0..1000)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let lines = super::render_agentgrep_output_body(&content, 120);
+    // 400-line cap plus a single truncation summary line.
+    assert_eq!(lines.len(), 401, "should cap the body and add a summary");
+    let last = extract_line_text(&lines[lines.len() - 1]);
+    assert!(last.contains("more lines"), "last={last}");
+}

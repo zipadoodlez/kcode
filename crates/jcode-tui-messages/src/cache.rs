@@ -15,6 +15,7 @@ struct MessageCacheKey {
     centered: bool,
     mermaid_epoch: u64,
     mermaid_aspect_bucket: Option<u16>,
+    show_agentgrep_output: bool,
 }
 
 #[derive(Default)]
@@ -63,6 +64,7 @@ pub struct MessageCacheContext {
     pub centered: bool,
     pub mermaid_epoch: u64,
     pub mermaid_aspect_bucket: Option<u16>,
+    pub show_agentgrep_output: bool,
 }
 
 pub fn left_pad_lines_for_centered_mode(lines: &mut [Line<'static>], width: u16) {
@@ -111,6 +113,7 @@ where
         centered: context.centered,
         mermaid_epoch: context.mermaid_epoch,
         mermaid_aspect_bucket: context.mermaid_aspect_bucket,
+        show_agentgrep_output: context.show_agentgrep_output,
     };
 
     let mut cache = match message_cache().lock() {

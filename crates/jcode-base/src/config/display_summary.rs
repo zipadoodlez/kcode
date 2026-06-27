@@ -58,6 +58,7 @@ impl Config {
 - Animation FPS: {}
 - Redraw FPS: {}
 - Copy badge Alt label: {}
+- Show agentgrep output: {}
 
 **Features:**
 - Memory: {}
@@ -183,6 +184,7 @@ impl Config {
             } else {
                 self.display.copy_badge_alt_label.trim()
             },
+            self.display.show_agentgrep_output,
             self.features.memory,
             self.features.swarm,
             self.features.message_timestamps,
