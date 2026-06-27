@@ -1120,7 +1120,11 @@ impl App {
     }
 
     /// Whether the configured `keybindings.fallback_switch` chord matches this key.
-    pub(crate) fn fallback_switch_key_matches(&self, code: KeyCode, modifiers: KeyModifiers) -> bool {
+    pub(crate) fn fallback_switch_key_matches(
+        &self,
+        code: KeyCode,
+        modifiers: KeyModifiers,
+    ) -> bool {
         self.fallback_switch_key
             .binding
             .as_ref()
@@ -2095,9 +2099,10 @@ impl App {
         }
 
         // While the model picker preview is visible, route its favorite/default
-        // hotkeys (Ctrl+B, Ctrl+F, Alt+F) to the focused picker handler before the
-        // global control shortcuts can claim them. This makes the hotkeys work
-        // directly in the preview list the user always sees.
+        // hotkeys (Ctrl+O set default, Ctrl+N toggle favorite) to the focused
+        // picker handler before the global control shortcuts can claim them. This
+        // makes the hotkeys work directly in the preview list the user always
+        // sees, without colliding with the readline/tmux keys (Ctrl+B/Ctrl+F).
         if self.model_picker_preview_hotkey(code, modifiers)? {
             return Ok(());
         }
