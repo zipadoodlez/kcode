@@ -250,8 +250,7 @@ pub struct PlannedHotkey {
 ///
 /// Slot meaning (see [`build_launch_hotkey_plan`]):
 /// 0 = top repo, 1 = home, 2 = repo #2, 3 = repo #3, 4 = repo #4.
-pub const DEFAULT_LAUNCH_HOTKEY_CHORDS: [&str; 5] =
-    ["cmd+;", "cmd+'", "cmd+[", "cmd+]", "cmd+\\"];
+pub const DEFAULT_LAUNCH_HOTKEY_CHORDS: [&str; 5] = ["cmd+;", "cmd+'", "cmd+[", "cmd+]", "cmd+\\"];
 
 /// Build the default launch-hotkey plan from a ranking and the user's home dir.
 ///

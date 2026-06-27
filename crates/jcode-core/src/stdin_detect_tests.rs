@@ -148,8 +148,7 @@ fn test_direct_children_lists_immediate_children() {
     // reparents to init (ppid 1) and the check races.
     let mut all_parented_by_pid = !kids.is_empty();
     for kid in &kids {
-        let status =
-            std::fs::read_to_string(format!("/proc/{}/status", kid)).unwrap_or_default();
+        let status = std::fs::read_to_string(format!("/proc/{}/status", kid)).unwrap_or_default();
         let ppid = status
             .lines()
             .find_map(|l| l.strip_prefix("PPid:\t"))

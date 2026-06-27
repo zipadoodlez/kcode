@@ -779,7 +779,10 @@ mod cache_prefix_invariant_tests {
     fn cached_prefix_is_byte_identical_with_and_without_memory() {
         let base = base_conversation();
         let mut with_memory = base.clone();
-        with_memory.push(text_msg(Role::User, "<memory>turn-specific recall</memory>"));
+        with_memory.push(text_msg(
+            Role::User,
+            "<memory>turn-specific recall</memory>",
+        ));
 
         let base_prefix = cached_prefix_json(&formatted_with_breakpoints(&base));
         let mem_prefix = cached_prefix_json(&formatted_with_breakpoints(&with_memory));

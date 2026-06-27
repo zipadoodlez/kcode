@@ -812,7 +812,14 @@ impl Default for KeybindingsConfig {
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
             new_terminal: get("new_terminal", ""),
-            open_resume: get("open_resume", if cfg!(target_os = "macos") { "cmd+r" } else { "alt+r" }),
+            open_resume: get(
+                "open_resume",
+                if cfg!(target_os = "macos") {
+                    "cmd+r"
+                } else {
+                    "alt+r"
+                },
+            ),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }

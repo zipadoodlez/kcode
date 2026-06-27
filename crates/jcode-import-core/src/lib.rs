@@ -464,7 +464,10 @@ pub fn extract_opencode_part_text(
         let Ok(part) = serde_json::from_reader::<_, serde_json::Value>(file) else {
             continue;
         };
-        let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or_default();
+        let part_type = part
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
         match part_type {
             "text" => {
                 if let Some(text) = part.get("text").and_then(|v| v.as_str())
