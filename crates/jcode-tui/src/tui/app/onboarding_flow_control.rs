@@ -1385,6 +1385,11 @@ impl App {
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if
     /// the flow state changed (so the caller can request a redraw).
     pub(super) fn onboarding_tick(&mut self) -> bool {
+        // The onboarding simulator drives phases manually; never auto-advance
+        // while it is walking screens.
+        if self.onboarding_sim_active() {
+            return false;
+        }
         // Fresh-install bootstrap: if we were already logged in at the CLI before
         // the TUI launched, no in-TUI login event fired, so evaluate (once)
         // whether to begin the guided flow now that the TUI is up.

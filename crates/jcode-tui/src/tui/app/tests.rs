@@ -33,6 +33,7 @@ include!("tests/scroll_copy_03.rs");
 include!("tests/onboarding_flow.rs");
 include!("tests/onboarding_golden.rs");
 include!("tests/onboarding_eval.rs");
+include!("tests/onboarding_sim.rs");
 include!("tests/reasoning_region.rs");
 include!("tests/smoothness_benchmark.rs");
 

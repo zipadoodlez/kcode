@@ -467,6 +467,47 @@ impl App {
 }
 
 pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
+    if trimmed == "/onboarding-sim"
+        || trimmed == "/onboarding-sim on"
+        || trimmed == "/onboarding-sim off"
+        || trimmed == "/onboarding-sim status"
+    {
+        let mode = trimmed.strip_prefix("/onboarding-sim").unwrap_or("").trim();
+        match mode {
+            "status" => {
+                let status = if app.onboarding_sim_active() {
+                    "on"
+                } else {
+                    "off"
+                };
+                app.push_display_message(DisplayMessage::system(format!(
+                    "Onboarding simulator is {status}. Toggle with Cmd+5, or `/onboarding-sim on` / `off`. While active: Tab/→ next screen, Shift+Tab/← previous, h/l preview the highlight, Esc exits."
+                )));
+            }
+            "" | "on" => {
+                app.start_onboarding_simulator();
+                app.push_display_message(DisplayMessage::system(
+                    "Onboarding simulator started. Step screens with Tab/→ (or Cmd+5 to toggle). On the import screen Up/Down move the checkbox cursor; h/l preview the highlight; Esc exits. Nothing real is logged in or imported.".to_string(),
+                ));
+            }
+            "off" => {
+                app.stop_onboarding_simulator();
+                app.push_display_message(DisplayMessage::system(
+                    "Onboarding simulator stopped.".to_string(),
+                ));
+            }
+            _ => unreachable!("guarded by command matcher"),
+        }
+        return true;
+    }
+
+    if trimmed.starts_with("/onboarding-sim ") {
+        app.push_display_message(DisplayMessage::system(
+            "Usage: `/onboarding-sim`, `/onboarding-sim on`, `/onboarding-sim off`, or `/onboarding-sim status`. (Cmd+5 toggles it.)".to_string(),
+        ));
+        return true;
+    }
+
     if trimmed == "/onboarding-preview"
         || trimmed == "/onboarding-preview on"
         || trimmed == "/onboarding-preview off"

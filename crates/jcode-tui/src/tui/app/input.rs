@@ -1320,6 +1320,12 @@ pub(super) fn delete_input_to_end(app: &mut App) {
 
 pub(super) fn handle_super_key(app: &mut App, code: KeyCode) -> bool {
     match code {
+        // Cmd+5 toggles the onboarding simulator (a dev aid for walking through
+        // every first-run onboarding screen without touching real auth state).
+        KeyCode::Char('5') => {
+            app.toggle_onboarding_simulator();
+            true
+        }
         // macOS terminals that forward Command may report Command+Delete as Super+Backspace,
         // Super+Delete, or Super+DEL. Treat all of them as delete-the-previous-word, matching
         // the requested Cmd+Backspace = delete-by-word behavior.
@@ -2086,6 +2092,12 @@ impl App {
         ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
         if handle_modal_key(self, code, modifiers)? {
+            return Ok(());
+        }
+
+        // The onboarding simulator owns all key handling while active so the
+        // real onboarding handlers never fire (no real logins/imports).
+        if self.handle_onboarding_sim_key(code, modifiers) {
             return Ok(());
         }
 

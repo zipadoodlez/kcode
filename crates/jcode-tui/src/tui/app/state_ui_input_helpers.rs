@@ -136,6 +136,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "/onboarding-preview",
         "Preview the first-run onboarding screen",
     ),
+    RegisteredCommand::public(
+        "/onboarding-sim",
+        "Walk through every first-run onboarding screen (Cmd+5)",
+    ),
     RegisteredCommand::public("/reload", "Reload into newest available binary"),
     RegisteredCommand::public("/restart", "Restart with current binary"),
     RegisteredCommand::public("/rebuild", "Background rebuild and auto reload"),

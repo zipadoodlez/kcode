@@ -700,6 +700,13 @@ impl App {
         self.remote_session_id = session_id.map(str::to_string);
     }
 
+    /// Set the displayed remote connection type (e.g. "https/sse") for header
+    /// tests. `None` clears it (unknown connection).
+    #[cfg(test)]
+    pub(crate) fn set_connection_type_for_tests(&mut self, connection_type: Option<&str>) {
+        self.connection_type = connection_type.map(str::to_string);
+    }
+
     fn prewarm_focused_side_panel(&self) {
         let Ok((terminal_width, terminal_height)) = crossterm::terminal::size() else {
             return;
