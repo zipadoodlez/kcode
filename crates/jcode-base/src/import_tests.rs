@@ -491,3 +491,136 @@ fn test_resolve_resume_target_to_jcode_imports_codex_session() {
     let loaded = Session::load(&imported_codex_session_id("codex-resolve-test")).unwrap();
     assert_eq!(loaded.messages.len(), 2);
 }
+
+/// The resume picker builds a `ClaudeCodeSession` target with id `claude:<id>`
+/// and a transcript path; selecting it routes through
+/// `resolve_resume_target_to_jcode`, which must import the transcript and hand
+/// back a resumable `imported_cc_<id>` jcode session. This guards the full
+/// detect -> import -> resume round-trip for Claude Code (previously only Codex
+/// had coverage here).
+#[test]
+fn test_resolve_resume_target_to_jcode_imports_claude_code_session() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+
+    let project_dir = temp.path().join("external/.claude/projects/demo-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let transcript_path = project_dir.join("claude-resolve-test.jsonl");
+    std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"user\",\"uuid\":\"u1\",\"sessionId\":\"claude-resolve-test\",\"cwd\":\"/tmp/demo-project\",\"message\":{\"role\":\"user\",\"content\":\"Fix the resume round-trip\"},\"timestamp\":\"2026-04-04T12:00:00Z\"}\n",
+                "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"sessionId\":\"claude-resolve-test\",\"cwd\":\"/tmp/demo-project\",\"message\":{\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":\"On it.\"},\"timestamp\":\"2026-04-04T12:01:00Z\"}\n"
+            ),
+        )
+        .unwrap();
+
+    let resolved =
+        resolve_resume_target_to_jcode(&jcode_session_types::ResumeTarget::ClaudeCodeSession {
+            session_id: "claude-resolve-test".to_string(),
+            session_path: transcript_path.to_string_lossy().to_string(),
+        })
+        .unwrap();
+
+    let imported_id = imported_claude_code_session_id("claude-resolve-test");
+    assert_eq!(
+        resolved,
+        jcode_session_types::ResumeTarget::JcodeSession {
+            session_id: imported_id.clone(),
+        }
+    );
+
+    // The id the picker would also derive via `imported_session_id_for_target`
+    // must match the snapshot actually written to disk.
+    assert_eq!(
+        imported_session_id_for_target(&jcode_session_types::ResumeTarget::ClaudeCodeSession {
+            session_id: "claude-resolve-test".to_string(),
+            session_path: transcript_path.to_string_lossy().to_string(),
+        }),
+        Some(imported_id.clone())
+    );
+
+    let loaded = Session::load(&imported_id).unwrap();
+    assert_eq!(loaded.messages.len(), 2);
+    assert_eq!(
+        loaded.provider_session_id.as_deref(),
+        Some("claude-resolve-test")
+    );
+    assert_eq!(loaded.provider_key.as_deref(), Some("claude-code"));
+}
+
+/// Regression for silent data loss: the picker hides the imported jcode session
+/// (any `imported_*` stem) and only shows the external `claude:<id>` entry, so
+/// re-selecting a Claude session re-enters `import_session_from_file`. If the
+/// user already resumed and continued that imported session inside jcode, a
+/// blind re-import previously overwrote the snapshot and dropped the jcode-side
+/// messages. The continuation must be preserved instead.
+#[test]
+fn test_reimporting_claude_session_preserves_jcode_continuation() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+
+    let project_dir = temp.path().join("external/.claude/projects/demo-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let transcript_path = project_dir.join("claude-continued.jsonl");
+    std::fs::write(
+            &transcript_path,
+            concat!(
+                "{\"type\":\"user\",\"uuid\":\"u1\",\"sessionId\":\"claude-continued\",\"cwd\":\"/tmp/demo-project\",\"message\":{\"role\":\"user\",\"content\":\"original prompt\"},\"timestamp\":\"2026-04-04T12:00:00Z\"}\n",
+                "{\"type\":\"assistant\",\"uuid\":\"a1\",\"parentUuid\":\"u1\",\"sessionId\":\"claude-continued\",\"cwd\":\"/tmp/demo-project\",\"message\":{\"role\":\"assistant\",\"content\":\"original reply\"},\"timestamp\":\"2026-04-04T12:01:00Z\"}\n"
+            ),
+        )
+        .unwrap();
+
+    // First selection imports the transcript.
+    let imported = import_session_from_file(&transcript_path, "claude-continued").unwrap();
+    assert_eq!(imported.messages.len(), 2);
+    let imported_id = imported_claude_code_session_id("claude-continued");
+
+    // User resumes inside jcode and appends a jcode-only follow-up message.
+    let mut session = Session::load(&imported_id).unwrap();
+    session.append_stored_message(StoredMessage {
+        id: "jcode-continuation".to_string(),
+        role: Role::User,
+        content: vec![ContentBlock::Text {
+            text: "jcode-only follow up".to_string(),
+            cache_control: None,
+        }],
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    session.save().unwrap();
+    assert_eq!(Session::load(&imported_id).unwrap().messages.len(), 3);
+
+    // Re-selecting the external entry re-enters import; the continuation must survive.
+    let resumed =
+        resolve_resume_target_to_jcode(&jcode_session_types::ResumeTarget::ClaudeCodeSession {
+            session_id: "claude-continued".to_string(),
+            session_path: transcript_path.to_string_lossy().to_string(),
+        })
+        .unwrap();
+    assert_eq!(
+        resumed,
+        jcode_session_types::ResumeTarget::JcodeSession {
+            session_id: imported_id.clone(),
+        }
+    );
+
+    let after = Session::load(&imported_id).unwrap();
+    assert_eq!(
+        after.messages.len(),
+        3,
+        "jcode-side continuation must not be clobbered by re-import"
+    );
+    let preserved = after.messages.iter().flat_map(|m| m.content.iter()).any(
+        |block| matches!(block, ContentBlock::Text { text, .. } if text == "jcode-only follow up"),
+    );
+    assert!(
+        preserved,
+        "the jcode-only follow up message must be preserved"
+    );
+}

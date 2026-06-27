@@ -527,17 +527,8 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
                 .and_then(|s| s.summary.or(Some(s.first_prompt)))
         });
 
-    // Create jcode session
-    let jcode_session_id = imported_claude_code_session_id(session_id);
-    let mut session = Session::create_with_id(jcode_session_id, None, title);
-    session.provider_session_id = Some(session_id.to_string());
-    session.provider_key = Some("claude-code".to_string());
-    session.working_dir = working_dir;
-    session.model = model;
-    session.created_at = created_at;
-    session.status = SessionStatus::Closed;
-
-    // Convert messages
+    // Convert messages from the external transcript.
+    let mut imported_messages: Vec<StoredMessage> = Vec::new();
     for entry in ordered_entries {
         if let Some(ref msg) = entry.message {
             let role = match msg.role.as_str() {
@@ -559,7 +550,7 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
                 .clone()
                 .unwrap_or_else(|| crate::id::new_id("msg"));
 
-            session.append_stored_message(StoredMessage {
+            imported_messages.push(StoredMessage {
                 id: msg_id,
                 role,
                 content: content_blocks,
@@ -569,6 +560,35 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
                 token_usage: None,
             });
         }
+    }
+
+    // Create jcode session
+    let jcode_session_id = imported_claude_code_session_id(session_id);
+
+    // Don't clobber a continuation. The resume picker hides the imported jcode
+    // session and only shows the external `claude:<id>` entry, so re-selecting it
+    // calls back into this function. If the user already resumed and continued
+    // the imported session inside jcode, a plain re-import would overwrite their
+    // snapshot and silently drop those messages. When the existing imported
+    // snapshot already has more messages than the external transcript (i.e. it
+    // diverged with jcode-side work), keep it as-is and resume that instead.
+    if crate::session::session_exists(&jcode_session_id)
+        && let Ok(existing) = Session::load(&jcode_session_id)
+        && existing.messages.len() > imported_messages.len()
+    {
+        return Ok(existing);
+    }
+
+    let mut session = Session::create_with_id(jcode_session_id, None, title);
+    session.provider_session_id = Some(session_id.to_string());
+    session.provider_key = Some("claude-code".to_string());
+    session.working_dir = working_dir;
+    session.model = model;
+    session.created_at = created_at;
+    session.status = SessionStatus::Closed;
+
+    for message in imported_messages {
+        session.append_stored_message(message);
     }
 
     // Save the session
