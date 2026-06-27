@@ -2,7 +2,7 @@
 //!
 //! Run with: `cargo run --profile selfdev -p jcode-tui-render --example swarm_gallery_preview`
 
-use jcode_tui_render::swarm_tiles::{render_swarm_gallery, SwarmGalleryConfig, SwarmTile};
+use jcode_tui_render::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 use ratatui::prelude::*;
 
 fn accent(status: &str) -> Color {
@@ -68,17 +68,19 @@ fn main() {
             "reviewer",
             None,
             "done",
-            &[
-                "Reviewed 4 files.",
-                "No blocking issues found.",
-                "LGTM ✓",
-            ],
+            &["Reviewed 4 files.", "No blocking issues found.", "LGTM ✓"],
         ),
     ];
 
     let cfg = SwarmGalleryConfig::default();
-    print_lines("3 agents @ width 100", &render_swarm_gallery(&three, 100, &cfg, Some(header.clone())));
-    print_lines("3 agents @ width 60", &render_swarm_gallery(&three, 60, &cfg, Some(header.clone())));
+    print_lines(
+        "3 agents @ width 100",
+        &render_swarm_gallery(&three, 100, &cfg, Some(header.clone())),
+    );
+    print_lines(
+        "3 agents @ width 60",
+        &render_swarm_gallery(&three, 60, &cfg, Some(header.clone())),
+    );
 
     let six: Vec<SwarmTile> = (0..6)
         .map(|i| {
@@ -95,14 +97,27 @@ fn main() {
             )
         })
         .collect();
-    print_lines("6 agents @ width 120", &render_swarm_gallery(&six, 120, &cfg, Some(header.clone())));
+    print_lines(
+        "6 agents @ width 120",
+        &render_swarm_gallery(&six, 120, &cfg, Some(header.clone())),
+    );
 
     let many: Vec<SwarmTile> = (0..12)
-        .map(|i| mk(&format!("worker-{i:02}"), None, "running", &["...", "working"]))
+        .map(|i| {
+            mk(
+                &format!("worker-{i:02}"),
+                None,
+                "running",
+                &["...", "working"],
+            )
+        })
         .collect();
     let tight = SwarmGalleryConfig {
         max_height: 12,
         ..Default::default()
     };
-    print_lines("12 agents @ width 120, height 12", &render_swarm_gallery(&many, 120, &tight, Some(header)));
+    print_lines(
+        "12 agents @ width 120, height 12",
+        &render_swarm_gallery(&many, 120, &tight, Some(header)),
+    );
 }

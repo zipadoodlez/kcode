@@ -11,7 +11,7 @@ use ratatui::prelude::*;
 
 use jcode_tui_style::color::rgb;
 
-use crate::swarm_tiles::{render_swarm_gallery, SwarmGalleryConfig, SwarmTile};
+use crate::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 
 /// Accent color for a member lifecycle status.
 pub fn status_accent(status: &str) -> Color {
@@ -117,8 +117,9 @@ pub fn members_to_tiles(members: &[GalleryMember]) -> Vec<SwarmTile> {
     sorted
         .into_iter()
         .map(|m| {
-            let mut tile = SwarmTile::new(m.label.clone(), m.status.clone(), status_accent(&m.status))
-                .with_body(m.body.clone());
+            let mut tile =
+                SwarmTile::new(m.label.clone(), m.status.clone(), status_accent(&m.status))
+                    .with_body(m.body.clone());
             if let Some(glyph) = role_glyph(m.role.as_deref()) {
                 tile = tile.with_role_glyph(glyph);
             }
@@ -141,7 +142,10 @@ pub fn render_gallery(
         return Vec::new();
     }
     let tiles = members_to_tiles(members);
-    let active = members.iter().filter(|m| is_active_status(&m.status)).count();
+    let active = members
+        .iter()
+        .filter(|m| is_active_status(&m.status))
+        .count();
     let header = gallery_header(members.len(), active);
     let cfg = SwarmGalleryConfig {
         max_height: max_height.saturating_sub(1).max(4),

@@ -21,12 +21,12 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use jcode_tui_render::swarm_gallery::{humanize_age, render_gallery, GalleryMember};
+use jcode_tui_render::swarm_gallery::{GalleryMember, humanize_age, render_gallery};
 
 /// A simulated worker, mirroring the fields the real adapter reads from a
 /// `SwarmMemberStatus` (name, role, status, streamed output tail).
@@ -79,7 +79,8 @@ impl MockWorker {
         } else {
             "running".to_string()
         };
-        self.transcript.push(line.trim_start_matches("! ").to_string());
+        self.transcript
+            .push(line.trim_start_matches("! ").to_string());
         self.next_line += 1;
         self.cooldown = 2 + (self.next_line as u16 % 3);
     }
@@ -208,18 +209,17 @@ fn make_workers(n: usize) -> Vec<MockWorker> {
         .collect()
 }
 
-fn render_gallery_lines(workers: &[MockWorker], width: usize, max_height: usize) -> Vec<Line<'static>> {
+fn render_gallery_lines(
+    workers: &[MockWorker],
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
     // Delegate to the exact same shared renderer the live TUI uses; only the
     // member data (built from mock workers) differs.
     render_gallery(&workers_to_members(workers), width, max_height)
 }
 
-fn draw(
-    f: &mut Frame,
-    workers: &[MockWorker],
-    max_pct: usize,
-    paused: bool,
-) {
+fn draw(f: &mut Frame, workers: &[MockWorker], max_pct: usize, paused: bool) {
     let area = f.area();
 
     // Reserve a top band like the real TUI does: a configurable share of the
@@ -237,7 +237,12 @@ fn draw(
         ((lines.len() as u16) + 1).min(area.height / 2)
     };
 
-    let band = Rect { x: area.x, y: area.y, width: area.width, height: band_h };
+    let band = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: band_h,
+    };
     let chat = Rect {
         x: area.x,
         y: area.y + band_h,
@@ -254,7 +259,9 @@ fn draw(
     let help = vec![
         Line::from(vec![Span::styled(
             "  inline swarm gallery — live demo (no real agents touched)",
-            Style::default().fg(Color::Rgb(200, 200, 210)).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Rgb(200, 200, 210))
+                .add_modifier(Modifier::BOLD),
         )]),
         Line::from(""),
         Line::from(vec![Span::styled(
@@ -267,12 +274,18 @@ fn draw(
         )]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  band size: ", Style::default().fg(Color::Rgb(150, 150, 160))),
+            Span::styled(
+                "  band size: ",
+                Style::default().fg(Color::Rgb(150, 150, 160)),
+            ),
             Span::styled(
                 format!("{max_pct}% "),
                 Style::default().fg(Color::Rgb(255, 200, 100)),
             ),
-            Span::styled("(agents.swarm_gallery_max_pct)", Style::default().fg(Color::Rgb(110, 110, 120))),
+            Span::styled(
+                "(agents.swarm_gallery_max_pct)",
+                Style::default().fg(Color::Rgb(110, 110, 120)),
+            ),
             Span::styled(
                 if paused { "   [PAUSED]" } else { "" },
                 Style::default().fg(Color::Rgb(255, 170, 80)),
@@ -307,7 +320,10 @@ fn main() -> io::Result<()> {
     let res = run(&mut terminal);
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut() as &mut CrosstermBackend<Stdout>, LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut() as &mut CrosstermBackend<Stdout>,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
     res
 }
