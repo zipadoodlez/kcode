@@ -5,6 +5,34 @@ use std::process::Command;
 
 /// Default system prompt for jcode (embedded at compile time)
 pub const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompt/system_prompt.md");
+
+/// Reasoning-effort sentinel that means "use the strongest reasoning the model
+/// supports, AND actively orchestrate the work with the swarm tool". Providers
+/// translate this to their strongest real effort when building API requests,
+/// while the UI/session keep the literal `swarm` marker so the agent knows to
+/// inject [`SWARM_EFFORT_DIRECTIVE`].
+pub const SWARM_EFFORT: &str = "swarm";
+
+/// System-prompt directive injected when the active reasoning effort is
+/// [`SWARM_EFFORT`]. Instructs the agent to lean on the swarm tooling.
+pub const SWARM_EFFORT_DIRECTIVE: &str = "# Swarm Effort\n\nYou are running at the maximum reasoning effort with swarm orchestration enabled. For any non-trivial task, decompose the work and use the `swarm` tool to spawn and coordinate parallel agents (spawn workers with concrete prompts, assign tasks, and collect their reports) instead of doing everything yourself in one thread. Prefer parallelizing independent subtasks across swarm members, and use a coordinator/plan when the work has multiple stages. Only skip the swarm for trivial, single-step requests.";
+
+/// Returns true when `effort` is the swarm sentinel (case-insensitive).
+pub fn is_swarm_effort(effort: &str) -> bool {
+    effort.trim().eq_ignore_ascii_case(SWARM_EFFORT)
+}
+
+/// Append the swarm directive to a split prompt's dynamic part when the active
+/// reasoning effort is the swarm sentinel. No-op otherwise.
+pub fn append_swarm_effort_directive(split: &mut SplitSystemPrompt, effort: Option<&str>) {
+    if !effort.map(is_swarm_effort).unwrap_or(false) {
+        return;
+    }
+    if !split.dynamic_part.is_empty() {
+        split.dynamic_part.push_str("\n\n");
+    }
+    split.dynamic_part.push_str(SWARM_EFFORT_DIRECTIVE);
+}
 /// Mission-continuation template (embedded at compile time). Consumed by the
 /// `mission` module in the upper `jcode-app-core` layer; the asset lives here
 /// alongside the other prompt templates.

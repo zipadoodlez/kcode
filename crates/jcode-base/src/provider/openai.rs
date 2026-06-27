@@ -752,7 +752,11 @@ impl OpenAIProvider {
             return None;
         }
         match value.as_str() {
-            "none" | "low" | "medium" | "high" | "xhigh" => Some(value),
+            // `swarm` is a UI sentinel meaning "max effort + use the swarm tool".
+            // We keep it stored so the UI/session reflect it and the agent injects
+            // the swarm directive; it is translated to a real effort at request time
+            // by `api_reasoning_effort`.
+            "none" | "low" | "medium" | "high" | "xhigh" | "swarm" => Some(value),
             other => {
                 crate::logging::info(&format!(
                     "Warning: Unsupported OpenAI reasoning effort '{}'; expected none|low|medium|high|xhigh. Using 'xhigh'.",
@@ -760,6 +764,15 @@ impl OpenAIProvider {
                 ));
                 Some("xhigh".to_string())
             }
+        }
+    }
+
+    /// Translate a stored reasoning effort into the value sent to the API.
+    /// The `swarm` sentinel maps to the strongest real effort (`xhigh`).
+    fn api_reasoning_effort(effort: Option<&str>) -> Option<String> {
+        match effort {
+            Some(e) if crate::prompt::is_swarm_effort(e) => Some("xhigh".to_string()),
+            other => other.map(|e| e.to_string()),
         }
     }
 

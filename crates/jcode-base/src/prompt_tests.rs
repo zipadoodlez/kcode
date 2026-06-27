@@ -268,3 +268,26 @@ fn split_prompt_estimated_tokens_is_positive_when_populated() {
     assert!(split.chars() > 0);
     assert!(split.estimated_tokens() > 0);
 }
+
+#[test]
+fn swarm_effort_directive_is_appended_only_for_swarm_sentinel() {
+    assert!(is_swarm_effort("swarm"));
+    assert!(is_swarm_effort("  Swarm "));
+    assert!(!is_swarm_effort("xhigh"));
+
+    let mut split = SplitSystemPrompt {
+        static_part: "base".to_string(),
+        dynamic_part: String::new(),
+    };
+    append_swarm_effort_directive(&mut split, Some("xhigh"));
+    assert!(!split.dynamic_part.contains("Swarm Effort"));
+
+    append_swarm_effort_directive(&mut split, Some("swarm"));
+    assert!(split.dynamic_part.contains("# Swarm Effort"));
+    assert!(split.dynamic_part.contains("swarm` tool"));
+
+    // None / empty effort should not inject.
+    let mut other = SplitSystemPrompt::default();
+    append_swarm_effort_directive(&mut other, None);
+    assert!(other.dynamic_part.is_empty());
+}
