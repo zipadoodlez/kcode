@@ -528,14 +528,14 @@ mod tests {
     }
 
     #[test]
-    fn ghostty_cmd_r_sequence_matches_open_resume_binding() {
-        // Ghostty forwards Cmd+R as ESC[114;9u (114='r', super-only).
-        let code = KeyCode::Char(char::from_u32(114).unwrap());
+    fn ghostty_cmd_b_sequence_matches_open_resume_binding() {
+        // Ghostty forwards Cmd+B as ESC[98;9u (98='b', super-only).
+        let code = KeyCode::Char(char::from_u32(98).unwrap());
         let mods = kitty_mods(9);
-        let binding = parse_keybinding("cmd+r").expect("cmd+r parses");
+        let binding = parse_keybinding("cmd+b").expect("cmd+b parses");
         assert!(
             binding.matches_for_platform(code, mods, true),
-            "Cmd+R kitty sequence must trigger the open_resume binding"
+            "Cmd+B kitty sequence must trigger the open_resume binding"
         );
     }
 

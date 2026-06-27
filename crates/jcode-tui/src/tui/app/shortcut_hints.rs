@@ -141,13 +141,13 @@ mod tests {
         let id = "resume";
         // First MAX shows produce a message; record each.
         for _ in 0..MAX_SHOWS_PER_HINT {
-            let msg = nudge_message(id, "open the session picker", Some("Cmd+R"));
+            let msg = nudge_message(id, "open the session picker", Some("Cmd+B"));
             assert!(msg.is_some(), "expected a nudge while under the cap");
             record_shown(id);
         }
         // Now exhausted.
         assert!(
-            nudge_message(id, "open the session picker", Some("Cmd+R")).is_none(),
+            nudge_message(id, "open the session picker", Some("Cmd+B")).is_none(),
             "nudge should stop after the cap"
         );
 

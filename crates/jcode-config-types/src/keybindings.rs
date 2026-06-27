@@ -328,9 +328,9 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "open_resume",
         description: "Open the /resume session picker",
-        // Cmd+R is free in jcode on macOS. On Windows/Linux, Ctrl+R is already
+        // Cmd+B is free in jcode on macOS. On Windows/Linux, Ctrl+R is already
         // taken by session recovery, so use Alt+R there.
-        macos: PlatformDefault::dev("cmd+r"),
+        macos: PlatformDefault::dev("cmd+b"),
         other: PlatformDefault::dev("alt+r"),
     },
 ];

@@ -78,8 +78,8 @@ info_widget_toggle = "alt+i"
 # new_terminal = "cmd+shift+;"
 
 # Open the /resume session picker.
-# Default: Cmd+R on macOS, Alt+R on Windows/Linux. Set "" to disable.
-# open_resume = "cmd+r"
+# Default: Cmd+B on macOS, Alt+R on Windows/Linux. Set "" to disable.
+# open_resume = "cmd+b"
 
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.

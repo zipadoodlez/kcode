@@ -768,7 +768,7 @@ pub struct KeybindingsConfig {
     /// Spawn a fresh jcode session in a new terminal window (default: unbound).
     /// Example: "alt+enter".
     pub new_terminal: String,
-    /// Open the `/resume` session picker (default: "cmd+r" on macOS, "ctrl+r"
+    /// Open the `/resume` session picker (default: "cmd+b" on macOS, "alt+r"
     /// elsewhere). Set "" to disable.
     pub open_resume: String,
     /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
@@ -815,7 +815,7 @@ impl Default for KeybindingsConfig {
             open_resume: get(
                 "open_resume",
                 if cfg!(target_os = "macos") {
-                    "cmd+r"
+                    "cmd+b"
                 } else {
                     "alt+r"
                 },
