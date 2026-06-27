@@ -40,6 +40,11 @@ pub struct SessionSpawnContext {
     pub kind: Option<String>,
     /// Extra `JCODE_SPAWN_*` env entries (e.g. swarm/coordinator ids).
     pub extra_env: Vec<(String, String)>,
+    /// Terminal-identifying env vars captured from the client that requested
+    /// the spawn (tmux/zellij/kitty/DISPLAY/...). Re-exported to spawn/focus
+    /// hooks so the new window lands in the client's terminal instead of the
+    /// server's stale startup env (#405).
+    pub client_terminal_env: Vec<(String, String)>,
 }
 
 impl SessionSpawnContext {
@@ -47,11 +52,18 @@ impl SessionSpawnContext {
         Self {
             kind: Some(kind.into()),
             extra_env: Vec::new(),
+            client_terminal_env: Vec::new(),
         }
     }
 
     pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_env.push((key.into(), value.into()));
+        self
+    }
+
+    /// Attach the requesting client's terminal env snapshot (#405).
+    pub fn with_client_terminal_env(mut self, env: Vec<(String, String)>) -> Self {
+        self.client_terminal_env = env;
         self
     }
 
@@ -66,6 +78,9 @@ impl SessionSpawnContext {
             .session_id(session_id);
         for (key, value) in &self.extra_env {
             command = command.spawn_env(key.clone(), value.clone());
+        }
+        if !self.client_terminal_env.is_empty() {
+            command = command.client_terminal_env(self.client_terminal_env.clone());
         }
         command
     }
@@ -89,6 +104,18 @@ pub fn resumed_window_title(session_id: &str) -> String {
 /// built-in wmctrl/xdotool fallback should then be skipped). The hook receives
 /// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars.
 pub fn focus_session_via_hook(session_id: &str, title: &str) -> bool {
+    focus_session_via_hook_with_env(session_id, title, &[])
+}
+
+/// Like [`focus_session_via_hook`] but also re-exports the requesting client's
+/// terminal env (#405) so focus hooks (e.g. `zellij action go-to-tab-name`)
+/// target the client's terminal session instead of the server's stale env. Each
+/// var is exported natively and under a `JCODE_CLIENT_<NAME>` alias.
+pub fn focus_session_via_hook_with_env(
+    session_id: &str,
+    title: &str,
+    client_terminal_env: &[(String, String)],
+) -> bool {
     let hook = {
         let config = &crate::config::config().terminal;
         config
@@ -120,6 +147,10 @@ pub fn focus_session_via_hook(session_id: &str, title: &str) -> bool {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+    for (key, value) in client_terminal_env {
+        cmd.env(key, value);
+        cmd.env(format!("JCODE_CLIENT_{key}"), value);
+    }
     match crate::platform::spawn_detached(&mut cmd) {
         Ok(_) => true,
         Err(error) => {
@@ -134,7 +165,17 @@ pub fn focus_session_via_hook(session_id: &str, title: &str) -> bool {
 /// Focus a session window: configured focus hook first, then the built-in
 /// wmctrl/xdotool title search (Linux only) as a best-effort fallback.
 pub fn focus_session_window_best_effort(session_id: &str, title: &str) {
-    if focus_session_via_hook(session_id, title) {
+    focus_session_window_best_effort_with_env(session_id, title, &[]);
+}
+
+/// Like [`focus_session_window_best_effort`] but forwards the requesting
+/// client's terminal env to the focus hook (#405).
+pub fn focus_session_window_best_effort_with_env(
+    session_id: &str,
+    title: &str,
+    client_terminal_env: &[(String, String)],
+) {
+    if focus_session_via_hook_with_env(session_id, title, client_terminal_env) {
         return;
     }
     focus_title_best_effort(title);
@@ -260,7 +301,11 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
     let command = context.apply(command, "selfdev", session_id);
     let spawned = crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)?;
     if spawned {
-        focus_session_window_best_effort(session_id, &selfdev_title);
+        focus_session_window_best_effort_with_env(
+            session_id,
+            &selfdev_title,
+            &context.client_terminal_env,
+        );
     }
     Ok(spawned)
 }

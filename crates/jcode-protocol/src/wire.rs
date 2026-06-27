@@ -97,6 +97,11 @@ pub enum Request {
         client_has_local_history: bool,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         allow_session_takeover: bool,
+        /// Terminal-identifying env vars (tmux/zellij/kitty/DISPLAY/...) captured
+        /// from the connecting client so the server can route spawn/focus hooks
+        /// to the client's terminal instead of its own stale startup env (#405).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        terminal_env: Vec<(String, String)>,
     },
 
     /// Get full conversation history (for TUI sync on connect)

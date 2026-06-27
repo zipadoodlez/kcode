@@ -18,6 +18,12 @@ pub struct TerminalCommand {
     /// spawn hooks and spawned terminals. Applied after the first-class
     /// `JCODE_SPAWN_*` keys, so entries here win on key collisions.
     pub extra_env: Vec<(String, String)>,
+    /// Terminal-identifying env vars captured from the *client* that requested
+    /// this spawn (see [`snapshot_client_terminal_env`]). When set, these
+    /// override the (possibly stale) server-inherited values for the same keys
+    /// and are also exported under a `JCODE_CLIENT_*` prefix so spawn/focus
+    /// hooks can target the terminal the user is actually attached to (#405).
+    pub client_terminal_env: Vec<(String, String)>,
 }
 
 impl TerminalCommand {
@@ -30,6 +36,7 @@ impl TerminalCommand {
             kind: None,
             session_id: None,
             extra_env: Vec::new(),
+            client_terminal_env: Vec::new(),
         }
     }
 
@@ -57,6 +64,76 @@ impl TerminalCommand {
         self.extra_env.push((key.into(), value.into()));
         self
     }
+
+    /// Attach the client's terminal-identifying env snapshot (see
+    /// [`snapshot_client_terminal_env`]) so the spawn follows the terminal the
+    /// requesting client is attached to instead of the server's stale env.
+    pub fn client_terminal_env(mut self, env: Vec<(String, String)>) -> Self {
+        self.client_terminal_env = env;
+        self
+    }
+}
+
+/// Terminal/window-manager environment variables that identify *which*
+/// terminal, multiplexer, or display a client is attached to.
+///
+/// The jcode server process is long-lived and captures these at *its* startup,
+/// so once a client connects from a different terminal/tmux/zellij session the
+/// server's copies are stale. Spawn and focus hooks executed by the server then
+/// target the wrong terminal (see issue #405). To fix this, clients snapshot
+/// these vars from their own environment and send them to the server, which
+/// re-exports them to spawn/focus hooks so the hook places windows in the
+/// terminal the user is actually looking at.
+///
+/// This intentionally covers terminal multiplexers (tmux, screen, zellij),
+/// terminal emulators (kitty, wezterm, ghostty, iTerm, ...), and the display
+/// server (X11 `DISPLAY`, Wayland `WAYLAND_DISPLAY`) so window placement and
+/// routing all follow the connecting client.
+pub const CLIENT_TERMINAL_ENV_VARS: &[&str] = &[
+    // Terminal multiplexers
+    "ZELLIJ",
+    "ZELLIJ_SESSION_NAME",
+    "ZELLIJ_PANE_ID",
+    "TMUX",
+    "TMUX_PANE",
+    "STY",
+    // Terminal emulators
+    "TERM",
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "KITTY_PID",
+    "KITTY_WINDOW_ID",
+    "KITTY_LISTEN_ON",
+    "WEZTERM_PANE",
+    "WEZTERM_EXECUTABLE",
+    "WEZTERM_UNIX_SOCKET",
+    "ALACRITTY_WINDOW_ID",
+    "ALACRITTY_SOCKET",
+    "GHOSTTY_RESOURCES_DIR",
+    "GHOSTTY_BIN_DIR",
+    "ITERM_SESSION_ID",
+    "WINDOWID",
+    "HANDTERM_SESSION",
+    "HANDTERM_PID",
+    "WT_SESSION",
+    "WT_PROFILE_ID",
+    // Display / window manager
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+];
+
+/// Snapshot the current process's terminal-identifying env vars (see
+/// [`CLIENT_TERMINAL_ENV_VARS`]). Only vars that are actually set are included,
+/// so the map is empty when nothing identifies the terminal.
+pub fn snapshot_client_terminal_env() -> Vec<(String, String)> {
+    CLIENT_TERMINAL_ENV_VARS
+        .iter()
+        .filter_map(|&key| {
+            std::env::var(key)
+                .ok()
+                .map(|value| (key.to_string(), value))
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -420,6 +497,16 @@ fn spawn_metadata_env(command: &TerminalCommand, cwd: &Path) -> Vec<(String, Str
         "JCODE_SPAWN_COMMAND".to_string(),
         shell_command(&command_parts(command)),
     ));
+    // Re-export the requesting client's terminal env so spawn/focus hooks use
+    // the client's terminal, not the server's stale startup env (#405). Each
+    // var is exported both under its native name (overriding the inherited
+    // value the spawned process/hook would otherwise see) and under a
+    // `JCODE_CLIENT_<NAME>` alias so hooks can explicitly distinguish the
+    // client's terminal from the server's.
+    for (key, value) in &command.client_terminal_env {
+        env.push((key.clone(), value.clone()));
+        env.push((format!("JCODE_CLIENT_{key}"), value.clone()));
+    }
     env.extend(command.extra_env.iter().cloned());
     env
 }
@@ -603,6 +690,71 @@ mod tests {
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn spawn_metadata_env_reexports_client_terminal_env_with_native_and_client_keys() {
+        // A spawn carrying the requesting client's terminal env (#405) should
+        // export each var both natively (overriding the spawned process's
+        // inherited/stale value) and under a `JCODE_CLIENT_*` alias so hooks can
+        // distinguish the client's terminal from the server's.
+        let command = TerminalCommand::new("/usr/local/bin/jcode", vec!["--resume".to_string()])
+            .kind("swarm-agent")
+            .session_id("ses_405")
+            .client_terminal_env(vec![
+                ("ZELLIJ_SESSION_NAME".to_string(), "sessionB".to_string()),
+                ("DISPLAY".to_string(), ":1".to_string()),
+            ]);
+        let env = spawn_metadata_env(&command, Path::new("/tmp/work"));
+
+        let lookup = |key: &str| {
+            env.iter()
+                .filter(|(k, _)| k == key)
+                .map(|(_, v)| v.clone())
+                .next_back()
+        };
+
+        assert_eq!(lookup("ZELLIJ_SESSION_NAME").as_deref(), Some("sessionB"));
+        assert_eq!(
+            lookup("JCODE_CLIENT_ZELLIJ_SESSION_NAME").as_deref(),
+            Some("sessionB")
+        );
+        assert_eq!(lookup("DISPLAY").as_deref(), Some(":1"));
+        assert_eq!(lookup("JCODE_CLIENT_DISPLAY").as_deref(), Some(":1"));
+        // The first-class spawn metadata still flows through.
+        assert_eq!(lookup("JCODE_SPAWN_KIND").as_deref(), Some("swarm-agent"));
+    }
+
+    #[test]
+    fn spawn_metadata_env_without_client_env_has_no_client_keys() {
+        let command = TerminalCommand::new("/usr/local/bin/jcode", vec!["--resume".to_string()])
+            .kind("resume")
+            .session_id("ses_plain");
+        let env = spawn_metadata_env(&command, Path::new("/tmp/work"));
+        assert!(
+            !env.iter().any(|(k, _)| k.starts_with("JCODE_CLIENT_")),
+            "no client terminal env should produce no JCODE_CLIENT_* keys"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn snapshot_client_terminal_env_captures_set_vars_only() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::set_var("ZELLIJ_SESSION_NAME", "snapshot-test");
+            std::env::remove_var("TMUX");
+        }
+        let snapshot = snapshot_client_terminal_env();
+        assert!(
+            snapshot
+                .iter()
+                .any(|(k, v)| k == "ZELLIJ_SESSION_NAME" && v == "snapshot-test")
+        );
+        assert!(!snapshot.iter().any(|(k, _)| k == "TMUX"));
+        unsafe {
+            std::env::remove_var("ZELLIJ_SESSION_NAME");
+        }
+    }
 
     #[test]
     #[cfg(unix)]

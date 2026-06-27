@@ -475,6 +475,7 @@ impl RawClient {
             client_instance_id: None,
             client_has_local_history: false,
             allow_session_takeover: false,
+            terminal_env: Vec::new(),
         })
         .await?;
         self.read_until(

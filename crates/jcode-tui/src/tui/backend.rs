@@ -321,6 +321,7 @@ impl RemoteConnection {
             client_instance_id: conn.client_instance_id.clone(),
             client_has_local_history,
             allow_session_takeover,
+            terminal_env: crate::terminal_launch::snapshot_client_terminal_env(),
         })
         .await?;
         let subscribe_ms = subscribe_start.elapsed().as_millis();

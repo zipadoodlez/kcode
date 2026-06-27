@@ -52,6 +52,10 @@ pub(super) struct ClientConnectionInfo {
     pub(super) last_seen: Instant,
     pub(super) is_processing: bool,
     pub(super) current_tool_name: Option<String>,
+    /// Terminal-identifying env vars captured from this client (tmux/zellij/
+    /// kitty/DISPLAY/...). Used to route spawn/focus hooks to the client's
+    /// terminal instead of the long-lived server's stale startup env (#405).
+    pub(super) terminal_env: Vec<(String, String)>,
     pub(super) disconnect_tx: mpsc::UnboundedSender<()>,
 }
 

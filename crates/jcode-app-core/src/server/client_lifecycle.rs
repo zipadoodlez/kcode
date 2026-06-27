@@ -454,6 +454,7 @@ pub(super) async fn handle_client(
                 last_seen: connected_at,
                 is_processing: false,
                 current_tool_name: None,
+                terminal_env: Vec::new(),
                 disconnect_tx: disconnect_tx.clone(),
             },
         );
@@ -1276,12 +1277,20 @@ pub(super) async fn handle_client(
                 client_instance_id,
                 client_has_local_history,
                 allow_session_takeover,
+                terminal_env,
             } => {
                 current_client_instance_id = client_instance_id.clone();
                 {
                     let mut connections = client_connections.write().await;
                     if let Some(info) = connections.get_mut(&client_connection_id) {
                         info.client_instance_id = client_instance_id.clone();
+                        // Record the client's terminal env so spawn/focus hooks
+                        // target the client's terminal, not the server's stale
+                        // startup env (#405). Only overwrite when the client sent
+                        // something, so reconnects without env don't clobber it.
+                        if !terminal_env.is_empty() {
+                            info.terminal_env = terminal_env.clone();
+                        }
                     }
                 }
                 if let Some(target_session_id) = target_session_id {
@@ -2107,6 +2116,7 @@ pub(super) async fn handle_client(
                     &mcp_pool,
                     &soft_interrupt_queues,
                     &swarm_mutation_runtime,
+                    &client_connections,
                 )
                 .await;
             }

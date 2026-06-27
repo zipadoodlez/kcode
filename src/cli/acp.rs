@@ -473,6 +473,7 @@ impl AcpRuntime {
                 client_instance_id: Some("acp".to_string()),
                 client_has_local_history: false,
                 allow_session_takeover: false,
+                terminal_env: crate::terminal_launch::snapshot_client_terminal_env(),
             })
             .await?;
         wait_for_done(&session, subscribe_id).await?;

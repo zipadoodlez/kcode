@@ -53,6 +53,7 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
             last_seen: now,
             is_processing: false,
             current_tool_name: None,
+            terminal_env: Vec::new(),
             disconnect_tx: mpsc::unbounded_channel().0,
         },
     )])));

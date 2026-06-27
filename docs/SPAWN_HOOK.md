@@ -61,6 +61,30 @@ The hook (and any terminal spawned by the built-in fallback) receives:
 | `JCODE_SPAWN_COORDINATOR_SESSION_ID` | (swarm spawns) The coordinator session that requested the spawn |
 | `JCODE_FRESH_SPAWN` | `1` when the spawn is a fresh window handoff |
 
+### Client terminal environment (multi-terminal routing)
+
+The jcode server process is long-lived: it captures terminal-identifying env
+vars (`ZELLIJ_SESSION_NAME`, `TMUX`, `DISPLAY`, `KITTY_WINDOW_ID`, ...) once at
+startup. When you later open a *new* terminal/tmux/zellij session and connect a
+client to the same server, the server's copies are stale, so a spawn hook run by
+the server would otherwise target the *old* terminal.
+
+To fix this (see issue #405), each connecting client snapshots its own
+terminal-identifying env and sends it to the server. When a spawn hook runs, the
+server re-exports the requesting client's values so the hook follows the
+terminal the user is actually attached to:
+
+- The native variable (e.g. `ZELLIJ_SESSION_NAME`) is overridden with the
+  client's value, so hooks that read it directly target the right session.
+- A `JCODE_CLIENT_<NAME>` alias (e.g. `JCODE_CLIENT_ZELLIJ_SESSION_NAME`,
+  `JCODE_CLIENT_TMUX`, `JCODE_CLIENT_DISPLAY`) is also exported so a hook can
+  explicitly distinguish the client's terminal from the server's.
+
+Covered keys include the terminal multiplexers (zellij, tmux, screen), terminal
+emulators (kitty, wezterm, ghostty, alacritty, iTerm, Windows Terminal,
+handterm), and the display server (`DISPLAY`, `WAYLAND_DISPLAY`). Only vars that
+the client actually has set are forwarded.
+
 ## Examples
 
 ### tmux: one window per agent

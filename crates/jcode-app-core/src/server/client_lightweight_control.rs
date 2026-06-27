@@ -343,6 +343,7 @@ pub(super) async fn handle_lightweight_control_request(
                 mcp_pool,
                 soft_interrupt_queues,
                 swarm_mutation_runtime,
+                client_connections,
             )
             .await;
         }
