@@ -136,10 +136,7 @@ pub(super) async fn create_headless_session(
             agent_guard.soft_interrupt_queue(),
         )
         .await;
-        register_background_tool_signal(
-            &client_session_id,
-            agent_guard.background_tool_signal(),
-        );
+        register_background_tool_signal(&client_session_id, agent_guard.background_tool_signal());
     }
 
     let swarm_id = if swarm_enabled {

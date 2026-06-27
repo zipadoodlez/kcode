@@ -2168,9 +2168,7 @@ fn expand_badge_start_col(text: &str) -> Option<usize> {
     let icon = crate::tui::ui::inline_image_ui::EXPAND_BADGE_CLICK_ICON;
     // Prefer the click icon (the badge's first cell); fall back to the dots so a
     // future icon change can never silently drop the whole hit-region.
-    let byte_idx = text
-        .find(icon)
-        .or_else(|| text.find(['○', '●']))?;
+    let byte_idx = text.find(icon).or_else(|| text.find(['○', '●']))?;
     Some(line_display_width(&text[..byte_idx]))
 }
 
@@ -2736,10 +2734,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Draw the inline swarm gallery band (above the chat) if present.
     if let Some(band) = swarm_gallery_area {
         clear_area(frame, band);
-        frame.render_widget(
-            Paragraph::new(swarm_gallery_lines.clone()),
-            band,
-        );
+        frame.render_widget(Paragraph::new(swarm_gallery_lines.clone()), band);
     }
 
     // Capture layout info for visual debug

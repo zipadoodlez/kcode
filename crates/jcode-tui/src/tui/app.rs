@@ -81,6 +81,7 @@ mod remote_notifications;
 mod replay;
 pub(crate) mod run_shell;
 mod runtime_memory;
+mod shortcut_hints;
 mod split_view;
 mod state_ui;
 mod state_ui_input_helpers;
@@ -92,7 +93,6 @@ mod todos_view;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
 mod tui_state;
-mod shortcut_hints;
 mod turn;
 mod turn_memory;
 mod turn_notify;
@@ -1100,8 +1100,7 @@ pub struct App {
     // `expanded_images_version` bumps on every change so the body/full prep
     // caches (which embed anchored images) invalidate exactly like the
     // `inline_images_visible` toggle does.
-    expanded_images:
-        std::collections::HashMap<u64, super::ui::inline_image_ui::ImageExpandLevel>,
+    expanded_images: std::collections::HashMap<u64, super::ui::inline_image_ui::ImageExpandLevel>,
     expanded_images_version: u64,
     // Auto-hide deadline for the pinned image side pane only.
     pinned_images_auto_hide_deadline: Option<Instant>,

@@ -1951,7 +1951,11 @@ fn highlight_spans_marks_query_occurrences() {
         .filter(|s| s.style.add_modifier.contains(Modifier::BOLD))
         .map(|s| s.content.as_ref())
         .collect();
-    assert_eq!(highlighted, vec!["Resume"], "match should be highlighted case-insensitively");
+    assert_eq!(
+        highlighted,
+        vec!["Resume"],
+        "match should be highlighted case-insensitively"
+    );
 }
 
 #[test]
@@ -1968,7 +1972,11 @@ fn highlight_spans_marks_each_token_independently() {
         .filter(|s| s.style.add_modifier.contains(Modifier::BOLD))
         .map(|s| s.content.as_ref())
         .collect();
-    assert_eq!(highlighted, vec!["Resume", "bug"], "every token should be highlighted");
+    assert_eq!(
+        highlighted,
+        vec!["Resume", "bug"],
+        "every token should be highlighted"
+    );
 }
 
 #[test]
@@ -1990,7 +1998,10 @@ fn search_highlights_matching_title_in_rendered_rows() {
         .spans
         .iter()
         .any(|s| s.content.as_ref() == "sess" && s.style.add_modifier.contains(Modifier::BOLD));
-    assert!(has_highlight, "query substring in title should be highlighted");
+    assert!(
+        has_highlight,
+        "query substring in title should be highlighted"
+    );
 }
 
 #[test]
@@ -2010,7 +2021,10 @@ fn search_highlights_match_in_preview_and_scrolls_to_it() {
     // Baseline: no search -> auto-scrolls to bottom.
     let _ = buffer_text(&mut picker, w, h);
     let bottom_scroll = picker.scroll_offset;
-    assert!(bottom_scroll > 0, "long preview should scroll to bottom by default");
+    assert!(
+        bottom_scroll > 0,
+        "long preview should scroll to bottom by default"
+    );
 
     // Now search for the unique early term. Reset auto-scroll like a keystroke would.
     picker.search_query = "flibbertigibbet".to_string();
@@ -2041,7 +2055,10 @@ fn search_highlights_match_in_preview_and_scrolls_to_it() {
             s.content.to_lowercase().contains("flibbertigibbet")
                 && s.style.add_modifier.contains(Modifier::BOLD)
         });
-    assert!(highlighted, "matched term in preview body should be highlighted");
+    assert!(
+        highlighted,
+        "matched term in preview body should be highlighted"
+    );
 }
 
 #[test]
@@ -2050,7 +2067,10 @@ fn preview_without_search_has_no_highlight_and_scrolls_to_bottom() {
     let mut picker = SessionPicker::new(vec![session]);
     picker.focus = PaneFocus::Preview;
     let _ = buffer_text(&mut picker, 100, 16);
-    assert!(picker.scroll_offset > 0, "should scroll to bottom without search");
+    assert!(
+        picker.scroll_offset > 0,
+        "should scroll to bottom without search"
+    );
     let any_highlight = picker
         .preview_cache
         .as_ref()
@@ -2058,6 +2078,11 @@ fn preview_without_search_has_no_highlight_and_scrolls_to_bottom() {
         .wrapped_lines
         .iter()
         .flat_map(|line| line.spans.iter())
-        .any(|s| s.style.add_modifier.contains(Modifier::BOLD) && s.style.fg == Some(rgb(255, 214, 90)));
-    assert!(!any_highlight, "no search means no highlight color in preview");
+        .any(|s| {
+            s.style.add_modifier.contains(Modifier::BOLD) && s.style.fg == Some(rgb(255, 214, 90))
+        });
+    assert!(
+        !any_highlight,
+        "no search means no highlight color in preview"
+    );
 }

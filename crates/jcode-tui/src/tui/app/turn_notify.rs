@@ -217,10 +217,7 @@ fn todo_work_line(todos: &[TodoItem]) -> Option<String> {
 }
 
 fn resolve_todo_title(todos: &[TodoItem], id: &str) -> Option<String> {
-    todos
-        .iter()
-        .find(|t| t.id == id)
-        .map(|t| t.content.clone())
+    todos.iter().find(|t| t.id == id).map(|t| t.content.clone())
 }
 
 /// Clip a single todo title for inline display in the notification body.
@@ -290,12 +287,11 @@ mod tests {
     use super::*;
 
     fn todo(status: &str, blocked: bool) -> TodoItem {
-        todo_named("x", status, &[])
-            .tap(|t| {
-                if blocked {
-                    t.blocked_by = vec!["other".to_string()];
-                }
-            })
+        todo_named("x", status, &[]).tap(|t| {
+            if blocked {
+                t.blocked_by = vec!["other".to_string()];
+            }
+        })
     }
 
     fn todo_named(content: &str, status: &str, blocked_by: &[&str]) -> TodoItem {

@@ -114,8 +114,7 @@ async fn busy_session_background_tool_signal_fires_via_registry_fallback() {
     });
     let registry = Registry::new(Arc::clone(&provider)).await;
     let session_id = "session_busy_background_signal_registry";
-    let mut session =
-        crate::session::Session::create_with_id(session_id.to_string(), None, None);
+    let mut session = crate::session::Session::create_with_id(session_id.to_string(), None, None);
     session.model = Some("panic-on-fork".to_string());
     let agent = Arc::new(Mutex::new(Agent::new_with_session(
         provider, registry, session, None,

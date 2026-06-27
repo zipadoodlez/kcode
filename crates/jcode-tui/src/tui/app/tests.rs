@@ -191,8 +191,7 @@ fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
     ];
 
     // Baseline captured last turn with a *different* system static hash.
-    let baseline_signature =
-        App::kv_cache_request_signature(&messages, &[], "system PROMPT A", "");
+    let baseline_signature = App::kv_cache_request_signature(&messages, &[], "system PROMPT A", "");
     let session_id = app.kv_cache_session_id();
     // Match the live provider/model exactly so the miss is classified as a
     // harness system change rather than a provider/model switch.
@@ -221,9 +220,7 @@ fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
     let alarm = app
         .display_messages()
         .iter()
-        .find(|message| {
-            message.role == "system" && message.content.contains("KV cache miss")
-        })
+        .find(|message| message.role == "system" && message.content.contains("KV cache miss"))
         .expect("harness-caused cache miss should push an in-chat alarm");
     assert!(
         alarm.content.contains("harness: system changed"),
@@ -265,11 +262,9 @@ fn legitimate_model_switch_miss_does_not_push_in_chat_alarm() {
     app.record_completed_stream_cache_usage();
 
     assert!(
-        !app
-            .display_messages()
+        !app.display_messages()
             .iter()
-            .any(|message| message.role == "system"
-                && message.content.contains("KV cache miss")),
+            .any(|message| message.role == "system" && message.content.contains("KV cache miss")),
         "model-switch miss must not raise the harness alarm"
     );
 }

@@ -920,12 +920,7 @@ pub(crate) fn widget_visible_facts(data: &InfoWidgetData) -> crate::tui::session
             }
             WidgetKind::Overview => {
                 // The overview panel summarizes model, context, provider, dir.
-                ledger.claim_all([
-                    Fact::Model,
-                    Fact::Context,
-                    Fact::Provider,
-                    Fact::Dir,
-                ]);
+                ledger.claim_all([Fact::Model, Fact::Context, Fact::Provider, Fact::Dir]);
                 if data.reasoning_effort.is_some() {
                     ledger.claim(Fact::ReasoningEffort);
                 }

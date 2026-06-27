@@ -8,7 +8,7 @@
 //! [`GalleryMember`] (label + body lines).
 
 use crate::protocol::SwarmMemberStatus;
-use jcode_tui_render::swarm_gallery::{humanize_age, render_gallery, GalleryMember};
+use jcode_tui_render::swarm_gallery::{GalleryMember, humanize_age, render_gallery};
 use ratatui::prelude::*;
 
 fn member_label(member: &SwarmMemberStatus) -> String {
@@ -71,7 +71,12 @@ mod tests {
     use super::*;
     use jcode_tui_render::swarm_gallery::members_to_tiles;
 
-    fn member(id: &str, status: &str, detail: Option<&str>, role: Option<&str>) -> SwarmMemberStatus {
+    fn member(
+        id: &str,
+        status: &str,
+        detail: Option<&str>,
+        role: Option<&str>,
+    ) -> SwarmMemberStatus {
         SwarmMemberStatus {
             session_id: id.to_string(),
             friendly_name: Some(id.to_string()),

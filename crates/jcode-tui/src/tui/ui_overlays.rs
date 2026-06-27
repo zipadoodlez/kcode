@@ -172,10 +172,8 @@ pub(super) fn draw_changelog_overlay(
     // selection and there would be no way to copy from the overlay.
     record_chat_overlay_copy_snapshot(&lines, scroll, visible_end, inner);
 
-    let mut visible_lines: Vec<Line<'static>> = lines
-        .get(scroll..visible_end)
-        .unwrap_or(&[])
-        .to_vec();
+    let mut visible_lines: Vec<Line<'static>> =
+        lines.get(scroll..visible_end).unwrap_or(&[]).to_vec();
 
     if let Some(range) = app.copy_selection_range().filter(|range| {
         range.start.pane == crate::tui::CopySelectionPane::Chat
@@ -188,8 +186,7 @@ pub(super) fn draw_changelog_overlay(
         } else {
             (range.end, range.start)
         };
-        for abs_idx in
-            start.abs_line.max(scroll)..=end.abs_line.min(visible_end.saturating_sub(1))
+        for abs_idx in start.abs_line.max(scroll)..=end.abs_line.min(visible_end.saturating_sub(1))
         {
             let rel_idx = abs_idx.saturating_sub(scroll);
             if let Some(line) = visible_lines.get_mut(rel_idx) {

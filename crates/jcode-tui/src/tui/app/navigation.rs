@@ -181,8 +181,7 @@ impl App {
     /// image's size and return `true`. Returns `false` (so the click can fall
     /// through to link/selection handling) when no badge was hit.
     pub(super) fn try_cycle_image_expand_at(&mut self, column: u16, row: u16) -> bool {
-        let Some(image_id) =
-            super::super::ui::inline_image_expand_target_from_screen(column, row)
+        let Some(image_id) = super::super::ui::inline_image_expand_target_from_screen(column, row)
         else {
             return false;
         };

@@ -1089,8 +1089,7 @@ fn render_message_into(
         }
         "tool" => {
             let tool_start_line = acc.lines.len();
-            let cached =
-                get_cached_message_lines(msg, width, app.diff_mode(), render_tool_message);
+            let cached = get_cached_message_lines(msg, width, app.diff_mode(), render_tool_message);
             if let Some(target) = tool_message_copy_target(msg, cached.len()) {
                 acc.copy_targets
                     .push(offset_copy_target(target, tool_start_line));
@@ -1150,8 +1149,12 @@ fn render_message_into(
         }
         "system" => {
             let content_width = width.saturating_sub(4);
-            let cached =
-                get_cached_message_lines(msg, content_width, app.diff_mode(), render_system_message);
+            let cached = get_cached_message_lines(
+                msg,
+                content_width,
+                app.diff_mode(),
+                render_system_message,
+            );
             for line in cached {
                 acc.push_auto(align_if_unset(line, align));
             }

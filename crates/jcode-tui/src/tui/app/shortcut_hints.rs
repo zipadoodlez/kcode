@@ -63,12 +63,7 @@ fn save_state(state: &HintState) {
 /// Whether `hint_id` still has remaining nudges to show. Pure read; does not
 /// record anything. Used to decide before building a (possibly costly) message.
 pub(crate) fn should_show(hint_id: &str) -> bool {
-    load_state()
-        .shows
-        .get(hint_id)
-        .copied()
-        .unwrap_or(0)
-        < MAX_SHOWS_PER_HINT
+    load_state().shows.get(hint_id).copied().unwrap_or(0) < MAX_SHOWS_PER_HINT
 }
 
 /// Record that `hint_id` was shown once, persisting the bumped counter.

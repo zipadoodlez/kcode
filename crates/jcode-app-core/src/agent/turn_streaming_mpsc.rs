@@ -486,8 +486,7 @@ impl Agent {
                         }
                         text_content.push_str(&text);
                         if inline_output_tap
-                            && inline_tap_last.elapsed()
-                                >= std::time::Duration::from_millis(200)
+                            && inline_tap_last.elapsed() >= std::time::Duration::from_millis(200)
                         {
                             inline_tap_last = Instant::now();
                             crate::bus::Bus::global().publish(
@@ -965,10 +964,11 @@ impl Agent {
                     model_at_request_start, model_after_stream
                 ));
                 self.session.model = Some(model_after_stream.clone());
-                self.provider_runtime_state
-                    .apply(crate::provider::ProviderStateEvent::RuntimeModelObserved {
+                self.provider_runtime_state.apply(
+                    crate::provider::ProviderStateEvent::RuntimeModelObserved {
                         model: model_after_stream.clone(),
-                    });
+                    },
+                );
                 self.persist_session_best_effort("model fallback");
                 let _ = event_tx.send(ServerEvent::ModelChanged {
                     id: 0,

@@ -58,10 +58,7 @@ pub(super) fn swarm_ancestors(
 
 /// Depth of `session_id` in the spawn tree: number of ancestors reachable via
 /// the report-back chain. Root coordinators (no report-back owner) are depth 0.
-pub(super) fn swarm_spawn_depth(
-    members: &HashMap<String, SwarmMember>,
-    session_id: &str,
-) -> u32 {
+pub(super) fn swarm_spawn_depth(members: &HashMap<String, SwarmMember>, session_id: &str) -> u32 {
     swarm_ancestors(members, session_id).len() as u32
 }
 

@@ -1714,10 +1714,7 @@ impl SessionPicker {
     /// Apply search-match highlighting to already-built preview lines in place.
     /// Returns the index of the first line that contains a highlighted match, if
     /// any. Each token highlights independently (matching the AND-token filter).
-    fn highlight_lines_in_place(
-        lines: &mut [Line<'static>],
-        tokens: &[String],
-    ) -> Option<usize> {
+    fn highlight_lines_in_place(lines: &mut [Line<'static>], tokens: &[String]) -> Option<usize> {
         if tokens.is_empty() {
             return None;
         }

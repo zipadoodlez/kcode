@@ -156,9 +156,7 @@ during first-run onboarding. Please fix the login for the user.\n\n",
 
     brief.push_str("Diagnose (machine-readable, exit/JSON tells you what's wrong):\n");
     if provider_hint.is_some() {
-        brief.push_str(&format!(
-            "  jcode auth-test --provider {provider} --json\n",
-        ));
+        brief.push_str(&format!("  jcode auth-test --provider {provider} --json\n",));
     } else {
         brief.push_str("  jcode auth-test --all-configured --json   # which provider is broken?\n");
     }
@@ -249,9 +247,15 @@ mod tests {
             Some("openai"),
         );
         // States the failure verbatim.
-        assert!(brief.contains("the saved credential was rejected"), "{brief}");
+        assert!(
+            brief.contains("the saved credential was rejected"),
+            "{brief}"
+        );
         // The exact agent-runnable commands.
-        assert!(brief.contains("jcode auth-test --provider openai --json"), "{brief}");
+        assert!(
+            brief.contains("jcode auth-test --provider openai --json"),
+            "{brief}"
+        );
         assert!(brief.contains("jcode login --provider openai"), "{brief}");
         assert!(brief.contains("--api-key-stdin"), "{brief}");
         assert!(brief.contains("jcode provider add"), "{brief}");
@@ -265,7 +269,10 @@ mod tests {
     fn brief_without_provider_or_agent_is_still_actionable() {
         let brief = build_repair_brief(None, "unknown failure", None);
         // With no provider hint we point the agent at --all-configured.
-        assert!(brief.contains("jcode auth-test --all-configured --json"), "{brief}");
+        assert!(
+            brief.contains("jcode auth-test --all-configured --json"),
+            "{brief}"
+        );
         assert!(brief.contains("jcode auth doctor"), "{brief}");
         // No agent label, but still tells the user what to do.
         assert!(brief.contains("restart jcode"), "{brief}");

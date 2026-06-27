@@ -233,11 +233,7 @@ impl SessionPicker {
         if let Some(ref label) = session.save_label {
             let label_style = Style::default().fg(rgb(255, 200, 140));
             line1_spans.push(Span::styled("  \"".to_string(), label_style));
-            line1_spans.extend(Self::highlight_spans(
-                label,
-                &highlight_tokens,
-                label_style,
-            ));
+            line1_spans.extend(Self::highlight_spans(label, &highlight_tokens, label_style));
             line1_spans.push(Span::styled("\"".to_string(), label_style));
         }
         if let Some(source_badge) = session.source.badge() {

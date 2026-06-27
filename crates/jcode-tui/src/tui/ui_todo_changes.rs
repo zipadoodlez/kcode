@@ -319,10 +319,7 @@ mod tests {
 
     #[test]
     fn first_write_is_substantive_and_counts_all_added() {
-        let next = vec![
-            todo("1", "A", "pending"),
-            todo("2", "B", "in_progress"),
-        ];
+        let next = vec![todo("1", "A", "pending"), todo("2", "B", "in_progress")];
         let diff = compute_diff(None, &next);
         assert!(diff.is_first);
         assert!(diff.is_substantive());

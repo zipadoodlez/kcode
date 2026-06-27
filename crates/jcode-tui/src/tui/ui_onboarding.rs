@@ -132,7 +132,9 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
     let yes_color = rgb(126, 211, 159);
     let filled = Style::default().fg(yes_color).add_modifier(Modifier::BOLD);
     let empty = Style::default().fg(dim_color());
-    let header_style = Style::default().fg(dim_color()).add_modifier(Modifier::BOLD);
+    let header_style = Style::default()
+        .fg(dim_color())
+        .add_modifier(Modifier::BOLD);
 
     // Header row: blank under the provider column, then "Yes" and "No" labels
     // centered over their circle columns.
@@ -176,7 +178,10 @@ fn import_two_column_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'
         let spans: Vec<Span<'static>> = vec![
             Span::styled(cursor_marker, cursor_style),
             Span::styled(row.provider_summary.clone(), label_style),
-            Span::styled(format!(" ({})", row.source_name), Style::default().fg(dim_color())),
+            Span::styled(
+                format!(" ({})", row.source_name),
+                Style::default().fg(dim_color()),
+            ),
             Span::raw(" ".repeat(pad)),
             Span::styled(center_cell(yes_glyph), yes_style),
             Span::raw(GAP),
@@ -288,11 +293,8 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                     );
                     if !reason.is_empty() {
                         lines.push(
-                            Line::from(Span::styled(
-                                reason,
-                                Style::default().fg(dim_color()),
-                            ))
-                            .alignment(align),
+                            Line::from(Span::styled(reason, Style::default().fg(dim_color())))
+                                .alignment(align),
                         );
                     }
                     lines.push(Line::from(""));
@@ -496,9 +498,10 @@ pub(super) fn draw_onboarding_welcome(frame: &mut Frame, app: &dyn TuiState, are
 
     // Donut shrinks if the area is short so the welcome text always fits. The
     // title + hint lines that hug the donut are part of the reserved chrome.
-    let donut_h = DONUT_HEIGHT.min(area.height.saturating_sub(
-        telemetry_h + TITLE_H + HINT_H + body_h + GAP * 2 + 1,
-    ));
+    let donut_h = DONUT_HEIGHT.min(
+        area.height
+            .saturating_sub(telemetry_h + TITLE_H + HINT_H + body_h + GAP * 2 + 1),
+    );
     let show_donut_block = donut_h > 0;
 
     let used = if show_donut_block {
