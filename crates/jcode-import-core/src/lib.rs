@@ -132,11 +132,13 @@ pub enum ClaudeCodeContentBlock {
     },
     ToolResult {
         tool_use_id: String,
-        // Claude Code (notably newer/macOS builds) sometimes writes
-        // `tool_result.content` as an array of content blocks
-        // (e.g. `[{"type":"text","text":"..."}]`) rather than a plain string.
-        // Accept both so the whole JSONL entry does not fail to parse and get
-        // silently dropped during import.
+        // Claude Code (notably newer/macOS builds, observed on CLI v2.1.x)
+        // sometimes writes `tool_result.content` as an array of content blocks
+        // (e.g. `[{"type":"text","text":"..."}]` or `[{"type":"image",...}]`)
+        // rather than a plain string. The previous `content: String` shape made
+        // the *entire* JSONL entry fail to deserialize on the untagged
+        // `ClaudeCodeContent` enum, so such messages were silently dropped on
+        // import (real data loss). Accept string, null, and array forms.
         #[serde(default, deserialize_with = "deserialize_tool_result_content")]
         content: String,
         #[serde(default)]
@@ -146,20 +148,60 @@ pub enum ClaudeCodeContentBlock {
     Unknown,
 }
 
-/// Deserialize a Claude Code `tool_result` content value that may be either a
-/// plain string or an array of content blocks. Array forms are flattened to
-/// their textual content so the importer keeps these messages instead of
-/// dropping the entire entry on a type mismatch.
+/// Deserialize a Claude Code `tool_result` content value that may be a plain
+/// string, `null`, or an array of content blocks. The whole entry must keep
+/// parsing (never get dropped) regardless of shape.
+///
+/// Array forms are flattened to their textual content. Crucially, `image`
+/// blocks are reduced to a compact `[image]` placeholder rather than their
+/// base64 payload: real sessions can carry hundreds of KiB of inline image
+/// data per tool result, which would otherwise bloat the imported transcript
+/// (and any downstream context) with unreadable base64 text.
 fn deserialize_tool_result_content<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::String(text) => text,
+    Ok(tool_result_content_to_text(&value))
+}
+
+/// Convert a `tool_result` content value (string / null / array of blocks) to
+/// plain text, replacing `image` blocks with a `[image]` placeholder.
+fn tool_result_content_to_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Null => String::new(),
-        other => extract_external_text_from_json(&other, true),
-    })
+        serde_json::Value::Array(items) => {
+            let mut parts: Vec<String> = Vec::new();
+            for item in items {
+                match item {
+                    serde_json::Value::String(text) if !text.trim().is_empty() => {
+                        parts.push(text.trim().to_string());
+                    }
+                    serde_json::Value::Object(map) => {
+                        let block_type =
+                            map.get("type").and_then(|v| v.as_str()).unwrap_or_default();
+                        if block_type == "image" {
+                            parts.push("[image]".to_string());
+                        } else if let Some(text) = map.get("text").and_then(|v| v.as_str()) {
+                            if !text.trim().is_empty() {
+                                parts.push(text.trim().to_string());
+                            }
+                        } else if let Some(content) = map.get("content").and_then(|v| v.as_str()) {
+                            if !content.trim().is_empty() {
+                                parts.push(content.trim().to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            parts.join("\n")
+        }
+        // Defensive: an unexpected scalar/object shape still yields readable
+        // text instead of dropping the message.
+        other => extract_external_text_from_json(other, true),
+    }
 }
 
 pub fn parse_rfc3339_string(value: Option<&str>) -> Option<DateTime<Utc>> {
@@ -263,7 +305,7 @@ pub fn ordered_claude_code_message_entries(entries: &[ClaudeCodeEntry]) -> Vec<&
     let mut ordered_entries: Vec<&ClaudeCodeEntry> = Vec::new();
     let mut visited: HashSet<String> = HashSet::new();
 
-    let roots: Vec<&ClaudeCodeEntry> = message_entries
+    let mut roots: Vec<&ClaudeCodeEntry> = message_entries
         .iter()
         .filter(|e| {
             e.parent_uuid.is_none()
@@ -271,6 +313,25 @@ pub fn ordered_claude_code_message_entries(entries: &[ClaudeCodeEntry]) -> Vec<&
         })
         .copied()
         .collect();
+
+    // Multiple roots occur when a session's parent chain is broken (e.g. a
+    // resumed/forked transcript whose first assistant entry references a
+    // parent that lives in another file). Without a tiebreak the roots would
+    // be walked in raw file order, which can place a later reply before the
+    // prompt it answers (observed on real data: an "assistant" error emitted
+    // before its "user" prompt). Order roots by timestamp so the reconstructed
+    // transcript stays chronological; entries without a timestamp keep their
+    // relative file order behind timestamped ones.
+    roots.sort_by(|a, b| {
+        let a_ts = parse_rfc3339_string(a.timestamp.as_deref());
+        let b_ts = parse_rfc3339_string(b.timestamp.as_deref());
+        match (a_ts, b_ts) {
+            (Some(a_ts), Some(b_ts)) => a_ts.cmp(&b_ts),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    });
 
     for root in roots {
         let mut current = root;
@@ -968,6 +1029,44 @@ pub fn codex_title_candidate(text: &str) -> Option<String> {
     Some(truncate_title(cleaned))
 }
 
+/// Decide whether a Claude Code user message makes a good session title.
+///
+/// Claude Code injects synthetic "user" messages for slash commands, command
+/// output, and local-command caveats (wrapped in tags like
+/// `<local-command-caveat>`, `<command-name>`, `<local-command-stdout>`). Using
+/// the raw first user message as the title surfaces this noise (observed on
+/// real data: a session titled `<local-command-caveat>Caveat: ...`). Skip those
+/// wrapper messages so the first *real* prompt becomes the title instead.
+pub fn claude_title_candidate(text: &str) -> Option<String> {
+    let cleaned = text.trim();
+    if cleaned.is_empty() {
+        return None;
+    }
+    const WRAPPER_PREFIXES: [&str; 6] = [
+        "<local-command-caveat>",
+        "<local-command-stdout>",
+        "<local-command-stderr>",
+        "<command-name>",
+        "<command-message>",
+        "<command-args>",
+    ];
+    if WRAPPER_PREFIXES
+        .iter()
+        .any(|prefix| cleaned.starts_with(prefix))
+    {
+        return None;
+    }
+    // Caveat blocks sometimes lead with stray whitespace/newlines before the
+    // tag; catch those too without being so broad we drop legitimate prompts
+    // that merely mention a command.
+    if cleaned.contains("<local-command-caveat>")
+        && cleaned.starts_with("Caveat: The messages below were generated")
+    {
+        return None;
+    }
+    Some(truncate_title(cleaned))
+}
+
 pub fn imported_claude_code_session_id(session_id: &str) -> String {
     format!("imported_cc_{}", session_id)
 }
@@ -1077,6 +1176,55 @@ mod tests {
     }
 
     #[test]
+    fn ordered_claude_entries_sort_broken_chain_roots_by_timestamp() {
+        // Real-data shape (session b18f57b9): the assistant reply has a
+        // parentUuid that is NOT present in the file, so both entries are
+        // "roots". The user prompt has an earlier timestamp than the assistant
+        // reply, so it must come first even though it appears second in the
+        // file.
+        let jsonl = [
+            r#"{"type":"assistant","uuid":"b","parentUuid":"missing","timestamp":"2026-06-25T23:37:31.001Z","message":{"role":"assistant","content":"Not logged in"}}"#,
+            r#"{"type":"user","uuid":"a","timestamp":"2026-06-25T23:37:30.839Z","message":{"role":"user","content":"hi"}}"#,
+        ];
+        let entries = jsonl
+            .iter()
+            .map(|line| serde_json::from_str::<ClaudeCodeEntry>(line).unwrap())
+            .collect::<Vec<_>>();
+        let ordered = ordered_claude_code_message_entries(&entries);
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|entry| entry.uuid.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("a"), Some("b")],
+            "earlier-timestamped user prompt should precede the assistant reply"
+        );
+    }
+
+    #[test]
+    fn claude_title_candidate_skips_command_wrappers() {
+        assert_eq!(
+            claude_title_candidate("<local-command-caveat>Caveat: The messages below..."),
+            None
+        );
+        assert_eq!(
+            claude_title_candidate("<command-name>/model</command-name>"),
+            None
+        );
+        assert_eq!(
+            claude_title_candidate(
+                "<local-command-stdout>Set model to Opus</local-command-stdout>"
+            ),
+            None
+        );
+        assert_eq!(claude_title_candidate("   "), None);
+        assert_eq!(
+            claude_title_candidate("can you fix my jcode server version?"),
+            Some("can you fix my jcode server version?".into())
+        );
+    }
+
+    #[test]
     fn imported_pi_id_is_stable_and_prefixed() {
         assert_eq!(
             imported_pi_session_id("/tmp/session"),
@@ -1131,5 +1279,86 @@ Do x"
             ),
             None
         );
+    }
+
+    fn tool_result_block(line: &str) -> ClaudeCodeContentBlock {
+        let entry = serde_json::from_str::<ClaudeCodeEntry>(line)
+            .expect("entry should parse regardless of tool_result content shape");
+        let ClaudeCodeContent::Blocks(blocks) = entry.message.unwrap().content else {
+            panic!("expected block content");
+        };
+        blocks.into_iter().next().expect("at least one block")
+    }
+
+    #[test]
+    fn tool_result_content_accepts_plain_string() {
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"plain"}]}}"#;
+        match tool_result_block(line) {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => assert_eq!(content, "plain"),
+            other => panic!("expected tool_result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_content_accepts_array_text_blocks() {
+        // Newer/macOS Claude Code writes tool_result.content as an array of
+        // content blocks. The entry must still parse and flatten to text.
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"hello"},{"type":"text","text":"world"}]}]}}"#;
+        match tool_result_block(line) {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => {
+                assert_eq!(content, "hello\nworld");
+            }
+            other => panic!("expected tool_result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_image_block_becomes_placeholder_not_base64() {
+        // Image tool_result content must not leak its base64 payload into the
+        // imported transcript; it collapses to a compact `[image]` placeholder.
+        let blob = "Q".repeat(120_000);
+        let line = format!(
+            r#"{{"type":"user","uuid":"u1","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t1","content":[{{"type":"image","source":{{"type":"base64","media_type":"image/png","data":"{blob}"}}}}]}}]}}}}"#
+        );
+        match tool_result_block(&line) {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => {
+                assert_eq!(content, "[image]");
+                assert!(
+                    !content.contains('Q'),
+                    "base64 image data leaked into tool_result text"
+                );
+            }
+            other => panic!("expected tool_result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_mixed_text_and_image_blocks() {
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"see this"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}}"#;
+        match tool_result_block(line) {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => {
+                assert_eq!(content, "see this\n[image]");
+            }
+            other => panic!("expected tool_result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_null_content_keeps_entry_alive() {
+        // A null/missing content must not drop the whole JSONL entry.
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":null}]}}"#;
+        match tool_result_block(line) {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => assert_eq!(content, ""),
+            other => panic!("expected tool_result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_missing_content_defaults_to_empty() {
+        let line = r#"{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1"}]}}"#;
+        match tool_result_block(line) {
+            ClaudeCodeContentBlock::ToolResult { content, .. } => assert_eq!(content, ""),
+            other => panic!("expected tool_result, got {other:?}"),
+        }
     }
 }

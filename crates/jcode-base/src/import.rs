@@ -10,10 +10,10 @@ use chrono::{DateTime, Utc};
 use jcode_import_core::{
     ClaudeCodeContent, ClaudeCodeContentBlock, ClaudeCodeEntry, ClaudeCodeSessionInfo,
     SessionIndexEntry, SessionsIndex, claude_code_session_info_from_index,
-    claude_text_from_content, clean_optional_text, codex_title_candidate, collect_files_recursive,
-    collect_recent_files_recursive, extract_opencode_part_text, extract_text_from_json_value,
-    ordered_claude_code_message_entries, parse_rfc3339_json, parse_rfc3339_string,
-    resolve_claude_session_path, truncate_title,
+    claude_text_from_content, claude_title_candidate, clean_optional_text, codex_title_candidate,
+    collect_files_recursive, collect_recent_files_recursive, extract_opencode_part_text,
+    extract_text_from_json_value, ordered_claude_code_message_entries, parse_rfc3339_json,
+    parse_rfc3339_string, resolve_claude_session_path, truncate_title,
 };
 pub use jcode_import_core::{
     imported_claude_code_session_id, imported_codex_session_id, imported_opencode_session_id,
@@ -111,6 +111,7 @@ fn claude_code_session_info_from_file(
                     .then_some(entry.message.as_ref())
                     .flatten()
                     .and_then(|message| claude_text_from_content(&message.content))
+                    .and_then(|text| claude_title_candidate(&text))
             })
         })
         .or_else(|| indexed.and_then(|entry| clean_optional_text(entry.summary.clone())))
@@ -498,25 +499,16 @@ pub fn import_session_from_file(path: &Path, session_id: &str) -> Result<Session
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
-    // Get title from first user message or sessions index
-    let title = first_entry
-        .and_then(|e| {
-            if e.entry_type == "user" {
-                match &e.message.as_ref()?.content {
-                    ClaudeCodeContent::Text(t) => Some(truncate_title(t)),
-                    ClaudeCodeContent::Blocks(blocks) => {
-                        for b in blocks {
-                            if let ClaudeCodeContentBlock::Text { text } = b {
-                                return Some(truncate_title(text));
-                            }
-                        }
-                        None
-                    }
-                    _ => None,
-                }
-            } else {
-                None
-            }
+    // Get title from first real user message (skipping Claude Code's synthetic
+    // slash-command / command-output / caveat wrapper messages) or the index.
+    let title = ordered_entries
+        .iter()
+        .find_map(|entry| {
+            (entry.entry_type == "user")
+                .then_some(entry.message.as_ref())
+                .flatten()
+                .and_then(|message| claude_text_from_content(&message.content))
+                .and_then(|text| claude_title_candidate(&text))
         })
         .or_else(|| {
             // Try to get from index
