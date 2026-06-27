@@ -1062,8 +1062,7 @@ fn every_static_profile_model_has_a_known_context_limit() {
             }
 
             let via_profile = openai_compatible_profile_context_limit(profile.id, &model);
-            let via_global =
-                context_limit_for_model_with_provider(&model, Some("openrouter"));
+            let via_global = context_limit_for_model_with_provider(&model, Some("openrouter"));
 
             if via_profile.is_none() && via_global.is_none() {
                 missing.push((profile.id.to_string(), model));

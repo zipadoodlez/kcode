@@ -229,7 +229,9 @@ mod tests {
     #[test]
     fn many_images_clamp_to_2000() {
         // 21 images, each 2500px wide -> exceeds the many-image 2000px cap.
-        let messages: Vec<Message> = (0..21).map(|_| image_message(encode_png(2500, 1250))).collect();
+        let messages: Vec<Message> = (0..21)
+            .map(|_| image_message(encode_png(2500, 1250)))
+            .collect();
         let clamped = clamp_outbound_images(&messages).expect("should clamp many oversized images");
         for m in &clamped {
             if let ContentBlock::Image { data, .. } = &m.content[0] {

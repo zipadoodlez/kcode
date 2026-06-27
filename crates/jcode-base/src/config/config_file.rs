@@ -245,11 +245,7 @@ impl Config {
             .map(|entries| {
                 entries
                     .flatten()
-                    .filter(|e| {
-                        e.file_name()
-                            .to_str()
-                            .is_some_and(|n| n.ends_with(".json"))
-                    })
+                    .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(".json")))
                     .count()
             })
             .unwrap_or(0);

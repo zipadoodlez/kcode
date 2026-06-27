@@ -162,7 +162,11 @@ struct ClaudeOAuth {
     // Claude Code stores `expiresAt` as epoch milliseconds in the JSON file
     // (`~/.claude/.credentials.json`) but as an RFC 3339 string in the macOS
     // Keychain blob. Accept either so a single parser handles both sources.
-    #[serde(rename = "expiresAt", default, deserialize_with = "deserialize_expires_at")]
+    #[serde(
+        rename = "expiresAt",
+        default,
+        deserialize_with = "deserialize_expires_at"
+    )]
     expires_at: i64,
     #[serde(rename = "subscriptionType", default)]
     subscription_type: Option<String>,
@@ -221,10 +225,9 @@ where
             .into_iter()
             .filter_map(|item| item.as_str().map(ToOwned::to_owned))
             .collect(),
-        Some(serde_json::Value::String(text)) => text
-            .split_whitespace()
-            .map(ToOwned::to_owned)
-            .collect(),
+        Some(serde_json::Value::String(text)) => {
+            text.split_whitespace().map(ToOwned::to_owned).collect()
+        }
         _ => Vec::new(),
     })
 }
@@ -895,9 +898,7 @@ pub fn import_native_credentials_into_account() -> Result<String> {
         refresh: creds.refresh_token,
         expires: creds.expires_at,
         email: None,
-        subscription_type: creds
-            .subscription_type
-            .or_else(|| Some("max".to_string())),
+        subscription_type: creds.subscription_type.or_else(|| Some("max".to_string())),
         scopes: creds.scopes,
     })
 }
