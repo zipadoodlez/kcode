@@ -9,7 +9,8 @@
 
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, humanize_age, render_gallery, render_swarm_panel,
+    GalleryMember, SwarmStripHint, humanize_age, render_gallery, render_swarm_panel,
+    render_swarm_strip,
 };
 use ratatui::prelude::*;
 
@@ -57,6 +58,7 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
+#[allow(dead_code)]
 pub(crate) fn render_swarm_gallery_lines(
     members: &[SwarmMemberStatus],
     width: usize,
@@ -70,6 +72,7 @@ pub(crate) fn render_swarm_gallery_lines(
 
 /// Render the list+detail swarm panel: a compact list of managed agents plus a
 /// detail viewport for the `selected` one. `focused` adds an interaction hint.
+#[allow(dead_code)]
 pub(crate) fn render_swarm_panel_lines(
     members: &[SwarmMemberStatus],
     selected: usize,
@@ -86,6 +89,38 @@ pub(crate) fn render_swarm_panel_lines(
         focused,
         width,
         max_height,
+    )
+}
+
+/// Render the compact swarm strip (agent chips + optional keybinding hint line)
+/// shown directly above the status line. `focus_key` is the configured chord to
+/// focus the panel (e.g. "alt+w"), shown as the first hint.
+pub(crate) fn render_swarm_strip_lines(
+    members: &[SwarmMemberStatus],
+    selected: usize,
+    focused: bool,
+    focus_key: &str,
+    width: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() {
+        return Vec::new();
+    }
+    let hints = vec![
+        SwarmStripHint {
+            key: focus_key.to_string(),
+            label: if focused { "unfocus".into() } else { "focus".into() },
+        },
+        SwarmStripHint { key: "j/k".into(), label: "select".into() },
+        SwarmStripHint { key: "o".into(), label: "pop out".into() },
+        SwarmStripHint { key: "enter".into(), label: "open".into() },
+        SwarmStripHint { key: "esc".into(), label: "back".into() },
+    ];
+    render_swarm_strip(
+        &members_to_gallery(members),
+        selected,
+        focused,
+        &hints,
+        width,
     )
 }
 

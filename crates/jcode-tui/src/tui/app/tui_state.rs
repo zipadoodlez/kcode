@@ -1755,6 +1755,7 @@ impl App {
         self.swarm_panel_focused
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_swarm_panel_focus(&mut self, focused: bool) {
         self.swarm_panel_focused = focused && self.inline_swarm_gallery_active();
     }

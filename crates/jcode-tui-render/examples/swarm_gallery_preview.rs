@@ -2,7 +2,9 @@
 //!
 //! Run with: `cargo run --profile selfdev -p jcode-tui-render --example swarm_gallery_preview`
 
-use jcode_tui_render::swarm_gallery::{GalleryMember, render_swarm_panel};
+use jcode_tui_render::swarm_gallery::{
+    GalleryMember, SwarmStripHint, render_swarm_panel, render_swarm_strip,
+};
 use jcode_tui_render::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 use ratatui::prelude::*;
 
@@ -157,5 +159,26 @@ fn main() {
     print_lines(
         "PANEL: narrow @ width 44 h 12",
         &render_swarm_panel(&panel_members, 2, true, 44, 12),
+    );
+
+    // ---- New compact strip (above status line) ----
+    let hints = vec![
+        SwarmStripHint { key: "alt+w".into(), label: "focus".into() },
+        SwarmStripHint { key: "j/k".into(), label: "select".into() },
+        SwarmStripHint { key: "o".into(), label: "pop out".into() },
+        SwarmStripHint { key: "enter".into(), label: "open".into() },
+        SwarmStripHint { key: "esc".into(), label: "back".into() },
+    ];
+    print_lines(
+        "STRIP: unfocused @ width 90",
+        &render_swarm_strip(&panel_members, 1, false, &hints, 90),
+    );
+    print_lines(
+        "STRIP: focused, selected #1 @ width 90",
+        &render_swarm_strip(&panel_members, 1, true, &hints, 90),
+    );
+    print_lines(
+        "STRIP: focused narrow @ width 54",
+        &render_swarm_strip(&panel_members, 0, true, &hints, 54),
     );
 }

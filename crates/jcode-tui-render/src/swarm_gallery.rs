@@ -223,6 +223,144 @@ pub fn render_swarm_panel(
     out
 }
 
+/// A key/label pair for the swarm strip hint line.
+pub struct SwarmStripHint {
+    /// The key chord to show, e.g. "alt+w" or "j/k".
+    pub key: String,
+    /// What it does, e.g. "select".
+    pub label: String,
+}
+
+/// Render the compact swarm strip: a single status line of agent "chips" (one
+/// per managed agent, colored by status, the selected one marked) followed by a
+/// dim keybinding hint line. Designed to sit directly above the status line.
+///
+/// Returns 1 line when not focused (just the chips) or 2 lines when focused
+/// (chips + hints). Returns empty when there are no members or no width.
+///
+/// ```text
+/// 🐝 swarm  ▸researcher ·implementer ·reviewer            2/3 active
+///           alt+w focus · j/k select · o pop out · enter open · esc back
+/// ```
+pub fn render_swarm_strip(
+    members: &[GalleryMember],
+    selected: usize,
+    focused: bool,
+    hints: &[SwarmStripHint],
+    width: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() || width < 8 {
+        return Vec::new();
+    }
+    let ordered = sort_members_for_display(members);
+    let selected = selected.min(ordered.len().saturating_sub(1));
+    let active = members.iter().filter(|m| is_active_status(&m.status)).count();
+
+    // ---- Chips line ----
+    let mut spans: Vec<Span<'static>> = vec![
+        Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+        Span::styled("swarm", Style::default().fg(rgb(160, 160, 170))),
+        Span::raw("  "),
+    ];
+
+    // Right-aligned "M/N active" readout; reserve room for it.
+    let tally = format!("{active}/{} active", members.len());
+    let tally_w = tally.chars().count();
+
+    // Build chips, each "▸name" (selected) or "·name", colored by status.
+    let mut chip_specs: Vec<(String, Color, bool)> = Vec::new();
+    for (idx, m) in ordered.iter().enumerate() {
+        let is_sel = idx == selected;
+        let marker = if is_sel { "▸" } else { "·" };
+        chip_specs.push((
+            format!("{marker}{}", m.label),
+            status_accent(&m.status),
+            is_sel,
+        ));
+    }
+
+    // Width budget for chips: total minus the leading "🐝 swarm  " and the
+    // trailing tally plus a gap.
+    let lead_w = 3 + 5 + 2; // bee + "swarm" + two spaces
+    let chips_budget = width.saturating_sub(lead_w + tally_w + 2);
+    let mut used = 0usize;
+    let mut shown = 0usize;
+    for (i, (text, color, is_sel)) in chip_specs.iter().enumerate() {
+        let sep_w = if i == 0 { 0 } else { 1 };
+        let chip_w = text.chars().count();
+        if used + sep_w + chip_w > chips_budget && shown > 0 {
+            break;
+        }
+        if i > 0 {
+            spans.push(Span::raw(" "));
+            used += 1;
+        }
+        let mut style = Style::default().fg(*color);
+        if *is_sel && focused {
+            style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+        } else if *is_sel {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        spans.push(Span::styled(text.clone(), style));
+        used += chip_w;
+        shown += 1;
+    }
+    let hidden = chip_specs.len().saturating_sub(shown);
+    if hidden > 0 {
+        let more = format!(" +{hidden}");
+        spans.push(Span::styled(more, Style::default().fg(rgb(140, 140, 150))));
+        used += hidden.to_string().chars().count() + 2;
+    }
+
+    // Right-align the tally.
+    let consumed = lead_w + used;
+    let pad = width.saturating_sub(consumed + tally_w).max(1);
+    spans.push(Span::raw(" ".repeat(pad)));
+    spans.push(Span::styled(
+        tally,
+        Style::default().fg(if active > 0 {
+            rgb(255, 200, 100)
+        } else {
+            rgb(120, 120, 130)
+        }),
+    ));
+
+    let mut out = vec![Line::from(spans)];
+
+    // ---- Hint line (only while focused, and only if hints provided) ----
+    if focused && !hints.is_empty() {
+        let mut hint_spans: Vec<Span<'static>> = vec![Span::raw("   ")];
+        for (i, h) in hints.iter().enumerate() {
+            if i > 0 {
+                hint_spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+            }
+            hint_spans.push(Span::styled(
+                h.key.clone(),
+                Style::default().fg(rgb(150, 170, 210)),
+            ));
+            hint_spans.push(Span::raw(" "));
+            hint_spans.push(Span::styled(
+                h.label.clone(),
+                Style::default().fg(rgb(120, 120, 130)),
+            ));
+        }
+        // Trim to width.
+        let mut total = 0usize;
+        let mut trimmed: Vec<Span<'static>> = Vec::new();
+        for s in hint_spans {
+            let w = s.content.chars().count();
+            if total + w > width {
+                break;
+            }
+            total += w;
+            trimmed.push(s);
+        }
+        out.push(Line::from(trimmed));
+    }
+
+    out
+}
+
 /// Header line for the list+detail swarm panel. Adds a focus hint when focused.
 fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
     let mut spans = vec![
@@ -492,5 +630,65 @@ mod tests {
         let unfocused = plain_line(&render_swarm_panel(&members, 0, false, 60, 12)[0]);
         assert!(focused.contains("pop out"), "got: {focused}");
         assert!(!unfocused.contains("pop out"), "got: {unfocused}");
+    }
+
+    fn hints() -> Vec<SwarmStripHint> {
+        vec![
+            SwarmStripHint { key: "alt+w".into(), label: "focus".into() },
+            SwarmStripHint { key: "j/k".into(), label: "select".into() },
+            SwarmStripHint { key: "o".into(), label: "pop out".into() },
+            SwarmStripHint { key: "esc".into(), label: "back".into() },
+        ]
+    }
+
+    #[test]
+    fn strip_empty_renders_nothing() {
+        assert!(render_swarm_strip(&[], 0, true, &hints(), 80).is_empty());
+    }
+
+    #[test]
+    fn strip_one_line_when_unfocused_two_when_focused() {
+        let members = vec![
+            member("researcher", "thinking", Some("coordinator"), &[]),
+            member("implementer", "running", None, &[]),
+        ];
+        let unfocused = render_swarm_strip(&members, 0, false, &hints(), 80);
+        assert_eq!(unfocused.len(), 1, "unfocused strip should be a single line");
+        let focused = render_swarm_strip(&members, 0, true, &hints(), 80);
+        assert_eq!(focused.len(), 2, "focused strip should add a hint line");
+    }
+
+    #[test]
+    fn strip_shows_agents_and_tally_and_is_width_bounded() {
+        let members = vec![
+            member("researcher", "thinking", Some("coordinator"), &[]),
+            member("implementer", "running", None, &[]),
+            member("reviewer", "done", None, &[]),
+        ];
+        let lines = render_swarm_strip(&members, 1, true, &hints(), 90);
+        for line in &lines {
+            assert!(line.width() <= 90, "line too wide: {}", plain_line(line));
+        }
+        let chips = plain_line(&lines[0]);
+        assert!(chips.contains("researcher"), "got: {chips}");
+        assert!(chips.contains("implementer"), "got: {chips}");
+        assert!(chips.contains("2/3 active"), "tally missing: {chips}");
+        // Selected agent (implementer) carries the ▸ marker.
+        assert!(chips.contains("▸implementer"), "selection marker missing: {chips}");
+        // Hint line carries keybindings.
+        let hint = plain_line(&lines[1]);
+        assert!(hint.contains("alt+w"), "got: {hint}");
+        assert!(hint.contains("focus"), "got: {hint}");
+    }
+
+    #[test]
+    fn strip_overflow_collapses_to_more_count() {
+        let members: Vec<GalleryMember> = (0..12)
+            .map(|i| member(&format!("agent-number-{i:02}"), "running", None, &[]))
+            .collect();
+        let lines = render_swarm_strip(&members, 0, false, &hints(), 50);
+        assert!(lines[0].width() <= 50, "too wide");
+        let chips = plain_line(&lines[0]);
+        assert!(chips.contains('+'), "expected +N overflow marker: {chips}");
     }
 }

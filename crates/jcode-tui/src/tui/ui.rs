@@ -2514,26 +2514,19 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         (chat_area, None)
     };
 
-    // Inline swarm gallery band: when `swarm_spawn_mode = inline`, reserve a
-    // top strip of the chat column to render a live gallery of agent viewports.
-    let swarm_gallery_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
+    // Inline swarm strip: when `swarm_spawn_mode = inline` and this session
+    // manages agents, render a compact strip (agent chips + keybinding hints)
+    // directly above the status line instead of a big gallery band.
+    let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
         let members = app.inline_swarm_members();
-        // Budget a configurable share (default ~40%) of the chat height for the
-        // gallery, capped. `agents.swarm_gallery_max_pct` (1-90) lets the user
-        // shrink the band toward a thin strip or give it more room.
-        let max_pct = crate::config::config()
-            .agents
-            .swarm_gallery_max_pct
-            .map(|p| p.clamp(1, 90) as usize)
-            .unwrap_or(40);
-        let budget = ((chat_area.height as usize * max_pct) / 100).clamp(0, 18);
-        if budget >= 5 && chat_area.width >= 24 {
-            super::info_widget::swarm_gallery::render_swarm_panel_lines(
+        if chat_area.width >= 24 {
+            let focus_key = crate::config::config().keybindings.swarm_panel_focus.clone();
+            super::info_widget::swarm_gallery::render_swarm_strip_lines(
                 &members,
                 app.swarm_panel_selected(),
                 app.swarm_panel_focused(),
+                &focus_key,
                 chat_area.width as usize,
-                budget,
             )
         } else {
             Vec::new()
@@ -2541,24 +2534,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     } else {
         Vec::new()
     };
-    let (swarm_gallery_area, chat_area) = if !swarm_gallery_lines.is_empty() {
-        let band_height = (swarm_gallery_lines.len() as u16 + 1).min(chat_area.height / 2);
-        let band = Rect {
-            x: chat_area.x,
-            y: chat_area.y,
-            width: chat_area.width,
-            height: band_height,
-        };
-        let rest = Rect {
-            x: chat_area.x,
-            y: chat_area.y + band_height,
-            width: chat_area.width,
-            height: chat_area.height.saturating_sub(band_height),
-        };
-        (Some(band), rest)
-    } else {
-        (None, chat_area)
-    };
+    let swarm_strip_height = swarm_strip_lines.len() as u16;
 
     // Calculate pending messages (queued + interleave) for numbering and layout
     let pending_count = input_ui::pending_prompt_count(app);
@@ -2707,36 +2683,38 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         .direction(Direction::Vertical)
         .constraints(if use_packed {
             vec![
-                Constraint::Length(content_height.max(1)), // Messages (exact height)
-                Constraint::Length(queued_height),         // Queued messages (above status)
-                Constraint::Length(1),                     // Status line
-                Constraint::Length(notification_height),   // Notification line
-                Constraint::Length(inline_block_height),   // Inline UI
-                Constraint::Length(inline_ui_gap_height),  // Inline UI/input spacing
-                Constraint::Length(input_height),          // Input
-                Constraint::Length(overscroll_height),     // Overscroll status line
-                Constraint::Length(donut_height),          // Donut animation
+                Constraint::Length(content_height.max(1)), // 0 Messages (exact height)
+                Constraint::Length(queued_height),         // 1 Queued messages (above status)
+                Constraint::Length(swarm_strip_height),    // 2 Swarm strip (above status)
+                Constraint::Length(1),                     // 3 Status line
+                Constraint::Length(notification_height),   // 4 Notification line
+                Constraint::Length(inline_block_height),   // 5 Inline UI
+                Constraint::Length(inline_ui_gap_height),  // 6 Inline UI/input spacing
+                Constraint::Length(input_height),          // 7 Input
+                Constraint::Length(overscroll_height),     // 8 Overscroll status line
+                Constraint::Length(donut_height),          // 9 Donut animation
             ]
         } else {
             vec![
-                Constraint::Min(3),                       // Messages (scrollable)
-                Constraint::Length(queued_height),        // Queued messages (above status)
-                Constraint::Length(1),                    // Status line
-                Constraint::Length(notification_height),  // Notification line
-                Constraint::Length(inline_block_height),  // Inline UI
-                Constraint::Length(inline_ui_gap_height), // Inline UI/input spacing
-                Constraint::Length(input_height),         // Input
-                Constraint::Length(overscroll_height),    // Overscroll status line
-                Constraint::Length(donut_height),         // Donut animation
+                Constraint::Min(3),                       // 0 Messages (scrollable)
+                Constraint::Length(queued_height),        // 1 Queued messages (above status)
+                Constraint::Length(swarm_strip_height),   // 2 Swarm strip (above status)
+                Constraint::Length(1),                    // 3 Status line
+                Constraint::Length(notification_height),  // 4 Notification line
+                Constraint::Length(inline_block_height),  // 5 Inline UI
+                Constraint::Length(inline_ui_gap_height), // 6 Inline UI/input spacing
+                Constraint::Length(input_height),         // 7 Input
+                Constraint::Length(overscroll_height),    // 8 Overscroll status line
+                Constraint::Length(donut_height),         // 9 Donut animation
             ]
         })
         .split(chat_area);
-    record_status_area(chunks[2]);
+    record_status_area(chunks[3]);
 
-    // Draw the inline swarm gallery band (above the chat) if present.
-    if let Some(band) = swarm_gallery_area {
-        clear_area(frame, band);
-        frame.render_widget(Paragraph::new(swarm_gallery_lines.clone()), band);
+    // Draw the inline swarm strip directly above the status line if present.
+    if swarm_strip_height > 0 {
+        clear_area(frame, chunks[2]);
+        frame.render_widget(Paragraph::new(swarm_strip_lines.clone()), chunks[2]);
     }
 
     // Capture layout info for visual debug
@@ -2747,8 +2725,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         if queued_height > 0 {
             capture.layout.queued_area = Some(chunks[1].into());
         }
-        capture.layout.status_area = Some(chunks[2].into());
-        capture.layout.input_area = Some(chunks[6].into());
+        capture.layout.status_area = Some(chunks[3].into());
+        capture.layout.input_area = Some(chunks[7].into());
         capture.layout.input_lines_raw = app.input().lines().count().max(1);
         capture.layout.input_lines_wrapped = base_input_height as usize;
 
@@ -2808,6 +2786,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     // Messages area is chunks[0] within the chat column (already excludes diagram).
     let messages_area = chunks[0];
+    let _ = swarm_strip_height;
     note_chat_layout(ChatLayoutMetrics {
         chat_area,
         messages_area,
@@ -2824,7 +2803,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         capture.layout.messages_area = Some(messages_area.into());
         capture.layout.diagram_area = diagram_area.map(|r| r.into());
     }
-    record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[6]));
+    record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[7]));
 
     let margins = if onboarding_welcome {
         onboarding::draw_onboarding_welcome(frame, app, messages_area);
@@ -2927,16 +2906,16 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     if let Some(ref mut capture) = debug_capture {
         capture.render_order.push("draw_status".to_string());
     }
-    input_ui::draw_status(frame, app, chunks[2], pending_count);
+    input_ui::draw_status(frame, app, chunks[3], pending_count);
     if notification_height > 0 {
-        input_ui::draw_notification(frame, app, chunks[3]);
+        input_ui::draw_notification(frame, app, chunks[4]);
     }
     if let Some(ref mut capture) = debug_capture {
         capture.render_order.push("draw_input".to_string());
     }
     // Draw inline UI if active
     if inline_block_height > 0 {
-        draw_inline_ui(frame, app, chunks[4]);
+        draw_inline_ui(frame, app, chunks[5]);
     }
 
     input_ui::draw_input(
@@ -2948,11 +2927,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     );
 
     if overscroll_height > 0 {
-        input_ui::draw_overscroll_status(frame, app, chunks[7]);
+        input_ui::draw_overscroll_status(frame, app, chunks[8]);
     }
 
     if donut_height > 0 {
-        animations::draw_idle_animation(frame, app, chunks[8]);
+        animations::draw_idle_animation(frame, app, chunks[9]);
     }
 
     // Draw info widget overlays (skip during idle animation - they look out of place)
