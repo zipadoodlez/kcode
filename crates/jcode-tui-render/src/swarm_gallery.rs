@@ -187,12 +187,19 @@ pub fn render_swarm_panel(
     let ordered = sort_members_for_display(members);
     let selected = selected.min(ordered.len().saturating_sub(1));
 
-    let active = members.iter().filter(|m| is_active_status(&m.status)).count();
+    let active = members
+        .iter()
+        .filter(|m| is_active_status(&m.status))
+        .count();
     let mut out: Vec<Line<'static>> = Vec::new();
     out.push(panel_header(members.len(), active, focused));
 
     // Reserve at least 3 lines for the detail viewport when there is room.
-    let detail_budget = if max_height >= 7 { (max_height / 2).max(3) } else { 0 };
+    let detail_budget = if max_height >= 7 {
+        (max_height / 2).max(3)
+    } else {
+        0
+    };
     let list_budget = max_height.saturating_sub(1).saturating_sub(detail_budget);
 
     // ---- Agent list ----
@@ -254,7 +261,10 @@ pub fn render_swarm_strip(
     }
     let ordered = sort_members_for_display(members);
     let selected = selected.min(ordered.len().saturating_sub(1));
-    let active = members.iter().filter(|m| is_active_status(&m.status)).count();
+    let active = members
+        .iter()
+        .filter(|m| is_active_status(&m.status))
+        .count();
 
     // ---- Chips line ----
     let mut spans: Vec<Span<'static>> = vec![
@@ -460,9 +470,7 @@ fn list_row(member: &GalleryMember, selected: bool, focused: bool, width: usize)
     let right_w = badge_w + age_w;
     let filler = width.saturating_sub(used + right_w).max(1);
 
-    let mut spans = vec![
-        Span::styled(marker.to_string(), marker_style),
-    ];
+    let mut spans = vec![Span::styled(marker.to_string(), marker_style)];
     if !glyph.is_empty() {
         spans.push(Span::styled(glyph, Style::default().fg(accent)));
     }
@@ -612,7 +620,10 @@ mod tests {
         // The detail viewport (bordered box) shows the selected agent's tail.
         assert!(joined.contains("beta output here"), "got:\n{joined}");
         // And a bordered box was drawn.
-        assert!(joined.contains('╭') && joined.contains('╰'), "got:\n{joined}");
+        assert!(
+            joined.contains('╭') && joined.contains('╰'),
+            "got:\n{joined}"
+        );
     }
 
     #[test]
@@ -634,10 +645,22 @@ mod tests {
 
     fn hints() -> Vec<SwarmStripHint> {
         vec![
-            SwarmStripHint { key: "alt+w".into(), label: "focus".into() },
-            SwarmStripHint { key: "j/k".into(), label: "select".into() },
-            SwarmStripHint { key: "o".into(), label: "pop out".into() },
-            SwarmStripHint { key: "esc".into(), label: "back".into() },
+            SwarmStripHint {
+                key: "alt+w".into(),
+                label: "focus".into(),
+            },
+            SwarmStripHint {
+                key: "j/k".into(),
+                label: "select".into(),
+            },
+            SwarmStripHint {
+                key: "o".into(),
+                label: "pop out".into(),
+            },
+            SwarmStripHint {
+                key: "esc".into(),
+                label: "back".into(),
+            },
         ]
     }
 
@@ -653,7 +676,11 @@ mod tests {
             member("implementer", "running", None, &[]),
         ];
         let unfocused = render_swarm_strip(&members, 0, false, &hints(), 80);
-        assert_eq!(unfocused.len(), 1, "unfocused strip should be a single line");
+        assert_eq!(
+            unfocused.len(),
+            1,
+            "unfocused strip should be a single line"
+        );
         let focused = render_swarm_strip(&members, 0, true, &hints(), 80);
         assert_eq!(focused.len(), 2, "focused strip should add a hint line");
     }
@@ -674,7 +701,10 @@ mod tests {
         assert!(chips.contains("implementer"), "got: {chips}");
         assert!(chips.contains("2/3 active"), "tally missing: {chips}");
         // Selected agent (implementer) carries the ▸ marker.
-        assert!(chips.contains("▸implementer"), "selection marker missing: {chips}");
+        assert!(
+            chips.contains("▸implementer"),
+            "selection marker missing: {chips}"
+        );
         // Hint line carries keybindings.
         let hint = plain_line(&lines[1]);
         assert!(hint.contains("alt+w"), "got: {hint}");

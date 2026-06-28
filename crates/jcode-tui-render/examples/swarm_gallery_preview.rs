@@ -143,10 +143,19 @@ fn main() {
             "implementer",
             None,
             "running",
-            &["Running cargo check...", "warning: unused import `Foo`", "· 5s ago"],
+            &[
+                "Running cargo check...",
+                "warning: unused import `Foo`",
+                "· 5s ago",
+            ],
         ),
         gm("reviewer", None, "done", &["LGTM ✓", "· 1m ago"]),
-        gm("doc-writer", None, "blocked", &["waiting on reviewer", "· 12s ago"]),
+        gm(
+            "doc-writer",
+            None,
+            "blocked",
+            &["waiting on reviewer", "· 12s ago"],
+        ),
     ];
     print_lines(
         "PANEL: 4 agents, selected #1 (implementer), focused @ width 70 h 14",
@@ -163,11 +172,26 @@ fn main() {
 
     // ---- New compact strip (above status line) ----
     let hints = vec![
-        SwarmStripHint { key: "alt+w".into(), label: "focus".into() },
-        SwarmStripHint { key: "j/k".into(), label: "select".into() },
-        SwarmStripHint { key: "o".into(), label: "pop out".into() },
-        SwarmStripHint { key: "enter".into(), label: "open".into() },
-        SwarmStripHint { key: "esc".into(), label: "back".into() },
+        SwarmStripHint {
+            key: "alt+w".into(),
+            label: "focus".into(),
+        },
+        SwarmStripHint {
+            key: "j/k".into(),
+            label: "select".into(),
+        },
+        SwarmStripHint {
+            key: "o".into(),
+            label: "pop out".into(),
+        },
+        SwarmStripHint {
+            key: "enter".into(),
+            label: "open".into(),
+        },
+        SwarmStripHint {
+            key: "esc".into(),
+            label: "back".into(),
+        },
     ];
     print_lines(
         "STRIP: unfocused @ width 90",
