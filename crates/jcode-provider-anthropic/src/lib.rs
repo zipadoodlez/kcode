@@ -269,9 +269,30 @@ pub fn format_content_blocks(blocks: &[ContentBlock], is_oauth: bool) -> Vec<Api
 
 /// Convert tool definitions to Anthropic API format
 /// Adds cache_control to the last tool for prompt caching
+/// Local tool names that are represented by the curated Claude-Code builtin
+/// definitions in OAuth mode. These keep their hand-tuned schemas/descriptions
+/// (which the Anthropic subscription endpoint expects) instead of the raw
+/// registry definitions; every other tool is forwarded as-is (see #409).
+const OAUTH_BUILTIN_LOCAL_TOOLS: &[&str] = &[
+    "subagent",
+    "bash",
+    "edit",
+    "glob",
+    "grep",
+    "read",
+    "schedule",
+    "skill_manage",
+    "write",
+];
+
 pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool) -> Vec<ApiTool> {
     if is_oauth {
-        return vec![
+        // Curated Claude-Code builtin tool definitions. These remain hand-tuned
+        // because the Anthropic OAuth (subscription) endpoint expects the
+        // builtin names with compatible schemas. Anything not represented here
+        // is appended from the real registry below so OAuth users keep the full
+        // toolset (websearch, webfetch, browser, codesearch, memory, ...).
+        let mut out = vec![
             ApiTool {
                 name: "Agent".to_string(),
                 description: "Launch a new agent to handle complex, multi-step tasks.".to_string(),
@@ -324,9 +345,33 @@ pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool
                 name: "Write".to_string(),
                 description: "Writes a file to the local filesystem.".to_string(),
                 input_schema: json!({"type":"object","properties":{"file_path":{"type":"string"},"content":{"type":"string"}},"required":["file_path","content"],"additionalProperties":false}),
-                cache_control: Some(CacheControlParam::ephemeral(cache_ttl_1h)),
+                cache_control: None,
             },
         ];
+
+        // Forward every other registered tool, remapping its name to the
+        // OAuth-accepted form. This restores websearch/webfetch/browser/
+        // codesearch/memory/swarm/multiedit/open/etc. for subscription users,
+        // matching the documented "remap names, keep the full toolset" behavior
+        // and the (deprecated) Claude CLI transport.
+        for tool in tools {
+            if OAUTH_BUILTIN_LOCAL_TOOLS.contains(&tool.name.as_str()) {
+                continue;
+            }
+            out.push(ApiTool {
+                name: map_tool_name_for_oauth(&tool.name),
+                description: tool.description.clone(),
+                input_schema: tool.input_schema.clone(),
+                cache_control: None,
+            });
+        }
+
+        // Move the prompt-cache breakpoint to the final tool in the list.
+        if let Some(last) = out.last_mut() {
+            last.cache_control = Some(CacheControlParam::ephemeral(cache_ttl_1h));
+        }
+
+        return out;
     }
 
     let len = tools.len();
@@ -816,5 +861,64 @@ mod cache_prefix_invariant_tests {
                 "memory variant {memory:?} changed the cached prefix span"
             );
         }
+    }
+
+    fn tool_def(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            input_schema: json!({"type":"object","properties":{}}),
+        }
+    }
+
+    #[test]
+    fn oauth_format_tools_keeps_full_custom_toolset() {
+        // Registry includes builtins (remapped) plus extra tools that must survive.
+        let registry = vec![
+            tool_def("bash"),
+            tool_def("read"),
+            tool_def("subagent"),
+            tool_def("websearch"),
+            tool_def("webfetch"),
+            tool_def("browser"),
+            tool_def("codesearch"),
+            tool_def("memory"),
+        ];
+
+        let formatted = format_tools(&registry, true, false);
+        let names: Vec<&str> = formatted.iter().map(|t| t.name.as_str()).collect();
+
+        // Curated builtins are present under their OAuth names.
+        for builtin in ["Bash", "Read", "Agent", "Write", "Edit", "Glob", "Grep"] {
+            assert!(names.contains(&builtin), "missing builtin {builtin} in {names:?}");
+        }
+        // The previously-dropped custom tools are now forwarded.
+        for custom in ["websearch", "webfetch", "browser", "codesearch", "memory"] {
+            assert!(
+                names.contains(&custom),
+                "custom tool {custom} was dropped on OAuth; got {names:?}"
+            );
+        }
+        // No duplicate Agent/Bash/Read from the registry remap.
+        assert_eq!(names.iter().filter(|n| **n == "Agent").count(), 1);
+        assert_eq!(names.iter().filter(|n| **n == "Bash").count(), 1);
+        assert_eq!(names.iter().filter(|n| **n == "Read").count(), 1);
+    }
+
+    #[test]
+    fn oauth_format_tools_places_single_cache_breakpoint_on_last_tool() {
+        let registry = vec![tool_def("bash"), tool_def("websearch")];
+        let formatted = format_tools(&registry, true, false);
+        let with_cache: Vec<&str> = formatted
+            .iter()
+            .filter(|t| t.cache_control.is_some())
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(with_cache.len(), 1, "expected exactly one cache breakpoint");
+        assert_eq!(
+            formatted.last().map(|t| t.name.as_str()),
+            with_cache.first().copied(),
+            "cache breakpoint must be on the final tool"
+        );
     }
 }

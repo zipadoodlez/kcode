@@ -69,18 +69,21 @@ Required behaviors (applied by the Anthropic provider):
   - `You are Claude Code, Anthropic's official CLI for Claude.`
 
 Tool name allow-list:
-Claude OAuth requests reject certain tool names. jcode remaps tool names on the
-wire and maps them back on responses so native tools continue to work. The
-mapping is:
-- `bash` → `shell_exec`
-- `read` → `file_read`
-- `write` → `file_write`
-- `edit` → `file_edit`
-- `glob` → `file_glob`
-- `grep` → `file_grep`
-- `task` → `task_runner`
-- `todoread` → `todo_read`
-- `todowrite` → `todo_write`
+Claude OAuth requests reject certain tool names. jcode remaps a small set of
+builtin tool names on the wire to the Claude-Code builtin names and maps them
+back on responses so native tools continue to work. Every other tool is
+forwarded under its own name, so the full custom toolset (websearch, webfetch,
+browser, codesearch, memory, swarm, multiedit, open, ...) stays available on
+OAuth. The remapped names are:
+- `bash` → `Bash`
+- `read` → `Read`
+- `write` → `Write`
+- `edit` → `Edit`
+- `glob` → `Glob`
+- `grep` → `Grep`
+- `subagent` → `Agent`
+- `schedule` → `ScheduleWakeup`
+- `skill_manage` → `Skill`
 
 Notes:
 - If the OAuth token expires, refresh via the Claude OAuth refresh endpoint.
