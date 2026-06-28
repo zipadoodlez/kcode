@@ -535,6 +535,16 @@ struct CommunicateInput {
     #[serde(default)]
     plan_items: Option<Vec<PlanItem>>,
     #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    gate_id: Option<String>,
+    /// Task-DAG node specs for task_graph/expand_node/inject_gap actions.
+    #[serde(default)]
+    nodes: Option<Vec<crate::protocol::TaskGraphNodeSpec>>,
+    /// Handoff artifact (object) for complete_node.
+    #[serde(default)]
+    artifact: Option<serde_json::Value>,
+    #[serde(default)]
     target_status: Option<Vec<String>>,
     #[serde(default)]
     session_ids: Option<Vec<String>>,
@@ -597,7 +607,7 @@ impl Tool for CommunicateTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "required": ["action"],
             "properties": {
@@ -607,6 +617,7 @@ impl Tool for CommunicateTool {
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
                              "propose_plan", "approve_plan", "reject_plan", "spawn", "stop", "assign_role",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
+                             "task_graph", "expand_node", "complete_node", "inject_gap",
                              "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
                              "subscribe_channel", "unsubscribe_channel", "await_members"],
                     "description": "Action. For spawn, prefer including prompt with the initial task so the new agent starts useful work immediately."
@@ -734,7 +745,47 @@ impl Tool for CommunicateTool {
                     }
                 }
             }
-        })
+        });
+
+        // Task-DAG properties are added after the macro to keep `json!` nesting
+        // depth under the macro recursion limit.
+        if let Some(props) = schema
+            .get_mut("properties")
+            .and_then(|value| value.as_object_mut())
+        {
+            props.insert(
+                "node_id".to_string(),
+                json!({
+                    "type": "string",
+                    "description": "Task-DAG node id for expand_node/complete_node."
+                }),
+            );
+            props.insert(
+                "gate_id".to_string(),
+                json!({
+                    "type": "string",
+                    "description": "Gate node id for inject_gap (a critique/verify gate the caller owns)."
+                }),
+            );
+            props.insert(
+                "nodes".to_string(),
+                json!({
+                    "type": "array",
+                    "description": "Task-DAG node specs for task_graph (seed), expand_node (children), or inject_gap (gap/fix nodes). Each: {id, content, kind?, depends_on?, priority?}. kind is one of explore|implement|verify|fix|synthesize.",
+                    "items": { "type": "object", "additionalProperties": true }
+                }),
+            );
+            props.insert(
+                "artifact".to_string(),
+                json!({
+                    "type": "object",
+                    "description": "Typed handoff artifact for complete_node. In deep mode requires non-empty 'findings' and a 'what_i_did_not_check' list. Fields: findings, evidence[], edge_cases_considered[], validation, open_questions[], confidence, what_i_did_not_check[].",
+                    "additionalProperties": true
+                }),
+            );
+        }
+
+        schema
     }
 
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
@@ -1083,6 +1134,122 @@ impl Tool for CommunicateTool {
                         )))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to reject plan: {}", e)),
+                }
+            }
+
+            "task_graph" | "seed_graph" => {
+                let nodes = params.nodes.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'nodes' is required for task_graph action")
+                })?;
+                if nodes.is_empty() {
+                    return Err(anyhow::anyhow!("'nodes' must include at least one node"));
+                }
+                let count = nodes.len();
+                let request = Request::CommSeedGraph {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    mode: params.mode.clone(),
+                    nodes,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!(
+                            "Seeded task graph ({} nodes).",
+                            count
+                        )))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to seed task graph: {}", e)),
+                }
+            }
+
+            "expand_node" => {
+                let node_id = params.node_id.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'node_id' is required for expand_node action")
+                })?;
+                let children = params.nodes.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'nodes' (children) is required for expand_node action")
+                })?;
+                if children.is_empty() {
+                    return Err(anyhow::anyhow!("expand_node requires at least one child"));
+                }
+                let count = children.len();
+                let request = Request::CommExpandNode {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    node_id: node_id.clone(),
+                    children,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!(
+                            "Decomposed '{}' into {} children.",
+                            node_id, count
+                        )))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to expand node: {}", e)),
+                }
+            }
+
+            "complete_node" => {
+                let node_id = params.node_id.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'node_id' is required for complete_node action")
+                })?;
+                let artifact_json = match params.artifact.clone() {
+                    Some(value) => serde_json::to_string(&value)
+                        .map_err(|e| anyhow::anyhow!("invalid artifact: {}", e))?,
+                    None => {
+                        return Err(anyhow::anyhow!(
+                            "'artifact' object is required for complete_node action"
+                        ));
+                    }
+                };
+                let request = Request::CommCompleteNode {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    node_id: node_id.clone(),
+                    artifact_json,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!("Completed node '{}'.", node_id)))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to complete node: {}", e)),
+                }
+            }
+
+            "inject_gap" => {
+                let gate_id = params
+                    .gate_id
+                    .clone()
+                    .or_else(|| params.node_id.clone())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("'gate_id' is required for inject_gap action")
+                    })?;
+                let nodes = params.nodes.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'nodes' is required for inject_gap action")
+                })?;
+                if nodes.is_empty() {
+                    return Err(anyhow::anyhow!("inject_gap requires at least one node"));
+                }
+                let count = nodes.len();
+                let request = Request::CommInjectGap {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    gate_id: gate_id.clone(),
+                    nodes,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!(
+                            "Injected {} gap node(s) from gate '{}'.",
+                            count, gate_id
+                        )))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to inject gap nodes: {}", e)),
                 }
             }
 

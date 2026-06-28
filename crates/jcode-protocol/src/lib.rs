@@ -172,6 +172,7 @@ pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::{Request, ServerEvent};
+pub use wire::TaskGraphNodeSpec;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallSummary {
@@ -471,6 +472,10 @@ impl Request {
             Request::CommProposePlan { id, .. } => *id,
             Request::CommApprovePlan { id, .. } => *id,
             Request::CommRejectPlan { id, .. } => *id,
+            Request::CommSeedGraph { id, .. } => *id,
+            Request::CommExpandNode { id, .. } => *id,
+            Request::CommCompleteNode { id, .. } => *id,
+            Request::CommInjectGap { id, .. } => *id,
             Request::CommSpawn { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
             Request::CommAssignRole { id, .. } => *id,
@@ -502,6 +507,10 @@ impl Request {
                 | Request::CommProposePlan { .. }
                 | Request::CommApprovePlan { .. }
                 | Request::CommRejectPlan { .. }
+                | Request::CommSeedGraph { .. }
+                | Request::CommExpandNode { .. }
+                | Request::CommCompleteNode { .. }
+                | Request::CommInjectGap { .. }
                 | Request::CommSpawn { .. }
                 | Request::CommStop { .. }
                 | Request::CommAssignRole { .. }

@@ -1315,6 +1315,8 @@ mod tests {
                 version: 2,
                 participants: HashSet::from(["worker".to_string()]),
                 task_progress: HashMap::new(),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
             },
         )])));
         let (worker, mut worker_rx) = swarm_member("worker", "agent", false);
@@ -1401,6 +1403,8 @@ mod tests {
                 version: 1,
                 participants: HashSet::from(["coord".to_string()]),
                 task_progress: HashMap::new(),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
             },
         )])));
 
@@ -1715,6 +1719,8 @@ mod tests {
                         ..Default::default()
                     },
                 )]),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
             },
         )])));
         let (worker, _worker_rx) = swarm_member("worker", "agent", true);
