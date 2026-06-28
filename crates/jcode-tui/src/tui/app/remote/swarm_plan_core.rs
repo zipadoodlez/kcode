@@ -19,6 +19,28 @@ impl RemoteSwarmPlanSnapshot {
             self.items.len()
         );
         if let Some(summary) = &self.summary {
+            // Task-DAG progress breakdown: how the graph currently partitions by
+            // scheduling state. Only show segments that are non-empty so the line
+            // stays compact.
+            let mut segments = Vec::new();
+            if !summary.completed_ids.is_empty() {
+                segments.push(format!("{} done", summary.completed_ids.len()));
+            }
+            if !summary.active_ids.is_empty() {
+                segments.push(format!("{} running", summary.active_ids.len()));
+            }
+            if !summary.ready_ids.is_empty() {
+                segments.push(format!("{} ready", summary.ready_ids.len()));
+            }
+            if !summary.blocked_ids.is_empty() {
+                segments.push(format!("{} blocked", summary.blocked_ids.len()));
+            }
+            if !summary.cycle_ids.is_empty() {
+                segments.push(format!("{} in cycle", summary.cycle_ids.len()));
+            }
+            if !segments.is_empty() {
+                notice.push_str(&format!(" · graph: {}", segments.join(", ")));
+            }
             if !summary.next_ready_ids.is_empty() {
                 notice.push_str(&format!(" · next: {}", summary.next_ready_ids.join(", ")));
             }
@@ -50,9 +72,9 @@ mod tests {
                 version: 5,
                 item_count: 2,
                 ready_ids: vec!["task-2".to_string()],
-                blocked_ids: Vec::new(),
+                blocked_ids: vec!["task-4".to_string()],
                 active_ids: Vec::new(),
-                completed_ids: Vec::new(),
+                completed_ids: vec!["task-1".to_string()],
                 cycle_ids: Vec::new(),
                 unresolved_dependency_ids: Vec::new(),
                 next_ready_ids: vec!["task-2".to_string()],
@@ -62,6 +84,7 @@ mod tests {
 
         let notice = snapshot.status_notice();
         assert!(notice.contains("v5"));
+        assert!(notice.contains("graph: 1 done, 1 ready, 1 blocked"));
         assert!(notice.contains("next: task-2"));
         assert!(notice.contains("newly ready: task-3"));
     }
