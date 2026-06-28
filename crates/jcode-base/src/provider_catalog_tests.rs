@@ -1105,3 +1105,52 @@ fn open_weight_family_context_limits_match_published_windows() {
     // Unknown families stay unresolved so the dynamic cache/default can act.
     assert_eq!(f("some-unknown-model"), None);
 }
+
+#[test]
+fn minimax_default_provider_applies_openai_api_key_env_not_openrouter() {
+    // Regression for #407: `default_provider = "minimax"` (the built-in MiniMax
+    // profile) must resolve credentials from the profile's documented
+    // OPENAI_API_KEY / minimax.env, not the generic OPENROUTER_API_KEY /
+    // openrouter.env. The earlier bug surfaced as
+    // "OPENROUTER_API_KEY not found ..." when applying the configured
+    // default_model.
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvGuard::save(&[
+        "JCODE_OPENROUTER_API_KEY_NAME",
+        "JCODE_OPENROUTER_ENV_FILE",
+        "JCODE_OPENROUTER_API_BASE",
+        "JCODE_OPENROUTER_CACHE_NAMESPACE",
+        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "JCODE_NAMED_PROVIDER_PROFILE",
+    ]);
+    for v in [
+        "JCODE_OPENROUTER_API_KEY_NAME",
+        "JCODE_OPENROUTER_ENV_FILE",
+        "JCODE_OPENROUTER_API_BASE",
+        "JCODE_OPENROUTER_CACHE_NAMESPACE",
+        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "JCODE_NAMED_PROVIDER_PROFILE",
+    ] {
+        crate::env::remove_var(v);
+    }
+
+    let selection = resolve_openai_compatible_profile_selection("minimax");
+    assert_eq!(
+        selection.map(|profile| profile.id),
+        Some("minimax"),
+        "default_provider=minimax must resolve the built-in MiniMax profile"
+    );
+
+    apply_openai_compatible_profile_env(selection);
+
+    assert_eq!(
+        std::env::var("JCODE_OPENROUTER_API_KEY_NAME").ok().as_deref(),
+        Some("OPENAI_API_KEY"),
+        "MiniMax profile must use OPENAI_API_KEY, not OPENROUTER_API_KEY"
+    );
+    assert_eq!(
+        std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
+        Some("minimax.env"),
+        "MiniMax profile must use minimax.env, not openrouter.env"
+    );
+}

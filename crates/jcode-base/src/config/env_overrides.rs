@@ -382,6 +382,7 @@ impl Config {
                 };
             }
         }
+        hook_env_override(&mut self.hooks.turn_start, "JCODE_HOOK_TURN_START");
         hook_env_override(&mut self.hooks.turn_end, "JCODE_HOOK_TURN_END");
         hook_env_override(&mut self.hooks.session_start, "JCODE_HOOK_SESSION_START");
         hook_env_override(&mut self.hooks.session_end, "JCODE_HOOK_SESSION_END");

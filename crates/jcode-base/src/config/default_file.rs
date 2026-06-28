@@ -410,17 +410,23 @@ swarm_spawn_mode = "visible"
 # programs can observe or gate agent behavior. Commands are parsed shell-style
 # (quotes work) but executed directly, with JCODE_HOOK_* env vars describing
 # the event:
-#   JCODE_HOOK_EVENT       - "turn_end", "session_start", "session_end",
-#                            "pre_tool", "post_tool"
+#   JCODE_HOOK_EVENT       - "turn_start", "turn_end", "session_start",
+#                            "session_end", "pre_tool", "post_tool"
 #   JCODE_HOOK_SESSION_ID  - the session the event belongs to
 #   JCODE_HOOK_CWD         - session working directory (also the hook's cwd)
 #   JCODE_HOOK_PAYLOAD     - JSON mirror of all fields
 # Hook processes get JCODE_HOOKS_DISABLED=1 so nested jcode calls don't recurse.
 #
 # All hooks except pre_tool are observers: detached, fire-and-forget, failures
-# only logged. Env overrides: JCODE_HOOK_TURN_END, JCODE_HOOK_SESSION_START,
-# JCODE_HOOK_SESSION_END, JCODE_HOOK_PRE_TOOL, JCODE_HOOK_POST_TOOL (set empty
-# to disable a config hook).
+# only logged. Env overrides: JCODE_HOOK_TURN_START, JCODE_HOOK_TURN_END,
+# JCODE_HOOK_SESSION_START, JCODE_HOOK_SESSION_END, JCODE_HOOK_PRE_TOOL,
+# JCODE_HOOK_POST_TOOL (set empty to disable a config hook).
+#
+# Runs when an agent turn begins, before the model starts generating and before
+# the first pre_tool. Lets integrations detect the agent is working during the
+# think/stream window before any tool call. Extra fields: JCODE_HOOK_MODEL,
+# JCODE_HOOK_SOURCE ("chat"/"resume"/"ambient").
+# turn_start = "~/bin/jcode-turn-start"
 #
 # Runs when an agent turn completes. Extra fields: JCODE_HOOK_STATUS
 # ("ok"/"error"), JCODE_HOOK_DURATION_MS, JCODE_HOOK_MODEL,

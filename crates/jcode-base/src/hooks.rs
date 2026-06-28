@@ -10,9 +10,9 @@
 //!
 //! Two dispatch styles:
 //!
-//! - **Observers** (`turn_end`, `session_start`, `session_end`, `post_tool`):
-//!   spawned detached, fire-and-forget. Failures are logged and never affect
-//!   the agent.
+//! - **Observers** (`turn_start`, `turn_end`, `session_start`, `session_end`,
+//!   `post_tool`): spawned detached, fire-and-forget. Failures are logged and
+//!   never affect the agent.
 //! - **Gate** (`pre_tool`): jcode waits (with a timeout) for the hook to
 //!   exit. Exit 0 allows the tool call, exit 2 blocks it and the hook's
 //!   stderr is fed back to the model as the tool error. Any other outcome
@@ -40,7 +40,8 @@ pub enum GateDecision {
 /// A lifecycle event to deliver to a hook.
 #[derive(Debug, Clone)]
 pub struct HookEvent {
-    /// Event name: "turn_end", "session_start", "session_end", "post_tool".
+    /// Event name: "turn_start", "turn_end", "session_start", "session_end",
+    /// "post_tool".
     pub event: &'static str,
     pub session_id: Option<String>,
     pub cwd: Option<String>,
@@ -82,6 +83,7 @@ pub fn hook_command(event: &str) -> Option<String> {
     }
     let hooks = &crate::config::config().hooks;
     let raw = match event {
+        "turn_start" => hooks.turn_start.as_deref(),
         "turn_end" => hooks.turn_end.as_deref(),
         "session_start" => hooks.session_start.as_deref(),
         "session_end" => hooks.session_end.as_deref(),

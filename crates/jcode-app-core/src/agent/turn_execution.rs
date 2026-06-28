@@ -82,10 +82,31 @@ impl Agent {
         self.session.save()?;
         let turn_started_at = Instant::now();
         let start_message_index = self.message_count();
+        self.fire_turn_start_hook("chat");
         let result = self.run_turn_streaming_mpsc(event_tx).await;
         self.current_turn_system_reminder = None;
         self.fire_turn_end_hook(&result, turn_started_at, start_message_index);
         result
+    }
+
+    /// Fire the `turn_start` observer hook when a turn begins, before the model
+    /// starts generating (and before the first `pre_tool`). This lets external
+    /// integrations (terminal multiplexers, status bars) detect that the agent
+    /// is actively working during the otherwise-invisible window between prompt
+    /// submission and the first tool call. No-op (without building the payload)
+    /// when the hook is not configured.
+    fn fire_turn_start_hook(&self, source: &str) {
+        if !crate::hooks::hook_configured("turn_start") {
+            return;
+        }
+        let mut event = crate::hooks::HookEvent::new("turn_start")
+            .session_id(self.session.id.clone())
+            .field("MODEL", self.provider_model())
+            .field("SOURCE", source.to_string());
+        if let Some(cwd) = self.working_dir() {
+            event = event.cwd(cwd);
+        }
+        crate::hooks::dispatch_observer(event);
     }
 
     /// Fire the `turn_end` observer hook with turn outcome metadata.

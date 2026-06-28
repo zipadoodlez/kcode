@@ -652,6 +652,12 @@ pub struct TerminalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HooksConfig {
+    /// Runs when an agent turn begins (after the user message is added and
+    /// before the model starts generating). Fires before the first `pre_tool`,
+    /// so integrations can detect that the agent is actively working even while
+    /// it is only thinking/streaming text. Fields: MODEL, SOURCE
+    /// ("chat"/"resume"/"ambient"). Env override: JCODE_HOOK_TURN_START.
+    pub turn_start: Option<String>,
     /// Runs when an agent turn completes.
     /// Fields: STATUS ("ok"/"error"), DURATION_MS, MODEL, LAST_ASSISTANT_TEXT.
     /// Env override: JCODE_HOOK_TURN_END.
@@ -680,6 +686,7 @@ pub struct HooksConfig {
 impl Default for HooksConfig {
     fn default() -> Self {
         Self {
+            turn_start: None,
             turn_end: None,
             session_start: None,
             session_end: None,

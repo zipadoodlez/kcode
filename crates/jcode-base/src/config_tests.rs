@@ -122,6 +122,7 @@ fn spawn_hook_defaults_to_none_and_parses_from_toml() {
 #[test]
 fn hooks_config_defaults_and_parses_from_toml() {
     let defaults = Config::default().hooks;
+    assert_eq!(defaults.turn_start, None);
     assert_eq!(defaults.turn_end, None);
     assert_eq!(defaults.session_start, None);
     assert_eq!(defaults.session_end, None);
@@ -130,9 +131,10 @@ fn hooks_config_defaults_and_parses_from_toml() {
     assert_eq!(defaults.pre_tool_timeout_ms, 5000);
 
     let cfg: Config = toml::from_str(
-        "[hooks]\nturn_end = \"notify-turn\"\npre_tool = \"~/bin/policy\"\npre_tool_timeout_ms = 1500\n",
+        "[hooks]\nturn_start = \"notify-start\"\nturn_end = \"notify-turn\"\npre_tool = \"~/bin/policy\"\npre_tool_timeout_ms = 1500\n",
     )
     .expect("hooks config should parse");
+    assert_eq!(cfg.hooks.turn_start.as_deref(), Some("notify-start"));
     assert_eq!(cfg.hooks.turn_end.as_deref(), Some("notify-turn"));
     assert_eq!(cfg.hooks.pre_tool.as_deref(), Some("~/bin/policy"));
     assert_eq!(cfg.hooks.pre_tool_timeout_ms, 1500);
