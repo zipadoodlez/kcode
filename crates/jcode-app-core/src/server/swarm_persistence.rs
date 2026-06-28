@@ -34,6 +34,18 @@ struct PersistedVersionedPlan {
     participants: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     task_progress: HashMap<String, SwarmTaskProgress>,
+    #[serde(default = "default_plan_mode", skip_serializing_if = "is_light_mode")]
+    mode: String,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    node_meta: HashMap<String, crate::plan::NodeMeta>,
+}
+
+fn default_plan_mode() -> String {
+    "light".to_string()
+}
+
+fn is_light_mode(mode: &str) -> bool {
+    mode == "light"
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -83,6 +95,8 @@ fn from_persisted_plan(mut plan: PersistedVersionedPlan, updated_at_unix_ms: u64
         version: plan.version,
         participants: plan.participants.into_iter().collect(),
         task_progress: plan.task_progress,
+        mode: plan.mode,
+        node_meta: plan.node_meta,
     }
 }
 
@@ -94,6 +108,8 @@ fn to_persisted_plan(plan: &VersionedPlan) -> PersistedVersionedPlan {
         version: plan.version,
         participants,
         task_progress: plan.task_progress.clone(),
+        mode: plan.mode.clone(),
+        node_meta: plan.node_meta.clone(),
     }
 }
 

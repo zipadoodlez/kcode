@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+pub mod bridge;
 pub mod dag;
 
 /// A swarm plan item.
@@ -87,6 +88,31 @@ pub struct SwarmExecutionState {
     pub items: Vec<SwarmExecutionItemState>,
 }
 
+/// Per-node task-DAG metadata, stored as a side map on `VersionedPlan` keyed by
+/// plan item id. This mirrors the `task_progress` side-map pattern so existing
+/// `PlanItem` construction sites stay unchanged while the DAG engine gains the
+/// extra structure it needs (composite/gate mechanics + typed artifacts).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NodeMeta {
+    /// Terminal-action kind: "explore" | "implement" | "verify" | "fix" |
+    /// "synthesize" | "critique". Defaults to a plain task when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The composite node this was decomposed from, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// True once decomposed into children (composite join/synthesis point).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub expanded: bool,
+    /// True if this node is an auto-inserted critique/verify gate.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_gate: bool,
+    /// The typed handoff artifact, present once the node completes. Serialized as
+    /// JSON text so the protocol/persistence layers need no extra types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_json: Option<String>,
+}
+
 /// Versioned shared swarm plan state.
 #[derive(Clone, Debug)]
 pub struct VersionedPlan {
@@ -96,6 +122,11 @@ pub struct VersionedPlan {
     pub participants: HashSet<String>,
     /// Durable runtime task progress keyed by plan item id.
     pub task_progress: HashMap<String, SwarmTaskProgress>,
+    /// Engine mode: "deep" (comprehensive, gated) or "light" (fan-out). Defaults
+    /// to light so legacy plans behave as before.
+    pub mode: String,
+    /// Per-node task-DAG metadata keyed by plan item id.
+    pub node_meta: HashMap<String, NodeMeta>,
 }
 
 impl VersionedPlan {
@@ -105,6 +136,8 @@ impl VersionedPlan {
             version: 0,
             participants: HashSet::new(),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         }
     }
 

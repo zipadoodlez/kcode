@@ -309,6 +309,13 @@ impl TaskGraph {
         self.nodes.push(node);
     }
 
+    /// Push a fully-formed node. Used by the bridge to lift a `VersionedPlan` into
+    /// a `TaskGraph`. Callers are responsible for keeping ids unique; the
+    /// validated ops (`seed`/`expand_node`) enforce uniqueness on the write path.
+    pub fn push_node(&mut self, node: TaskNode) {
+        self.nodes.push(node);
+    }
+
     /// Children of a composite node (excluding its gate).
     pub fn children_of(&self, id: &str) -> Vec<&TaskNode> {
         self.nodes
