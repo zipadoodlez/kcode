@@ -313,6 +313,7 @@ impl App {
                         live_attachments: Some(1),
                         status_age_secs: Some((i as u64) * 7),
                         output_tail: Some(samples[i % samples.len()].to_string()),
+                        report_back_to_session_id: None,
                     })
                     .collect();
                 self.debug_force_inline_gallery = true;
@@ -347,6 +348,7 @@ impl App {
                         live_attachments: Some(1),
                         status_age_secs: Some(0),
                         output_tail: None,
+                        report_back_to_session_id: None,
                     }],
                 })
                 .to_string()

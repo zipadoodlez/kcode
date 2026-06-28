@@ -1248,6 +1248,7 @@ impl crate::tui::TuiState for App {
                         live_attachments: Some(1),
                         status_age_secs: Some(0),
                         output_tail: None,
+                        report_back_to_session_id: None,
                     });
                 }
                 (
@@ -1482,7 +1483,22 @@ impl crate::tui::TuiState for App {
         if !self.swarm_enabled {
             return Vec::new();
         }
-        self.remote_swarm_members.clone()
+        // Scope the inline gallery to the subtree this session actually spawned.
+        // Other sessions can share the same swarm (e.g. same repo) without this
+        // session having spawned them; showing those would be noise. The spawn
+        // tree is reconstructed from each member's `report_back_to_session_id`
+        // parent edge.
+        let self_id = if self.is_remote {
+            self.remote_session_id.as_deref()
+        } else {
+            Some(self.session.id.as_str())
+        };
+        match self_id {
+            Some(self_id) => {
+                filter_inline_swarm_subtree(&self.remote_swarm_members, self_id)
+            }
+            None => self.remote_swarm_members.clone(),
+        }
     }
 
     fn diagram_focus(&self) -> bool {
@@ -1703,5 +1719,151 @@ impl crate::tui::TuiState for App {
             is_cold: remaining == 0,
             cached_tokens: self.last_turn_input_tokens,
         })
+    }
+}
+
+/// Restrict swarm members to the subtree rooted at `self_id`: `self_id` itself
+/// plus every member transitively spawned by it (reachable by following the
+/// `report_back_to_session_id` parent edge upward to `self_id`).
+///
+/// This keeps the inline swarm gallery scoped to the agents a session actually
+/// spawned, rather than every member that happens to share the swarm (for
+/// example, unrelated sessions in the same repository).
+///
+/// If no member identifies as `self_id` and none reports back to it (the common
+/// case for a plain session that has not spawned anyone), the result is empty.
+pub(crate) fn filter_inline_swarm_subtree(
+    members: &[crate::protocol::SwarmMemberStatus],
+    self_id: &str,
+) -> Vec<crate::protocol::SwarmMemberStatus> {
+    use std::collections::{HashMap, HashSet};
+
+    let parent_of: HashMap<&str, Option<&str>> = members
+        .iter()
+        .map(|m| {
+            (
+                m.session_id.as_str(),
+                m.report_back_to_session_id.as_deref(),
+            )
+        })
+        .collect();
+
+    // A member is in-subtree if walking its parent chain reaches `self_id`.
+    let in_subtree = |start: &str| -> bool {
+        if start == self_id {
+            return true;
+        }
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut current = start;
+        while let Some(Some(parent)) = parent_of.get(current) {
+            if !visited.insert(current) {
+                break; // cycle guard
+            }
+            if *parent == self_id {
+                return true;
+            }
+            current = parent;
+        }
+        false
+    };
+
+    members
+        .iter()
+        .filter(|m| in_subtree(m.session_id.as_str()))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod inline_swarm_subtree_tests {
+    use super::filter_inline_swarm_subtree;
+    use crate::protocol::SwarmMemberStatus;
+
+    fn member(id: &str, parent: Option<&str>) -> SwarmMemberStatus {
+        SwarmMemberStatus {
+            session_id: id.to_string(),
+            friendly_name: Some(id.to_string()),
+            status: "running".to_string(),
+            detail: None,
+            role: None,
+            is_headless: Some(true),
+            live_attachments: None,
+            status_age_secs: Some(1),
+            output_tail: None,
+            report_back_to_session_id: parent.map(str::to_string),
+        }
+    }
+
+    fn ids(members: Vec<SwarmMemberStatus>) -> Vec<String> {
+        let mut v: Vec<String> = members.into_iter().map(|m| m.session_id).collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn includes_self_and_direct_children() {
+        let members = vec![
+            member("me", None),
+            member("child_a", Some("me")),
+            member("child_b", Some("me")),
+            member("stranger", None),
+        ];
+        assert_eq!(
+            ids(filter_inline_swarm_subtree(&members, "me")),
+            vec!["child_a", "child_b", "me"]
+        );
+    }
+
+    #[test]
+    fn includes_transitive_descendants() {
+        let members = vec![
+            member("me", None),
+            member("child", Some("me")),
+            member("grandchild", Some("child")),
+        ];
+        assert_eq!(
+            ids(filter_inline_swarm_subtree(&members, "me")),
+            vec!["child", "grandchild", "me"]
+        );
+    }
+
+    #[test]
+    fn excludes_siblings_and_unrelated_sessions() {
+        // Two coordinators sharing one swarm. Each should only see its own kids.
+        let members = vec![
+            member("coord_a", None),
+            member("a_child", Some("coord_a")),
+            member("coord_b", None),
+            member("b_child", Some("coord_b")),
+        ];
+        assert_eq!(
+            ids(filter_inline_swarm_subtree(&members, "coord_a")),
+            vec!["a_child", "coord_a"]
+        );
+        assert_eq!(
+            ids(filter_inline_swarm_subtree(&members, "coord_b")),
+            vec!["b_child", "coord_b"]
+        );
+    }
+
+    #[test]
+    fn plain_session_with_no_children_sees_only_itself_if_present() {
+        let members = vec![member("stranger", None), member("other", None)];
+        assert!(filter_inline_swarm_subtree(&members, "me").is_empty());
+    }
+
+    #[test]
+    fn cycle_is_guarded() {
+        // Pathological parent cycle must not loop forever.
+        let members = vec![
+            member("a", Some("b")),
+            member("b", Some("a")),
+            member("me", None),
+            member("child", Some("me")),
+        ];
+        assert_eq!(
+            ids(filter_inline_swarm_subtree(&members, "me")),
+            vec!["child", "me"]
+        );
     }
 }

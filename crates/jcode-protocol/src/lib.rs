@@ -386,6 +386,11 @@ pub struct SwarmMemberStatus {
     /// members when inline streaming taps are active.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_tail: Option<String>,
+    /// Session id this member reports back to (its spawner/parent in the swarm
+    /// tree). Walking this chain reconstructs the spawn tree, which lets a
+    /// client scope the inline gallery to the subtree it actually spawned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_back_to_session_id: Option<String>,
 }
 
 /// Status of a member being awaited by comm_await_members

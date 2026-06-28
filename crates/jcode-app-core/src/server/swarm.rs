@@ -328,6 +328,7 @@ async fn broadcast_swarm_status_now(
                     live_attachments: Some(m.event_txs.len()),
                     status_age_secs: Some(status_age_secs(m.last_status_change)),
                     output_tail: m.output_tail.clone(),
+                    report_back_to_session_id: m.report_back_to_session_id.clone(),
                 })
         })
         .collect();

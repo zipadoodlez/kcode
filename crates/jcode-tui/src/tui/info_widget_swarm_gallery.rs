@@ -87,6 +87,7 @@ mod tests {
             live_attachments: None,
             status_age_secs: Some(3),
             output_tail: None,
+            report_back_to_session_id: None,
         }
     }
 
