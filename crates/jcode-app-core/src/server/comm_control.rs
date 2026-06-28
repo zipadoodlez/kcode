@@ -61,7 +61,10 @@ async fn task_snapshot_for(
     let plan = plans.get(swarm_id)?;
     let item = plan.items.iter().find(|item| item.id == task_id)?;
     Some(TaskSnapshot {
-        content: item.content.clone(),
+        // Hydrate with forward dataflow from completed upstream dependencies so
+        // resume/start/wake re-injects the same artifact context an initial
+        // assignment would carry.
+        content: jcode_plan::bridge::hydrate_assignment(plan, task_id, &item.content),
         status: item.status.clone(),
         assigned_to: item.assigned_to.clone(),
         progress: plan.task_progress.get(task_id).cloned(),
@@ -942,12 +945,24 @@ pub(super) async fn handle_comm_assign_task(
                     .find(|item| item.id == *selected_task_id)
             })
         };
-        if let Some(item) = found {
-            let content = item.content.clone();
+        if found.is_some() {
+            // Resolve identity + forward-dataflow context before taking the
+            // mutable borrow, so hydration can read sibling artifacts immutably.
+            let item_id = found.as_ref().map(|item| item.id.clone()).unwrap();
+            let raw_content = found.as_ref().map(|item| item.content.clone()).unwrap();
+            // Drop the mutable borrow held by `found` before the immutable read.
+            let _ = found;
+            let content = jcode_plan::bridge::hydrate_assignment(plan, &item_id, &raw_content);
+
+            let item = plan
+                .items
+                .iter_mut()
+                .find(|item| item.id == item_id)
+                .expect("selected task still present");
             item.assigned_to = Some(target_session.clone());
             item.status = "queued".to_string();
             plan.task_progress.insert(
-                item.id.clone(),
+                item_id.clone(),
                 SwarmTaskProgress {
                     assigned_session_id: Some(target_session.clone()),
                     assignment_summary: Some(truncate_detail(
@@ -962,7 +977,7 @@ pub(super) async fn handle_comm_assign_task(
             plan.participants.insert(req_session_id.clone());
             plan.participants.insert(target_session.clone());
             (
-                Some(item.id.clone()),
+                Some(item_id.clone()),
                 Some(content),
                 plan.participants.clone(),
                 plan.items.len(),

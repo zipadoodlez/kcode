@@ -154,6 +154,78 @@ fn priority_string(rank: u8) -> String {
     }
 }
 
+/// Build the forward-dataflow context for a task: the merged handoff artifacts of
+/// all its completed upstream dependencies, formatted for injection into the
+/// assigned worker's prompt. Returns `None` when the task has no completed
+/// dependencies with artifacts, so callers can skip appending anything.
+///
+/// This is the live counterpart of `dag::assemble_input`, but it reads artifacts
+/// from the plan's `node_meta` side-map instead of a `TaskGraph`, so it can run
+/// directly on the assignment path without lifting the whole graph.
+pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
+    let item = plan.items.iter().find(|item| item.id == task_id)?;
+    if item.blocked_by.is_empty() {
+        return None;
+    }
+
+    let mut sections = Vec::new();
+    for dep_id in &item.blocked_by {
+        let Some(dep) = plan.items.iter().find(|i| &i.id == dep_id) else {
+            continue;
+        };
+        if !crate::is_completed_status(&dep.status) {
+            continue;
+        }
+        let Some(meta) = plan.node_meta.get(dep_id) else {
+            continue;
+        };
+        let Some(json) = meta.artifact_json.as_deref() else {
+            continue;
+        };
+        let Ok(artifact) = serde_json::from_str::<HandoffArtifact>(json) else {
+            continue;
+        };
+
+        let mut body = String::new();
+        let kind = meta.kind.as_deref().unwrap_or("task");
+        body.push_str(&format!("## {dep_id} ({kind})\n"));
+        if !artifact.findings.trim().is_empty() {
+            body.push_str(&artifact.findings);
+            body.push('\n');
+        }
+        if !artifact.evidence.is_empty() {
+            body.push_str(&format!("Evidence: {}\n", artifact.evidence.join("; ")));
+        }
+        if let Some(validation) = &artifact.validation {
+            body.push_str(&format!("Validation: {validation}\n"));
+        }
+        if !artifact.open_questions.is_empty() {
+            body.push_str(&format!(
+                "Open questions: {}\n",
+                artifact.open_questions.join("; ")
+            ));
+        }
+        sections.push(body);
+    }
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "# Inputs from completed dependencies\n\n{}",
+            sections.join("\n")
+        ))
+    }
+}
+
+/// Prepend upstream dependency context (if any) to a task's assignment content.
+pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) -> String {
+    match upstream_context(plan, task_id) {
+        Some(context) => format!("{content}\n\n{context}"),
+        None => content.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +325,64 @@ mod tests {
         // The child's artifact round-trips through node_meta JSON.
         let stored = &plan.node_meta["root.1"].artifact_json;
         assert!(stored.as_ref().unwrap().contains("found"));
+    }
+
+    #[test]
+    fn upstream_context_merges_completed_dependency_artifacts() {
+        let mut plan = VersionedPlan::new();
+        plan.items = vec![
+            plan_item("dep", "completed"),
+            PlanItem {
+                blocked_by: vec!["dep".to_string()],
+                ..plan_item("task", "queued")
+            },
+        ];
+        plan.node_meta.insert(
+            "dep".to_string(),
+            NodeMeta {
+                kind: Some("explore".to_string()),
+                artifact_json: Some(
+                    serde_json::to_string(&HandoffArtifact {
+                        findings: "API in foo.rs".into(),
+                        evidence: vec!["crates/foo/api.rs:12".into()],
+                        ..HandoffArtifact::default()
+                    })
+                    .unwrap(),
+                ),
+                ..NodeMeta::default()
+            },
+        );
+
+        let hydrated = hydrate_assignment(&plan, "task", "do the work");
+        assert!(hydrated.contains("do the work"));
+        assert!(hydrated.contains("Inputs from completed dependencies"));
+        assert!(hydrated.contains("API in foo.rs"));
+        assert!(hydrated.contains("crates/foo/api.rs:12"));
+
+        // A task with no deps is returned unchanged.
+        assert_eq!(hydrate_assignment(&plan, "dep", "x"), "x");
+    }
+
+    #[test]
+    fn upstream_context_skips_incomplete_dependencies() {
+        let mut plan = VersionedPlan::new();
+        plan.items = vec![
+            plan_item("dep", "running"),
+            PlanItem {
+                blocked_by: vec!["dep".to_string()],
+                ..plan_item("task", "queued")
+            },
+        ];
+        plan.node_meta.insert(
+            "dep".to_string(),
+            NodeMeta {
+                artifact_json: Some(
+                    serde_json::to_string(&HandoffArtifact::brief("partial")).unwrap(),
+                ),
+                ..NodeMeta::default()
+            },
+        );
+        // dep is not completed, so no context is injected.
+        assert_eq!(upstream_context(&plan, "task"), None);
     }
 }
