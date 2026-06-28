@@ -243,6 +243,14 @@ pub trait TuiState {
     fn output_tps(&self) -> Option<f32>;
     fn streaming_tool_calls(&self) -> Vec<ToolCall>;
     fn elapsed(&self) -> Option<Duration>;
+    /// Time since the current connection phase (authenticating/connecting/
+    /// waiting for response/retrying) began. Used to decide when a connection
+    /// attempt has been suspiciously long and should render yellow, measured
+    /// per-attempt rather than inheriting the whole-turn elapsed time. Defaults
+    /// to `elapsed()` for impls that do not track per-phase timing.
+    fn connection_phase_elapsed(&self) -> Option<Duration> {
+        self.elapsed()
+    }
     fn status(&self) -> ProcessingStatus;
     fn command_suggestions(&self) -> Vec<(String, &'static str)>;
     fn command_suggestion_selected(&self) -> usize {

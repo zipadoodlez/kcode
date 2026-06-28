@@ -621,8 +621,15 @@ pub(in crate::tui::app) fn handle_server_event(
             };
             app.status = if matches!(cp, crate::message::ConnectionPhase::Streaming) {
                 app.resume_streaming_tps();
+                app.connection_phase_started = None;
                 ProcessingStatus::Streaming
             } else {
+                // Start the "suspiciously long" timer when we first enter the
+                // connecting group so later round-trips in a turn don't inherit
+                // the whole-turn elapsed and immediately render yellow.
+                if !matches!(app.status, ProcessingStatus::Connecting(_)) {
+                    app.connection_phase_started = Some(Instant::now());
+                }
                 ProcessingStatus::Connecting(cp)
             };
             eager_stream_redraw
@@ -649,6 +656,7 @@ pub(in crate::tui::app) fn handle_server_event(
             ));
             app.rollback_streaming_attempt();
             remote.clear_pending();
+            app.connection_phase_started = Some(Instant::now());
             app.status = ProcessingStatus::Connecting(crate::message::ConnectionPhase::Retrying {
                 attempt,
                 max,

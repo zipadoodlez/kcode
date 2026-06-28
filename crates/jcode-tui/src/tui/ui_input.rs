@@ -699,12 +699,16 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                     format_elapsed(elapsed)
                 );
                 append_transport_context(&mut label, app);
+                // "Suspiciously long" is measured per connection attempt, not
+                // across the whole turn, so later round-trips don't immediately
+                // render yellow just because the turn has been running a while.
+                let phase_elapsed = app.connection_phase_elapsed().map_or(elapsed, |d| d.as_secs_f32());
                 let label_color = match phase {
                     crate::message::ConnectionPhase::Retrying { .. } => rgb(255, 193, 7),
-                    crate::message::ConnectionPhase::Authenticating if elapsed > 10.0 => {
+                    crate::message::ConnectionPhase::Authenticating if phase_elapsed > 10.0 => {
                         rgb(255, 193, 7)
                     }
-                    crate::message::ConnectionPhase::Connecting if elapsed > 10.0 => {
+                    crate::message::ConnectionPhase::Connecting if phase_elapsed > 10.0 => {
                         rgb(255, 193, 7)
                     }
                     _ => dim_color(),

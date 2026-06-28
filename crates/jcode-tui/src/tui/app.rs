@@ -802,6 +802,11 @@ pub struct App {
     last_resize_redraw: Option<Instant>,
     // Cached MCP server names and tool counts (updated on connect/disconnect)
     mcp_server_names: Vec<(String, usize)>,
+    // When the current connection phase (authenticating/connecting/waiting) began.
+    // Reset on every phase change so the "suspiciously long" yellow status is
+    // measured per-attempt instead of inheriting the whole-turn elapsed time
+    // (which would immediately render yellow on later round-trips of a turn).
+    connection_phase_started: Option<Instant>,
     // Semantic stream buffer for chunked output
     stream_buffer: StreamBuffer,
     // Track thinking start time for extended thinking display

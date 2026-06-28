@@ -633,6 +633,14 @@ impl crate::tui::TuiState for App {
         }
     }
 
+    fn connection_phase_elapsed(&self) -> Option<std::time::Duration> {
+        // Fall back to the whole-turn elapsed only if we somehow entered a
+        // connecting status without recording a phase start.
+        self.connection_phase_started
+            .map(|t| t.elapsed())
+            .or_else(|| self.elapsed())
+    }
+
     fn command_suggestions(&self) -> Vec<(String, &'static str)> {
         App::command_suggestions(self)
     }

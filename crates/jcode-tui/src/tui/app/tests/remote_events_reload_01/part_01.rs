@@ -746,6 +746,64 @@ fn test_handle_server_event_tps_connection_phase_streaming_starts_collection_onl
 }
 
 #[test]
+fn test_connection_phase_elapsed_resets_per_attempt_not_per_turn() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    // Simulate a long-running turn: the whole-turn timer has been ticking for
+    // well over the "suspiciously long" yellow threshold.
+    app.is_processing = true;
+    app.processing_started = Some(Instant::now() - Duration::from_secs(120));
+    assert!(crate::tui::TuiState::elapsed(&app).unwrap() > Duration::from_secs(60));
+
+    // A later round-trip enters the connecting phase. The per-attempt timer
+    // must start fresh, so it reads as a brief connect (well under 10s) instead
+    // of inheriting the 120s whole-turn elapsed and rendering yellow.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ConnectionPhase {
+            phase: "connecting".to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(matches!(
+        app.status,
+        ProcessingStatus::Connecting(crate::message::ConnectionPhase::Connecting)
+    ));
+    let phase_elapsed = crate::tui::TuiState::connection_phase_elapsed(&app)
+        .expect("connection phase elapsed should be tracked");
+    assert!(
+        phase_elapsed < Duration::from_secs(5),
+        "per-attempt connection elapsed should be fresh, got {:?}",
+        phase_elapsed
+    );
+
+    // Sub-phase transitions within the same attempt must not restart the timer.
+    let started = app.connection_phase_started;
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ConnectionPhase {
+            phase: "waiting for response".to_string(),
+        },
+        &mut remote,
+    );
+    assert_eq!(
+        app.connection_phase_started, started,
+        "sub-phase transitions should keep the same per-attempt start"
+    );
+
+    // Streaming clears the per-attempt timer.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ConnectionPhase {
+            phase: "streaming".to_string(),
+        },
+        &mut remote,
+    );
+    assert!(app.connection_phase_started.is_none());
+}
+
+#[test]
 fn test_handle_server_event_tps_message_end_counts_late_usage_without_timer_running() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();

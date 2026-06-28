@@ -649,9 +649,20 @@ impl App {
                                         self.update_terminal_title();
                                     }
                                     StreamEvent::ConnectionPhase { phase } => {
+                                        let was_connecting = matches!(
+                                            self.status,
+                                            ProcessingStatus::Connecting(_)
+                                        );
                                         self.status = if matches!(phase, crate::message::ConnectionPhase::Streaming) {
+                                            self.connection_phase_started = None;
                                             ProcessingStatus::Streaming
                                         } else {
+                                            // Measure "suspiciously long" per connection attempt:
+                                            // start the timer when entering the connecting group,
+                                            // not on every sub-phase transition.
+                                            if !was_connecting {
+                                                self.connection_phase_started = Some(Instant::now());
+                                            }
                                             ProcessingStatus::Connecting(phase)
                                         };
                                         if eager_stream_redraw {
@@ -697,6 +708,7 @@ impl App {
                                         openai_native_compaction = None;
                                         saw_message_end = false;
                                         self.rollback_streaming_attempt();
+                                        self.connection_phase_started = Some(Instant::now());
                                         self.status = ProcessingStatus::Connecting(
                                             crate::message::ConnectionPhase::Retrying {
                                                 attempt,
