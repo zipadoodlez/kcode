@@ -65,6 +65,7 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
             last_status_change: now,
             is_headless: false,
             output_tail: None,
+            todo_progress: None,
         },
     )])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));

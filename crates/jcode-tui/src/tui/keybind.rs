@@ -368,6 +368,23 @@ pub(crate) fn side_panel_toggle_key_label() -> &'static str {
     }
 }
 
+/// Human-friendly label for the configured swarm-panel focus chord (e.g.
+/// "Alt+W"), used in the inline swarm strip's enter-controls hint.
+pub(crate) fn swarm_panel_focus_key_label() -> String {
+    let cfg = config();
+    let default = KeyBinding {
+        code: KeyCode::Char('w'),
+        modifiers: KeyModifiers::ALT,
+    };
+    let default_label = format_binding(&default);
+    let (binding, _) =
+        parse_optional(&cfg.keybindings.swarm_panel_focus, default, &default_label);
+    match binding {
+        Some(b) => format_binding(&b),
+        None => default_label,
+    }
+}
+
 pub(crate) fn shortcut_char_for_macos_option_key(
     code: KeyCode,
     modifiers: KeyModifiers,

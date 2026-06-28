@@ -53,6 +53,7 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
             role: member.role.clone(),
             body: member_body(member),
             sort_key: member.session_id.clone(),
+            todo: member.todo_progress,
         })
         .collect()
 }
@@ -92,34 +93,36 @@ pub(crate) fn render_swarm_panel_lines(
     )
 }
 
-/// Render the compact swarm strip (agent chips + optional keybinding hint line)
-/// shown directly above the status line. `focus_key` is the configured chord to
-/// focus the panel (e.g. "alt+w"), shown as the first hint.
+/// Render the compact swarm strip (agent chips + status glyphs + todo counts)
+/// shown directly above the status line.
+///
+/// `focus_key` is the configured chord to enter the controls (e.g. "ctrl+t"),
+/// used both for the unfocused enter-hint and as the first focused hint.
+/// `spinner_frame` animates active agents' glyphs.
 pub(crate) fn render_swarm_strip_lines(
     members: &[SwarmMemberStatus],
     selected: usize,
     focused: bool,
     focus_key: &str,
+    spinner_frame: usize,
     width: usize,
 ) -> Vec<Line<'static>> {
     if members.is_empty() {
         return Vec::new();
     }
+    let enter_hint = format!("{focus_key} controls");
     let hints = vec![
-        SwarmStripHint {
-            key: focus_key.to_string(),
-            label: if focused { "unfocus".into() } else { "focus".into() },
-        },
-        SwarmStripHint { key: "j/k".into(), label: "select".into() },
-        SwarmStripHint { key: "o".into(), label: "pop out".into() },
-        SwarmStripHint { key: "enter".into(), label: "open".into() },
-        SwarmStripHint { key: "esc".into(), label: "back".into() },
+        SwarmStripHint { key: "↑/↓".into(), label: "select".into() },
+        SwarmStripHint { key: "enter".into(), label: "pop out".into() },
+        SwarmStripHint { key: "esc".into(), label: "exit".into() },
     ];
     render_swarm_strip(
         &members_to_gallery(members),
         selected,
         focused,
         &hints,
+        if focused { None } else { Some(enter_hint.as_str()) },
+        spinner_frame,
         width,
     )
 }
@@ -166,6 +169,7 @@ mod tests {
             status_age_secs: Some(3),
             output_tail: None,
             report_back_to_session_id: None,
+            todo_progress: None,
         }
     }
 

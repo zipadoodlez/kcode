@@ -55,6 +55,28 @@ pub fn is_active_status(status: &str) -> bool {
     matches!(status, "running" | "streaming" | "thinking")
 }
 
+/// Frames for the inline status spinner used by active agents on the strip.
+pub const STRIP_SPINNER_FRAMES: [&str; 10] =
+    ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// A glyph summarizing a member's lifecycle status. Active members (running,
+/// thinking, streaming) animate via the spinner frame; terminal states get a
+/// fixed glyph. `spinner_frame` selects the spinner cell for active members.
+pub fn status_glyph(status: &str, spinner_frame: usize) -> &'static str {
+    match status {
+        "running" | "streaming" | "thinking" => {
+            STRIP_SPINNER_FRAMES[spinner_frame % STRIP_SPINNER_FRAMES.len()]
+        }
+        "completed" | "done" => "✓",
+        "ready" => "•",
+        "blocked" | "waiting_network" => "⏸",
+        "failed" | "crashed" => "✗",
+        "stopped" => "◼",
+        "spawned" => "·",
+        _ => "•",
+    }
+}
+
 /// Sort rank for stable placement: coordinator first, then worktree manager,
 /// then everything else.
 fn role_rank(role: Option<&str>) -> u8 {
@@ -102,6 +124,9 @@ pub struct GalleryMember {
     pub body: Vec<String>,
     /// Stable tiebreaker for sorting members with equal role rank (e.g. id).
     pub sort_key: String,
+    /// Optional todo progress as (completed, total) for the agent's plan/todos.
+    /// Rendered as "C/T" next to the agent on the strip when present.
+    pub todo: Option<(u32, u32)>,
 }
 
 /// Convert members into gallery tiles, sorted for stable placement
@@ -238,22 +263,27 @@ pub struct SwarmStripHint {
     pub label: String,
 }
 
-/// Render the compact swarm strip: a single status line of agent "chips" (one
-/// per managed agent, colored by status, the selected one marked) followed by a
-/// dim keybinding hint line. Designed to sit directly above the status line.
+/// Render the compact swarm strip shown directly above the status line.
 ///
-/// Returns 1 line when not focused (just the chips) or 2 lines when focused
-/// (chips + hints). Returns empty when there are no members or no width.
+/// - Unfocused: a single line of agent "chips" (status glyph + name + optional
+///   `done/total` todo count), colored by status, plus a right-aligned
+///   `M/N active` readout. A trailing hint shows how to enter the controls.
+/// - Focused: the chips line (selected agent highlighted) + a one-line inline
+///   render of the hovered agent's latest output + a keybinding hint line.
+///
+/// `spinner_frame` animates the glyph for active agents. Returns empty when
+/// there are no members or no width.
 ///
 /// ```text
-/// 🐝 swarm  ▸researcher ·implementer ·reviewer            2/3 active
-///           alt+w focus · j/k select · o pop out · enter open · esc back
+/// 🐝 swarm  ⠙researcher 8/16  ✓reviewer            2/3 active   ctrl+t controls
 /// ```
 pub fn render_swarm_strip(
     members: &[GalleryMember],
     selected: usize,
     focused: bool,
     hints: &[SwarmStripHint],
+    enter_hint: Option<&str>,
+    spinner_frame: usize,
     width: usize,
 ) -> Vec<Line<'static>> {
     if members.is_empty() || width < 8 {
@@ -273,31 +303,47 @@ pub fn render_swarm_strip(
         Span::raw("  "),
     ];
 
-    // Right-aligned "M/N active" readout; reserve room for it.
+    // Right side: "M/N active" plus, when unfocused, the enter-controls hint.
     let tally = format!("{active}/{} active", members.len());
-    let tally_w = tally.chars().count();
+    let right_tail = match (focused, enter_hint) {
+        (false, Some(hint)) => format!("{tally}   {hint}"),
+        _ => tally.clone(),
+    };
+    let right_w = right_tail.chars().count();
 
-    // Build chips, each "▸name" (selected) or "·name", colored by status.
-    let mut chip_specs: Vec<(String, Color, bool)> = Vec::new();
-    for (idx, m) in ordered.iter().enumerate() {
-        let is_sel = idx == selected;
-        let marker = if is_sel { "▸" } else { "·" };
-        chip_specs.push((
-            format!("{marker}{}", m.label),
-            status_accent(&m.status),
-            is_sel,
-        ));
+    // Build chips: "<glyph><name>[ done/total]".
+    struct Chip {
+        text: String,
+        color: Color,
+        is_sel: bool,
     }
+    let chips: Vec<Chip> = ordered
+        .iter()
+        .enumerate()
+        .map(|(idx, m)| {
+            let is_sel = idx == selected;
+            let glyph = status_glyph(&m.status, spinner_frame);
+            let todo = m
+                .todo
+                .map(|(done, total)| format!(" {done}/{total}"))
+                .unwrap_or_default();
+            Chip {
+                text: format!("{glyph}{}{todo}", m.label),
+                color: status_accent(&m.status),
+                is_sel,
+            }
+        })
+        .collect();
 
     // Width budget for chips: total minus the leading "🐝 swarm  " and the
-    // trailing tally plus a gap.
+    // right tail plus a gap.
     let lead_w = 3 + 5 + 2; // bee + "swarm" + two spaces
-    let chips_budget = width.saturating_sub(lead_w + tally_w + 2);
+    let chips_budget = width.saturating_sub(lead_w + right_w + 2);
     let mut used = 0usize;
     let mut shown = 0usize;
-    for (i, (text, color, is_sel)) in chip_specs.iter().enumerate() {
+    for (i, chip) in chips.iter().enumerate() {
         let sep_w = if i == 0 { 0 } else { 1 };
-        let chip_w = text.chars().count();
+        let chip_w = chip.text.chars().count();
         if used + sep_w + chip_w > chips_budget && shown > 0 {
             break;
         }
@@ -305,26 +351,27 @@ pub fn render_swarm_strip(
             spans.push(Span::raw(" "));
             used += 1;
         }
-        let mut style = Style::default().fg(*color);
-        if *is_sel && focused {
+        let mut style = Style::default().fg(chip.color);
+        if chip.is_sel && focused {
             style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
-        } else if *is_sel {
+        } else if chip.is_sel {
             style = style.add_modifier(Modifier::BOLD);
         }
-        spans.push(Span::styled(text.clone(), style));
+        spans.push(Span::styled(chip.text.clone(), style));
         used += chip_w;
         shown += 1;
     }
-    let hidden = chip_specs.len().saturating_sub(shown);
+    let hidden = chips.len().saturating_sub(shown);
     if hidden > 0 {
         let more = format!(" +{hidden}");
+        let more_w = more.chars().count();
         spans.push(Span::styled(more, Style::default().fg(rgb(140, 140, 150))));
-        used += hidden.to_string().chars().count() + 2;
+        used += more_w;
     }
 
-    // Right-align the tally.
+    // Right-align the tail (tally [+ enter hint]).
     let consumed = lead_w + used;
-    let pad = width.saturating_sub(consumed + tally_w).max(1);
+    let pad = width.saturating_sub(consumed + right_w).max(1);
     spans.push(Span::raw(" ".repeat(pad)));
     spans.push(Span::styled(
         tally,
@@ -334,38 +381,65 @@ pub fn render_swarm_strip(
             rgb(120, 120, 130)
         }),
     ));
+    if !focused && let Some(hint) = enter_hint {
+        spans.push(Span::styled(
+            format!("   {hint}"),
+            Style::default().fg(rgb(110, 130, 170)),
+        ));
+    }
 
     let mut out = vec![Line::from(spans)];
 
-    // ---- Hint line (only while focused, and only if hints provided) ----
-    if focused && !hints.is_empty() {
-        let mut hint_spans: Vec<Span<'static>> = vec![Span::raw("   ")];
-        for (i, h) in hints.iter().enumerate() {
-            if i > 0 {
-                hint_spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
-            }
-            hint_spans.push(Span::styled(
-                h.key.clone(),
-                Style::default().fg(rgb(150, 170, 210)),
-            ));
-            hint_spans.push(Span::raw(" "));
-            hint_spans.push(Span::styled(
-                h.label.clone(),
-                Style::default().fg(rgb(120, 120, 130)),
-            ));
+    // ---- Focused extras: inline detail render + hint line ----
+    if focused {
+        // Inline one-line render of the hovered agent's latest output.
+        if let Some(m) = ordered.get(selected) {
+            let detail = m
+                .body
+                .iter()
+                .rev()
+                .find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('·'))
+                .cloned()
+                .unwrap_or_else(|| format!("[{}]", m.status));
+            let prefix = format!("   {} ", status_glyph(&m.status, spinner_frame));
+            let prefix_w = prefix.chars().count();
+            let body = truncate_label(&detail, width.saturating_sub(prefix_w));
+            out.push(Line::from(vec![
+                Span::styled(prefix, Style::default().fg(status_accent(&m.status))),
+                Span::styled(body, Style::default().fg(rgb(180, 180, 190))),
+            ]));
         }
-        // Trim to width.
-        let mut total = 0usize;
-        let mut trimmed: Vec<Span<'static>> = Vec::new();
-        for s in hint_spans {
-            let w = s.content.chars().count();
-            if total + w > width {
-                break;
+
+        if !hints.is_empty() {
+            let mut hint_spans: Vec<Span<'static>> = vec![Span::raw("   ")];
+            for (i, h) in hints.iter().enumerate() {
+                if i > 0 {
+                    hint_spans
+                        .push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+                }
+                hint_spans.push(Span::styled(
+                    h.key.clone(),
+                    Style::default().fg(rgb(150, 170, 210)),
+                ));
+                hint_spans.push(Span::raw(" "));
+                hint_spans.push(Span::styled(
+                    h.label.clone(),
+                    Style::default().fg(rgb(120, 120, 130)),
+                ));
             }
-            total += w;
-            trimmed.push(s);
+            // Trim to width.
+            let mut total = 0usize;
+            let mut trimmed: Vec<Span<'static>> = Vec::new();
+            for s in hint_spans {
+                let w = s.content.chars().count();
+                if total + w > width {
+                    break;
+                }
+                total += w;
+                trimmed.push(s);
+            }
+            out.push(Line::from(trimmed));
         }
-        out.push(Line::from(trimmed));
     }
 
     out
@@ -509,6 +583,7 @@ mod tests {
             role: role.map(str::to_string),
             body: body.iter().map(|s| s.to_string()).collect(),
             sort_key: id.to_string(),
+            todo: None,
         }
     }
 
@@ -666,33 +741,38 @@ mod tests {
 
     #[test]
     fn strip_empty_renders_nothing() {
-        assert!(render_swarm_strip(&[], 0, true, &hints(), 80).is_empty());
+        assert!(render_swarm_strip(&[], 0, true, &hints(), None, 0, 80).is_empty());
     }
 
     #[test]
-    fn strip_one_line_when_unfocused_two_when_focused() {
+    fn strip_one_line_when_unfocused_three_when_focused() {
         let members = vec![
-            member("researcher", "thinking", Some("coordinator"), &[]),
-            member("implementer", "running", None, &[]),
+            member("researcher", "thinking", Some("coordinator"), &["working"]),
+            member("implementer", "running", None, &["building"]),
         ];
-        let unfocused = render_swarm_strip(&members, 0, false, &hints(), 80);
+        let unfocused = render_swarm_strip(&members, 0, false, &hints(), None, 0, 80);
         assert_eq!(
             unfocused.len(),
             1,
             "unfocused strip should be a single line"
         );
-        let focused = render_swarm_strip(&members, 0, true, &hints(), 80);
-        assert_eq!(focused.len(), 2, "focused strip should add a hint line");
+        // Focused: chips line + inline detail line + hint line.
+        let focused = render_swarm_strip(&members, 0, true, &hints(), None, 0, 80);
+        assert_eq!(
+            focused.len(),
+            3,
+            "focused strip should add a detail line and a hint line"
+        );
     }
 
     #[test]
     fn strip_shows_agents_and_tally_and_is_width_bounded() {
         let members = vec![
-            member("researcher", "thinking", Some("coordinator"), &[]),
-            member("implementer", "running", None, &[]),
-            member("reviewer", "done", None, &[]),
+            member("researcher", "thinking", Some("coordinator"), &["working"]),
+            member("implementer", "running", None, &["building"]),
+            member("reviewer", "done", None, &["done"]),
         ];
-        let lines = render_swarm_strip(&members, 1, true, &hints(), 90);
+        let lines = render_swarm_strip(&members, 1, true, &hints(), None, 0, 90);
         for line in &lines {
             assert!(line.width() <= 90, "line too wide: {}", plain_line(line));
         }
@@ -700,15 +780,28 @@ mod tests {
         assert!(chips.contains("researcher"), "got: {chips}");
         assert!(chips.contains("implementer"), "got: {chips}");
         assert!(chips.contains("2/3 active"), "tally missing: {chips}");
-        // Selected agent (implementer) carries the ▸ marker.
-        assert!(
-            chips.contains("▸implementer"),
-            "selection marker missing: {chips}"
-        );
-        // Hint line carries keybindings.
-        let hint = plain_line(&lines[1]);
-        assert!(hint.contains("alt+w"), "got: {hint}");
-        assert!(hint.contains("focus"), "got: {hint}");
+        // Hint line carries the keybindings.
+        let hint = plain_line(lines.last().unwrap());
+        assert!(hint.contains("pop out"), "got: {hint}");
+        assert!(hint.contains("select"), "got: {hint}");
+    }
+
+    #[test]
+    fn strip_unfocused_shows_enter_controls_hint() {
+        let members = vec![member("a", "running", None, &[])];
+        let lines =
+            render_swarm_strip(&members, 0, false, &hints(), Some("alt+w controls"), 0, 90);
+        let chips = plain_line(&lines[0]);
+        assert!(chips.contains("alt+w controls"), "got: {chips}");
+    }
+
+    #[test]
+    fn strip_shows_todo_counter() {
+        let mut m = member("worker", "running", None, &["step"]);
+        m.todo = Some((8, 16));
+        let lines = render_swarm_strip(&[m], 0, false, &hints(), None, 0, 90);
+        let chips = plain_line(&lines[0]);
+        assert!(chips.contains("8/16"), "todo counter missing: {chips}");
     }
 
     #[test]
@@ -716,7 +809,7 @@ mod tests {
         let members: Vec<GalleryMember> = (0..12)
             .map(|i| member(&format!("agent-number-{i:02}"), "running", None, &[]))
             .collect();
-        let lines = render_swarm_strip(&members, 0, false, &hints(), 50);
+        let lines = render_swarm_strip(&members, 0, false, &hints(), None, 0, 50);
         assert!(lines[0].width() <= 50, "too wide");
         let chips = plain_line(&lines[0]);
         assert!(chips.contains('+'), "expected +N overflow marker: {chips}");

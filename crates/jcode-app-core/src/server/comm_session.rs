@@ -462,6 +462,7 @@ async fn register_visible_spawned_member(
                 last_status_change: now,
                 is_headless: false,
                 output_tail: None,
+                todo_progress: None,
             },
         );
     }
