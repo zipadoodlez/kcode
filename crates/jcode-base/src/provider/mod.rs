@@ -253,7 +253,12 @@ pub fn set_model_with_auth_refresh(provider: &dyn Provider, model: &str) -> Resu
                 provider.name(),
                 &[("reason", first_message.as_str())],
             );
-            provider.on_auth_changed();
+            // Use the preserve-current-provider variant: this is a retry for an
+            // already-open session, so refreshing auth from disk must NOT swap a
+            // user-defined named OpenAI-compatible profile slot for a generic
+            // OpenRouter runtime (which would lose `profile_id` and re-introduce
+            // the `<profile>:<model>` prefix on the wire). See #408.
+            provider.on_auth_changed_preserve_current_provider();
             provider.set_model(model).map_err(|second_err| {
                 anyhow::anyhow!(
                     "{} (retried after reloading auth from disk: {})",
