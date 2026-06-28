@@ -1674,9 +1674,19 @@ fn test_render_messages_and_images_share_tool_resolution_and_labels() {
     );
 
     let (rendered, images) = render_messages_and_images(&session);
-    assert_eq!(rendered.len(), 2);
+    // The `[Attached image associated with the preceding tool result: ...]`
+    // text block is synthetic image metadata, not a visible message. It must be
+    // folded into the image label and never rendered as a (user) message,
+    // otherwise it leaks out as a bogus "last prompt".
+    assert_eq!(rendered.len(), 1);
     assert_eq!(rendered[0].role, "tool");
     assert_eq!(rendered[0].content, "rendered image");
+    assert!(
+        !rendered
+            .iter()
+            .any(|m| m.content.contains("Attached image associated")),
+        "attached-image label must not render as its own message"
+    );
     assert_eq!(
         rendered[0]
             .tool_data
