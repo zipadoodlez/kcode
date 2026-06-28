@@ -269,6 +269,13 @@ async fn handle_remote_key_internal(
     let mut modifiers = modifiers;
     ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
+    // The onboarding simulator owns all key handling while active (and Cmd+5
+    // toggles it on). Handle it first so it works in remote/client mode too,
+    // which is how self-dev sessions run.
+    if app.handle_onboarding_sim_key(code, modifiers) {
+        return Ok(());
+    }
+
     if app.handle_onboarding_continue_prompt_key(code) {
         return Ok(());
     }
