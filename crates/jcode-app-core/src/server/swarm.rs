@@ -23,10 +23,12 @@ fn status_age_secs(last_status_change: Instant) -> u64 {
     last_status_change.elapsed().as_secs()
 }
 
-/// Maximum spawn depth for the recursive swarm tree. The root coordinator is at
-/// depth 0; an agent at depth `d` may spawn children at depth `d + 1` only while
-/// `d < MAX_SWARM_SPAWN_DEPTH`. This caps runaway recursive fan-out.
-pub(super) const MAX_SWARM_SPAWN_DEPTH: u32 = 5;
+/// Maximum number of live members (agents) in a single swarm. This is the sole
+/// runaway-prevention cap for the task-graph model. There is intentionally no
+/// spawn-depth limit and no per-node fan-out limit: the spawn tree may nest and
+/// fan out freely until the swarm reaches this many live members, at which point
+/// further spawns are refused.
+pub(super) const MAX_SWARM_MEMBERS: usize = 1000;
 
 /// Walk the `report_back_to_session_id` chain upward from `session_id`,
 /// returning the list of ancestor session ids (parent first, root last).

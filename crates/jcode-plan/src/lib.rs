@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+pub mod dag;
+
 /// A swarm plan item.
 ///
 /// This is intentionally separate from session todos: plan data is shared at the

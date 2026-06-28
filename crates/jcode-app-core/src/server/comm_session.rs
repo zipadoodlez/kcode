@@ -1107,7 +1107,7 @@ async fn ensure_spawn_coordinator_swarm(
     // tests; recursive spawning no longer rejects non-coordinators, so it is only
     // referenced defensively below.
     let _ = permission_error;
-    let (swarm_id, from_name, depth, is_root, coordinator_id, coordinator_is_stale) = {
+    let (swarm_id, from_name, is_root, coordinator_id, coordinator_is_stale, swarm_size) = {
         let members = swarm_members.read().await;
         let swarm_id = members
             .get(req_session_id)
@@ -1115,13 +1115,22 @@ async fn ensure_spawn_coordinator_swarm(
         let from_name = members
             .get(req_session_id)
             .and_then(|member| member.friendly_name.clone());
-        // Depth in the spawn tree (root coordinators are depth 0). A session is a
-        // "root" when it has no spawner/owner above it.
-        let depth = super::swarm_spawn_depth(&members, req_session_id);
+        // A session is a "root" when it has no spawner/owner above it.
         let is_root = members
             .get(req_session_id)
             .and_then(|member| member.report_back_to_session_id.clone())
             .is_none();
+        // Total live members in this swarm. Used for the breadth-side runaway cap
+        // (`MAX_SWARM_MEMBERS`) so a wide fan-out cannot create unbounded agents.
+        let swarm_size = swarm_id
+            .as_ref()
+            .map(|swarm_id| {
+                members
+                    .values()
+                    .filter(|member| member.swarm_id.as_deref() == Some(swarm_id.as_str()))
+                    .count()
+            })
+            .unwrap_or(0);
         let coordinator_id = if let Some(ref swarm_id) = swarm_id {
             let coordinators = swarm_coordinators.read().await;
             coordinators.get(swarm_id).cloned()
@@ -1137,10 +1146,10 @@ async fn ensure_spawn_coordinator_swarm(
         (
             swarm_id,
             from_name,
-            depth,
             is_root,
             coordinator_id,
             coordinator_is_stale,
+            swarm_size,
         )
     };
 
@@ -1153,14 +1162,16 @@ async fn ensure_spawn_coordinator_swarm(
         return None;
     };
 
-    // Enforce the recursive spawn depth cap. An agent at depth `d` may only spawn
-    // a child (which lands at depth `d + 1`) while `d < MAX_SWARM_SPAWN_DEPTH`.
-    if depth >= super::MAX_SWARM_SPAWN_DEPTH {
+    // Runaway prevention for the task-graph model is a single total-member cap.
+    // There is no depth or per-node breadth limit: the spawn tree may nest and
+    // fan out freely until the swarm reaches `MAX_SWARM_MEMBERS` live members, at
+    // which point further spawns are refused.
+    if swarm_size >= super::MAX_SWARM_MEMBERS {
         let _ = client_event_tx.send(ServerEvent::Error {
             id,
             message: format!(
-                "Swarm spawn depth limit reached (max {}). This agent is at depth {depth}; it cannot spawn further nested agents. Ask a higher-level agent to take on additional parallel work, or have an existing agent finish before nesting deeper.",
-                super::MAX_SWARM_SPAWN_DEPTH
+                "Swarm member limit reached (max {}). This swarm already has {swarm_size} agents; it cannot spawn more. Let existing agents finish and free up capacity, or narrow the task decomposition before spawning further.",
+                super::MAX_SWARM_MEMBERS
             ),
             retry_after_secs: None,
         });
