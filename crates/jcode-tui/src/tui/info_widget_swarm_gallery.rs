@@ -8,7 +8,9 @@
 //! [`GalleryMember`] (label + body lines).
 
 use crate::protocol::SwarmMemberStatus;
-use jcode_tui_render::swarm_gallery::{GalleryMember, humanize_age, render_gallery};
+use jcode_tui_render::swarm_gallery::{
+    GalleryMember, humanize_age, render_gallery, render_swarm_panel,
+};
 use ratatui::prelude::*;
 
 fn member_label(member: &SwarmMemberStatus) -> String {
@@ -64,6 +66,47 @@ pub(crate) fn render_swarm_gallery_lines(
         return Vec::new();
     }
     render_gallery(&members_to_gallery(members), width, max_height)
+}
+
+/// Render the list+detail swarm panel: a compact list of managed agents plus a
+/// detail viewport for the `selected` one. `focused` adds an interaction hint.
+pub(crate) fn render_swarm_panel_lines(
+    members: &[SwarmMemberStatus],
+    selected: usize,
+    focused: bool,
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() {
+        return Vec::new();
+    }
+    render_swarm_panel(
+        &members_to_gallery(members),
+        selected,
+        focused,
+        width,
+        max_height,
+    )
+}
+
+/// Session ids of `members` in the same order the panel/gallery displays them
+/// (coordinator first, then worktree manager, then by session id). Lets the TUI
+/// map a selected panel index back to a concrete session for pop-out.
+pub(crate) fn members_display_order(members: &[SwarmMemberStatus]) -> Vec<String> {
+    fn role_rank(role: Option<&str>) -> u8 {
+        match role {
+            Some("coordinator") => 0,
+            Some("worktree_manager") => 1,
+            _ => 2,
+        }
+    }
+    let mut idx: Vec<&SwarmMemberStatus> = members.iter().collect();
+    idx.sort_by(|a, b| {
+        role_rank(a.role.as_deref())
+            .cmp(&role_rank(b.role.as_deref()))
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    idx.into_iter().map(|m| m.session_id.clone()).collect()
 }
 
 #[cfg(test)]

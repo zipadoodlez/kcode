@@ -359,6 +359,14 @@ pub trait TuiState {
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         Vec::new()
     }
+    /// Selected agent index in the inline swarm panel (display order).
+    fn swarm_panel_selected(&self) -> usize {
+        0
+    }
+    /// Whether the inline swarm panel currently has keyboard focus.
+    fn swarm_panel_focused(&self) -> bool {
+        false
+    }
 
     // ---- Workspace ----
     /// Whether workspace mode is enabled for this client.

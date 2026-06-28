@@ -341,6 +341,7 @@ pub struct ToggleKeys {
     pub typing_scroll_lock: ToggleBinding,
     pub diff_mode_cycle: ToggleBinding,
     pub info_widget: ToggleBinding,
+    pub swarm_panel_focus: ToggleBinding,
 }
 
 pub fn load_toggle_keys() -> ToggleKeys {
@@ -352,6 +353,7 @@ pub fn load_toggle_keys() -> ToggleKeys {
         typing_scroll_lock: ToggleBinding::load(&cfg.keybindings.typing_scroll_lock_toggle, 's'),
         diff_mode_cycle: ToggleBinding::load(&cfg.keybindings.diff_mode_cycle, 'g'),
         info_widget: ToggleBinding::load(&cfg.keybindings.info_widget_toggle, 'i'),
+        swarm_panel_focus: ToggleBinding::load(&cfg.keybindings.swarm_panel_focus, 'w'),
     }
 }
 

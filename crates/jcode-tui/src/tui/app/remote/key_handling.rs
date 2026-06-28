@@ -346,6 +346,24 @@ async fn handle_remote_key_internal(
         app.toggle_side_panel();
         return Ok(());
     }
+
+    // Inline swarm panel: Alt+W focuses/unfocuses the managed-agents panel.
+    // While focused, j/k navigate, o pops out the selected agent, esc exits.
+    if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
+        let focused = app.toggle_swarm_panel_focus();
+        app.set_status_notice(if focused {
+            "Swarm panel: focused (j/k select, o pop out, esc)"
+        } else {
+            "Swarm panel: unfocused"
+        });
+        return Ok(());
+    }
+    {
+        use crate::tui::TuiState as _;
+        if app.swarm_panel_focused() && app.handle_swarm_panel_key(code, modifiers) {
+            return Ok(());
+        }
+    }
     let macos_option_shortcut =
         crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
     if app.toggle_keys.diagram_pane.matches(code, modifiers) {

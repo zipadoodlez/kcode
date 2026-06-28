@@ -321,6 +321,25 @@ fn truncate_w(s: &str, max_width: usize) -> String {
     out
 }
 
+/// Render a single tile filling exactly `width` x `height` (including borders).
+/// Used by the list+detail swarm panel to draw the focused agent's viewport.
+/// Returns an empty vec when the area is too small to draw a bordered box.
+pub fn render_single_tile(tile: &SwarmTile, width: usize, height: usize) -> Vec<Line<'static>> {
+    if width < 4 || height < 3 {
+        return Vec::new();
+    }
+    let inner_w = width - 2;
+    let inner_h = height - 2;
+    let mut lines = render_cell(tile, inner_w, inner_h);
+    // render_cell already yields `height` lines, but pad/truncate defensively so
+    // callers can rely on the exact height.
+    while lines.len() < height {
+        lines.push(Line::from(Span::raw(" ".repeat(width))));
+    }
+    lines.truncate(height);
+    lines
+}
+
 /// Render the swarm gallery. Returns lines ready to draw, fitting within
 /// `total_width` columns and roughly `cfg.max_height` rows (plus header).
 pub fn render_swarm_gallery(

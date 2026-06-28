@@ -1,4 +1,5 @@
 use super::*;
+use crate::tui::TuiState as _;
 use std::cell::RefCell;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -1501,6 +1502,19 @@ impl crate::tui::TuiState for App {
         }
     }
 
+    fn swarm_panel_selected(&self) -> usize {
+        let count = self.inline_swarm_members().len();
+        if count == 0 {
+            0
+        } else {
+            self.swarm_panel_selected.min(count - 1)
+        }
+    }
+
+    fn swarm_panel_focused(&self) -> bool {
+        self.swarm_panel_focused
+    }
+
     fn diagram_focus(&self) -> bool {
         self.diagram_focus
     }
@@ -1719,6 +1733,117 @@ impl crate::tui::TuiState for App {
             is_cold: remaining == 0,
             cached_tokens: self.last_turn_input_tokens,
         })
+    }
+}
+
+impl App {
+    /// Toggle keyboard focus on the inline swarm panel. Returns the new state.
+    /// Focus is only meaningful while the panel is actually visible.
+    pub(crate) fn toggle_swarm_panel_focus(&mut self) -> bool {
+        if !self.inline_swarm_gallery_active() {
+            self.swarm_panel_focused = false;
+            return false;
+        }
+        self.swarm_panel_focused = !self.swarm_panel_focused;
+        if self.swarm_panel_focused {
+            // Clamp selection on entry.
+            let count = self.inline_swarm_members().len();
+            if count > 0 {
+                self.swarm_panel_selected = self.swarm_panel_selected.min(count - 1);
+            }
+        }
+        self.swarm_panel_focused
+    }
+
+    pub(crate) fn set_swarm_panel_focus(&mut self, focused: bool) {
+        self.swarm_panel_focused = focused && self.inline_swarm_gallery_active();
+    }
+
+    /// Move the swarm panel selection by `delta` (e.g. +1 for next, -1 for
+    /// previous), saturating at the ends.
+    pub(crate) fn move_swarm_panel_selection(&mut self, delta: isize) {
+        let count = self.inline_swarm_members().len();
+        if count == 0 {
+            return;
+        }
+        let cur = self.swarm_panel_selected.min(count - 1) as isize;
+        let next = (cur + delta).clamp(0, count as isize - 1);
+        self.swarm_panel_selected = next as usize;
+    }
+
+    /// Handle a key while the swarm panel is focused. Returns true if the key was
+    /// consumed.
+    pub(crate) fn handle_swarm_panel_key(
+        &mut self,
+        code: crossterm::event::KeyCode,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> bool {
+        use crossterm::event::KeyCode;
+        if !self.swarm_panel_focused || !self.inline_swarm_gallery_active() {
+            return false;
+        }
+        if modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+            return false;
+        }
+        match code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.move_swarm_panel_selection(1);
+                true
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.move_swarm_panel_selection(-1);
+                true
+            }
+            KeyCode::Char('g') | KeyCode::Home => {
+                self.swarm_panel_selected = 0;
+                true
+            }
+            KeyCode::Char('G') | KeyCode::End => {
+                let count = self.inline_swarm_members().len();
+                self.swarm_panel_selected = count.saturating_sub(1);
+                true
+            }
+            KeyCode::Char('o') | KeyCode::Enter => {
+                self.pop_out_selected_swarm_agent();
+                true
+            }
+            KeyCode::Esc => {
+                self.swarm_panel_focused = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Open the currently selected swarm agent's session in a new terminal
+    /// window (pop-out), reusing the resume-in-new-terminal launcher.
+    pub(crate) fn pop_out_selected_swarm_agent(&mut self) {
+        let members = self.inline_swarm_members();
+        if members.is_empty() {
+            self.set_status_notice("No swarm agents to open");
+            return;
+        }
+        let order = crate::tui::info_widget::swarm_gallery::members_display_order(&members);
+        let idx = self.swarm_panel_selected.min(order.len().saturating_sub(1));
+        let Some(session_id) = order.get(idx).cloned() else {
+            self.set_status_notice("No swarm agent selected");
+            return;
+        };
+        let label = members
+            .iter()
+            .find(|m| m.session_id == session_id)
+            .and_then(|m| m.friendly_name.clone())
+            .unwrap_or_else(|| session_id.chars().take(8).collect());
+
+        let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("jcode"));
+        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        match jcode_app_core::session_launch::spawn_resume_in_new_terminal(&exe, &session_id, &cwd) {
+            Ok(true) => self.set_status_notice(format!("Opened {label} in a new window")),
+            Ok(false) => self.set_status_notice(format!(
+                "Could not open a terminal for {label} (no emulator found)"
+            )),
+            Err(e) => self.set_status_notice(format!("Failed to open {label}: {e}")),
+        }
     }
 }
 

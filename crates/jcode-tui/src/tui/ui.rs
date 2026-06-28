@@ -2528,8 +2528,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             .unwrap_or(40);
         let budget = ((chat_area.height as usize * max_pct) / 100).clamp(0, 18);
         if budget >= 5 && chat_area.width >= 24 {
-            super::info_widget::swarm_gallery::render_swarm_gallery_lines(
+            super::info_widget::swarm_gallery::render_swarm_panel_lines(
                 &members,
+                app.swarm_panel_selected(),
+                app.swarm_panel_focused(),
                 chat_area.width as usize,
                 budget,
             )

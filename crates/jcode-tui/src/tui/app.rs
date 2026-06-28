@@ -1054,6 +1054,10 @@ pub struct App {
     // Debug-only: force the inline swarm gallery active (bypasses spawn-mode
     // and members-present gating) so visual tests can drive it deterministically.
     debug_force_inline_gallery: bool,
+    // Currently selected agent index in the inline swarm panel (display order).
+    swarm_panel_selected: usize,
+    // Whether the inline swarm panel has keyboard focus (navigable list + detail).
+    swarm_panel_focused: bool,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)

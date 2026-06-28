@@ -1598,6 +1598,24 @@ pub(super) fn handle_pre_control_shortcuts(
         app.handle_dictation_trigger();
         return true;
     }
+
+    // Inline swarm panel: Alt+W focuses/unfocuses the managed-agents panel.
+    // While focused, j/k navigate, o pops out the selected agent, esc exits.
+    if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
+        let focused = app.toggle_swarm_panel_focus();
+        app.set_status_notice(if focused {
+            "Swarm panel: focused (j/k select, o pop out, esc)"
+        } else {
+            "Swarm panel: unfocused"
+        });
+        return true;
+    }
+    {
+        use crate::tui::TuiState as _;
+        if app.swarm_panel_focused() && app.handle_swarm_panel_key(code, modifiers) {
+            return true;
+        }
+    }
     if app.new_terminal_key_matches(code, modifiers) {
         app.handle_new_terminal_hotkey();
         return true;
