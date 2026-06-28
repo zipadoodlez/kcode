@@ -2,6 +2,7 @@
 //!
 //! Run with: `cargo run --profile selfdev -p jcode-tui-render --example swarm_gallery_preview`
 
+use jcode_tui_render::swarm_gallery::{GalleryMember, render_swarm_panel};
 use jcode_tui_render::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 use ratatui::prelude::*;
 
@@ -119,5 +120,42 @@ fn main() {
     print_lines(
         "12 agents @ width 120, height 12",
         &render_swarm_gallery(&many, 120, &tight, Some(header)),
+    );
+
+    // ---- New list+detail panel ----
+    let gm = |name: &str, role: Option<&str>, status: &str, body: &[&str]| GalleryMember {
+        label: name.to_string(),
+        status: status.to_string(),
+        role: role.map(str::to_string),
+        body: body.iter().map(|s| s.to_string()).collect(),
+        sort_key: name.to_string(),
+    };
+    let panel_members = vec![
+        gm(
+            "researcher",
+            Some("coordinator"),
+            "thinking",
+            &["Cross-referencing the token refresh path.", "· 2s ago"],
+        ),
+        gm(
+            "implementer",
+            None,
+            "running",
+            &["Running cargo check...", "warning: unused import `Foo`", "· 5s ago"],
+        ),
+        gm("reviewer", None, "done", &["LGTM ✓", "· 1m ago"]),
+        gm("doc-writer", None, "blocked", &["waiting on reviewer", "· 12s ago"]),
+    ];
+    print_lines(
+        "PANEL: 4 agents, selected #1 (implementer), focused @ width 70 h 14",
+        &render_swarm_panel(&panel_members, 1, true, 70, 14),
+    );
+    print_lines(
+        "PANEL: 4 agents, selected #0, unfocused @ width 70 h 14",
+        &render_swarm_panel(&panel_members, 0, false, 70, 14),
+    );
+    print_lines(
+        "PANEL: narrow @ width 44 h 12",
+        &render_swarm_panel(&panel_members, 2, true, 44, 12),
     );
 }
