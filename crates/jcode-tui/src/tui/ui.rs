@@ -2602,12 +2602,13 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let overscroll_height: u16 = if app.chat_overscroll_active() { 1 } else { 0 };
     let fixed_height = 1
         + queued_height
+        + swarm_strip_height
         + notification_height
         + inline_block_height
         + inline_ui_gap_height
         + input_height
         + overscroll_height
-        + donut_height; // status + queued + notification + inline UI + gap + input + overscroll + donut
+        + donut_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut
     let available_height = chat_area.height;
     let overflows = |prepared: &PreparedChatFrame| {
         (prepared.total_wrapped_lines().max(1) as u16) + fixed_height > available_height
