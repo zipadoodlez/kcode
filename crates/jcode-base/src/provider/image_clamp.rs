@@ -20,6 +20,19 @@
 //! request stays within provider per-image limits. The clamp runs at the
 //! `MultiProvider` chokepoint, so every provider benefits and the limits only
 //! ever shrink genuinely oversized images. See issue #381.
+//!
+//! Separately from pixel dimensions, Anthropic also rejects any single image
+//! whose **base64 payload** exceeds 10 MB, regardless of how many images the
+//! request carries:
+//!
+//! ```text
+//! image exceeds 10 MB maximum: 24621232 bytes > 10485760 bytes
+//! ```
+//!
+//! A screenshot can stay well under the pixel cap yet still blow past this byte
+//! cap (e.g. a large, high-detail PNG). When that happens we re-encode the
+//! image as JPEG and progressively downscale it until its base64 payload fits
+//! within budget.
 
 use base64::Engine as _;
 use jcode_message_types::{ContentBlock, Message};
@@ -30,11 +43,18 @@ const MANY_IMAGE_THRESHOLD: usize = 20;
 const MANY_IMAGE_MAX_EDGE: u32 = 2000;
 /// Per-image max edge when a request carries `<= MANY_IMAGE_THRESHOLD` images.
 const FEW_IMAGE_MAX_EDGE: u32 = 8000;
+/// Hard per-image base64 byte cap enforced by Anthropic's Messages API. Any
+/// single image whose base64 string is larger than this is rejected outright.
+const IMAGE_BASE64_BYTE_LIMIT: usize = 10 * 1024 * 1024;
+/// Target base64 size we re-encode oversized images down to. Kept a little
+/// under the hard limit so we always land safely inside the cap.
+const IMAGE_BASE64_BYTE_TARGET: usize = 9 * 1024 * 1024;
 
 /// Inspect `messages` and, if any `ContentBlock::Image` exceeds the per-image
-/// edge limit implied by the total image count, return a clamped clone of the
-/// messages. Returns `None` when no downscaling is required so the common path
-/// avoids cloning the (potentially large) message vector.
+/// edge limit implied by the total image count, or the per-image base64 byte
+/// cap, return a clamped clone of the messages. Returns `None` when no
+/// downscaling is required so the common path avoids cloning the (potentially
+/// large) message vector.
 pub(crate) fn clamp_outbound_images(messages: &[Message]) -> Option<Vec<Message>> {
     let image_count = messages
         .iter()
@@ -51,8 +71,9 @@ pub(crate) fn clamp_outbound_images(messages: &[Message]) -> Option<Vec<Message>
         FEW_IMAGE_MAX_EDGE
     };
 
-    // Cheap pre-scan using header-only dimension probing: only do the expensive
-    // decode/clone when at least one image actually exceeds the limit.
+    // Cheap pre-scan: the base64 byte check is just a string length, and the
+    // dimension probe is header-only. Only do the expensive decode/clone when at
+    // least one image actually exceeds a limit.
     let needs_clamp = messages
         .iter()
         .flat_map(|m| m.content.iter())
@@ -60,7 +81,7 @@ pub(crate) fn clamp_outbound_images(messages: &[Message]) -> Option<Vec<Message>
             ContentBlock::Image { data, .. } => Some(data),
             _ => None,
         })
-        .any(|data| image_exceeds_edge(data, max_edge));
+        .any(|data| data.len() > IMAGE_BASE64_BYTE_LIMIT || image_exceeds_edge(data, max_edge));
     if !needs_clamp {
         return None;
     }
@@ -70,9 +91,8 @@ pub(crate) fn clamp_outbound_images(messages: &[Message]) -> Option<Vec<Message>
     for message in &mut clamped {
         for block in &mut message.content {
             if let ContentBlock::Image { media_type, data } = block
-                && let Some(resized) = downscale_image(media_type, data, max_edge)
+                && clamp_image_block(media_type, data, max_edge)
             {
-                *data = resized;
                 changed = true;
             }
         }
@@ -96,21 +116,66 @@ fn image_exceeds_edge(data_b64: &str, max_edge: u32) -> bool {
     }
 }
 
-/// Decode, downscale, and re-encode an image so its larger edge is `<= max_edge`.
-/// Returns the new base64 payload, or `None` when no change is needed or the
-/// image cannot be processed (in which case the original is left untouched).
-fn downscale_image(media_type: &str, data_b64: &str, max_edge: u32) -> Option<String> {
-    let bytes = decode_b64(data_b64)?;
-
-    let img = image::load_from_memory(&bytes).ok()?;
-    let (w, h) = (img.width(), img.height());
-    if w <= max_edge && h <= max_edge {
-        return None;
+/// Clamp a single image block in place so it satisfies both the per-image edge
+/// limit and the per-image base64 byte cap. Updates `media_type`/`data` and
+/// returns `true` only when the image was actually rewritten; returns `false`
+/// (leaving the block untouched) when no change is needed or the image cannot be
+/// processed.
+fn clamp_image_block(media_type: &mut String, data: &mut String, max_edge: u32) -> bool {
+    let probe_exceeds_edge = image_exceeds_edge(data, max_edge);
+    let exceeds_bytes = data.len() > IMAGE_BASE64_BYTE_LIMIT;
+    if !probe_exceeds_edge && !exceeds_bytes {
+        return false;
     }
 
-    // `resize` preserves aspect ratio, fitting within the bounding box.
-    let resized = img.resize(max_edge, max_edge, image::imageops::FilterType::Lanczos3);
+    let Some(bytes) = decode_b64(data) else {
+        return false;
+    };
+    let Ok(img) = image::load_from_memory(&bytes) else {
+        return false;
+    };
 
+    let (w, h) = (img.width(), img.height());
+    let exceeds_edge = w > max_edge || h > max_edge;
+    // The header probe is conservative (it reports unknown formats as "too
+    // large"); bail out cheaply once we know the real dimensions are fine and
+    // the byte budget is satisfied.
+    if !exceeds_edge && !exceeds_bytes {
+        return false;
+    }
+
+    // Stage 1: clamp pixel dimensions. `resize` preserves aspect ratio.
+    let img = if exceeds_edge {
+        img.resize(max_edge, max_edge, image::imageops::FilterType::Lanczos3)
+    } else {
+        img
+    };
+
+    // Stage 2: enforce the byte budget. When the payload is too large we
+    // re-encode as JPEG (far smaller than PNG for screenshots/photos) and
+    // progressively downscale until it fits.
+    if exceeds_bytes {
+        if let Some(encoded) = encode_within_byte_budget(&img, IMAGE_BASE64_BYTE_TARGET) {
+            *media_type = "image/jpeg".to_string();
+            *data = encoded;
+            return true;
+        }
+        return false;
+    }
+
+    // Edge-only clamp: re-encode in the original format at the reduced size.
+    match encode_same_format(media_type, &img) {
+        Some(encoded) => {
+            *data = encoded;
+            true
+        }
+        None => false,
+    }
+}
+
+/// Re-encode `img` in the format implied by `media_type` (JPEG for
+/// jpeg/jpg, PNG otherwise) and return the base64 payload.
+fn encode_same_format(media_type: &str, img: &image::DynamicImage) -> Option<String> {
     let format = if media_type.eq_ignore_ascii_case("image/jpeg")
         || media_type.eq_ignore_ascii_case("image/jpg")
     {
@@ -120,8 +185,59 @@ fn downscale_image(media_type: &str, data_b64: &str, max_edge: u32) -> Option<St
     };
 
     let mut out = std::io::Cursor::new(Vec::new());
-    resized.write_to(&mut out, format).ok()?;
+    if format == image::ImageFormat::Jpeg {
+        // JPEG cannot encode an alpha channel; flatten to RGB first.
+        image::DynamicImage::ImageRgb8(img.to_rgb8())
+            .write_to(&mut out, format)
+            .ok()?;
+    } else {
+        img.write_to(&mut out, format).ok()?;
+    }
     Some(base64::engine::general_purpose::STANDARD.encode(out.into_inner()))
+}
+
+/// Encode `img` as JPEG, shrinking it until the resulting base64 payload is
+/// `<= target_b64_bytes`. Returns `None` if it cannot be brought under budget.
+fn encode_within_byte_budget(img: &image::DynamicImage, target_b64_bytes: usize) -> Option<String> {
+    let mut current = img.clone();
+    for _ in 0..10 {
+        let raw = encode_jpeg(&current)?;
+        if base64_len(raw.len()) <= target_b64_bytes {
+            return Some(base64::engine::general_purpose::STANDARD.encode(raw));
+        }
+
+        // base64 length tracks encoded bytes, which scale roughly with pixel
+        // area, so shrink each edge by ~sqrt(target / current). Clamp the ratio
+        // so we always make progress without overshooting to a 1px thumbnail.
+        let ratio = (target_b64_bytes as f64 / base64_len(raw.len()) as f64)
+            .sqrt()
+            .clamp(0.1, 0.9);
+        let nw = ((current.width() as f64 * ratio).round() as u32).max(1);
+        let nh = ((current.height() as f64 * ratio).round() as u32).max(1);
+        if nw == current.width() && nh == current.height() {
+            break;
+        }
+        current = current.resize(nw, nh, image::imageops::FilterType::Triangle);
+    }
+
+    // Final check at the smallest size reached.
+    let raw = encode_jpeg(&current)?;
+    (base64_len(raw.len()) <= target_b64_bytes)
+        .then(|| base64::engine::general_purpose::STANDARD.encode(raw))
+}
+
+/// Encode an image as JPEG bytes (flattening any alpha channel to RGB).
+fn encode_jpeg(img: &image::DynamicImage) -> Option<Vec<u8>> {
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(img.to_rgb8())
+        .write_to(&mut out, image::ImageFormat::Jpeg)
+        .ok()?;
+    Some(out.into_inner())
+}
+
+/// Length of the standard base64 encoding (with padding) of `n` raw bytes.
+fn base64_len(n: usize) -> usize {
+    n.div_ceil(3) * 4
 }
 
 fn decode_b64(data_b64: &str) -> Option<Vec<u8>> {
@@ -181,6 +297,27 @@ mod tests {
 
     fn encode_png(w: u32, h: u32) -> String {
         let img = RgbImage::from_pixel(w, h, image::Rgb([10, 20, 30]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut out, ImageFormat::Png)
+            .unwrap();
+        base64::engine::general_purpose::STANDARD.encode(out.into_inner())
+    }
+
+    /// Encode a high-entropy (noise) PNG so the payload barely compresses and
+    /// reliably exceeds the per-image base64 byte cap. Solid-color PNGs compress
+    /// to a few KB and cannot exercise the byte path.
+    fn encode_noise_png(w: u32, h: u32) -> String {
+        let mut img = RgbImage::new(w, h);
+        // Simple deterministic LCG so the test is reproducible.
+        let mut state: u32 = 0x1234_5678;
+        for pixel in img.pixels_mut() {
+            let mut next = || {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (state >> 24) as u8
+            };
+            *pixel = image::Rgb([next(), next(), next()]);
+        }
         let mut out = std::io::Cursor::new(Vec::new());
         image::DynamicImage::ImageRgb8(img)
             .write_to(&mut out, ImageFormat::Png)
@@ -254,6 +391,37 @@ mod tests {
             assert_eq!(w, 8000);
             // 9000x3000 -> 8000 wide, height rounds to nearest.
             assert!((2666..=2667).contains(&h), "unexpected height {h}");
+        }
+    }
+
+    #[test]
+    fn oversized_base64_image_is_reencoded_under_byte_cap() {
+        // A 2000x2000 noise PNG stays well within the per-image *pixel* caps
+        // but its base64 payload blows past the 10 MB per-image byte cap.
+        let data = encode_noise_png(2000, 2000);
+        assert!(
+            data.len() > IMAGE_BASE64_BYTE_LIMIT,
+            "test image base64 ({} bytes) should exceed the byte cap",
+            data.len()
+        );
+
+        let messages = vec![image_message(data)];
+        let clamped =
+            clamp_outbound_images(&messages).expect("oversized base64 image should be clamped");
+        match &clamped[0].content[0] {
+            ContentBlock::Image { media_type, data } => {
+                assert!(
+                    data.len() <= IMAGE_BASE64_BYTE_LIMIT,
+                    "clamped image base64 ({} bytes) must fit within the byte cap",
+                    data.len()
+                );
+                // Re-encoded as JPEG to hit the smaller payload.
+                assert_eq!(media_type, "image/jpeg");
+                // Still decodable and within pixel limits.
+                let (w, h) = dims(data);
+                assert!(w <= 2000 && h <= 2000, "unexpected dims {w}x{h}");
+            }
+            other => panic!("expected image block, got {other:?}"),
         }
     }
 }
