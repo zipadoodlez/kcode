@@ -221,8 +221,8 @@ fn test_subscription_model_guard_allows_only_curated_models_when_enabled() {
     crate::subscription_catalog::clear_runtime_env();
     crate::subscription_catalog::apply_runtime_env();
 
-    assert!(ensure_model_allowed_for_subscription("moonshotai/kimi-k2.5").is_ok());
-    assert!(ensure_model_allowed_for_subscription("kimi/k2.5").is_ok());
+    assert!(ensure_model_allowed_for_subscription("claude-opus-4-8").is_ok());
+    assert!(ensure_model_allowed_for_subscription("opus 4.8").is_ok());
     assert!(ensure_model_allowed_for_subscription("gpt-5.4").is_err());
 
     crate::subscription_catalog::clear_runtime_env();
@@ -236,16 +236,13 @@ fn test_filtered_display_models_respects_curated_subscription_catalog() {
 
     let filtered = filtered_display_models(vec![
         "gpt-5.4".to_string(),
-        "moonshotai/kimi-k2.5".to_string(),
-        "openrouter/healer-alpha".to_string(),
+        "claude-opus-4-8".to_string(),
+        "gpt-5.5".to_string(),
     ]);
 
     assert_eq!(
         filtered,
-        vec![
-            "moonshotai/kimi-k2.5".to_string(),
-            "openrouter/healer-alpha".to_string()
-        ]
+        vec!["claude-opus-4-8".to_string(), "gpt-5.5".to_string()]
     );
 
     crate::subscription_catalog::clear_runtime_env();
@@ -261,9 +258,9 @@ fn test_subscription_filters_do_not_activate_from_saved_credentials_alone() {
     assert_eq!(
         filtered_display_models(vec![
             "gpt-5.4".to_string(),
-            "moonshotai/kimi-k2.5".to_string(),
+            "claude-opus-4-8".to_string(),
         ]),
-        vec!["gpt-5.4".to_string(), "moonshotai/kimi-k2.5".to_string()]
+        vec!["gpt-5.4".to_string(), "claude-opus-4-8".to_string()]
     );
 
     crate::env::remove_var(crate::subscription_catalog::JCODE_API_KEY_ENV);
