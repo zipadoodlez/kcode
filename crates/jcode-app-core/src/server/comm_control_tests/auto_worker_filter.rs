@@ -97,3 +97,33 @@ async fn auto_candidate_filter_excludes_foreign_client_attached_session() {
         "foreign client-attached session must be excluded from auto-assign"
     );
 }
+
+// ----- composite-aware turn completion -----
+
+use super::turn_end_should_auto_complete;
+
+#[test]
+fn atomic_turn_auto_completes() {
+    // A plain running/queued atomic node that the worker just ran should be
+    // auto-marked done.
+    assert!(turn_end_should_auto_complete("running", false));
+    assert!(turn_end_should_auto_complete("queued", false));
+}
+
+#[test]
+fn expanded_composite_turn_does_not_auto_complete() {
+    // The worker decomposed the node; it must stay open to synthesize later, even
+    // though its own turn ended. This is the bug that stranded composite subtrees.
+    assert!(!turn_end_should_auto_complete("running", true));
+    assert!(!turn_end_should_auto_complete("queued", true));
+}
+
+#[test]
+fn already_terminal_turn_is_not_reclosed() {
+    // If the worker already completed/failed the node itself, the turn end must
+    // not stomp that status.
+    assert!(!turn_end_should_auto_complete("completed", false));
+    assert!(!turn_end_should_auto_complete("done", false));
+    assert!(!turn_end_should_auto_complete("failed", false));
+    assert!(!turn_end_should_auto_complete("stopped", false));
+}

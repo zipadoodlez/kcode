@@ -68,6 +68,22 @@ fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
     member.is_headless || member.report_back_to_session_id.as_deref() == Some(req_session_id)
 }
 
+/// Decide whether a worker's just-finished turn should auto-mark its assigned
+/// node `done`.
+///
+/// A turn must NOT force-complete a node when the worker decomposed it into a
+/// composite (`expanded`): that node is now a synthesis/join point that has to
+/// wait for its children (and, in deep mode, its critique/verify gate) before it
+/// can close, and it will be re-woken to synthesize. Likewise a node the worker
+/// already drove to a terminal status (e.g. via `complete_node`, or that failed)
+/// must not be reopened/reclosed. Only a plain atomic turn auto-completes.
+fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
+    if expanded {
+        return false;
+    }
+    !jcode_plan::is_completed_status(status) && !matches!(status, "failed" | "stopped" | "crashed")
+}
+
 #[derive(Clone, Debug)]
 struct TaskSnapshot {
     content: String,
@@ -532,16 +548,34 @@ fn spawn_assigned_task_run(
                     if let Some(plan) = plans.get_mut(&swarm_id)
                         && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
                     {
-                        item.status = "done".to_string();
-                        let progress = plan.task_progress.entry(task_id.clone()).or_default();
-                        progress.last_heartbeat_unix_ms = Some(now_ms);
-                        progress.last_checkpoint_unix_ms = Some(now_ms);
-                        progress.checkpoint_summary = Some("task completed".to_string());
-                        progress.completed_at_unix_ms = Some(now_ms);
-                        progress.stale_since_unix_ms = None;
-                        progress.checkpoint_count =
-                            Some(progress.checkpoint_count.unwrap_or(0) + 1);
-                        plan.version += 1;
+                        // A worker turn ends in one of three ways for its node:
+                        //  1. it decomposed the node via `expand_node` -> the node is
+                        //     now a composite synthesis/join point that must stay
+                        //     in-progress until its children (and deep-mode gate)
+                        //     finish; it is re-woken later to synthesize.
+                        //  2. it already finished the node via `complete_node` -> the
+                        //     node is terminal and owned by no one.
+                        //  3. it just ran (atomic) -> fall through and mark it done.
+                        // Only case 3 should auto-complete here. Blindly forcing
+                        // `done` would close a composite before its children run and
+                        // strand the whole subtree.
+                        let expanded = plan
+                            .node_meta
+                            .get(&task_id)
+                            .map(|m| m.expanded && !m.is_gate)
+                            .unwrap_or(false);
+                        if turn_end_should_auto_complete(&item.status, expanded) {
+                            item.status = "done".to_string();
+                            let progress = plan.task_progress.entry(task_id.clone()).or_default();
+                            progress.last_heartbeat_unix_ms = Some(now_ms);
+                            progress.last_checkpoint_unix_ms = Some(now_ms);
+                            progress.checkpoint_summary = Some("task completed".to_string());
+                            progress.completed_at_unix_ms = Some(now_ms);
+                            progress.stale_since_unix_ms = None;
+                            progress.checkpoint_count =
+                                Some(progress.checkpoint_count.unwrap_or(0) + 1);
+                            plan.version += 1;
+                        }
                     }
                 }
                 let swarm_state = SwarmState {
