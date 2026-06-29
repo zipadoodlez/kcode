@@ -271,6 +271,12 @@ async fn run_swarm_plan_to_terminal(
     let mut assignment_count = 0usize;
     let mut loop_count = 0usize;
     let max_loops = 200usize;
+    // Consecutive loops where an active task exists but no drivable worker is
+    // awaitable. This is normally a brief transition (a composite re-waking to
+    // synthesize, or a just-finished task whose member status has not propagated),
+    // so we back off and re-check a few times before declaring a real stall.
+    let mut transient_stall_loops = 0usize;
+    let max_transient_stall_loops = 5usize;
 
     loop {
         loop_count += 1;
@@ -349,9 +355,20 @@ async fn run_swarm_plan_to_terminal(
 
         if await_sessions.is_empty() {
             if active_count > 0 {
+                // An active task exists but nothing drivable is awaitable. This is
+                // usually transient: a composite is re-waking to synthesize, or a
+                // worker just finished and its member status has not propagated yet.
+                // Re-check a few times with a short backoff before giving up, and
+                // bail early if the plan reaches a terminal state in the meantime.
+                transient_stall_loops += 1;
+                if transient_stall_loops <= max_transient_stall_loops {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                }
                 return Err(anyhow::anyhow!(
-                    "run_plan found {} active task(s) but no running swarm members to await; inspect plan_status and member list before retrying",
-                    active_count
+                    "run_plan found {} active task(s) but no running swarm members to await after {} re-checks; inspect plan_status and member list before retrying",
+                    active_count,
+                    max_transient_stall_loops
                 ));
             }
             // Nothing was assigned this loop, nothing is in flight, yet the plan is
@@ -382,6 +399,9 @@ async fn run_swarm_plan_to_terminal(
             ));
         }
         await_swarm_progress(ctx, await_sessions, timeout_minutes).await?;
+        // Real progress (an await completed); clear the transient-stall backoff so
+        // a later genuine stall starts counting fresh.
+        transient_stall_loops = 0;
     }
 }
 
