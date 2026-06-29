@@ -141,15 +141,20 @@ pub fn expand_node(
         staged.push(spec_to_node(spec, Some(node_id.to_string())));
     }
 
-    // The synthesis (parent) must wait for every child.
+    // The synthesis (parent) must wait for every child. In deep mode it must also
+    // wait for the gate. We keep the child edges even in deep mode: the gate
+    // already depends on every child, so "gate done" implies "children done" for
+    // *scheduling*, but the forward-dataflow hydration only reads a node's *direct*
+    // dependencies. Dropping the child edges would mean the map-reduce synthesis
+    // re-wake never receives its children's artifacts (doc section 5).
     let mut synth_deps = child_ids.clone();
 
-    // Deep mode: insert a gate that depends on all children; synthesis then
-    // depends on the gate instead of directly on the children.
+    // Deep mode: insert a gate that depends on all children; the synthesis then
+    // additionally depends on the gate so it cannot close until the gate passes.
     let gate_id = if staged.mode.requires_gates() {
         let parent_kind = staged.get(node_id).map(|n| n.kind).unwrap_or(NodeKind::Explore);
         let gate_kind = parent_kind.gate_kind();
-        let gate_id = format!("{node_id}::gate");
+        let gate_id = unique_gate_id(&staged, node_id);
         let gate = TaskNode {
             id: gate_id.clone(),
             content: gate_content(gate_kind, node_id),
@@ -165,7 +170,7 @@ pub fn expand_node(
             output: None,
         };
         staged.push(gate);
-        synth_deps = vec![gate_id.clone()];
+        synth_deps.push(gate_id.clone());
         Some(gate_id)
     } else {
         None
@@ -343,6 +348,25 @@ pub fn inject_from_gate(
     }
     *graph = staged;
     Ok(new_ids)
+}
+
+/// Derive a gate id for a composite node that does not collide with an existing
+/// node id. The natural choice is `{node}::gate`; if a user happened to seed a
+/// node by that exact id we suffix a counter so the engine never silently creates
+/// a duplicate id (which would corrupt id-based lookups).
+fn unique_gate_id(graph: &TaskGraph, node_id: &str) -> String {
+    let base = format!("{node_id}::gate");
+    if !graph.contains(&base) {
+        return base;
+    }
+    let mut n = 2u32;
+    loop {
+        let candidate = format!("{base}{n}");
+        if !graph.contains(&candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
 }
 
 fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {

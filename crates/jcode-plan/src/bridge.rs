@@ -188,26 +188,8 @@ pub fn upstream_context(plan: &VersionedPlan, task_id: &str) -> Option<String> {
             continue;
         };
 
-        let mut body = String::new();
         let kind = meta.kind.as_deref().unwrap_or("task");
-        body.push_str(&format!("## {dep_id} ({kind})\n"));
-        if !artifact.findings.trim().is_empty() {
-            body.push_str(&artifact.findings);
-            body.push('\n');
-        }
-        if !artifact.evidence.is_empty() {
-            body.push_str(&format!("Evidence: {}\n", artifact.evidence.join("; ")));
-        }
-        if let Some(validation) = &artifact.validation {
-            body.push_str(&format!("Validation: {validation}\n"));
-        }
-        if !artifact.open_questions.is_empty() {
-            body.push_str(&format!(
-                "Open questions: {}\n",
-                artifact.open_questions.join("; ")
-            ));
-        }
-        sections.push(body);
+        sections.push(artifact.render_section(dep_id, kind));
     }
 
     if sections.is_empty() {

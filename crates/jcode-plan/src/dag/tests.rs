@@ -187,12 +187,15 @@ fn deep_expand_inserts_gate_between_children_and_synthesis() {
     gate_deps.sort();
     assert_eq!(gate_deps, vec!["root.1", "root.2"]);
 
-    // composite root now depends on the gate (not directly on children) and is
-    // marked expanded + re-queued.
+    // composite root now depends on the gate AND retains its child edges (so the
+    // synthesis re-wake is hydrated with the children's artifacts) and is marked
+    // expanded + re-queued.
     let root = g.get("root").unwrap();
     assert!(root.expanded);
     assert_eq!(root.status, NodeStatus::Queued);
     assert!(root.depends_on.contains(&gate_id));
+    assert!(root.depends_on.contains(&"root.1".to_string()));
+    assert!(root.depends_on.contains(&"root.2".to_string()));
 
     // root is NOT ready until children + gate complete.
     assert!(ready_nodes(&g).iter().all(|n| n.id != "root"));
@@ -407,4 +410,80 @@ fn simulator_stalls_when_failed_node_blocks_dependents() {
     assert!(report.stalled, "a failed dependency must stall its dependent");
     assert_eq!(report.failed, 1);
     assert!(!g.get("b").unwrap().is_terminal());
+}
+
+// ----- dataflow surfaces every artifact field (the critique gate cheat code) -----
+
+#[test]
+fn assembled_input_surfaces_what_i_did_not_check_for_gate() {
+    // A deep critique gate is told to read each child's `what_i_did_not_check`.
+    // It can only do that if hydration actually forwards that field.
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+
+    dispatch(&mut g, "root.1", "w0");
+    let mut artifact = HandoffArtifact::brief("explored the easy path");
+    artifact.edge_cases_considered = vec!["empty input".into()];
+    artifact.what_i_did_not_check = vec!["the concurrent hotplug path".into()];
+    artifact.confidence = Some("medium".into());
+    complete_node(&mut g, "root.1", "w0", artifact).unwrap();
+
+    let gate_input = assemble_input(&g, &gate_id);
+    assert!(gate_input.contains("the concurrent hotplug path"), "gate must see what_i_did_not_check: {gate_input}");
+    assert!(gate_input.contains("empty input"), "gate must see edge_cases_considered: {gate_input}");
+    assert!(gate_input.contains("medium"), "gate must see confidence: {gate_input}");
+}
+
+#[test]
+fn composite_synthesis_rewake_is_hydrated_with_child_artifacts() {
+    // The map-reduce synthesis re-wake must receive its children's findings, not
+    // just a thin "gate passed" token (doc section 5). The composite retains its
+    // child edges precisely so direct-dependency hydration covers the children.
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+
+    dispatch(&mut g, "root.1", "w0");
+    complete_node(&mut g, "root.1", "w0", sim::deep_artifact("child found the answer in foo.rs")).unwrap();
+    dispatch(&mut g, &gate_id, "w0");
+    complete_node(&mut g, &gate_id, "w0", HandoffArtifact::brief("gate passed")).unwrap();
+
+    // root is now runnable; its assembled synthesis input must include the child.
+    assert!(ready_nodes(&g).iter().any(|n| n.id == "root"));
+    let synth_input = assemble_input(&g, "root");
+    assert!(
+        synth_input.contains("child found the answer in foo.rs"),
+        "synthesis re-wake must be hydrated with child artifacts: {synth_input}"
+    );
+}
+
+// ----- gate id never collides with a user-seeded node id -----
+
+#[test]
+fn expand_gate_id_avoids_collision_with_seeded_node() {
+    // A user seeds a node whose id is exactly the natural gate id. The auto gate
+    // must pick a non-colliding id so id-based lookups are never corrupted.
+    let mut g = dag(
+        Mode::Deep,
+        vec![
+            spec("root", NodeKind::Explore),
+            spec("root::gate", NodeKind::Explore),
+        ],
+    );
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    assert_ne!(gate_id, "root::gate", "gate id must not collide with the seeded node");
+    assert!(g.get(&gate_id).unwrap().is_gate);
+    // The pre-existing user node is still a non-gate node, intact.
+    assert!(!g.get("root::gate").unwrap().is_gate);
+    // No duplicate ids in the graph.
+    let mut ids: Vec<&str> = g.nodes().iter().map(|n| n.id.as_str()).collect();
+    ids.sort_unstable();
+    let count = ids.len();
+    ids.dedup();
+    assert_eq!(ids.len(), count, "graph must not contain duplicate ids");
 }

@@ -131,6 +131,51 @@ impl HandoffArtifact {
             ..Self::default()
         }
     }
+
+    /// Render this artifact as a forward-dataflow section for a downstream worker
+    /// (or a gate). This is the single source of truth for how an artifact is
+    /// surfaced on a dependency edge, so the engine scheduler and the live bridge
+    /// stay in lockstep.
+    ///
+    /// Critically this includes `edge_cases_considered` and `what_i_did_not_check`:
+    /// a critique gate is explicitly instructed to read what each child did *not*
+    /// check, so dropping those fields here would make the gate structurally unable
+    /// to do its job (doc sections 5, 6.3).
+    pub fn render_section(&self, id: &str, kind: &str) -> String {
+        let mut body = format!("## {id} ({kind})\n");
+        if !self.findings.trim().is_empty() {
+            body.push_str(&self.findings);
+            body.push('\n');
+        }
+        if !self.evidence.is_empty() {
+            body.push_str(&format!("Evidence: {}\n", self.evidence.join("; ")));
+        }
+        if !self.edge_cases_considered.is_empty() {
+            body.push_str(&format!(
+                "Edge cases considered: {}\n",
+                self.edge_cases_considered.join("; ")
+            ));
+        }
+        if let Some(validation) = &self.validation {
+            body.push_str(&format!("Validation: {validation}\n"));
+        }
+        if !self.open_questions.is_empty() {
+            body.push_str(&format!(
+                "Open questions: {}\n",
+                self.open_questions.join("; ")
+            ));
+        }
+        if let Some(confidence) = &self.confidence {
+            body.push_str(&format!("Confidence: {confidence}\n"));
+        }
+        if !self.what_i_did_not_check.is_empty() {
+            body.push_str(&format!(
+                "What was not checked: {}\n",
+                self.what_i_did_not_check.join("; ")
+            ));
+        }
+        body
+    }
 }
 
 /// A single task node in the DAG.

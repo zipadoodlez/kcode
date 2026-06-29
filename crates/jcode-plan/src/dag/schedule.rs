@@ -78,26 +78,26 @@ pub fn assemble_input(graph: &TaskGraph, node_id: &str) -> String {
 
     out.push_str("\n\n# Inputs from completed dependencies\n");
     for dep in upstream {
-        out.push_str(&format!("\n## {} ({:?})\n", dep.id, dep.kind));
+        out.push('\n');
         if let Some(artifact) = &dep.output {
-            if !artifact.findings.trim().is_empty() {
-                out.push_str(&artifact.findings);
-                out.push('\n');
-            }
-            if !artifact.evidence.is_empty() {
-                out.push_str("Evidence: ");
-                out.push_str(&artifact.evidence.join("; "));
-                out.push('\n');
-            }
-            if let Some(validation) = &artifact.validation {
-                out.push_str(&format!("Validation: {validation}\n"));
-            }
-            if !artifact.open_questions.is_empty() {
-                out.push_str("Open questions: ");
-                out.push_str(&artifact.open_questions.join("; "));
-                out.push('\n');
-            }
+            out.push_str(&artifact.render_section(&dep.id, kind_label(dep.kind)));
+        } else {
+            out.push_str(&format!("## {} ({})\n", dep.id, kind_label(dep.kind)));
         }
     }
     out
+}
+
+/// Lowercase label for a node kind, matching the bridge's `kind_str` so engine and
+/// live formatting agree.
+fn kind_label(kind: super::NodeKind) -> &'static str {
+    use super::NodeKind::*;
+    match kind {
+        Explore => "explore",
+        Implement => "implement",
+        Verify => "verify",
+        Fix => "fix",
+        Synthesize => "synthesize",
+        Critique => "critique",
+    }
 }
