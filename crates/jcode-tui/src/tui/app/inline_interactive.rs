@@ -1088,6 +1088,12 @@ impl App {
 
             if is_openai_model && is_openai && !available_efforts.is_empty() {
                 for effort in &available_efforts {
+                    // Swarm modes (swarm / swarm-deep) are orchestration rungs on
+                    // the effort ladder, not per-model reasoning variants. They
+                    // must not generate `model (swarm)` picker rows.
+                    if crate::prompt::is_swarm_mode_effort(effort) {
+                        continue;
+                    }
                     let effort_label = match *effort {
                         "xhigh" => "max",
                         "high" => "high",

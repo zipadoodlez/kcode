@@ -43,6 +43,48 @@ pub fn is_deep_swarm_effort(effort: &str) -> bool {
     effort.trim().eq_ignore_ascii_case(SWARM_DEEP_EFFORT)
 }
 
+/// The user-facing "general effort" ladder is one list, but each rung is one of
+/// two internal kinds: a plain reasoning level (mapped straight to the provider
+/// wire effort) or a swarm orchestration mode (which also pins reasoning to the
+/// model's max). [`EffortKind`] is the single classifier all consumers use so the
+/// UI, providers, and scheduler never disagree about what a rung means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortKind {
+    /// A plain reasoning level (none/low/medium/high/xhigh/max).
+    Reasoning,
+    /// Light swarm mode: max reasoning + parallel fan-out.
+    SwarmLight,
+    /// Deep swarm mode: max reasoning + DAG-first task graph.
+    SwarmDeep,
+}
+
+impl EffortKind {
+    /// True when this rung is a swarm orchestration mode rather than a plain
+    /// reasoning level. Such rungs must not be treated as per-model effort
+    /// variants (e.g. they should not generate `model (effort)` picker rows).
+    pub fn is_swarm_mode(self) -> bool {
+        matches!(self, EffortKind::SwarmLight | EffortKind::SwarmDeep)
+    }
+}
+
+/// Classify a general-effort rung string into its [`EffortKind`].
+pub fn classify_effort(effort: &str) -> EffortKind {
+    let trimmed = effort.trim();
+    if trimmed.eq_ignore_ascii_case(SWARM_DEEP_EFFORT) {
+        EffortKind::SwarmDeep
+    } else if trimmed.eq_ignore_ascii_case(SWARM_EFFORT) {
+        EffortKind::SwarmLight
+    } else {
+        EffortKind::Reasoning
+    }
+}
+
+/// True when an effort rung is a swarm orchestration mode (light or deep) rather
+/// than a plain reasoning level. Convenience wrapper over [`classify_effort`].
+pub fn is_swarm_mode_effort(effort: &str) -> bool {
+    classify_effort(effort).is_swarm_mode()
+}
+
 /// Append the appropriate swarm directive to a split prompt's dynamic part when
 /// the active reasoning effort is a swarm sentinel. The deep sentinel injects the
 /// DAG-first task-graph directive; the light sentinel injects the fan-out

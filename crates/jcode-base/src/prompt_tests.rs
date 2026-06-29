@@ -315,3 +315,22 @@ fn swarm_deep_effort_injects_task_graph_directive() {
     assert!(light.dynamic_part.contains("# Swarm Effort"));
     assert!(!light.dynamic_part.contains("# Deep Task Graph"));
 }
+
+#[test]
+fn classify_effort_distinguishes_reasoning_from_swarm_modes() {
+    use crate::prompt::{EffortKind, classify_effort, is_swarm_mode_effort};
+
+    // Plain reasoning levels are not swarm modes.
+    for level in ["none", "low", "medium", "high", "xhigh", "max"] {
+        assert_eq!(classify_effort(level), EffortKind::Reasoning, "{level}");
+        assert!(!is_swarm_mode_effort(level), "{level}");
+    }
+
+    assert_eq!(classify_effort("swarm"), EffortKind::SwarmLight);
+    assert_eq!(classify_effort("swarm-deep"), EffortKind::SwarmDeep);
+    assert!(is_swarm_mode_effort("swarm"));
+    assert!(is_swarm_mode_effort("  Swarm-Deep "));
+    assert!(EffortKind::SwarmLight.is_swarm_mode());
+    assert!(EffortKind::SwarmDeep.is_swarm_mode());
+    assert!(!EffortKind::Reasoning.is_swarm_mode());
+}
