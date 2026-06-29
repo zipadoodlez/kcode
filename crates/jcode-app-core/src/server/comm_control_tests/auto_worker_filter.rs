@@ -127,3 +127,23 @@ fn already_terminal_turn_is_not_reclosed() {
     assert!(!turn_end_should_auto_complete("failed", false));
     assert!(!turn_end_should_auto_complete("stopped", false));
 }
+
+// ----- composite synthesis assignment content -----
+
+use super::composite_synthesis_content;
+
+#[test]
+fn composite_synthesis_content_injects_complete_node_instruction() {
+    let out = composite_synthesis_content("root", "explore the thing", true);
+    assert!(out.contains("Synthesis turn for composite node 'root'"));
+    assert!(out.contains("complete_node"));
+    assert!(out.contains("Do NOT"));
+    // The original brief is preserved for context.
+    assert!(out.contains("explore the thing"));
+}
+
+#[test]
+fn non_composite_content_is_verbatim() {
+    let out = composite_synthesis_content("leaf", "just do this", false);
+    assert_eq!(out, "just do this");
+}

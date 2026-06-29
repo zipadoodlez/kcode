@@ -84,6 +84,30 @@ fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
     !jcode_plan::is_completed_status(status) && !matches!(status, "failed" | "stopped" | "crashed")
 }
 
+/// Assignment content for a (re-)dispatched node.
+///
+/// For a re-woken composite (`is_composite_synthesis`), the node's original
+/// content is the now-stale decomposition brief, so replace it with an explicit
+/// synthesis instruction that tells the planner to integrate its children and
+/// finish with `complete_node`. Otherwise the original content is used verbatim.
+fn composite_synthesis_content(
+    item_id: &str,
+    raw_content: &str,
+    is_composite_synthesis: bool,
+) -> String {
+    if is_composite_synthesis {
+        format!(
+            "Synthesis turn for composite node '{item_id}'. Its children (and the deep-mode \
+             critique/verify gate) are complete; their outputs are provided below. Read them, \
+             write one synthesized result, and finish by calling `swarm complete_node` with \
+             node_id=\"{item_id}\" and an artifact summarizing the integrated findings. Do NOT \
+             call expand_node again. Original brief: {raw_content}"
+        )
+    } else {
+        raw_content.to_string()
+    }
+}
+
 #[derive(Clone, Debug)]
 struct TaskSnapshot {
     content: String,
@@ -1061,7 +1085,20 @@ pub(super) async fn handle_comm_assign_task(
             let raw_content = found.as_ref().map(|item| item.content.clone()).unwrap();
             // Drop the mutable borrow held by `found` before the immutable read.
             let _ = found;
-            let content = jcode_plan::bridge::hydrate_assignment(plan, &item_id, &raw_content);
+            // A re-woken composite is the synthesis/join step: its original content
+            // was the (now-stale) decomposition brief, so replace it with an explicit
+            // synthesis instruction. Without this the planner replays the old "expand
+            // me" prompt and reports instead of calling `complete_node`, leaving the
+            // composite `running_stale` forever.
+            let is_composite_synthesis = plan
+                .node_meta
+                .get(&item_id)
+                .map(|meta| meta.expanded && !meta.is_gate)
+                .unwrap_or(false);
+            let effective_content =
+                composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
+            let content =
+                jcode_plan::bridge::hydrate_assignment(plan, &item_id, &effective_content);
 
             let item = plan
                 .items
