@@ -130,18 +130,38 @@ fn coordination_in_flight_count(
             .iter()
             .filter(|member| member.session_id != current_session_id)
             .filter(|member| swarm_member_is_in_flight(member))
+            .filter(|member| swarm_member_is_drivable_worker(member, current_session_id))
             .count(),
     )
 }
 
+/// Sessions `run_plan` should await as genuinely in-flight on *this* plan.
+///
+/// A member counts only when it is both in-flight (`queued`/`running`) **and** a
+/// drivable worker for this run: headless, or owned by the coordinator
+/// (`report_back_to_session_id == coordinator`). This deliberately excludes
+/// independent, client-attached human sessions that merely share the swarm and
+/// happen to sit in a `queued` status. Awaiting those would hang `run_plan`
+/// forever even though every plan task is already terminal (they are never auto
+/// driven), which is exactly the stall this scoping prevents.
 async fn fetch_in_flight_swarm_sessions(session_id: &str) -> Result<Vec<String>> {
     let members = fetch_swarm_members(session_id).await?;
     Ok(members
         .into_iter()
         .filter(|member| member.session_id != session_id)
         .filter(swarm_member_is_in_flight)
+        .filter(|member| swarm_member_is_drivable_worker(member, session_id))
         .map(|member| member.session_id)
         .collect())
+}
+
+/// Whether `member` is a worker `run_plan` can rely on to autonomously execute an
+/// assignment (and therefore one it is safe to await): a spawned headless worker,
+/// or one owned by the coordinator that issued the run. Foreign client-attached
+/// sessions are not drivable and must not gate `run_plan` completion.
+fn swarm_member_is_drivable_worker(member: &AgentInfo, coordinator_session_id: &str) -> bool {
+    member.is_headless.unwrap_or(false)
+        || member.report_back_to_session_id.as_deref() == Some(coordinator_session_id)
 }
 
 async fn cleanup_swarm_workers(ctx: &ToolContext, params: &CommunicateInput) -> Result<String> {
