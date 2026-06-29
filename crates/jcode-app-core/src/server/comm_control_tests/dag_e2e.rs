@@ -593,3 +593,120 @@ async fn e2e_seed_does_not_displace_live_coordinator() {
     );
 }
 
+/// Regression for the deep-swarm drive gap: a deep-mode plan participant that is
+/// **not** the swarm coordinator must still be able to dispatch the graph it owns.
+/// Before this, `assign_task` was hard-gated to the coordinator, so a deep agent
+/// joining a shared swarm (where another session already coordinates) could seed a
+/// graph but never spawn/assign any of it, and nothing ran.
+#[tokio::test]
+async fn e2e_deep_participant_can_assign_without_being_coordinator() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture().await;
+    // `coord` is the swarm coordinator; `worker` is a plain agent. Seed a deep
+    // graph *as the worker* and register it as a participant, mirroring a deep
+    // agent that joined a swarm someone else coordinates.
+    fx.seed("deep", vec![node_spec("explore", "explore", &[])])
+        .await;
+    {
+        let mut plans = fx.swarm_plans.write().await;
+        let plan = plans.get_mut(&fx.swarm_id).unwrap();
+        plan.participants.insert(fx.worker.clone());
+    }
+
+    // The worker (a non-coordinator deep participant) assigns the ready node to a
+    // distinct swarm member (`coord` here stands in for any other worker).
+    handle_comm_assign_task(
+        2,
+        fx.worker.clone(),
+        Some(fx.coord.clone()),
+        Some("explore".to_string()),
+        None,
+        &fx.client_tx,
+        &fx.sessions,
+        &fx.soft_interrupt_queues,
+        &fx.client_connections,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+        &fx.mutation_runtime,
+    )
+    .await;
+
+    let plans = fx.swarm_plans.read().await;
+    let explore = plans[&fx.swarm_id]
+        .items
+        .iter()
+        .find(|i| i.id == "explore")
+        .unwrap();
+    assert_eq!(
+        explore.assigned_to.as_deref(),
+        Some(fx.coord.as_str()),
+        "a deep-mode plan participant should be able to assign even without the coordinator slot"
+    );
+}
+
+/// The deep-participant escape hatch is mode-scoped: in **light** mode the
+/// single-coordinator rule still holds, so a non-coordinator participant is
+/// rejected and the task stays unassigned.
+#[tokio::test]
+async fn e2e_light_non_coordinator_participant_cannot_assign() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture().await;
+    fx.seed("light", vec![node_spec("task", "implement", &[])])
+        .await;
+    {
+        let mut plans = fx.swarm_plans.write().await;
+        let plan = plans.get_mut(&fx.swarm_id).unwrap();
+        plan.participants.insert(fx.worker.clone());
+    }
+
+    handle_comm_assign_task(
+        2,
+        fx.worker.clone(),
+        Some(fx.coord.clone()),
+        Some("task".to_string()),
+        None,
+        &fx.client_tx,
+        &fx.sessions,
+        &fx.soft_interrupt_queues,
+        &fx.client_connections,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+        &fx.mutation_runtime,
+    )
+    .await;
+
+    let plans = fx.swarm_plans.read().await;
+    let task = plans[&fx.swarm_id]
+        .items
+        .iter()
+        .find(|i| i.id == "task")
+        .unwrap();
+    assert!(
+        task.assigned_to.is_none(),
+        "light mode must keep the coordinator-only assignment rule"
+    );
+    drop(plans);
+    let mut saw_permission_error = false;
+    while let Ok(ev) = fx.client_rx.try_recv() {
+        if let ServerEvent::Error { message, .. } = ev
+            && message.contains("Only the coordinator can assign tasks")
+        {
+            saw_permission_error = true;
+        }
+    }
+    assert!(
+        saw_permission_error,
+        "light-mode non-coordinator assign should be rejected with the coordinator error"
+    );
+}
+
