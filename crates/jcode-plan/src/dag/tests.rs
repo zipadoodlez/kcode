@@ -113,8 +113,13 @@ fn complete_rejects_non_owner() {
 fn expand_rejects_non_owner() {
     let mut g = dag(Mode::Light, vec![spec("a", NodeKind::Explore)]);
     dispatch(&mut g, "a", "w0");
-    let err = expand_node(&mut g, "a", "intruder", vec![spec("a.1", NodeKind::Explore)])
-        .unwrap_err();
+    let err = expand_node(
+        &mut g,
+        "a",
+        "intruder",
+        vec![spec("a.1", NodeKind::Explore)],
+    )
+    .unwrap_err();
     assert!(matches!(err, DagError::NotOwner { .. }));
 }
 
@@ -244,7 +249,13 @@ fn expand_rejecting_cycle_leaves_graph_unchanged() {
 fn gate_injection_reblocks_composite_until_gap_drains() {
     let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
     dispatch(&mut g, "root", "w0");
-    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.1", NodeKind::Explore)],
+    )
+    .unwrap();
     let gate_id = outcome.gate_id.unwrap();
 
     // Finish the single child so the gate becomes runnable.
@@ -265,7 +276,12 @@ fn gate_injection_reblocks_composite_until_gap_drains() {
 
     // Gate is re-queued and now blocked on the gap; root (composite) still blocked.
     assert_eq!(g.get(&gate_id).unwrap().status, NodeStatus::Queued);
-    assert!(g.get(&gate_id).unwrap().depends_on.contains(&"root.gap".to_string()));
+    assert!(
+        g.get(&gate_id)
+            .unwrap()
+            .depends_on
+            .contains(&"root.gap".to_string())
+    );
     assert!(!ready_nodes(&g).iter().any(|n| n.id == "root"));
     // The gap node is the only newly-ready work.
     assert!(ready_nodes(&g).iter().any(|n| n.id == "root.gap"));
@@ -282,8 +298,8 @@ fn gate_injection_reblocks_composite_until_gap_drains() {
 fn inject_from_gate_rejects_non_gate_node() {
     let mut g = dag(Mode::Deep, vec![spec("a", NodeKind::Explore)]);
     dispatch(&mut g, "a", "w0");
-    let err = inject_from_gate(&mut g, "a", "w0", vec![spec("a.gap", NodeKind::Explore)])
-        .unwrap_err();
+    let err =
+        inject_from_gate(&mut g, "a", "w0", vec![spec("a.gap", NodeKind::Explore)]).unwrap_err();
     assert!(matches!(err, DagError::GateMisuse(_)));
 }
 
@@ -291,7 +307,13 @@ fn inject_from_gate_rejects_non_gate_node() {
 fn expand_records_planner_and_frees_owner_for_rescheduling() {
     let mut g = dag(Mode::Light, vec![spec("root", NodeKind::Explore)]);
     dispatch(&mut g, "root", "w0");
-    expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.1", NodeKind::Explore)],
+    )
+    .unwrap();
 
     let root = g.get("root").unwrap();
     // Owner is freed so the re-queued composite can be auto-scheduled, but the
@@ -330,9 +352,11 @@ fn simulator_runs_deep_graph_with_composite_and_gap_to_completion() {
         // Gate nodes: first time, find a gap and inject a node; second time, pass.
         if kind == NodeKind::Critique || kind == NodeKind::Verify {
             if id == "explore::gate" && gate_fired.insert(id.to_string()) {
-                return WorkerAction::InjectGap(vec![
-                    NodeSpec::new("explore.gap", "cover the missed facet", NodeKind::Explore),
-                ]);
+                return WorkerAction::InjectGap(vec![NodeSpec::new(
+                    "explore.gap",
+                    "cover the missed facet",
+                    NodeKind::Explore,
+                )]);
             }
             return WorkerAction::Complete(HandoffArtifact::brief("gate passed"));
         }
@@ -342,9 +366,9 @@ fn simulator_runs_deep_graph_with_composite_and_gap_to_completion() {
                 spec("explore.geo", NodeKind::Explore),
                 spec("explore.hot", NodeKind::Explore),
             ]),
-            "explore.hot" if expanded.insert(id.to_string()) => WorkerAction::Expand(vec![
-                spec("explore.hot.udev", NodeKind::Explore),
-            ]),
+            "explore.hot" if expanded.insert(id.to_string()) => {
+                WorkerAction::Expand(vec![spec("explore.hot.udev", NodeKind::Explore)])
+            }
             _ => WorkerAction::Complete(sim::deep_artifact(&format!("did {id}"))),
         }
     };
@@ -357,7 +381,10 @@ fn simulator_runs_deep_graph_with_composite_and_gap_to_completion() {
 
     // The gate-spawned gap node must exist and be done (comprehensiveness gate
     // converted a miss into graph).
-    assert!(g.get("explore.gap").is_some(), "gate should have spawned a gap node");
+    assert!(
+        g.get("explore.gap").is_some(),
+        "gate should have spawned a gap node"
+    );
     assert!(g.get("explore.gap").unwrap().is_done());
 
     // The composite nodes are expanded and completed via synthesis.
@@ -407,7 +434,10 @@ fn simulator_stalls_when_failed_node_blocks_dependents() {
         }
     };
     let report = sim::run(&mut g, 2, 50, &mut worker).unwrap();
-    assert!(report.stalled, "a failed dependency must stall its dependent");
+    assert!(
+        report.stalled,
+        "a failed dependency must stall its dependent"
+    );
     assert_eq!(report.failed, 1);
     assert!(!g.get("b").unwrap().is_terminal());
 }
@@ -420,7 +450,13 @@ fn assembled_input_surfaces_what_i_did_not_check_for_gate() {
     // It can only do that if hydration actually forwards that field.
     let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
     dispatch(&mut g, "root", "w0");
-    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.1", NodeKind::Explore)],
+    )
+    .unwrap();
     let gate_id = outcome.gate_id.unwrap();
 
     dispatch(&mut g, "root.1", "w0");
@@ -431,9 +467,18 @@ fn assembled_input_surfaces_what_i_did_not_check_for_gate() {
     complete_node(&mut g, "root.1", "w0", artifact).unwrap();
 
     let gate_input = assemble_input(&g, &gate_id);
-    assert!(gate_input.contains("the concurrent hotplug path"), "gate must see what_i_did_not_check: {gate_input}");
-    assert!(gate_input.contains("empty input"), "gate must see edge_cases_considered: {gate_input}");
-    assert!(gate_input.contains("medium"), "gate must see confidence: {gate_input}");
+    assert!(
+        gate_input.contains("the concurrent hotplug path"),
+        "gate must see what_i_did_not_check: {gate_input}"
+    );
+    assert!(
+        gate_input.contains("empty input"),
+        "gate must see edge_cases_considered: {gate_input}"
+    );
+    assert!(
+        gate_input.contains("medium"),
+        "gate must see confidence: {gate_input}"
+    );
 }
 
 #[test]
@@ -443,13 +488,31 @@ fn composite_synthesis_rewake_is_hydrated_with_child_artifacts() {
     // child edges precisely so direct-dependency hydration covers the children.
     let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
     dispatch(&mut g, "root", "w0");
-    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.1", NodeKind::Explore)],
+    )
+    .unwrap();
     let gate_id = outcome.gate_id.unwrap();
 
     dispatch(&mut g, "root.1", "w0");
-    complete_node(&mut g, "root.1", "w0", sim::deep_artifact("child found the answer in foo.rs")).unwrap();
+    complete_node(
+        &mut g,
+        "root.1",
+        "w0",
+        sim::deep_artifact("child found the answer in foo.rs"),
+    )
+    .unwrap();
     dispatch(&mut g, &gate_id, "w0");
-    complete_node(&mut g, &gate_id, "w0", HandoffArtifact::brief("gate passed")).unwrap();
+    complete_node(
+        &mut g,
+        &gate_id,
+        "w0",
+        HandoffArtifact::brief("gate passed"),
+    )
+    .unwrap();
 
     // root is now runnable; its assembled synthesis input must include the child.
     assert!(ready_nodes(&g).iter().any(|n| n.id == "root"));
@@ -474,9 +537,18 @@ fn expand_gate_id_avoids_collision_with_seeded_node() {
         ],
     );
     dispatch(&mut g, "root", "w0");
-    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.1", NodeKind::Explore)],
+    )
+    .unwrap();
     let gate_id = outcome.gate_id.unwrap();
-    assert_ne!(gate_id, "root::gate", "gate id must not collide with the seeded node");
+    assert_ne!(
+        gate_id, "root::gate",
+        "gate id must not collide with the seeded node"
+    );
     assert!(g.get(&gate_id).unwrap().is_gate);
     // The pre-existing user node is still a non-gate node, intact.
     assert!(!g.get("root::gate").unwrap().is_gate);

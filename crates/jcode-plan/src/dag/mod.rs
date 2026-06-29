@@ -297,13 +297,20 @@ impl std::fmt::Display for DagError {
                 write!(f, "node '{node}' depends on unknown node '{dependency}'")
             }
             DagError::WouldCreateCycle(ids) => {
-                write!(f, "operation would create a cycle among: {}", ids.join(", "))
+                write!(
+                    f,
+                    "operation would create a cycle among: {}",
+                    ids.join(", ")
+                )
             }
             DagError::NotOwner { node, actor } => {
                 write!(f, "actor '{actor}' does not own node '{node}'")
             }
             DagError::InvalidState { node, status } => {
-                write!(f, "node '{node}' is in invalid state {status:?} for this operation")
+                write!(
+                    f,
+                    "node '{node}' is in invalid state {status:?} for this operation"
+                )
             }
             DagError::ThinArtifact { node, reason } => {
                 write!(f, "node '{node}' artifact rejected: {reason}")

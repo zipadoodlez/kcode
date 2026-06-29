@@ -152,7 +152,11 @@ pub(super) async fn dispatch_swarm_todo_progress(
         .iter()
         .filter(|t| t.status == "completed")
         .count() as u32;
-    let progress = if total == 0 { None } else { Some((completed, total)) };
+    let progress = if total == 0 {
+        None
+    } else {
+        Some((completed, total))
+    };
 
     let swarm_id = {
         let mut members = swarm_members.write().await;

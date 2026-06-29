@@ -6,9 +6,7 @@
 //! node auto-inserts a critique/verify gate so a composite node cannot close
 //! without surviving its gate (doc sections 2, 3, 6).
 
-use super::{
-    DagError, HandoffArtifact, Mode, NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode,
-};
+use super::{DagError, HandoffArtifact, Mode, NodeKind, NodeSpec, NodeStatus, TaskGraph, TaskNode};
 
 /// Seed the initial DAG from a batch of specs (the first agent's draft). All
 /// referenced dependencies must resolve within the supplied set, the ids must be
@@ -119,8 +117,7 @@ pub fn expand_node(
         .iter()
         .map(|spec| spec.id.clone().unwrap())
         .collect();
-    let child_set: std::collections::HashSet<&str> =
-        child_ids.iter().map(String::as_str).collect();
+    let child_set: std::collections::HashSet<&str> = child_ids.iter().map(String::as_str).collect();
     for spec in &children {
         for dep in &spec.depends_on {
             // A child may depend on a sibling or any already-existing node.
@@ -152,7 +149,10 @@ pub fn expand_node(
     // Deep mode: insert a gate that depends on all children; the synthesis then
     // additionally depends on the gate so it cannot close until the gate passes.
     let gate_id = if staged.mode.requires_gates() {
-        let parent_kind = staged.get(node_id).map(|n| n.kind).unwrap_or(NodeKind::Explore);
+        let parent_kind = staged
+            .get(node_id)
+            .map(|n| n.kind)
+            .unwrap_or(NodeKind::Explore);
         let gate_kind = parent_kind.gate_kind();
         let gate_id = unique_gate_id(&staged, node_id);
         let gate = TaskNode {

@@ -18,8 +18,8 @@ use jcode_plan::bridge::{apply_task_graph, parse_kind, to_task_graph};
 use jcode_plan::dag::{self, HandoffArtifact, NodeSpec};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast};
 use tokio::sync::mpsc;
+use tokio::sync::{RwLock, broadcast};
 
 fn spec_from_wire(spec: TaskGraphNodeSpec) -> NodeSpec {
     NodeSpec {
@@ -168,7 +168,10 @@ async fn finalize(
 }
 
 /// Seed (or re-seed) the swarm task DAG from a batch of node specs.
-#[expect(clippy::too_many_arguments, reason = "swarm op threads runtime handles")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "swarm op threads runtime handles"
+)]
 pub(super) async fn handle_comm_seed_graph(
     id: u64,
     req_session_id: String,
@@ -246,7 +249,10 @@ pub(super) async fn handle_comm_seed_graph(
 }
 
 /// Decompose a node the caller owns into a child sub-DAG.
-#[expect(clippy::too_many_arguments, reason = "swarm op threads runtime handles")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "swarm op threads runtime handles"
+)]
 pub(super) async fn handle_comm_expand_node(
     id: u64,
     req_session_id: String,
@@ -309,7 +315,10 @@ pub(super) async fn handle_comm_expand_node(
 }
 
 /// Complete a node the caller owns with a typed handoff artifact.
-#[expect(clippy::too_many_arguments, reason = "swarm op threads runtime handles")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "swarm op threads runtime handles"
+)]
 pub(super) async fn handle_comm_complete_node(
     id: u64,
     req_session_id: String,
@@ -378,7 +387,10 @@ pub(super) async fn handle_comm_complete_node(
 }
 
 /// Inject gap/fix nodes from a gate the caller owns.
-#[expect(clippy::too_many_arguments, reason = "swarm op threads runtime handles")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "swarm op threads runtime handles"
+)]
 pub(super) async fn handle_comm_inject_gap(
     id: u64,
     req_session_id: String,

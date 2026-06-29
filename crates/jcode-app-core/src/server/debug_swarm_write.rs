@@ -591,7 +591,8 @@ async fn handle_debug_graph_op(arg: &str, ctx: &DebugSwarmWriteContext<'_>) -> S
                     item.status = "running".to_string();
                 }
                 let mut graph = to_task_graph(plan);
-                match dag::inject_from_gate(&mut graph, &gate_id, &actor, debug_specs(parsed.nodes)) {
+                match dag::inject_from_gate(&mut graph, &gate_id, &actor, debug_specs(parsed.nodes))
+                {
                     Ok(_) => {
                         apply_task_graph(plan, &graph);
                         plan.version += 1;

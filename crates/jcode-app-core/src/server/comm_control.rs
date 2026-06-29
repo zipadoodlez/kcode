@@ -65,8 +65,7 @@ fn filter_swarm_agent_candidates<'a>(
 /// Whether `member` can be auto-assigned a task and be relied on to run it.
 /// See [`filter_swarm_agent_candidates`] for the rationale.
 fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
-    member.is_headless
-        || member.report_back_to_session_id.as_deref() == Some(req_session_id)
+    member.is_headless || member.report_back_to_session_id.as_deref() == Some(req_session_id)
 }
 
 #[derive(Clone, Debug)]
@@ -299,9 +298,10 @@ async fn resolve_assignment_target_for_task(
                 && owner != req_session_id
             {
                 let members = swarm_members.read().await;
-                let owner_eligible = filter_swarm_agent_candidates(&members, req_session_id, swarm_id)
-                    .iter()
-                    .any(|member| member.session_id == owner);
+                let owner_eligible =
+                    filter_swarm_agent_candidates(&members, req_session_id, swarm_id)
+                        .iter()
+                        .any(|member| member.session_id == owner);
                 if owner_eligible {
                     return Ok(owner);
                 }

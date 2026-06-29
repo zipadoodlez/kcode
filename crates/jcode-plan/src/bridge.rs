@@ -8,9 +8,7 @@
 //! engine op, then lower the result back. This keeps a single source of truth and
 //! reuses the existing persistence/broadcast/scheduler machinery.
 
-use crate::dag::{
-    HandoffArtifact, Mode, NodeKind, NodeStatus, TaskGraph, TaskNode,
-};
+use crate::dag::{HandoffArtifact, Mode, NodeKind, NodeStatus, TaskGraph, TaskNode};
 use crate::{NodeMeta, PlanItem, VersionedPlan};
 
 /// Parse a mode string ("deep"/"light"); unknown values fall back to light.
@@ -287,7 +285,12 @@ mod tests {
         let gate = plan
             .items
             .iter()
-            .find(|i| plan.node_meta.get(&i.id).map(|m| m.is_gate).unwrap_or(false))
+            .find(|i| {
+                plan.node_meta
+                    .get(&i.id)
+                    .map(|m| m.is_gate)
+                    .unwrap_or(false)
+            })
             .expect("gate should exist in lowered plan");
         assert_eq!(plan.node_meta[&gate.id].kind.as_deref(), Some("critique"));
 

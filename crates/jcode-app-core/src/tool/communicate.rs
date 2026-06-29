@@ -370,7 +370,10 @@ async fn run_swarm_plan_to_terminal(
             let detail = if stuck.is_empty() {
                 "no ready tasks and no in-flight workers".to_string()
             } else {
-                format!("runnable task(s) {} could not be assigned to any drivable worker", stuck.join(", "))
+                format!(
+                    "runnable task(s) {} could not be assigned to any drivable worker",
+                    stuck.join(", ")
+                )
             };
             return Err(anyhow::anyhow!(
                 "run_plan stalled after {} loop(s): {}. This usually means a task is assigned to a session run_plan cannot drive (foreign or stale member). Reassign with an explicit target_session, or clear the stale assignment, then retry.",
@@ -1180,9 +1183,10 @@ impl Tool for CommunicateTool {
             }
 
             "task_graph" | "seed_graph" => {
-                let nodes = params.nodes.clone().ok_or_else(|| {
-                    anyhow::anyhow!("'nodes' is required for task_graph action")
-                })?;
+                let nodes = params
+                    .nodes
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("'nodes' is required for task_graph action"))?;
                 if nodes.is_empty() {
                     return Err(anyhow::anyhow!("'nodes' must include at least one node"));
                 }
@@ -1270,9 +1274,10 @@ impl Tool for CommunicateTool {
                     .ok_or_else(|| {
                         anyhow::anyhow!("'gate_id' is required for inject_gap action")
                     })?;
-                let nodes = params.nodes.clone().ok_or_else(|| {
-                    anyhow::anyhow!("'nodes' is required for inject_gap action")
-                })?;
+                let nodes = params
+                    .nodes
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("'nodes' is required for inject_gap action"))?;
                 if nodes.is_empty() {
                     return Err(anyhow::anyhow!("inject_gap requires at least one node"));
                 }

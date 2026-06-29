@@ -101,11 +101,7 @@ pub fn run(
 }
 
 fn report(graph: &TaskGraph, steps: usize, stalled: bool) -> SimReport {
-    let completed = graph
-        .nodes()
-        .iter()
-        .filter(|node| node.is_done())
-        .count();
+    let completed = graph.nodes().iter().filter(|node| node.is_done()).count();
     let failed = graph
         .nodes()
         .iter()

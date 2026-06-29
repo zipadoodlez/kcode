@@ -60,6 +60,11 @@ pub(super) fn swarm_ancestors(
 
 /// Depth of `session_id` in the spawn tree: number of ancestors reachable via
 /// the report-back chain. Root coordinators (no report-back owner) are depth 0.
+///
+/// Test-only: the spawn tree no longer enforces a depth cap, so production code
+/// does not consult depth. Kept (behind `cfg(test)`) because the spawn-tree tests
+/// assert ancestor-chain depth directly.
+#[cfg(test)]
 pub(super) fn swarm_spawn_depth(members: &HashMap<String, SwarmMember>, session_id: &str) -> u32 {
     swarm_ancestors(members, session_id).len() as u32
 }
