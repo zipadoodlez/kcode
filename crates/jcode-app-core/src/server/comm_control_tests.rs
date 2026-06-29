@@ -143,3 +143,4 @@ include!("comm_control_tests/await_any.rs");
 include!("comm_control_tests/await_reload_deadline.rs");
 include!("comm_control_tests/await_reload_final.rs");
 include!("comm_control_tests/dag_e2e.rs");
+include!("comm_control_tests/auto_worker_filter.rs");

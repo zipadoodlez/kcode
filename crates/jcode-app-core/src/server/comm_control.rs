@@ -28,6 +28,23 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
 
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
+/// Eligible auto-assignment targets for a swarm task.
+///
+/// Auto-pick must only land on sessions that will actually *execute* the work.
+/// An assignment is autonomously driven by `spawn_assigned_task_run` only when
+/// the target has no live client; a client-attached independent human session
+/// instead just receives a queued soft-interrupt it never auto-runs, which
+/// silently strands the task (and stalls `run_plan`). So we only treat a member
+/// as a free worker when it is genuinely drivable:
+///
+/// - `is_headless`: a spawned in-process worker (always auto-driven), or
+/// - owned by the requester (`report_back_to_session_id == req`): a worker this
+///   coordinator spawned, including reusable ones that already returned `ready`, or
+/// - no live client attachment (`event_txs` empty): nothing would be hijacked and
+///   `spawn_assigned_task_run` will drive it.
+///
+/// Explicit `target_session` assignments bypass this (the coordinator chose a
+/// specific member on purpose); this filter only governs automatic selection.
 fn filter_swarm_agent_candidates<'a>(
     members: &'a HashMap<String, SwarmMember>,
     req_session_id: &str,
@@ -40,8 +57,17 @@ fn filter_swarm_agent_candidates<'a>(
                 && member.swarm_id.as_deref() == Some(swarm_id)
                 && member.role == "agent"
                 && matches!(member.status.as_str(), "ready" | "completed")
+                && is_drivable_auto_worker(member, req_session_id)
         })
         .collect()
+}
+
+/// Whether `member` can be auto-assigned a task and be relied on to run it.
+/// See [`filter_swarm_agent_candidates`] for the rationale.
+fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
+    member.is_headless
+        || member.report_back_to_session_id.as_deref() == Some(req_session_id)
+        || member.event_txs.is_empty()
 }
 
 #[derive(Clone, Debug)]
