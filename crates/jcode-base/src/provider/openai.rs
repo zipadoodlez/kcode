@@ -39,7 +39,6 @@ fn model_supports_image_generation(model_id: &str) -> bool {
     !model_id.to_ascii_lowercase().contains("codex")
 }
 
-
 /// Maximum number of retries for transient errors
 const MAX_RETRIES: u32 = 3;
 
@@ -962,10 +961,10 @@ impl OpenAIProvider {
         // Only honor providers that speak the Responses wire API. When the key
         // is absent, Codex defaults to the Responses API for OpenAI-style
         // providers, so treat "missing" as eligible.
-        if let Some(wire_api) = provider.get("wire_api").and_then(|v| v.as_str()) {
-            if !wire_api.trim().eq_ignore_ascii_case("responses") {
-                return None;
-            }
+        if let Some(wire_api) = provider.get("wire_api").and_then(|v| v.as_str())
+            && !wire_api.trim().eq_ignore_ascii_case("responses")
+        {
+            return None;
         }
 
         let base = provider.get("base_url")?.as_str()?.trim();
