@@ -291,3 +291,27 @@ fn swarm_effort_directive_is_appended_only_for_swarm_sentinel() {
     append_swarm_effort_directive(&mut other, None);
     assert!(other.dynamic_part.is_empty());
 }
+
+#[test]
+fn swarm_deep_effort_injects_task_graph_directive() {
+    use crate::prompt::is_deep_swarm_effort;
+
+    assert!(is_swarm_effort("swarm-deep"));
+    assert!(is_deep_swarm_effort("swarm-deep"));
+    assert!(is_deep_swarm_effort("  Swarm-Deep "));
+    assert!(!is_deep_swarm_effort("swarm"));
+    assert!(!is_deep_swarm_effort("xhigh"));
+
+    // Deep sentinel injects the DAG-first task-graph directive, not the light one.
+    let mut split = SplitSystemPrompt::default();
+    append_swarm_effort_directive(&mut split, Some("swarm-deep"));
+    assert!(split.dynamic_part.contains("# Deep Task Graph"));
+    assert!(split.dynamic_part.contains("swarm task_graph"));
+    assert!(!split.dynamic_part.contains("# Swarm Effort"));
+
+    // Light sentinel still injects the fan-out directive, not the deep one.
+    let mut light = SplitSystemPrompt::default();
+    append_swarm_effort_directive(&mut light, Some("swarm"));
+    assert!(light.dynamic_part.contains("# Swarm Effort"));
+    assert!(!light.dynamic_part.contains("# Deep Task Graph"));
+}

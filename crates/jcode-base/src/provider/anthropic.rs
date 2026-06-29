@@ -634,7 +634,9 @@ impl AnthropicProvider {
             "off" | "disabled" => Some("none".to_string()),
             // `swarm` is a UI sentinel meaning "max effort + use the swarm tool".
             // Stored verbatim; resolved to a real effort in `actual_effort_for_model`.
-            "none" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm" => Some(value),
+            "none" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm" | "swarm-deep" => {
+                Some(value)
+            }
             other => {
                 crate::logging::info(&format!(
                     "Warning: Unsupported Anthropic reasoning effort '{}'; expected none|low|medium|high|xhigh|max alias. Using the model maximum.",
@@ -1221,9 +1223,9 @@ impl Provider for AnthropicProvider {
             return vec![];
         }
         if Self::model_supports_xhigh_effort(&model) {
-            vec!["none", "low", "medium", "high", "xhigh", "swarm"]
+            vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"]
         } else {
-            vec!["none", "low", "medium", "high", "swarm"]
+            vec!["none", "low", "medium", "high", "swarm", "swarm-deep"]
         }
     }
 

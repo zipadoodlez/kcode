@@ -756,7 +756,7 @@ impl OpenAIProvider {
             // We keep it stored so the UI/session reflect it and the agent injects
             // the swarm directive; it is translated to a real effort at request time
             // by `api_reasoning_effort`.
-            "none" | "low" | "medium" | "high" | "xhigh" | "swarm" => Some(value),
+            "none" | "low" | "medium" | "high" | "xhigh" | "swarm" | "swarm-deep" => Some(value),
             other => {
                 crate::logging::info(&format!(
                     "Warning: Unsupported OpenAI reasoning effort '{}'; expected none|low|medium|high|xhigh. Using 'xhigh'.",
