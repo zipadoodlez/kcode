@@ -42,6 +42,66 @@ async fn swarm_id_for(
         .and_then(|member| member.swarm_id.clone())
 }
 
+/// Ensure the seeding session can actually drive the graph it just created.
+///
+/// Deep-mode sessions are frequently solo `agent`s with no coordinator elected,
+/// yet `assign_task` / `assign_next` / `run_plan` are coordinator-gated. Without
+/// this, a fresh deep-mode agent can seed a task graph but then cannot dispatch
+/// any of it. We elect the seeder as coordinator when the swarm has no *live*
+/// coordinator, mirroring the self-promote rule used by `assign_role`. A live,
+/// non-headless coordinator is left untouched so a real coordinator is never
+/// displaced by a worker that happens to seed.
+///
+/// Returns true when the seeder was (or already is) the coordinator afterwards.
+async fn ensure_seeder_can_coordinate(
+    swarm_id: &str,
+    seeder_session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
+) -> bool {
+    // 1. Read the current coordinator id without holding the lock across the
+    //    liveness check (matches the non-nested lock pattern used elsewhere).
+    let current = swarm_coordinators.read().await.get(swarm_id).cloned();
+    match &current {
+        Some(coord) if coord == seeder_session_id => return true,
+        _ => {}
+    }
+
+    // 2. Decide whether the existing coordinator is still a live driver.
+    let coordinator_is_live = match &current {
+        Some(coord) => {
+            let members = swarm_members.read().await;
+            members
+                .get(coord)
+                .map(|member| !member.event_tx.is_closed() && !member.is_headless)
+                .unwrap_or(false)
+        }
+        None => false,
+    };
+    if coordinator_is_live {
+        return false;
+    }
+
+    // 3. Promote the seeder; demote any prior (stale) coordinator member.
+    let prior = {
+        let mut coordinators = swarm_coordinators.write().await;
+        coordinators.insert(swarm_id.to_string(), seeder_session_id.to_string())
+    };
+    {
+        let mut members = swarm_members.write().await;
+        if let Some(member) = members.get_mut(seeder_session_id) {
+            member.role = "coordinator".to_string();
+        }
+        if let Some(prior) = prior
+            && prior != seeder_session_id
+            && let Some(member) = members.get_mut(&prior)
+        {
+            member.role = "agent".to_string();
+        }
+    }
+    true
+}
+
 fn err(client_event_tx: &mpsc::UnboundedSender<ServerEvent>, id: u64, message: String) {
     let _ = client_event_tx.send(ServerEvent::Error {
         id,
@@ -127,6 +187,17 @@ pub(super) async fn handle_comm_seed_graph(
         err(client_event_tx, id, "Not in a swarm.".to_string());
         return;
     };
+
+    // A deep-mode seeder is usually a solo agent. Elect it coordinator (when no
+    // live coordinator exists) so it can actually dispatch the graph it seeds via
+    // the coordinator-gated assign/run_plan paths.
+    ensure_seeder_can_coordinate(
+        &swarm_id,
+        &req_session_id,
+        swarm_members,
+        swarm_coordinators,
+    )
+    .await;
 
     let specs: Vec<NodeSpec> = nodes.into_iter().map(spec_from_wire).collect();
     let count = specs.len();

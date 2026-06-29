@@ -423,3 +423,173 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     assert_eq!(resolved.as_deref(), Ok(planner.as_str()));
 }
 
+/// A solo deep-mode agent (no coordinator registered) seeds a graph. It must be
+/// elected coordinator so it can then drive the coordinator-gated assign path it
+/// just created work for.
+#[tokio::test]
+async fn e2e_solo_seeder_is_elected_coordinator_and_can_assign() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let swarm_id = "swarm-solo".to_string();
+    let seeder = "seeder".to_string();
+    let worker = "worker".to_string();
+    let (client_tx, _client_rx) = mpsc::unbounded_channel();
+    let sessions: crate::server::SessionAgents = Arc::new(RwLock::new(HashMap::from([
+        (seeder.clone(), test_agent().await),
+        (worker.clone(), test_agent().await),
+    ])));
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        (seeder.clone(), member(&seeder, &swarm_id, "ready")),
+        (worker.clone(), member(&worker, &swarm_id, "ready")),
+    ])));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.clone(),
+        HashSet::from([seeder.clone(), worker.clone()]),
+    )])));
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.clone(),
+        VersionedPlan::new(),
+    )])));
+    // No coordinator registered: this is the deep-mode solo-agent starting state.
+    let swarm_coordinators: Arc<RwLock<HashMap<String, String>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let swarm_event_tx = broadcast::channel(64).0;
+    let mutation_runtime = SwarmMutationRuntime::default();
+    let soft_interrupt_queues: crate::server::SessionInterruptQueues =
+        Arc::new(RwLock::new(HashMap::new()));
+    let client_connections: Arc<RwLock<HashMap<String, crate::server::ClientConnectionInfo>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+
+    handle_comm_seed_graph(
+        1,
+        seeder.clone(),
+        Some("deep".to_string()),
+        vec![
+            node_spec("explore", "explore", &[]),
+            node_spec("synth", "synthesize", &["explore"]),
+        ],
+        &client_tx,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+    )
+    .await;
+
+    // The seeder is now the coordinator of its swarm.
+    assert_eq!(
+        swarm_coordinators.read().await.get(&swarm_id).cloned(),
+        Some(seeder.clone()),
+        "solo seeder should be elected coordinator"
+    );
+    assert_eq!(
+        swarm_members.read().await.get(&seeder).unwrap().role,
+        "coordinator"
+    );
+
+    // And it can now drive the graph: assign the ready node to the worker.
+    handle_comm_assign_task(
+        2,
+        seeder.clone(),
+        Some(worker.clone()),
+        Some("explore".to_string()),
+        None,
+        &client_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &client_connections,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &mutation_runtime,
+    )
+    .await;
+
+    let plans = swarm_plans.read().await;
+    let explore = plans[&swarm_id]
+        .items
+        .iter()
+        .find(|i| i.id == "explore")
+        .unwrap();
+    assert_eq!(
+        explore.assigned_to.as_deref(),
+        Some(worker.as_str()),
+        "elected coordinator should be able to assign the seeded task"
+    );
+}
+
+/// A live, non-headless coordinator must not be displaced by a different member
+/// that happens to seed a graph.
+#[tokio::test]
+async fn e2e_seed_does_not_displace_live_coordinator() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let swarm_id = "swarm-live-coord".to_string();
+    let coord = "coord".to_string();
+    let worker = "worker".to_string();
+    let (client_tx, _client_rx) = mpsc::unbounded_channel();
+
+    // Build the coordinator with a *retained* receiver so its event channel is
+    // genuinely open (the shared `member()` helper drops the receiver, which would
+    // make the channel look closed and the coordinator look dead).
+    let (coord_tx, _coord_rx) = mpsc::unbounded_channel();
+    let mut coord_member = member(&coord, &swarm_id, "ready");
+    coord_member.event_tx = coord_tx;
+    coord_member.role = "coordinator".to_string();
+
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        (coord.clone(), coord_member),
+        (worker.clone(), member(&worker, &swarm_id, "ready")),
+    ])));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.clone(),
+        HashSet::from([coord.clone(), worker.clone()]),
+    )])));
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.clone(),
+        VersionedPlan::new(),
+    )])));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.clone(),
+        coord.clone(),
+    )])));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let swarm_event_tx = broadcast::channel(64).0;
+
+    // The non-coordinator worker seeds the graph.
+    handle_comm_seed_graph(
+        1,
+        worker.clone(),
+        Some("deep".to_string()),
+        vec![node_spec("root", "explore", &[])],
+        &client_tx,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+    )
+    .await;
+
+    assert_eq!(
+        swarm_coordinators.read().await.get(&swarm_id).cloned(),
+        Some(coord.clone()),
+        "a live coordinator must not be displaced by a seeding worker"
+    );
+    assert_eq!(
+        swarm_members.read().await.get(&worker).unwrap().role,
+        "agent",
+        "the seeding worker should remain an agent"
+    );
+}
+
