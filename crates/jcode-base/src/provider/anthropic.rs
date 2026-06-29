@@ -661,11 +661,14 @@ impl AnthropicProvider {
         }
     }
 
-    /// Like [`Self::actual_effort_for_model`], but preserves the `swarm` sentinel
-    /// so the stored/UI value keeps reflecting swarm mode. Used when persisting
-    /// the user's choice; request building resolves swarm to a real effort.
+    /// Like [`Self::actual_effort_for_model`], but preserves the swarm sentinels
+    /// (light `swarm` and `swarm-deep`) so the stored/UI value keeps reflecting
+    /// the chosen swarm mode. Used when persisting the user's choice; request
+    /// building resolves swarm to a real effort.
     fn store_effort_for_model(model: &str, effort: &str) -> String {
-        if crate::prompt::is_swarm_effort(effort) {
+        if crate::prompt::is_deep_swarm_effort(effort) {
+            crate::prompt::SWARM_DEEP_EFFORT.to_string()
+        } else if crate::prompt::is_swarm_effort(effort) {
             crate::prompt::SWARM_EFFORT.to_string()
         } else {
             Self::actual_effort_for_model(model, effort)
