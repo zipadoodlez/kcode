@@ -268,6 +268,13 @@ async fn run_swarm_plan_to_terminal(
     let timeout_minutes = params.timeout_minutes.unwrap_or(60).max(1);
     let retain_agents = params.retain_agents.unwrap_or(false);
     let spawn_if_needed = params.spawn_if_needed.or(Some(true));
+    // Default to a fresh worker per task-graph node. Reusing a worker that already
+    // completed a *different* node carries that node's conversation into the next
+    // assignment, and the model often just re-reports its prior result instead of
+    // doing the new work (observed leaving gap/synthesis nodes stuck). The task-DAG
+    // model assumes clean, isolated workers, so unless the caller explicitly opts
+    // into reuse (`prefer_spawn=false`), prefer spawning a fresh worker per node.
+    let prefer_spawn = params.prefer_spawn.or(Some(true));
     let mut assignment_count = 0usize;
     let mut loop_count = 0usize;
     let max_loops = 200usize;
@@ -327,7 +334,7 @@ async fn run_swarm_plan_to_terminal(
                 session_id: ctx.session_id.clone(),
                 target_session: params.target_session.clone(),
                 working_dir: params.working_dir.clone(),
-                prefer_spawn: params.prefer_spawn,
+                prefer_spawn,
                 spawn_if_needed,
                 message: params.message.clone(),
             };
