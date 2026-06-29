@@ -159,6 +159,11 @@ pub struct TaskNode {
     /// True if this node is an auto-inserted gate (critique/verify).
     #[serde(default)]
     pub is_gate: bool,
+    /// The agent that planned this node's decomposition. Set when a node is
+    /// expanded into a composite; used to prefer the same planner for the
+    /// synthesis re-wake while leaving `owner` free for normal scheduling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planner: Option<String>,
     /// Priority used to order the ready set. Lower rank runs first.
     #[serde(default)]
     pub priority: u8,

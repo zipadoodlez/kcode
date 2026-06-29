@@ -284,6 +284,25 @@ fn inject_from_gate_rejects_non_gate_node() {
     assert!(matches!(err, DagError::GateMisuse(_)));
 }
 
+#[test]
+fn expand_records_planner_and_frees_owner_for_rescheduling() {
+    let mut g = dag(Mode::Light, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+
+    let root = g.get("root").unwrap();
+    // Owner is freed so the re-queued composite can be auto-scheduled, but the
+    // planner is recorded for synthesis affinity.
+    assert_eq!(root.owner, None);
+    assert_eq!(root.planner.as_deref(), Some("w0"));
+    assert!(root.expanded);
+
+    // Once the child completes, the composite is runnable again (no owner gate).
+    dispatch(&mut g, "root.1", "w0");
+    complete_node(&mut g, "root.1", "w0", HandoffArtifact::brief("done")).unwrap();
+    assert!(ready_nodes(&g).iter().any(|n| n.id == "root"));
+}
+
 // ----- full simulator: explore-then-act with gate-spawned gap -----
 
 #[test]

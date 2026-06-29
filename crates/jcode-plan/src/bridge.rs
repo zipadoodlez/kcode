@@ -90,6 +90,7 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             depends_on: item.blocked_by.clone(),
             expanded: meta.expanded,
             is_gate: meta.is_gate,
+            planner: meta.planner.clone(),
             priority: crate::priority_rank(&item.priority),
             output: artifact,
         });
@@ -134,6 +135,7 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
                 parent: node.parent.clone(),
                 expanded: node.expanded,
                 is_gate: node.is_gate,
+                planner: node.planner.clone(),
                 artifact_json: node
                     .output
                     .as_ref()

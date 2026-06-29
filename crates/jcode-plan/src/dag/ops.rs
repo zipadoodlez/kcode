@@ -160,6 +160,7 @@ pub fn expand_node(
             depends_on: child_ids.clone(),
             expanded: false,
             is_gate: true,
+            planner: None,
             priority: 0,
             output: None,
         };
@@ -177,6 +178,13 @@ pub fn expand_node(
         let node = staged.get_mut(node_id).unwrap();
         node.expanded = true;
         node.status = NodeStatus::Queued;
+        // Record the planner (current owner) for synthesis re-wake affinity, then
+        // free `owner` so the re-queued composite is eligible for normal
+        // scheduling once its children + gate complete.
+        if node.planner.is_none() {
+            node.planner = node.owner.clone();
+        }
+        node.owner = None;
         // Keep its original upstream deps and add the join deps.
         for dep in synth_deps {
             if !node.depends_on.contains(&dep) {
@@ -348,6 +356,7 @@ fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {
         depends_on: spec.depends_on,
         expanded: false,
         is_gate: false,
+        planner: None,
         priority: spec.priority,
         output: None,
     }

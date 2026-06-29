@@ -107,6 +107,12 @@ pub struct NodeMeta {
     /// True if this node is an auto-inserted critique/verify gate.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_gate: bool,
+    /// The agent that planned this node's decomposition (composite owner). Kept
+    /// separately from `PlanItem.assigned_to` so a re-queued composite can be
+    /// auto-scheduled (assigned_to cleared) while still preferring its original
+    /// planner for the synthesis step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planner: Option<String>,
     /// The typed handoff artifact, present once the node completes. Serialized as
     /// JSON text so the protocol/persistence layers need no extra types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
