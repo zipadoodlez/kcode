@@ -354,7 +354,29 @@ async fn run_swarm_plan_to_terminal(
                     active_count
                 ));
             }
-            continue;
+            // Nothing was assigned this loop, nothing is in flight, yet the plan is
+            // not terminal. This means some non-terminal task cannot be driven, e.g.
+            // it is already assigned to a session run_plan cannot drive (a foreign or
+            // stale member). Spinning here would busy-loop to the max-loop cap, so
+            // surface the stuck state with the offending tasks instead.
+            let stuck: Vec<String> = summary
+                .next_ready_ids
+                .iter()
+                .chain(summary.ready_ids.iter())
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let detail = if stuck.is_empty() {
+                "no ready tasks and no in-flight workers".to_string()
+            } else {
+                format!("runnable task(s) {} could not be assigned to any drivable worker", stuck.join(", "))
+            };
+            return Err(anyhow::anyhow!(
+                "run_plan stalled after {} loop(s): {}. This usually means a task is assigned to a session run_plan cannot drive (foreign or stale member). Reassign with an explicit target_session, or clear the stale assignment, then retry.",
+                loop_count,
+                detail
+            ));
         }
         await_swarm_progress(ctx, await_sessions, timeout_minutes).await?;
     }

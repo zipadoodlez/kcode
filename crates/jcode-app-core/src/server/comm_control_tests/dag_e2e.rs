@@ -339,8 +339,14 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     let other = "other".to_string();
     {
         let mut members = fx.swarm_members.write().await;
-        members.insert(planner.clone(), member(&planner, &fx.swarm_id, "ready"));
-        members.insert(other.clone(), member(&other, &fx.swarm_id, "ready"));
+        members.insert(
+            planner.clone(),
+            owned_member(&planner, &fx.swarm_id, "ready", &fx.coord),
+        );
+        members.insert(
+            other.clone(),
+            owned_member(&other, &fx.swarm_id, "ready", &fx.coord),
+        );
         let mut by_id = fx.swarms_by_id.write().await;
         by_id
             .get_mut(&fx.swarm_id)

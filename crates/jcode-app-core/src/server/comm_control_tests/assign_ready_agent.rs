@@ -18,15 +18,15 @@ async fn assign_task_without_target_picks_ready_agent() {
         }),
         (
             ready_worker.to_string(),
-            member(ready_worker, swarm_id, "ready"),
+            owned_member(ready_worker, swarm_id, "ready", requester),
         ),
         (
             completed_worker.to_string(),
-            member(completed_worker, swarm_id, "completed"),
+            owned_member(completed_worker, swarm_id, "completed", requester),
         ),
         (
             running_worker.to_string(),
-            member(running_worker, swarm_id, "running"),
+            owned_member(running_worker, swarm_id, "running", requester),
         ),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(

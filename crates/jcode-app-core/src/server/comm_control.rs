@@ -30,21 +30,21 @@ type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
 /// Eligible auto-assignment targets for a swarm task.
 ///
-/// Auto-pick must only land on sessions that will actually *execute* the work.
-/// An assignment is autonomously driven by `spawn_assigned_task_run` only when
-/// the target has no live client; a client-attached independent human session
-/// instead just receives a queued soft-interrupt it never auto-runs, which
-/// silently strands the task (and stalls `run_plan`). So we only treat a member
-/// as a free worker when it is genuinely drivable:
+/// Auto-pick must only land on sessions that will actually *execute* the work
+/// without further human action. In a shared swarm there can be many foreign
+/// members: independent human TUIs and stale "zombie" sessions left over from
+/// other runs. Assigning to those silently strands the task (a human session is
+/// never auto-driven; a zombie has no live agent at all) and stalls `run_plan`.
+///
+/// So a member is only a free worker for *automatic* selection when it is a
+/// worker this run owns and can drive:
 ///
 /// - `is_headless`: a spawned in-process worker (always auto-driven), or
 /// - owned by the requester (`report_back_to_session_id == req`): a worker this
-///   coordinator spawned, including reusable ones that already returned `ready`, or
-/// - no live client attachment (`event_txs` empty): nothing would be hijacked and
-///   `spawn_assigned_task_run` will drive it.
+///   coordinator spawned, including reusable ones that already returned `ready`.
 ///
-/// Explicit `target_session` assignments bypass this (the coordinator chose a
-/// specific member on purpose); this filter only governs automatic selection.
+/// Everything else (foreign humans, zombies) must be addressed with an explicit
+/// `target_session`, which bypasses this filter; this only governs auto-pick.
 fn filter_swarm_agent_candidates<'a>(
     members: &'a HashMap<String, SwarmMember>,
     req_session_id: &str,
@@ -67,7 +67,6 @@ fn filter_swarm_agent_candidates<'a>(
 fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
     member.is_headless
         || member.report_back_to_session_id.as_deref() == Some(req_session_id)
-        || member.event_txs.is_empty()
 }
 
 #[derive(Clone, Debug)]

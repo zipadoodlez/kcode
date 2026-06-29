@@ -44,12 +44,16 @@ fn unowned_session_with_live_client_is_not_drivable() {
 }
 
 #[test]
-fn unowned_session_without_client_is_drivable() {
-    let mut m = agent_member("idle", "s");
+fn unowned_session_is_not_auto_drivable() {
+    // A foreign session that this run does not own is never auto-assignable, even
+    // if it currently has no client attachment: it may be a stale "zombie" with no
+    // live agent loop (the run_plan stall we are guarding against). Such sessions
+    // require an explicit target_session.
+    let mut m = agent_member("zombie", "s");
     m.is_headless = false;
     m.report_back_to_session_id = None;
-    // event_txs left empty: nothing to hijack, spawn_assigned_task_run will drive it.
-    assert!(is_drivable_auto_worker(&m, "coord"));
+    // No client attachment, yet still not auto-drivable because it is unowned.
+    assert!(!is_drivable_auto_worker(&m, "coord"));
 }
 
 #[tokio::test]
