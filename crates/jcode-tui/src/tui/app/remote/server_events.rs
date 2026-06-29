@@ -1011,7 +1011,12 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::Reloading { .. } => {
             app.append_reload_message("🔄 Server reload initiated...");
-            false
+            // In-process server reloads (self-dev build-reload) keep the same
+            // server PID and never disconnect this client, so the reconnect-time
+            // client re-exec never fires. If a newer client binary is on disk and
+            // we are idle, re-exec now so client-side (TUI) changes also take
+            // effect. No-op for non-selfdev sessions or when already current.
+            app.maybe_self_reload_after_server_reload()
         }
         ServerEvent::ReloadProgress {
             step,
