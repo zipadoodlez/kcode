@@ -239,13 +239,12 @@ fn tool_config_defaults_to_full_toolset() {
     let selection = ToolConfig::default().selection();
     assert!(selection.allowed_tools.is_none());
     assert!(selection.disabled_tools.contains("gmail"));
-    assert!(selection.disabled_tools.contains("lsp"));
 }
 
 #[test]
 fn tool_config_explicit_enabled_default_disabled_tools_opts_in() {
     let cfg = ToolConfig {
-        enabled: vec!["gmail".to_string(), "lsp".to_string()],
+        enabled: vec!["gmail".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
@@ -254,9 +253,7 @@ fn tool_config_explicit_enabled_default_disabled_tools_opts_in() {
         .expect("explicit enabled is an allow-list");
 
     assert!(allowed.contains("gmail"));
-    assert!(allowed.contains("lsp"));
     assert!(!selection.disabled_tools.contains("gmail"));
-    assert!(!selection.disabled_tools.contains("lsp"));
 }
 
 #[test]
@@ -269,7 +266,6 @@ fn tool_config_all_enabled_sentinel_opts_in_gmail_without_allow_list() {
 
     assert!(selection.allowed_tools.is_none());
     assert!(!selection.disabled_tools.contains("gmail"));
-    assert!(!selection.disabled_tools.contains("lsp"));
 }
 
 #[test]
@@ -283,7 +279,6 @@ fn tool_config_explicit_disabled_overrides_all_enabled_sentinel() {
 
     assert!(selection.allowed_tools.is_none());
     assert!(selection.disabled_tools.contains("gmail"));
-    assert!(!selection.disabled_tools.contains("lsp"));
 }
 
 #[test]
@@ -380,7 +375,6 @@ fn tool_config_disabled_only_keeps_full_profile_with_deny_list() {
     assert!(selection.disabled_tools.contains("browser"));
     assert!(selection.disabled_tools.contains("swarm"));
     assert!(selection.disabled_tools.contains("gmail"));
-    assert!(selection.disabled_tools.contains("lsp"));
 }
 
 #[test]

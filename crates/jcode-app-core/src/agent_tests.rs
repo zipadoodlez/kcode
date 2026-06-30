@@ -591,7 +591,7 @@ async fn default_disabled_tools_are_not_exposed_or_executable() {
     let definitions = agent.tool_definitions().await;
     let tool_names = agent.tool_names().await;
 
-    for tool_name in ["gmail", "lsp"] {
+    for tool_name in ["gmail"] {
         assert!(
             !definitions
                 .iter()

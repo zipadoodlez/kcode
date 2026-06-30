@@ -5,20 +5,16 @@ mod bash;
 mod batch;
 mod bg;
 mod browser;
-mod codesearch;
 mod communicate;
 #[cfg(target_os = "macos")]
 mod computer;
 mod conversation_search;
 mod debug_socket;
 mod edit;
-mod glob;
 mod gmail;
 mod goal;
-mod grep;
 mod invalid;
 mod ls;
-mod lsp;
 pub mod mcp;
 mod memory;
 mod multiedit;
@@ -187,8 +183,6 @@ impl Registry {
                 "apply_patch",
                 apply_patch::ApplyPatchTool::new,
             );
-            Self::insert_tool_timed(&mut m, &mut timings, "glob", glob::GlobTool::new);
-            Self::insert_tool_timed(&mut m, &mut timings, "grep", grep::GrepTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "ls", ls::LsTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "bash", bash::BashTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "browser", browser::BrowserTool::new);
@@ -212,14 +206,7 @@ impl Registry {
                 "websearch",
                 websearch::WebSearchTool::new,
             );
-            Self::insert_tool_timed(
-                &mut m,
-                &mut timings,
-                "codesearch",
-                codesearch::CodeSearchTool::new,
-            );
             Self::insert_tool_timed(&mut m, &mut timings, "invalid", invalid::InvalidTool::new);
-            Self::insert_tool_timed(&mut m, &mut timings, "lsp", lsp::LspTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "todo", todo::TodoTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "bg", bg::BgTool::new);
             Self::insert_tool_timed(

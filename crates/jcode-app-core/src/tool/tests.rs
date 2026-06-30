@@ -136,11 +136,9 @@ async fn first_party_tool_definitions_include_optional_intent_explicitly() {
 
 #[test]
 fn test_resolve_tool_name_oauth_aliases() {
-    assert_eq!(Registry::resolve_tool_name("file_grep"), "grep");
     assert_eq!(Registry::resolve_tool_name("file_read"), "read");
     assert_eq!(Registry::resolve_tool_name("file_write"), "write");
     assert_eq!(Registry::resolve_tool_name("file_edit"), "edit");
-    assert_eq!(Registry::resolve_tool_name("file_glob"), "glob");
     assert_eq!(Registry::resolve_tool_name("shell_exec"), "bash");
     assert_eq!(Registry::resolve_tool_name("shell"), "bash");
     assert_eq!(Registry::resolve_tool_name("read_file"), "read");
@@ -154,7 +152,6 @@ fn test_resolve_tool_name_oauth_aliases() {
     assert_eq!(Registry::resolve_tool_name("todoread"), "todo");
     assert_eq!(Registry::resolve_tool_name("todowrite"), "todo");
     assert_eq!(Registry::resolve_tool_name("bash"), "bash");
-    assert_eq!(Registry::resolve_tool_name("grep"), "grep");
     assert_eq!(Registry::resolve_tool_name("batch"), "batch");
     assert_eq!(Registry::resolve_tool_name("memory"), "memory");
 }
@@ -164,7 +161,6 @@ async fn test_batch_resolves_oauth_names() {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
     let temp_dir = std::env::temp_dir();
-    let temp_dir_str = temp_dir.to_string_lossy().to_string();
 
     let ctx = ToolContext {
         session_id: "test".to_string(),
@@ -178,12 +174,12 @@ async fn test_batch_resolves_oauth_names() {
 
     let result = registry
         .execute(
-            "file_grep",
-            serde_json::json!({"pattern": "nonexistent_xyz", "path": temp_dir_str}),
+            "shell_exec",
+            serde_json::json!({"command": "true"}),
             ctx,
         )
         .await;
-    assert!(result.is_ok(), "file_grep should resolve to grep tool");
+    assert!(result.is_ok(), "shell_exec should resolve to bash tool");
 }
 
 #[tokio::test]
@@ -192,7 +188,7 @@ async fn registry_execute_enforces_session_tool_policy_after_alias_resolution() 
     let registry = Registry::new(provider).await;
     let temp_dir = std::env::temp_dir();
     let session_id = "test-policy-deny";
-    set_session_tool_policy(session_id, None, HashSet::from(["grep".to_string()]));
+    set_session_tool_policy(session_id, None, HashSet::from(["bash".to_string()]));
 
     let ctx = ToolContext {
         session_id: session_id.to_string(),
@@ -206,19 +202,19 @@ async fn registry_execute_enforces_session_tool_policy_after_alias_resolution() 
 
     let result = registry
         .execute(
-            "file_grep",
-            serde_json::json!({"pattern": "nonexistent_xyz", "path": temp_dir.to_string_lossy()}),
+            "shell_exec",
+            serde_json::json!({"command": "true"}),
             ctx,
         )
         .await;
 
     clear_session_tool_policy(session_id);
-    assert!(result.is_err(), "deny-list should block aliased grep calls");
+    assert!(result.is_err(), "deny-list should block aliased bash calls");
     assert!(
         result
             .unwrap_err()
             .to_string()
-            .contains("Tool 'grep' is disabled")
+            .contains("Tool 'bash' is disabled")
     );
 }
 
@@ -232,7 +228,7 @@ async fn registry_execute_pre_tool_hook_blocks_and_allows() {
     let registry = Registry::new(provider).await;
     let temp = tempfile::TempDir::new().expect("temp dir");
 
-    // Policy script: block grep calls whose input mentions "secret".
+    // Policy script: block bash calls whose input mentions "secret".
     let policy = temp.path().join("policy.sh");
     std::fs::write(
         &policy,
@@ -260,20 +256,18 @@ async fn registry_execute_pre_tool_hook_blocks_and_allows() {
 
     let blocked = registry
         .execute(
-            "grep",
+            "bash",
             serde_json::json!({
-                "pattern": "secret",
-                "path": std::env::temp_dir().to_string_lossy()
+                "command": "echo secret"
             }),
             ctx(),
         )
         .await;
     let allowed = registry
         .execute(
-            "grep",
+            "bash",
             serde_json::json!({
-                "pattern": "nonexistent_xyz",
-                "path": std::env::temp_dir().to_string_lossy()
+                "command": "true"
             }),
             ctx(),
         )

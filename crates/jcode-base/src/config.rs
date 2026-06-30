@@ -547,7 +547,7 @@ pub struct ToolSelection {
 }
 
 impl ToolConfig {
-    const DEFAULT_DISABLED_TOOLS: &'static [&'static str] = &["gmail", "lsp"];
+    const DEFAULT_DISABLED_TOOLS: &'static [&'static str] = &["gmail"];
 
     pub fn selection(&self) -> ToolSelection {
         let mut allowed_tools = self.base_allowed_tools();
@@ -614,8 +614,6 @@ impl ToolConfig {
                     "apply_patch",
                     "patch",
                     "agentgrep",
-                    "glob",
-                    "grep",
                     "ls",
                     "batch",
                 ]
@@ -634,8 +632,6 @@ impl ToolConfig {
                     "apply_patch",
                     "patch",
                     "agentgrep",
-                    "glob",
-                    "grep",
                     "ls",
                 ]
                 .into_iter()

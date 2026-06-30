@@ -16,7 +16,7 @@ struct Args {
     #[arg(long)]
     cwd: Option<String>,
 
-    /// Include network-backed tools (webfetch/websearch/codesearch).
+    /// Include network-backed tools (webfetch/websearch).
     #[arg(long)]
     include_network: bool,
 }
@@ -129,16 +129,6 @@ async fn main() -> Result<()> {
         input: json!({"path": "."}),
     });
     cases.push(ToolCase {
-        name: "glob",
-        label: "glob *.txt",
-        input: json!({"pattern": "*.txt"}),
-    });
-    cases.push(ToolCase {
-        name: "grep",
-        label: "grep gamma",
-        input: json!({"pattern": "gamma", "path": "."}),
-    });
-    cases.push(ToolCase {
         name: "bash",
         label: "bash pwd",
         input: json!({"command": "pwd"}),
@@ -179,11 +169,6 @@ async fn main() -> Result<()> {
             name: "websearch",
             label: "websearch rust async",
             input: json!({"query": "rust async await"}),
-        });
-        cases.push(ToolCase {
-            name: "codesearch",
-            label: "codesearch tokio spawn",
-            input: json!({"query": "tokio::spawn"}),
         });
     }
 
