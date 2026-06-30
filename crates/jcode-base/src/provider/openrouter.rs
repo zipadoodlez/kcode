@@ -1375,7 +1375,17 @@ impl OpenRouterProvider {
             .profile_id
             .as_deref()
             .is_some_and(|id| id.eq_ignore_ascii_case(prefix))
-            || openai_compatible_profile_by_id(prefix).is_some();
+            || openai_compatible_profile_by_id(prefix).is_some()
+            // A user-defined named provider profile (`[providers.<name>]` in
+            // config.toml) is also a valid session-routing prefix. The shared
+            // server may boot via the deferred-auth path without binding this
+            // provider's `profile_id`, so without this check a `<name>:` prefix
+            // (e.g. `cline:`) would leak verbatim to the upstream API and be
+            // rejected with a 404 model_not_found.
+            || crate::config::config()
+                .providers
+                .keys()
+                .any(|id| id.eq_ignore_ascii_case(prefix));
         if matches_known_profile { rest } else { model }
     }
 
