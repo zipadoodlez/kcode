@@ -42,9 +42,13 @@ struct GraphFixture {
 }
 
 async fn graph_fixture() -> GraphFixture {
-    let swarm_id = "swarm-dag".to_string();
-    let coord = "coord".to_string();
-    let worker = "worker".to_string();
+    graph_fixture_named("swarm-dag", "coord", "worker").await
+}
+
+async fn graph_fixture_named(swarm_id: &str, coord: &str, worker: &str) -> GraphFixture {
+    let swarm_id = swarm_id.to_string();
+    let coord = coord.to_string();
+    let worker = worker.to_string();
     let (client_tx, client_rx) = mpsc::unbounded_channel();
     let sessions = Arc::new(RwLock::new(HashMap::from([
         (coord.clone(), test_agent().await),
@@ -108,6 +112,97 @@ impl GraphFixture {
         )
         .await;
     }
+
+    /// Seed with no explicit mode, so the handler must fall back to the seeder's
+    /// recorded reasoning effort to decide deep vs light.
+    async fn seed_without_mode(&mut self, nodes: Vec<TaskGraphNodeSpec>) {
+        handle_comm_seed_graph(
+            1,
+            self.coord.clone(),
+            None,
+            nodes,
+            &self.client_tx,
+            &self.swarm_members,
+            &self.swarms_by_id,
+            &self.swarm_plans,
+            &self.swarm_coordinators,
+            &self.event_history,
+            &self.event_counter,
+            &self.swarm_event_tx,
+        )
+        .await;
+    }
+}
+
+/// Regression for the deep-swarm trigger gap: a session running at `swarm-deep`
+/// effort that seeds a graph but *forgets* to pass `mode:"deep"` must still get a
+/// deep plan (gates + strict artifact validation), not a silent light downgrade.
+/// The mode is resolved from the seeder's recorded effort via the deadlock-free
+/// `session_effort` side-table.
+#[tokio::test]
+async fn e2e_seed_defaults_to_deep_when_seeder_effort_is_swarm_deep() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-deep-default", "coord-deep-default", "worker-dd").await;
+
+    // The coordinator is the seeder; record its effort as the deep sentinel.
+    crate::session_effort::record_session_effort(&fx.coord, Some("swarm-deep"));
+
+    fx.seed_without_mode(vec![node_spec("explore", "explore", &[])])
+        .await;
+
+    let plans = fx.swarm_plans.read().await;
+    let plan = &plans[&fx.swarm_id];
+    assert_eq!(
+        plan.mode, "deep",
+        "a swarm-deep seeder that omits mode must still get a deep plan"
+    );
+
+    crate::session_effort::forget_session_effort(&fx.coord);
+}
+
+/// Counterpart: without a deep effort recorded (or with a plain reasoning level),
+/// an omitted mode falls back to the engine default (light), preserving legacy
+/// behaviour for non-deep sessions.
+#[tokio::test]
+async fn e2e_seed_defaults_to_light_when_seeder_effort_is_not_deep() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-light-default", "coord-light-default", "worker-ld").await;
+
+    crate::session_effort::record_session_effort(&fx.coord, Some("high"));
+
+    fx.seed_without_mode(vec![node_spec("explore", "explore", &[])])
+        .await;
+
+    let plans = fx.swarm_plans.read().await;
+    let plan = &plans[&fx.swarm_id];
+    assert_eq!(
+        plan.mode, "light",
+        "a non-deep seeder that omits mode keeps the light default"
+    );
+
+    crate::session_effort::forget_session_effort(&fx.coord);
+}
+
+/// An explicit `mode` always wins over the effort-derived default, so a deep
+/// session can still deliberately opt a particular graph into light fan-out.
+#[tokio::test]
+async fn e2e_explicit_mode_overrides_seeder_effort() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-explicit-mode", "coord-explicit-mode", "worker-em").await;
+
+    crate::session_effort::record_session_effort(&fx.coord, Some("swarm-deep"));
+
+    fx.seed("light", vec![node_spec("explore", "explore", &[])])
+        .await;
+
+    let plans = fx.swarm_plans.read().await;
+    let plan = &plans[&fx.swarm_id];
+    assert_eq!(
+        plan.mode, "light",
+        "an explicit mode must override the effort-derived default"
+    );
+
+    crate::session_effort::forget_session_effort(&fx.coord);
 }
 
 #[tokio::test]

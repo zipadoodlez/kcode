@@ -205,12 +205,24 @@ pub(super) async fn handle_comm_seed_graph(
     let specs: Vec<NodeSpec> = nodes.into_iter().map(spec_from_wire).collect();
     let count = specs.len();
 
+    // Resolve the plan mode. The model is *asked* to pass `mode:"deep"` when it is
+    // running at `swarm-deep` effort, but it frequently forgets. Rather than
+    // silently downgrading a deep-effort session to light (which disables the
+    // gates + artifact validation that define deep mode), default the mode from
+    // the seeder's recorded reasoning effort when the caller did not specify one.
+    // An explicit `mode` always wins so a caller can still opt into light.
+    let resolved_mode = mode.or_else(|| {
+        crate::session_effort::session_effort(&req_session_id)
+            .filter(|effort| crate::prompt::is_deep_swarm_effort(effort))
+            .map(|_| "deep".to_string())
+    });
+
     let result = {
         let mut plans = swarm_plans.write().await;
         let plan = plans
             .entry(swarm_id.clone())
             .or_insert_with(VersionedPlan::new);
-        if let Some(mode) = mode {
+        if let Some(mode) = resolved_mode {
             plan.mode = mode;
         }
         plan.participants.insert(req_session_id.clone());

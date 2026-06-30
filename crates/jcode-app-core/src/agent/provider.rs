@@ -134,12 +134,21 @@ impl Agent {
         } else {
             self.session.reasoning_effort = self.provider.reasoning_effort();
         }
+        // Mirror the effort into the deadlock-free side-table so server handlers
+        // (e.g. the swarm seed handler) can learn this session's effort without
+        // taking the agent lock.
+        crate::session_effort::record_session_effort(
+            &self.session.id,
+            self.session.reasoning_effort.as_deref(),
+        );
     }
 
     pub fn set_reasoning_effort(&mut self, effort: &str) -> Result<Option<String>> {
         self.provider.set_reasoning_effort(effort)?;
         let current = self.provider.reasoning_effort();
         self.session.reasoning_effort = current.clone();
+        // Keep the side-table in sync (see `restore_reasoning_effort_from_session`).
+        crate::session_effort::record_session_effort(&self.session.id, current.as_deref());
         self.log_env_snapshot("set_reasoning_effort");
         self.session.save()?;
         Ok(current)
