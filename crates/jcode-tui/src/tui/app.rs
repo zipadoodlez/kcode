@@ -1211,6 +1211,12 @@ pub struct App {
     input_undo_stack: Vec<(String, usize)>,
     // Short-lived notice for status feedback (model switch, cycle diff mode, etc.)
     status_notice: Option<(String, Instant)>,
+    // Distinct learned-keybinding nudge ("you keep doing X the slow way, press
+    // <key>"). Rendered in its own pop-out color, separate from status_notice,
+    // and shown at most once per session.
+    learn_hint: Option<(String, Instant)>,
+    // Whether a learned-keybinding nudge has already been surfaced this session.
+    learn_hint_shown_this_session: bool,
     // Persistent startup notice card (e.g. launch-hotkeys / welcome tip) shown on
     // the idle screen of a fresh session. Stashed so it can be re-applied after
     // the remote History bootstrap clears the transcript for a brand-new session,

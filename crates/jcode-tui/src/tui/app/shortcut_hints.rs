@@ -1,15 +1,25 @@
-//! Shortcut discovery nudges.
+//! Learned-keybinding nudges.
 //!
-//! When a user performs an action "the long way" (typing a slash command,
-//! relaunching with a CLI flag, etc.) and that same action has a configured
-//! keyboard shortcut, we surface a short one-line nudge telling them the
-//! shortcut. The goal is to teach the keybindings passively, without nagging:
-//! each distinct hint is shown at most [`MAX_SHOWS_PER_HINT`] times total,
-//! tracked across restarts in a small JSON file.
+//! jcode tracks, per action, how often the user reaches a result via its
+//! configured keyboard shortcut (the *fast* path) versus the slow way (typing a
+//! slash command). From those two counters we infer which keybindings the user
+//! has *learned* and which they keep paying a "tax" on, and we occasionally
+//! surface a single, distinctly-colored nudge teaching the highest-tax binding.
 //!
-//! The system is intentionally generic: callers describe an action by a stable
-//! id and provide the resolved shortcut label, and this module decides whether
-//! to emit the nudge and records that it did.
+//! Design goals:
+//! - **Two signals.** [`record_fast`] is called from the key dispatcher when a
+//!   binding matches; [`record_slow`] is called from the slash-command / menu
+//!   handlers. A binding with `fast_uses >= LEARNED_FAST_THRESHOLD` is treated
+//!   as *learned* and never nudged again.
+//! - **Prioritize by tax.** We never nudge after every long-path use. The pure
+//!   [`pick_action_to_hint`] selects the unlearned, bound action with the most
+//!   slow-path uses, subject to a per-action show cap and cooldown.
+//! - **Don't nag.** At most one nudge per session, gated behind the
+//!   `display.keybinding_hints` config flag, shown in its own color so the user
+//!   understands the system noticed they aren't using a shortcut.
+//!
+//! The decision logic is pure and unit-tested; only persistence and label
+//! resolution touch the environment.
 
 use std::collections::HashMap;
 
@@ -17,34 +27,120 @@ use serde::{Deserialize, Serialize};
 
 use super::App;
 
-/// How many times a single hint id may be shown before we stop nudging.
-const MAX_SHOWS_PER_HINT: u32 = 3;
+/// Used the keybinding this many times => considered learned; stop nudging.
+const LEARNED_FAST_THRESHOLD: u32 = 3;
+/// Require at least this many slow-path uses before the first nudge.
+const MIN_SLOW_BEFORE_HINT: u32 = 2;
+/// Never nudge a single action more than this many times total.
+const MAX_HINTS_PER_ACTION: u32 = 3;
+/// Minimum wall-clock gap between two nudges for the *same* action.
+const HINT_COOLDOWN_SECS: u64 = 6 * 60 * 60;
 
-const HINT_STATE_FILE: &str = "shortcut_hints.json";
+const STATE_FILE: &str = "keybinding_proficiency.json";
+
+/// An action that can be performed both via a configured shortcut and the slow
+/// way (slash command). Each variant has a stable id used as the persistence
+/// key, a phrase describing the slow action, and a label loader for the binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum LearnableAction {
+    Resume,
+    ModelSwitch,
+    EffortCycle,
+    Alignment,
+}
+
+impl LearnableAction {
+    /// Every action the system knows about, in a stable order.
+    pub(crate) const ALL: [LearnableAction; 4] = [
+        LearnableAction::Resume,
+        LearnableAction::ModelSwitch,
+        LearnableAction::EffortCycle,
+        LearnableAction::Alignment,
+    ];
+
+    /// Stable persistence id. Never change these once shipped.
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            LearnableAction::Resume => "resume",
+            LearnableAction::ModelSwitch => "model_switch",
+            LearnableAction::EffortCycle => "effort_cycle",
+            LearnableAction::Alignment => "alignment",
+        }
+    }
+
+    fn from_id(id: &str) -> Option<LearnableAction> {
+        LearnableAction::ALL.into_iter().find(|a| a.id() == id)
+    }
+
+    /// Short phrase describing what the user just did the slow way, e.g.
+    /// `"open the session picker"`. Rendered as `press {key} to {phrase}`.
+    fn phrase(self) -> &'static str {
+        match self {
+            LearnableAction::Resume => "open the session picker",
+            LearnableAction::ModelSwitch => "switch models",
+            LearnableAction::EffortCycle => "change reasoning effort",
+            LearnableAction::Alignment => "toggle centered layout",
+        }
+    }
+
+    /// Resolve the display label of the configured shortcut, or `None` when the
+    /// binding is disabled/unbound (in which case the action is never nudged).
+    fn shortcut_label(self) -> Option<String> {
+        use crate::tui::keybind;
+        match self {
+            LearnableAction::Resume => keybind::load_open_resume_key().label,
+            LearnableAction::ModelSwitch => keybind::model_switch_next_label(),
+            LearnableAction::EffortCycle => keybind::effort_increase_label(),
+            LearnableAction::Alignment => keybind::centered_toggle_label(),
+        }
+    }
+}
+
+/// Per-action proficiency counters.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct ActionStat {
+    /// Times the user used the configured shortcut directly.
+    #[serde(default)]
+    fast_uses: u32,
+    /// Times the user reached the same result the slow way.
+    #[serde(default)]
+    slow_uses: u32,
+    /// Times we have surfaced a learn-hint for this action.
+    #[serde(default)]
+    hints_shown: u32,
+    /// Unix seconds of the last hint, for cooldown throttling.
+    #[serde(default)]
+    last_hint_unix: u64,
+}
+
+impl ActionStat {
+    fn is_learned(&self) -> bool {
+        self.fast_uses >= LEARNED_FAST_THRESHOLD
+    }
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct HintState {
+struct ProficiencyState {
     #[serde(default)]
     version: u8,
-    /// Number of times each hint id has been shown.
     #[serde(default)]
-    shows: HashMap<String, u32>,
+    actions: HashMap<String, ActionStat>,
 }
 
 fn state_path() -> Option<std::path::PathBuf> {
     crate::storage::app_config_dir()
         .ok()
-        .map(|dir| dir.join(HINT_STATE_FILE))
+        .map(|dir| dir.join(STATE_FILE))
 }
 
-fn load_state() -> HintState {
+fn load_state() -> ProficiencyState {
     let Some(path) = state_path() else {
-        return HintState::default();
+        return ProficiencyState::default();
     };
-    crate::storage::read_json::<HintState>(&path).unwrap_or_default()
+    crate::storage::read_json::<ProficiencyState>(&path).unwrap_or_default()
 }
 
-fn save_state(state: &HintState) {
+fn save_state(state: &ProficiencyState) {
     let Some(path) = state_path() else {
         return;
     };
@@ -53,77 +149,137 @@ fn save_state(state: &HintState) {
     }
     if let Err(error) = crate::storage::write_json(&path, state) {
         crate::logging::info(&format!(
-            "Failed to persist shortcut-hint state {}: {}",
+            "Failed to persist keybinding-proficiency state {}: {}",
             path.display(),
             error
         ));
     }
 }
 
-/// Whether `hint_id` still has remaining nudges to show. Pure read; does not
-/// record anything. Used to decide before building a (possibly costly) message.
-pub(crate) fn should_show(hint_id: &str) -> bool {
-    load_state().shows.get(hint_id).copied().unwrap_or(0) < MAX_SHOWS_PER_HINT
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
-/// Record that `hint_id` was shown once, persisting the bumped counter.
-pub(crate) fn record_shown(hint_id: &str) {
+/// Record that the user performed `action` via its keyboard shortcut.
+pub(crate) fn record_fast(action: LearnableAction) {
     let mut state = load_state();
-    let counter = state.shows.entry(hint_id.to_string()).or_insert(0);
-    *counter = counter.saturating_add(1);
+    let stat = state.actions.entry(action.id().to_string()).or_default();
+    stat.fast_uses = stat.fast_uses.saturating_add(1);
     save_state(&state);
 }
 
-/// Build a one-line nudge for an action that has a configured shortcut, or
-/// `None` when the action is unbound or the hint has been shown enough times.
+/// Record that the user performed `action` the slow way (slash command/menu).
+pub(crate) fn record_slow(action: LearnableAction) {
+    let mut state = load_state();
+    let stat = state.actions.entry(action.id().to_string()).or_default();
+    stat.slow_uses = stat.slow_uses.saturating_add(1);
+    save_state(&state);
+}
+
+/// Pure ranked pick: among `candidates` (action id + stat + whether currently
+/// bound), choose the best action to nudge, or `None` if none qualify.
 ///
-/// `hint_id` is a stable identifier (e.g. `"resume"`). `action` is a short
-/// human phrase describing what the user just did the long way (e.g.
-/// `"open the session picker"`). `shortcut_label` is the resolved, display
-/// form of the binding (e.g. `"Cmd+R"`).
+/// A candidate qualifies when it is bound, not yet learned, has been used the
+/// slow way enough times, still has hint budget, and is past its cooldown. The
+/// winner is the one with the highest slow-path tax (ties broken by id for
+/// determinism).
+fn pick_action_id<'a>(
+    candidates: &[(&'a str, &ActionStat, bool)],
+    now_unix: u64,
+) -> Option<&'a str> {
+    candidates
+        .iter()
+        .filter(|(_, stat, bound)| {
+            *bound
+                && !stat.is_learned()
+                && stat.slow_uses >= MIN_SLOW_BEFORE_HINT
+                && stat.hints_shown < MAX_HINTS_PER_ACTION
+                && now_unix.saturating_sub(stat.last_hint_unix) >= HINT_COOLDOWN_SECS
+        })
+        .max_by(|a, b| {
+            a.1.slow_uses
+                .cmp(&b.1.slow_uses)
+                .then_with(|| b.0.cmp(a.0))
+        })
+        .map(|(id, _, _)| *id)
+}
+
+/// Resolve the next learn-hint to show, if any, recording the show.
 ///
-/// This does NOT record the show; call [`record_shown`] when the message is
-/// actually surfaced so we only count nudges the user could see.
-pub(crate) fn nudge_message(
-    hint_id: &str,
-    action: &str,
-    shortcut_label: Option<&str>,
-) -> Option<String> {
-    let label = shortcut_label?;
-    let label = label.trim();
-    if label.is_empty() {
-        return None;
-    }
-    if !should_show(hint_id) {
-        return None;
-    }
-    Some(format!("💡 Tip: press {label} to {action}"))
+/// Returns `(message, label)` where `message` is the fully-formed nudge text.
+/// Pure-ish: reads config + bindings, mutates persisted hint counters.
+fn next_learn_hint() -> Option<String> {
+    let mut state = load_state();
+    let now = now_unix();
+
+    // Resolve which actions are currently bound (have a shortcut label).
+    let labels: HashMap<&'static str, String> = LearnableAction::ALL
+        .into_iter()
+        .filter_map(|a| a.shortcut_label().map(|l| (a.id(), l)))
+        .collect();
+
+    let stats: HashMap<&'static str, ActionStat> = LearnableAction::ALL
+        .into_iter()
+        .map(|a| {
+            let stat = state.actions.get(a.id()).cloned().unwrap_or_default();
+            (a.id(), stat)
+        })
+        .collect();
+
+    let candidates: Vec<(&'static str, &ActionStat, bool)> = LearnableAction::ALL
+        .into_iter()
+        .map(|a| (a.id(), stats.get(a.id()).unwrap(), labels.contains_key(a.id())))
+        .collect();
+
+    let chosen_id = pick_action_id(&candidates, now)?;
+    let action = LearnableAction::from_id(chosen_id)?;
+    let label = labels.get(chosen_id)?.clone();
+
+    // Record the show.
+    let stat = state.actions.entry(chosen_id.to_string()).or_default();
+    stat.hints_shown = stat.hints_shown.saturating_add(1);
+    stat.last_hint_unix = now;
+    save_state(&state);
+
+    Some(format!(
+        "⌨ You usually {} the slow way \u{2014} press {} next time",
+        action.phrase(),
+        label
+    ))
 }
 
 impl App {
-    /// Surface a shortcut nudge as a transient status notice, if the action is
-    /// bound and the hint hasn't been shown too many times. Records the show.
-    ///
-    /// Returns true when a nudge was surfaced.
-    pub(crate) fn maybe_hint_shortcut(
-        &mut self,
-        hint_id: &str,
-        action: &str,
-        shortcut_label: Option<&str>,
-    ) -> bool {
-        let Some(message) = nudge_message(hint_id, action, shortcut_label) else {
-            return false;
-        };
-        self.set_status_notice(message);
-        record_shown(hint_id);
-        true
+    /// Record a fast (shortcut) use of `action`.
+    pub(crate) fn record_keybinding_fast(&self, action: LearnableAction) {
+        if !crate::config::config().display.keybinding_hints {
+            return;
+        }
+        record_fast(action);
     }
 
-    /// Nudge the user toward the `open_resume` shortcut after they reach the
-    /// session picker the long way (typing `/resume`).
-    pub(crate) fn hint_resume_shortcut(&mut self) {
-        let label = crate::tui::keybind::load_open_resume_key().label;
-        self.maybe_hint_shortcut("resume", "open the session picker", label.as_deref());
+    /// Record a slow (slash command / menu) use of `action`, then maybe surface
+    /// a single learned-keybinding nudge for the highest-tax unlearned binding.
+    pub(crate) fn record_keybinding_slow(&mut self, action: LearnableAction) {
+        if !crate::config::config().display.keybinding_hints {
+            return;
+        }
+        record_slow(action);
+        self.maybe_surface_learn_hint();
+    }
+
+    /// Surface at most one learn-hint per session, in the distinct learn-hint
+    /// color slot. No-op when hints are disabled or already shown this session.
+    fn maybe_surface_learn_hint(&mut self) {
+        if self.learn_hint_shown_this_session {
+            return;
+        }
+        if let Some(message) = next_learn_hint() {
+            self.learn_hint = Some((message, std::time::Instant::now()));
+            self.learn_hint_shown_this_session = true;
+        }
     }
 }
 
@@ -131,42 +287,78 @@ impl App {
 mod tests {
     use super::*;
 
-    #[test]
-    fn nudge_is_throttled_after_max_shows() {
-        let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
-        let prev = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
-
-        let id = "resume";
-        // First MAX shows produce a message; record each.
-        for _ in 0..MAX_SHOWS_PER_HINT {
-            let msg = nudge_message(id, "open the session picker", Some("Cmd+B"));
-            assert!(msg.is_some(), "expected a nudge while under the cap");
-            record_shown(id);
-        }
-        // Now exhausted.
-        assert!(
-            nudge_message(id, "open the session picker", Some("Cmd+B")).is_none(),
-            "nudge should stop after the cap"
-        );
-
-        if let Some(prev) = prev {
-            crate::env::set_var("JCODE_HOME", prev);
-        } else {
-            crate::env::remove_var("JCODE_HOME");
+    fn stat(fast: u32, slow: u32, hints: u32, last: u64) -> ActionStat {
+        ActionStat {
+            fast_uses: fast,
+            slow_uses: slow,
+            hints_shown: hints,
+            last_hint_unix: last,
         }
     }
 
     #[test]
-    fn unbound_shortcut_yields_no_nudge() {
+    fn picks_highest_slow_tax_unlearned_bound_action() {
+        let a = stat(0, 5, 0, 0);
+        let b = stat(0, 2, 0, 0);
+        let cands = [("model_switch", &a, true), ("resume", &b, true)];
+        assert_eq!(pick_action_id(&cands, 10_000_000), Some("model_switch"));
+    }
+
+    #[test]
+    fn skips_learned_bindings() {
+        let learned = stat(LEARNED_FAST_THRESHOLD, 9, 0, 0);
+        let cands = [("resume", &learned, true)];
+        assert_eq!(pick_action_id(&cands, 10_000_000), None);
+    }
+
+    #[test]
+    fn skips_unbound_actions() {
+        let s = stat(0, 9, 0, 0);
+        let cands = [("resume", &s, false)];
+        assert_eq!(pick_action_id(&cands, 10_000_000), None);
+    }
+
+    #[test]
+    fn requires_minimum_slow_uses() {
+        let s = stat(0, MIN_SLOW_BEFORE_HINT - 1, 0, 0);
+        let cands = [("resume", &s, true)];
+        assert_eq!(pick_action_id(&cands, 10_000_000), None);
+    }
+
+    #[test]
+    fn respects_per_action_hint_cap() {
+        let s = stat(0, 9, MAX_HINTS_PER_ACTION, 0);
+        let cands = [("resume", &s, true)];
+        assert_eq!(pick_action_id(&cands, 10_000_000), None);
+    }
+
+    #[test]
+    fn respects_cooldown() {
+        let now = 10_000_000u64;
+        let recent = stat(0, 9, 1, now - 1);
+        let cands = [("resume", &recent, true)];
+        assert_eq!(pick_action_id(&cands, now), None);
+
+        let old = stat(0, 9, 1, now - HINT_COOLDOWN_SECS);
+        let cands = [("resume", &old, true)];
+        assert_eq!(pick_action_id(&cands, now), Some("resume"));
+    }
+
+    #[test]
+    fn fast_and_slow_counters_persist_independently() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
         let prev = std::env::var_os("JCODE_HOME");
         crate::env::set_var("JCODE_HOME", temp.path());
 
-        assert!(nudge_message("x", "do the thing", None).is_none());
-        assert!(nudge_message("x", "do the thing", Some("   ")).is_none());
+        record_slow(LearnableAction::Resume);
+        record_slow(LearnableAction::Resume);
+        record_fast(LearnableAction::Resume);
+
+        let state = load_state();
+        let stat = state.actions.get("resume").expect("stat present");
+        assert_eq!(stat.slow_uses, 2);
+        assert_eq!(stat.fast_uses, 1);
 
         if let Some(prev) = prev {
             crate::env::set_var("JCODE_HOME", prev);

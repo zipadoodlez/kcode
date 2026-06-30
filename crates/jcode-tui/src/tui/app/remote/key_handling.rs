@@ -371,10 +371,12 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
     if let Some(direction) = app.model_switch_keys.direction_for(code, modifiers) {
+        app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::ModelSwitch);
         remote.cycle_model(direction).await?;
         return Ok(());
     }
     if let Some(direction) = app.effort_switch_keys.direction_for(code, modifiers) {
+        app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::EffortCycle);
         apply_remote_effort_direction(app, remote, direction).await?;
         return Ok(());
     }
@@ -392,6 +394,7 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
     if app.centered_toggle_keys.matches(code, modifiers) {
+        app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
         return Ok(());
     }
@@ -508,6 +511,7 @@ async fn handle_remote_key_internal(
     }
 
     if app.centered_toggle_keys.matches(code, modifiers) {
+        app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
         return Ok(());
     }
@@ -1660,7 +1664,9 @@ async fn handle_remote_key_internal(
 
                 if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
                     app.open_session_picker();
-                    app.hint_resume_shortcut();
+                    app.record_keybinding_slow(
+                        crate::tui::app::shortcut_hints::LearnableAction::Resume,
+                    );
                     return Ok(());
                 }
 

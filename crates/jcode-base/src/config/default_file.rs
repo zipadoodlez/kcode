@@ -163,6 +163,11 @@ prompt_entry_animation = true
 # results directly in the chat.
 # show_agentgrep_output = false
 
+# Occasionally surface a "learn this keybinding" nudge (in a distinct color)
+# when you keep doing something the slow way (e.g. /resume) instead of using
+# its configured shortcut. Set false to disable all such hints (default: true).
+# keybinding_hints = true
+
 # Disable specific animation variants by name.
 # Examples: ["donut"] or ["donut", "orbit_rings"]
 # Legacy aliases such as "three_rings" and "gyroscope" are still accepted.

@@ -1496,6 +1496,16 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         ));
     }
 
+    // Learned-keybinding nudge: distinct bright color + bold so the user reads
+    // it as "the system noticed I'm not using a shortcut", not a normal status.
+    if let Some(hint) = app.learn_hint() {
+        push_sep(&mut spans);
+        spans.push(Span::styled(
+            normalize_repaint_sensitive_notice_text(&hint),
+            Style::default().fg(rgb(214, 122, 255)).bold(),
+        ));
+    }
+
     if !app.is_processing() {
         let info = app.info_widget_data();
         if let Some(schedule_notice) =

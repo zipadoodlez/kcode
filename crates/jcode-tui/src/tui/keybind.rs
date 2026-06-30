@@ -273,6 +273,35 @@ pub fn effort_switch_keys_label() -> String {
     )
 }
 
+/// Display label for the "next model" switch chord, or `None` when the binding
+/// is disabled. Used by the learned-keybinding hint registry.
+pub(crate) fn model_switch_next_label() -> Option<String> {
+    let cfg = config();
+    let raw = cfg.keybindings.model_switch_next.trim();
+    if raw.is_empty() || is_disabled(raw) {
+        return None;
+    }
+    Some(format_binding(&load_model_switch_keys().next))
+}
+
+/// Display label for the effort-increase chord, or `None` when disabled.
+pub(crate) fn effort_increase_label() -> Option<String> {
+    let cfg = config();
+    let raw = cfg.keybindings.effort_increase.trim();
+    if raw.is_empty() || is_disabled(raw) {
+        return None;
+    }
+    Some(format_binding(&load_effort_switch_keys().increase))
+}
+
+/// Display label for the alignment (centered-mode) toggle, or `None` when unbound.
+pub(crate) fn centered_toggle_label() -> Option<String> {
+    load_centered_toggle_key()
+        .toggle
+        .as_ref()
+        .map(format_binding)
+}
+
 pub fn load_centered_toggle_key() -> CenteredToggleKeys {
     let cfg = config();
 

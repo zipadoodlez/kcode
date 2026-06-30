@@ -306,6 +306,12 @@ pub trait TuiState {
     fn connected_clients(&self) -> Option<usize>;
     /// Short-lived notice shown in the status line (e.g., model switch, toggle diff)
     fn status_notice(&self) -> Option<String>;
+    /// Distinct learned-keybinding nudge shown in its own pop-out color, e.g.
+    /// "you usually do X the slow way, press <key>". Separate from
+    /// [`status_notice`] so the UI can style it differently.
+    fn learn_hint(&self) -> Option<String> {
+        None
+    }
     /// First-use experimental feature warning for the currently active operation.
     fn active_experimental_feature_notice(&self) -> Option<String> {
         None
@@ -527,6 +533,9 @@ pub trait TuiState {
             return true;
         }
         if self.status_notice().is_some() {
+            return true;
+        }
+        if self.learn_hint().is_some() {
             return true;
         }
         if self.has_stashed_input() {
@@ -1522,6 +1531,7 @@ pub(crate) fn redraw_interval_with_policy(
     if state.is_processing()
         || !state.streaming_text().is_empty()
         || state.status_notice().is_some()
+        || state.learn_hint().is_some()
         || state.has_pending_mouse_scroll_animation()
         || state.copy_selection_edge_autoscroll_active()
         || state.has_notification()
@@ -1584,6 +1594,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         || !state.streaming_text().is_empty()
         || ui::tail_catchup_active()
         || state.status_notice().is_some()
+        || state.learn_hint().is_some()
         || state.has_pending_mouse_scroll_animation()
         || state.copy_selection_edge_autoscroll_active()
         || state.chat_overscroll_active()

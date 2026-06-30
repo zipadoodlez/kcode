@@ -1621,14 +1621,17 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
     if app.open_resume_key_matches(code, modifiers) {
+        app.record_keybinding_fast(super::shortcut_hints::LearnableAction::Resume);
         app.open_session_picker();
         return true;
     }
     if let Some(direction) = app.model_switch_keys.direction_for(code, modifiers) {
+        app.record_keybinding_fast(super::shortcut_hints::LearnableAction::ModelSwitch);
         app.cycle_model(direction);
         return true;
     }
     if let Some(direction) = app.effort_switch_keys.direction_for(code, modifiers) {
+        app.record_keybinding_fast(super::shortcut_hints::LearnableAction::EffortCycle);
         app.cycle_effort(direction);
         return true;
     }
@@ -1642,6 +1645,7 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
     if app.centered_toggle_keys.matches(code, modifiers) {
+        app.record_keybinding_fast(super::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
         return true;
     }

@@ -809,6 +809,18 @@ impl crate::tui::TuiState for App {
         })
     }
 
+    fn learn_hint(&self) -> Option<String> {
+        self.learn_hint.as_ref().and_then(|(text, at)| {
+            // Learn-hints linger a little longer than status notices so the user
+            // has time to read and register the keybinding.
+            if at.elapsed() <= Duration::from_secs(8) {
+                Some(text.clone())
+            } else {
+                None
+            }
+        })
+    }
+
     fn active_experimental_feature_notice(&self) -> Option<String> {
         self.active_experimental_feature_notice.clone()
     }

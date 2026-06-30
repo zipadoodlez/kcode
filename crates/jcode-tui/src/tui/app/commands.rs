@@ -1669,7 +1669,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
         app.open_session_picker();
-        app.hint_resume_shortcut();
+        app.record_keybinding_slow(super::shortcut_hints::LearnableAction::Resume);
         return true;
     }
 
@@ -2836,6 +2836,7 @@ fn handle_alignment_command(app: &mut App, trimmed: &str) -> bool {
 
     app.set_centered(centered);
     app.set_status_notice(alignment_status_notice(centered));
+    app.record_keybinding_slow(super::shortcut_hints::LearnableAction::Alignment);
 
     match crate::config::Config::set_display_centered(centered) {
         Ok(()) => app.push_display_message(DisplayMessage::system(format!(

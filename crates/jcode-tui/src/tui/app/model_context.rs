@@ -1245,11 +1245,13 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/model" || trimmed == "/models" {
+        app.record_keybinding_slow(crate::tui::app::shortcut_hints::LearnableAction::ModelSwitch);
         app.open_model_picker();
         return true;
     }
 
     if let Some(model_name) = trimmed.strip_prefix("/model ") {
+        app.record_keybinding_slow(crate::tui::app::shortcut_hints::LearnableAction::ModelSwitch);
         let model_name = model_name.trim();
         match app.provider.set_model(model_name) {
             Ok(()) => {
@@ -1281,6 +1283,7 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/effort" {
+        app.record_keybinding_slow(crate::tui::app::shortcut_hints::LearnableAction::EffortCycle);
         let current = app.provider.reasoning_effort();
         let efforts = app.provider.available_efforts();
         if efforts.is_empty() {
@@ -1313,6 +1316,7 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if let Some(level) = trimmed.strip_prefix("/effort ") {
+        app.record_keybinding_slow(crate::tui::app::shortcut_hints::LearnableAction::EffortCycle);
         let level = level.trim();
         match app.provider.set_reasoning_effort(level) {
             Ok(()) => {

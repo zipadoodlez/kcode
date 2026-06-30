@@ -857,6 +857,10 @@ impl Default for NativeScrollbarConfig {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
 /// Display/UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -916,6 +920,11 @@ pub struct DisplayConfig {
     pub show_agentgrep_output: bool,
     /// Native terminal scrollbar configuration for scrollable panes
     pub native_scrollbars: NativeScrollbarConfig,
+    /// Surface occasional "learn this keybinding" nudges when the user keeps
+    /// performing an action the slow way (slash command) instead of using its
+    /// configured shortcut (default: true). Set false to disable all such hints.
+    #[serde(default = "default_true")]
+    pub keybinding_hints: bool,
 }
 
 impl Default for DisplayConfig {
@@ -945,6 +954,7 @@ impl Default for DisplayConfig {
             copy_badge_alt_label: String::new(),
             show_agentgrep_output: false,
             native_scrollbars: NativeScrollbarConfig::default(),
+            keybinding_hints: true,
         }
     }
 }
