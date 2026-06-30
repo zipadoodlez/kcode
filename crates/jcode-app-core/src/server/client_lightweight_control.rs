@@ -652,6 +652,9 @@ pub(super) async fn handle_lightweight_control_request(
             session_ids: requested_ids,
             mode,
             timeout_secs,
+            background,
+            notify,
+            wake,
         } => {
             handle_comm_await_members(
                 id,
@@ -660,6 +663,9 @@ pub(super) async fn handle_lightweight_control_request(
                 requested_ids,
                 mode,
                 timeout_secs,
+                background,
+                notify,
+                wake,
                 CommAwaitMembersContext {
                     client_event_tx: &client_event_tx,
                     swarm_members,

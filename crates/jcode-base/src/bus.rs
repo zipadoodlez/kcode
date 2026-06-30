@@ -269,6 +269,28 @@ pub struct GitStatusCompleted {
     pub result: std::result::Result<String, String>,
 }
 
+/// A backgrounded `swarm await_members` watcher reached a terminal result
+/// (members satisfied the target status, or the wait timed out).
+///
+/// Carries the already-rendered notification/wake payloads so the server's bus
+/// monitor can deliver completion through the same notify/wake path as
+/// background tasks, without re-coupling `jcode-base` to swarm internals.
+#[derive(Clone, Debug)]
+pub struct SwarmAwaitCompleted {
+    /// Session that requested the await (delivery target).
+    pub session_id: String,
+    /// Whether the await completed successfully (false = timed out).
+    pub completed: bool,
+    /// Human-readable summary line (e.g. "All 2 members are done: fox, wolf").
+    pub summary: String,
+    /// Rich, already-formatted notification body (member statuses + reports).
+    pub notification: String,
+    /// Surface a notification card to attached clients.
+    pub notify: bool,
+    /// Wake an idle requesting agent (or soft-interrupt it when busy).
+    pub wake: bool,
+}
+
 /// Result of a `/productivity` report generation run.
 ///
 /// Carries already-rendered outputs (markdown + PNG bytes) so the TUI layer can
@@ -368,6 +390,8 @@ pub enum BusEvent {
     BackgroundTaskCompleted(BackgroundTaskCompleted),
     /// Background task reported progress
     BackgroundTaskProgress(BackgroundTaskProgressEvent),
+    /// A backgrounded `swarm await_members` watcher reached a terminal result.
+    SwarmAwaitCompleted(SwarmAwaitCompleted),
     /// Usage report fetched from providers
     UsageReport(Vec<jcode_usage_types::ProviderUsage>),
     /// Progressive usage report update while providers are still loading

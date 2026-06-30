@@ -26,6 +26,9 @@ async fn await_members_stops_when_requesting_client_disconnects() {
         vec![],
         None,
         Some(60),
+        false,
+        false,
+        false,
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,

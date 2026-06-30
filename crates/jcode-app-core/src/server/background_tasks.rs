@@ -88,6 +88,85 @@ pub(super) async fn dispatch_background_task_completion(
     }
 }
 
+/// Deliver the result of a backgrounded `swarm await_members` watcher to the
+/// requesting session. Mirrors background-task completion delivery: optionally
+/// notify attached clients, then wake an idle agent or queue a soft interrupt
+/// for a busy one.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "swarm await completion needs session, interrupt, and swarm status state"
+)]
+pub(super) async fn dispatch_swarm_await_completion(
+    event: &crate::bus::SwarmAwaitCompleted,
+    sessions: &SessionAgents,
+    soft_interrupt_queues: &SessionInterruptQueues,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
+    event_counter: &Arc<AtomicU64>,
+    swarm_event_tx: &broadcast::Sender<SwarmEvent>,
+) {
+    if event.notify
+        && fanout_session_event(
+            swarm_members,
+            &event.session_id,
+            ServerEvent::Notification {
+                from_session: "swarm".to_string(),
+                from_name: Some("swarm await".to_string()),
+                notification_type: NotificationType::Message {
+                    scope: Some("swarm_await".to_string()),
+                    channel: None,
+                },
+                message: event.notification.clone(),
+            },
+        )
+        .await
+            == 0
+    {
+        crate::logging::warn(&format!(
+            "Failed to notify attached clients for swarm await completion on session {}",
+            event.session_id
+        ));
+    }
+
+    if !event.wake {
+        return;
+    }
+
+    if !run_live_turn_if_idle(
+        &event.session_id,
+        &event.notification,
+        Some(
+            "A swarm await you started just resolved. Review the result and continue if useful."
+                .to_string(),
+        ),
+        sessions,
+        LiveTurnSwarmContext::new(
+            swarm_members,
+            swarms_by_id,
+            event_history,
+            event_counter,
+            swarm_event_tx,
+        ),
+    )
+    .await
+        && !queue_soft_interrupt_for_session(
+            &event.session_id,
+            event.notification.clone(),
+            false,
+            SoftInterruptSource::BackgroundTask,
+            soft_interrupt_queues,
+            sessions,
+        )
+        .await
+    {
+        crate::logging::warn(&format!(
+            "Failed to deliver swarm await completion to session {}",
+            event.session_id
+        ));
+    }
+}
+
 pub(super) async fn dispatch_background_task_progress(
     task: &crate::bus::BackgroundTaskProgressEvent,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,

@@ -116,6 +116,9 @@ fn test_comm_await_members_roundtrip() -> Result<()> {
         session_ids: vec!["sess_a".to_string(), "sess_b".to_string()],
         mode: Some("any".to_string()),
         timeout_secs: Some(120),
+        background: false,
+        notify: false,
+        wake: false,
     };
     let json = serde_json::to_string(&req)?;
     assert!(json.contains("\"type\":\"comm_await_members\""));
@@ -127,6 +130,9 @@ fn test_comm_await_members_roundtrip() -> Result<()> {
         session_ids,
         mode,
         timeout_secs,
+        background,
+        notify,
+        wake,
         ..
     } = decoded
     else {
@@ -137,6 +143,9 @@ fn test_comm_await_members_roundtrip() -> Result<()> {
     assert_eq!(session_ids, vec!["sess_a", "sess_b"]);
     assert_eq!(mode.as_deref(), Some("any"));
     assert_eq!(timeout_secs, Some(120));
+    assert!(!background);
+    assert!(!notify);
+    assert!(!wake);
     Ok(())
 }
 
@@ -149,6 +158,9 @@ fn test_comm_await_members_defaults() -> Result<()> {
         session_ids,
         mode,
         timeout_secs,
+        background,
+        notify,
+        wake,
         ..
     } = decoded
     else {
@@ -160,6 +172,9 @@ fn test_comm_await_members_defaults() -> Result<()> {
     );
     assert_eq!(mode, None, "mode should default to None");
     assert_eq!(timeout_secs, None, "timeout_secs should default to None");
+    assert!(background, "background should default to true");
+    assert!(notify, "notify should default to true");
+    assert!(wake, "wake should default to true");
     Ok(())
 }
 
@@ -242,6 +257,7 @@ fn test_comm_await_members_response_roundtrip() -> Result<()> {
             },
         ],
         summary: "All 2 members are done: fox, wolf".to_string(),
+        background_started: false,
     };
     let json = encode_event(&event);
     assert!(json.contains("\"type\":\"comm_await_members_response\""));
@@ -251,6 +267,7 @@ fn test_comm_await_members_response_roundtrip() -> Result<()> {
         completed,
         members,
         summary,
+        ..
     } = decoded
     else {
         return Err(anyhow!("expected CommAwaitMembersResponse"));

@@ -70,7 +70,8 @@ async fn communicate_list_and_await_members_work_end_to_end() {
             json!({
                 "action": "await_members",
                 "session_ids": [peer_session.clone()],
-                "timeout_minutes": 1
+                "timeout_minutes": 1,
+                "background": false
             }),
             ctx.clone(),
         )
@@ -100,6 +101,109 @@ async fn communicate_list_and_await_members_work_end_to_end() {
         .find(|member| member.session_id == peer_session)
         .expect("peer should still be listed when ready");
     assert_eq!(ready_peer.status.as_deref(), Some("ready"));
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn communicate_await_members_background_returns_immediately_and_notifies() {
+    let _env_lock = crate::storage::lock_test_env();
+    let runtime_dir = tempfile::TempDir::new().expect("runtime tempdir");
+    let repo_dir = std::env::current_dir().expect("repo cwd");
+    let socket_path = runtime_dir.path().join("jcode.sock");
+    let _runtime = EnvGuard::set("JCODE_RUNTIME_DIR", runtime_dir.path());
+    let _socket = EnvGuard::set("JCODE_SOCKET", &socket_path);
+    let _debug = EnvGuard::set("JCODE_DEBUG_CONTROL", "1");
+
+    let provider: Arc<dyn Provider> = Arc::new(DelayedTestProvider {
+        delay: Duration::from_millis(300),
+    });
+    let server = Arc::new(Server::new(provider));
+    let mut server_task = {
+        let server = Arc::clone(&server);
+        tokio::spawn(async move { server.run().await })
+    };
+
+    let socket_path = runtime_dir.path().join("jcode.sock");
+    wait_for_server_socket(&socket_path, &mut server_task)
+        .await
+        .expect("server socket should be ready");
+
+    let mut watcher = RawClient::connect(&socket_path)
+        .await
+        .expect("watcher should connect");
+    let mut peer = RawClient::connect(&socket_path)
+        .await
+        .expect("peer should connect");
+    watcher
+        .subscribe(&repo_dir)
+        .await
+        .expect("watcher subscribe");
+    peer.subscribe(&repo_dir).await.expect("peer subscribe");
+
+    let watcher_session = watcher.session_id().await.expect("watcher session id");
+    let peer_session = peer.session_id().await.expect("peer session id");
+
+    let tool = CommunicateTool::new();
+    let ctx = test_ctx(&watcher_session, &repo_dir);
+
+    // Put the peer into a running state so the await actually has to wait.
+    let peer_message_id = peer
+        .send_message("Reply with a short acknowledgement.")
+        .await
+        .expect("peer message request should send");
+    wait_for_member_status(&mut watcher, &watcher_session, &peer_session, "running")
+        .await
+        .expect("peer should enter running state");
+
+    // Background await (the default) must return promptly with a hand-off
+    // message instead of blocking until the peer finishes.
+    let await_output = tokio::time::timeout(
+        Duration::from_secs(5),
+        tool.execute(
+            json!({
+                "action": "await_members",
+                "session_ids": [peer_session.clone()],
+                "timeout_minutes": 1
+            }),
+            ctx.clone(),
+        ),
+    )
+    .await
+    .expect("background await should return promptly")
+    .expect("await_members should succeed");
+    assert!(
+        await_output.output.contains("background"),
+        "expected background hand-off message, got: {}",
+        await_output.output
+    );
+
+    peer.wait_for_done(peer_message_id)
+        .await
+        .expect("peer message should finish");
+
+    // The backgrounded watcher should deliver a swarm-await notification to the
+    // requesting (watcher) session once the peer reaches ready.
+    let event = watcher
+        .read_until(Duration::from_secs(5), |event| {
+            matches!(
+                event,
+                ServerEvent::Notification {
+                    notification_type: NotificationType::Message { scope: Some(scope), .. },
+                    ..
+                } if scope == "swarm_await"
+            )
+        })
+        .await
+        .expect("background await should deliver a swarm_await notification");
+    let ServerEvent::Notification { message, .. } = event else {
+        panic!("expected swarm_await notification, got: {event:?}");
+    };
+    assert!(
+        message.contains("Swarm await finished"),
+        "expected swarm await completion body, got: {}",
+        message
+    );
 
     server_task.abort();
 }

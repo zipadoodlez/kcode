@@ -28,6 +28,9 @@ async fn await_members_includes_late_joiners_when_watching_swarm() {
         vec![],
         None,
         Some(2),
+        false,
+        false,
+        false,
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,

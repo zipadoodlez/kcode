@@ -50,7 +50,7 @@ mod util;
 pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{
     dispatch_background_task_completion, dispatch_background_task_progress,
-    dispatch_swarm_output_tail, dispatch_ui_activity,
+    dispatch_swarm_await_completion, dispatch_swarm_output_tail, dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
 use self::debug_jobs::DebugJob;
@@ -1044,6 +1044,25 @@ impl Server {
             .await;
         });
 
+        // Resume any background `swarm await_members` watchers that were active
+        // before this (re)start. Their results are delivered via notify/wake, so
+        // they can pick up transparently without the agent rerunning the wait.
+        {
+            let resume_swarm_members = Arc::clone(&self.swarm_state.members);
+            let resume_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
+            let resume_swarm_event_tx = self.swarm_event_tx.clone();
+            let resume_await_runtime = self.await_members_runtime.clone();
+            tokio::spawn(async move {
+                comm_await::resume_background_awaits(
+                    &resume_swarm_members,
+                    &resume_swarms_by_id,
+                    &resume_swarm_event_tx,
+                    &resume_await_runtime,
+                )
+                .await;
+            });
+        }
+
         let stale_swarm_members = Arc::clone(&self.swarm_state.members);
         let stale_swarms_by_id = Arc::clone(&self.swarm_state.swarms_by_id);
         let stale_swarm_plans = Arc::clone(&self.swarm_state.plans);
@@ -1815,6 +1834,19 @@ impl Server {
                 }
                 Ok(BusEvent::BackgroundTaskProgress(task)) => {
                     dispatch_background_task_progress(&task, &swarm_members).await;
+                }
+                Ok(BusEvent::SwarmAwaitCompleted(event)) => {
+                    dispatch_swarm_await_completion(
+                        &event,
+                        &sessions,
+                        &soft_interrupt_queues,
+                        &swarm_members,
+                        &swarms_by_id,
+                        &event_history,
+                        &event_counter,
+                        &swarm_event_tx,
+                    )
+                    .await;
                 }
                 Ok(BusEvent::UiActivity(activity)) => {
                     dispatch_ui_activity(&activity, &swarm_members).await;

@@ -25,6 +25,9 @@ async fn await_members_reuses_persisted_deadline_after_reload_retry() {
             mode: None,
             created_at_unix_ms: now_ms,
             deadline_unix_ms: now_ms + 150,
+            background: false,
+            notify: false,
+            wake: false,
             final_response: None,
         },
     );
@@ -48,6 +51,9 @@ async fn await_members_reuses_persisted_deadline_after_reload_retry() {
         vec![],
         None,
         Some(60),
+        false,
+        false,
+        false,
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,

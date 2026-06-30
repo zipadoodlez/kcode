@@ -217,6 +217,11 @@ async fn await_swarm_progress(
         session_ids,
         mode: Some("any".to_string()),
         timeout_secs: Some(timeout_minutes.max(1) * 60),
+        // run_plan needs the result inline to drive its coordination loop, so it
+        // explicitly opts out of the background-by-default behavior.
+        background: false,
+        notify: false,
+        wake: false,
     };
     let socket_timeout = std::time::Duration::from_secs(timeout_minutes.max(1) * 60 + 30);
     match send_request_with_timeout(request, Some(socket_timeout)).await {
@@ -545,6 +550,10 @@ struct CommunicateInput {
     #[serde(default)]
     wake: Option<bool>,
     #[serde(default)]
+    background: Option<bool>,
+    #[serde(default)]
+    notify: Option<bool>,
+    #[serde(default)]
     delivery: Option<CommDeliveryMode>,
     #[serde(default)]
     concurrency_limit: Option<usize>,
@@ -704,6 +713,14 @@ impl Tool for CommunicateTool {
                     "minimum": 1,
                     "description": "Optional timeout for await_members."
                 },
+                "background": {
+                    "type": "boolean",
+                    "description": "For await_members: run the wait as a detached background watcher (default true) so you stay responsive and can keep working. The result is delivered later via notify/wake. Set false to block this turn until the wait resolves."
+                },
+                "notify": {
+                    "type": "boolean",
+                    "description": "For await_members: surface a notification card when a background wait resolves. Defaults to true."
+                },
                 "concurrency_limit": {
                     "type": "integer",
                     "minimum": 1,
@@ -719,7 +736,7 @@ impl Tool for CommunicateTool {
                 },
                 "wake": {
                     "type": "boolean",
-                    "description": "Optional wake hint for messages."
+                    "description": "Optional wake hint for messages. For await_members: wake this agent with the result when a background wait resolves (default true); if false, only notify."
                 },
                 "delivery": {
                     "type": "string",
@@ -1598,6 +1615,12 @@ impl Tool for CommunicateTool {
                 }
                 let timeout_minutes = params.timeout_minutes.unwrap_or(60);
                 let timeout_secs = timeout_minutes * 60;
+                // Background-by-default: the watch runs server-side and reports
+                // back via notify/wake, so the agent stays responsive instead of
+                // parking the whole turn. Pass background=false to block inline.
+                let background = params.background.unwrap_or(true);
+                let notify = params.notify.unwrap_or(true);
+                let wake = params.wake.unwrap_or(true);
 
                 let request = Request::CommAwaitMembers {
                     id: REQUEST_ID,
@@ -1606,17 +1629,33 @@ impl Tool for CommunicateTool {
                     session_ids,
                     mode: params.mode.clone(),
                     timeout_secs: Some(timeout_secs),
+                    background,
+                    notify,
+                    wake,
                 };
 
-                let socket_timeout = std::time::Duration::from_secs(timeout_secs + 30);
+                // Background waits return promptly with a snapshot; only blocking
+                // waits need the long socket timeout that covers the full wait.
+                let socket_timeout = if background {
+                    std::time::Duration::from_secs(30)
+                } else {
+                    std::time::Duration::from_secs(timeout_secs + 30)
+                };
 
                 match send_request_with_timeout(request, Some(socket_timeout)).await {
                     Ok(ServerEvent::CommAwaitMembersResponse {
                         completed,
                         members,
                         summary,
+                        background_started,
                         ..
                     }) => {
+                        if background_started {
+                            return Ok(ToolOutput::new(format!(
+                                "{}\n\n(You can keep working; this wait runs in the background.)",
+                                summary
+                            )));
+                        }
                         let reports = fetch_awaited_member_reports(&ctx, &members).await;
                         Ok(format_awaited_members_with_reports(
                             completed, &summary, &members, &reports,

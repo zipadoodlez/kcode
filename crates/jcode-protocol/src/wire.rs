@@ -592,6 +592,17 @@ pub enum Request {
         /// Timeout in seconds (default 3600 = 1 hour)
         #[serde(default)]
         timeout_secs: Option<u64>,
+        /// Run the wait as a detached background watcher instead of blocking the
+        /// requesting turn. Defaults to true so the agent stays responsive.
+        #[serde(default = "default_true")]
+        background: bool,
+        /// When backgrounded, surface a notification card on completion.
+        #[serde(default = "default_true")]
+        notify: bool,
+        /// When backgrounded, wake an idle requesting agent with the result (or
+        /// soft-interrupt it if busy). Defaults to true.
+        #[serde(default = "default_true")]
+        wake: bool,
     },
 }
 
@@ -1234,6 +1245,11 @@ pub enum ServerEvent {
         members: Vec<AwaitedMemberStatus>,
         /// Human-readable summary
         summary: String,
+        /// True when the wait was handed off to a detached background watcher.
+        /// In that case `members`/`completed` describe the current snapshot, not
+        /// a final result; completion is delivered later via notify/wake.
+        #[serde(default)]
+        background_started: bool,
     },
 
     /// Response to split request — new session created with cloned conversation

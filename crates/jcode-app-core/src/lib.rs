@@ -5,6 +5,9 @@
     clippy::unnecessary_sort_by,
     clippy::useless_conversion
 )]
+// The `swarm` tool's `json!` parameter schema is large; the default macro
+// recursion limit (128) is exceeded once more properties are added.
+#![recursion_limit = "256"]
 
 //! Application core for jcode (upper layer).
 //!

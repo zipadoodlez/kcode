@@ -30,6 +30,9 @@ async fn await_members_any_mode_returns_after_first_match() {
         vec![],
         Some("any".to_string()),
         Some(60),
+        false,
+        false,
+        false,
         CommAwaitMembersContext {
             client_event_tx: &client_tx,
             swarm_members: &swarm_members,
