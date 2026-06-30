@@ -79,6 +79,7 @@ mod tests {
                 unresolved_dependency_ids: Vec::new(),
                 next_ready_ids: vec!["task-2".to_string()],
                 newly_ready_ids: vec!["task-3".to_string()],
+                mode: "deep".to_string(),
             }),
         };
 

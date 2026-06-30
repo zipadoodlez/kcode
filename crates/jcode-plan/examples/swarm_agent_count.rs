@@ -246,7 +246,15 @@ fn deep_explore_implement_verify() -> Scenario {
 }
 
 fn print_row(scn: &Scenario, m: &Measured) {
-    let bounded3 = m.peak_concurrency_unbounded.min(3);
+    // Deep mode now fans out to the full ready set (bounded only by the member
+    // cap / the configurable swarm_max_concurrent_agents, default 32). Light mode
+    // keeps a small default (4). So the effective peak parallelism is the natural
+    // ready-set width clamped by the mode's default ceiling.
+    let mode_ceiling = match scn.mode {
+        Mode::Deep => 32,
+        Mode::Light => 4,
+    };
+    let effective_peak = m.peak_concurrency_unbounded.min(mode_ceiling);
     println!("{}", scn.name);
     println!(
         "    mode={:<5} nodes(final)={:<3} gates={:<2} gaps_injected={:<2} expansions={}",
@@ -260,8 +268,8 @@ fn print_row(scn: &Scenario, m: &Measured) {
         m.expansions,
     );
     println!(
-        "    dispatches(=agents spawned, fresh-per-node)={:<3} peak_parallel(unbounded)={:<2} peak_parallel(limit=3)={}",
-        m.dispatches, m.peak_concurrency_unbounded, bounded3,
+        "    dispatches(=agents spawned, fresh-per-node)={:<3} peak_parallel(natural)={:<2} peak_parallel(mode default cap)={}",
+        m.dispatches, m.peak_concurrency_unbounded, effective_peak,
     );
     if m.stalled {
         println!("    !! STALLED (engine could not drive to terminal)");
@@ -275,8 +283,10 @@ fn main() {
         "dispatches == worker turns. run_plan defaults to a fresh spawned agent per node\n\
          (prefer_spawn=true), so dispatches is the number of agents spawned. Composite\n\
          nodes are dispatched twice (decompose, then synthesis re-wake) so they cost 2.\n\
-         peak_parallel(limit=3) is what run_plan's default concurrency_limit would allow\n\
-         to run at once; total agents are still spawned, just not all simultaneously.\n"
+         peak_parallel(natural) is how many nodes are unblocked at once. run_plan clamps\n\
+         that to a mode default: deep => agents.swarm_max_concurrent_agents (default 32,\n\
+         0 = unbounded up to the 1000 member cap); light => 4. The total agents spawned\n\
+         over the run is unaffected by the cap; only how many run simultaneously is.\n"
     );
 
     let scenarios = vec![

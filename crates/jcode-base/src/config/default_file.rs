@@ -315,6 +315,14 @@ cross_provider_failover = "countdown"
 # Env override: JCODE_SWARM_SPAWN_MODE
 swarm_spawn_mode = "visible"
 #
+# Max swarm worker agents run_plan keeps active AT ONCE in a deep-mode task graph.
+# This bounds parallelism, not the total agents spawned over the run (that is the
+# per-swarm member cap of 1000). Deep mode is meant to fan out wide, so the default
+# is high (32). 0 = no extra cap: dispatch the whole ready set each loop, bounded
+# only by the member cap. Light mode uses a small fixed fan-out and ignores this.
+# Env override: JCODE_SWARM_MAX_CONCURRENT_AGENTS
+swarm_max_concurrent_agents = 32
+#
 # Max percentage (1-90) of the chat height the inline swarm gallery band may use.
 # Unset = built-in default (40%). Lower values keep more transcript visible; set
 # near the minimum to collapse the gallery to a thin strip.

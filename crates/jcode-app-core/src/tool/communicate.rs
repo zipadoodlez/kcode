@@ -20,6 +20,11 @@ use std::collections::HashMap;
 
 const REQUEST_ID: u64 = 1;
 
+/// Default number of workers `run_plan` keeps active at once for a **light**-mode
+/// plan. Light mode is the cheap fan-out preset, so this stays small. Deep mode
+/// instead uses `agents.swarm_max_concurrent_agents` (high, configurable).
+const LIGHT_MODE_DEFAULT_CONCURRENCY: usize = 4;
+
 mod transport;
 use transport::{send_request, send_request_with_timeout};
 
@@ -269,7 +274,32 @@ async fn run_swarm_plan_to_terminal(
     ctx: &ToolContext,
     params: &CommunicateInput,
 ) -> Result<ToolOutput> {
-    let concurrency_limit = params.concurrency_limit.unwrap_or(3).max(1);
+    // Determine the plan mode up front so we can choose a mode-appropriate
+    // default concurrency. Deep mode is designed to fan out wide (bounded only by
+    // the swarm member cap), so it must NOT inherit light mode's small fan-out.
+    let initial_summary = fetch_plan_status(&ctx.session_id).await?;
+    let is_deep = initial_summary.mode.eq_ignore_ascii_case("deep");
+
+    // Concurrency policy:
+    //   * explicit `concurrency_limit` always wins.
+    //   * deep mode: default to `agents.swarm_max_concurrent_agents` (high; 0 =
+    //     unbounded => dispatch the whole ready set, capped only by the member
+    //     cap). This is the "leave no nook unexplored, fan out wide" preset.
+    //   * light mode: keep the cheap, small fan-out default.
+    let concurrency_limit = match params.concurrency_limit {
+        Some(explicit) => explicit.max(1),
+        None if is_deep => {
+            let configured = crate::config::config().agents.swarm_max_concurrent_agents;
+            if configured == 0 {
+                // Effectively unbounded: the per-loop assign drains the entire
+                // ready set; the swarm member cap is the real ceiling.
+                usize::MAX
+            } else {
+                configured
+            }
+        }
+        None => LIGHT_MODE_DEFAULT_CONCURRENCY,
+    };
     let timeout_minutes = params.timeout_minutes.unwrap_or(60).max(1);
     let retain_agents = params.retain_agents.unwrap_or(false);
     let spawn_if_needed = params.spawn_if_needed.or(Some(true));
@@ -807,7 +837,7 @@ impl Tool for CommunicateTool {
                 "concurrency_limit": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "For fill_slots: desired maximum number of active swarm tasks."
+                    "description": "Max swarm worker agents active at once. For fill_slots this is required. For run_plan it is optional and overrides the mode-based default (deep fans out wide up to agents.swarm_max_concurrent_agents; light uses a small default). Total agents over the whole run is still bounded only by the swarm member cap."
                 },
                 "force": {
                     "type": "boolean",

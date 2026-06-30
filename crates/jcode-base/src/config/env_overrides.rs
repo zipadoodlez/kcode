@@ -310,6 +310,11 @@ impl Config {
                 self.agents.swarm_spawn_mode = parsed;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_SWARM_MAX_CONCURRENT_AGENTS") {
+            if let Ok(parsed) = v.trim().parse::<usize>() {
+                self.agents.swarm_max_concurrent_agents = parsed;
+            }
+        }
         if let Ok(v) = std::env::var("JCODE_MEMORY_MODEL") {
             let trimmed = v.trim();
             self.agents.memory_model = if trimmed.is_empty() {

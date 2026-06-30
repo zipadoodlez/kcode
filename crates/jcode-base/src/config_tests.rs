@@ -44,6 +44,24 @@ fn swarm_spawn_mode_defaults_to_visible() {
 }
 
 #[test]
+fn swarm_max_concurrent_agents_defaults_high_for_deep_fanout() {
+    // Deep mode is meant to fan out wide; the default must be high (not the old
+    // hardcoded run_plan default of 3).
+    assert_eq!(Config::default().agents.swarm_max_concurrent_agents, 32);
+}
+
+#[test]
+fn swarm_max_concurrent_agents_parses_and_allows_zero_for_unbounded() {
+    let cfg: Config = toml::from_str("[agents]\nswarm_max_concurrent_agents = 64\n")
+        .expect("swarm_max_concurrent_agents should parse");
+    assert_eq!(cfg.agents.swarm_max_concurrent_agents, 64);
+
+    let cfg: Config = toml::from_str("[agents]\nswarm_max_concurrent_agents = 0\n")
+        .expect("zero should parse (means unbounded up to the member cap)");
+    assert_eq!(cfg.agents.swarm_max_concurrent_agents, 0);
+}
+
+#[test]
 fn swarm_spawn_mode_parses_supported_values() {
     let cfg: Config = toml::from_str("[agents]\nswarm_spawn_mode = \"headless\"\n")
         .expect("headless swarm_spawn_mode should parse");

@@ -90,6 +90,7 @@ fn format_plan_status_includes_next_ready() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["task-2".to_string()],
         newly_ready_ids: vec!["task-3".to_string()],
+        mode: "deep".to_string(),
     });
     let text = output.output;
     assert!(text.contains("Plan status for swarm swarm-a"));
@@ -112,6 +113,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["queued-assigned".to_string()],
         newly_ready_ids: Vec::new(),
+        mode: "light".to_string(),
     };
     let members = vec![
         AgentInfo {
@@ -181,6 +183,7 @@ fn in_flight_count_excludes_foreign_queued_session() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
+        mode: "light".to_string(),
     };
     let members = vec![
         AgentInfo {

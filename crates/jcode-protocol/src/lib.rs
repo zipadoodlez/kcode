@@ -171,8 +171,8 @@ impl AuthChanged {
 pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
 
 mod wire;
-pub use wire::{Request, ServerEvent};
 pub use wire::TaskGraphNodeSpec;
+pub use wire::{Request, ServerEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallSummary {
@@ -317,6 +317,15 @@ pub struct PlanGraphStatus {
     pub next_ready_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub newly_ready_ids: Vec<String>,
+    /// Engine mode for this plan: "deep" (comprehensive, gated, wide fan-out) or
+    /// "light" (cheap fan-out). Lets schedulers like `run_plan` pick a
+    /// mode-appropriate concurrency policy. Defaults to "light" for legacy plans.
+    #[serde(default = "default_plan_mode")]
+    pub mode: String,
+}
+
+fn default_plan_mode() -> String {
+    "light".to_string()
 }
 
 impl PlanGraphStatus {
@@ -333,6 +342,7 @@ impl PlanGraphStatus {
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: Vec::new(),
             newly_ready_ids: Vec::new(),
+            mode: default_plan_mode(),
         }
     }
 
@@ -355,6 +365,7 @@ impl PlanGraphStatus {
             unresolved_dependency_ids: graph.unresolved_dependency_ids,
             next_ready_ids: next_runnable_item_ids(&plan.items, next_ready_limit),
             newly_ready_ids,
+            mode: plan.mode.clone(),
         }
     }
 }
