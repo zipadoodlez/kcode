@@ -2161,6 +2161,13 @@ impl App {
             return Ok(());
         }
 
+        // Accept an armed "merge the diverged update" offer: spawn a jcode agent
+        // to reconcile the branches. Shares the fallback-switch accept key.
+        if self.merge_offer_key_matches(code, modifiers) {
+            self.accept_update_merge_offer();
+            return Ok(());
+        }
+
         if is_next_prompt_new_session_hotkey(code, modifiers) {
             self.toggle_next_prompt_new_session_routing();
             return Ok(());
@@ -3125,6 +3132,8 @@ impl App {
         // A fresh user turn supersedes any post-error fallback offer from the
         // previous turn; drop it so a stale keypress can't switch+resend.
         self.clear_pending_fallback_offer();
+        // Likewise drop any armed "merge the diverged update" offer.
+        self.clear_update_merge_offer();
 
         // Set up processing state - actual processing happens after UI redraws
         self.is_processing = true;

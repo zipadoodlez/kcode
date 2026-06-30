@@ -333,6 +333,13 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
+    // Accept an armed "merge the diverged update" offer (self-dev/remote
+    // sessions surface the same update card as local ones).
+    if app.merge_offer_key_matches(code, modifiers) {
+        app.accept_update_merge_offer();
+        return Ok(());
+    }
+
     if app.open_resume_key_matches(code, modifiers) {
         app.open_session_picker();
         return Ok(());

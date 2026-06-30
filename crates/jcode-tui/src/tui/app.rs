@@ -321,6 +321,21 @@ struct PendingFallbackOffer {
     from_label: String,
 }
 
+/// An interactive "let a jcode agent merge the diverged update for you" offer.
+///
+/// Surfaced when an update fails because the local checkout and upstream have
+/// diverged (a fast-forward pull is impossible). Accepting it spawns a fresh
+/// jcode session, pre-loaded with a prompt to reconcile the branches, instead of
+/// silently giving up and continuing on the old version.
+#[derive(Debug, Clone)]
+struct PendingMergeOffer {
+    /// Repository whose local/upstream branches diverged, if known. Used as the
+    /// spawned agent's working directory and named in its prompt.
+    repo_dir: Option<std::path::PathBuf>,
+    /// The raw update-failure detail, shown to the user and the merge agent.
+    detail: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum SessionPickerMode {
     #[default]
@@ -781,6 +796,10 @@ pub struct App {
     // Interactive "switch to next best model/method and resend" offer surfaced
     // after a provider turn error; accepted with a keypress.
     pending_fallback_offer: Option<PendingFallbackOffer>,
+    // Interactive "spawn a jcode agent to merge the diverged update" offer shown
+    // after an update fails because the local checkout and upstream diverged.
+    // Accepted with the same key as the fallback offer.
+    pending_merge_offer: Option<PendingMergeOffer>,
     // Local session file write to flush once the first "sending" frame is visible.
     session_save_pending: bool,
     // Tool calls detected during streaming (shown in real-time with details)

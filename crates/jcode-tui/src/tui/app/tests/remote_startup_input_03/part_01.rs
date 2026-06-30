@@ -582,6 +582,67 @@ fn test_startup_update_up_to_date_removes_transient_card() {
 }
 
 #[test]
+fn test_startup_update_diverged_offers_merge_without_failure_card() {
+    let mut app = create_test_app();
+
+    app.handle_update_status(UpdateStatus::Checking);
+    app.handle_update_status(UpdateStatus::Error(
+        crate::update::GIT_PULL_DIVERGED_SUMMARY.to_string(),
+    ));
+
+    let message = app
+        .display_messages()
+        .last()
+        .expect("expected update display message");
+    assert_eq!(message.title.as_deref(), Some("Update"));
+    // The diverged card must NOT use the generic failure framing.
+    assert!(
+        !message.content.contains("Status: failed"),
+        "unexpected failure header: {}",
+        message.content
+    );
+    assert!(
+        !message.content.contains("Continuing with the current version."),
+        "unexpected continue footer: {}",
+        message.content
+    );
+    // It should explain the divergence and offer the merge-agent hotkey.
+    assert!(
+        message.content.contains("diverged"),
+        "missing divergence explanation: {}",
+        message.content
+    );
+    assert!(
+        message.content.to_lowercase().contains("agent"),
+        "missing merge-agent hint: {}",
+        message.content
+    );
+    assert!(app.pending_merge_offer.is_some());
+    assert!(app.background_client_action.is_none());
+}
+
+#[test]
+fn test_startup_update_diverged_offer_clears_on_submit() {
+    let mut app = create_test_app();
+    app.handle_update_status(UpdateStatus::Error(format!(
+        "Update failed: {}",
+        crate::update::GIT_PULL_DIVERGED_SUMMARY
+    )));
+    assert!(
+        app.pending_merge_offer.is_some(),
+        "prefixed divergence summary should still arm the offer"
+    );
+
+    app.input = "do something else".to_string();
+    app.cursor_pos = app.input.len();
+    app.submit_input();
+    assert!(
+        app.pending_merge_offer.is_none(),
+        "a fresh submission should drop the stale merge offer"
+    );
+}
+
+#[test]
 fn test_startup_update_error_replaces_checking_card() {
     let mut app = create_test_app();
 

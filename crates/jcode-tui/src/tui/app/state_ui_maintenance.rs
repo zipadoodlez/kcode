@@ -201,15 +201,23 @@ impl App {
             UpdateStatus::Error(error) => {
                 self.background_client_action = None;
                 self.pending_background_client_reload = None;
-                self.set_status_notice("Update failed; continuing current version");
-                self.set_client_maintenance_message(
-                    action,
-                    Self::client_maintenance_card_message(
+                if crate::update::summary_is_divergence(&error)
+                    || crate::update::summary_is_divergence(
+                        error.trim_start_matches("Update failed: "),
+                    )
+                {
+                    self.offer_update_merge(action, &error);
+                } else {
+                    self.set_status_notice("Update failed; continuing current version");
+                    self.set_client_maintenance_message(
                         action,
-                        "failed",
-                        format!("{}\n\nContinuing with the current version.", error),
-                    ),
-                );
+                        Self::client_maintenance_card_message(
+                            action,
+                            "failed",
+                            format!("{}\n\nContinuing with the current version.", error),
+                        ),
+                    );
+                }
             }
         }
     }
@@ -333,6 +341,14 @@ impl App {
                 }
                 self.background_client_action = None;
                 self.pending_background_client_reload = None;
+                if crate::update::summary_is_divergence(&message)
+                    || crate::update::summary_is_divergence(
+                        message.trim_start_matches("Update failed: "),
+                    )
+                {
+                    self.offer_update_merge(action, &message);
+                    return;
+                }
                 self.set_status_notice(format!("{} failed", action.title()));
                 self.set_client_maintenance_message(
                     action,
@@ -341,5 +357,138 @@ impl App {
                 self.push_display_message(DisplayMessage::error(message));
             }
         }
+    }
+
+    /// Render a friendly "diverged" update card and arm the merge offer so the
+    /// user can hand the reconciliation to a fresh jcode agent with one key.
+    ///
+    /// This replaces the old generic "Status: failed / Continuing with the
+    /// current version." card for the specific (and recoverable) case where the
+    /// local checkout and upstream have diverged.
+    pub(super) fn offer_update_merge(
+        &mut self,
+        action: crate::bus::ClientMaintenanceAction,
+        detail: &str,
+    ) {
+        let repo_dir = crate::build::get_repo_dir();
+        let key_label = crate::tui::keybind::fallback_switch_key_label();
+        let detail = detail.trim().to_string();
+
+        // A single, friendly line: no "Status: failed" header and no "Continuing
+        // with the current version." footer. Just the cause plus the recovery
+        // hotkey. Bypass `client_maintenance_card_message` (which would prepend a
+        // "Status:" line) and set the card content directly.
+        let content = format!(
+            "Local and upstream have diverged, so the update could not fast-forward. Press {} to spawn a jcode agent that merges it for you (or run `git pull` / `git rebase` yourself).",
+            key_label
+        );
+        self.set_client_maintenance_message(action, content);
+        self.set_status_notice(format!(
+            "Local and upstream diverged - press {} to let an agent merge",
+            key_label
+        ));
+        self.pending_merge_offer = Some(super::PendingMergeOffer { repo_dir, detail });
+    }
+
+    pub(super) fn clear_update_merge_offer(&mut self) {
+        self.pending_merge_offer = None;
+    }
+
+    /// Whether the configured fallback/accept key should be treated as accepting
+    /// the armed merge offer (true only while an offer is pending).
+    pub(super) fn merge_offer_key_matches(
+        &self,
+        code: crossterm::event::KeyCode,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> bool {
+        self.pending_merge_offer.is_some() && self.fallback_switch_key_matches(code, modifiers)
+    }
+
+    /// Accept the armed merge offer: spawn a fresh jcode session pre-loaded with
+    /// a prompt to reconcile the diverged branches. Returns true when an offer
+    /// was present and consumed.
+    pub(super) fn accept_update_merge_offer(&mut self) -> bool {
+        let Some(offer) = self.pending_merge_offer.take() else {
+            return false;
+        };
+
+        let repo_label = offer
+            .repo_dir
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "the jcode repository".to_string());
+        let prompt = format!(
+            "A jcode self-update could not fast-forward because the local checkout and upstream have diverged.\n\n\
+Repository: {repo}\n\
+Update error: {detail}\n\n\
+Please reconcile the local and upstream histories so the update can proceed:\n\
+1. Inspect the divergence (`git status`, `git fetch`, `git log --oneline --graph HEAD @{{u}}`).\n\
+2. Merge or rebase onto the upstream branch, resolving any conflicts.\n\
+3. Verify the build still works.\n\
+Do not force-push or discard local commits without confirming they are already upstream.",
+            repo = repo_label,
+            detail = if offer.detail.is_empty() {
+                "(local and upstream have diverged)".to_string()
+            } else {
+                offer.detail.clone()
+            },
+        );
+
+        match self.launch_update_merge_agent(prompt, offer.repo_dir.as_deref()) {
+            Ok(true) => {
+                self.push_display_message(DisplayMessage::system(
+                    "↗ Spawned a jcode agent to merge the diverged update.",
+                ));
+                self.set_status_notice("Merge agent launched");
+            }
+            Ok(false) => {
+                self.push_display_message(DisplayMessage::system(
+                    "Could not open a new terminal for the merge agent. Run `git pull` / `git rebase` manually, or start `jcode` in the repo and ask it to merge.",
+                ));
+                self.set_status_notice("No terminal available for merge agent");
+            }
+            Err(error) => {
+                self.push_display_message(DisplayMessage::error(format!(
+                    "Failed to spawn merge agent: {}",
+                    error
+                )));
+                self.set_status_notice("Merge agent failed to start");
+            }
+        }
+        true
+    }
+
+    /// Spawn a fresh jcode session, in the repo directory when known, with a
+    /// startup prompt instructing it to merge the diverged update.
+    fn launch_update_merge_agent(
+        &self,
+        prompt: String,
+        repo_dir: Option<&std::path::Path>,
+    ) -> anyhow::Result<bool> {
+        let mut session = crate::session::Session::create(Some(self.session.id.clone()), None);
+        if let Some(dir) = repo_dir {
+            session.working_dir = Some(dir.display().to_string());
+        } else {
+            session.working_dir = self.session.working_dir.clone();
+        }
+        let session_id = session.id.clone();
+        let _ = session.save();
+        App::save_startup_submission_for_session(&session_id, prompt, Vec::new());
+        self.spawn_merge_session_terminal(&session_id, repo_dir)
+    }
+
+    fn spawn_merge_session_terminal(
+        &self,
+        session_id: &str,
+        repo_dir: Option<&std::path::Path>,
+    ) -> anyhow::Result<bool> {
+        let exe = super::launch_client_executable();
+        let cwd = repo_dir
+            .map(std::path::Path::to_path_buf)
+            .filter(|path| path.is_dir())
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let socket = std::env::var("JCODE_SOCKET").ok();
+        super::spawn_in_new_terminal(&exe, session_id, &cwd, socket.as_deref())
     }
 }
