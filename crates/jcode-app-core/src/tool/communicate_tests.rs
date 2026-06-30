@@ -3,7 +3,7 @@ use super::{
     coordination_in_flight_count, default_await_target_statuses, default_cleanup_target_statuses,
     format_awaited_members, format_awaited_members_with_reports, format_members,
     format_plan_status, latest_assistant_report, resolve_optional_target_session,
-    swarm_member_is_drivable_worker, swarm_member_is_in_flight,
+    resolve_run_plan_concurrency, swarm_member_is_drivable_worker, swarm_member_is_in_flight,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::{
@@ -27,6 +27,30 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[test]
 fn tool_is_named_swarm() {
     assert_eq!(CommunicateTool::new().name(), "swarm");
+}
+
+#[test]
+fn run_plan_concurrency_is_mode_aware() {
+    // Light mode (no explicit limit) keeps the small cheap fan-out default.
+    assert_eq!(
+        resolve_run_plan_concurrency(None, false, 32),
+        super::LIGHT_MODE_DEFAULT_CONCURRENCY
+    );
+
+    // Deep mode (no explicit limit) fans out wide using the configured cap,
+    // NOT the old hardcoded 3 and NOT the light default.
+    assert_eq!(resolve_run_plan_concurrency(None, true, 32), 32);
+    assert_eq!(resolve_run_plan_concurrency(None, true, 64), 64);
+
+    // Deep mode with the cap set to 0 means "no extra cap": dispatch the whole
+    // ready set, bounded only by the swarm member cap.
+    assert_eq!(resolve_run_plan_concurrency(None, true, 0), usize::MAX);
+
+    // An explicit request always wins over the mode default, in both modes,
+    // and is clamped to at least 1.
+    assert_eq!(resolve_run_plan_concurrency(Some(5), true, 32), 5);
+    assert_eq!(resolve_run_plan_concurrency(Some(5), false, 32), 5);
+    assert_eq!(resolve_run_plan_concurrency(Some(0), true, 32), 1);
 }
 
 #[test]

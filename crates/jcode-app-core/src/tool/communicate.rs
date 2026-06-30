@@ -270,36 +270,41 @@ async fn await_swarm_progress(
     }
 }
 
+/// Decide how many swarm workers `run_plan` keeps active at once.
+///
+/// Policy:
+///   * an explicit `requested` limit always wins (clamped to >= 1);
+///   * deep mode with no explicit limit fans out wide: use `deep_cap`, where
+///     `0` means "no extra cap" (`usize::MAX`) so the whole ready set is
+///     dispatched, bounded only by the swarm member cap;
+///   * light mode with no explicit limit keeps the small, cheap fan-out default.
+///
+/// Pure and side-effect free so the concurrency contract is unit-testable
+/// without a live swarm.
+fn resolve_run_plan_concurrency(requested: Option<usize>, is_deep: bool, deep_cap: usize) -> usize {
+    match requested {
+        Some(explicit) => explicit.max(1),
+        None if is_deep => {
+            if deep_cap == 0 {
+                usize::MAX
+            } else {
+                deep_cap
+            }
+        }
+        None => LIGHT_MODE_DEFAULT_CONCURRENCY,
+    }
+}
+
 async fn run_swarm_plan_to_terminal(
     ctx: &ToolContext,
     params: &CommunicateInput,
 ) -> Result<ToolOutput> {
-    // Determine the plan mode up front so we can choose a mode-appropriate
-    // default concurrency. Deep mode is designed to fan out wide (bounded only by
-    // the swarm member cap), so it must NOT inherit light mode's small fan-out.
     let initial_summary = fetch_plan_status(&ctx.session_id).await?;
     let is_deep = initial_summary.mode.eq_ignore_ascii_case("deep");
 
-    // Concurrency policy:
-    //   * explicit `concurrency_limit` always wins.
-    //   * deep mode: default to `agents.swarm_max_concurrent_agents` (high; 0 =
-    //     unbounded => dispatch the whole ready set, capped only by the member
-    //     cap). This is the "leave no nook unexplored, fan out wide" preset.
-    //   * light mode: keep the cheap, small fan-out default.
-    let concurrency_limit = match params.concurrency_limit {
-        Some(explicit) => explicit.max(1),
-        None if is_deep => {
-            let configured = crate::config::config().agents.swarm_max_concurrent_agents;
-            if configured == 0 {
-                // Effectively unbounded: the per-loop assign drains the entire
-                // ready set; the swarm member cap is the real ceiling.
-                usize::MAX
-            } else {
-                configured
-            }
-        }
-        None => LIGHT_MODE_DEFAULT_CONCURRENCY,
-    };
+    let configured_deep_cap = crate::config::config().agents.swarm_max_concurrent_agents;
+    let concurrency_limit =
+        resolve_run_plan_concurrency(params.concurrency_limit, is_deep, configured_deep_cap);
     let timeout_minutes = params.timeout_minutes.unwrap_or(60).max(1);
     let retain_agents = params.retain_agents.unwrap_or(false);
     let spawn_if_needed = params.spawn_if_needed.or(Some(true));
