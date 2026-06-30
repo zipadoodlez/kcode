@@ -129,6 +129,7 @@ mod transcript_routing_tests {
             last_status_change: now,
             is_headless: false,
             output_tail: None,
+            todo_progress: None,
         }
     }
 

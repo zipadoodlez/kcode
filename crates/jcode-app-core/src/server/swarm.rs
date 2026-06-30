@@ -23,10 +23,12 @@ fn status_age_secs(last_status_change: Instant) -> u64 {
     last_status_change.elapsed().as_secs()
 }
 
-/// Maximum spawn depth for the recursive swarm tree. The root coordinator is at
-/// depth 0; an agent at depth `d` may spawn children at depth `d + 1` only while
-/// `d < MAX_SWARM_SPAWN_DEPTH`. This caps runaway recursive fan-out.
-pub(super) const MAX_SWARM_SPAWN_DEPTH: u32 = 5;
+/// Maximum number of live members (agents) in a single swarm. This is the sole
+/// runaway-prevention cap for the task-graph model. There is intentionally no
+/// spawn-depth limit and no per-node fan-out limit: the spawn tree may nest and
+/// fan out freely until the swarm reaches this many live members, at which point
+/// further spawns are refused.
+pub(super) const MAX_SWARM_MEMBERS: usize = 1000;
 
 /// Walk the `report_back_to_session_id` chain upward from `session_id`,
 /// returning the list of ancestor session ids (parent first, root last).
@@ -58,6 +60,11 @@ pub(super) fn swarm_ancestors(
 
 /// Depth of `session_id` in the spawn tree: number of ancestors reachable via
 /// the report-back chain. Root coordinators (no report-back owner) are depth 0.
+///
+/// Test-only: the spawn tree no longer enforces a depth cap, so production code
+/// does not consult depth. Kept (behind `cfg(test)`) because the spawn-tree tests
+/// assert ancestor-chain depth directly.
+#[cfg(test)]
 pub(super) fn swarm_spawn_depth(members: &HashMap<String, SwarmMember>, session_id: &str) -> u32 {
     swarm_ancestors(members, session_id).len() as u32
 }
@@ -329,6 +336,7 @@ async fn broadcast_swarm_status_now(
                     status_age_secs: Some(status_age_secs(m.last_status_change)),
                     output_tail: m.output_tail.clone(),
                     report_back_to_session_id: m.report_back_to_session_id.clone(),
+                    todo_progress: m.todo_progress,
                 })
         })
         .collect();
@@ -1234,6 +1242,7 @@ mod tests {
                 last_status_change: Instant::now(),
                 is_headless,
                 output_tail: None,
+                todo_progress: None,
             },
             event_rx,
         )
@@ -1311,6 +1320,8 @@ mod tests {
                 version: 2,
                 participants: HashSet::from(["worker".to_string()]),
                 task_progress: HashMap::new(),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
             },
         )])));
         let (worker, mut worker_rx) = swarm_member("worker", "agent", false);
@@ -1397,6 +1408,8 @@ mod tests {
                 version: 1,
                 participants: HashSet::from(["coord".to_string()]),
                 task_progress: HashMap::new(),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
             },
         )])));
 
@@ -1711,6 +1724,8 @@ mod tests {
                         ..Default::default()
                     },
                 )]),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
             },
         )])));
         let (worker, _worker_rx) = swarm_member("worker", "agent", true);

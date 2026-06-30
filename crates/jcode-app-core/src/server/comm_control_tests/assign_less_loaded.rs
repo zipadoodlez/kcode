@@ -17,11 +17,11 @@ async fn assign_task_without_target_prefers_less_loaded_ready_agent() {
         }),
         (
             less_loaded.to_string(),
-            member(less_loaded, swarm_id, "ready"),
+            owned_member(less_loaded, swarm_id, "ready", requester),
         ),
         (
             more_loaded.to_string(),
-            member(more_loaded, swarm_id, "ready"),
+            owned_member(more_loaded, swarm_id, "ready", requester),
         ),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
@@ -49,6 +49,8 @@ async fn assign_task_without_target_prefers_less_loaded_ready_agent() {
                 more_loaded.to_string(),
             ]),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(

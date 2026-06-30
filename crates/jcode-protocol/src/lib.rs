@@ -172,6 +172,7 @@ pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::{Request, ServerEvent};
+pub use wire::TaskGraphNodeSpec;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallSummary {
@@ -391,6 +392,10 @@ pub struct SwarmMemberStatus {
     /// client scope the inline gallery to the subtree it actually spawned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub report_back_to_session_id: Option<String>,
+    /// Todo/plan progress as (completed, total) for this member, when known.
+    /// Surfaced on the inline swarm strip as a compact "C/T" counter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub todo_progress: Option<(u32, u32)>,
 }
 
 /// Status of a member being awaited by comm_await_members
@@ -467,6 +472,10 @@ impl Request {
             Request::CommProposePlan { id, .. } => *id,
             Request::CommApprovePlan { id, .. } => *id,
             Request::CommRejectPlan { id, .. } => *id,
+            Request::CommSeedGraph { id, .. } => *id,
+            Request::CommExpandNode { id, .. } => *id,
+            Request::CommCompleteNode { id, .. } => *id,
+            Request::CommInjectGap { id, .. } => *id,
             Request::CommSpawn { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
             Request::CommAssignRole { id, .. } => *id,
@@ -498,6 +507,10 @@ impl Request {
                 | Request::CommProposePlan { .. }
                 | Request::CommApprovePlan { .. }
                 | Request::CommRejectPlan { .. }
+                | Request::CommSeedGraph { .. }
+                | Request::CommExpandNode { .. }
+                | Request::CommCompleteNode { .. }
+                | Request::CommInjectGap { .. }
                 | Request::CommSpawn { .. }
                 | Request::CommStop { .. }
                 | Request::CommAssignRole { .. }

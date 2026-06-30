@@ -33,6 +33,8 @@ async fn task_control_wake_returns_structured_response_with_plan_summary() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
@@ -122,6 +124,8 @@ async fn task_control_resume_without_task_id_uses_unique_target_assignment() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
@@ -207,6 +211,8 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
             version: 1,
             participants: HashSet::from([requester.to_string(), worker.to_string()]),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(

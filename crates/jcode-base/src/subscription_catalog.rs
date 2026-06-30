@@ -7,8 +7,6 @@ pub const JCODE_CACHE_NAMESPACE: &str = "jcode-subscription";
 pub const JCODE_SUBSCRIPTION_ACTIVE_ENV: &str = "JCODE_SUBSCRIPTION_ACTIVE";
 pub const DEFAULT_JCODE_API_BASE: &str = "https://subscription.jcode.invalid/v1";
 
-const HEALER_ALPHA_PROVIDERS: &[&str] = &["Stealth"];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JcodeTier {
     Starter20,
@@ -40,8 +38,10 @@ impl JcodeTier {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpstreamRoutingPolicy {
-    CacheCapableOnly,
-    ProviderAllowlist(&'static [&'static str]),
+    /// Routing is decided server-side by the jcode router (model -> provider +
+    /// org key). The client does not pick upstreams; this is the only policy for
+    /// the managed subscription.
+    ServerManaged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,38 +56,20 @@ pub struct CuratedModel {
 
 pub const CURATED_MODELS: &[CuratedModel] = &[
     CuratedModel {
-        id: "openrouter/healer-alpha",
-        display_name: "Healer Alpha",
-        aliases: &["healer-alpha", "openrouter/healer-alpha", "healer alpha"],
+        id: "claude-opus-4-8",
+        display_name: "Claude Opus 4.8",
+        aliases: &["claude-opus-4-8", "opus-4-8", "opus 4.8", "claude opus 4.8"],
         default_enabled: true,
-        routing_policy: UpstreamRoutingPolicy::ProviderAllowlist(HEALER_ALPHA_PROVIDERS),
-        note: "Pinned to the Stealth upstream until a cache-capable route exists.",
+        routing_policy: UpstreamRoutingPolicy::ServerManaged,
+        note: "Frontier model; routed server-side to Anthropic by the jcode router.",
     },
     CuratedModel {
-        id: "deepseek/deepseek-v4-pro",
-        display_name: "DeepSeek V4 Pro",
-        aliases: &[
-            "deepseek/deepseek-v4-pro",
-            "deepseek-v4-pro",
-            "deepseek v4 pro",
-            "deepseek/v4-pro",
-        ],
-        default_enabled: true,
-        routing_policy: UpstreamRoutingPolicy::ProviderAllowlist(&["auto"]),
-        note: "Pinned to OpenRouter auto routing.",
-    },
-    CuratedModel {
-        id: "moonshotai/kimi-k2.5",
-        display_name: "Kimi K2.5",
-        aliases: &[
-            "moonshotai/kimi-k2.5",
-            "kimi-k2.5",
-            "kimi k2.5",
-            "kimi/k2.5",
-        ],
-        default_enabled: true,
-        routing_policy: UpstreamRoutingPolicy::CacheCapableOnly,
-        note: "Cache-capable upstream providers only.",
+        id: "gpt-5.5",
+        display_name: "GPT-5.5",
+        aliases: &["gpt-5.5", "gpt-5-5", "gpt 5.5"],
+        default_enabled: false,
+        routing_policy: UpstreamRoutingPolicy::ServerManaged,
+        note: "Frontier model; routed server-side to OpenAI by the jcode router.",
     },
 ];
 
@@ -130,13 +112,9 @@ pub fn is_curated_model(model: &str) -> bool {
 
 pub fn routing_policy_detail(model: &CuratedModel) -> String {
     match model.routing_policy {
-        UpstreamRoutingPolicy::CacheCapableOnly => {
-            "jcode subscription routing · cache-capable upstreams only".to_string()
+        UpstreamRoutingPolicy::ServerManaged => {
+            "jcode subscription routing · managed server-side".to_string()
         }
-        UpstreamRoutingPolicy::ProviderAllowlist(providers) => format!(
-            "jcode subscription routing · curated upstream: {}",
-            providers.join(", ")
-        ),
     }
 }
 
@@ -203,43 +181,25 @@ mod tests {
 
     #[test]
     fn curated_model_aliases_resolve_to_canonical_ids() {
-        assert_eq!(
-            canonical_model_id("deepseek/v4-pro"),
-            Some("deepseek/deepseek-v4-pro")
-        );
-        assert_eq!(
-            canonical_model_id("DeepSeek V4 Pro"),
-            Some("deepseek/deepseek-v4-pro")
-        );
-        assert_eq!(
-            canonical_model_id("kimi/k2.5"),
-            Some("moonshotai/kimi-k2.5")
-        );
-        assert_eq!(
-            canonical_model_id("KIMI K2.5"),
-            Some("moonshotai/kimi-k2.5")
-        );
-        assert_eq!(
-            canonical_model_id("openrouter/healer-alpha"),
-            Some("openrouter/healer-alpha")
-        );
-        assert_eq!(
-            canonical_model_id("healer alpha"),
-            Some("openrouter/healer-alpha")
-        );
+        assert_eq!(canonical_model_id("opus 4.8"), Some("claude-opus-4-8"));
+        assert_eq!(canonical_model_id("Claude Opus 4.8"), Some("claude-opus-4-8"));
+        assert_eq!(canonical_model_id("gpt-5.5"), Some("gpt-5.5"));
+        assert_eq!(canonical_model_id("GPT 5.5"), Some("gpt-5.5"));
         assert_eq!(canonical_model_id("unknown-model"), None);
     }
 
     #[test]
-    fn curated_model_lookup_ignores_openrouter_provider_pin_suffix() {
+    fn curated_model_lookup_ignores_provider_pin_suffix() {
         assert_eq!(
-            canonical_model_id("deepseek/deepseek-v4-pro@auto"),
-            Some("deepseek/deepseek-v4-pro")
+            canonical_model_id("claude-opus-4-8@anthropic"),
+            Some("claude-opus-4-8")
         );
-        assert_eq!(
-            canonical_model_id("moonshotai/kimi-k2.5@Fireworks"),
-            Some("moonshotai/kimi-k2.5")
-        );
+        assert_eq!(canonical_model_id("gpt-5.5@openai"), Some("gpt-5.5"));
+    }
+
+    #[test]
+    fn default_model_is_opus() {
+        assert_eq!(default_model().id, "claude-opus-4-8");
     }
 
     #[test]

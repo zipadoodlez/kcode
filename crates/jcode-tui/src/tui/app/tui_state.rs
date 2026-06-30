@@ -1262,6 +1262,7 @@ impl crate::tui::TuiState for App {
                         status_age_secs: Some(0),
                         output_tail: None,
                         report_back_to_session_id: None,
+                        todo_progress: None,
                     });
                 }
                 (
@@ -1507,9 +1508,7 @@ impl crate::tui::TuiState for App {
             Some(self.session.id.as_str())
         };
         match self_id {
-            Some(self_id) => {
-                filter_inline_swarm_subtree(&self.remote_swarm_members, self_id)
-            }
+            Some(self_id) => filter_inline_swarm_subtree(&self.remote_swarm_members, self_id),
             None => self.remote_swarm_members.clone(),
         }
     }
@@ -1850,7 +1849,8 @@ impl App {
 
         let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("jcode"));
         let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        match jcode_app_core::session_launch::spawn_resume_in_new_terminal(&exe, &session_id, &cwd) {
+        match jcode_app_core::session_launch::spawn_resume_in_new_terminal(&exe, &session_id, &cwd)
+        {
             Ok(true) => self.set_status_notice(format!("Opened {label} in a new window")),
             Ok(false) => self.set_status_notice(format!(
                 "Could not open a terminal for {label} (no emulator found)"
@@ -1860,16 +1860,17 @@ impl App {
     }
 }
 
-/// Restrict swarm members to the subtree rooted at `self_id`: `self_id` itself
-/// plus every member transitively spawned by it (reachable by following the
-/// `report_back_to_session_id` parent edge upward to `self_id`).
+/// Restrict swarm members to the descendants `self_id` actually spawned: every
+/// member whose `report_back_to_session_id` chain reaches `self_id`, *excluding*
+/// `self_id` itself.
 ///
-/// This keeps the inline swarm gallery scoped to the agents a session actually
-/// spawned, rather than every member that happens to share the swarm (for
-/// example, unrelated sessions in the same repository).
+/// This keeps the inline swarm strip scoped to the agents a session manages,
+/// without listing the viewing session as one of "its" agents and without
+/// showing unrelated members that merely share the swarm (e.g. other sessions in
+/// the same repository).
 ///
-/// If no member identifies as `self_id` and none reports back to it (the common
-/// case for a plain session that has not spawned anyone), the result is empty.
+/// Returns empty when the session has not spawned anyone, which the caller uses
+/// to hide the strip entirely.
 pub(crate) fn filter_inline_swarm_subtree(
     members: &[crate::protocol::SwarmMemberStatus],
     self_id: &str,
@@ -1886,10 +1887,12 @@ pub(crate) fn filter_inline_swarm_subtree(
         })
         .collect();
 
-    // A member is in-subtree if walking its parent chain reaches `self_id`.
-    let in_subtree = |start: &str| -> bool {
+    // A member is a descendant of `self_id` if walking its parent chain reaches
+    // `self_id`. The member itself (start == self_id) is intentionally excluded:
+    // the viewing agent should not appear as one of the agents it manages.
+    let is_descendant = |start: &str| -> bool {
         if start == self_id {
-            return true;
+            return false;
         }
         let mut visited: HashSet<&str> = HashSet::new();
         let mut current = start;
@@ -1907,7 +1910,7 @@ pub(crate) fn filter_inline_swarm_subtree(
 
     members
         .iter()
-        .filter(|m| in_subtree(m.session_id.as_str()))
+        .filter(|m| is_descendant(m.session_id.as_str()))
         .cloned()
         .collect()
 }
@@ -1929,6 +1932,7 @@ mod inline_swarm_subtree_tests {
             status_age_secs: Some(1),
             output_tail: None,
             report_back_to_session_id: parent.map(str::to_string),
+            todo_progress: None,
         }
     }
 
@@ -1939,16 +1943,17 @@ mod inline_swarm_subtree_tests {
     }
 
     #[test]
-    fn includes_self_and_direct_children() {
+    fn includes_direct_children_but_not_self() {
         let members = vec![
             member("me", None),
             member("child_a", Some("me")),
             member("child_b", Some("me")),
             member("stranger", None),
         ];
+        // The viewing session ("me") is excluded; only its spawned children show.
         assert_eq!(
             ids(filter_inline_swarm_subtree(&members, "me")),
-            vec!["child_a", "child_b", "me"]
+            vec!["child_a", "child_b"]
         );
     }
 
@@ -1961,7 +1966,7 @@ mod inline_swarm_subtree_tests {
         ];
         assert_eq!(
             ids(filter_inline_swarm_subtree(&members, "me")),
-            vec!["child", "grandchild", "me"]
+            vec!["child", "grandchild"]
         );
     }
 
@@ -1976,17 +1981,23 @@ mod inline_swarm_subtree_tests {
         ];
         assert_eq!(
             ids(filter_inline_swarm_subtree(&members, "coord_a")),
-            vec!["a_child", "coord_a"]
+            vec!["a_child"]
         );
         assert_eq!(
             ids(filter_inline_swarm_subtree(&members, "coord_b")),
-            vec!["b_child", "coord_b"]
+            vec!["b_child"]
         );
     }
 
     #[test]
-    fn plain_session_with_no_children_sees_only_itself_if_present() {
-        let members = vec![member("stranger", None), member("other", None)];
+    fn session_with_no_children_shows_nothing() {
+        // A session that spawned no one (even if it is itself a swarm member)
+        // produces an empty list so the strip is hidden entirely.
+        let members = vec![
+            member("me", None),
+            member("stranger", None),
+            member("other", None),
+        ];
         assert!(filter_inline_swarm_subtree(&members, "me").is_empty());
     }
 
@@ -2001,7 +2012,7 @@ mod inline_swarm_subtree_tests {
         ];
         assert_eq!(
             ids(filter_inline_swarm_subtree(&members, "me")),
-            vec!["child", "me"]
+            vec!["child"]
         );
     }
 }

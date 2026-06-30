@@ -223,6 +223,10 @@ pub struct SwarmMember {
     /// text), captured for inline swarm gallery rendering. Updated by the bus
     /// monitor from worker streaming taps; not persisted.
     pub output_tail: Option<String>,
+    /// Aggregate todo progress (completed, total) for this member's session,
+    /// updated from `TodoUpdated` bus events. Surfaced on the inline swarm
+    /// strip; not persisted.
+    pub todo_progress: Option<(u32, u32)>,
 }
 
 impl SwarmMember {
@@ -273,6 +277,7 @@ impl SwarmMember {
             last_status_change: Instant::now(),
             is_headless: record.is_headless,
             output_tail: None,
+            todo_progress: None,
         }
     }
 }

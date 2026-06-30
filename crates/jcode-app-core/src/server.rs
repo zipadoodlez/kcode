@@ -15,6 +15,7 @@ mod client_state;
 mod client_writer;
 mod comm_await;
 mod comm_control;
+mod comm_graph;
 mod comm_plan;
 mod comm_session;
 mod comm_sync;
@@ -50,7 +51,8 @@ mod util;
 pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{
     dispatch_background_task_completion, dispatch_background_task_progress,
-    dispatch_swarm_await_completion, dispatch_swarm_output_tail, dispatch_ui_activity,
+    dispatch_swarm_await_completion, dispatch_swarm_output_tail, dispatch_swarm_todo_progress,
+    dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
 use self::debug_jobs::DebugJob;
@@ -58,11 +60,11 @@ use self::headless::create_headless_session;
 use self::reload::await_reload_signal;
 use self::runtime::ServerRuntime;
 use self::swarm::{
-    MAX_SWARM_SPAWN_DEPTH, broadcast_swarm_plan, broadcast_swarm_plan_with_previous,
+    MAX_SWARM_MEMBERS, broadcast_swarm_plan, broadcast_swarm_plan_with_previous,
     broadcast_swarm_status, record_swarm_event, record_swarm_event_for_session,
     refresh_swarm_task_staleness, remove_plan_participant, remove_session_from_swarm,
-    rename_plan_participant, run_swarm_message, swarm_is_self_or_ancestor, swarm_spawn_depth,
-    update_member_status, update_member_status_with_report,
+    rename_plan_participant, run_swarm_message, swarm_is_self_or_ancestor, update_member_status,
+    update_member_status_with_report,
 };
 use self::swarm_channels::{
     remove_session_channel_subscriptions, subscribe_session_to_channel,
@@ -1851,10 +1853,13 @@ impl Server {
                 Ok(BusEvent::UiActivity(activity)) => {
                     dispatch_ui_activity(&activity, &swarm_members).await;
                 }
-                // Session todos are private. Swarm plans are updated via explicit
-                // communication actions (comm_propose_plan / comm_approve_plan), not
-                // todowrite broadcasts.
-                Ok(BusEvent::TodoUpdated(_)) => {}
+                // Session todos are private to the session's transcript, but the
+                // completed/total counters are surfaced on the inline swarm strip
+                // so a coordinator can see each managed agent's progress at a
+                // glance. We forward only the aggregate counts, never the items.
+                Ok(BusEvent::TodoUpdated(event)) => {
+                    dispatch_swarm_todo_progress(&event, &swarm_members, &swarms_by_id).await;
+                }
                 Ok(BusEvent::SwarmOutputTail(tail)) => {
                     dispatch_swarm_output_tail(&tail, &swarm_members, &swarms_by_id).await;
                 }

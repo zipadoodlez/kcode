@@ -66,6 +66,7 @@ fn member(
             last_status_change: Instant::now(),
             is_headless: false,
             output_tail: None,
+            todo_progress: None,
         },
         event_rx,
     )
@@ -752,8 +753,9 @@ async fn nested_agent_can_spawn_while_live_coordinator_exists() {
 }
 
 #[tokio::test]
-async fn spawn_rejected_when_depth_limit_reached() {
-    // Build a chain root -> a -> b -> c -> d -> e (e is at depth 5 == cap).
+async fn spawn_allowed_at_arbitrary_depth_without_depth_cap() {
+    // Build a deep chain root -> a -> b -> c -> d -> e -> f. There is no depth
+    // cap anymore, so even a deeply nested agent may still spawn.
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
@@ -771,6 +773,7 @@ async fn spawn_rejected_when_depth_limit_reached() {
             ("c", "b"),
             ("d", "c"),
             ("e", "d"),
+            ("f", "e"),
         ];
         for (id, parent) in chain {
             let (mut m, _rx) = member(id, Some("swarm-1"), "agent");
@@ -778,12 +781,53 @@ async fn spawn_rejected_when_depth_limit_reached() {
             members.insert(id.to_string(), m);
         }
     }
+    let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel();
+
+    // `f` is deeply nested but the swarm is far below the member cap, so spawning
+    // is allowed.
+    let allowed = ensure_spawn_coordinator_swarm(
+        7,
+        "f",
+        "Only the coordinator can spawn new agents.",
+        &client_event_tx,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_coordinators,
+        &swarm_plans,
+    )
+    .await;
+    assert_eq!(allowed.as_deref(), Some("swarm-1"));
+}
+
+#[tokio::test]
+async fn spawn_rejected_when_member_limit_reached() {
+    use crate::server::swarm::MAX_SWARM_MEMBERS;
+
+    // Fill the swarm to the member cap; the next spawn must be refused.
+    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        "swarm-1".to_string(),
+        "root".to_string(),
+    )])));
+    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    {
+        let mut members = swarm_members.write().await;
+        let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
+        members.insert("root".to_string(), root);
+        // Add filler members so the swarm holds exactly MAX_SWARM_MEMBERS total.
+        for idx in 1..MAX_SWARM_MEMBERS {
+            let id = format!("agent-{idx}");
+            let (mut m, _rx) = member(&id, Some("swarm-1"), "agent");
+            m.report_back_to_session_id = Some("root".to_string());
+            members.insert(id, m);
+        }
+    }
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
-    // `e` is at depth 5 (== MAX_SWARM_SPAWN_DEPTH) and must be refused.
     let refused = ensure_spawn_coordinator_swarm(
         7,
-        "e",
+        "root",
         "Only the coordinator can spawn new agents.",
         &client_event_tx,
         &swarm_members,
@@ -796,20 +840,6 @@ async fn spawn_rejected_when_depth_limit_reached() {
     assert!(matches!(
         client_event_rx.recv().await,
         Some(ServerEvent::Error { message, .. })
-            if message.contains("Swarm spawn depth limit reached")
+            if message.contains("Swarm member limit reached")
     ));
-
-    // `d` is at depth 4 (< cap) and may still spawn.
-    let allowed = ensure_spawn_coordinator_swarm(
-        8,
-        "d",
-        "Only the coordinator can spawn new agents.",
-        &client_event_tx,
-        &swarm_members,
-        &swarms_by_id,
-        &swarm_coordinators,
-        &swarm_plans,
-    )
-    .await;
-    assert_eq!(allowed.as_deref(), Some("swarm-1"));
 }

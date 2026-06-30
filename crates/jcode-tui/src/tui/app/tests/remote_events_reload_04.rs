@@ -219,6 +219,63 @@ fn test_remote_non_retryable_error_stops_auto_poke_after_short_retry_budget() {
 }
 
 #[test]
+fn test_remote_fatal_model_endpoint_error_fails_fast_without_retry_budget() {
+    // Volcengine Ark coding-plan endpoint returning 404 UnsupportedModel can
+    // never succeed on resend, so the recovery/reconnect continuation must NOT
+    // burn the auto-retry budget on it (#387).
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.auto_poke_incomplete_todos = true;
+    app.queued_messages
+        .push("You have 1 incomplete todo. Continue working, or update the todo tool.".to_string());
+    app.rate_limit_pending_message = Some(PendingRemoteMessage {
+        content: "continue".to_string(),
+        images: vec![],
+        is_system: true,
+        system_reminder: None,
+        auto_retry: true,
+        retry_attempts: 0,
+        retry_at: None,
+    });
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Error {
+            id: 21,
+            message: "OpenAI-compatible chat request failed\n  endpoint: https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions\n  model: volcengine:ark-code-latest\n  auth: ARK_API_KEY\n  status: 404 Not Found\n  response: {\"error\":{\"code\":\"UnsupportedModel\",\"message\":\"The requested model does not support the coding plan feature.\"}}".to_string(),
+            retry_after_secs: None,
+        },
+        &mut remote,
+    );
+
+    // No retry scheduled: pending cleared immediately, no backoff timer set.
+    assert!(app.rate_limit_pending_message.is_none());
+    assert!(app.rate_limit_reset.is_none());
+    // Auto-poke is stopped, and an actionable hint is shown.
+    assert!(!app.auto_poke_incomplete_todos);
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.role == "system" && m.content.contains("Not retrying")),
+        "expected a fail-fast model/endpoint hint, got: {:?}",
+        app.display_messages()
+            .iter()
+            .map(|m| m.content.clone())
+            .collect::<Vec<_>>()
+    );
+    // It must not have produced a "retrying (attempt N/M)" message.
+    assert!(
+        !app.display_messages()
+            .iter()
+            .any(|m| m.content.contains("attempt 1/"))
+    );
+}
+
+#[test]
 fn test_remote_connectivity_error_waits_for_network_without_retry_budget() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -993,8 +1050,7 @@ fn test_remote_anthropic_api_key_accrues_cost_from_token_usage() {
     oauth_app.is_remote = true;
     oauth_app.remote_provider_name = Some("Claude".to_string());
     oauth_app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
-    oauth_app.remote_resolved_credential =
-        Some(jcode_provider_core::ResolvedCredential::Oauth);
+    oauth_app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
     oauth_app.handle_server_event(
         crate::protocol::ServerEvent::TokenUsage {
             input: 1_000,
@@ -1054,8 +1110,7 @@ fn test_resumed_session_seeds_cost_from_history_token_totals() {
     oauth_app.is_remote = true;
     oauth_app.remote_provider_name = Some("Claude".to_string());
     oauth_app.remote_provider_model = Some("claude-sonnet-4-6".to_string());
-    oauth_app.remote_resolved_credential =
-        Some(jcode_provider_core::ResolvedCredential::Oauth);
+    oauth_app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
     oauth_app.seed_cost_from_history_totals(&totals);
     assert_eq!(oauth_app.cost.total_cost, 0.0);
 }

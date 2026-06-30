@@ -28,6 +28,23 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc, watch};
 
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
+/// Eligible auto-assignment targets for a swarm task.
+///
+/// Auto-pick must only land on sessions that will actually *execute* the work
+/// without further human action. In a shared swarm there can be many foreign
+/// members: independent human TUIs and stale "zombie" sessions left over from
+/// other runs. Assigning to those silently strands the task (a human session is
+/// never auto-driven; a zombie has no live agent at all) and stalls `run_plan`.
+///
+/// So a member is only a free worker for *automatic* selection when it is a
+/// worker this run owns and can drive:
+///
+/// - `is_headless`: a spawned in-process worker (always auto-driven), or
+/// - owned by the requester (`report_back_to_session_id == req`): a worker this
+///   coordinator spawned, including reusable ones that already returned `ready`.
+///
+/// Everything else (foreign humans, zombies) must be addressed with an explicit
+/// `target_session`, which bypasses this filter; this only governs auto-pick.
 fn filter_swarm_agent_candidates<'a>(
     members: &'a HashMap<String, SwarmMember>,
     req_session_id: &str,
@@ -40,8 +57,55 @@ fn filter_swarm_agent_candidates<'a>(
                 && member.swarm_id.as_deref() == Some(swarm_id)
                 && member.role == "agent"
                 && matches!(member.status.as_str(), "ready" | "completed")
+                && is_drivable_auto_worker(member, req_session_id)
         })
         .collect()
+}
+
+/// Whether `member` can be auto-assigned a task and be relied on to run it.
+/// See [`filter_swarm_agent_candidates`] for the rationale.
+fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
+    member.is_headless || member.report_back_to_session_id.as_deref() == Some(req_session_id)
+}
+
+/// Decide whether a worker's just-finished turn should auto-mark its assigned
+/// node `done`.
+///
+/// A turn must NOT force-complete a node when the worker decomposed it into a
+/// composite (`expanded`): that node is now a synthesis/join point that has to
+/// wait for its children (and, in deep mode, its critique/verify gate) before it
+/// can close, and it will be re-woken to synthesize. Likewise a node the worker
+/// already drove to a terminal status (e.g. via `complete_node`, or that failed)
+/// must not be reopened/reclosed. Only a plain atomic turn auto-completes.
+fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
+    if expanded {
+        return false;
+    }
+    !jcode_plan::is_completed_status(status) && !matches!(status, "failed" | "stopped" | "crashed")
+}
+
+/// Assignment content for a (re-)dispatched node.
+///
+/// For a re-woken composite (`is_composite_synthesis`), the node's original
+/// content is the now-stale decomposition brief, so replace it with an explicit
+/// synthesis instruction that tells the planner to integrate its children and
+/// finish with `complete_node`. Otherwise the original content is used verbatim.
+fn composite_synthesis_content(
+    item_id: &str,
+    raw_content: &str,
+    is_composite_synthesis: bool,
+) -> String {
+    if is_composite_synthesis {
+        format!(
+            "Synthesis turn for composite node '{item_id}'. Its children (and the deep-mode \
+             critique/verify gate) are complete; their outputs are provided below. Read them, \
+             write one synthesized result, and finish by calling `swarm complete_node` with \
+             node_id=\"{item_id}\" and an artifact summarizing the integrated findings. Do NOT \
+             call expand_node again. Original brief: {raw_content}"
+        )
+    } else {
+        raw_content.to_string()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -61,7 +125,10 @@ async fn task_snapshot_for(
     let plan = plans.get(swarm_id)?;
     let item = plan.items.iter().find(|item| item.id == task_id)?;
     Some(TaskSnapshot {
-        content: item.content.clone(),
+        // Hydrate with forward dataflow from completed upstream dependencies so
+        // resume/start/wake re-injects the same artifact context an initial
+        // assignment would carry.
+        content: jcode_plan::bridge::hydrate_assignment(plan, task_id, &item.content),
         status: item.status.clone(),
         assigned_to: item.assigned_to.clone(),
         progress: plan.task_progress.get(task_id).cloned(),
@@ -204,6 +271,28 @@ async fn task_id_for_target_session(
     task_control_target_item_id(&plan.items, target_session, action)
 }
 
+/// Test-only re-export of the private assignment resolver so the e2e tests can
+/// assert composite re-wake routing without going through the full assign path.
+#[cfg(test)]
+pub(super) async fn resolve_assignment_target_for_task_test_hook(
+    req_session_id: &str,
+    swarm_id: &str,
+    task_id: &str,
+    requested_target: Option<&str>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+) -> Result<String, String> {
+    resolve_assignment_target_for_task(
+        req_session_id,
+        swarm_id,
+        task_id,
+        requested_target,
+        swarm_members,
+        swarm_plans,
+    )
+    .await
+}
+
 async fn next_unassigned_runnable_task_id(
     swarm_id: &str,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
@@ -230,6 +319,34 @@ async fn resolve_assignment_target_for_task(
             swarm_plans,
         )
         .await;
+    }
+
+    // Composite owner re-wake affinity: a composite (expanded) node that has
+    // become runnable again is the synthesis/join step. Prefer routing it back to
+    // the agent that planned the decomposition (its recorded owner), so the same
+    // planner integrates its children rather than a fresh worker. Only honor this
+    // when that owner is still a live, eligible swarm member.
+    {
+        let plans = swarm_plans.read().await;
+        if let Some(plan) = plans.get(swarm_id) {
+            let planner = plan.node_meta.get(task_id).and_then(|meta| {
+                (meta.expanded && !meta.is_gate)
+                    .then(|| meta.planner.clone())
+                    .flatten()
+            });
+            if let Some(owner) = planner
+                && owner != req_session_id
+            {
+                let members = swarm_members.read().await;
+                let owner_eligible =
+                    filter_swarm_agent_candidates(&members, req_session_id, swarm_id)
+                        .iter()
+                        .any(|member| member.session_id == owner);
+                if owner_eligible {
+                    return Ok(owner);
+                }
+            }
+        }
     }
 
     let affinities = {
@@ -455,16 +572,34 @@ fn spawn_assigned_task_run(
                     if let Some(plan) = plans.get_mut(&swarm_id)
                         && let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id)
                     {
-                        item.status = "done".to_string();
-                        let progress = plan.task_progress.entry(task_id.clone()).or_default();
-                        progress.last_heartbeat_unix_ms = Some(now_ms);
-                        progress.last_checkpoint_unix_ms = Some(now_ms);
-                        progress.checkpoint_summary = Some("task completed".to_string());
-                        progress.completed_at_unix_ms = Some(now_ms);
-                        progress.stale_since_unix_ms = None;
-                        progress.checkpoint_count =
-                            Some(progress.checkpoint_count.unwrap_or(0) + 1);
-                        plan.version += 1;
+                        // A worker turn ends in one of three ways for its node:
+                        //  1. it decomposed the node via `expand_node` -> the node is
+                        //     now a composite synthesis/join point that must stay
+                        //     in-progress until its children (and deep-mode gate)
+                        //     finish; it is re-woken later to synthesize.
+                        //  2. it already finished the node via `complete_node` -> the
+                        //     node is terminal and owned by no one.
+                        //  3. it just ran (atomic) -> fall through and mark it done.
+                        // Only case 3 should auto-complete here. Blindly forcing
+                        // `done` would close a composite before its children run and
+                        // strand the whole subtree.
+                        let expanded = plan
+                            .node_meta
+                            .get(&task_id)
+                            .map(|m| m.expanded && !m.is_gate)
+                            .unwrap_or(false);
+                        if turn_end_should_auto_complete(&item.status, expanded) {
+                            item.status = "done".to_string();
+                            let progress = plan.task_progress.entry(task_id.clone()).or_default();
+                            progress.last_heartbeat_unix_ms = Some(now_ms);
+                            progress.last_checkpoint_unix_ms = Some(now_ms);
+                            progress.checkpoint_summary = Some("task completed".to_string());
+                            progress.completed_at_unix_ms = Some(now_ms);
+                            progress.stale_since_unix_ms = None;
+                            progress.checkpoint_count =
+                                Some(progress.checkpoint_count.unwrap_or(0) + 1);
+                            plan.version += 1;
+                        }
                     }
                 }
                 let swarm_state = SwarmState {
@@ -856,12 +991,13 @@ pub(super) async fn handle_comm_assign_task(
         (!trimmed.is_empty()).then(|| trimmed.to_string())
     });
 
-    let swarm_id = match require_coordinator_swarm(
+    let swarm_id = match require_plan_driver_swarm(
         id,
         &req_session_id,
         "Only the coordinator can assign tasks.",
         client_event_tx,
         swarm_members,
+        swarm_plans,
         swarm_coordinators,
     )
     .await
@@ -942,12 +1078,37 @@ pub(super) async fn handle_comm_assign_task(
                     .find(|item| item.id == *selected_task_id)
             })
         };
-        if let Some(item) = found {
-            let content = item.content.clone();
+        if found.is_some() {
+            // Resolve identity + forward-dataflow context before taking the
+            // mutable borrow, so hydration can read sibling artifacts immutably.
+            let item_id = found.as_ref().map(|item| item.id.clone()).unwrap();
+            let raw_content = found.as_ref().map(|item| item.content.clone()).unwrap();
+            // Drop the mutable borrow held by `found` before the immutable read.
+            let _ = found;
+            // A re-woken composite is the synthesis/join step: its original content
+            // was the (now-stale) decomposition brief, so replace it with an explicit
+            // synthesis instruction. Without this the planner replays the old "expand
+            // me" prompt and reports instead of calling `complete_node`, leaving the
+            // composite `running_stale` forever.
+            let is_composite_synthesis = plan
+                .node_meta
+                .get(&item_id)
+                .map(|meta| meta.expanded && !meta.is_gate)
+                .unwrap_or(false);
+            let effective_content =
+                composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
+            let content =
+                jcode_plan::bridge::hydrate_assignment(plan, &item_id, &effective_content);
+
+            let item = plan
+                .items
+                .iter_mut()
+                .find(|item| item.id == item_id)
+                .expect("selected task still present");
             item.assigned_to = Some(target_session.clone());
             item.status = "queued".to_string();
             plan.task_progress.insert(
-                item.id.clone(),
+                item_id.clone(),
                 SwarmTaskProgress {
                     assigned_session_id: Some(target_session.clone()),
                     assignment_summary: Some(truncate_detail(
@@ -962,7 +1123,7 @@ pub(super) async fn handle_comm_assign_task(
             plan.participants.insert(req_session_id.clone());
             plan.participants.insert(target_session.clone());
             (
-                Some(item.id.clone()),
+                Some(item_id.clone()),
                 Some(content),
                 plan.participants.clone(),
                 plan.items.len(),
@@ -1185,12 +1346,13 @@ pub(super) async fn handle_comm_assign_next(
     swarm_mutation_runtime: &SwarmMutationRuntime,
 ) {
     if target_session.is_none() {
-        let swarm_id = match require_coordinator_swarm(
+        let swarm_id = match require_plan_driver_swarm(
             id,
             &req_session_id,
             "Only the coordinator can assign tasks.",
             client_event_tx,
             swarm_members,
+            swarm_plans,
             swarm_coordinators,
         )
         .await
@@ -1367,12 +1529,13 @@ pub(super) async fn handle_comm_task_control(
         return;
     };
 
-    let swarm_id = match require_coordinator_swarm(
+    let swarm_id = match require_plan_driver_swarm(
         id,
         &req_session_id,
         "Only the coordinator can control assigned tasks.",
         client_event_tx,
         swarm_members,
+        swarm_plans,
         swarm_coordinators,
     )
     .await
@@ -1791,49 +1954,73 @@ pub(super) fn handle_client_debug_response(
     let _ = client_debug_response_tx.send((id, output));
 }
 
-async fn require_coordinator_swarm(
+/// Authorize a session to drive task dispatch for its swarm plan.
+///
+/// Light mode keeps the single-coordinator rule: a coordinator is the one driver,
+/// which matches the cheap fan-out preset. Deep mode follows the task-DAG
+/// ownership model (see `docs/SWARM_TASK_GRAPH.md` section 2): the plan is a tree
+/// of ownership over a graph, and the agent that seeded/participates in the graph
+/// must be able to dispatch it even when another session already holds the
+/// swarm-level coordinator slot. Without this, a deep-mode agent that joins a
+/// shared swarm can seed a graph but is then blocked from spawning/assigning any
+/// of it, so nothing ever runs.
+///
+/// Returns the swarm id when the caller is the coordinator, or (deep mode only) a
+/// participant of the swarm's plan.
+async fn require_plan_driver_swarm(
     id: u64,
     req_session_id: &str,
     permission_error: &str,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
 ) -> Option<String> {
-    let (swarm_id, is_coordinator) = {
+    let swarm_id = {
         let members = swarm_members.read().await;
-        let swarm_id = members
+        members
             .get(req_session_id)
-            .and_then(|member| member.swarm_id.clone());
-        let is_coordinator = if let Some(ref swarm_id) = swarm_id {
-            let coordinators = swarm_coordinators.read().await;
-            coordinators
-                .get(swarm_id)
-                .map(|coordinator| coordinator == req_session_id)
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        (swarm_id, is_coordinator)
+            .and_then(|member| member.swarm_id.clone())
     };
-
-    if !is_coordinator {
+    let Some(swarm_id) = swarm_id else {
         let _ = client_event_tx.send(ServerEvent::Error {
             id,
-            message: permission_error.to_string(),
+            message: "Not in a swarm.".to_string(),
             retry_after_secs: None,
         });
         return None;
+    };
+
+    let is_coordinator = {
+        let coordinators = swarm_coordinators.read().await;
+        coordinators
+            .get(&swarm_id)
+            .map(|coordinator| coordinator == req_session_id)
+            .unwrap_or(false)
+    };
+    if is_coordinator {
+        return Some(swarm_id);
     }
 
-    match swarm_id {
-        Some(swarm_id) => Some(swarm_id),
-        None => {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: "Not in a swarm.".to_string(),
-                retry_after_secs: None,
-            });
-            None
-        }
+    // Deep mode: any participant of the plan may drive its own task graph.
+    let is_deep_participant = {
+        let plans = swarm_plans.read().await;
+        plans
+            .get(&swarm_id)
+            .map(|plan| {
+                jcode_plan::bridge::parse_mode(&plan.mode) == jcode_plan::dag::Mode::Deep
+                    && plan.participants.contains(req_session_id)
+            })
+            .unwrap_or(false)
+    };
+    if is_deep_participant {
+        return Some(swarm_id);
     }
+
+    let _ = client_event_tx.send(ServerEvent::Error {
+        id,
+        message: permission_error.to_string(),
+        retry_after_secs: None,
+    });
+    None
 }

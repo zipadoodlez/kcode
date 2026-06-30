@@ -912,6 +912,23 @@ pub(in crate::tui::app) fn handle_server_event(
             {
                 return false;
             }
+            // Deterministic model/endpoint-capability failures (e.g. Volcengine
+            // Ark's coding-plan endpoint returning 404 UnsupportedModel, or a
+            // model-not-found) can never succeed by resending the identical
+            // request. Fail fast with an actionable hint instead of burning the
+            // auto-retry budget on guaranteed 4xx responses (#387).
+            if crate::tui::app::commands::is_fatal_model_endpoint_error(&message) {
+                app.clear_pending_remote_retry();
+                if app.auto_poke_incomplete_todos {
+                    crate::tui::app::commands::stop_auto_poke_for_non_retryable_error(app, &message);
+                }
+                app.push_display_message(DisplayMessage::system(
+                    "🛑 Not retrying: the model is not valid for the configured endpoint (e.g. an Ark coding-plan endpoint rejecting a model without the coding plan feature, or a model-not-found). Check the model name and base URL (the coding endpoint `/api/coding/v3` only accepts coding-plan models; use `/api/v3` otherwise), then send again.".to_string(),
+                ));
+                app.set_status_notice("Stopped: model/endpoint mismatch");
+                app.restore_failed_input_to_box();
+                return false;
+            }
             if app.auto_poke_incomplete_todos
                 && crate::tui::app::commands::is_non_retryable_auto_poke_error(&message)
             {
@@ -994,7 +1011,12 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::Reloading { .. } => {
             app.append_reload_message("🔄 Server reload initiated...");
-            false
+            // In-process server reloads (self-dev build-reload) keep the same
+            // server PID and never disconnect this client, so the reconnect-time
+            // client re-exec never fires. If a newer client binary is on disk and
+            // we are idle, re-exec now so client-side (TUI) changes also take
+            // effect. No-op for non-selfdev sessions or when already current.
+            app.maybe_self_reload_after_server_reload()
         }
         ServerEvent::ReloadProgress {
             step,

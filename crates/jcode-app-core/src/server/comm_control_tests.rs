@@ -69,7 +69,18 @@ fn member(session_id: &str, swarm_id: &str, status: &str) -> SwarmMember {
         last_status_change: Instant::now(),
         is_headless: false,
         output_tail: None,
+        todo_progress: None,
     }
+}
+
+/// A swarm worker owned by `owner` (its spawning coordinator). Auto-assignment
+/// only targets such drivable workers, so test fixtures that model a spawned
+/// worker should use this rather than a bare `member()` (which represents a
+/// foreign/independent session and is intentionally not auto-assignable).
+fn owned_member(session_id: &str, swarm_id: &str, status: &str, owner: &str) -> SwarmMember {
+    let mut m = member(session_id, swarm_id, status);
+    m.report_back_to_session_id = Some(owner.to_string());
+    m
 }
 
 fn plan_item(id: &str, status: &str, priority: &str, blocked_by: &[&str]) -> PlanItem {
@@ -141,3 +152,5 @@ include!("comm_control_tests/await_disconnect.rs");
 include!("comm_control_tests/await_any.rs");
 include!("comm_control_tests/await_reload_deadline.rs");
 include!("comm_control_tests/await_reload_final.rs");
+include!("comm_control_tests/dag_e2e.rs");
+include!("comm_control_tests/auto_worker_filter.rs");

@@ -17,11 +17,11 @@ async fn assign_next_prefers_worker_with_dependency_context() {
         }),
         (
             context_worker.to_string(),
-            member(context_worker, swarm_id, "ready"),
+            owned_member(context_worker, swarm_id, "ready", requester),
         ),
         (
             other_worker.to_string(),
-            member(other_worker, swarm_id, "ready"),
+            owned_member(other_worker, swarm_id, "ready", requester),
         ),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
@@ -45,6 +45,8 @@ async fn assign_next_prefers_worker_with_dependency_context() {
                 other_worker.to_string(),
             ]),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(

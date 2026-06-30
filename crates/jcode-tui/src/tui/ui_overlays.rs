@@ -263,7 +263,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(help_entry("/agents", "Configure models for agent roles"));
     lines.push(help_entry(
         "/effort <level>",
-        "Set reasoning effort (none|low|medium|high|xhigh|swarm)",
+        "Set effort (none|low|medium|high|xhigh|swarm|swarm-deep)",
     ));
     lines.push(help_entry(
         "/fast [on|off|status|default ...]",
@@ -607,7 +607,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(key_entry("Ctrl+P", "Toggle auto-poke for incomplete todos"));
     lines.push(key_entry(
         &crate::tui::keybind::effort_switch_keys_label(),
-        "Cycle reasoning effort",
+        "Cycle effort (reasoning + swarm)",
     ));
     if cfg!(target_os = "macos") {
         lines.push(key_entry(

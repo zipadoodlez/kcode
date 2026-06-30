@@ -17,11 +17,11 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
         }),
         (
             metadata_worker.to_string(),
-            member(metadata_worker, swarm_id, "ready"),
+            owned_member(metadata_worker, swarm_id, "ready", requester),
         ),
         (
             other_worker.to_string(),
-            member(other_worker, swarm_id, "ready"),
+            owned_member(other_worker, swarm_id, "ready", requester),
         ),
     ])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
@@ -50,6 +50,8 @@ async fn assign_next_prefers_worker_with_matching_subsystem_metadata() {
                 other_worker.to_string(),
             ]),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )])));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(

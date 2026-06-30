@@ -177,6 +177,7 @@ pub(super) async fn create_headless_session(
                 last_status_change: now,
                 is_headless: true,
                 output_tail: None,
+                todo_progress: None,
             },
         );
     }

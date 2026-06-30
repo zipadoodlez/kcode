@@ -3,7 +3,7 @@ use super::{
     coordination_in_flight_count, default_await_target_statuses, default_cleanup_target_statuses,
     format_awaited_members, format_awaited_members_with_reports, format_members,
     format_plan_status, latest_assistant_report, resolve_optional_target_session,
-    swarm_member_is_in_flight,
+    swarm_member_is_drivable_worker, swarm_member_is_in_flight,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::{
@@ -161,6 +161,53 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
     assert!(swarm_member_is_in_flight(&members[1]));
     assert!(!swarm_member_is_in_flight(&members[2]));
     assert_eq!(coordination_in_flight_count(&summary, &members, "coord"), 1);
+}
+
+#[test]
+fn in_flight_count_excludes_foreign_queued_session() {
+    // A stale, independent (non-owned, client-attached) session that merely shares
+    // the swarm and happens to sit in `queued` must NOT count as in-flight for
+    // run_plan: it is never auto-driven, so awaiting it would hang the run even
+    // though no plan task is assigned to it. Regression for the run_plan stall.
+    let summary = crate::protocol::PlanGraphStatus {
+        swarm_id: Some("swarm-a".to_string()),
+        version: 1,
+        item_count: 1,
+        ready_ids: Vec::new(),
+        blocked_ids: Vec::new(),
+        active_ids: Vec::new(),
+        completed_ids: vec!["done-task".to_string()],
+        cycle_ids: Vec::new(),
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+    };
+    let members = vec![
+        AgentInfo {
+            session_id: "coord".to_string(),
+            status: Some("running".to_string()),
+            role: Some("coordinator".to_string()),
+            is_headless: Some(false),
+            report_back_to_session_id: None,
+            ..Default::default()
+        },
+        AgentInfo {
+            session_id: "foreign-human".to_string(),
+            status: Some("queued".to_string()),
+            role: Some("agent".to_string()),
+            is_headless: Some(false),
+            // Not owned by coord, and a live client is attached.
+            report_back_to_session_id: None,
+            live_attachments: Some(1),
+            ..Default::default()
+        },
+    ];
+
+    // It is technically "in flight" by status, but not a drivable worker, so the
+    // scoped count is zero and run_plan can reach its terminal check.
+    assert!(swarm_member_is_in_flight(&members[1]));
+    assert!(!swarm_member_is_drivable_worker(&members[1], "coord"));
+    assert_eq!(coordination_in_flight_count(&summary, &members, "coord"), 0);
 }
 
 #[test]

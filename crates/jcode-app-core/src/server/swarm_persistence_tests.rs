@@ -66,6 +66,8 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                     checkpoint_count: Some(1),
                 },
             )]),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     );
     let coordinators = HashMap::from([("swarm-alpha".to_string(), "session-2".to_string())]);
@@ -87,6 +89,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         last_status_change: Instant::now(),
         is_headless: true,
         output_tail: None,
+        todo_progress: None,
     }];
 
     persist_swarm_state(
@@ -144,6 +147,8 @@ fn remove_swarm_state_deletes_persisted_snapshot() {
             version: 1,
             participants: Default::default(),
             task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
         },
     )]);
     persist_swarm_state("swarm-beta", plans.get("swarm-beta"), None, &[]);
@@ -176,6 +181,7 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         last_status_change: Instant::now(),
         is_headless: false,
         output_tail: None,
+        todo_progress: None,
     }];
 
     persist_swarm_state("swarm-gamma", None, Some("coord-1"), &members);

@@ -398,7 +398,8 @@ fn copy_to_clipboard_osc52(text: &str) -> bool {
 
 pub(super) fn effort_display_label(effort: &str) -> &str {
     match effort {
-        "swarm" => "Swarm (Max + Swarm)",
+        "swarm" => "Swarm (light fan-out)",
+        "swarm-deep" => "Swarm Deep (Max + task graph)",
         "max" => "Max",
         "xhigh" => "xHigh (Max)",
         "high" => "High",
@@ -501,7 +502,7 @@ pub(super) fn inferred_reasoning_efforts(
     let model = model_name.unwrap_or_default().to_ascii_lowercase();
 
     if provider.contains("openrouter") {
-        return vec!["none", "low", "medium", "high", "xhigh"];
+        return vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"];
     }
 
     let is_anthropic = provider.contains("anthropic")
@@ -523,14 +524,14 @@ pub(super) fn inferred_reasoning_efforts(
             return Vec::new();
         }
         if model.contains("claude-opus-4-8") || model.contains("claude-opus-4-7") {
-            return vec!["none", "low", "medium", "high", "xhigh"];
+            return vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"];
         }
-        return vec!["none", "low", "medium", "high"];
+        return vec!["none", "low", "medium", "high", "swarm", "swarm-deep"];
     }
 
     let is_deepseek = provider.contains("deepseek") || model.contains("deepseek");
     if is_deepseek {
-        return vec!["none", "low", "medium", "high", "max"];
+        return vec!["none", "low", "medium", "high", "max", "swarm", "swarm-deep"];
     }
 
     let is_openai = provider.contains("openai")
@@ -541,7 +542,7 @@ pub(super) fn inferred_reasoning_efforts(
         || model.starts_with("o4")
         || model.starts_with("o5");
     if is_openai {
-        return vec!["none", "low", "medium", "high", "xhigh"];
+        return vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"];
     }
 
     Vec::new()
@@ -677,7 +678,7 @@ pub(super) fn build_resume_command(
             let args = resume_invocation_args(&imported_id, socket);
             let title = format!(
                 "🧵 Claude Code {}",
-                jcode_core::util::truncate_str(&session_id, 8)
+                jcode_core::util::truncate_str(session_id, 8)
             );
             (exe, args, title)
         }
@@ -685,10 +686,7 @@ pub(super) fn build_resume_command(
             let exe = launch_client_executable();
             let imported_id = crate::import::imported_codex_session_id(session_id);
             let args = resume_invocation_args(&imported_id, socket);
-            let title = format!(
-                "🧠 Codex {}",
-                jcode_core::util::truncate_str(&session_id, 8)
-            );
+            let title = format!("🧠 Codex {}", jcode_core::util::truncate_str(session_id, 8));
             (exe, args, title)
         }
         ResumeTarget::PiSession { session_path } => {
@@ -710,7 +708,7 @@ pub(super) fn build_resume_command(
             let args = resume_invocation_args(&imported_id, socket);
             let title = format!(
                 "◌ OpenCode {}",
-                jcode_core::util::truncate_str(&session_id, 8)
+                jcode_core::util::truncate_str(session_id, 8)
             );
             (exe, args, title)
         }

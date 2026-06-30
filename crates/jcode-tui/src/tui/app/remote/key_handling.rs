@@ -1096,7 +1096,7 @@ async fn handle_remote_key_internal(
                         })
                         .collect();
                     app.push_display_message(DisplayMessage::system(format!(
-                        "Reasoning effort: {}\nAvailable: {}\nUse /effort <level> or {} to change.",
+                        "Effort: {}\nAvailable: {}\nUse /effort <level> or {} to change.",
                         label,
                         list.join(" · "),
                         crate::tui::keybind::effort_switch_keys_label()

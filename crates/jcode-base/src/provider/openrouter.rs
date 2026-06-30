@@ -1050,7 +1050,9 @@ impl OpenRouterProvider {
             return None;
         }
         match value.as_str() {
-            "none" | "low" | "medium" | "high" | "max" | "swarm" => Some(value),
+            "none" | "low" | "medium" | "high" | "max" | "swarm" | "swarm-deep" => {
+                Some(value)
+            }
             // Match the existing OpenAI UX: accept unknown non-empty effort values
             // by snapping to the strongest setting instead of rejecting the command.
             other => {
@@ -1069,7 +1071,9 @@ impl OpenRouterProvider {
             return None;
         }
         match value.as_str() {
-            "none" | "low" | "medium" | "high" | "xhigh" | "swarm" => Some(value),
+            "none" | "low" | "medium" | "high" | "xhigh" | "swarm" | "swarm-deep" => {
+                Some(value)
+            }
             "max" => Some("xhigh".to_string()),
             other => {
                 crate::logging::info(&format!(

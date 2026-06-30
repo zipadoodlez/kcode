@@ -13,25 +13,92 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompt/system_prompt.md");
 /// inject [`SWARM_EFFORT_DIRECTIVE`].
 pub const SWARM_EFFORT: &str = "swarm";
 
+/// Reasoning-effort sentinel for the **deep task graph** mode: strongest model
+/// reasoning AND the comprehensive DAG-first swarm workflow (decompose into a
+/// validated task graph, critique/verify gates, typed artifact handoffs). Sits
+/// one rung above [`SWARM_EFFORT`] on the effort ladder: `... xhigh`, `swarm`
+/// (light fan-out), `swarm-deep` (deep task graph). Providers translate this to
+/// their strongest real effort, while the UI/session keep the literal marker so
+/// the agent knows to inject [`SWARM_DEEP_EFFORT_DIRECTIVE`].
+pub const SWARM_DEEP_EFFORT: &str = "swarm-deep";
+
 /// System-prompt directive injected when the active reasoning effort is
 /// [`SWARM_EFFORT`]. Instructs the agent to lean on the swarm tooling.
 pub const SWARM_EFFORT_DIRECTIVE: &str = "# Swarm Effort\n\nYou are running at the maximum reasoning effort with swarm orchestration enabled. For any non-trivial task, decompose the work and use the `swarm` tool to spawn and coordinate parallel agents (spawn workers with concrete prompts, assign tasks, and collect their reports) instead of doing everything yourself in one thread. Prefer parallelizing independent subtasks across swarm members, and use a coordinator/plan when the work has multiple stages. Only skip the swarm for trivial, single-step requests.";
 
-/// Returns true when `effort` is the swarm sentinel (case-insensitive).
+/// System-prompt directive injected when the active reasoning effort is
+/// [`SWARM_DEEP_EFFORT`]. Instructs the agent to run the comprehensive DAG-first
+/// task-graph workflow.
+pub const SWARM_DEEP_EFFORT_DIRECTIVE: &str = "# Deep Task Graph\n\nYou are running at maximum reasoning effort with the deep task-graph swarm workflow. Treat the task DAG as the primary object, not ad hoc agent chat. Workflow:\n\n1. Seed a graph with `swarm task_graph` using `mode: \"deep\"`: lay out nodes (kind explore|implement|verify|fix|synthesize) and `depends_on` edges instead of answering directly.\n2. For any node that is too big, `swarm expand_node` to decompose it into a child sub-DAG (you become its planner/integrator). In deep mode a critique/verify gate is auto-inserted before a composite node can close.\n3. Finish each node with `swarm complete_node` and a typed artifact: `findings`, `evidence` (file:line / commit refs), `validation`, `open_questions`, and an honest `what_i_did_not_check`. Downstream nodes are hydrated with these artifacts automatically.\n4. When a critique/verify gate finds gaps or failures, use `swarm inject_gap` to add new nodes; the parent cannot close until they drain.\n5. Use `swarm run_plan` to drive the graph to completion.\n\nComprehensiveness is structural: prefer decomposition + gates over a single thorough answer, so it is very unlikely any nook or cranny is missed.";
+
+/// Returns true when `effort` is either swarm sentinel (light or deep),
+/// case-insensitive. Used by providers to map to the strongest real effort.
 pub fn is_swarm_effort(effort: &str) -> bool {
-    effort.trim().eq_ignore_ascii_case(SWARM_EFFORT)
+    let trimmed = effort.trim();
+    trimmed.eq_ignore_ascii_case(SWARM_EFFORT) || trimmed.eq_ignore_ascii_case(SWARM_DEEP_EFFORT)
 }
 
-/// Append the swarm directive to a split prompt's dynamic part when the active
-/// reasoning effort is the swarm sentinel. No-op otherwise.
-pub fn append_swarm_effort_directive(split: &mut SplitSystemPrompt, effort: Option<&str>) {
-    if !effort.map(is_swarm_effort).unwrap_or(false) {
-        return;
+/// Returns true when `effort` is specifically the deep task-graph sentinel.
+pub fn is_deep_swarm_effort(effort: &str) -> bool {
+    effort.trim().eq_ignore_ascii_case(SWARM_DEEP_EFFORT)
+}
+
+/// The user-facing "general effort" ladder is one list, but each rung is one of
+/// two internal kinds: a plain reasoning level (mapped straight to the provider
+/// wire effort) or a swarm orchestration mode (which also pins reasoning to the
+/// model's max). [`EffortKind`] is the single classifier all consumers use so the
+/// UI, providers, and scheduler never disagree about what a rung means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortKind {
+    /// A plain reasoning level (none/low/medium/high/xhigh/max).
+    Reasoning,
+    /// Light swarm mode: max reasoning + parallel fan-out.
+    SwarmLight,
+    /// Deep swarm mode: max reasoning + DAG-first task graph.
+    SwarmDeep,
+}
+
+impl EffortKind {
+    /// True when this rung is a swarm orchestration mode rather than a plain
+    /// reasoning level. Such rungs must not be treated as per-model effort
+    /// variants (e.g. they should not generate `model (effort)` picker rows).
+    pub fn is_swarm_mode(self) -> bool {
+        matches!(self, EffortKind::SwarmLight | EffortKind::SwarmDeep)
     }
+}
+
+/// Classify a general-effort rung string into its [`EffortKind`].
+pub fn classify_effort(effort: &str) -> EffortKind {
+    let trimmed = effort.trim();
+    if trimmed.eq_ignore_ascii_case(SWARM_DEEP_EFFORT) {
+        EffortKind::SwarmDeep
+    } else if trimmed.eq_ignore_ascii_case(SWARM_EFFORT) {
+        EffortKind::SwarmLight
+    } else {
+        EffortKind::Reasoning
+    }
+}
+
+/// True when an effort rung is a swarm orchestration mode (light or deep) rather
+/// than a plain reasoning level. Convenience wrapper over [`classify_effort`].
+pub fn is_swarm_mode_effort(effort: &str) -> bool {
+    classify_effort(effort).is_swarm_mode()
+}
+
+/// Append the appropriate swarm directive to a split prompt's dynamic part when
+/// the active reasoning effort is a swarm sentinel. The deep sentinel injects the
+/// DAG-first task-graph directive; the light sentinel injects the fan-out
+/// directive. No-op otherwise.
+pub fn append_swarm_effort_directive(split: &mut SplitSystemPrompt, effort: Option<&str>) {
+    let directive = match effort {
+        Some(effort) if is_deep_swarm_effort(effort) => SWARM_DEEP_EFFORT_DIRECTIVE,
+        Some(effort) if is_swarm_effort(effort) => SWARM_EFFORT_DIRECTIVE,
+        _ => return,
+    };
     if !split.dynamic_part.is_empty() {
         split.dynamic_part.push_str("\n\n");
     }
-    split.dynamic_part.push_str(SWARM_EFFORT_DIRECTIVE);
+    split.dynamic_part.push_str(directive);
 }
 /// Mission-continuation template (embedded at compile time). Consumed by the
 /// `mission` module in the upper `jcode-app-core` layer; the asset lives here

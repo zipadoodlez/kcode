@@ -130,18 +130,38 @@ fn coordination_in_flight_count(
             .iter()
             .filter(|member| member.session_id != current_session_id)
             .filter(|member| swarm_member_is_in_flight(member))
+            .filter(|member| swarm_member_is_drivable_worker(member, current_session_id))
             .count(),
     )
 }
 
+/// Sessions `run_plan` should await as genuinely in-flight on *this* plan.
+///
+/// A member counts only when it is both in-flight (`queued`/`running`) **and** a
+/// drivable worker for this run: headless, or owned by the coordinator
+/// (`report_back_to_session_id == coordinator`). This deliberately excludes
+/// independent, client-attached human sessions that merely share the swarm and
+/// happen to sit in a `queued` status. Awaiting those would hang `run_plan`
+/// forever even though every plan task is already terminal (they are never auto
+/// driven), which is exactly the stall this scoping prevents.
 async fn fetch_in_flight_swarm_sessions(session_id: &str) -> Result<Vec<String>> {
     let members = fetch_swarm_members(session_id).await?;
     Ok(members
         .into_iter()
         .filter(|member| member.session_id != session_id)
         .filter(swarm_member_is_in_flight)
+        .filter(|member| swarm_member_is_drivable_worker(member, session_id))
         .map(|member| member.session_id)
         .collect())
+}
+
+/// Whether `member` is a worker `run_plan` can rely on to autonomously execute an
+/// assignment (and therefore one it is safe to await): a spawned headless worker,
+/// or one owned by the coordinator that issued the run. Foreign client-attached
+/// sessions are not drivable and must not gate `run_plan` completion.
+fn swarm_member_is_drivable_worker(member: &AgentInfo, coordinator_session_id: &str) -> bool {
+    member.is_headless.unwrap_or(false)
+        || member.report_back_to_session_id.as_deref() == Some(coordinator_session_id)
 }
 
 async fn cleanup_swarm_workers(ctx: &ToolContext, params: &CommunicateInput) -> Result<String> {
@@ -253,9 +273,22 @@ async fn run_swarm_plan_to_terminal(
     let timeout_minutes = params.timeout_minutes.unwrap_or(60).max(1);
     let retain_agents = params.retain_agents.unwrap_or(false);
     let spawn_if_needed = params.spawn_if_needed.or(Some(true));
+    // Default to a fresh worker per task-graph node. Reusing a worker that already
+    // completed a *different* node carries that node's conversation into the next
+    // assignment, and the model often just re-reports its prior result instead of
+    // doing the new work (observed leaving gap/synthesis nodes stuck). The task-DAG
+    // model assumes clean, isolated workers, so unless the caller explicitly opts
+    // into reuse (`prefer_spawn=false`), prefer spawning a fresh worker per node.
+    let prefer_spawn = params.prefer_spawn.or(Some(true));
     let mut assignment_count = 0usize;
     let mut loop_count = 0usize;
     let max_loops = 200usize;
+    // Consecutive loops where an active task exists but no drivable worker is
+    // awaitable. This is normally a brief transition (a composite re-waking to
+    // synthesize, or a just-finished task whose member status has not propagated),
+    // so we back off and re-check a few times before declaring a real stall.
+    let mut transient_stall_loops = 0usize;
+    let max_transient_stall_loops = 5usize;
 
     loop {
         loop_count += 1;
@@ -306,7 +339,7 @@ async fn run_swarm_plan_to_terminal(
                 session_id: ctx.session_id.clone(),
                 target_session: params.target_session.clone(),
                 working_dir: params.working_dir.clone(),
-                prefer_spawn: params.prefer_spawn,
+                prefer_spawn,
                 spawn_if_needed,
                 message: params.message.clone(),
             };
@@ -334,14 +367,53 @@ async fn run_swarm_plan_to_terminal(
 
         if await_sessions.is_empty() {
             if active_count > 0 {
+                // An active task exists but nothing drivable is awaitable. This is
+                // usually transient: a composite is re-waking to synthesize, or a
+                // worker just finished and its member status has not propagated yet.
+                // Re-check a few times with a short backoff before giving up, and
+                // bail early if the plan reaches a terminal state in the meantime.
+                transient_stall_loops += 1;
+                if transient_stall_loops <= max_transient_stall_loops {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                }
                 return Err(anyhow::anyhow!(
-                    "run_plan found {} active task(s) but no running swarm members to await; inspect plan_status and member list before retrying",
-                    active_count
+                    "run_plan found {} active task(s) but no running swarm members to await after {} re-checks; inspect plan_status and member list before retrying",
+                    active_count,
+                    max_transient_stall_loops
                 ));
             }
-            continue;
+            // Nothing was assigned this loop, nothing is in flight, yet the plan is
+            // not terminal. This means some non-terminal task cannot be driven, e.g.
+            // it is already assigned to a session run_plan cannot drive (a foreign or
+            // stale member). Spinning here would busy-loop to the max-loop cap, so
+            // surface the stuck state with the offending tasks instead.
+            let stuck: Vec<String> = summary
+                .next_ready_ids
+                .iter()
+                .chain(summary.ready_ids.iter())
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let detail = if stuck.is_empty() {
+                "no ready tasks and no in-flight workers".to_string()
+            } else {
+                format!(
+                    "runnable task(s) {} could not be assigned to any drivable worker",
+                    stuck.join(", ")
+                )
+            };
+            return Err(anyhow::anyhow!(
+                "run_plan stalled after {} loop(s): {}. This usually means a task is assigned to a session run_plan cannot drive (foreign or stale member). Reassign with an explicit target_session, or clear the stale assignment, then retry.",
+                loop_count,
+                detail
+            ));
         }
         await_swarm_progress(ctx, await_sessions, timeout_minutes).await?;
+        // Real progress (an await completed); clear the transient-stall backoff so
+        // a later genuine stall starts counting fresh.
+        transient_stall_loops = 0;
     }
 }
 
@@ -540,6 +612,16 @@ struct CommunicateInput {
     #[serde(default)]
     plan_items: Option<Vec<PlanItem>>,
     #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    gate_id: Option<String>,
+    /// Task-DAG node specs for task_graph/expand_node/inject_gap actions.
+    #[serde(default)]
+    nodes: Option<Vec<crate::protocol::TaskGraphNodeSpec>>,
+    /// Handoff artifact (object) for complete_node.
+    #[serde(default)]
+    artifact: Option<serde_json::Value>,
+    #[serde(default)]
     target_status: Option<Vec<String>>,
     #[serde(default)]
     session_ids: Option<Vec<String>>,
@@ -606,7 +688,7 @@ impl Tool for CommunicateTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
+        let mut schema = json!({
             "type": "object",
             "required": ["action"],
             "properties": {
@@ -616,6 +698,7 @@ impl Tool for CommunicateTool {
                     "enum": ["share", "share_append", "read", "message", "broadcast", "dm", "channel", "list", "list_channels", "channel_members",
                              "propose_plan", "approve_plan", "reject_plan", "spawn", "stop", "assign_role",
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
+                             "task_graph", "expand_node", "complete_node", "inject_gap",
                              "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
                              "subscribe_channel", "unsubscribe_channel", "await_members"],
                     "description": "Action. For spawn, prefer including prompt with the initial task so the new agent starts useful work immediately."
@@ -751,7 +834,47 @@ impl Tool for CommunicateTool {
                     }
                 }
             }
-        })
+        });
+
+        // Task-DAG properties are added after the macro to keep `json!` nesting
+        // depth under the macro recursion limit.
+        if let Some(props) = schema
+            .get_mut("properties")
+            .and_then(|value| value.as_object_mut())
+        {
+            props.insert(
+                "node_id".to_string(),
+                json!({
+                    "type": "string",
+                    "description": "Task-DAG node id for expand_node/complete_node."
+                }),
+            );
+            props.insert(
+                "gate_id".to_string(),
+                json!({
+                    "type": "string",
+                    "description": "Gate node id for inject_gap (a critique/verify gate the caller owns)."
+                }),
+            );
+            props.insert(
+                "nodes".to_string(),
+                json!({
+                    "type": "array",
+                    "description": "Task-DAG node specs for task_graph (seed), expand_node (children), or inject_gap (gap/fix nodes). Each: {id, content, kind?, depends_on?, priority?}. kind is one of explore|implement|verify|fix|synthesize.",
+                    "items": { "type": "object", "additionalProperties": true }
+                }),
+            );
+            props.insert(
+                "artifact".to_string(),
+                json!({
+                    "type": "object",
+                    "description": "Typed handoff artifact for complete_node. In deep mode requires non-empty 'findings' and a 'what_i_did_not_check' list. Fields: findings, evidence[], edge_cases_considered[], validation, open_questions[], confidence, what_i_did_not_check[].",
+                    "additionalProperties": true
+                }),
+            );
+        }
+
+        schema
     }
 
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
@@ -1100,6 +1223,124 @@ impl Tool for CommunicateTool {
                         )))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to reject plan: {}", e)),
+                }
+            }
+
+            "task_graph" | "seed_graph" => {
+                let nodes = params
+                    .nodes
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("'nodes' is required for task_graph action"))?;
+                if nodes.is_empty() {
+                    return Err(anyhow::anyhow!("'nodes' must include at least one node"));
+                }
+                let count = nodes.len();
+                let request = Request::CommSeedGraph {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    mode: params.mode.clone(),
+                    nodes,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!(
+                            "Seeded task graph ({} nodes).",
+                            count
+                        )))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to seed task graph: {}", e)),
+                }
+            }
+
+            "expand_node" => {
+                let node_id = params.node_id.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'node_id' is required for expand_node action")
+                })?;
+                let children = params.nodes.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'nodes' (children) is required for expand_node action")
+                })?;
+                if children.is_empty() {
+                    return Err(anyhow::anyhow!("expand_node requires at least one child"));
+                }
+                let count = children.len();
+                let request = Request::CommExpandNode {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    node_id: node_id.clone(),
+                    children,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!(
+                            "Decomposed '{}' into {} children.",
+                            node_id, count
+                        )))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to expand node: {}", e)),
+                }
+            }
+
+            "complete_node" => {
+                let node_id = params.node_id.clone().ok_or_else(|| {
+                    anyhow::anyhow!("'node_id' is required for complete_node action")
+                })?;
+                let artifact_json = match params.artifact.clone() {
+                    Some(value) => serde_json::to_string(&value)
+                        .map_err(|e| anyhow::anyhow!("invalid artifact: {}", e))?,
+                    None => {
+                        return Err(anyhow::anyhow!(
+                            "'artifact' object is required for complete_node action"
+                        ));
+                    }
+                };
+                let request = Request::CommCompleteNode {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    node_id: node_id.clone(),
+                    artifact_json,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!("Completed node '{}'.", node_id)))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to complete node: {}", e)),
+                }
+            }
+
+            "inject_gap" => {
+                let gate_id = params
+                    .gate_id
+                    .clone()
+                    .or_else(|| params.node_id.clone())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("'gate_id' is required for inject_gap action")
+                    })?;
+                let nodes = params
+                    .nodes
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("'nodes' is required for inject_gap action"))?;
+                if nodes.is_empty() {
+                    return Err(anyhow::anyhow!("inject_gap requires at least one node"));
+                }
+                let count = nodes.len();
+                let request = Request::CommInjectGap {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                    gate_id: gate_id.clone(),
+                    nodes,
+                };
+                match send_request(request).await {
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new(format!(
+                            "Injected {} gap node(s) from gate '{}'.",
+                            count, gate_id
+                        )))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to inject gap nodes: {}", e)),
                 }
             }
 

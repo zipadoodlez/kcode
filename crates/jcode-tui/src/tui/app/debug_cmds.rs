@@ -314,6 +314,7 @@ impl App {
                         status_age_secs: Some((i as u64) * 7),
                         output_tail: Some(samples[i % samples.len()].to_string()),
                         report_back_to_session_id: None,
+                        todo_progress: Some(((i as u32 * 3) % 9, 9)),
                     })
                     .collect();
                 self.debug_force_inline_gallery = true;
@@ -349,6 +350,7 @@ impl App {
                         status_age_secs: Some(0),
                         output_tail: None,
                         report_back_to_session_id: None,
+                        todo_progress: None,
                     }],
                 })
                 .to_string()

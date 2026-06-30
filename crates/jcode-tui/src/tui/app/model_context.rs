@@ -410,17 +410,32 @@ impl App {
     }
 
     pub(super) fn cycle_effort(&mut self, direction: i8) {
-        let efforts = self.provider.available_efforts();
+        // Remote/self-dev sessions infer the level list from provider+model (the
+        // same source the model picker uses), since `self.provider` is a local
+        // stand-in. Local sessions read the real provider. This keeps the cycle
+        // and the picker consistent (both expose swarm / swarm-deep).
+        let efforts = if self.is_remote {
+            inferred_reasoning_efforts(
+                self.remote_provider_name.as_deref(),
+                self.remote_provider_model.as_deref(),
+            )
+        } else {
+            self.provider.available_efforts()
+        };
         if efforts.is_empty() {
             self.set_status_notice("Reasoning effort not available for this provider");
             return;
         }
 
-        let current = self.provider.reasoning_effort();
+        let current = if self.is_remote {
+            self.remote_reasoning_effort.clone()
+        } else {
+            self.provider.reasoning_effort()
+        };
         let current_index = current
             .as_ref()
             .and_then(|c| efforts.iter().position(|e| *e == c.as_str()))
-            .unwrap_or(efforts.len() - 1); // default to last (xhigh)
+            .unwrap_or(efforts.len() - 1); // default to last (highest)
 
         let len = efforts.len();
         let next_index = if direction > 0 {
@@ -1306,7 +1321,7 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
                 })
                 .collect();
             app.push_display_message(DisplayMessage::system(format!(
-                "Reasoning effort: {}\nAvailable: {}\nUse /effort <level> or {} to change.",
+                "Effort: {}\nAvailable: {}\nUse /effort <level> or {} to change.",
                 current_label,
                 list.join(" · "),
                 crate::tui::keybind::effort_switch_keys_label()

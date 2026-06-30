@@ -634,7 +634,9 @@ impl AnthropicProvider {
             "off" | "disabled" => Some("none".to_string()),
             // `swarm` is a UI sentinel meaning "max effort + use the swarm tool".
             // Stored verbatim; resolved to a real effort in `actual_effort_for_model`.
-            "none" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm" => Some(value),
+            "none" | "low" | "medium" | "high" | "xhigh" | "max" | "swarm" | "swarm-deep" => {
+                Some(value)
+            }
             other => {
                 crate::logging::info(&format!(
                     "Warning: Unsupported Anthropic reasoning effort '{}'; expected none|low|medium|high|xhigh|max alias. Using the model maximum.",
@@ -659,11 +661,14 @@ impl AnthropicProvider {
         }
     }
 
-    /// Like [`Self::actual_effort_for_model`], but preserves the `swarm` sentinel
-    /// so the stored/UI value keeps reflecting swarm mode. Used when persisting
-    /// the user's choice; request building resolves swarm to a real effort.
+    /// Like [`Self::actual_effort_for_model`], but preserves the swarm sentinels
+    /// (light `swarm` and `swarm-deep`) so the stored/UI value keeps reflecting
+    /// the chosen swarm mode. Used when persisting the user's choice; request
+    /// building resolves swarm to a real effort.
     fn store_effort_for_model(model: &str, effort: &str) -> String {
-        if crate::prompt::is_swarm_effort(effort) {
+        if crate::prompt::is_deep_swarm_effort(effort) {
+            crate::prompt::SWARM_DEEP_EFFORT.to_string()
+        } else if crate::prompt::is_swarm_effort(effort) {
             crate::prompt::SWARM_EFFORT.to_string()
         } else {
             Self::actual_effort_for_model(model, effort)
@@ -1221,9 +1226,9 @@ impl Provider for AnthropicProvider {
             return vec![];
         }
         if Self::model_supports_xhigh_effort(&model) {
-            vec!["none", "low", "medium", "high", "xhigh", "swarm"]
+            vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"]
         } else {
-            vec!["none", "low", "medium", "high", "swarm"]
+            vec!["none", "low", "medium", "high", "swarm", "swarm-deep"]
         }
     }
 
@@ -1272,7 +1277,8 @@ impl Provider for AnthropicProvider {
                     crate::logging::info(
                         "Anthropic OAuth model catalog auth failed; forcing token refresh and retrying...",
                     );
-                    let refreshed_token = force_refresh_oauth_token(Arc::clone(&self.credentials)).await?;
+                    let refreshed_token =
+                        force_refresh_oauth_token(Arc::clone(&self.credentials)).await?;
                     crate::provider::fetch_anthropic_model_catalog_oauth(&refreshed_token).await
                 }
                 Err(err) => Err(err),

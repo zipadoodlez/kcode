@@ -215,6 +215,7 @@ fn attached_swarm_member(
         last_status_change: Instant::now(),
         is_headless: false,
         output_tail: None,
+        todo_progress: None,
     }
 }
 
@@ -242,6 +243,7 @@ fn persisted_headless_member(
         last_status_change: Instant::now(),
         is_headless: true,
         output_tail: None,
+        todo_progress: None,
     }
 }
 

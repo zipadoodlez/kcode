@@ -216,6 +216,43 @@ pub(super) async fn dispatch_swarm_output_tail(
     }
 }
 
+/// Update a swarm member's aggregate todo progress (completed/total) from a
+/// `TodoUpdated` bus event and rebroadcast swarm status so coordinators see the
+/// counter move on the inline strip. Only the counts cross the swarm boundary,
+/// never the todo items themselves.
+pub(super) async fn dispatch_swarm_todo_progress(
+    event: &crate::bus::TodoEvent,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+) {
+    let total = event.todos.len() as u32;
+    let completed = event
+        .todos
+        .iter()
+        .filter(|t| t.status == "completed")
+        .count() as u32;
+    let progress = if total == 0 {
+        None
+    } else {
+        Some((completed, total))
+    };
+
+    let swarm_id = {
+        let mut members = swarm_members.write().await;
+        let Some(member) = members.get_mut(&event.session_id) else {
+            return;
+        };
+        if member.todo_progress == progress {
+            return; // no change, skip the broadcast
+        }
+        member.todo_progress = progress;
+        member.swarm_id.clone()
+    };
+    if let Some(swarm_id) = swarm_id {
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+    }
+}
+
 pub(super) async fn dispatch_ui_activity(
     activity: &crate::bus::UiActivity,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
