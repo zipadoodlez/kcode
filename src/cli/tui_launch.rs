@@ -187,7 +187,10 @@ fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
         app.set_status_notice(status_notice);
     }
     if let Some((title, message)) = hints.display_message {
-        app.push_display_message(tui::DisplayMessage::system(message).with_title(title));
+        // Stash the card so it survives the remote History bootstrap, which
+        // clears the transcript for a brand-new session and would otherwise make
+        // the hint flash for a moment and then disappear on the idle screen.
+        app.set_pending_startup_notice(title, message);
     }
     if let Some(message) = hints.auto_send_message {
         app.queue_startup_message(message);

@@ -1211,6 +1211,11 @@ pub struct App {
     input_undo_stack: Vec<(String, usize)>,
     // Short-lived notice for status feedback (model switch, cycle diff mode, etc.)
     status_notice: Option<(String, Instant)>,
+    // Persistent startup notice card (e.g. launch-hotkeys / welcome tip) shown on
+    // the idle screen of a fresh session. Stashed so it can be re-applied after
+    // the remote History bootstrap clears the transcript for a brand-new session,
+    // which otherwise makes the card flash for a moment and disappear.
+    pending_startup_notice: Option<(String, String)>,
     // Experimental feature warnings already shown in this session.
     experimental_feature_warnings_seen: HashSet<String>,
     // Active first-use experimental warning for the currently running tool.

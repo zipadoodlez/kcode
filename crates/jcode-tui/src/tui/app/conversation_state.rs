@@ -401,6 +401,46 @@ impl App {
         self.status_notice = Some((text.into(), Instant::now()));
     }
 
+    /// Stash a persistent startup notice card and show it immediately.
+    ///
+    /// The card is also re-applied once the remote History bootstrap clears the
+    /// transcript for a brand-new session, so launch-hotkey / welcome tips stay
+    /// visible on the idle screen instead of flashing for a moment and vanishing.
+    pub fn set_pending_startup_notice(&mut self, title: impl Into<String>, message: impl Into<String>) {
+        let title = title.into();
+        let message = message.into();
+        self.push_display_message(
+            DisplayMessage::system(message.clone()).with_title(title.clone()),
+        );
+        self.pending_startup_notice = Some((title, message));
+    }
+
+    /// Re-apply the stashed startup notice card if it is no longer present in the
+    /// transcript (e.g. after the History bootstrap reset the display history).
+    /// Scoped to the idle screen: once a real conversation has started the notice
+    /// is consumed so it never reappears (and never leaks into a switched-to
+    /// session).
+    pub(crate) fn reapply_pending_startup_notice_if_cleared(&mut self) {
+        let Some((title, message)) = self.pending_startup_notice.clone() else {
+            return;
+        };
+        let conversation_started = self
+            .display_messages
+            .iter()
+            .any(|m| matches!(m.role.as_str(), "user" | "assistant" | "tool" | "reasoning"));
+        if conversation_started {
+            self.pending_startup_notice = None;
+            return;
+        }
+        let already_present = self
+            .display_messages
+            .iter()
+            .any(|m| m.role == "system" && m.content == message);
+        if !already_present {
+            self.push_display_message(DisplayMessage::system(message).with_title(title));
+        }
+    }
+
     pub(crate) fn set_remote_startup_phase(&mut self, phase: super::RemoteStartupPhase) {
         let changed = self.remote_startup_phase.as_ref() != Some(&phase);
         self.remote_startup_phase = Some(phase);
