@@ -27,6 +27,10 @@ pub enum ResumeTarget {
         session_id: String,
         session_path: String,
     },
+    CursorSession {
+        session_id: String,
+        session_path: String,
+    },
 }
 
 impl ResumeTarget {
@@ -37,6 +41,7 @@ impl ResumeTarget {
             Self::CodexSession { session_id, .. } => session_id,
             Self::PiSession { session_path } => session_path,
             Self::OpenCodeSession { session_id, .. } => session_id,
+            Self::CursorSession { session_id, .. } => session_id,
         }
     }
 }

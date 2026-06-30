@@ -548,6 +548,7 @@ fn resolve_imported_snapshot_id(provider_id: &str) -> Option<String> {
         crate::import::imported_opencode_session_id(provider_id),
         crate::import::imported_codex_session_id(provider_id),
         crate::import::imported_claude_code_session_id(provider_id),
+        crate::import::imported_cursor_session_id(provider_id),
     ]
     .into_iter()
     .find(|candidate| session_exists(candidate))

@@ -140,6 +140,13 @@ impl SessionPicker {
         )
     }
 
+    pub(super) fn session_is_cursor(session: &SessionInfo) -> bool {
+        jcode_tui_session_picker::session_is_cursor(
+            session.source,
+            session.provider_key.as_deref(),
+        )
+    }
+
     fn session_matches_filter_mode(session: &SessionInfo, filter_mode: SessionFilterMode) -> bool {
         match filter_mode {
             SessionFilterMode::All => true,
@@ -149,11 +156,13 @@ impl SessionPicker {
             SessionFilterMode::Codex => Self::session_is_codex(session),
             SessionFilterMode::Pi => Self::session_is_pi(session),
             SessionFilterMode::OpenCode => Self::session_is_open_code(session),
+            SessionFilterMode::Cursor => Self::session_is_cursor(session),
             SessionFilterMode::ExternalClis => {
                 Self::session_is_codex(session)
                     || Self::session_is_claude_code(session)
                     || Self::session_is_pi(session)
                     || Self::session_is_open_code(session)
+                    || Self::session_is_cursor(session)
             }
         }
     }

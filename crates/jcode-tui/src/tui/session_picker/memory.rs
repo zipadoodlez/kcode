@@ -94,6 +94,10 @@ fn estimate_resume_target_bytes(value: &ResumeTarget) -> usize {
         | ResumeTarget::OpenCodeSession {
             session_id,
             session_path,
+        }
+        | ResumeTarget::CursorSession {
+            session_id,
+            session_path,
         } => session_id.capacity() + session_path.capacity(),
         ResumeTarget::PiSession { session_path } => session_path.capacity(),
     }

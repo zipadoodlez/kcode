@@ -768,6 +768,7 @@ impl App {
                 ExternalCli::ClaudeCode => SessionFilterMode::ClaudeCode,
                 ExternalCli::Pi => SessionFilterMode::Pi,
                 ExternalCli::OpenCode => SessionFilterMode::OpenCode,
+                ExternalCli::Cursor => SessionFilterMode::Cursor,
             }
         };
 

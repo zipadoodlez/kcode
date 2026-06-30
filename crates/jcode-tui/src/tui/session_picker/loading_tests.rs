@@ -681,6 +681,49 @@ fn session_matches_query_searches_external_codex_transcript_contents() {
 }
 
 #[test]
+fn load_sessions_surfaces_external_cursor_transcript() {
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    // The session list cache is process-global; clear it before and after so this
+    // test neither reads a stale list nor leaves our sandboxed entries behind for
+    // adjacent tests (e.g. the disk-cache round-trip test).
+    invalidate_session_list_cache();
+
+    let session_id = "abcdef01-2345-6789-abcd-ef0123456789";
+    let cursor_dir = temp.path().join(format!(
+        "external/.cursor/projects/Users-demo-proj/agent-transcripts/{session_id}"
+    ));
+    std::fs::create_dir_all(&cursor_dir).expect("create cursor dir");
+    std::fs::write(
+        cursor_dir.join(format!("{session_id}.jsonl")),
+        concat!(
+            "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"resume my cursor work\"}]}}\n",
+            "{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"resuming now\"}]}}\n",
+        ),
+    )
+    .expect("write cursor transcript");
+
+    let sessions = load_sessions().expect("load sessions");
+    let loaded = sessions
+        .iter()
+        .find(|candidate| candidate.id == format!("cursor:{session_id}"))
+        .expect("cursor session present in /resume list");
+
+    assert_eq!(loaded.source, SessionSource::Cursor);
+    assert_eq!(loaded.provider_key.as_deref(), Some("cursor"));
+    assert!(matches!(
+        &loaded.resume_target,
+        ResumeTarget::CursorSession { session_id: id, .. } if id == session_id
+    ));
+    assert_eq!(
+        loaded.first_user_prompt.as_deref(),
+        Some("resume my cursor work")
+    );
+    invalidate_session_list_cache();
+}
+
+#[test]
 #[ignore = "developer benchmark: times real /resume loading phases"]
 fn benchmark_real_resume_loading_phases() {
     invalidate_session_list_cache();

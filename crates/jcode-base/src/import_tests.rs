@@ -624,3 +624,66 @@ fn test_reimporting_claude_session_preserves_jcode_continuation() {
         "the jcode-only follow up message must be preserved"
     );
 }
+
+#[test]
+fn test_import_cursor_session_creates_jcode_snapshot() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+
+    // Cursor stores transcripts at
+    // ~/.cursor/projects/<project>/agent-transcripts/<uuid>/<uuid>.jsonl where the
+    // project dir encodes the cwd with `-` separators.
+    let session_id = "11111111-2222-3333-4444-555555555555";
+    let transcript_dir = temp.path().join(format!(
+        "external/.cursor/projects/tmp-cursor-demo/agent-transcripts/{session_id}"
+    ));
+    std::fs::create_dir_all(&transcript_dir).unwrap();
+    let transcript_path = transcript_dir.join(format!("{session_id}.jsonl"));
+    std::fs::write(
+        &transcript_path,
+        concat!(
+            "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"CURSOR_USER_MARKER refactor router\"}]}}\n",
+            "{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"CURSOR_ASSISTANT_MARKER done\"}]}}\n",
+        ),
+    )
+    .unwrap();
+
+    let imported = import_cursor_session(session_id).unwrap();
+    assert_eq!(imported.id, imported_cursor_session_id(session_id));
+    assert_eq!(imported.provider_key.as_deref(), Some("cursor"));
+    assert_eq!(imported.messages.len(), 2);
+    let all_text: String = imported
+        .messages
+        .iter()
+        .flat_map(|m| m.content.iter())
+        .filter_map(|block| match block {
+            ContentBlock::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        all_text.contains("CURSOR_USER_MARKER refactor router"),
+        "expected user text to import: {all_text:?}"
+    );
+    assert!(
+        all_text.contains("CURSOR_ASSISTANT_MARKER done"),
+        "expected assistant text to import: {all_text:?}"
+    );
+
+    // Resolving the resume target should import and remap to the jcode snapshot.
+    let resumed = crate::import::resolve_resume_target_to_jcode(
+        &jcode_session_types::ResumeTarget::CursorSession {
+            session_id: session_id.to_string(),
+            session_path: transcript_path.to_string_lossy().to_string(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        resumed,
+        jcode_session_types::ResumeTarget::JcodeSession {
+            session_id: imported_cursor_session_id(session_id),
+        }
+    );
+}

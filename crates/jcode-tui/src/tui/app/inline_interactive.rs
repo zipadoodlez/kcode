@@ -1974,6 +1974,9 @@ impl App {
                 ResumeTarget::OpenCodeSession { session_id, .. } => {
                     format!("OpenCode {}", jcode_core::util::truncate_str(session_id, 8))
                 }
+                ResumeTarget::CursorSession { session_id, .. } => {
+                    format!("Cursor {}", jcode_core::util::truncate_str(session_id, 8))
+                }
             };
             let resolved_target = match crate::import::resolve_resume_target_to_jcode(target) {
                 Ok(target) => target,
@@ -2075,6 +2078,9 @@ impl App {
                 .to_string(),
             ResumeTarget::OpenCodeSession { session_id, .. } => {
                 format!("OpenCode {}", jcode_core::util::truncate_str(session_id, 8))
+            }
+            ResumeTarget::CursorSession { session_id, .. } => {
+                format!("Cursor {}", jcode_core::util::truncate_str(session_id, 8))
             }
         };
 

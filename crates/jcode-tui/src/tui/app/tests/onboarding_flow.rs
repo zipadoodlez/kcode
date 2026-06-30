@@ -682,11 +682,62 @@ fn onboarding_picker_shows_pi_and_opencode_transcripts() {
                 _ => {}
             }
         }
-        assert!(saw_pi, "Pi session should be present in combined picker");
+    assert!(saw_pi, "Pi session should be present in combined picker");
+    assert!(
+        saw_opencode,
+        "OpenCode session should be present in combined picker"
+    );
+    });
+}
+
+#[test]
+fn onboarding_picker_shows_cursor_transcripts() {
+    use std::fs;
+    with_temp_jcode_home(|| {
+        // Seed one Cursor agent transcript under the sandbox-aware external home,
+        // mirroring a user who has used the Cursor CLI.
+        let home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME");
+        let external = std::path::Path::new(&home).join("external");
+
+        let session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let cursor_dir = external.join(format!(
+            ".cursor/projects/tmp-cursor-demo/agent-transcripts/{session_id}"
+        ));
+        fs::create_dir_all(&cursor_dir).expect("cursor dir");
+        fs::write(
+            cursor_dir.join(format!("{session_id}.jsonl")),
+            concat!(
+                "{\"role\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"CURSOR_MARKER hi\"}]}}\n",
+                "{\"role\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"sure\"}]}}\n",
+            ),
+        )
+        .expect("write cursor transcript");
+
+        // Detection should surface Cursor purely from the transcript presence
+        // (Cursor stores credentials in a vscdb/keychain, not a JSON file).
+        let detected = crate::tui::app::onboarding_flow::detect_external_cli_oauths();
         assert!(
-            saw_opencode,
-            "OpenCode session should be present in combined picker"
+            detected.contains(&ExternalCli::Cursor),
+            "Cursor should be detected from transcripts, got {detected:?}"
         );
+
+        let mut app = onboarding_test_app();
+        app.onboarding_open_transcript_picker(&[ExternalCli::Cursor]);
+
+        let picker_cell = app
+            .session_picker_overlay
+            .as_ref()
+            .expect("picker overlay should be open");
+        let picker = picker_cell.borrow();
+        assert!(
+            picker.visible_session_count() >= 1,
+            "cursor picker should list the seeded session, got {}",
+            picker.visible_session_count()
+        );
+        let saw_cursor = picker.visible_session_iter_for_test().any(|session| {
+            session.source == jcode_tui_session_picker::SessionSource::Cursor
+        });
+        assert!(saw_cursor, "Cursor session should be present in picker");
     });
 }
 

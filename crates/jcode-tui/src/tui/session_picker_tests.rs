@@ -755,10 +755,14 @@ fn test_filter_mode_cycles_through_requested_session_sources() {
     opencode.provider_key = Some("opencode".to_string());
     opencode.source = SessionSource::OpenCode;
 
-    let mut picker = SessionPicker::new(vec![saved, claude_code, codex, pi, opencode]);
+    let mut cursor = make_session("session_cursor", "cursor", false, SessionStatus::Closed);
+    cursor.provider_key = Some("cursor".to_string());
+    cursor.source = SessionSource::Cursor;
+
+    let mut picker = SessionPicker::new(vec![saved, claude_code, codex, pi, opencode, cursor]);
 
     assert_eq!(picker.filter_mode, SessionFilterMode::All);
-    assert_eq!(picker.visible_sessions.len(), 5);
+    assert_eq!(picker.visible_sessions.len(), 6);
 
     picker.cycle_filter_mode();
     assert_eq!(picker.filter_mode, SessionFilterMode::CatchUp);
@@ -812,8 +816,17 @@ fn test_filter_mode_cycles_through_requested_session_sources() {
     );
 
     picker.cycle_filter_mode();
+    assert_eq!(picker.filter_mode, SessionFilterMode::Cursor);
+    assert_eq!(picker.visible_sessions.len(), 1);
+    assert!(
+        picker
+            .visible_session_iter()
+            .all(SessionPicker::session_is_cursor)
+    );
+
+    picker.cycle_filter_mode();
     assert_eq!(picker.filter_mode, SessionFilterMode::All);
-    assert_eq!(picker.visible_sessions.len(), 5);
+    assert_eq!(picker.visible_sessions.len(), 6);
 }
 
 #[test]
