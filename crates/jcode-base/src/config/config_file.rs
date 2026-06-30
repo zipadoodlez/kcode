@@ -234,7 +234,7 @@ impl Config {
     /// Returns `true` when it wrote a baked mapping (so the caller can trigger a
     /// hotkey reinstall), `false` otherwise. Best-effort: errors are logged and
     /// swallowed.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub fn bake_launch_hotkeys_once() -> bool {
         use jcode_import_core::repo_ranking;
 
@@ -318,8 +318,8 @@ impl Config {
         }
     }
 
-    /// No-op bake on non-macOS platforms (no global launch hotkeys there).
-    #[cfg(not(target_os = "macos"))]
+    /// No-op bake on platforms without global launch hotkeys.
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     pub fn bake_launch_hotkeys_once() -> bool {
         false
     }

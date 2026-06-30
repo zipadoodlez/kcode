@@ -253,6 +253,13 @@ pub fn write_json_fast<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<
     write_json_inner(path, value, false)
 }
 
+/// Atomically write raw bytes to `path` (temp file + rename), fsync'd for
+/// durability. Used for editing user config files where a torn write would be
+/// catastrophic.
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    write_bytes_inner(path, bytes, true)
+}
+
 fn write_json_inner<T: Serialize + ?Sized>(path: &Path, value: &T, durable: bool) -> Result<()> {
     let bytes = serde_json::to_vec(value)?;
     write_bytes_inner(path, &bytes, durable)
