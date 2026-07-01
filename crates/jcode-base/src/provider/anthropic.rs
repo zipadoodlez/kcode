@@ -366,8 +366,8 @@ async fn ensure_oauth_preflight(
     Ok(())
 }
 
-/// Default model. `claude-fable-5` was retired by Anthropic (it 404s), so the
-/// default is the current flagship.
+/// Default model. Kept on Opus 4.8; `claude-fable-5` is available again after
+/// its brief retirement and can be selected explicitly.
 const DEFAULT_MODEL: &str = "claude-opus-4-8";
 
 /// API version header
@@ -386,6 +386,7 @@ const DEFAULT_MAX_TOKENS: u32 = 32_768;
 
 /// Available models
 pub const AVAILABLE_MODELS: &[&str] = &[
+    "claude-fable-5",
     "claude-opus-4-8",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
@@ -581,12 +582,11 @@ impl AnthropicProvider {
 
     fn model_supports_output_effort(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
-        // NOTE: `claude-fable-5` is intentionally excluded. Despite being listed
-        // with effort levels in `GET /v1/models`, the live Messages API rejects
-        // an `output_config` effort with a 400 ("This model does not support the
-        // effort parameter."), just as it rejects an adaptive `thinking` block.
-        // Fable 5 is effectively a non-reasoning model, so it must send neither.
-        model.contains("claude-mythos")
+        // `claude-fable-5` initially rejected effort/thinking during its preview
+        // (400s), but the released model accepts `output_config` effort
+        // low/medium/high/xhigh/max (verified live 2026-07-01).
+        model.contains("claude-fable-5")
+            || model.contains("claude-mythos")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
             || model.contains("claude-opus-4-6")
@@ -596,11 +596,10 @@ impl AnthropicProvider {
 
     fn model_supports_adaptive_thinking(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
-        // NOTE: `claude-fable-5` is intentionally excluded. The Messages API
-        // rejects an explicit adaptive `thinking` block with a 400 ("adaptive
-        // thinking is not supported on this model"). See
-        // `model_supports_output_effort` for the matching effort restriction.
-        model.contains("claude-mythos")
+        // The released `claude-fable-5` accepts `thinking: {type: adaptive}`
+        // (manual `enabled` budgets still 400; verified live 2026-07-01).
+        model.contains("claude-fable-5")
+            || model.contains("claude-mythos")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
             || model.contains("claude-opus-4-6")
@@ -616,9 +615,9 @@ impl AnthropicProvider {
 
     fn model_supports_xhigh_effort(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
-        // `claude-fable-5` is excluded: it does not accept the effort parameter
-        // at all (see `model_supports_output_effort`).
-        model.contains("claude-opus-4-8") || model.contains("claude-opus-4-7")
+        model.contains("claude-fable-5")
+            || model.contains("claude-opus-4-8")
+            || model.contains("claude-opus-4-7")
     }
 
     fn model_supports_reasoning_effort(model: &str) -> bool {
@@ -1226,7 +1225,15 @@ impl Provider for AnthropicProvider {
             return vec![];
         }
         if Self::model_supports_xhigh_effort(&model) {
-            vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"]
+            vec![
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "swarm",
+                "swarm-deep",
+            ]
         } else {
             vec!["none", "low", "medium", "high", "swarm", "swarm-deep"]
         }
@@ -1942,8 +1949,9 @@ fn is_reasoning_unsupported_error(error_str: &str) -> bool {
 
 /// Models that have been retired and must never be chosen as a fallback target
 /// (the server 404s them, so picking one just loops). Matched as a substring of
-/// the normalized id so dated variants are covered too.
-const RETIRED_ANTHROPIC_MODEL_MARKERS: &[&str] = &["claude-fable", "claude-mythos"];
+/// the normalized id so dated variants are covered too. `claude-fable` was
+/// briefly on this list while retired, but the model is live again.
+const RETIRED_ANTHROPIC_MODEL_MARKERS: &[&str] = &["claude-mythos"];
 
 fn anthropic_model_is_retired(model: &str) -> bool {
     let normalized = AnthropicProvider::normalized_model_key(model);

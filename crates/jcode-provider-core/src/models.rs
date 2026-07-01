@@ -1,10 +1,11 @@
 /// Available Claude models used by model lists and provider routing.
 ///
-/// NOTE: `claude-fable-5` (and the Mythos preview family) were retired by
-/// Anthropic and now 404 with "Please use Opus 4.8", so they are intentionally
-/// NOT listed here. The list is curated best-first; position 0 is the flagship
+/// NOTE: The Mythos preview family was retired by Anthropic and 404s, so it is
+/// intentionally NOT listed here. `claude-fable-5` was briefly retired but is
+/// live again. The list is curated best-first; position 0 is the flagship
 /// used for post-login default selection.
 pub const ALL_CLAUDE_MODELS: &[&str] = &[
+    "claude-fable-5",
     "claude-opus-4-8",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",

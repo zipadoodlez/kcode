@@ -965,6 +965,7 @@ fn quality_tier_ranks_flagship_above_bare_above_cheap() {
 #[test]
 fn newest_release_picker_prefers_strongest_tier_over_newest_cheap() {
     use jcode_provider_openrouter::ModelInfo;
+    let _lock = crate::storage::lock_test_env();
     let _env = EnvGuard::save(&["JCODE_HOME"]);
     let temp = tempfile::tempdir().expect("tempdir");
     crate::env::set_var("JCODE_HOME", temp.path());
@@ -1000,6 +1001,7 @@ fn newest_release_picker_prefers_strongest_tier_over_newest_cheap() {
 #[test]
 fn newest_release_picker_uses_recency_within_a_tier() {
     use jcode_provider_openrouter::ModelInfo;
+    let _lock = crate::storage::lock_test_env();
     let _env = EnvGuard::save(&["JCODE_HOME"]);
     let temp = tempfile::tempdir().expect("tempdir");
     crate::env::set_var("JCODE_HOME", temp.path());
