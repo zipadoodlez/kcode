@@ -117,8 +117,9 @@ fn choose_grid(
         return None;
     }
 
-    // Max rows that fit at least the minimum cell height.
-    let max_rows_by_height = (cfg.max_height / cfg.min_cell_height).max(1);
+    // Max rows that fit at least the minimum cell height. Guard against a
+    // degenerate `min_cell_height` of 0 (division by zero).
+    let max_rows_by_height = (cfg.max_height / cfg.min_cell_height.max(1)).max(1);
     let max_visible_cells = (max_cols_by_width * max_rows_by_height).max(1);
 
     let mut best: Option<(f32, GridShape)> = None;
@@ -211,7 +212,8 @@ fn render_cell(tile: &SwarmTile, inner_w: usize, inner_h: usize) -> Vec<Line<'st
         top_spans.push(Span::styled(badge, accent_style));
     }
     top_spans.push(Span::styled("─╮".to_string(), border_style));
-    // Final guard against off-by-one from width rounding.
+    // Final guard against off-by-one from width rounding and against boxes
+    // narrower than the fixed title-bar chrome.
     normalize_top_width(&mut top_spans, box_width, border_style);
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(inner_h + 2);
@@ -247,6 +249,12 @@ fn normalize_top_width(spans: &mut Vec<Span<'static>>, box_width: usize, border_
         let pad = box_width - cur;
         let insert_at = spans.len().saturating_sub(1);
         spans.insert(insert_at, Span::styled("─".repeat(pad), border_style));
+    } else if cur > box_width {
+        // The box is too narrow for the titled border (fixed chrome is ~8
+        // columns). Fall back to a plain border of exactly `box_width`.
+        let fill = "─".repeat(box_width.saturating_sub(2));
+        spans.clear();
+        spans.push(Span::styled(format!("╭{fill}╮"), border_style));
     }
 }
 
@@ -367,8 +375,9 @@ pub fn render_swarm_gallery(
     let cell_inner_w = cell_total_w.saturating_sub(2);
 
     // Distribute the height budget across rows; cap at preferred height.
-    let cell_total_h =
-        (cfg.max_height / rows).clamp(cfg.min_cell_height, cfg.preferred_cell_height);
+    // Guard against inverted config (preferred < min) which would panic clamp.
+    let max_cell_h = cfg.preferred_cell_height.max(cfg.min_cell_height);
+    let cell_total_h = (cfg.max_height / rows.max(1)).clamp(cfg.min_cell_height, max_cell_h);
     let cell_inner_h = cell_total_h.saturating_sub(2);
 
     // Render each shown tile into a grid of line buffers.
@@ -483,6 +492,113 @@ mod tests {
         let lines = render_swarm_gallery(&tiles, 80, &cfg, None);
         for line in &lines {
             assert!(line.width() <= 80, "line too wide: {}", plain(line));
+        }
+    }
+
+    #[test]
+    fn empty_tiles_render_nothing_but_header() {
+        let cfg = SwarmGalleryConfig::default();
+        assert!(render_swarm_gallery(&[], 80, &cfg, None).is_empty());
+        let lines = render_swarm_gallery(&[], 80, &cfg, Some(Line::from("hdr")));
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn zero_sized_budgets_do_not_panic() {
+        let tiles = vec![tile("a", &["x"])];
+        for (w, h) in [(0usize, 0usize), (0, 16), (60, 0), (1, 1), (3, 3)] {
+            let cfg = SwarmGalleryConfig {
+                max_height: h,
+                ..Default::default()
+            };
+            let _ = render_swarm_gallery(&tiles, w, &cfg, None);
+        }
+    }
+
+    #[test]
+    fn degenerate_config_does_not_panic() {
+        let tiles = vec![tile("a", &["x"])];
+        // min_cell_height = 0 previously divided by zero in choose_grid.
+        let cfg = SwarmGalleryConfig {
+            min_cell_height: 0,
+            ..Default::default()
+        };
+        let _ = render_swarm_gallery(&tiles, 60, &cfg, None);
+        // preferred < min previously panicked in clamp().
+        let cfg = SwarmGalleryConfig {
+            min_cell_height: 4,
+            preferred_cell_height: 3,
+            ..Default::default()
+        };
+        let _ = render_swarm_gallery(&tiles, 60, &cfg, None);
+    }
+
+    #[test]
+    fn hundreds_of_tiles_small_terminal_stay_bounded() {
+        let tiles: Vec<SwarmTile> = (0..300)
+            .map(|i| tile(&format!("agent-{i}"), &["node gate-7 running", "ok"]))
+            .collect();
+        for width in [1usize, 5, 10, 20, 21, 40, 80] {
+            for mh in [1usize, 2, 4, 8, 16] {
+                let cfg = SwarmGalleryConfig {
+                    max_height: mh,
+                    ..Default::default()
+                };
+                let lines = render_swarm_gallery(&tiles, width, &cfg, None);
+                for line in &lines {
+                    assert!(
+                        line.width() <= width.max(1),
+                        "width={width} mh={mh}: line {} wider than {width}: {:?}",
+                        line.width(),
+                        plain(line)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn single_tile_tiny_sizes_stay_bounded() {
+        let t = SwarmTile::new("日本語のタイトル", "実行中", Color::Cyan).with_body(vec![
+            "こんにちは世界こんにちは世界".to_string(),
+            "🐝🐝🐝🐝🐝🐝".to_string(),
+            "e\u{301}e\u{301} combining".to_string(),
+        ]);
+        for w in 0..24usize {
+            for h in 0..8usize {
+                let lines = render_single_tile(&t, w, h);
+                if w < 4 || h < 3 {
+                    assert!(lines.is_empty(), "expected empty at {w}x{h}");
+                    continue;
+                }
+                assert_eq!(lines.len(), h, "height mismatch at {w}x{h}");
+                for line in &lines {
+                    assert!(
+                        line.width() <= w,
+                        "{w}x{h}: line {} too wide: {:?}",
+                        line.width(),
+                        plain(line)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wrap_tail_handles_zero_and_empty() {
+        assert!(wrap_tail(&[], 10, 3).is_empty());
+        assert!(wrap_tail(&["x".to_string()], 0, 3).is_empty());
+        assert!(wrap_tail(&["x".to_string()], 10, 0).is_empty());
+    }
+
+    #[test]
+    fn truncate_w_handles_wide_chars() {
+        assert_eq!(truncate_w("", 5), "");
+        assert_eq!(truncate_w("abc", 0), "");
+        // 2-column chars never split mid-glyph and result stays within budget.
+        for max in 1..8usize {
+            let out = truncate_w("日本語テスト", max);
+            assert!(UnicodeWidthStr::width(out.as_str()) <= max, "max={max} out={out}");
         }
     }
 
