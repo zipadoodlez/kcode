@@ -6,10 +6,10 @@
 // `handle_comm_assign_task` path, proving the substrate works request-to-plan and
 // that forward dataflow reaches a downstream assignment.
 
+use crate::protocol::TaskGraphNodeSpec;
 use crate::server::comm_graph::{
     handle_comm_complete_node, handle_comm_expand_node, handle_comm_seed_graph,
 };
-use crate::protocol::TaskGraphNodeSpec;
 
 fn node_spec(id: &str, kind: &str, deps: &[&str]) -> TaskGraphNodeSpec {
     TaskGraphNodeSpec {
@@ -166,7 +166,8 @@ async fn e2e_seed_defaults_to_deep_when_seeder_effort_is_swarm_deep() {
 #[tokio::test]
 async fn e2e_seed_defaults_to_light_when_seeder_effort_is_not_deep() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-light-default", "coord-light-default", "worker-ld").await;
+    let mut fx =
+        graph_fixture_named("swarm-light-default", "coord-light-default", "worker-ld").await;
 
     crate::session_effort::record_session_effort(&fx.coord, Some("high"));
 
@@ -188,7 +189,8 @@ async fn e2e_seed_defaults_to_light_when_seeder_effort_is_not_deep() {
 #[tokio::test]
 async fn e2e_explicit_mode_overrides_seeder_effort() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
-    let mut fx = graph_fixture_named("swarm-explicit-mode", "coord-explicit-mode", "worker-em").await;
+    let mut fx =
+        graph_fixture_named("swarm-explicit-mode", "coord-explicit-mode", "worker-em").await;
 
     crate::session_effort::record_session_effort(&fx.coord, Some("swarm-deep"));
 
@@ -259,7 +261,8 @@ async fn e2e_seed_rejects_cycle_without_mutating_plan() {
 async fn e2e_deep_expand_inserts_gate_in_live_plan() {
     let (_env, _runtime) = RuntimeEnvGuard::new();
     let mut fx = graph_fixture().await;
-    fx.seed("deep", vec![node_spec("root", "explore", &[])]).await;
+    fx.seed("deep", vec![node_spec("root", "explore", &[])])
+        .await;
 
     // Assign + dispatch root to the worker so it owns the node, then expand.
     handle_comm_assign_task(
@@ -297,7 +300,10 @@ async fn e2e_deep_expand_inserts_gate_in_live_plan() {
         3,
         fx.worker.clone(),
         "root".to_string(),
-        vec![node_spec("root.1", "explore", &[]), node_spec("root.2", "explore", &[])],
+        vec![
+            node_spec("root.1", "explore", &[]),
+            node_spec("root.2", "explore", &[]),
+        ],
         &fx.client_tx,
         &fx.swarm_members,
         &fx.swarms_by_id,
@@ -315,10 +321,234 @@ async fn e2e_deep_expand_inserts_gate_in_live_plan() {
     let gate = plan
         .items
         .iter()
-        .find(|i| plan.node_meta.get(&i.id).map(|m| m.is_gate).unwrap_or(false))
+        .find(|i| {
+            plan.node_meta
+                .get(&i.id)
+                .map(|m| m.is_gate)
+                .unwrap_or(false)
+        })
         .expect("a gate node should be present after deep expand");
     assert_eq!(plan.node_meta[&gate.id].kind.as_deref(), Some("critique"));
     assert!(plan.node_meta["root"].expanded);
+}
+
+/// The budget-utilization mechanism: a deep-mode assignment must carry the
+/// deep-node execution contract (expand_node for parallel fan-out, or
+/// complete_node with a typed artifact) all the way to the worker, and a gate
+/// assignment must carry the inject_gap contract. Without this the fan-out
+/// budget goes unused because spawned workers never learn the deep workflow.
+#[tokio::test]
+async fn e2e_deep_assignment_carries_fanout_and_artifact_contract() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-deep-directive", "coord-dd", "worker-dd").await;
+    fx.seed(
+        "deep",
+        vec![
+            node_spec("explore.a", "explore", &[]),
+            node_spec("explore.b", "explore", &[]),
+        ],
+    )
+    .await;
+
+    // Assign a node to the worker via the live path.
+    handle_comm_assign_task(
+        2,
+        fx.coord.clone(),
+        Some(fx.worker.clone()),
+        Some("explore.a".to_string()),
+        None,
+        &fx.client_tx,
+        &fx.sessions,
+        &fx.soft_interrupt_queues,
+        &fx.client_connections,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+        &fx.mutation_runtime,
+    )
+    .await;
+
+    // The worker has no live client, so the assignment ran through
+    // spawn_assigned_task_run against the test agent. The durable record of
+    // what the worker was told is the assignment summary; assert on the
+    // soft-interrupt prompt queued for the worker instead, which carries the
+    // full assignment text.
+    let queued = {
+        let queues = fx.soft_interrupt_queues.read().await;
+        queues.get(&fx.worker).and_then(|queue| {
+            queue
+                .lock()
+                .ok()
+                .and_then(|pending| pending.first().map(|msg| msg.content.clone()))
+        })
+    };
+    let prompt = queued.expect("deep assignment should queue a task prompt for the worker");
+    assert!(
+        prompt.contains(jcode_swarm_core::SWARM_DEEP_NODE_MARKER),
+        "deep assignment prompt must carry the deep-node contract, got: {prompt}"
+    );
+    assert!(prompt.contains("action=\"expand_node\", node_id=\"explore.a\""));
+    assert!(prompt.contains("action=\"complete_node\", node_id=\"explore.a\""));
+
+    // Light plans must NOT get the directive: re-seed light and assign the
+    // second node.
+    fx.seed("light", vec![node_spec("light.a", "explore", &[])])
+        .await;
+    handle_comm_assign_task(
+        3,
+        fx.coord.clone(),
+        Some(fx.worker.clone()),
+        Some("light.a".to_string()),
+        None,
+        &fx.client_tx,
+        &fx.sessions,
+        &fx.soft_interrupt_queues,
+        &fx.client_connections,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+        &fx.mutation_runtime,
+    )
+    .await;
+    let light_prompt = {
+        let queues = fx.soft_interrupt_queues.read().await;
+        queues.get(&fx.worker).and_then(|queue| {
+            queue
+                .lock()
+                .ok()
+                .and_then(|pending| pending.last().map(|msg| msg.content.clone()))
+        })
+    }
+    .expect("light assignment should also queue a task prompt");
+    assert!(
+        !light_prompt.contains(jcode_swarm_core::SWARM_DEEP_NODE_MARKER),
+        "light assignments must not carry the deep contract"
+    );
+}
+
+/// Gate dispatch in a deep plan carries the inject_gap contract.
+#[tokio::test]
+async fn e2e_deep_gate_assignment_carries_inject_gap_contract() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let mut fx = graph_fixture_named("swarm-deep-gate", "coord-dg", "worker-dg").await;
+    fx.seed("deep", vec![node_spec("root", "explore", &[])])
+        .await;
+
+    // Worker owns root (running), expands it so the engine inserts a gate.
+    {
+        let mut plans = fx.swarm_plans.write().await;
+        let plan = plans.get_mut(&fx.swarm_id).unwrap();
+        let root = plan.items.iter_mut().find(|i| i.id == "root").unwrap();
+        root.status = "running".to_string();
+        root.assigned_to = Some(fx.worker.clone());
+    }
+    handle_comm_expand_node(
+        2,
+        fx.worker.clone(),
+        "root".to_string(),
+        vec![node_spec("root.1", "explore", &[])],
+        &fx.client_tx,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+    )
+    .await;
+
+    // Complete the child so the gate becomes ready.
+    {
+        let mut plans = fx.swarm_plans.write().await;
+        let plan = plans.get_mut(&fx.swarm_id).unwrap();
+        let child = plan.items.iter_mut().find(|i| i.id == "root.1").unwrap();
+        child.status = "running".to_string();
+        child.assigned_to = Some(fx.worker.clone());
+    }
+    handle_comm_complete_node(
+        3,
+        fx.worker.clone(),
+        "root.1".to_string(),
+        serde_json::json!({
+            "findings": "explored",
+            "what_i_did_not_check": ["error paths"],
+        })
+        .to_string(),
+        &fx.client_tx,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+    )
+    .await;
+
+    let gate_id = {
+        let plans = fx.swarm_plans.read().await;
+        let plan = &plans[&fx.swarm_id];
+        plan.items
+            .iter()
+            .find(|i| {
+                plan.node_meta
+                    .get(&i.id)
+                    .map(|m| m.is_gate)
+                    .unwrap_or(false)
+            })
+            .map(|i| i.id.clone())
+            .expect("deep expand should have inserted a gate")
+    };
+
+    // Assign the gate to the worker; its prompt must carry the gate contract.
+    handle_comm_assign_task(
+        4,
+        fx.coord.clone(),
+        Some(fx.worker.clone()),
+        Some(gate_id.clone()),
+        None,
+        &fx.client_tx,
+        &fx.sessions,
+        &fx.soft_interrupt_queues,
+        &fx.client_connections,
+        &fx.swarm_members,
+        &fx.swarms_by_id,
+        &fx.swarm_plans,
+        &fx.swarm_coordinators,
+        &fx.event_history,
+        &fx.event_counter,
+        &fx.swarm_event_tx,
+        &fx.mutation_runtime,
+    )
+    .await;
+
+    let prompt = {
+        let queues = fx.soft_interrupt_queues.read().await;
+        queues.get(&fx.worker).and_then(|queue| {
+            queue
+                .lock()
+                .ok()
+                .and_then(|pending| pending.last().map(|msg| msg.content.clone()))
+        })
+    }
+    .expect("gate assignment should queue a task prompt for the worker");
+    assert!(prompt.contains(jcode_swarm_core::SWARM_DEEP_NODE_MARKER));
+    assert!(
+        prompt.contains(&format!("action=\"inject_gap\", gate_id=\"{gate_id}\"")),
+        "gate prompt must carry the inject_gap contract, got: {prompt}"
+    );
+    // The gate also sees the child's artifact (forward dataflow) including the
+    // unexplored surface it is supposed to mine.
+    assert!(prompt.contains("error paths"));
 }
 
 #[tokio::test]
@@ -392,7 +622,10 @@ async fn e2e_complete_flows_artifact_to_downstream_assignment() {
         assert_eq!(api.status, "completed");
         assert!(plan.node_meta["api"].artifact_json.is_some());
         let ready = jcode_plan::next_runnable_item_ids(&plan.items, None);
-        assert!(ready.contains(&"ui".to_string()), "ui should be ready: {ready:?}");
+        assert!(
+            ready.contains(&"ui".to_string()),
+            "ui should be ready: {ready:?}"
+        );
     }
 
     // Assign "ui": its prompt must be hydrated with api's artifact.
@@ -452,7 +685,8 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
         sessions.insert(other.clone(), test_agent().await);
     }
 
-    fx.seed("light", vec![node_spec("root", "explore", &[])]).await;
+    fx.seed("light", vec![node_spec("root", "explore", &[])])
+        .await;
 
     // planner owns root and decomposes it into one child.
     {
@@ -482,7 +716,10 @@ async fn e2e_composite_rewake_prefers_planner_via_assign_next() {
     {
         let plans = fx.swarm_plans.read().await;
         let plan = &plans[&fx.swarm_id];
-        assert_eq!(plan.node_meta["root"].planner.as_deref(), Some(planner.as_str()));
+        assert_eq!(
+            plan.node_meta["root"].planner.as_deref(),
+            Some(planner.as_str())
+        );
         let root = plan.items.iter().find(|i| i.id == "root").unwrap();
         assert!(root.assigned_to.is_none());
     }
@@ -810,4 +1047,3 @@ async fn e2e_light_non_coordinator_participant_cannot_assign() {
         "light-mode non-coordinator assign should be rejected with the coordinator error"
     );
 }
-

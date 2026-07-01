@@ -54,6 +54,105 @@ fn run_plan_concurrency_is_mode_aware() {
 }
 
 #[test]
+fn run_plan_utilization_tracks_peak_and_starvation() {
+    let mut util = super::RunPlanUtilization::default();
+
+    // Loop 1: 0 in flight, 8 open slots, dispatched 8 -> budget fully used.
+    util.record_loop(0, Some(8), 8);
+    // Loop 2: 8 in flight, 0 open slots, dispatched 0 -> saturated, not starved.
+    util.record_loop(8, Some(0), 0);
+    // Loop 3: 2 in flight, 6 open slots, dispatched 1 -> starved (5 idle slots).
+    util.record_loop(2, Some(6), 1);
+
+    assert_eq!(util.peak_in_flight, 8);
+    assert_eq!(util.loops, 3);
+    assert_eq!(util.starved_loops, 1);
+
+    let report = util.report(8, true);
+    assert!(report.contains("peak 8 of 8"));
+    assert!(report.contains("1 of 3 loop(s)"));
+    // 1/3 starved and peak 8: healthy run, no hint.
+    assert!(!report.contains("Deep-mode hint"));
+}
+
+#[test]
+fn run_plan_utilization_flags_serial_deep_runs() {
+    // A deep run that trickles one task at a time despite a 32-slot budget.
+    let mut util = super::RunPlanUtilization::default();
+    for _ in 0..4 {
+        util.record_loop(0, Some(32), 1);
+    }
+    assert_eq!(util.peak_in_flight, 1);
+    assert_eq!(util.starved_loops, 4);
+
+    let deep_report = util.report(32, true);
+    assert!(deep_report.contains("peak 1 of 32"));
+    assert!(deep_report.contains("Deep-mode hint"));
+    assert!(deep_report.contains("expand"));
+
+    // The same shape in light mode is by design; no nagging.
+    let light_report = util.report(32, false);
+    assert!(!light_report.contains("Deep-mode hint"));
+}
+
+#[test]
+fn run_plan_utilization_handles_unbounded_budget() {
+    let mut util = super::RunPlanUtilization::default();
+    // Unbounded budget (deep_cap=0): open slots are not meaningful, so no
+    // starvation accounting, but peak parallelism still records.
+    util.record_loop(10, None, 5);
+    assert_eq!(util.peak_in_flight, 15);
+    assert_eq!(util.starved_loops, 0);
+    let report = util.report(usize::MAX, true);
+    assert!(report.contains("peak 15 of unbounded"));
+}
+
+#[test]
+fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
+    let base = crate::protocol::PlanGraphStatus {
+        swarm_id: Some("swarm-a".to_string()),
+        version: 1,
+        item_count: 10,
+        ready_ids: vec!["a".to_string()],
+        blocked_ids: Vec::new(),
+        active_ids: vec!["b".to_string()],
+        completed_ids: vec!["c".to_string()],
+        cycle_ids: Vec::new(),
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+        mode: "deep".to_string(),
+    };
+
+    // Light plans get no budget line at all.
+    let light = crate::protocol::PlanGraphStatus {
+        mode: "light".to_string(),
+        ..base.clone()
+    };
+    assert_eq!(super::plan_status_budget_line(&light, 32), None);
+
+    // Deep + narrow frontier (2 of 32) with 7 more items serialized behind
+    // edges -> budget line plus the widen nudge.
+    let narrow = super::plan_status_budget_line(&base, 32).expect("deep plans get a budget line");
+    assert!(narrow.contains("Parallel budget: 32"));
+    assert!(narrow.contains("ready set is 1 wide (1 active)"));
+    assert!(narrow.contains("expand_node"));
+
+    // Deep + the frontier is all that remains -> line but no nudge.
+    let almost_done = crate::protocol::PlanGraphStatus {
+        item_count: 3,
+        ..base.clone()
+    };
+    let line = super::plan_status_budget_line(&almost_done, 32).unwrap();
+    assert!(line.contains("Parallel budget: 32"));
+    assert!(!line.contains("expand_node"));
+
+    // deep_cap=0 (unbounded) surfaces the member cap as the budget.
+    let unbounded = super::plan_status_budget_line(&base, 0).unwrap();
+    assert!(unbounded.contains("1000 (member cap)"));
+}
+
+#[test]
 fn canonical_swarm_action_maps_common_synonyms() {
     assert_eq!(canonical_swarm_action("inbox"), "read");
     assert_eq!(canonical_swarm_action("read_messages"), "read");

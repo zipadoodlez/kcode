@@ -116,6 +116,38 @@ struct TaskSnapshot {
     progress: Option<SwarmTaskProgress>,
 }
 
+/// Attach the deep-mode execution contract to an assignment's content when the
+/// plan is running deep.
+///
+/// This is the mechanism that makes the swarm's large agent budget actually get
+/// used: every dispatched node carries an in-band directive telling the worker
+/// it may `expand_node` into MANY parallel children and must close with a typed
+/// artifact, and every gate carries the `inject_gap`-or-pass contract. Without
+/// it, only the seeding session (which ran at `swarm-deep` effort) knows the
+/// deep workflow, and freshly spawned workers execute serially. A re-woken
+/// composite synthesis keeps its dedicated synthesis brief instead, since
+/// re-expanding there would loop.
+fn deep_mode_assignment_content(
+    plan: &VersionedPlan,
+    item_id: &str,
+    is_composite_synthesis: bool,
+    content: &str,
+) -> String {
+    if !plan.mode.eq_ignore_ascii_case("deep") || is_composite_synthesis {
+        return content.to_string();
+    }
+    let is_gate = plan
+        .node_meta
+        .get(item_id)
+        .map(|meta| meta.is_gate)
+        .unwrap_or(false);
+    if is_gate {
+        jcode_swarm_core::append_deep_gate_instructions(content, item_id)
+    } else {
+        jcode_swarm_core::append_deep_node_instructions(content, item_id)
+    }
+}
+
 async fn task_snapshot_for(
     swarm_id: &str,
     task_id: &str,
@@ -124,11 +156,18 @@ async fn task_snapshot_for(
     let plans = swarm_plans.read().await;
     let plan = plans.get(swarm_id)?;
     let item = plan.items.iter().find(|item| item.id == task_id)?;
+    // Hydrate with forward dataflow from completed upstream dependencies so
+    // resume/start/wake re-injects the same artifact context an initial
+    // assignment would carry, then attach the deep-mode contract the same way
+    // the initial assignment path does.
+    let hydrated = jcode_plan::bridge::hydrate_assignment(plan, task_id, &item.content);
+    let is_composite_synthesis = plan
+        .node_meta
+        .get(task_id)
+        .map(|meta| meta.expanded && !meta.is_gate)
+        .unwrap_or(false);
     Some(TaskSnapshot {
-        // Hydrate with forward dataflow from completed upstream dependencies so
-        // resume/start/wake re-injects the same artifact context an initial
-        // assignment would carry.
-        content: jcode_plan::bridge::hydrate_assignment(plan, task_id, &item.content),
+        content: deep_mode_assignment_content(plan, task_id, is_composite_synthesis, &hydrated),
         status: item.status.clone(),
         assigned_to: item.assigned_to.clone(),
         progress: plan.task_progress.get(task_id).cloned(),
@@ -1097,8 +1136,10 @@ pub(super) async fn handle_comm_assign_task(
                 .unwrap_or(false);
             let effective_content =
                 composite_synthesis_content(&item_id, &raw_content, is_composite_synthesis);
-            let content =
+            let hydrated =
                 jcode_plan::bridge::hydrate_assignment(plan, &item_id, &effective_content);
+            let content =
+                deep_mode_assignment_content(plan, &item_id, is_composite_synthesis, &hydrated);
 
             let item = plan
                 .items

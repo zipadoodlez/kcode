@@ -23,12 +23,13 @@ fn status_age_secs(last_status_change: Instant) -> u64 {
     last_status_change.elapsed().as_secs()
 }
 
-/// Maximum number of live members (agents) in a single swarm. This is the sole
+/// Maximum number of live members (agents) in a single swarm. Re-exported from
+/// `jcode_swarm_core` so the server, tools, and prompts all agree on the one
 /// runaway-prevention cap for the task-graph model. There is intentionally no
 /// spawn-depth limit and no per-node fan-out limit: the spawn tree may nest and
 /// fan out freely until the swarm reaches this many live members, at which point
 /// further spawns are refused.
-pub(super) const MAX_SWARM_MEMBERS: usize = 1000;
+pub(super) use jcode_swarm_core::MAX_SWARM_MEMBERS;
 
 /// Walk the `report_back_to_session_id` chain upward from `session_id`,
 /// returning the list of ancestor session ids (parent first, root last).

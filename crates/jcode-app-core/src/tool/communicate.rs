@@ -295,6 +295,66 @@ fn resolve_run_plan_concurrency(requested: Option<usize>, is_deep: bool, deep_ca
     }
 }
 
+/// Running tally of how well a `run_plan` drive used its concurrency budget.
+///
+/// Deep mode's promise is comprehensiveness through parallel fan-out, so a run
+/// that finishes with peak parallelism ~1 despite a 32+ slot budget means the
+/// graph was decomposed serially and the budget was wasted. Tracking this per
+/// loop (max in-flight, plus how often open slots sat idle with no ready work)
+/// turns "did we actually use the budget?" into a measured, reportable number
+/// instead of a hope.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct RunPlanUtilization {
+    /// Highest number of simultaneously in-flight tasks observed.
+    peak_in_flight: usize,
+    /// Coordination loops observed.
+    loops: usize,
+    /// Loops where open worker slots existed but the plan had nothing ready to
+    /// dispatch into them (budget idle due to graph narrowness, not the cap).
+    starved_loops: usize,
+}
+
+impl RunPlanUtilization {
+    /// Record one coordination loop. `open_slots` is `None` when the budget is
+    /// unbounded (`concurrency_limit == usize::MAX`): an infinite budget has no
+    /// meaningful starvation denominator, so only peak parallelism is tracked.
+    fn record_loop(&mut self, in_flight: usize, open_slots: Option<usize>, dispatched: usize) {
+        self.loops += 1;
+        self.peak_in_flight = self.peak_in_flight.max(in_flight + dispatched);
+        if let Some(open_slots) = open_slots
+            && open_slots > 0
+            && dispatched < open_slots
+        {
+            self.starved_loops += 1;
+        }
+    }
+
+    /// Render the utilization line for the terminal report. In deep mode a
+    /// starved run also gets an actionable hint, because the fix (wider
+    /// decomposition) belongs to the model reading this output.
+    fn report(&self, concurrency_limit: usize, is_deep: bool) -> String {
+        let limit_label = if concurrency_limit == usize::MAX {
+            "unbounded".to_string()
+        } else {
+            concurrency_limit.to_string()
+        };
+        let mut line = format!(
+            "Budget utilization: peak {} of {} concurrent worker slot(s); {} of {} loop(s) had idle capacity with nothing ready.",
+            self.peak_in_flight, limit_label, self.starved_loops, self.loops
+        );
+        let mostly_starved = self.loops > 0 && self.starved_loops * 2 >= self.loops;
+        let ran_narrow = self.loops >= 3 && self.peak_in_flight <= 2;
+        if is_deep && (mostly_starved || ran_narrow) {
+            line.push_str(
+                "\nDeep-mode hint: the graph ran much narrower than the agent budget. If coverage \
+                 matters, expand remaining or follow-up work into MANY independent sibling nodes \
+                 (depends_on only for real data dependencies) so the ready set fills the budget.",
+            );
+        }
+        line
+    }
+}
+
 async fn run_swarm_plan_to_terminal(
     ctx: &ToolContext,
     params: &CommunicateInput,
@@ -318,6 +378,7 @@ async fn run_swarm_plan_to_terminal(
     let mut assignment_count = 0usize;
     let mut loop_count = 0usize;
     let max_loops = 200usize;
+    let mut utilization = RunPlanUtilization::default();
     // Consecutive loops where an active task exists but no drivable worker is
     // awaitable. This is normally a brief transition (a composite re-waking to
     // synthesize, or a just-finished task whose member status has not propagated),
@@ -356,6 +417,10 @@ async fn run_swarm_plan_to_terminal(
                 summary.active_ids.len(),
                 assignment_count
             );
+            output.push_str(&format!(
+                "\n{}",
+                utilization.report(concurrency_limit, is_deep)
+            ));
             if retain_agents {
                 output.push_str("\nRetained spawned workers because retain_agents=true.");
             } else {
@@ -393,6 +458,11 @@ async fn run_swarm_plan_to_terminal(
                 Err(e) => return Err(anyhow::anyhow!("Failed to assign next swarm task: {}", e)),
             }
         }
+        utilization.record_loop(
+            active_count,
+            (concurrency_limit != usize::MAX).then_some(available_slots),
+            assigned_sessions.len(),
+        );
 
         let await_sessions = if assigned_sessions.is_empty() {
             in_flight_sessions
@@ -530,7 +600,57 @@ fn format_status_snapshot(snapshot: &AgentStatusSnapshot) -> ToolOutput {
 }
 
 fn format_plan_status(summary: &PlanGraphStatus) -> ToolOutput {
-    ToolOutput::new(format_comm_plan_status(summary))
+    let mut output = format_comm_plan_status(summary);
+    if let Some(budget_line) = plan_status_budget_line(
+        summary,
+        crate::config::config().agents.swarm_max_concurrent_agents,
+    ) {
+        output.push_str(&budget_line);
+    }
+    ToolOutput::new(output)
+}
+
+/// Deep-mode budget line for `plan_status`: how wide the ready frontier is
+/// versus the concurrency budget, with a widen-the-graph nudge when the ready
+/// set cannot fill the slots. This makes under-utilization visible at plan
+/// time, before `run_plan` even starts, so the coordinator can restructure the
+/// graph instead of discovering the waste after the run. Pure over its inputs
+/// for unit testing; returns `None` for light plans.
+fn plan_status_budget_line(summary: &PlanGraphStatus, deep_cap: usize) -> Option<String> {
+    if !summary.mode.eq_ignore_ascii_case("deep") {
+        return None;
+    }
+    let budget = resolve_run_plan_concurrency(None, true, deep_cap);
+    let budget_label = if budget == usize::MAX {
+        format!("{} (member cap)", jcode_swarm_core::MAX_SWARM_MEMBERS)
+    } else {
+        budget.to_string()
+    };
+    let ready_width = summary.ready_ids.len();
+    let active_width = summary.active_ids.len();
+    let mut line = format!(
+        "  Parallel budget: {} concurrent worker slot(s); ready set is {} wide ({} active).\n",
+        budget_label, ready_width, active_width
+    );
+    let effective_budget = if budget == usize::MAX {
+        jcode_swarm_core::MAX_SWARM_MEMBERS
+    } else {
+        budget
+    };
+    // Nudge only when narrowness is structural: the frontier cannot fill the
+    // budget while other non-terminal work exists but is serialized behind
+    // depends_on edges. A small plan that is simply almost done gets no nudge.
+    let frontier = ready_width + active_width;
+    let terminal = summary.completed_ids.len() + summary.cycle_ids.len();
+    let serialized_remaining = summary.item_count > terminal + frontier;
+    if frontier < effective_budget && serialized_remaining {
+        line.push_str(
+            "  The ready frontier is narrower than the budget while more work waits behind \
+             depends_on edges: prefer expand_node with MANY independent siblings (depends_on \
+             only for real data dependencies) to widen it.\n",
+        );
+    }
+    Some(line)
 }
 
 fn format_context_history(target: &str, messages: &[HistoryMessage]) -> ToolOutput {
