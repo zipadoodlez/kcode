@@ -662,6 +662,58 @@ fn test_remote_tui_state_shows_reconnecting_phase_in_header() {
 }
 
 #[test]
+fn test_remote_header_keeps_known_model_during_brief_loading_session_phase() {
+    // Routine bootstrap: the model is already known (session stub / config
+    // hint), so a short LoadingSession phase must not flash "loading session…"
+    // over it. That pre-settle churn is exactly what made spawns look unstable.
+    let mut app = App::new_for_remote(None);
+    app.session.model = Some("claude-fable-5".to_string());
+    app.set_remote_startup_phase(crate::tui::app::RemoteStartupPhase::LoadingSession);
+
+    assert_eq!(
+        crate::tui::TuiState::provider_model(&app),
+        "claude-fable-5"
+    );
+
+    // A genuinely stuck load still surfaces the phase label after the grace
+    // period so the user can tell something is wrong.
+    app.remote_startup_phase_started =
+        Some(std::time::Instant::now() - std::time::Duration::from_secs(5));
+    assert_eq!(
+        crate::tui::TuiState::provider_model(&app),
+        "loading session… 5s"
+    );
+}
+
+#[test]
+fn test_remote_effort_identity_falls_back_to_session_model_before_history() {
+    // Before the server History payload lands, remote_provider_name/model are
+    // None, but the session stub already knows the model. Effort cycling must
+    // work off that hint instead of reporting "not available".
+    let mut app = App::new_for_remote(None);
+    app.session.model = Some("claude-fable-5".to_string());
+    assert!(app.remote_provider_name.is_none());
+    assert!(app.remote_provider_model.is_none());
+
+    let (provider, model) = app.remote_effort_identity();
+    assert_eq!(model.as_deref(), Some("claude-fable-5"));
+    let efforts =
+        crate::tui::app::inferred_reasoning_efforts(provider.as_deref(), model.as_deref());
+    assert!(
+        !efforts.is_empty(),
+        "pre-History effort cycling must resolve levels from the model hint"
+    );
+    assert!(efforts.contains(&"xhigh"));
+
+    // Server-reported values still win once they arrive.
+    app.remote_provider_name = Some("openai".to_string());
+    app.remote_provider_model = Some("gpt-5.3-codex".to_string());
+    let (provider, model) = app.remote_effort_identity();
+    assert_eq!(provider.as_deref(), Some("openai"));
+    assert_eq!(model.as_deref(), Some("gpt-5.3-codex"));
+}
+
+#[test]
 fn test_openai_compatible_login_preserves_profile_for_runtime_activation() {
     let mut app = create_test_app();
 

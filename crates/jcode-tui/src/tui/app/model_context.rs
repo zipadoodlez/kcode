@@ -415,10 +415,8 @@ impl App {
         // stand-in. Local sessions read the real provider. This keeps the cycle
         // and the picker consistent (both expose swarm / swarm-deep).
         let efforts = if self.is_remote {
-            inferred_reasoning_efforts(
-                self.remote_provider_name.as_deref(),
-                self.remote_provider_model.as_deref(),
-            )
+            let (provider_name, provider_model) = self.remote_effort_identity();
+            inferred_reasoning_efforts(provider_name.as_deref(), provider_model.as_deref())
         } else {
             self.provider.available_efforts()
         };
@@ -428,7 +426,7 @@ impl App {
         }
 
         let current = if self.is_remote {
-            self.remote_reasoning_effort.clone()
+            self.remote_reasoning_effort_hint()
         } else {
             self.provider.reasoning_effort()
         };

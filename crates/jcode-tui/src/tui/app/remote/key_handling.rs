@@ -63,15 +63,19 @@ async fn apply_remote_effort_direction(
     remote: &mut RemoteConnection,
     direction: i8,
 ) -> Result<()> {
-    let efforts = app_mod::inferred_reasoning_efforts(
-        app.remote_provider_name.as_deref(),
-        app.remote_provider_model.as_deref(),
-    );
+    // Use the best-known provider/model identity (server-reported when
+    // available, header hints during the pre-History bootstrap window) so
+    // effort cycling works immediately after spawn instead of claiming the
+    // provider does not support it until the History payload settles.
+    let (provider_name, provider_model) = app.remote_effort_identity();
+    let efforts =
+        app_mod::inferred_reasoning_efforts(provider_name.as_deref(), provider_model.as_deref());
     if efforts.is_empty() {
         app.set_status_notice("Reasoning effort not available for this provider");
         return Ok(());
     }
-    let current = app.remote_reasoning_effort.as_deref();
+    let current = app.remote_reasoning_effort_hint();
+    let current = current.as_deref();
     let current_index = current
         .and_then(|c| efforts.iter().position(|e| *e == c))
         .unwrap_or(efforts.len() - 1);
@@ -1082,13 +1086,15 @@ async fn handle_remote_key_internal(
                 }
 
                 if trimmed == "/effort" {
-                    let current = app.remote_reasoning_effort.as_deref();
+                    let current = app.remote_reasoning_effort_hint();
+                    let current = current.as_deref();
                     let label = current
                         .map(app_mod::effort_display_label)
                         .unwrap_or("default");
+                    let (provider_name, provider_model) = app.remote_effort_identity();
                     let efforts = app_mod::inferred_reasoning_efforts(
-                        app.remote_provider_name.as_deref(),
-                        app.remote_provider_model.as_deref(),
+                        provider_name.as_deref(),
+                        provider_model.as_deref(),
                     );
                     if efforts.is_empty() {
                         app.push_display_message(DisplayMessage::system(
@@ -1121,9 +1127,10 @@ async fn handle_remote_key_internal(
                         app.push_display_message(DisplayMessage::error("Usage: /effort <level>"));
                         return Ok(());
                     }
+                    let (provider_name, provider_model) = app.remote_effort_identity();
                     let efforts = app_mod::inferred_reasoning_efforts(
-                        app.remote_provider_name.as_deref(),
-                        app.remote_provider_model.as_deref(),
+                        provider_name.as_deref(),
+                        provider_model.as_deref(),
                     );
                     if efforts.contains(&level) {
                         app.remote_reasoning_effort = Some(level.to_string());
