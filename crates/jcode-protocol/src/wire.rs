@@ -879,6 +879,20 @@ pub enum ServerEvent {
     #[serde(rename = "interrupted")]
     Interrupted,
 
+    /// The provider ended the turn without any visible assistant output,
+    /// typically a model-side guardrail/refusal stop (e.g. Anthropic
+    /// `stop_reason: "refusal"`), or a reasoning-only response with no final
+    /// text. Rendered as a system notice so the user learns why no response
+    /// arrived instead of the turn ending silently.
+    #[serde(rename = "provider_guardrail")]
+    ProviderGuardrail {
+        /// Raw provider stop reason, when known (e.g. "refusal").
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stop_reason: Option<String>,
+        /// Human-readable explanation for display.
+        message: String,
+    },
+
     /// Relevant memory was injected into the conversation
     #[serde(rename = "memory_injected")]
     MemoryInjected {

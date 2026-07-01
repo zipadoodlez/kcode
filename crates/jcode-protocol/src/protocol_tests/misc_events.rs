@@ -405,3 +405,33 @@ fn test_message_request_roundtrip_preserves_images_and_system_reminder() -> Resu
     assert_eq!(system_reminder.as_deref(), Some("be concise"));
     Ok(())
 }
+
+#[test]
+fn test_provider_guardrail_event_roundtrip() -> Result<()> {
+    let event = ServerEvent::ProviderGuardrail {
+        stop_reason: Some("refusal".to_string()),
+        message: "Provider guardrail stopped the response".to_string(),
+    };
+    let json = encode_event(&event);
+    assert!(json.contains("\"type\":\"provider_guardrail\""));
+    let decoded = parse_event_json(json.trim())?;
+    let ServerEvent::ProviderGuardrail {
+        stop_reason,
+        message,
+    } = decoded
+    else {
+        return Err(anyhow!("expected ProviderGuardrail event"));
+    };
+    assert_eq!(stop_reason.as_deref(), Some("refusal"));
+    assert_eq!(message, "Provider guardrail stopped the response");
+
+    // stop_reason is optional on the wire.
+    let decoded = parse_event_json(
+        r#"{"type":"provider_guardrail","message":"blocked"}"#,
+    )?;
+    let ServerEvent::ProviderGuardrail { stop_reason, .. } = decoded else {
+        return Err(anyhow!("expected ProviderGuardrail event"));
+    };
+    assert!(stop_reason.is_none());
+    Ok(())
+}

@@ -900,6 +900,10 @@ impl Agent {
                 vec![
                     ("mode", "mpsc".to_string()),
                     ("saw_message_end", saw_message_end.to_string()),
+                    (
+                        "stop_reason",
+                        stop_reason.clone().unwrap_or_else(|| "none".to_string()),
+                    ),
                     ("input_tokens", usage_input.unwrap_or(0).to_string()),
                     ("output_tokens", usage_output.unwrap_or(0).to_string()),
                     ("cache_read", usage_cache_read.unwrap_or(0).to_string()),
@@ -1079,7 +1083,32 @@ impl Agent {
                     stop_reason.as_deref(),
                     &mut incomplete_continuations,
                 )? {
-                    NoToolCallOutcome::Break => break,
+                    NoToolCallOutcome::Break => {
+                        // Surface silent guardrail/refusal stops: the provider
+                        // ended the turn with no visible output (e.g. Anthropic
+                        // stop_reason "refusal", or a reasoning-only response).
+                        // Only when the provider actually finished the message
+                        // (saw_message_end) and the user did not cancel, so
+                        // interrupted turns never show a spurious notice.
+                        if saw_message_end && !self.is_graceful_shutdown() {
+                            if let Some(notice) = Self::provider_guardrail_notice(
+                                stop_reason.as_deref(),
+                                text_content.trim().is_empty(),
+                                !reasoning_content.trim().is_empty(),
+                            ) {
+                                logging::warn(&format!(
+                                    "PROVIDER_GUARDRAIL: turn ended with no visible output (stop_reason={:?}, reasoning_chars={})",
+                                    stop_reason,
+                                    reasoning_content.len()
+                                ));
+                                let _ = event_tx.send(ServerEvent::ProviderGuardrail {
+                                    stop_reason: stop_reason.clone(),
+                                    message: notice,
+                                });
+                            }
+                        }
+                        break;
+                    }
                     NoToolCallOutcome::ContinueWithoutEvent => continue,
                     NoToolCallOutcome::ContinueWithSoftInterrupt { injected, point } => {
                         for event in Self::build_soft_interrupt_events(injected, point, None) {

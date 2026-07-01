@@ -117,6 +117,54 @@ impl Agent {
             || reason.contains("trunc")
             || reason.contains("commentary")
     }
+
+    /// True when the provider's stop reason indicates a model-side
+    /// guardrail/safety stop (e.g. Anthropic `refusal`), as opposed to a
+    /// normal end-of-turn or truncation.
+    pub(crate) fn is_guardrail_stop_reason(stop_reason: Option<&str>) -> bool {
+        let Some(reason) = stop_reason else {
+            return false;
+        };
+        let reason = reason.trim().to_ascii_lowercase();
+        matches!(reason.as_str(), "refusal" | "content_filter" | "safety")
+            || reason.contains("guardrail")
+            || reason.contains("policy_violation")
+    }
+
+    /// Builds the user-facing notice for a turn that ended with no visible
+    /// assistant output (no text, no tool calls). Returns `None` when the turn
+    /// looks normal and no notice should be surfaced.
+    pub(crate) fn provider_guardrail_notice(
+        stop_reason: Option<&str>,
+        visible_text_empty: bool,
+        had_reasoning: bool,
+    ) -> Option<String> {
+        let guardrail = Self::is_guardrail_stop_reason(stop_reason);
+        if !guardrail && !visible_text_empty {
+            return None;
+        }
+        let reason_label = stop_reason
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .unwrap_or("unknown");
+        if guardrail {
+            return Some(format!(
+                "Provider guardrail stopped the response (stop_reason: {}). The model declined to answer this request. Rephrasing, narrowing the request, or providing more context may help.",
+                reason_label
+            ));
+        }
+        // Empty visible output with a non-guardrail stop reason: still surface,
+        // since the user otherwise sees nothing at all.
+        let reasoning_hint = if had_reasoning {
+            " after producing only internal reasoning"
+        } else {
+            ""
+        };
+        Some(format!(
+            "The model ended its turn without any visible output{} (stop_reason: {}). This is usually a provider-side guardrail or filter silently dropping the response. Rephrasing the request may help.",
+            reasoning_hint, reason_label
+        ))
+    }
     fn continuation_prompt_for_stop_reason(stop_reason: &str) -> String {
         format!(
             "[System reminder: your previous response ended before completion (stop_reason: {}). Continue exactly where you left off, do not repeat completed content, and if the next step is a tool call, emit the tool call now.]",
