@@ -964,6 +964,19 @@ fn looks_like_uuid(s: &str) -> bool {
         .all(|(part, &len)| part.len() == len && part.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
+/// Whether a Cursor transcript path is a *subagent* transcript rather than a
+/// top-level session. Cursor nests subagent runs at
+/// `.../agent-transcripts/<parent>/subagents/<child>.jsonl`; these are not
+/// independently resumable sessions, so the resume picker skips them (they would
+/// otherwise appear as duplicate/stray rows alongside the parent session).
+pub fn is_cursor_subagent_transcript(path: &Path) -> bool {
+    path.parent()
+        .and_then(|dir| dir.file_name())
+        .and_then(|name| name.to_str())
+        .map(|name| name == "subagents")
+        .unwrap_or(false)
+}
+
 /// Best-effort decode of a Cursor project directory name back into an absolute
 /// path. Cursor encodes the working directory by replacing `/` with `-`, e.g.
 /// `/Users/alex/Repo` -> `Users-alex-Repo`. Because real path segments can also
@@ -1023,6 +1036,11 @@ pub fn load_cursor_external_session(
     path: &Path,
     include_tools: bool,
 ) -> ImportCoreResult<Option<ExternalSessionRecord>> {
+    // Skip Cursor subagent transcripts: they are nested runs of a parent session,
+    // not independently resumable/searchable top-level sessions.
+    if is_cursor_subagent_transcript(path) {
+        return Ok(None);
+    }
     let file = File::open(path)?;
     let mut messages = Vec::new();
     for line in BufReader::new(file).lines().map_while(|line| line.ok()) {
@@ -1277,6 +1295,47 @@ mod tests {
         let cwd = cursor_cwd_from_transcript_path(path).unwrap();
         assert!(cwd.starts_with('/'));
         assert!(cwd.contains("Users"));
+    }
+
+    #[test]
+    fn cursor_subagent_transcripts_are_detected() {
+        let subagent = Path::new(
+            "/home/u/.cursor/projects/demo/agent-transcripts/parent/subagents/child.jsonl",
+        );
+        assert!(is_cursor_subagent_transcript(subagent));
+        let top_level = Path::new(
+            "/home/u/.cursor/projects/demo/agent-transcripts/parent/parent.jsonl",
+        );
+        assert!(!is_cursor_subagent_transcript(top_level));
+    }
+
+    #[test]
+    fn load_cursor_external_session_skips_subagent_transcripts() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join(format!(
+            "jcode-cursor-subagent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let sub_dir = dir.join("projects/demo/agent-transcripts/parent/subagents");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        let path = sub_dir.join("child.jsonl");
+        let mut file = File::create(&path).unwrap();
+        writeln!(
+            file,
+            "{}",
+            r#"{"role":"user","message":{"content":[{"type":"text","text":"subagent work"}]}}"#
+        )
+        .unwrap();
+        drop(file);
+        assert!(
+            load_cursor_external_session(&path, false).unwrap().is_none(),
+            "subagent transcripts should be skipped"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

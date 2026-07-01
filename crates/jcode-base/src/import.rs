@@ -20,7 +20,7 @@ pub use jcode_import_core::{
     cursor_cwd_from_transcript_path, cursor_session_id_from_path,
     extract_external_text_from_json as extract_external_text_from_json_value,
     imported_claude_code_session_id, imported_codex_session_id, imported_cursor_session_id,
-    imported_opencode_session_id, imported_pi_session_id,
+    imported_opencode_session_id, imported_pi_session_id, is_cursor_subagent_transcript,
 };
 use std::collections::HashSet;
 use std::fs::File;

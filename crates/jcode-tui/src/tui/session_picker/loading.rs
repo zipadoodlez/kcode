@@ -2726,6 +2726,11 @@ pub(super) fn load_cursor_preview_from_path(path: &Path) -> Option<Vec<PreviewMe
 }
 
 fn load_cursor_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
+    // Cursor nests subagent runs under `agent-transcripts/<parent>/subagents/`.
+    // Those are not independently resumable, so skip them in the resume list.
+    if crate::import::is_cursor_subagent_transcript(path) {
+        return Ok(None);
+    }
     // Cursor transcripts have no header line: the session id is the file stem
     // (a UUID) and metadata is enriched from the path / file mtime.
     let session_id = crate::import::cursor_session_id_from_path(path);
