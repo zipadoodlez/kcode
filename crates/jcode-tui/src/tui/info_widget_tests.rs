@@ -979,6 +979,113 @@ fn swarm_widget_renders_member_roles_and_details() {
 }
 
 #[test]
+fn swarm_widget_handles_empty_swarm_and_zero_area_without_panic() {
+    // No swarm info at all: renders nothing.
+    let data = InfoWidgetData::default();
+    assert!(super::render_swarm_widget(&data, Rect::new(0, 0, 40, 4)).is_empty());
+
+    // Empty swarm (no members, no names, no subagent status): only the stats line.
+    let data = InfoWidgetData {
+        swarm_info: Some(SwarmInfo::default()),
+        ..Default::default()
+    };
+    let lines = super::render_swarm_widget(&data, Rect::new(0, 0, 40, 4));
+    assert_eq!(lines.len(), 1, "expected only the stats line");
+    // session_count == 0 and client_count == None: stats line is just the bee icon.
+    let text = lines_text(&lines);
+    assert!(!text.contains("0s"), "zero sessions must not render: {text}");
+
+    // Zero-size rect must not panic or underflow.
+    let _ = super::render_swarm_widget(&data, Rect::new(0, 0, 0, 0));
+    let mut member_data = data.clone();
+    member_data.swarm_info.as_mut().unwrap().members = vec![SwarmMemberStatus {
+        session_id: "abc".to_string(),
+        friendly_name: None,
+        status: "running".to_string(),
+        detail: None,
+        role: None,
+        is_headless: None,
+        live_attachments: None,
+        status_age_secs: None,
+        output_tail: None,
+        report_back_to_session_id: None,
+        todo_progress: None,
+    }];
+    let _ = super::render_swarm_widget(&member_data, Rect::new(0, 0, 0, 0));
+    let _ = super::render_swarm_widget(&member_data, Rect::new(0, 0, 3, 1));
+}
+
+#[test]
+fn swarm_widget_caps_member_rows_for_large_swarms() {
+    let members: Vec<SwarmMemberStatus> = (0..500)
+        .map(|i| SwarmMemberStatus {
+            session_id: format!("session-{i:04}"),
+            friendly_name: Some(format!("worker-{i}")),
+            status: "running".to_string(),
+            detail: Some("very long detail text that should be truncated".repeat(4)),
+            role: None,
+            is_headless: None,
+            live_attachments: None,
+            status_age_secs: None,
+            output_tail: None,
+            report_back_to_session_id: None,
+            todo_progress: None,
+        })
+        .collect();
+    let data = InfoWidgetData {
+        swarm_info: Some(SwarmInfo {
+            session_count: 500,
+            client_count: Some(3),
+            members,
+            session_names: (0..500).map(|i| format!("worker-{i}")).collect(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let lines = super::render_swarm_widget(&data, Rect::new(0, 0, 30, 10));
+    // Stats line + at most 3 member rows regardless of swarm size.
+    assert_eq!(lines.len(), 4, "expected stats line + capped member rows");
+    let text = lines_text(&lines);
+    assert!(text.contains("500s"), "got: {text}");
+    assert!(text.contains("3c"), "got: {text}");
+}
+
+#[test]
+fn background_widget_handles_empty_and_large_task_lists() {
+    // No background info: renders nothing.
+    let data = InfoWidgetData::default();
+    assert!(super::render_background_widget(&data, Rect::new(0, 0, 40, 4)).is_empty());
+
+    // running_count == 0: summary is suppressed even if stale task names linger.
+    let info = BackgroundInfo {
+        running_count: 0,
+        running_tasks: vec!["stale".to_string()],
+        ..Default::default()
+    };
+    assert!(super::render_background_compact(&info).is_empty());
+
+    // Large task list: summary + 3 rows + overflow line, no panic at tiny width.
+    let info = BackgroundInfo {
+        running_count: 200,
+        running_tasks: (0..200).map(|i| format!("task-{i}")).collect(),
+        progress_detail: Some("42% · working".to_string()),
+        ..Default::default()
+    };
+    let data = InfoWidgetData {
+        background_info: Some(info.clone()),
+        ..Default::default()
+    };
+    let lines = super::render_background_widget(&data, Rect::new(0, 0, 40, 8));
+    assert_eq!(lines.len(), 5, "summary + 3 tasks + overflow");
+    let text = lines_text(&lines);
+    assert!(text.contains("200 running"), "got: {text}");
+    assert!(text.contains("+197 more"), "got: {text}");
+    // Zero-size rect must not panic (row width clamps to a minimum).
+    let _ = super::render_background_widget(&data, Rect::new(0, 0, 0, 0));
+}
+
+#[test]
 fn background_widget_and_compact_share_summary_format() {
     let info = BackgroundInfo {
         running_count: 4,
