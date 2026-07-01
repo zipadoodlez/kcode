@@ -165,13 +165,7 @@ impl App {
                         self.scroll_up(amount);
                     }
                     PaneKind::SidePanel => {
-                        let current = if self.diff_pane_scroll == usize::MAX {
-                            crate::tui::ui::last_diff_pane_effective_scroll()
-                        } else {
-                            self.diff_pane_scroll
-                        };
-                        self.diff_pane_scroll = current.saturating_sub(amount);
-                        self.diff_pane_auto_scroll = false;
+                        self.side_pane_scroll_by(-(amount as isize));
                     }
                 }
             }
@@ -182,12 +176,7 @@ impl App {
                         self.scroll_down(amount);
                     }
                     PaneKind::SidePanel => {
-                        if self.diff_pane_scroll == usize::MAX {
-                            self.diff_pane_scroll =
-                                crate::tui::ui::last_diff_pane_effective_scroll();
-                        }
-                        self.diff_pane_scroll = self.diff_pane_scroll.saturating_add(amount);
-                        self.diff_pane_auto_scroll = false;
+                        self.side_pane_scroll_by(amount as isize);
                     }
                 }
             }

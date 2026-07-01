@@ -178,6 +178,9 @@ static PINNED_PANE_TOTAL_LINES: AtomicUsize = AtomicUsize::new(0);
 /// Effective scroll position of the side pane after render-time clamping.
 #[cfg(not(test))]
 static LAST_DIFF_PANE_EFFECTIVE_SCROLL: AtomicUsize = AtomicUsize::new(0);
+/// Maximum scroll offset of the side pane on the most recent render frame.
+#[cfg(not(test))]
+static LAST_DIFF_PANE_MAX_SCROLL: AtomicUsize = AtomicUsize::new(0);
 /// Total wrapped line count of the chat transcript on the most recent frame.
 /// Used together with `LAST_RESOLVED_CHAT_SCROLL` to anchor the viewport when
 /// older compacted history is loaded in (so the content under the reader stays
@@ -206,6 +209,7 @@ thread_local! {
     static TEST_LAST_CHAT_SCROLLBAR_VISIBLE: Cell<bool> = const { Cell::new(false) };
     static TEST_PINNED_PANE_TOTAL_LINES: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_DIFF_PANE_EFFECTIVE_SCROLL: Cell<usize> = const { Cell::new(0) };
+    static TEST_LAST_DIFF_PANE_MAX_SCROLL: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_TOTAL_WRAPPED_LINES: Cell<usize> = const { Cell::new(0) };
     static TEST_LAST_RESOLVED_CHAT_SCROLL: Cell<usize> = const { Cell::new(0) };
     static TEST_TAIL_CATCHUP_ACTIVE: Cell<bool> = const { Cell::new(false) };
@@ -282,6 +286,21 @@ pub fn last_diff_pane_effective_scroll() -> usize {
     }
 }
 
+/// Maximum scroll offset of the side pane on the most recent render frame
+/// (total content lines minus the visible viewport height). Scroll handlers
+/// clamp against this so stored offsets cannot accumulate invisible
+/// "phantom" overscroll past the bottom of the content.
+pub fn last_diff_pane_max_scroll() -> usize {
+    #[cfg(test)]
+    {
+        return TEST_LAST_DIFF_PANE_MAX_SCROLL.with(Cell::get);
+    }
+    #[cfg(not(test))]
+    {
+        LAST_DIFF_PANE_MAX_SCROLL.load(Ordering::Relaxed)
+    }
+}
+
 /// Get the last known user prompt line positions (from the most recent render frame).
 /// Returns positions as wrapped line indices from the top of content.
 pub fn last_user_prompt_positions() -> Vec<usize> {
@@ -352,6 +371,18 @@ pub(crate) fn set_last_diff_pane_effective_scroll(value: usize) {
     #[cfg(not(test))]
     {
         LAST_DIFF_PANE_EFFECTIVE_SCROLL.store(value, Ordering::Relaxed);
+    }
+}
+
+pub(crate) fn set_last_diff_pane_max_scroll(value: usize) {
+    #[cfg(test)]
+    {
+        TEST_LAST_DIFF_PANE_MAX_SCROLL.with(|cell| cell.set(value));
+        return;
+    }
+    #[cfg(not(test))]
+    {
+        LAST_DIFF_PANE_MAX_SCROLL.store(value, Ordering::Relaxed);
     }
 }
 
@@ -1296,6 +1327,7 @@ pub(crate) fn clear_test_render_state_for_tests() {
     set_last_max_scroll(0);
     set_pinned_pane_total_lines(0);
     set_last_diff_pane_effective_scroll(0);
+    set_last_diff_pane_max_scroll(0);
     set_last_total_wrapped_lines(0);
     set_last_resolved_chat_scroll(0);
     update_user_prompt_positions(&[]);

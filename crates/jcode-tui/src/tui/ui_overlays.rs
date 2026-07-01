@@ -338,7 +338,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(help_entry(
         "/plan [goal]",
-        "Draft a plan-only proposal in the side panel (no edits)",
+        "Draft a plan-only proposal as a plan card (no edits)",
     ));
     lines.push(help_entry(
         "/improve",
@@ -360,10 +360,9 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "/splitview [on|off|status]",
         "Mirror the current chat in the side panel",
     ));
-    lines.push(help_entry("/split", "Clone session into a new window"));
     lines.push(help_entry(
-        "/fork",
-        "Arm next prompt to launch in a new forked session (also Opt/Cmd+Space)",
+        "/fork [prompt]",
+        "Fork session into a new window (alias: /split)",
     ));
     lines.push(help_entry(
         "/transfer",

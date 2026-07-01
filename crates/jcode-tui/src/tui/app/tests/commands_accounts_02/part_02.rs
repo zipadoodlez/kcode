@@ -47,7 +47,7 @@ fn test_refactor_command_starts_refactor_loop() {
 }
 
 #[test]
-fn test_plan_command_is_plan_only_and_writes_to_side_panel() {
+fn test_plan_command_is_plan_only_and_presents_plan_card() {
     let mut app = create_test_app();
     app.input = "/plan add a compact message mode".to_string();
     app.submit_input();
@@ -62,7 +62,7 @@ fn test_plan_command_is_plan_only_and_writes_to_side_panel() {
         ContentBlock::Text { text, .. }
             if text.contains("You are entering planning mode")
                 && text.contains("Do NOT implement anything yet")
-                && text.contains("`side_panel`")
+                && text.contains("```plan")
                 && text.contains("`todo`")
                 && text.contains("Goal: add a compact message mode")
     ));

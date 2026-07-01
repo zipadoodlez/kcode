@@ -36,9 +36,9 @@ pub(super) fn build_plan_prompt(goal: Option<&str>) -> String {
 {}\
 Your job is to produce a clear, concrete, actionable plan. Do NOT implement anything yet: do not edit files, write patches, or change git state. You may freely read, search, run read-only commands, and analyze the codebase so the plan is grounded in how things actually work.\n\
 \n\
-When the plan is ready, write it to the side panel using the `side_panel` tool so the user can review it. Use a single focused page titled \"Plan\" (overwrite it if it already exists). Structure the plan with these sections: Goal, Scope / affected areas, Approach (concrete ordered steps), Validation (how each part will be verified), and Open questions / decisions.\n\
+When the plan is ready, present it directly in your reply inside a fenced code block whose language is `plan` (```plan ... ```). The UI renders that block as a dedicated plan card. Structure the plan inside the block with these sections: a top-level `# <short plan title>` heading, then Goal, Scope / affected areas, Approach (concrete ordered steps), Validation (how each part will be verified), and Open questions / decisions.\n\
 \n\
-Keep it tight and high-signal. Avoid speculative rewrites and busywork. After writing the plan to the side panel, stop and wait for the user. Do not start implementing.\n\
+Keep it tight and high-signal. Avoid speculative rewrites and busywork. After presenting the plan card, stop and wait for the user. Do not start implementing.\n\
 \n\
 Only once the user approves, use the `todo` tool to turn the plan into an executable todo list and then begin the work.",
         goal_line,
@@ -52,11 +52,8 @@ pub(super) fn plan_launch_notice(goal: Option<&str>, interrupted: bool) -> Strin
         "🧭 Planning"
     };
     match goal.map(str::trim).filter(|goal| !goal.is_empty()) {
-        Some(goal) => format!(
-            "{} {}... (plan-only; results go to the side panel)",
-            prefix, goal
-        ),
-        None => format!("{}... (plan-only; results go to the side panel)", prefix),
+        Some(goal) => format!("{} {}... (plan-only; no edits)", prefix, goal),
+        None => format!("{}... (plan-only; no edits)", prefix),
     }
 }
 
@@ -108,11 +105,11 @@ mod tests {
     }
 
     #[test]
-    fn build_plan_prompt_is_plan_only_and_targets_side_panel() {
+    fn build_plan_prompt_is_plan_only_and_targets_plan_card() {
         let prompt = build_plan_prompt(Some("ship feature x"));
         assert!(prompt.contains("Goal: ship feature x"));
         assert!(prompt.contains("Do NOT implement anything yet"));
-        assert!(prompt.contains("`side_panel`"));
+        assert!(prompt.contains("```plan"));
         assert!(prompt.contains("`todo`"));
 
         let bare = build_plan_prompt(None);

@@ -649,6 +649,7 @@ pub(super) fn draw_file_diff_view(
     super::set_pinned_pane_total_lines(total_lines);
 
     let max_scroll = total_lines.saturating_sub(inner.height as usize);
+    super::set_last_diff_pane_max_scroll(max_scroll);
 
     let effective_scroll = if pane_scroll == usize::MAX && first_change_line != usize::MAX {
         let target = first_change_line.saturating_sub(inner.height as usize / 3);

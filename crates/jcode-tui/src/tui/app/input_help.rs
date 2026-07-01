@@ -50,7 +50,7 @@ impl App {
                 "/splitview\nToggle a transient split view that mirrors the current chat in the side panel.\n\n/splitview on\nEnable split view and focus the mirrored chat page.\n\n/splitview off\nDisable split view.\n\n/splitview status\nShow whether split view is enabled.\n\nThis gives the side panel its own scroll position for the same conversation so you can read older context while keeping the main composer active."
             }
             "btw" => {
-                "/btw <question>\nAsk a side question about the current session and route the answer into the side panel.\n\nCurrent v1 behavior:\n  - uses the side panel as the response surface\n  - asks only from current session context\n  - should not read files or run tools other than side_panel"
+                "/btw <question>\nAsk a side question without derailing the current session.\n\nForks (splits) the session into a new window with the full conversation cloned, and the forked session starts by answering the question. The original session keeps working uninterrupted."
             }
             "git" => {
                 "/git\nShow git status --short --branch for the current session working directory.\n\n/git status\nAlias for /git."
@@ -116,7 +116,7 @@ impl App {
                 "/transfer\nCompact the current session into a summary-only handoff, copy the current todo list to a fresh session, and open that transferred session in a new window.\n\nIf a turn is currently running, jcode first soft-pauses the current session at the next safe point, then performs the transfer."
             }
             "plan" => {
-                "/plan [goal]\nDraft a plan without implementing anything. The model inspects the repo, then writes a structured plan (Goal, Scope, Approach, Validation, Open questions) to the side panel for review.\n\nNothing is edited: it stops after writing the plan. Once you approve, it converts the plan into a todo list and starts the work.\n\n/plan with no goal plans the task currently in focus."
+                "/plan [goal]\nDraft a plan without implementing anything. The model inspects the repo, then presents a structured plan (Goal, Scope, Approach, Validation, Open questions) as a dedicated plan card in the conversation.\n\nNothing is edited: it stops after presenting the plan. Once you approve, it converts the plan into a todo list and starts the work.\n\n/plan with no goal plans the task currently in focus."
             }
             "improve" => {
                 "/improve [focus]\nStart an autonomous repo-improvement loop. The model inspects the project, writes a ranked todo list, implements the highest-leverage safe improvements, validates them, then keeps going until further work has diminishing returns.\n\n/improve plan [focus]\nGenerate a ranked improve todo list only, without editing files.\n\n/improve resume\nResume the last saved improve mode for this session using the current improve todos.\n\n/improve status\nShow the inferred status of the current improve run and todo batch.\n\n/improve stop\nAsk the model to stop after the next safe point, update todos, and summarize remaining work."
@@ -136,8 +136,8 @@ impl App {
             "selfdev" => {
                 "/selfdev\nSpawn a new self-dev jcode session in a separate terminal.\n\n/selfdev <prompt>\nSpawn a new self-dev session and auto-deliver the prompt to it.\n\n/selfdev status\nShow current self-dev/build status."
             }
-            "split" => {
-                "/split\nSplit the current session into a new window. Clones the full conversation history so both sessions continue from the same point."
+            "fork" | "split" => {
+                "/fork\nFork the current session into a new window. Clones the full conversation history so both sessions continue from the same point.\n\n/fork <prompt>\nFork the session and start the new window by answering the prompt. The original session keeps working uninterrupted.\n\n/split\nAlias for /fork."
             }
             "resume" | "sessions" => {
                 "/resume\nOpen the interactive session picker. Browse and search all sessions, preview conversation history, and resume the highlighted session. By default, Enter resumes in the current terminal and Ctrl+Enter opens a new terminal; keybindings.session_picker_enter can swap those actions.{resume_shortcut}\n\nPress Esc to return to your current session."

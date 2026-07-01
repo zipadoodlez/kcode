@@ -1166,6 +1166,7 @@ pub(super) fn draw_pinned_content_cached(
     super::set_pinned_pane_total_lines(total_lines);
 
     let max_scroll = total_lines.saturating_sub(inner.height as usize);
+    super::set_last_diff_pane_max_scroll(max_scroll);
     let clamped_scroll = scroll.min(max_scroll);
     super::set_last_diff_pane_effective_scroll(clamped_scroll);
 
@@ -1428,6 +1429,7 @@ pub(super) fn draw_side_panel_markdown(
         .lines
         .len()
         .saturating_sub(content_inner.height as usize);
+    super::set_last_diff_pane_max_scroll(max_scroll);
     let clamped_scroll = scroll.min(max_scroll);
     super::set_last_diff_pane_effective_scroll(clamped_scroll);
 
