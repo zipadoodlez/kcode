@@ -1187,6 +1187,88 @@ fn test_config_default_provider_anthropic_api_pins_api_credential() {
 }
 
 #[test]
+fn test_config_default_model_with_credential_prefix_applies_model_and_pin() {
+    use jcode_provider_core::{Provider, ResolvedCredential};
+    // The model picker saves default_model as a full spec like
+    // `claude-api:claude-opus-4-6`. Startup must parse the prefix (routing +
+    // credential pin) instead of handing the raw spec to the Anthropic
+    // provider, which would reject it and silently keep the fallback default.
+    for (spec, expect_oauth) in [
+        ("claude-api:claude-opus-4-6", false),
+        ("claude-oauth:claude-opus-4-6", true),
+        ("claude:claude-opus-4-6", true),
+    ] {
+        with_clean_provider_test_env(|| {
+            crate::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-api-key");
+            crate::auth::claude::upsert_account(crate::auth::claude::AnthropicAccount {
+                label: "claude-1".to_string(),
+                access: "oauth-access-token".to_string(),
+                refresh: "oauth-refresh-token".to_string(),
+                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+                email: None,
+                subscription_type: Some("max".to_string()),
+                scopes: vec!["user:inference".to_string()],
+            })
+            .expect("save Claude OAuth account");
+
+            let anthropic = Arc::new(anthropic::AnthropicProvider::new());
+            let provider = MultiProvider {
+                claude: RwLock::new(None),
+                anthropic: RwLock::new(Some(Arc::clone(&anthropic))),
+                openai: RwLock::new(None),
+                copilot_api: RwLock::new(None),
+                antigravity: RwLock::new(None),
+                gemini: RwLock::new(None),
+                cursor: RwLock::new(None),
+                bedrock: RwLock::new(None),
+                openrouter: RwLock::new(None),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
+                active: RwLock::new(ActiveProvider::Claude),
+                use_claude_cli: false,
+                startup_notices: RwLock::new(Vec::new()),
+                forced_provider: None,
+            };
+            let rt = enter_test_runtime();
+            let _runtime_guard = rt.enter();
+
+            provider
+                .set_config_default_model(spec, Some("anthropic-api"))
+                .unwrap_or_else(|e| panic!("default_model '{spec}' should apply: {e}"));
+
+            assert_eq!(
+                provider.active_provider(),
+                ActiveProvider::Claude,
+                "default_model '{spec}' routes to Claude",
+            );
+            assert_eq!(
+                provider.model(),
+                "claude-opus-4-6",
+                "default_model '{spec}' should set the bare model id",
+            );
+            assert_eq!(
+                rt.block_on(anthropic.test_access_token_and_oauth_mode())
+                    .expect("token"),
+                (
+                    if expect_oauth {
+                        "oauth-access-token".to_string()
+                    } else {
+                        "sk-ant-test-api-key".to_string()
+                    },
+                    expect_oauth,
+                ),
+                "default_model '{spec}' should resolve {:?}",
+                if expect_oauth {
+                    ResolvedCredential::Oauth
+                } else {
+                    ResolvedCredential::ApiKey
+                },
+            );
+        });
+    }
+}
+
+#[test]
 fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space() {
     with_clean_provider_test_env(|| {
         let rt = enter_test_runtime();

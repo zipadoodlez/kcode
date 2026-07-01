@@ -1070,6 +1070,19 @@ impl MultiProvider {
             anyhow::bail!("Model cannot be empty");
         }
 
+        // The model picker persists default_model as a full model spec that
+        // may carry an explicit provider/credential prefix (e.g.
+        // `claude-api:claude-fable-5`). Provider-local `set_model`
+        // implementations validate bare model ids, so a prefixed spec must go
+        // through the canonical prefix-aware path. Handing the raw spec to a
+        // single provider would make it reject the id and silently keep its
+        // fallback default model.
+        if explicit_model_provider_prefix(model).is_some()
+            || Self::openai_compatible_model_prefix(model).is_some()
+        {
+            return self.set_model(model);
+        }
+
         // A configured default_provider is a routing decision, not just a
         // startup hint. Treat default_model as provider-local when the config
         // names a concrete provider/profile so global model-name heuristics
