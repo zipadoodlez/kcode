@@ -1640,6 +1640,7 @@ pub(super) fn handle_git_status_completed(app: &mut App, completed: GitStatusCom
 
 pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     if handle_subagent_model_command(app, trimmed)
+        || app.handle_hotkeys_command(trimmed)
         || handle_subagent_command(app, trimmed)
         || handle_observe_command(app, trimmed)
         || handle_todos_view_command(app, trimmed)

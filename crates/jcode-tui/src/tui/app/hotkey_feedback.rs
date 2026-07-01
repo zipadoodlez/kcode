@@ -609,7 +609,89 @@ fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
+/// Render the `/hotkeys` listing: every known chord with its action and the
+/// user's personal usage level. Pure over its inputs for testability.
+pub(super) fn render_hotkeys_listing(
+    registry: &[KnownHotkey],
+    usage: &HotkeyUsageState,
+    now_unix: u64,
+) -> String {
+    // Group rows by action so multi-chord actions (workspace nav aliases,
+    // scroll fallbacks) render one line with all chords.
+    let mut rows: Vec<(String, &'static str, &'static str)> = Vec::new();
+    let mut seen: std::collections::HashMap<&'static str, usize> = std::collections::HashMap::new();
+    for entry in registry {
+        match seen.get(entry.action) {
+            Some(&idx) => {
+                let labels = &mut rows[idx].0;
+                let label = entry.label();
+                if !labels.split(", ").any(|existing| existing == label) {
+                    labels.push_str(", ");
+                    labels.push_str(&label);
+                }
+            }
+            None => {
+                seen.insert(entry.action, rows.len());
+                rows.push((entry.label(), entry.action, entry.description));
+            }
+        }
+    }
+
+    let mut used: Vec<String> = Vec::new();
+    let mut unused: Vec<String> = Vec::new();
+    for (labels, action, description) in rows {
+        let stat = usage.actions.get(action);
+        let uses = stat.map(|s| s.uses).unwrap_or(0);
+        let line = format!("- `{}` → {}", labels, description);
+        if uses == 0 {
+            unused.push(line);
+        } else {
+            let freshness = stat
+                .filter(|s| now_unix.saturating_sub(s.last_used_unix) >= STALE_SECS)
+                .map(|_| ", not recently")
+                .unwrap_or("");
+            used.push(format!(
+                "{} ({} use{}{})",
+                line,
+                uses,
+                if uses == 1 { "" } else { "s" },
+                freshness
+            ));
+        }
+    }
+
+    let mut out = String::from("## Hotkeys\n");
+    if !unused.is_empty() {
+        out.push_str("\n**Not yet used** (try these):\n");
+        out.push_str(&unused.join("\n"));
+        out.push('\n');
+    }
+    if !used.is_empty() {
+        out.push_str("\n**In your muscle memory:**\n");
+        out.push_str(&used.join("\n"));
+        out.push('\n');
+    }
+    out.push_str("\nRebind under `[keybindings]` in config. Full reference: /help\n");
+    out
+}
+
 impl App {
+    /// Handle the `/hotkeys` command: list every known chord with a
+    /// description and the user's personal usage counts.
+    pub(super) fn handle_hotkeys_command(&mut self, trimmed: &str) -> bool {
+        if trimmed != "/hotkeys" && trimmed != "/keys" {
+            return false;
+        }
+        let registry = self.hotkey_registry(self.is_remote);
+        if self.hotkey_usage.is_none() {
+            self.hotkey_usage = Some(load_state());
+        }
+        let usage = self.hotkey_usage.as_ref().expect("hotkey usage loaded");
+        let listing = render_hotkeys_listing(&registry, usage, now_unix());
+        self.push_display_message(jcode_tui_messages::DisplayMessage::system(listing));
+        true
+    }
+
     fn hotkey_registry(&self, remote: bool) -> Vec<KnownHotkey> {
         build_registry(&RegistryInputs {
             model_switch: &self.model_switch_keys,
@@ -986,6 +1068,38 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn hotkeys_listing_groups_chords_and_splits_by_usage() {
+        let registry = test_inputs_registry(true);
+        let mut usage = HotkeyUsageState::default();
+        usage.actions.insert(
+            "prompt_jump_up".to_string(),
+            UsageStat {
+                uses: 7,
+                last_used_unix: 10_000_000,
+            },
+        );
+        let listing = render_hotkeys_listing(&registry, &usage, 10_000_000);
+
+        // Used action lands in the muscle-memory section with its count.
+        assert!(listing.contains("jump to the previous prompt"), "{listing}");
+        assert!(listing.contains("(7 uses)"), "{listing}");
+        // Unused actions land in the try-these section.
+        assert!(listing.contains("Not yet used"), "{listing}");
+        assert!(listing.contains("toggle the scroll bookmark"), "{listing}");
+        // Stale familiar actions get flagged.
+        let mut stale_usage = HotkeyUsageState::default();
+        stale_usage.actions.insert(
+            "prompt_jump_up".to_string(),
+            UsageStat {
+                uses: 7,
+                last_used_unix: 0,
+            },
+        );
+        let stale = render_hotkeys_listing(&registry, &stale_usage, 10_000_000);
+        assert!(stale.contains("not recently"), "{stale}");
     }
 
     /// Drift guard for the pane/mode toggles that live outside
