@@ -257,10 +257,19 @@ pub fn parse_keybinding(raw: &str) -> Option<KeyBinding> {
 
 fn normalize_key(code: KeyCode, modifiers: KeyModifiers) -> (KeyCode, KeyModifiers) {
     if code == KeyCode::BackTab {
-        (KeyCode::Tab, modifiers | KeyModifiers::SHIFT)
-    } else {
-        (code, modifiers)
+        return (KeyCode::Tab, modifiers | KeyModifiers::SHIFT);
     }
+    // With the Kitty keyboard protocol, terminals report Ctrl+Shift+<letter>
+    // as an uppercase Char plus CONTROL|SHIFT. Since Shift is already explicit
+    // in the modifiers, fold the letter to lowercase so "ctrl+shift+e" matches
+    // both Char('e') and Char('E') encodings.
+    if modifiers.contains(KeyModifiers::SHIFT)
+        && let KeyCode::Char(c) = code
+        && c.is_ascii_uppercase()
+    {
+        return (KeyCode::Char(c.to_ascii_lowercase()), modifiers);
+    }
+    (code, modifiers)
 }
 
 fn parse_function_key(raw: &str) -> Option<u8> {
@@ -549,6 +558,19 @@ mod tests {
             binding.matches_for_platform(code, mods, true),
             "Cmd+Shift+; kitty sequence must trigger the new_terminal binding"
         );
+    }
+
+    #[test]
+    fn ctrl_shift_letter_matches_uppercase_and_lowercase_encodings() {
+        // Terminals with the Kitty keyboard protocol report Ctrl+Shift+E as
+        // either Char('e') or Char('E') with CONTROL|SHIFT. The swarm panel
+        // focus default (ctrl+shift+e) must match both encodings.
+        let binding = parse_keybinding("ctrl+shift+e").expect("ctrl+shift+e parses");
+        let mods = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
+        assert!(binding.matches(KeyCode::Char('e'), mods));
+        assert!(binding.matches(KeyCode::Char('E'), mods));
+        // Plain Ctrl+E (no Shift) must not trigger the shifted binding.
+        assert!(!binding.matches(KeyCode::Char('e'), KeyModifiers::CONTROL));
     }
 
     fn test_scroll_keys() -> ScrollKeys {

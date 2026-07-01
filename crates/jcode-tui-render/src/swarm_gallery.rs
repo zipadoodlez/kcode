@@ -257,7 +257,7 @@ pub fn render_swarm_panel(
 
 /// A key/label pair for the swarm strip hint line.
 pub struct SwarmStripHint {
-    /// The key chord to show, e.g. "alt+w" or "j/k".
+    /// The key chord to show, e.g. "ctrl+shift+e" or "j/k".
     pub key: String,
     /// What it does, e.g. "select".
     pub label: String,
@@ -858,7 +858,7 @@ mod tests {
     fn hints() -> Vec<SwarmStripHint> {
         vec![
             SwarmStripHint {
-                key: "alt+w".into(),
+                key: "ctrl+shift+e".into(),
                 label: "focus".into(),
             },
             SwarmStripHint {
@@ -927,9 +927,9 @@ mod tests {
     fn strip_unfocused_shows_enter_controls_hint() {
         let members = vec![member("a", "running", None, &[])];
         let lines =
-            render_swarm_strip(&members, 0, false, &hints(), Some("alt+w controls"), 0, 90);
+            render_swarm_strip(&members, 0, false, &hints(), Some("ctrl+shift+e controls"), 0, 90);
         let chips = plain_line(&lines[0]);
-        assert!(chips.contains("alt+w controls"), "got: {chips}");
+        assert!(chips.contains("ctrl+shift+e controls"), "got: {chips}");
     }
 
     #[test]
@@ -1011,7 +1011,7 @@ mod tests {
             member("beta", "done", None, &[]),
         ];
         let width = 80;
-        let lines = render_swarm_strip(&members, 0, false, &hints(), Some("alt+w controls"), 0, width);
+        let lines = render_swarm_strip(&members, 0, false, &hints(), Some("ctrl+shift+e controls"), 0, width);
         let chips = plain_line(&lines[0]);
         assert!(
             chips.as_str().width() == width,

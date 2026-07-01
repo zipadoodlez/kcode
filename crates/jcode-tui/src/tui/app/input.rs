@@ -1599,8 +1599,8 @@ pub(super) fn handle_pre_control_shortcuts(
         return true;
     }
 
-    // Inline swarm panel: Alt+W focuses/unfocuses the managed-agents panel.
-    // While focused, j/k navigate, o pops out the selected agent, esc exits.
+    // Inline swarm panel: Ctrl+Shift+E focuses/unfocuses the managed-agents
+    // panel. While focused, j/k navigate, o pops out the selected agent, esc exits.
     if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
         let focused = app.toggle_swarm_panel_focus();
         app.set_status_notice(if focused {
@@ -2294,6 +2294,14 @@ impl App {
 
     pub(super) fn request_full_redraw(&mut self) {
         self.force_full_redraw = true;
+    }
+
+    /// Arm a full re-emit of every cell on the next frame without an
+    /// intermediate ED2 clear escape. Prefer this over `request_full_redraw`
+    /// when the real screen has not diverged from ratatui's model (e.g. chat
+    /// scrolling), so image placeholder cells do not flash blank (issue #404).
+    pub(super) fn request_full_repaint(&mut self) {
+        self.force_full_repaint = true;
     }
 
     pub(super) fn should_redraw_after_resize(&mut self) -> bool {

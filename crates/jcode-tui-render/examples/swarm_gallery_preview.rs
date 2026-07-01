@@ -174,7 +174,7 @@ fn main() {
     // ---- New compact strip (above status line) ----
     let hints = vec![
         SwarmStripHint {
-            key: "alt+w".into(),
+            key: "ctrl+shift+e".into(),
             label: "focus".into(),
         },
         SwarmStripHint {
@@ -196,7 +196,7 @@ fn main() {
     ];
     print_lines(
         "STRIP: unfocused @ width 90",
-        &render_swarm_strip(&panel_members, 1, false, &hints, Some("alt+w controls"), 0, 90),
+        &render_swarm_strip(&panel_members, 1, false, &hints, Some("ctrl+shift+e controls"), 0, 90),
     );
     print_lines(
         "STRIP: focused, selected #1 @ width 90",
