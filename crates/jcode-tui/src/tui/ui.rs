@@ -2256,6 +2256,62 @@ pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> O
     }
 }
 
+/// Debug dump of the live chat snapshot's inline-image regions plus the screen
+/// coordinates of each visible expand badge, so external drivers (debug
+/// socket) can compute real click targets against the running TUI.
+pub(crate) fn debug_chat_image_regions_json() -> String {
+    let Some(snapshot) = copy_snapshot_for_pane(crate::tui::CopySelectionPane::Chat) else {
+        return "{\"error\":\"no chat snapshot\"}".to_string();
+    };
+    let prepared = match &snapshot.data {
+        CopyViewportData::ChatFrame { prepared } => prepared.clone(),
+        CopyViewportData::Dense { .. } => {
+            return "{\"error\":\"dense snapshot (no image regions)\"}".to_string();
+        }
+    };
+    let area = snapshot.content_area;
+    let regions: Vec<serde_json::Value> = prepared
+        .image_regions
+        .iter()
+        .map(|region| {
+            let label_line = region.abs_line_idx.saturating_sub(1);
+            let label_text = snapshot.wrapped_plain_line(label_line).unwrap_or("");
+            let badge_col = expand_badge_start_col(label_text);
+            let label_visible =
+                label_line >= snapshot.scroll && label_line < snapshot.visible_end;
+            let badge_screen = badge_col.filter(|_| label_visible).map(|col| {
+                let rel_row = label_line - snapshot.scroll;
+                let left_margin = snapshot.left_margins.get(rel_row).copied().unwrap_or(0);
+                serde_json::json!({
+                    "col": area.x as usize + left_margin as usize + col,
+                    "row": area.y as usize + rel_row,
+                })
+            });
+            serde_json::json!({
+                "hash": region.hash,
+                "render": format!("{:?}", region.render),
+                "abs_line_idx": region.abs_line_idx,
+                "end_line": region.end_line,
+                "rows": region.height,
+                "cols": region.width,
+                "label_line": label_line,
+                "label_text": label_text,
+                "label_visible": label_visible,
+                "badge_screen": badge_screen,
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::json!({
+        "scroll": snapshot.scroll,
+        "visible_end": snapshot.visible_end,
+        "content_area": {
+            "x": area.x, "y": area.y, "width": area.width, "height": area.height,
+        },
+        "image_regions": regions,
+    }))
+    .unwrap_or_else(|_| "{}".to_string())
+}
+
 pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::tui::markdown::with_deferred_mermaid_render_context(|| draw_inner(frame, app))

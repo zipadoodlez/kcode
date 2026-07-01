@@ -209,6 +209,82 @@ impl App {
                 "version": jcode_build_meta::VERSION,
             })
             .to_string()
+        } else if cmd.starts_with("mouse:") {
+            // Inject a raw mouse event: mouse:<kind>:<col>,<row>
+            // kind: down|up|drag|click (click = down then up at same cell)
+            let raw = cmd.strip_prefix("mouse:").unwrap_or("");
+            let (kind, coords) = match raw.split_once(':') {
+                Some(pair) => pair,
+                None => return "mouse error: expected mouse:<kind>:<col>,<row>".to_string(),
+            };
+            let (col, row) = match coords
+                .split_once(',')
+                .and_then(|(c, r)| Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?)))
+            {
+                Some(pair) => pair,
+                None => return "mouse error: bad coords (expected <col>,<row>)".to_string(),
+            };
+            use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+            let mut inject = |kind: MouseEventKind| {
+                self.handle_mouse_event(MouseEvent {
+                    kind,
+                    column: col,
+                    row,
+                    modifiers: crossterm::event::KeyModifiers::empty(),
+                })
+            };
+            match kind {
+                "down" => {
+                    inject(MouseEventKind::Down(MouseButton::Left));
+                }
+                "up" => {
+                    inject(MouseEventKind::Up(MouseButton::Left));
+                }
+                "drag" => {
+                    inject(MouseEventKind::Drag(MouseButton::Left));
+                }
+                "click" => {
+                    inject(MouseEventKind::Down(MouseButton::Left));
+                    inject(MouseEventKind::Up(MouseButton::Left));
+                }
+                // A real kitty click with sub-cell hand jitter: kitty reports
+                // motion at pixel granularity, so Down, Drag (same cell), Up.
+                "jitter-click" => {
+                    inject(MouseEventKind::Down(MouseButton::Left));
+                    inject(MouseEventKind::Drag(MouseButton::Left));
+                    inject(MouseEventKind::Up(MouseButton::Left));
+                }
+                other => return format!("mouse error: unknown kind '{other}'"),
+            }
+            self.debug_trace
+                .record("mouse", format!("{kind} at {col},{row}"));
+            format!(
+                "OK: mouse {kind} at {col},{row} (status: {:?})",
+                self.status_notice.as_ref().map(|(text, _)| text.as_str())
+            )
+        } else if cmd.starts_with("image-click-target:") {
+            // Probe the inline-image expand badge hit-test at screen coords.
+            let raw = cmd.strip_prefix("image-click-target:").unwrap_or("");
+            let (col, row) = match raw
+                .split_once(',')
+                .and_then(|(c, r)| Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?)))
+            {
+                Some(pair) => pair,
+                None => return "image-click-target error: expected <col>,<row>".to_string(),
+            };
+            let image_id = crate::tui::ui::inline_image_expand_target_from_screen(col, row);
+            let link = crate::tui::ui::link_target_from_screen(col, row);
+            serde_json::json!({
+                "col": col,
+                "row": row,
+                "image_expand_target": image_id,
+                "link_target": link,
+            })
+            .to_string()
+        } else if cmd == "image-regions" {
+            // Dump the current chat snapshot's inline-image regions and label
+            // lines so a driver can compute real badge click coordinates.
+            crate::tui::ui::debug_chat_image_regions_json()
         } else if cmd == "expand-badge-fixture" {
             let old_string = (0..24)
                 .map(|idx| format!("old fixture line {idx}\n"))
@@ -808,6 +884,9 @@ impl App {
                  - widget-stability[:<json>] - quantify info-widget movement while scrolling current transcript\n\
                  - side-panel-latency[:<json>] - benchmark headless side-panel input->frame latency\n\
                  - keys:<keyspec> - inject key events (e.g. keys:ctrl+r)\n\
+                 - mouse:<kind>:<col>,<row> - inject mouse events (down|up|drag|click|jitter-click)\n\
+                 - image-click-target:<col>,<row> - probe inline-image badge / link hit-test\n\
+                 - image-regions - dump chat snapshot image regions + badge screen coords\n\
                  - input - get current input buffer\n\
                  - set_input:<text> - set input buffer\n\
                  - submit - submit current input\n\

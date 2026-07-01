@@ -500,6 +500,17 @@ impl App {
                 if !self.copy_selection_dragging {
                     let pending = self.copy_selection_pending_anchor?;
                     let point = point.filter(|point| point.pane == pending.pane)?;
+                    // Kitty reports mouse motion at pixel granularity, so a
+                    // plain click with sub-cell hand jitter still delivers
+                    // Drag events for the *same* cell between press and
+                    // release. That is not a selection drag: keep the press
+                    // armed as a pending click so the release can fall
+                    // through to the click handlers (inline-image expand
+                    // badge, link open) instead of being swallowed as an
+                    // empty selection.
+                    if point == pending {
+                        return Some(false);
+                    }
                     self.copy_selection_pending_anchor = None;
                     self.copy_selection_dragging = true;
                     self.collapse_selection_to(pending);

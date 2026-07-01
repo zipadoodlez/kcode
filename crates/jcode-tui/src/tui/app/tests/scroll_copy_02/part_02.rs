@@ -743,6 +743,95 @@ fn test_click_on_inline_image_expand_badge_cycles_level() {
     );
 }
 
+/// Kitty reports mouse motion at pixel granularity, so a physically plain
+/// click usually arrives as Down -> Drag(same cell) -> Up. The same-cell Drag
+/// must NOT start a selection drag; the release must still fall through to the
+/// expand-badge click handler. Regression test for "click does nothing on
+/// kitty".
+#[test]
+fn test_kitty_jitter_click_on_expand_badge_still_cycles_level() {
+    use crate::tui::ui::inline_image_ui::{
+        AllFit, ImageExpandLevel, InlineImageItem, build_section,
+    };
+    use jcode_tui_messages::PreparedChatFrame;
+
+    let _render_lock = scroll_render_test_lock();
+    let mut app = create_test_app();
+
+    const IMAGE_ID: u64 = 0xF00D;
+    let chat_width: u16 = 80;
+    let items = vec![InlineImageItem {
+        id: IMAGE_ID,
+        width: 600,
+        height: 400,
+        label: "shot.png".to_string(),
+    }];
+    let section = build_section(&items, chat_width, 40, false, true, &AllFit);
+    let label_line = section
+        .wrapped_plain_lines
+        .iter()
+        .position(|line| line.contains("expand"))
+        .expect("section should contain an expand-badge label line");
+    let label_text = &section.wrapped_plain_lines[label_line];
+    let badge_byte = label_text
+        .find(['○', '●'])
+        .expect("label line should carry the expand dots");
+    let badge_col = unicode_width::UnicodeWidthStr::width(&label_text[..badge_byte]) as u16;
+
+    let prepared =
+        std::sync::Arc::new(PreparedChatFrame::from_single(std::sync::Arc::new(section)));
+    let visible_end = prepared.wrapped_plain_line_count();
+    let content_area = Rect::new(0, 0, chat_width, visible_end as u16 + 1);
+
+    crate::tui::ui::clear_copy_viewport_snapshot();
+    crate::tui::ui::record_copy_viewport_frame_snapshot_for_test(
+        prepared,
+        0,
+        visible_end,
+        content_area,
+        &vec![0u16; visible_end],
+    );
+
+    let (col, row) = (
+        content_area.x + badge_col,
+        content_area.y + label_line as u16,
+    );
+    let inject = |app: &mut App, kind: MouseEventKind| {
+        app.handle_mouse_event(MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::empty(),
+        });
+    };
+
+    // Down, same-cell Drag (kitty pixel jitter), Up: must count as a click.
+    inject(&mut app, MouseEventKind::Down(MouseButton::Left));
+    inject(&mut app, MouseEventKind::Drag(MouseButton::Left));
+    inject(&mut app, MouseEventKind::Up(MouseButton::Left));
+
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Large,
+        "jitter click (down + same-cell drag + up) must still cycle the badge"
+    );
+
+    // A real drag to a DIFFERENT cell must still start a selection, not click.
+    inject(&mut app, MouseEventKind::Down(MouseButton::Left));
+    app.handle_mouse_event(MouseEvent {
+        kind: MouseEventKind::Drag(MouseButton::Left),
+        column: col.saturating_sub(4),
+        row,
+        modifiers: KeyModifiers::empty(),
+    });
+    inject(&mut app, MouseEventKind::Up(MouseButton::Left));
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Large,
+        "a real drag ending on the badge must not fire the click handler"
+    );
+}
+
 /// 1x1 transparent PNG: a real image header so the inline-image pipeline decodes
 /// dimensions and assigns a stable id, exactly like a `read`-tool screenshot.
 const REPRO_TINY_PNG_B64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
