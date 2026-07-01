@@ -52,8 +52,8 @@ fn reload_interrupted_tool_result(tc: &ToolCall, elapsed_secs: f64) -> (String, 
         .get("action")
         .and_then(|value| value.as_str())
         .unwrap_or_default();
-    let is_wait_like =
-        (tc.name == "bg" && action == "wait") || (tc.name == "swarm" && action == "await_members");
+    let is_wait_like = (tc.name == "bg" && action == "wait")
+        || (tc.name == "swarm" && matches!(action, "await_members" | "run_plan"));
 
     if is_wait_like {
         let input = serde_json::to_string(&tc.input).unwrap_or_else(|_| "{}".to_string());

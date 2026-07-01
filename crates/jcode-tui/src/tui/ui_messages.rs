@@ -50,7 +50,11 @@ pub(crate) fn render_assistant_message(
 ) -> Vec<Line<'static>> {
     let centered = markdown::center_code_blocks();
     let wrap_width = centered_wrap_width(width, centered, 96);
-    let mut lines = markdown::render_markdown_with_width(&msg.content, Some(wrap_width));
+    let mut lines = if let Some(segments) = split_plan_segments(&msg.content) {
+        render_assistant_segments(&segments, width, wrap_width)
+    } else {
+        markdown::render_markdown_with_width(&msg.content, Some(wrap_width))
+    };
     if centered {
         markdown::recenter_structured_blocks_for_display(&mut lines, width as usize);
     }
@@ -69,6 +73,187 @@ pub(crate) fn render_assistant_message(
         ));
     }
     lines
+}
+
+/// One piece of an assistant message that contains ```plan fenced blocks:
+/// either ordinary markdown text or the inner markdown of a plan block.
+#[derive(Debug, PartialEq, Eq)]
+enum AssistantSegment {
+    Markdown(String),
+    Plan(String),
+}
+
+/// Split assistant content into markdown/plan segments when it contains at
+/// least one ```plan fenced block. Returns `None` when there is no plan block
+/// so the common path stays on the plain markdown renderer.
+fn split_plan_segments(content: &str) -> Option<Vec<AssistantSegment>> {
+    if !content.contains("```plan") {
+        return None;
+    }
+
+    let mut segments: Vec<AssistantSegment> = Vec::new();
+    let mut current = String::new();
+    let mut plan_body: Option<String> = None;
+    let mut plan_nested_fence = false;
+    let mut in_other_fence = false;
+    let mut saw_plan = false;
+
+    for line in content.split('\n') {
+        let trimmed = line.trim_start();
+        if let Some(body) = plan_body.as_mut() {
+            let is_fence_line = trimmed.starts_with("```");
+            let is_bare_fence = is_fence_line && trimmed.trim_end() == "```";
+            if is_bare_fence && !plan_nested_fence {
+                let body = plan_body.take().unwrap_or_default();
+                segments.push(AssistantSegment::Plan(body));
+            } else {
+                if is_fence_line {
+                    // A nested fenced block inside the plan (e.g. ```bash ...
+                    // ```). Its closing bare fence must not end the plan.
+                    plan_nested_fence = !plan_nested_fence;
+                }
+                if !body.is_empty() {
+                    body.push('\n');
+                }
+                body.push_str(line);
+            }
+            continue;
+        }
+
+        if !in_other_fence
+            && trimmed
+                .strip_prefix("```plan")
+                .is_some_and(|rest| rest.trim().is_empty())
+        {
+            saw_plan = true;
+            plan_nested_fence = false;
+            if !current.trim().is_empty() {
+                segments.push(AssistantSegment::Markdown(std::mem::take(&mut current)));
+            } else {
+                current.clear();
+            }
+            plan_body = Some(String::new());
+            continue;
+        }
+
+        if trimmed.starts_with("```") {
+            in_other_fence = !in_other_fence;
+        }
+        if !current.is_empty() {
+            current.push('\n');
+        }
+        current.push_str(line);
+    }
+
+    // Unterminated plan fence (e.g. mid-stream): render what we have as a card.
+    if let Some(body) = plan_body.take() {
+        segments.push(AssistantSegment::Plan(body));
+    }
+    if !current.trim().is_empty() {
+        segments.push(AssistantSegment::Markdown(current));
+    }
+
+    saw_plan.then_some(segments)
+}
+
+fn render_assistant_segments(
+    segments: &[AssistantSegment],
+    width: u16,
+    wrap_width: usize,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    for segment in segments {
+        match segment {
+            AssistantSegment::Markdown(text) => {
+                if !lines.is_empty() {
+                    lines.push(Line::from(""));
+                }
+                lines.extend(markdown::render_markdown_with_width(text, Some(wrap_width)));
+            }
+            AssistantSegment::Plan(body) => {
+                if !lines.is_empty() {
+                    lines.push(Line::from(""));
+                }
+                lines.extend(render_plan_card(body, width));
+            }
+        }
+    }
+    lines
+}
+
+/// Render the inner markdown of a ```plan block as a bordered plan card.
+fn render_plan_card(body: &str, width: u16) -> Vec<Line<'static>> {
+    let border_style = Style::default().fg(rgb(158, 135, 255));
+    let max_box_width = (width.saturating_sub(4) as usize).min(100).max(28);
+    let inner_width = max_box_width.saturating_sub(4).max(8);
+
+    let title = plan_card_title(body);
+    let body_without_title = plan_card_body_without_title(body, &title);
+
+    let mut content: Vec<Line<'static>> =
+        markdown::render_markdown_with_width(&body_without_title, Some(inner_width));
+    // Trim leading/trailing blank rows inside the card.
+    while content.first().is_some_and(|line| line.width() == 0) {
+        content.remove(0);
+    }
+    while content.last().is_some_and(|line| line.width() == 0) {
+        content.pop();
+    }
+    if content.is_empty() {
+        content.push(Line::from(Span::styled(
+            "(empty plan)",
+            Style::default().fg(dim_color()),
+        )));
+    }
+
+    render_rounded_box(&title, content, max_box_width, border_style)
+}
+
+/// Title for the plan card: the first markdown heading in the body, else "Plan".
+fn plan_card_title(body: &str) -> String {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = trimmed
+            .strip_prefix("# ")
+            .or_else(|| trimmed.strip_prefix("## "))
+            .or_else(|| trimmed.strip_prefix("### "))
+        {
+            let heading = heading.trim();
+            if !heading.is_empty() {
+                return format!("⛭ {}", heading);
+            }
+        }
+        if !trimmed.is_empty() {
+            break;
+        }
+    }
+    "⛭ Plan".to_string()
+}
+
+/// Remove the first heading line when it was promoted to the card title.
+fn plan_card_body_without_title(body: &str, title: &str) -> String {
+    if title == "⛭ Plan" {
+        return body.to_string();
+    }
+    let mut removed = false;
+    body.lines()
+        .filter(|line| {
+            if removed {
+                return true;
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return true;
+            }
+            if trimmed.starts_with('#') {
+                removed = true;
+                return false;
+            }
+            removed = true;
+            true
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Render a collapsed/collapsing reasoning trace ("current" mode). The content is
@@ -1290,23 +1475,36 @@ pub(crate) fn render_background_task_message(
         &parsed.tool_name,
         parsed.display_name.as_deref(),
     );
+    let is_swarm = parsed.tool_name == "swarm";
     let (title, border_color, status_color, preview_color) = if parsed.status.starts_with('✓') {
         (
-            format!("✓ bg {} completed · {}", task_label, parsed.task_id),
+            if is_swarm {
+                format!("🐝 {} completed · {}", task_label, parsed.task_id)
+            } else {
+                format!("✓ bg {} completed · {}", task_label, parsed.task_id)
+            },
             rgb(100, 180, 100),
             rgb(120, 210, 140),
             rgb(214, 240, 220),
         )
     } else if parsed.status.starts_with('✗') {
         (
-            format!("✗ bg {} failed · {}", task_label, parsed.task_id),
+            if is_swarm {
+                format!("🐝 {} failed · {}", task_label, parsed.task_id)
+            } else {
+                format!("✗ bg {} failed · {}", task_label, parsed.task_id)
+            },
             rgb(220, 100, 100),
             rgb(255, 150, 150),
             rgb(255, 225, 225),
         )
     } else {
         (
-            format!("◌ bg {} running · {}", task_label, parsed.task_id),
+            if is_swarm {
+                format!("🐝 {} running · {}", task_label, parsed.task_id)
+            } else {
+                format!("◌ bg {} running · {}", task_label, parsed.task_id)
+            },
             rgb(255, 193, 94),
             rgb(255, 214, 120),
             rgb(255, 241, 214),
@@ -1470,6 +1668,8 @@ fn render_background_task_progress_message(
         progress.task_id == "refresh-model-list" && progress.tool_name == "catalog";
     let title = if is_model_refresh {
         format!("◌ model refresh · {}", task_label)
+    } else if progress.tool_name == "swarm" {
+        format!("🐝 {} · {}", task_label, progress.task_id)
     } else {
         format!("◌ bg {} · {}", task_label, progress.task_id)
     };

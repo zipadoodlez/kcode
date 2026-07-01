@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use super::{Tool, ToolContext, ToolOutput};
+use crate::background::TaskResult;
 use crate::plan::PlanItem;
 use crate::protocol::{
     AgentInfo, AgentStatusSnapshot, AwaitedMemberStatus, CommDeliveryMode, ContextEntry,
@@ -355,9 +356,202 @@ impl RunPlanUtilization {
     }
 }
 
+/// Extract the background task id from its output file path
+/// (`<task_id>.output`), mirroring the bash tool's convention so progress
+/// updates can be routed back to the background task manager.
+fn task_id_from_output_path(path: &std::path::Path) -> Option<&str> {
+    path.file_name()?.to_str()?.strip_suffix(".output")
+}
+
+/// Progress/log sink for a `run_plan` execution.
+///
+/// In background mode this appends human-readable lines to the background
+/// task's output file and pushes determinate progress (terminal/total plan
+/// nodes) into the background task manager, so the UI renders a live swarm
+/// progress card and `bg status` stays meaningful. In inline (blocking) mode
+/// every method is a no-op.
+struct RunPlanReporter {
+    task_id: Option<String>,
+    output_path: Option<std::path::PathBuf>,
+}
+
+impl RunPlanReporter {
+    fn inline() -> Self {
+        Self {
+            task_id: None,
+            output_path: None,
+        }
+    }
+
+    fn background(output_path: &std::path::Path) -> Self {
+        Self {
+            task_id: task_id_from_output_path(output_path).map(str::to_string),
+            output_path: Some(output_path.to_path_buf()),
+        }
+    }
+
+    async fn log(&self, line: &str) {
+        let Some(path) = &self.output_path else {
+            return;
+        };
+        use tokio::io::AsyncWriteExt;
+        if let Ok(mut file) = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .await
+        {
+            let _ = file.write_all(format!("{}\n", line).as_bytes()).await;
+        }
+    }
+
+    async fn progress(&self, terminal: usize, total: usize, message: String) {
+        let Some(task_id) = &self.task_id else {
+            return;
+        };
+        let progress = crate::bus::BackgroundTaskProgress {
+            kind: crate::bus::BackgroundTaskProgressKind::Determinate,
+            percent: None,
+            message: Some(message),
+            current: Some(terminal as u64),
+            total: Some(total as u64),
+            unit: Some("nodes".to_string()),
+            eta_seconds: None,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            source: crate::bus::BackgroundTaskProgressSource::Reported,
+        }
+        .normalize();
+        let _ = crate::background::global()
+            .update_progress(task_id, progress)
+            .await;
+    }
+
+    /// Rewrite the output file so `summary` leads and the progressive log
+    /// trails it. Background completion previews take the first ~500 chars of
+    /// the output file, so the terminal summary must come first for the
+    /// agent's wake notification to be useful.
+    async fn finalize(&self, summary: &str) {
+        let Some(path) = &self.output_path else {
+            return;
+        };
+        let log = tokio::fs::read_to_string(path).await.unwrap_or_default();
+        let content = if log.trim().is_empty() {
+            format!("{}\n", summary)
+        } else {
+            format!("{}\n\n--- run log ---\n{}", summary, log)
+        };
+        let _ = tokio::fs::write(path, content).await;
+    }
+}
+
+/// Drive `run_plan` as a managed background task and return immediately.
+///
+/// The coordinating agent stays responsive: the plan loop runs inside the
+/// shared `BackgroundTaskManager` (task id, progress card, `bg` tool
+/// integration), and completion is delivered through the standard notify/wake
+/// path like any other background task.
+async fn run_swarm_plan_in_background(
+    ctx: &ToolContext,
+    params: CommunicateInput,
+) -> Result<ToolOutput> {
+    // Validate the plan inline so an empty/broken plan errors immediately
+    // instead of as a delayed background failure.
+    let initial_summary = fetch_plan_status(&ctx.session_id).await?;
+    if initial_summary.item_count == 0 {
+        return Ok(ToolOutput::new("No swarm plan items to run."));
+    }
+
+    // Refuse to start a second driver for the same session: two concurrent
+    // run_plan loops would race on assignments and double-spawn workers. Only
+    // tasks live in this process count; a stale "running" status file left by
+    // a server reload must not block restarting the driver.
+    let manager = crate::background::global();
+    if let Some(existing) = manager.list().await.into_iter().find(|task| {
+        task.tool_name == "swarm"
+            && task.session_id == ctx.session_id
+            && matches!(task.status, crate::bus::BackgroundTaskStatus::Running)
+            && manager.is_live_task(&task.task_id)
+    }) {
+        return Ok(ToolOutput::new(format!(
+            "A swarm run_plan driver is already running for this session (task {}). \
+             Check it with `bg action=\"status\" task_id=\"{}\"` or `swarm plan_status` instead of starting another.",
+            existing.task_id, existing.task_id
+        )));
+    }
+
+    let notify = params.notify.unwrap_or(true);
+    let wake = params.wake.unwrap_or(true);
+    // Keep the display name free of the "·" separator used by the background
+    // notification markdown header, or downstream parsing mis-splits the label.
+    let display_name = format!(
+        "run_plan ({} nodes, {} mode)",
+        initial_summary.item_count, initial_summary.mode
+    );
+
+    let bg_ctx = ctx.clone();
+    let info = crate::background::global()
+        .spawn_with_notify(
+            "swarm",
+            Some(display_name.clone()),
+            &ctx.session_id,
+            notify,
+            wake,
+            move |output_path| async move {
+                let reporter = RunPlanReporter::background(&output_path);
+                match run_swarm_plan_to_terminal(&bg_ctx, &params, &reporter).await {
+                    Ok(output) => {
+                        reporter.finalize(&output.output).await;
+                        Ok(TaskResult::completed(Some(0)))
+                    }
+                    Err(error) => {
+                        let message = format!("run_plan failed: {}", error);
+                        reporter.finalize(&message).await;
+                        Ok(TaskResult::failed(None, message))
+                    }
+                }
+            },
+        )
+        .await;
+
+    let delivery_note = if wake {
+        "You'll be woken with the result when the plan reaches a terminal state."
+    } else if notify {
+        "A notification will appear when the plan reaches a terminal state."
+    } else {
+        "Notifications disabled. Use the `bg` tool to check status."
+    };
+    let output = format!(
+        "🐝 Swarm plan running in background.\n\n\
+         Task ID: {}\n\
+         Plan: {} node(s), {} mode\n\
+         Output file: {}\n\n\
+         {}\n\
+         Check progress: use the `bg` tool with action=\"status\" and task_id=\"{}\", or `swarm plan_status`.\n\
+         Note: a server reload stops this driver (workers keep running); rerun `swarm run_plan` to resume driving the same plan.",
+        info.task_id,
+        initial_summary.item_count,
+        initial_summary.mode,
+        info.output_file.display(),
+        delivery_note,
+        info.task_id,
+    );
+
+    Ok(ToolOutput::new(output)
+        .with_title(format!("Swarm run_plan in background: {}", info.task_id))
+        .with_metadata(json!({
+            "background": true,
+            "swarm": true,
+            "task_id": info.task_id,
+            "display_name": display_name,
+            "output_file": info.output_file.to_string_lossy(),
+            "status_file": info.status_file.to_string_lossy(),
+        })))
+}
+
 async fn run_swarm_plan_to_terminal(
     ctx: &ToolContext,
     params: &CommunicateInput,
+    reporter: &RunPlanReporter,
 ) -> Result<ToolOutput> {
     let initial_summary = fetch_plan_status(&ctx.session_id).await?;
     let is_deep = initial_summary.mode.eq_ignore_ascii_case("deep");
@@ -404,6 +598,19 @@ async fn run_swarm_plan_to_terminal(
 
         let terminal_count =
             summary.completed_ids.len() + summary.blocked_ids.len() + summary.cycle_ids.len();
+        reporter
+            .progress(
+                terminal_count,
+                summary.item_count,
+                format!(
+                    "completed {} · blocked {} · active {} · assignments {}",
+                    summary.completed_ids.len(),
+                    summary.blocked_ids.len(),
+                    summary.active_ids.len(),
+                    assignment_count
+                ),
+            )
+            .await;
         let no_more_runnable = summary.active_ids.is_empty()
             && summary.next_ready_ids.is_empty()
             && in_flight_sessions.is_empty();
@@ -421,6 +628,14 @@ async fn run_swarm_plan_to_terminal(
                 "\n{}",
                 utilization.report(concurrency_limit, is_deep)
             ));
+            if !summary.low_confidence_ids.is_empty() {
+                output.push_str(&format!(
+                    "\nConfidence coverage: {} completed node(s) self-reported LOW confidence: {}. \
+                     Consider seeding follow-up nodes to shore these up before trusting the result.",
+                    summary.low_confidence_ids.len(),
+                    summary.low_confidence_ids.join(", ")
+                ));
+            }
             if retain_agents {
                 output.push_str("\nRetained spawned workers because retain_agents=true.");
             } else {
@@ -444,8 +659,15 @@ async fn run_swarm_plan_to_terminal(
                 message: params.message.clone(),
             };
             match send_request(request).await {
-                Ok(ServerEvent::CommAssignTaskResponse { target_session, .. }) => {
+                Ok(ServerEvent::CommAssignTaskResponse {
+                    task_id,
+                    target_session,
+                    ..
+                }) => {
                     assignment_count += 1;
+                    reporter
+                        .log(&format!("assigned {} -> {}", task_id, target_session))
+                        .await;
                     assigned_sessions.push(target_session);
                 }
                 Ok(ServerEvent::Error { message, .. })
@@ -729,7 +951,7 @@ impl CommunicateTool {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct CommunicateInput {
     action: String,
     #[serde(default)]
@@ -953,11 +1175,11 @@ impl Tool for CommunicateTool {
                 },
                 "background": {
                     "type": "boolean",
-                    "description": "For await_members: run the wait as a detached background watcher (default true) so you stay responsive and can keep working. The result is delivered later via notify/wake. Set false to block this turn until the wait resolves."
+                    "description": "For await_members and run_plan: run as a detached background task (default true) so you stay responsive and can keep working. The result is delivered later via notify/wake. Set false to block this turn until it resolves."
                 },
                 "notify": {
                     "type": "boolean",
-                    "description": "For await_members: surface a notification card when a background wait resolves. Defaults to true."
+                    "description": "For await_members/run_plan: surface a notification card when the background task resolves. Defaults to true."
                 },
                 "concurrency_limit": {
                     "type": "integer",
@@ -974,7 +1196,7 @@ impl Tool for CommunicateTool {
                 },
                 "wake": {
                     "type": "boolean",
-                    "description": "Optional wake hint for messages. For await_members: wake this agent with the result when a background wait resolves (default true); if false, only notify."
+                    "description": "Optional wake hint for messages. For await_members/run_plan: wake this agent with the result when the background task resolves (default true); if false, only notify."
                 },
                 "delivery": {
                     "type": "string",
@@ -1023,7 +1245,7 @@ impl Tool for CommunicateTool {
                 "artifact".to_string(),
                 json!({
                     "type": "object",
-                    "description": "Typed handoff artifact for complete_node. In deep mode requires non-empty 'findings' and a 'what_i_did_not_check' list. Fields: findings, evidence[], edge_cases_considered[], validation, open_questions[], confidence, what_i_did_not_check[].",
+                    "description": "Typed handoff artifact for complete_node. In deep mode requires non-empty 'findings', a 'what_i_did_not_check' list, and a 'confidence' of low|medium|high (report low honestly; it routes follow-up work). Deep gates cannot pass while a low-confidence sibling is unaddressed: inject_gap or name the id in findings. Fields: findings, evidence[], edge_cases_considered[], validation, open_questions[], confidence, what_i_did_not_check[].",
                     "additionalProperties": true
                 }),
             );
@@ -1877,7 +2099,17 @@ impl Tool for CommunicateTool {
                 }
             }
 
-            "run_plan" => run_swarm_plan_to_terminal(&ctx, &params).await,
+            "run_plan" => {
+                // Background-by-default: the plan driver runs as a managed
+                // background task (progress card, bg tool, notify/wake) so the
+                // coordinating agent stays responsive. Pass background=false
+                // to block inline until the plan reaches a terminal state.
+                if params.background.unwrap_or(true) {
+                    run_swarm_plan_in_background(&ctx, params.clone()).await
+                } else {
+                    run_swarm_plan_to_terminal(&ctx, &params, &RunPlanReporter::inline()).await
+                }
+            }
 
             "start" | "start_task" | "wake" | "resume" | "retry" | "reassign" | "replace"
             | "salvage" => {

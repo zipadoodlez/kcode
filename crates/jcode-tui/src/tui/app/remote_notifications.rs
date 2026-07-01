@@ -230,6 +230,15 @@ pub(super) fn present_swarm_notification(
                     "Background task update".to_string()
                 },
             },
+            Some("swarm_await") => SwarmNotificationPresentation {
+                title: "🐝 Swarm await".to_string(),
+                message: strip_message_prefix(trimmed, "🐝 **Swarm await finished**")
+                    .map(str::trim)
+                    .filter(|body| !body.is_empty())
+                    .unwrap_or(trimmed)
+                    .to_string(),
+                status_notice: "Swarm await finished".to_string(),
+            },
             Some(other) => SwarmNotificationPresentation {
                 title: format!("{} · {}", capitalize(other), sender),
                 message: trimmed.to_string(),
@@ -307,6 +316,26 @@ mod tests {
             "Implement compaction asymptotic fixes - You own the compaction task."
         );
         assert_eq!(presentation.status_notice, "Task assigned by sheep");
+    }
+
+    #[test]
+    fn present_swarm_notification_formats_swarm_await_scope_with_bee_title() {
+        let presentation = present_swarm_notification(
+            "swarm await",
+            &NotificationType::Message {
+                scope: Some("swarm_await".to_string()),
+                channel: None,
+            },
+            "🐝 **Swarm await finished**\n\nAll members done. All 2 members are done: fox, wolf",
+            false,
+        );
+
+        assert_eq!(presentation.title, "🐝 Swarm await");
+        assert_eq!(
+            presentation.message,
+            "All members done. All 2 members are done: fox, wolf"
+        );
+        assert_eq!(presentation.status_notice, "Swarm await finished");
     }
 
     #[test]

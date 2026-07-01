@@ -30,6 +30,52 @@ fn tool_is_named_swarm() {
 }
 
 #[test]
+fn task_id_from_output_path_extracts_background_task_id() {
+    assert_eq!(
+        super::task_id_from_output_path(Path::new("/tmp/tasks/123abc.output")),
+        Some("123abc")
+    );
+    assert_eq!(
+        super::task_id_from_output_path(Path::new("/tmp/tasks/123abc.status.json")),
+        None
+    );
+}
+
+#[tokio::test]
+async fn run_plan_reporter_finalize_puts_summary_before_log() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let output_path = dir.path().join("tsk42.output");
+    let reporter = super::RunPlanReporter::background(&output_path);
+    assert_eq!(reporter.task_id.as_deref(), Some("tsk42"));
+
+    reporter.log("assigned a -> session_fox").await;
+    reporter.log("assigned b -> session_wolf").await;
+    reporter.finalize("Swarm plan reached terminal state.").await;
+
+    let content = tokio::fs::read_to_string(&output_path)
+        .await
+        .expect("output file");
+    let summary_idx = content
+        .find("Swarm plan reached terminal state.")
+        .expect("summary present");
+    let log_idx = content.find("assigned a -> session_fox").expect("log kept");
+    assert!(
+        summary_idx < log_idx,
+        "summary must lead the output file so completion previews are useful:\n{content}"
+    );
+}
+
+#[tokio::test]
+async fn run_plan_reporter_inline_is_a_no_op() {
+    let reporter = super::RunPlanReporter::inline();
+    assert!(reporter.task_id.is_none());
+    // Must not panic or create files.
+    reporter.log("ignored").await;
+    reporter.progress(1, 2, "ignored".to_string()).await;
+    reporter.finalize("ignored").await;
+}
+
+#[test]
 fn run_plan_concurrency_is_mode_aware() {
     // Light mode (no explicit limit) keeps the small cheap fan-out default.
     assert_eq!(
@@ -121,6 +167,7 @@ fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
         mode: "deep".to_string(),
     };
 
@@ -213,6 +260,7 @@ fn format_plan_status_includes_next_ready() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["task-2".to_string()],
         newly_ready_ids: vec!["task-3".to_string()],
+        low_confidence_ids: Vec::new(),
         mode: "deep".to_string(),
     });
     let text = output.output;
@@ -236,6 +284,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["queued-assigned".to_string()],
         newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
         mode: "light".to_string(),
     };
     let members = vec![
@@ -306,6 +355,7 @@ fn in_flight_count_excludes_foreign_queued_session() {
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
         newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
         mode: "light".to_string(),
     };
     let members = vec![
@@ -461,6 +511,15 @@ fn schema_advertises_supported_swarm_fields() {
     assert!(props.contains_key("initial_message"));
     assert!(props.contains_key("force"));
     assert!(props.contains_key("retain_agents"));
+    assert!(props.contains_key("background"));
+    assert!(
+        props["background"]["description"]
+            .as_str()
+            .expect("background description")
+            .contains("run_plan"),
+        "background flag should document run_plan support"
+    );
+    assert!(props.contains_key("notify"));
     assert!(props.contains_key("status"));
     assert!(props.contains_key("validation"));
     assert!(props.contains_key("follow_up"));

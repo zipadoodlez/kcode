@@ -213,6 +213,49 @@ fn render_background_task_message_uses_box_and_truncates_preview_lines() {
 }
 
 #[test]
+fn render_background_task_message_uses_swarm_flavor_for_swarm_tool() {
+    let msg = DisplayMessage::background_task(
+        "**Background task** `bg777` · `run_plan (6 nodes, deep mode)` (`swarm`) · ✓ completed · 92.4s · exit 0\n\n```text\nSwarm plan reached terminal/blocked state after 9 loop(s). completed=6 blocked=0 cycles=0 active=0 assignments=8\n```\n\n_Full output:_ `bg action=\"output\" task_id=\"bg777\"`",
+    );
+
+    let lines = render_background_task_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        plain.contains("🐝 run_plan (6 nodes, deep mode) completed · bg777"),
+        "expected swarm-flavored completion title, got:\n{plain}"
+    );
+    assert!(!plain.contains("✓ bg "));
+    assert!(plain.contains("exit 0 · 92.4s"));
+    assert!(plain.contains("Swarm plan reached terminal/blocked state"));
+}
+
+#[test]
+fn render_background_task_progress_message_uses_swarm_flavor_for_swarm_tool() {
+    let msg = DisplayMessage::background_task(
+        "**Background task progress** `bg777` · `run_plan (6 nodes, deep mode)` (`swarm`)\n\n[####--------] 33% · 2/6 nodes · completed 2 · blocked 0 · active 3 · assignments 5 (reported)",
+    );
+
+    let lines = render_background_task_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        plain.contains("🐝 run_plan (6 nodes, deep mode) · bg777"),
+        "expected swarm-flavored progress title, got:\n{plain}"
+    );
+    assert!(!plain.contains("◌ bg "));
+    assert!(plain.contains("33%"));
+}
+
+#[test]
 fn render_background_task_progress_message_uses_box_with_progress_bar() {
     let msg = DisplayMessage::background_task(
         "**Background task progress** `bg123` · `bash`\n\n[#####-------] 42% · Running tests (reported)",
@@ -385,6 +428,90 @@ fn render_tool_message_uses_scheduled_card() {
     assert!(plain.contains("session session_test"));
     assert!(plain.contains("sched_abc123"));
     assert!(!plain.contains("✓ schedule"));
+}
+
+#[test]
+fn render_assistant_message_renders_plan_block_as_card() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+    let msg = DisplayMessage::assistant(
+        "Here is the plan:\n\n```plan\n# Ship compact mode\n\n## Goal\nAdd a compact message mode.\n\n## Approach\n1. Add config flag\n2. Wire renderer\n```\n\nLet me know if this works.",
+    );
+
+    let lines = render_assistant_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    crate::tui::markdown::set_center_code_blocks(saved);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("Here is the plan:"), "plain: {plain}");
+    assert!(plain.contains("⛭ Ship compact mode"), "plain: {plain}");
+    assert!(plain.contains('╭'), "expected card border: {plain}");
+    assert!(plain.contains('╰'), "expected card border: {plain}");
+    assert!(plain.contains("Add a compact message mode."));
+    assert!(plain.contains("Let me know if this works."));
+    assert!(
+        !plain.contains("```"),
+        "plan fence markers should not render: {plain}"
+    );
+}
+
+#[test]
+fn render_assistant_message_plan_card_survives_unterminated_fence() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+    let msg = DisplayMessage::assistant("```plan\n# Streaming plan\n\n- step one");
+
+    let lines = render_assistant_message(&msg, 80, crate::config::DiffDisplayMode::Off);
+    crate::tui::markdown::set_center_code_blocks(saved);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("⛭ Streaming plan"), "plain: {plain}");
+    assert!(plain.contains("step one"), "plain: {plain}");
+}
+
+#[test]
+fn render_assistant_message_plan_card_keeps_nested_fences_inside() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+    let msg = DisplayMessage::assistant(
+        "```plan\n# Validation plan\n\n```bash\ncargo test -p jcode-tui\n```\n\nAfter the block.\n```\n\nOutside text.",
+    );
+
+    let lines = render_assistant_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    crate::tui::markdown::set_center_code_blocks(saved);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("⛭ Validation plan"), "plain: {plain}");
+    assert!(plain.contains("cargo test -p jcode-tui"), "plain: {plain}");
+    assert!(plain.contains("After the block."), "plain: {plain}");
+    assert!(plain.contains("Outside text."), "plain: {plain}");
+    // The nested bash content stays inside the card borders.
+    let bash_line = lines
+        .iter()
+        .map(extract_line_text)
+        .find(|line| line.contains("cargo test -p jcode-tui"))
+        .expect("missing bash line");
+    assert!(
+        bash_line.trim_start().starts_with('│'),
+        "nested fence content should be inside the card: {bash_line}"
+    );
+}
+
+#[test]
+fn split_plan_segments_returns_none_without_plan_block() {
+    assert!(split_plan_segments("Just some text\n\n```rust\nfn main() {}\n```").is_none());
+    assert!(split_plan_segments("mentions plan but no fence").is_none());
 }
 
 #[test]
