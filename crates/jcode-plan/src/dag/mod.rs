@@ -94,6 +94,79 @@ pub enum NodeStatus {
     Failed,
 }
 
+/// Machine-readable confidence rung parsed from an artifact's free-text
+/// `confidence` field.
+///
+/// Confidence is the breadth signal of the task graph: a node completed at
+/// [`ConfidenceLevel::Low`] is an admission that its scope was not adequately
+/// covered, so the machinery treats it like `what_i_did_not_check` — gates are
+/// pointed at low-confidence siblings and (in deep mode) cannot pass while such
+/// a sibling is unaddressed. The artifact field stays a free string on the wire
+/// for compatibility; this enum is the single lenient interpretation of it so
+/// the engine, prompts, and status surfaces never disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConfidenceLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl ConfidenceLevel {
+    /// Lenient parse. Accepts the common shapes agents actually emit: rung
+    /// words with qualifiers ("very low", "medium-high", "High."), and bare
+    /// percentages or 0-1/0-10/0-100 scores. Returns `None` when nothing
+    /// recognizable is present.
+    pub fn parse(raw: &str) -> Option<Self> {
+        let normalized = raw.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return None;
+        }
+        // Word rungs first; check "low" before "high" so "low-to-high" style
+        // hedges resolve pessimistically.
+        if normalized.contains("low") {
+            return Some(Self::Low);
+        }
+        if normalized.contains("med") || normalized.contains("moderate") {
+            return Some(Self::Medium);
+        }
+        if normalized.contains("high")
+            || normalized.contains("certain")
+            || normalized.contains("confident")
+        {
+            return Some(Self::High);
+        }
+        // Numeric: take the first number in the string, infer its scale.
+        let number: String = normalized
+            .chars()
+            .skip_while(|c| !c.is_ascii_digit() && *c != '.')
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let value: f64 = number.parse().ok()?;
+        let percent = if normalized.contains('%') || value > 10.0 {
+            value
+        } else if value <= 1.0 {
+            value * 100.0
+        } else {
+            value * 10.0
+        };
+        Some(if percent < 50.0 {
+            Self::Low
+        } else if percent < 80.0 {
+            Self::Medium
+        } else {
+            Self::High
+        })
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+}
+
 /// The typed handoff artifact attached to a node on completion. This is the
 /// dataflow payload that travels forward along edges to dependents.
 ///
@@ -130,6 +203,12 @@ impl HandoffArtifact {
             findings: findings.into(),
             ..Self::default()
         }
+    }
+
+    /// The machine-readable confidence rung of this artifact, if the free-text
+    /// `confidence` field parses to one. See [`ConfidenceLevel`].
+    pub fn confidence_level(&self) -> Option<ConfidenceLevel> {
+        self.confidence.as_deref().and_then(ConfidenceLevel::parse)
     }
 
     /// Render this artifact as a forward-dataflow section for a downstream worker
@@ -284,6 +363,10 @@ pub enum DagError {
     InvalidState { node: NodeId, status: NodeStatus },
     /// The completion artifact failed deep-mode validation.
     ThinArtifact { node: NodeId, reason: String },
+    /// A deep gate tried to pass while low-confidence sibling work was
+    /// unaddressed. The gate must either `inject_from_gate` to convert the doubt
+    /// into new nodes, or explicitly address each listed node id in its artifact.
+    UnaddressedLowConfidence { gate: NodeId, nodes: Vec<NodeId> },
     /// A gate kind was supplied as user work, or vice versa.
     GateMisuse(String),
 }
@@ -314,6 +397,16 @@ impl std::fmt::Display for DagError {
             }
             DagError::ThinArtifact { node, reason } => {
                 write!(f, "node '{node}' artifact rejected: {reason}")
+            }
+            DagError::UnaddressedLowConfidence { gate, nodes } => {
+                write!(
+                    f,
+                    "gate '{gate}' cannot pass: sibling node(s) [{}] completed with LOW \
+                     confidence and the gate artifact does not address them. Either \
+                     inject_gap with follow-up nodes that shore up that work, or name each \
+                     id in your findings with why its low confidence is acceptable",
+                    nodes.join(", ")
+                )
             }
             DagError::GateMisuse(msg) => write!(f, "gate misuse: {msg}"),
         }
@@ -386,6 +479,25 @@ impl TaskGraph {
         self.nodes
             .iter()
             .find(|node| node.parent.as_deref() == Some(id) && node.is_gate)
+    }
+
+    /// Ids of `Done` nodes whose artifact self-reported low confidence. This is
+    /// the graph's "shaky coverage" set: work that finished but whose author did
+    /// not trust it. Gates treat these as priority probe targets and (in deep
+    /// mode) cannot pass over an unaddressed one; status surfaces report them so
+    /// a coordinator can widen the graph.
+    pub fn low_confidence_done_ids(&self) -> Vec<NodeId> {
+        self.nodes
+            .iter()
+            .filter(|node| node.is_done() && !node.is_gate)
+            .filter(|node| {
+                node.output
+                    .as_ref()
+                    .and_then(HandoffArtifact::confidence_level)
+                    == Some(ConfidenceLevel::Low)
+            })
+            .map(|node| node.id.clone())
+            .collect()
     }
 
     /// Whether every node has reached a terminal status.

@@ -208,7 +208,12 @@ pub fn expand_node(
 
 /// Complete a node the actor owns with a typed handoff artifact. In deep mode the
 /// artifact is validated for thinness (findings + an honest "what I did not check"
-/// on substantive work). The artifact becomes the dataflow payload for dependents.
+/// on substantive work) and must carry a parseable confidence rung. A gate
+/// additionally may not pass while a sibling under the same composite completed
+/// with low confidence, unless the gate's artifact explicitly addresses that node
+/// by id — the intended escape hatch is `inject_from_gate`, which converts the
+/// doubt into new breadth. The artifact becomes the dataflow payload for
+/// dependents.
 pub fn complete_node(
     graph: &mut TaskGraph,
     node_id: &str,
@@ -233,6 +238,9 @@ pub fn complete_node(
     }
     let is_gate = node.is_gate;
     validate_artifact(mode, node_id, is_gate, &artifact)?;
+    if is_gate && mode.requires_gates() {
+        validate_gate_confidence_debts(graph, node_id, &artifact)?;
+    }
 
     let node = graph.get_mut(node_id).unwrap();
     node.status = NodeStatus::Done;
@@ -406,8 +414,13 @@ fn validate_artifact(
     is_gate: bool,
     artifact: &HandoffArtifact,
 ) -> Result<(), DagError> {
-    if !mode.requires_gates() || is_gate {
-        // Light mode and gate nodes accept any artifact.
+    if !mode.requires_gates() {
+        // Light mode accepts any artifact.
+        return Ok(());
+    }
+    if is_gate {
+        // Gate artifacts are pass/fail records; thinness rules don't apply, and
+        // their confidence is about the *gate's* judgement, not the work.
         return Ok(());
     }
     if artifact.findings.trim().is_empty() {
@@ -424,5 +437,68 @@ fn validate_artifact(
                 .into(),
         });
     }
+    // Confidence is the breadth signal: gates prioritize probing low-confidence
+    // siblings and cannot pass over unaddressed ones, and status surfaces report
+    // them. That machinery only works if every substantive artifact carries a
+    // parseable rung, so an absent/unparseable confidence is rejected the same
+    // way thin findings are.
+    if artifact.confidence_level().is_none() {
+        return Err(DagError::ThinArtifact {
+            node: node_id.to_string(),
+            reason: "deep-mode artifact must state a confidence of low, medium, or high \
+                     (honest 'low' is welcome: it routes follow-up work instead of \
+                     penalizing you)"
+                .into(),
+        });
+    }
     Ok(())
+}
+
+/// The gate confidence-debt rule (deep mode).
+///
+/// A gate exists to convert doubt into breadth. When a sibling under the same
+/// composite finished with LOW confidence, that doubt is on the record, and the
+/// gate may not simply pass over it: it must either have injected follow-up
+/// nodes (`inject_from_gate`, after which the gate re-runs behind them) or
+/// explicitly mention the shaky node's id in its own artifact text, accepting
+/// the low confidence with a stated reason. This keeps confidence honest —
+/// admitting low confidence buys the work a second look instead of nothing.
+fn validate_gate_confidence_debts(
+    graph: &TaskGraph,
+    gate_id: &str,
+    artifact: &HandoffArtifact,
+) -> Result<(), DagError> {
+    let Some(parent) = graph.get(gate_id).and_then(|gate| gate.parent.clone()) else {
+        return Ok(());
+    };
+    let addressed = |id: &str| {
+        artifact.findings.contains(id)
+            || artifact.open_questions.iter().any(|q| q.contains(id))
+            || artifact
+                .what_i_did_not_check
+                .iter()
+                .any(|entry| entry.contains(id))
+    };
+    let debts: Vec<String> = graph
+        .children_of(&parent)
+        .into_iter()
+        .filter(|child| child.is_done())
+        .filter(|child| {
+            child
+                .output
+                .as_ref()
+                .and_then(HandoffArtifact::confidence_level)
+                == Some(super::ConfidenceLevel::Low)
+        })
+        .filter(|child| !addressed(&child.id))
+        .map(|child| child.id.clone())
+        .collect();
+    if debts.is_empty() {
+        Ok(())
+    } else {
+        Err(DagError::UnaddressedLowConfidence {
+            gate: gate_id.to_string(),
+            nodes: debts,
+        })
+    }
 }

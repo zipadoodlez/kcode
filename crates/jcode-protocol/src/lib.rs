@@ -317,6 +317,11 @@ pub struct PlanGraphStatus {
     pub next_ready_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub newly_ready_ids: Vec<String>,
+    /// Completed (non-gate) items whose artifact self-reported LOW confidence.
+    /// Shaky coverage the coordinator should widen with follow-up nodes; deep
+    /// gates are also blocked from passing over these while unaddressed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub low_confidence_ids: Vec<String>,
     /// Engine mode for this plan: "deep" (comprehensive, gated, wide fan-out) or
     /// "light" (cheap fan-out). Lets schedulers like `run_plan` pick a
     /// mode-appropriate concurrency policy. Defaults to "light" for legacy plans.
@@ -342,6 +347,7 @@ impl PlanGraphStatus {
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: Vec::new(),
             newly_ready_ids: Vec::new(),
+            low_confidence_ids: Vec::new(),
             mode: default_plan_mode(),
         }
     }
@@ -365,6 +371,7 @@ impl PlanGraphStatus {
             unresolved_dependency_ids: graph.unresolved_dependency_ids,
             next_ready_ids: next_runnable_item_ids(&plan.items, next_ready_limit),
             newly_ready_ids,
+            low_confidence_ids: jcode_plan::bridge::low_confidence_completed_ids(plan),
             mode: plan.mode.clone(),
         }
     }

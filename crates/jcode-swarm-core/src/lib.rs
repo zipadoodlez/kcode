@@ -336,8 +336,10 @@ dependencies, so the ready set stays wide). Then finish your turn; the children 
 parallel agents and you will be re-woken to synthesize their results.\n\
 2. Execute atomically: do the work, then call the swarm tool with action=\"complete_node\", \
 node_id=\"{node_id}\", and a typed artifact: findings, evidence (file:line refs), validation, \
-open_questions, and an honest what_i_did_not_check (the critique gate turns those into new \
-nodes, so listing them is how coverage grows).\n\
+open_questions, a REQUIRED confidence (low, medium, or high; report low honestly, it routes \
+follow-up work to shore up your scope instead of counting against you), and an honest \
+what_i_did_not_check (the critique gate turns those into new nodes, so listing them is how \
+coverage grows).\n\
 Do not leave the node to auto-complete without an artifact.\n"
     ));
     out.push_str("</system-reminder>");
@@ -350,10 +352,17 @@ Do not leave the node to auto-complete without an artifact.\n"
 /// gaps. A gate that just rubber-stamps its parent wastes the swarm's capacity,
 /// so the directive names the two legal finishes (`inject_gap` with new nodes,
 /// or `complete_node` when genuinely clean) and reminds the gate to mine the
-/// children's `what_i_did_not_check` lists. Shares the idempotency marker with
-/// [`append_deep_node_instructions`] since a single assignment gets exactly one
-/// deep directive.
-pub fn append_deep_gate_instructions(message: &str, gate_id: &str) -> String {
+/// children's `what_i_did_not_check` lists. `low_confidence_siblings` are
+/// completed siblings whose artifacts self-reported low confidence: the server
+/// enforces that the gate cannot pass while these are unaddressed, so the
+/// directive names them up front as priority probe targets. Shares the
+/// idempotency marker with [`append_deep_node_instructions`] since a single
+/// assignment gets exactly one deep directive.
+pub fn append_deep_gate_instructions(
+    message: &str,
+    gate_id: &str,
+    low_confidence_siblings: &[String],
+) -> String {
     if message.contains(SWARM_DEEP_NODE_MARKER) {
         return message.to_string();
     }
@@ -372,9 +381,17 @@ what_i_did_not_check list, and probe them. Finish in one of exactly two ways:\n\
 gate_id=\"{gate_id}\", and one new node per gap (they run in parallel and you re-run \
 afterwards). The parent cannot close until they drain, so be thorough now.\n\
 2. Genuinely clean: call the swarm tool with action=\"complete_node\", node_id=\"{gate_id}\", \
-and an artifact whose findings state what you checked and why no gaps remain.\n\
-Do not pass the gate without doing one of these.\n"
+and an artifact whose findings state what you checked and why no gaps remain.\n"
     ));
+    if !low_confidence_siblings.is_empty() {
+        out.push_str(&format!(
+            "PRIORITY: sibling node(s) [{}] completed with LOW confidence. The server will \
+REJECT your pass unless you either inject follow-up nodes that shore up that work, or name \
+each of those ids in your artifact findings with why the low confidence is acceptable.\n",
+            low_confidence_siblings.join(", ")
+        ));
+    }
+    out.push_str("Do not pass the gate without doing one of these.\n");
     out.push_str("</system-reminder>");
     out
 }
@@ -550,14 +567,27 @@ mod tests {
 
     #[test]
     fn deep_gate_instructions_carry_inject_gap_contract() {
-        let out = append_deep_gate_instructions("Critique the work", "root::gate");
+        let out = append_deep_gate_instructions("Critique the work", "root::gate", &[]);
         assert!(out.contains(SWARM_DEEP_NODE_MARKER));
         assert!(out.contains("action=\"inject_gap\", gate_id=\"root::gate\""));
         assert!(out.contains("action=\"complete_node\", node_id=\"root::gate\""));
         assert!(out.contains("what_i_did_not_check"));
+        // No low-confidence siblings: no priority callout.
+        assert!(!out.contains("PRIORITY"));
         // Shares the marker with the node directive: one deep directive per assignment.
-        assert_eq!(append_deep_gate_instructions(&out, "root::gate"), out);
+        assert_eq!(append_deep_gate_instructions(&out, "root::gate", &[]), out);
         assert_eq!(append_deep_node_instructions(&out, "root::gate"), out);
+    }
+
+    #[test]
+    fn deep_gate_instructions_name_low_confidence_probe_targets() {
+        let shaky = vec!["root.shaky".to_string(), "root.wobble".to_string()];
+        let out = append_deep_gate_instructions("Critique the work", "root::gate", &shaky);
+        assert!(out.contains("PRIORITY"));
+        assert!(out.contains("root.shaky, root.wobble"));
+        assert!(out.contains("LOW confidence"));
+        // The enforcement is explained: pass is rejected unless addressed.
+        assert!(out.contains("REJECT"));
     }
 
     #[test]

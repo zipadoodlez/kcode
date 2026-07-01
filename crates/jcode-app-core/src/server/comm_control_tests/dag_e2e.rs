@@ -480,6 +480,7 @@ async fn e2e_deep_gate_assignment_carries_inject_gap_contract() {
         "root.1".to_string(),
         serde_json::json!({
             "findings": "explored",
+            "confidence": "low",
             "what_i_did_not_check": ["error paths"],
         })
         .to_string(),
@@ -549,6 +550,12 @@ async fn e2e_deep_gate_assignment_carries_inject_gap_contract() {
     // The gate also sees the child's artifact (forward dataflow) including the
     // unexplored surface it is supposed to mine.
     assert!(prompt.contains("error paths"));
+    // The child completed with LOW confidence, so the gate directive must name
+    // it as a priority probe target (the engine rejects a pass over it).
+    assert!(
+        prompt.contains("PRIORITY") && prompt.contains("root.1"),
+        "gate prompt must call out the low-confidence sibling, got: {prompt}"
+    );
 }
 
 #[tokio::test]

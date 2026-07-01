@@ -208,6 +208,33 @@ pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) ->
     }
 }
 
+/// Ids of completed plan items whose stored artifact self-reported LOW
+/// confidence. Live counterpart of `TaskGraph::low_confidence_done_ids`,
+/// reading artifacts from the plan's `node_meta` side-map so status surfaces
+/// (plan_status, run_plan reports) can flag shaky coverage without lifting the
+/// whole graph. Gate nodes are excluded: their confidence describes the gate's
+/// judgement, not the underlying work.
+pub fn low_confidence_completed_ids(plan: &VersionedPlan) -> Vec<String> {
+    plan.items
+        .iter()
+        .filter(|item| crate::is_completed_status(&item.status))
+        .filter(|item| {
+            let Some(meta) = plan.node_meta.get(&item.id) else {
+                return false;
+            };
+            if meta.is_gate {
+                return false;
+            }
+            meta.artifact_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str::<HandoffArtifact>(json).ok())
+                .and_then(|artifact| artifact.confidence_level())
+                == Some(crate::dag::ConfidenceLevel::Low)
+        })
+        .map(|item| item.id.clone())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,6 +331,7 @@ mod tests {
             HandoffArtifact {
                 findings: "found".into(),
                 what_i_did_not_check: vec!["nothing".into()],
+                confidence: Some("high".into()),
                 ..HandoffArtifact::default()
             },
         )

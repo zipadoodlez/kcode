@@ -166,6 +166,168 @@ fn light_mode_accepts_thin_artifact() {
     assert!(complete_node(&mut g, "a", "w0", HandoffArtifact::brief("ok")).is_ok());
 }
 
+// ----- confidence: parsing, required rung, and the gate debt rule -----
+
+#[test]
+fn confidence_parse_is_lenient_and_pessimistic_on_hedges() {
+    use ConfidenceLevel::*;
+    // Word rungs with qualifiers.
+    assert_eq!(ConfidenceLevel::parse("high"), Some(High));
+    assert_eq!(ConfidenceLevel::parse("  Very High.  "), Some(High));
+    assert_eq!(ConfidenceLevel::parse("medium"), Some(Medium));
+    assert_eq!(ConfidenceLevel::parse("moderate"), Some(Medium));
+    assert_eq!(ConfidenceLevel::parse("low"), Some(Low));
+    // Hedges resolve pessimistically.
+    assert_eq!(ConfidenceLevel::parse("low-to-high"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("medium-high"), Some(Medium));
+    // Numeric scales: percent, 0-1, 0-10.
+    assert_eq!(ConfidenceLevel::parse("90%"), Some(High));
+    assert_eq!(ConfidenceLevel::parse("0.9"), Some(High));
+    assert_eq!(ConfidenceLevel::parse("6/10"), Some(Medium));
+    assert_eq!(ConfidenceLevel::parse("30"), Some(Low));
+    // Garbage stays unparsed.
+    assert_eq!(ConfidenceLevel::parse("banana"), None);
+    assert_eq!(ConfidenceLevel::parse(""), None);
+}
+
+#[test]
+fn deep_mode_requires_parseable_confidence() {
+    let mut g = dag(Mode::Deep, vec![spec("a", NodeKind::Explore)]);
+    dispatch(&mut g, "a", "w0");
+
+    // Findings + wid-n-c but no confidence -> rejected.
+    let mut artifact = HandoffArtifact::brief("found stuff");
+    artifact.what_i_did_not_check = vec!["error paths".into()];
+    let err = complete_node(&mut g, "a", "w0", artifact.clone()).unwrap_err();
+    assert!(matches!(err, DagError::ThinArtifact { .. }));
+    assert!(err.to_string().contains("confidence"));
+
+    // Unparseable confidence -> rejected too.
+    artifact.confidence = Some("banana".into());
+    let err = complete_node(&mut g, "a", "w0", artifact.clone()).unwrap_err();
+    assert!(matches!(err, DagError::ThinArtifact { .. }));
+
+    // Honest low confidence is accepted (it routes work, not punishment).
+    artifact.confidence = Some("low".into());
+    assert!(complete_node(&mut g, "a", "w0", artifact).is_ok());
+}
+
+#[test]
+fn light_mode_does_not_require_confidence() {
+    let mut g = dag(Mode::Light, vec![spec("a", NodeKind::Explore)]);
+    dispatch(&mut g, "a", "w0");
+    assert!(complete_node(&mut g, "a", "w0", HandoffArtifact::brief("ok")).is_ok());
+}
+
+/// The breadth mechanism: a deep gate cannot pass while a sibling completed at
+/// low confidence unless the gate's artifact addresses it by id. inject_gap
+/// remains the intended escape hatch and clears the debt by adding breadth.
+#[test]
+fn deep_gate_cannot_pass_over_unaddressed_low_confidence_sibling() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![
+            spec("root.solid", NodeKind::Explore),
+            spec("root.shaky", NodeKind::Explore),
+        ],
+    )
+    .unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+
+    // solid finishes high, shaky finishes LOW.
+    dispatch(&mut g, "root.solid", "w1");
+    complete_node(&mut g, "root.solid", "w1", sim::deep_artifact("solid work")).unwrap();
+    dispatch(&mut g, "root.shaky", "w2");
+    let mut shaky = sim::deep_artifact("not sure about this");
+    shaky.confidence = Some("low".into());
+    complete_node(&mut g, "root.shaky", "w2", shaky).unwrap();
+
+    // Gate tries to rubber-stamp without mentioning the shaky node -> rejected.
+    dispatch(&mut g, &gate_id, "w3");
+    let err = complete_node(
+        &mut g,
+        &gate_id,
+        "w3",
+        HandoffArtifact::brief("all good, no gaps"),
+    )
+    .unwrap_err();
+    match &err {
+        DagError::UnaddressedLowConfidence { gate, nodes } => {
+            assert_eq!(gate, &gate_id);
+            assert_eq!(nodes, &vec!["root.shaky".to_string()]);
+        }
+        other => panic!("expected UnaddressedLowConfidence, got {other:?}"),
+    }
+    assert!(err.to_string().contains("root.shaky"));
+    assert!(err.to_string().contains("inject_gap"));
+
+    // Path 1: the gate addresses the shaky node by id in its findings -> passes.
+    let mut addressed = g.clone();
+    assert!(
+        complete_node(
+            &mut addressed,
+            &gate_id,
+            "w3",
+            HandoffArtifact::brief(
+                "root.shaky's low confidence is acceptable: its scope was re-derived from \
+                 root.solid's evidence and cross-checked"
+            ),
+        )
+        .is_ok()
+    );
+
+    // Path 2: the gate injects follow-up breadth instead; after the gap drains
+    // and the gate re-runs, the debt is cleared by addressing it.
+    let injected = inject_from_gate(
+        &mut g,
+        &gate_id,
+        "w3",
+        vec![spec("root.shaky.recheck", NodeKind::Explore)],
+    )
+    .unwrap();
+    assert_eq!(injected, vec!["root.shaky.recheck".to_string()]);
+    dispatch(&mut g, "root.shaky.recheck", "w4");
+    complete_node(
+        &mut g,
+        "root.shaky.recheck",
+        "w4",
+        sim::deep_artifact("re-checked the shaky scope thoroughly"),
+    )
+    .unwrap();
+    dispatch(&mut g, &gate_id, "w3");
+    assert!(
+        complete_node(
+            &mut g,
+            &gate_id,
+            "w3",
+            HandoffArtifact::brief(
+                "root.shaky was shored up by root.shaky.recheck; no gaps remain"
+            ),
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn low_confidence_done_ids_reports_only_low_non_gate_nodes() {
+    let mut g = dag(
+        Mode::Deep,
+        vec![spec("a", NodeKind::Explore), spec("b", NodeKind::Explore)],
+    );
+    dispatch(&mut g, "a", "w0");
+    let mut low = sim::deep_artifact("shaky");
+    low.confidence = Some("low".into());
+    complete_node(&mut g, "a", "w0", low).unwrap();
+    dispatch(&mut g, "b", "w1");
+    complete_node(&mut g, "b", "w1", sim::deep_artifact("solid")).unwrap();
+
+    assert_eq!(g.low_confidence_done_ids(), vec!["a".to_string()]);
+}
+
 // ----- composite expansion + gate insertion -----
 
 #[test]

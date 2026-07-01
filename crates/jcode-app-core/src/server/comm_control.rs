@@ -142,7 +142,26 @@ fn deep_mode_assignment_content(
         .map(|meta| meta.is_gate)
         .unwrap_or(false);
     if is_gate {
-        jcode_swarm_core::append_deep_gate_instructions(content, item_id)
+        // Point the gate at completed siblings (under the same composite parent)
+        // whose artifacts self-reported low confidence: the engine's debt rule
+        // will reject the gate's pass while these are unaddressed, so the
+        // directive names them up front instead of letting the gate discover
+        // the rejection by trial and error.
+        let parent = plan
+            .node_meta
+            .get(item_id)
+            .and_then(|meta| meta.parent.clone());
+        let low_confidence_siblings: Vec<String> =
+            jcode_plan::bridge::low_confidence_completed_ids(plan)
+                .into_iter()
+                .filter(|id| {
+                    plan.node_meta
+                        .get(id)
+                        .map(|meta| meta.parent == parent)
+                        .unwrap_or(false)
+                })
+                .collect();
+        jcode_swarm_core::append_deep_gate_instructions(content, item_id, &low_confidence_siblings)
     } else {
         jcode_swarm_core::append_deep_node_instructions(content, item_id)
     }

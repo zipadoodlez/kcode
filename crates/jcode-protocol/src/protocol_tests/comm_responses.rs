@@ -27,6 +27,7 @@ fn test_swarm_plan_event_roundtrip_with_summary() -> Result<()> {
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: vec!["task-1".to_string()],
             newly_ready_ids: Vec::new(),
+            low_confidence_ids: Vec::new(),
             mode: "light".to_string(),
         }),
     };
@@ -76,6 +77,7 @@ fn test_comm_task_control_response_roundtrip() -> Result<()> {
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: vec!["task-2".to_string()],
             newly_ready_ids: vec!["task-2".to_string()],
+            low_confidence_ids: Vec::new(),
             mode: "deep".to_string(),
         },
     };
@@ -182,7 +184,10 @@ fn test_comm_members_roundtrip_includes_status() -> Result<()> {
         members[0].report_back_to_session_id.as_deref(),
         Some("sess-coord")
     );
-    assert_eq!(members[0].latest_completion_report.as_deref(), Some("Done."));
+    assert_eq!(
+        members[0].latest_completion_report.as_deref(),
+        Some("Done.")
+    );
     assert_eq!(members[0].live_attachments, Some(0));
     assert_eq!(members[0].status_age_secs, Some(12));
     Ok(())

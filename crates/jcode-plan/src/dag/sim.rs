@@ -120,6 +120,7 @@ pub fn deep_artifact(findings: &str) -> HandoffArtifact {
     HandoffArtifact {
         findings: findings.to_string(),
         what_i_did_not_check: vec!["nothing material; covered the stated scope".to_string()],
+        confidence: Some("high".to_string()),
         ..HandoffArtifact::default()
     }
 }
