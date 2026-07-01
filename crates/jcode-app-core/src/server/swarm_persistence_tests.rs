@@ -159,6 +159,132 @@ fn remove_swarm_state_deletes_persisted_snapshot() {
 }
 
 #[test]
+fn deep_plan_mode_and_node_meta_round_trip() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let mut node_meta = HashMap::new();
+    node_meta.insert(
+        "root".to_string(),
+        crate::plan::NodeMeta {
+            kind: Some("explore".to_string()),
+            parent: None,
+            expanded: true,
+            is_gate: false,
+            planner: Some("session-1".to_string()),
+            artifact_json: Some(r#"{"findings":"found it","confidence":"high"}"#.to_string()),
+        },
+    );
+    node_meta.insert(
+        "root.gate".to_string(),
+        crate::plan::NodeMeta {
+            kind: Some("critique".to_string()),
+            parent: Some("root".to_string()),
+            expanded: false,
+            is_gate: true,
+            planner: None,
+            artifact_json: None,
+        },
+    );
+
+    let plan = VersionedPlan {
+        items: vec![
+            crate::plan::PlanItem {
+                content: "explore X".to_string(),
+                status: "completed".to_string(),
+                priority: "high".to_string(),
+                id: "root".to_string(),
+                subsystem: None,
+                file_scope: Vec::new(),
+                blocked_by: Vec::new(),
+                assigned_to: Some("session-1".to_string()),
+            },
+            crate::plan::PlanItem {
+                content: "gate".to_string(),
+                status: "queued".to_string(),
+                priority: "medium".to_string(),
+                id: "root.gate".to_string(),
+                subsystem: None,
+                file_scope: Vec::new(),
+                blocked_by: vec!["root".to_string()],
+                assigned_to: None,
+            },
+        ],
+        version: 7,
+        participants: ["session-1".to_string()].into_iter().collect(),
+        task_progress: HashMap::new(),
+        mode: "deep".to_string(),
+        node_meta,
+    };
+
+    persist_swarm_state("swarm-deep", Some(&plan), None, &[]);
+    let loaded = load_runtime_state();
+
+    let loaded_plan = loaded.plans.get("swarm-deep").expect("loaded plan");
+    assert_eq!(loaded_plan.mode, "deep");
+    assert_eq!(loaded_plan.version, 7);
+
+    // Edges survive on the item itself.
+    let gate_item = loaded_plan
+        .items
+        .iter()
+        .find(|item| item.id == "root.gate")
+        .expect("gate item");
+    assert_eq!(gate_item.blocked_by, vec!["root".to_string()]);
+
+    // Node kinds, gate flags, expansion, planner, and artifacts survive in node_meta.
+    let root_meta = loaded_plan.node_meta.get("root").expect("root meta");
+    assert_eq!(root_meta.kind.as_deref(), Some("explore"));
+    assert!(root_meta.expanded);
+    assert!(!root_meta.is_gate);
+    assert_eq!(root_meta.planner.as_deref(), Some("session-1"));
+    assert!(
+        root_meta
+            .artifact_json
+            .as_deref()
+            .is_some_and(|json| json.contains("found it"))
+    );
+    let gate_meta = loaded_plan.node_meta.get("root.gate").expect("gate meta");
+    assert_eq!(gate_meta.kind.as_deref(), Some("critique"));
+    assert!(gate_meta.is_gate);
+    assert_eq!(gate_meta.parent.as_deref(), Some("root"));
+}
+
+#[test]
+fn legacy_snapshot_without_mode_defaults_to_light() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    // Simulate a pre-deep-mode snapshot on disk: no `mode`, no `node_meta`.
+    let legacy = serde_json::json!({
+        "swarm_id": "swarm-legacy",
+        "plan": {
+            "items": [{
+                "content": "old task",
+                "status": "queued",
+                "priority": "medium",
+                "id": "t1"
+            }],
+            "version": 2,
+            "participants": ["session-1"]
+        },
+        "updated_at_unix_ms": 1u64
+    });
+    std::fs::create_dir_all(state_dir()).expect("state dir");
+    std::fs::write(
+        state_path("swarm-legacy"),
+        serde_json::to_vec(&legacy).unwrap(),
+    )
+    .expect("write legacy snapshot");
+
+    let loaded = load_runtime_state();
+    let plan = loaded.plans.get("swarm-legacy").expect("legacy plan");
+    assert_eq!(plan.mode, "light");
+    assert!(plan.node_meta.is_empty());
+    assert_eq!(plan.version, 2);
+}
+
+#[test]
 fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
