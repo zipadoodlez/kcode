@@ -36,6 +36,7 @@ include!("tests/onboarding_eval.rs");
 include!("tests/onboarding_sim.rs");
 include!("tests/reasoning_region.rs");
 include!("tests/smoothness_benchmark.rs");
+include!("tests/hotkey_feedback_e2e.rs");
 
 #[test]
 fn kv_cache_signature_prefix_match_allows_appended_messages() {
