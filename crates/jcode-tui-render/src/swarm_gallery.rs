@@ -56,8 +56,7 @@ pub fn is_active_status(status: &str) -> bool {
 }
 
 /// Frames for the inline status spinner used by active agents on the strip.
-pub const STRIP_SPINNER_FRAMES: [&str; 10] =
-    ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+pub const STRIP_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /// A glyph summarizing a member's lifecycle status. Active members (running,
 /// thinking, streaming) animate via the spinner frame; terminal states get a
@@ -132,14 +131,7 @@ pub struct GalleryMember {
 /// Convert members into gallery tiles, sorted for stable placement
 /// (coordinator first, worktree manager next, then by `sort_key`).
 pub fn members_to_tiles(members: &[GalleryMember]) -> Vec<SwarmTile> {
-    let mut sorted: Vec<&GalleryMember> = members.iter().collect();
-    sorted.sort_by(|a, b| {
-        role_rank(a.role.as_deref())
-            .cmp(&role_rank(b.role.as_deref()))
-            .then_with(|| a.sort_key.cmp(&b.sort_key))
-    });
-
-    sorted
+    sort_members_for_display(members)
         .into_iter()
         .map(|m| {
             let mut tile =
@@ -324,9 +316,7 @@ pub fn render_swarm_strip(
     let hint_text = if focused { None } else { enter_hint };
     let hint_sep = " · ";
     let gap = 2usize; // minimum gap between chips and the right tail
-    let hint_w = hint_text
-        .map(|h| disp_w(h) + disp_w(hint_sep))
-        .unwrap_or(0);
+    let hint_w = hint_text.map(|h| disp_w(h) + disp_w(hint_sep)).unwrap_or(0);
 
     // ---- Chips: "<glyph> <name>[ done/total]" ----
     struct Chip {
@@ -348,10 +338,7 @@ pub fn render_swarm_strip(
         })
         .collect();
     let chip_w = |c: &Chip| -> usize {
-        disp_w(&c.glyph)
-            + 1
-            + disp_w(&c.name)
-            + c.todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0)
+        disp_w(&c.glyph) + 1 + disp_w(&c.name) + c.todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0)
     };
 
     // Fit as many chips as possible into `budget`, collapsing overflow into a
@@ -436,10 +423,7 @@ pub fn render_swarm_strip(
             } else if chip.is_sel {
                 style = style.add_modifier(Modifier::BOLD);
             }
-            spans.push(Span::styled(
-                format!("{} {}", chip.glyph, chip.name),
-                style,
-            ));
+            spans.push(Span::styled(format!("{} {}", chip.glyph, chip.name), style));
             if let Some(todo) = &chip.todo {
                 spans.push(Span::styled(
                     format!(" {todo}"),
@@ -510,8 +494,7 @@ pub fn render_swarm_strip(
             let mut hint_spans: Vec<Span<'static>> = vec![Span::raw("   ")];
             for (i, h) in hints.iter().enumerate() {
                 if i > 0 {
-                    hint_spans
-                        .push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+                    hint_spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
                 }
                 hint_spans.push(Span::styled(
                     h.key.clone(),
@@ -604,16 +587,29 @@ fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
     Line::from(spans)
 }
 
-/// Sort members the same way `members_to_tiles` does (coordinator first, then
-/// worktree manager, then by sort_key), returning references in display order.
-fn sort_members_for_display(members: &[GalleryMember]) -> Vec<&GalleryMember> {
-    let mut sorted: Vec<&GalleryMember> = members.iter().collect();
-    sorted.sort_by(|a, b| {
+/// Indices of `members` in display order: coordinator first, then worktree
+/// manager, then everything else, ties broken by `sort_key` (stable for full
+/// ties). This is the single source of truth for how the gallery, panel, and
+/// strip order members; callers that need to map a displayed row back to an
+/// input member (e.g. pop-out selection) must use this rather than
+/// re-implementing the sort.
+pub fn display_order(members: &[GalleryMember]) -> Vec<usize> {
+    let mut idx: Vec<usize> = (0..members.len()).collect();
+    idx.sort_by(|&a, &b| {
+        let (a, b) = (&members[a], &members[b]);
         role_rank(a.role.as_deref())
             .cmp(&role_rank(b.role.as_deref()))
             .then_with(|| a.sort_key.cmp(&b.sort_key))
     });
-    sorted
+    idx
+}
+
+/// References to `members` in [`display_order`], for rendering.
+fn sort_members_for_display(members: &[GalleryMember]) -> Vec<&GalleryMember> {
+    display_order(members)
+        .into_iter()
+        .map(|i| &members[i])
+        .collect()
 }
 
 /// The tile index (in `members_to_tiles(members)` order) for a display row.
@@ -758,6 +754,41 @@ mod tests {
         let tiles = members_to_tiles(&members);
         assert_eq!(tiles[0].title, "alpha");
         assert_eq!(tiles[0].role_glyph.as_deref(), Some("★"));
+    }
+
+    /// `display_order` is the contract callers (e.g. pop-out selection) use to
+    /// map a displayed row back to an input member, so it must match tile
+    /// order exactly, including for mixed/unknown roles and sort_key ties.
+    #[test]
+    fn display_order_matches_tile_order_for_mixed_members() {
+        let mut members = vec![
+            member("zeta", "running", None, &[]),
+            member("mid", "done", Some("worktree_manager"), &[]),
+            member("boss", "running", Some("coordinator"), &[]),
+            member("alpha", "thinking", Some("mystery_role"), &[]),
+            member("beta", "failed", None, &[]),
+        ];
+        // Full tie with "beta" on both role rank and sort_key.
+        let mut dup = member("beta-label-2", "ready", None, &[]);
+        dup.sort_key = "beta".to_string();
+        members.push(dup);
+
+        let order = display_order(&members);
+        assert_eq!(order.len(), members.len());
+        let ordered_labels: Vec<String> = order.iter().map(|&i| members[i].label.clone()).collect();
+        let tile_titles: Vec<String> = members_to_tiles(&members)
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(ordered_labels, tile_titles);
+        let ordered_labels: Vec<&str> = ordered_labels.iter().map(String::as_str).collect();
+        // Role buckets come first, then sort_key order within the bucket.
+        assert_eq!(ordered_labels[0], "boss");
+        assert_eq!(ordered_labels[1], "mid");
+        assert_eq!(
+            &ordered_labels[2..],
+            &["alpha", "beta", "beta-label-2", "zeta"]
+        );
     }
 
     #[test]
@@ -951,8 +982,15 @@ mod tests {
     #[test]
     fn strip_unfocused_shows_enter_controls_hint() {
         let members = vec![member("a", "running", None, &[])];
-        let lines =
-            render_swarm_strip(&members, 0, false, &hints(), Some("ctrl+shift+e controls"), 0, 90);
+        let lines = render_swarm_strip(
+            &members,
+            0,
+            false,
+            &hints(),
+            Some("ctrl+shift+e controls"),
+            0,
+            90,
+        );
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("ctrl+shift+e controls"), "got: {chips}");
     }
@@ -1049,10 +1087,7 @@ mod tests {
                     for line in &lines {
                         let text = plain_line(line);
                         let w = text.as_str().width();
-                        assert!(
-                            w <= width,
-                            "width {width}: line overflows ({w}): {text:?}"
-                        );
+                        assert!(w <= width, "width {width}: line overflows ({w}): {text:?}");
                     }
                 }
             }
@@ -1062,8 +1097,15 @@ mod tests {
     #[test]
     fn degenerate_sizes_and_large_member_counts_do_not_panic() {
         let statuses = [
-            "spawned", "ready", "running", "thinking", "blocked", "failed", "completed",
-            "stopped", "unknown-status",
+            "spawned",
+            "ready",
+            "running",
+            "thinking",
+            "blocked",
+            "failed",
+            "completed",
+            "stopped",
+            "unknown-status",
         ];
         for count in [0usize, 1, 3, 50, 400] {
             let members: Vec<GalleryMember> = (0..count)
@@ -1104,7 +1146,15 @@ mod tests {
             member("beta", "done", None, &[]),
         ];
         let width = 80;
-        let lines = render_swarm_strip(&members, 0, false, &hints(), Some("ctrl+shift+e controls"), 0, width);
+        let lines = render_swarm_strip(
+            &members,
+            0,
+            false,
+            &hints(),
+            Some("ctrl+shift+e controls"),
+            0,
+            width,
+        );
         let chips = plain_line(&lines[0]);
         assert!(
             chips.as_str().width() == width,

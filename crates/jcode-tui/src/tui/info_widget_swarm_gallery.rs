@@ -9,7 +9,7 @@
 
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, humanize_age, render_gallery, render_swarm_panel,
+    GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery, render_swarm_panel,
     render_swarm_strip,
 };
 use ratatui::prelude::*;
@@ -112,16 +112,29 @@ pub(crate) fn render_swarm_strip_lines(
     }
     let enter_hint = format!("{focus_key} controls");
     let hints = vec![
-        SwarmStripHint { key: "↑/↓".into(), label: "select".into() },
-        SwarmStripHint { key: "enter".into(), label: "pop out".into() },
-        SwarmStripHint { key: "esc".into(), label: "exit".into() },
+        SwarmStripHint {
+            key: "↑/↓".into(),
+            label: "select".into(),
+        },
+        SwarmStripHint {
+            key: "enter".into(),
+            label: "pop out".into(),
+        },
+        SwarmStripHint {
+            key: "esc".into(),
+            label: "exit".into(),
+        },
     ];
     render_swarm_strip(
         &members_to_gallery(members),
         selected,
         focused,
         &hints,
-        if focused { None } else { Some(enter_hint.as_str()) },
+        if focused {
+            None
+        } else {
+            Some(enter_hint.as_str())
+        },
         spinner_frame,
         width,
     )
@@ -130,21 +143,15 @@ pub(crate) fn render_swarm_strip_lines(
 /// Session ids of `members` in the same order the panel/gallery displays them
 /// (coordinator first, then worktree manager, then by session id). Lets the TUI
 /// map a selected panel index back to a concrete session for pop-out.
+///
+/// Delegates to the renderer's [`display_order`] on the exact same
+/// [`GalleryMember`] conversion used for rendering, so the pop-out index can
+/// never drift from what is on screen.
 pub(crate) fn members_display_order(members: &[SwarmMemberStatus]) -> Vec<String> {
-    fn role_rank(role: Option<&str>) -> u8 {
-        match role {
-            Some("coordinator") => 0,
-            Some("worktree_manager") => 1,
-            _ => 2,
-        }
-    }
-    let mut idx: Vec<&SwarmMemberStatus> = members.iter().collect();
-    idx.sort_by(|a, b| {
-        role_rank(a.role.as_deref())
-            .cmp(&role_rank(b.role.as_deref()))
-            .then_with(|| a.session_id.cmp(&b.session_id))
-    });
-    idx.into_iter().map(|m| m.session_id.clone()).collect()
+    display_order(&members_to_gallery(members))
+        .into_iter()
+        .map(|i| members[i].session_id.clone())
+        .collect()
 }
 
 #[cfg(test)]
@@ -182,6 +189,58 @@ mod tests {
         let tiles = members_to_tiles(&members_to_gallery(&members));
         assert_eq!(tiles[0].title, "alpha");
         assert_eq!(tiles[0].role_glyph.as_deref(), Some("★"));
+    }
+
+    /// Regression: pop-out selection resolves `swarm_panel_selected` through
+    /// `members_display_order`, so its order must match what the renderer
+    /// actually draws (tile order) for mixed roles, ties, and unnamed
+    /// sessions. If this ever diverges, pop-out opens the wrong agent.
+    #[test]
+    fn members_display_order_matches_rendered_tile_order() {
+        let mut members = vec![
+            member("zeta-session", "running", None, None),
+            member("wt-session", "done", None, Some("worktree_manager")),
+            member("coord-session", "running", None, Some("coordinator")),
+            member("mystery-session", "thinking", None, Some("mystery_role")),
+            member("alpha-session", "failed", None, None),
+        ];
+        // Unnamed session: label falls back to a session-id prefix.
+        let mut unnamed = member("beta-session-long-id", "ready", None, None);
+        unnamed.friendly_name = None;
+        members.push(unnamed);
+
+        let order = members_display_order(&members);
+        assert_eq!(order.len(), members.len());
+
+        // Map each ordered session id to the label the renderer would show.
+        let ordered_labels: Vec<String> = order
+            .iter()
+            .map(|id| {
+                let m = members.iter().find(|m| &m.session_id == id).unwrap();
+                member_label(m)
+            })
+            .collect();
+        let tile_titles: Vec<String> = members_to_tiles(&members_to_gallery(&members))
+            .into_iter()
+            .map(|t| t.title)
+            .collect();
+        assert_eq!(
+            ordered_labels, tile_titles,
+            "pop-out order must match rendered tile order"
+        );
+
+        // Sanity: coordinator first, worktree manager second, rest by id.
+        assert_eq!(order[0], "coord-session");
+        assert_eq!(order[1], "wt-session");
+        assert_eq!(
+            &order[2..],
+            &[
+                "alpha-session".to_string(),
+                "beta-session-long-id".to_string(),
+                "mystery-session".to_string(),
+                "zeta-session".to_string(),
+            ]
+        );
     }
 
     #[test]
