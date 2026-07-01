@@ -312,6 +312,11 @@ pub trait TuiState {
     fn learn_hint(&self) -> Option<String> {
         None
     }
+    /// Inline hotkey feedback: "you just pressed X → does Y" for rarely-used
+    /// known chords, or "X isn't bound · nearest ..." for unknown chords.
+    fn hotkey_feedback(&self) -> Option<String> {
+        None
+    }
     /// First-use experimental feature warning for the currently active operation.
     fn active_experimental_feature_notice(&self) -> Option<String> {
         None
@@ -536,6 +541,9 @@ pub trait TuiState {
             return true;
         }
         if self.learn_hint().is_some() {
+            return true;
+        }
+        if self.hotkey_feedback().is_some() {
             return true;
         }
         if self.has_stashed_input() {

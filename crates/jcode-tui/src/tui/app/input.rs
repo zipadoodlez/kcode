@@ -2127,6 +2127,12 @@ impl App {
             return Ok(());
         }
 
+        // Inline hotkey feedback: when a known-but-rarely-used chord is pressed,
+        // show "you just pressed X → does Y". Placed after the modal/overlay
+        // handlers so overlay-local keys stay silent. Unknown chords are
+        // reported at the fall-through points below.
+        self.observe_known_hotkey(code, modifiers, false);
+
         if code == KeyCode::BackTab {
             self.cycle_model_favorite_hotkey();
             return Ok(());
@@ -2254,6 +2260,7 @@ impl App {
         // Never fall through and insert literal text for unhandled Ctrl+key chords. This stays
         // after text_input so Ctrl+Alt/AltGr symbols delivered as final printable text still work.
         if modifiers.contains(KeyModifiers::CONTROL) {
+            self.note_unrecognized_hotkey(code, modifiers, false);
             return Ok(());
         }
 
@@ -2272,6 +2279,11 @@ impl App {
             handle_enter(self);
             return Ok(());
         }
+
+        // A modified chord (or function key) that reached this point is not
+        // bound to anything; tell the user instead of silently swallowing it or
+        // inserting a surprise character.
+        self.note_unrecognized_hotkey(code, modifiers, false);
 
         if handle_basic_key(self, code) {
             return Ok(());

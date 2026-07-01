@@ -314,6 +314,12 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
+    // Inline hotkey feedback: when a known-but-rarely-used chord is pressed,
+    // show "you just pressed X → does Y". Placed after the overlay handlers so
+    // overlay-local keys stay silent. Unknown chords are reported at the
+    // fall-through points below.
+    app.observe_known_hotkey(code, modifiers, true);
+
     if input::handle_visible_copy_shortcut(app, code, modifiers) {
         return Ok(());
     }
@@ -755,6 +761,7 @@ async fn handle_remote_key_internal(
     // Never fall through and insert literal text for unhandled Ctrl+key chords. This stays after
     // text_input so Ctrl+Alt/AltGr symbols delivered as final printable text still work.
     if modifiers.contains(KeyModifiers::CONTROL) {
+        app.note_unrecognized_hotkey(code, modifiers, true);
         return Ok(());
     }
 
@@ -771,6 +778,10 @@ async fn handle_remote_key_internal(
             _ => {}
         }
     }
+
+    // A modified chord (or function key) that reached this point is not bound
+    // to anything; tell the user instead of silently swallowing it.
+    app.note_unrecognized_hotkey(code, modifiers, true);
 
     match code {
         KeyCode::Char(c) => {

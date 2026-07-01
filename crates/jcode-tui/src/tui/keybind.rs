@@ -359,6 +359,11 @@ impl ToggleBinding {
         }
         false
     }
+
+    /// The configured chord, or `None` when the toggle is disabled.
+    pub fn binding(&self) -> Option<&KeyBinding> {
+        self.binding.as_ref()
+    }
 }
 
 /// All configurable pane / mode toggle keybindings.
@@ -406,8 +411,7 @@ pub(crate) fn swarm_panel_focus_key_label() -> String {
         modifiers: KeyModifiers::ALT,
     };
     let default_label = format_binding(&default);
-    let (binding, _) =
-        parse_optional(&cfg.keybindings.swarm_panel_focus, default, &default_label);
+    let (binding, _) = parse_optional(&cfg.keybindings.swarm_panel_focus, default, &default_label);
     match binding {
         Some(b) => format_binding(&b),
         None => default_label,

@@ -64,6 +64,7 @@ mod dictation;
 mod event_wrappers;
 mod handterm_native_scroll;
 pub(crate) mod helpers;
+mod hotkey_feedback;
 mod inline_interactive;
 mod input;
 mod input_help;
@@ -1236,6 +1237,16 @@ pub struct App {
     learn_hint: Option<(String, Instant)>,
     // Whether a learned-keybinding nudge has already been surfaced this session.
     learn_hint_shown_this_session: bool,
+    // Inline hotkey feedback: "you just pressed X → does Y" for rarely-used
+    // known chords, or "X isn't bound · nearest: ..." for unknown chords.
+    // Rendered in the same pop-out slot as learn_hint.
+    hotkey_feedback: Option<(String, Instant)>,
+    // Lazily-loaded persisted per-action hotkey usage counters.
+    hotkey_usage: Option<hotkey_feedback::HotkeyUsageState>,
+    // Per-chord counts of unknown-hotkey notices shown this session.
+    unknown_hotkey_seen: std::collections::HashMap<String, u32>,
+    // When the last unknown-hotkey notice was shown, for rate limiting.
+    last_unknown_hotkey_notice: Option<Instant>,
     // Persistent startup notice card (e.g. launch-hotkeys / welcome tip) shown on
     // the idle screen of a fresh session. Stashed so it can be re-applied after
     // the remote History bootstrap clears the transcript for a brand-new session,

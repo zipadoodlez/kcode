@@ -1508,6 +1508,16 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         ));
     }
 
+    // Inline hotkey feedback: what a rarely-used chord just did, or the nearest
+    // binding for an unbound chord. Cool cyan so it reads as informational.
+    if let Some(feedback) = app.hotkey_feedback() {
+        push_sep(&mut spans);
+        spans.push(Span::styled(
+            normalize_repaint_sensitive_notice_text(&feedback),
+            Style::default().fg(rgb(102, 204, 221)),
+        ));
+    }
+
     if !app.is_processing() {
         let info = app.info_widget_data();
         if let Some(schedule_notice) =

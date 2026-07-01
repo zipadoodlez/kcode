@@ -821,6 +821,18 @@ impl crate::tui::TuiState for App {
         })
     }
 
+    fn hotkey_feedback(&self) -> Option<String> {
+        self.hotkey_feedback.as_ref().and_then(|(text, at)| {
+            // Long enough to read the chord and its action, short enough to
+            // stay out of the way during rapid keying.
+            if at.elapsed() <= Duration::from_secs(5) {
+                Some(text.clone())
+            } else {
+                None
+            }
+        })
+    }
+
     fn active_experimental_feature_notice(&self) -> Option<String> {
         self.active_experimental_feature_notice.clone()
     }
