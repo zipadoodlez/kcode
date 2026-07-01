@@ -1241,3 +1241,54 @@ fn render_agentgrep_output_body_caps_huge_output() {
     let last = extract_line_text(&lines[lines.len() - 1]);
     assert!(last.contains("more lines"), "last={last}");
 }
+
+#[test]
+fn render_assistant_message_plan_card_wraps_instead_of_truncating() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+    // Long paragraph and long list items must wrap inside the card, not be
+    // clipped at the right border by render_rounded_box's truncation.
+    let plan_body = "# Long content plan\n\n\
+        Goal\n\
+        Produce an up-to-date ranked report grounded in current crate paths, then fix the highest-leverage low-risk offenders without destabilizing active work.\n\n\
+        Approach\n\
+        1. Write an audit document that regenerates metrics with current crate paths, ranks the top issues with evidence, and marks which items from the previous audit are complete versus stale.\n\
+        2. Map the provider migration and record whether each module is a thin wrapper, partial duplicate, or full duplicate of the extracted crate.\n";
+    let content = format!("Intro text.\n\n```plan\n{plan_body}```\n\nAfter the card.");
+    let msg = DisplayMessage::assistant(&content);
+
+    for width in [40u16, 60, 80, 100, 140] {
+        let lines = render_assistant_message(&msg, width, crate::config::DiffDisplayMode::Off);
+        let squashed = lines
+            .iter()
+            .map(extract_line_text)
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace(['│', '╭', '╮', '╰', '╯', '─'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        for phrase in [
+            "without destabilizing active work.",
+            "complete versus stale.",
+            "or full duplicate of the extracted crate.",
+        ] {
+            assert!(
+                squashed.contains(phrase),
+                "width {width}: plan card lost trailing content {phrase:?}\n{squashed}"
+            );
+        }
+        // Card borders stay intact.
+        for line in lines
+            .iter()
+            .map(extract_line_text)
+            .filter(|l| l.contains('│'))
+        {
+            assert!(
+                line.trim_end().ends_with('│'),
+                "width {width}: card row missing right border: {line:?}"
+            );
+        }
+    }
+    crate::tui::markdown::set_center_code_blocks(saved);
+}

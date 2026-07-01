@@ -190,8 +190,13 @@ fn render_plan_card(body: &str, width: u16) -> Vec<Line<'static>> {
     let title = plan_card_title(body);
     let body_without_title = plan_card_body_without_title(body, &title);
 
-    let mut content: Vec<Line<'static>> =
-        markdown::render_markdown_with_width(&body_without_title, Some(inner_width));
+    // `render_markdown_with_width` sizes block elements (code, tables, rules)
+    // but does not hard-wrap paragraph text; the normal message path wraps
+    // later in the pipeline. The card boxes its content immediately and
+    // `render_rounded_box` truncates over-long lines, so wrap here to avoid
+    // cutting plan text off at the border.
+    let rendered = markdown::render_markdown_with_width(&body_without_title, Some(inner_width));
+    let mut content: Vec<Line<'static>> = markdown::wrap_lines(rendered, inner_width);
     // Trim leading/trailing blank rows inside the card.
     while content.first().is_some_and(|line| line.width() == 0) {
         content.remove(0);
