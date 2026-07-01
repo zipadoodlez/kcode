@@ -19,6 +19,16 @@ fn unknown_ctrl_chord_sets_hotkey_feedback_with_suggestion() {
     assert!(message.contains("isn't bound"), "{message}");
     assert!(message.contains("Alt+M"), "{message}");
     assert!(message.contains("side panel"), "{message}");
+
+    // The renderer consumes the trait accessor; it must surface the same text
+    // (and expire it later) so the notification line actually shows it.
+    {
+        use crate::tui::TuiState as _;
+        let visible = app
+            .hotkey_feedback()
+            .expect("trait accessor should expose fresh feedback");
+        assert_eq!(visible, message);
+    }
 }
 
 #[test]
