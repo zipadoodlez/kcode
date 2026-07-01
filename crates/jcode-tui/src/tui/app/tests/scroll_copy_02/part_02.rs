@@ -643,7 +643,7 @@ fn test_click_on_inline_image_expand_badge_cycles_level() {
     const IMAGE_ID: u64 = 0xFEED;
     let chat_width: u16 = 80;
 
-    // Build a real inline-image section: a `🖼 … ●○○ expand` label line followed
+    // Build a real inline-image section: a `🖼 … ●○ expand` label line followed
     // by Fit-rendered placeholder rows with a scanned `image_regions` entry.
     let items = vec![InlineImageItem {
         id: IMAGE_ID,
@@ -726,7 +726,7 @@ fn test_click_on_inline_image_expand_badge_cycles_level() {
         );
     }
 
-    // Two more badge clicks complete the cycle: Large -> Huge -> Fit.
+    // One more badge click completes the toggle: Large -> Fit.
     let click_badge = |app: &mut App| {
         app.handle_mouse_event(MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
@@ -736,12 +736,10 @@ fn test_click_on_inline_image_expand_badge_cycles_level() {
         });
     };
     click_badge(&mut app);
-    assert_eq!(app.image_expand_level(IMAGE_ID), ImageExpandLevel::Huge);
-    click_badge(&mut app);
     assert_eq!(
         app.image_expand_level(IMAGE_ID),
         ImageExpandLevel::Fit,
-        "cycle should wrap Huge -> Fit"
+        "toggle should wrap Large -> Fit"
     );
 }
 

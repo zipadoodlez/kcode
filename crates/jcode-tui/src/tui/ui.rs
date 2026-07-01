@@ -2192,7 +2192,7 @@ pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
 }
 
 /// First display column of the inline-image expand badge within a label line,
-/// if present. The badge is the `🖱 ●○○ expand` suffix that `image_label_line`
+/// if present. The badge is the `🖱 ●○ expand` suffix that `image_label_line`
 /// appends; we accept a click from the leading click-icon to end of line as
 /// "hit the badge". Returns `None` when the line has no badge (e.g. a
 /// hidden/collapsed image label).
@@ -2216,7 +2216,7 @@ mod expand_badge_hit_tests {
     #[test]
     fn locates_first_dot_display_column() {
         // ASCII prefix: the badge starts exactly at the prefix's display width.
-        let text = "abc ●○○ expand";
+        let text = "abc ●○ expand";
         assert_eq!(expand_badge_start_col(text), Some(4));
     }
 
@@ -2225,7 +2225,7 @@ mod expand_badge_hit_tests {
         // Multi-byte chars before the badge must be measured by display width,
         // not byte offset. unicode-width reports the picture glyph as width 1,
         // so emoji(1) + space(1) = 2.
-        let text = "🖼 ●○○ expand";
+        let text = "🖼 ●○ expand";
         assert_eq!(expand_badge_start_col(text), Some(2));
     }
 
@@ -2234,7 +2234,7 @@ mod expand_badge_hit_tests {
         // The real label puts a click icon ahead of the dots; the hit-region
         // must start at the icon so users can click the whole affordance.
         let icon = crate::tui::ui::inline_image_ui::EXPAND_BADGE_CLICK_ICON;
-        let text = format!("abc {icon} ●○○ expand");
+        let text = format!("abc {icon} ●○ expand");
         // Prefix is "abc " (display width 4); the icon is the first badge cell.
         assert_eq!(expand_badge_start_col(&text), Some(4));
     }
@@ -2552,8 +2552,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
         let members = app.inline_swarm_members();
         if chat_area.width >= 24 {
-            let focus_key =
-                crate::tui::keybind::swarm_panel_focus_key_label();
+            let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();
             // ~8 fps spinner from the wall-clock animation timer.
             let spinner_frame = (app.animation_elapsed() * 8.0) as usize;
             super::info_widget::swarm_gallery::render_swarm_strip_lines(

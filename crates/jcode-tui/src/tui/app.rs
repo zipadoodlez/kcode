@@ -1149,7 +1149,7 @@ pub struct App {
     // stubs (false). Toggled with Alt+Shift+I; persisted in UI preferences so
     // it survives restarts and session resumes.
     inline_images_visible: bool,
-    // Per-image inline expand level (Fit/Large/Huge), keyed by image id. Cycled
+    // Per-image inline expand level (Fit/Large), keyed by image id. Cycled
     // by clicking the `expand` badge under an image. Absent ids are `Fit`.
     // `expanded_images_version` bumps on every change so the body/full prep
     // caches (which embed anchored images) invalidate exactly like the
