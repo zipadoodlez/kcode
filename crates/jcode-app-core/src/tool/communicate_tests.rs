@@ -50,7 +50,9 @@ async fn run_plan_reporter_finalize_puts_summary_before_log() {
 
     reporter.log("assigned a -> session_fox").await;
     reporter.log("assigned b -> session_wolf").await;
-    reporter.finalize("Swarm plan reached terminal state.").await;
+    reporter
+        .finalize("Swarm plan reached terminal state.")
+        .await;
 
     let content = tokio::fs::read_to_string(&output_path)
         .await

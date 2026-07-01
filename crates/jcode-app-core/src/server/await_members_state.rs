@@ -169,6 +169,10 @@ pub(super) fn save_state(state: &PersistedAwaitMembersState) {
     save_json_state(AWAIT_MEMBERS_DIR, &state.key, state, "await_members state")
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "pending await state mirrors persisted fields and existing call sites"
+)]
 pub(super) fn ensure_pending_state(
     key: &str,
     session_id: &str,

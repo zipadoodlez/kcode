@@ -4,9 +4,7 @@ use super::await_members_state::{
 };
 use super::{AwaitMembersRuntime, SwarmEvent, SwarmMember};
 use crate::bus::{Bus, BusEvent, SwarmAwaitCompleted, UiActivity};
-use crate::protocol::{
-    AwaitedMemberStatus, ServerEvent, format_comm_awaited_members_with_reports,
-};
+use crate::protocol::{AwaitedMemberStatus, ServerEvent, format_comm_awaited_members_with_reports};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -235,8 +233,14 @@ pub(super) async fn spawn_or_resume_await_members(
 
             if mode_satisfied(&member_statuses, mode.as_deref()) {
                 let summary = mode_summary(&member_statuses, mode.as_deref());
-                finalize_await(&await_members_runtime, &state, true, member_statuses, summary)
-                    .await;
+                finalize_await(
+                    &await_members_runtime,
+                    &state,
+                    true,
+                    member_statuses,
+                    summary,
+                )
+                .await;
                 return;
             }
 
@@ -281,6 +285,10 @@ pub(super) struct CommAwaitMembersContext<'a> {
     pub await_members_runtime: &'a AwaitMembersRuntime,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "await request carries protocol fields plus delivery flags; grouping would churn many call sites"
+)]
 pub(super) async fn handle_comm_await_members(
     id: u64,
     req_session_id: String,
@@ -396,10 +404,7 @@ pub(super) async fn handle_comm_await_members(
         // reload, or a duplicate request), let the latest call's delivery prefs
         // win so the watcher and tool response stay in sync. The deadline is
         // intentionally preserved from the original request.
-        if state.background != background
-            || state.notify != notify
-            || state.wake != wake
-        {
+        if state.background != background || state.notify != notify || state.wake != wake {
             state.background = background;
             state.notify = notify;
             state.wake = wake;
