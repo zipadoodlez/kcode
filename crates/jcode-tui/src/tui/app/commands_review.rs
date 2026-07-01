@@ -677,8 +677,21 @@ pub(super) fn launch_prompt_in_new_session_local(
     content: String,
     images: Vec<(String, String)>,
 ) -> anyhow::Result<bool> {
+    launch_forked_session_local(app, Some((content, images)))
+}
+
+/// Fork (split) the current session into a new window. When `prompt` is
+/// provided it is staged as the first submission of the forked session;
+/// otherwise the fork opens idle with the cloned conversation.
+pub(super) fn launch_forked_session_local(
+    app: &mut App,
+    prompt: Option<(String, Vec<(String, String)>)>,
+) -> anyhow::Result<bool> {
     let (session_id, session_name) = clone_session_for_prompt(app)?;
-    App::save_startup_submission_for_session(&session_id, content, images);
+    let has_prompt = prompt.is_some();
+    if let Some((content, images)) = prompt {
+        App::save_startup_submission_for_session(&session_id, content, images);
+    }
     let exe = super::launch_client_executable();
     let cwd = active_working_dir(app)
         .filter(|path| path.is_dir())
@@ -686,18 +699,35 @@ pub(super) fn launch_prompt_in_new_session_local(
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let socket = std::env::var("JCODE_SOCKET").ok();
     let opened = super::spawn_in_new_terminal(&exe, &session_id, &cwd, socket.as_deref())?;
-    if opened {
-        app.push_display_message(DisplayMessage::system(format!(
-            "↗ Next prompt launched in {}.",
-            session_name
-        )));
-        app.set_status_notice("Prompt launched in new session");
-    } else {
-        app.push_display_message(DisplayMessage::system(format!(
-            "↗ New session {} created for the next prompt.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
-            session_name, session_id
-        )));
-        app.set_status_notice("Prompt session created");
+    match (opened, has_prompt) {
+        (true, true) => {
+            app.push_display_message(DisplayMessage::system(format!(
+                "↗ Next prompt launched in {}.",
+                session_name
+            )));
+            app.set_status_notice("Prompt launched in new session");
+        }
+        (true, false) => {
+            app.push_display_message(DisplayMessage::system(format!(
+                "✂ Fork → {} (opened in new window)",
+                session_name
+            )));
+            app.set_status_notice(format!("Fork → {}", session_name));
+        }
+        (false, true) => {
+            app.push_display_message(DisplayMessage::system(format!(
+                "↗ New session {} created for the next prompt.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+                session_name, session_id
+            )));
+            app.set_status_notice("Prompt session created");
+        }
+        (false, false) => {
+            app.push_display_message(DisplayMessage::system(format!(
+                "✂ Fork → {}\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+                session_name, session_id
+            )));
+            app.set_status_notice("Forked session created");
+        }
     }
     Ok(opened)
 }

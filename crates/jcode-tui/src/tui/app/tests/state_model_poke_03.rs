@@ -2061,7 +2061,7 @@ fn test_poke_queues_when_turn_is_in_progress() {
 }
 
 #[test]
-fn test_btw_does_not_present_as_queued_when_turn_is_in_progress() {
+fn test_btw_forks_even_when_turn_is_in_progress() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.is_processing = true;
@@ -2071,19 +2071,13 @@ fn test_btw_does_not_present_as_queued_when_turn_is_in_progress() {
             "/btw should this fork context?"
         ));
 
-        assert!(app.is_processing);
-        assert_eq!(app.status_notice(), Some("/btw noted".to_string()));
+        assert!(app.is_processing, "parent turn should keep running");
         assert!(app.queued_messages().is_empty());
-        assert_eq!(app.hidden_queued_system_messages.len(), 1);
+        assert!(app.hidden_queued_system_messages.is_empty());
         assert!(app.display_messages().iter().any(|msg| {
-            msg.content
-                .contains("/btw noted - answer will appear in the side panel.")
+            msg.content.contains("created for the next prompt")
+                || msg.content.contains("Next prompt launched in")
         }));
-        assert!(
-            !app.display_messages()
-                .iter()
-                .any(|msg| { msg.content.to_ascii_lowercase().contains("queued /btw") })
-        );
     });
 }
 

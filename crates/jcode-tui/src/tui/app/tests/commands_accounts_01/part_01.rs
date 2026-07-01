@@ -431,7 +431,22 @@ fn test_help_topic_shows_btw_command_details() {
         .expect("missing help response");
     assert_eq!(msg.role, "system");
     assert!(msg.content.contains("/btw <question>"));
-    assert!(msg.content.contains("side panel"));
+    assert!(msg.content.contains("Forks (splits) the session"));
+}
+
+#[test]
+fn test_help_topic_shows_fork_command_details() {
+    let mut app = create_test_app();
+    app.input = "/help fork".to_string();
+    app.submit_input();
+
+    let msg = app
+        .display_messages()
+        .last()
+        .expect("missing help response");
+    assert_eq!(msg.role, "system");
+    assert!(msg.content.contains("/fork <prompt>"));
+    assert!(msg.content.contains("Alias for /fork"));
 }
 
 #[test]
@@ -893,7 +908,7 @@ fn test_btw_command_requires_question() {
 }
 
 #[test]
-fn test_btw_command_prepares_side_panel_and_hidden_turn() {
+fn test_btw_command_forks_session_with_question() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
     let prev_home = std::env::var_os("JCODE_HOME");
@@ -903,24 +918,26 @@ fn test_btw_command_prepares_side_panel_and_hidden_turn() {
     app.input = "/btw what did we decide about config?".to_string();
     app.submit_input();
 
-    assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("btw"));
-    let page = app.side_panel.focused_page().expect("missing btw page");
-    assert_eq!(page.title, "/btw");
-    assert!(page.content.contains("## Question"));
-    assert!(page.content.contains("what did we decide about config?"));
-    assert!(page.content.contains("Thinking…"));
-    assert_eq!(app.hidden_queued_system_messages.len(), 1);
-    assert!(
-        app.hidden_queued_system_messages[0].contains("Question: what did we decide about config?")
-    );
-    assert!(app.pending_queued_dispatch);
-
+    // Terminal spawning is disabled under cfg(test), so the fork reports the
+    // created session with a manual resume hint.
     let msg = app
         .display_messages()
         .last()
-        .expect("missing btw status message");
+        .expect("missing btw fork message");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Running /btw"));
+    assert!(msg.content.contains("created for the next prompt"));
+    let session_id = msg
+        .content
+        .split("jcode --resume ")
+        .nth(1)
+        .expect("missing resume hint")
+        .trim()
+        .to_string();
+    let restored =
+        App::restore_input_for_reload(&session_id).expect("forked session should stage question");
+    assert_eq!(restored.input, "what did we decide about config?");
+    assert!(restored.submit_on_restore);
+    assert!(restored.pending_images.is_empty());
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
@@ -930,27 +947,94 @@ fn test_btw_command_prepares_side_panel_and_hidden_turn() {
 }
 
 #[test]
-fn test_btw_command_in_remote_mode_queues_followup_instead_of_erroring() {
+fn test_fork_command_with_prompt_forks_session() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
     let prev_home = std::env::var_os("JCODE_HOME");
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.is_remote = true;
-    app.remote_session_id = Some("ses_remote_btw".to_string());
-    app.input = "/btw what are we doing?".to_string();
+    app.input = "/fork try the other approach".to_string();
     app.submit_input();
 
-    assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("btw"));
-    assert_eq!(app.hidden_queued_system_messages.len(), 1);
-    assert!(app.pending_queued_dispatch);
     let msg = app
         .display_messages()
         .last()
-        .expect("missing remote btw message");
+        .expect("missing fork message");
     assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("Running /btw"));
+    assert!(msg.content.contains("created for the next prompt"));
+    let session_id = msg
+        .content
+        .split("jcode --resume ")
+        .nth(1)
+        .expect("missing resume hint")
+        .trim()
+        .to_string();
+    let restored =
+        App::restore_input_for_reload(&session_id).expect("forked session should stage prompt");
+    assert_eq!(restored.input, "try the other approach");
+    assert!(restored.submit_on_restore);
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn test_fork_command_without_prompt_forks_idle_session() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prev_home = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    let mut app = create_test_app();
+    app.input = "/fork".to_string();
+    app.submit_input();
+
+    let msg = app
+        .display_messages()
+        .last()
+        .expect("missing fork message");
+    assert_eq!(msg.role, "system");
+    assert!(msg.content.contains("✂ Fork →"));
+    let session_id = msg
+        .content
+        .split("jcode --resume ")
+        .nth(1)
+        .expect("missing resume hint")
+        .trim()
+        .to_string();
+    assert!(
+        App::restore_input_for_reload(&session_id).is_none(),
+        "idle fork should not stage a startup submission"
+    );
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn test_split_command_local_is_alias_for_fork() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prev_home = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", temp.path());
+
+    let mut app = create_test_app();
+    app.input = "/split".to_string();
+    app.submit_input();
+
+    let msg = app
+        .display_messages()
+        .last()
+        .expect("missing split message");
+    assert_eq!(msg.role, "system");
+    assert!(msg.content.contains("✂ Fork →"));
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);

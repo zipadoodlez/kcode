@@ -16,10 +16,10 @@ pub(super) use super::commands_review::{
     autoreview_status_message, build_autojudge_startup_message, build_autoreview_startup_message,
     build_judge_startup_message, build_review_startup_message, current_feedback_target_session_id,
     handle_autojudge_command_local, handle_autoreview_command_local, handle_judge_command_local,
-    handle_observe_command, handle_review_command_local, launch_prompt_in_new_session_local,
-    maybe_trigger_autojudge_local, maybe_trigger_autoreview_local,
-    preferred_one_shot_review_override, prepare_review_spawned_session, queue_review_spawn_remote,
-    reset_current_session,
+    handle_observe_command, handle_review_command_local, launch_forked_session_local,
+    launch_prompt_in_new_session_local, maybe_trigger_autojudge_local,
+    maybe_trigger_autoreview_local, preferred_one_shot_review_override,
+    prepare_review_spawned_session, queue_review_spawn_remote, reset_current_session,
 };
 pub(super) use super::todos_view::handle_todos_view_command;
 use super::{App, DisplayMessage, LocalRewindUndoSnapshot, ProcessingStatus};
@@ -30,7 +30,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
 
-const BTW_PAGE_ID: &str = "btw";
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 const TODO_CONFIDENCE_THRESHOLD: u8 = 90;
@@ -1309,37 +1308,8 @@ fn disconnect_ssh_remote(app: &mut App, name: &str) {
     }
 }
 
-fn build_btw_loading_markdown(question: &str) -> String {
-    format!(
-        "# `/btw`\n\n## Question\n{}\n\n## Status\nThinking…\n",
-        question.trim()
-    )
-}
-
-fn build_btw_system_reminder(question: &str) -> String {
-    format!(
-        "The user invoked `/btw`, which is a side question about the current session. \
-Answer ONLY from the existing conversation/context already in memory for this session. \
-Do not read files, run commands, search the web, or call any tool except `side_panel`.\n\n\
-Use the `side_panel` tool exactly once with:\n\
-- `action`: `write`\n\
-- `page_id`: `{}`\n\
-- `title`: ``/btw``\n\
-- `focus`: `true`\n\n\
-Write markdown with this shape:\n\
-# `/btw`\n\
-## Question\n<repeat the question>\n\
-## Answer\n<your concise answer>\n\n\
-If the answer is not already knowable from the current session context, say so clearly in the Answer section and explain that a normal prompt is needed.\n\n\
-After writing the side panel content, do not add any normal chat response text.\n\n\
-Question: {}",
-        BTW_PAGE_ID,
-        question.trim()
-    )
-}
-
 fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
-    if !trimmed.starts_with("/btw") {
+    if trimmed != "/btw" && !trimmed.starts_with("/btw ") {
         return false;
     }
 
@@ -1349,39 +1319,38 @@ fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    match crate::side_panel::write_markdown_page(
-        active_session_id(app).as_str(),
-        BTW_PAGE_ID,
-        Some("/btw"),
-        &build_btw_loading_markdown(question),
-        true,
-    ) {
-        Ok(snapshot) => app.set_side_panel_snapshot(snapshot),
-        Err(error) => {
-            app.push_display_message(DisplayMessage::error(format!(
-                "Failed to prepare /btw side panel: {}",
-                error
-            )));
-            return true;
-        }
-    }
-
-    app.hidden_queued_system_messages
-        .push(build_btw_system_reminder(question));
-    if app.is_processing {
-        app.push_display_message(DisplayMessage::system(
-            "/btw noted - answer will appear in the side panel.".to_string(),
-        ));
-        app.set_status_notice("/btw noted");
-    } else {
-        app.push_display_message(DisplayMessage::system(
-            "Running /btw - answer will appear in the side panel.".to_string(),
-        ));
-        app.pending_queued_dispatch = true;
-        app.set_status_notice("Running /btw");
-    }
-
+    fork_session_with_prompt_local(app, Some(question));
     true
+}
+
+/// `/fork [prompt]` and `/split`: fork the current session into a new window.
+/// With a prompt, the forked session starts by answering it.
+fn handle_fork_command(app: &mut App, trimmed: &str) -> bool {
+    let rest = if trimmed == "/fork" || trimmed == "/split" {
+        ""
+    } else if let Some(rest) = trimmed.strip_prefix("/fork ") {
+        rest
+    } else {
+        return false;
+    };
+
+    let prompt = rest.trim();
+    fork_session_with_prompt_local(app, (!prompt.is_empty()).then_some(prompt));
+    true
+}
+
+/// Fork the current session (like `/split`) and, when given, deliver `prompt`
+/// as the first message of the forked session. Shared by `/btw <question>`,
+/// `/fork [prompt]`, and `/split`.
+pub(super) fn fork_session_with_prompt_local(app: &mut App, prompt: Option<&str>) {
+    let staged = prompt.map(|prompt| (prompt.to_string(), Vec::new()));
+    if let Err(error) = launch_forked_session_local(app, staged) {
+        app.push_display_message(DisplayMessage::error(format!(
+            "Failed to fork session: {}",
+            error
+        )));
+        app.set_status_notice("Fork failed");
+    }
 }
 
 fn load_catchup_candidates(app: &App) -> Vec<crate::tui::session_picker::SessionInfo> {
@@ -1677,6 +1646,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         || super::commands_overnight::handle_overnight_command(app, trimmed)
         || super::split_view::handle_split_view_command(app, trimmed)
         || handle_btw_command(app, trimmed)
+        || handle_fork_command(app, trimmed)
         || handle_transcript_command(app, trimmed)
         || handle_git_command(app, trimmed)
         || handle_catchup_command(app, trimmed)
@@ -1703,11 +1673,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
         app.open_session_picker();
         app.record_keybinding_slow(super::shortcut_hints::LearnableAction::Resume);
-        return true;
-    }
-
-    if trimmed == "/fork" {
-        app.toggle_next_prompt_new_session_routing();
         return true;
     }
 

@@ -1582,8 +1582,35 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/fork" {
-                    app.toggle_next_prompt_new_session_routing();
+                if trimmed == "/fork" || trimmed == "/split" {
+                    app.push_display_message(DisplayMessage::system(
+                        "Forking session...".to_string(),
+                    ));
+                    remote.split().await?;
+                    return Ok(());
+                }
+
+                if trimmed == "/btw"
+                    || trimmed.starts_with("/btw ")
+                    || trimmed.starts_with("/fork ")
+                {
+                    let prompt = trimmed
+                        .strip_prefix("/btw")
+                        .or_else(|| trimmed.strip_prefix("/fork"))
+                        .unwrap_or_default()
+                        .trim();
+                    if prompt.is_empty() {
+                        app.push_display_message(DisplayMessage::error(
+                            "Usage: /btw <question>".to_string(),
+                        ));
+                        return Ok(());
+                    }
+                    let prepared = input::PreparedInput {
+                        raw_input: prompt.to_string(),
+                        expanded: prompt.to_string(),
+                        images: vec![],
+                    };
+                    route_prepared_input_to_new_remote_session(app, remote, prepared).await?;
                     return Ok(());
                 }
 
@@ -1756,14 +1783,6 @@ async fn handle_remote_key_internal(
 
                     remote.rename_session(Some(title.to_string())).await?;
                     app.set_status_notice("Renaming session...");
-                    return Ok(());
-                }
-
-                if trimmed == "/split" {
-                    app.push_display_message(DisplayMessage::system(
-                        "Splitting session...".to_string(),
-                    ));
-                    remote.split().await?;
                     return Ok(());
                 }
 

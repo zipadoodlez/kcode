@@ -1619,3 +1619,98 @@ fn test_externally_started_tool_turn_shows_running_tool_status() {
         app.status
     );
 }
+
+#[test]
+fn test_remote_fork_with_prompt_stages_split_prompt() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.is_remote = true;
+        app.input = "/fork explore plan b".to_string();
+        app.cursor_pos = app.input.len();
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let _guard = rt.enter();
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        remote.mark_history_loaded();
+
+        rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
+            .expect("/fork <prompt> should launch split request");
+
+        assert!(app.pending_split_prompt.is_some());
+        assert_eq!(app.pending_split_label.as_deref(), Some("Prompt"));
+        assert!(!app.pending_split_request);
+
+        app.handle_server_event(
+            crate::protocol::ServerEvent::SplitResponse {
+                id: 1,
+                new_session_id: "session_fork_prompt_child".to_string(),
+                new_session_name: "fork_prompt_child".to_string(),
+            },
+            &mut remote,
+        );
+
+        let restored = App::restore_input_for_reload("session_fork_prompt_child")
+            .expect("forked session should stage the prompt");
+        assert_eq!(restored.input, "explore plan b");
+        assert!(restored.submit_on_restore);
+        assert!(app.pending_split_prompt.is_none());
+    });
+}
+
+#[test]
+fn test_remote_btw_stages_question_in_forked_session() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.is_remote = true;
+        app.input = "/btw what are we doing?".to_string();
+        app.cursor_pos = app.input.len();
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let _guard = rt.enter();
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        remote.mark_history_loaded();
+
+        rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
+            .expect("/btw should launch split request");
+
+        assert!(app.pending_split_prompt.is_some());
+
+        app.handle_server_event(
+            crate::protocol::ServerEvent::SplitResponse {
+                id: 1,
+                new_session_id: "session_btw_child".to_string(),
+                new_session_name: "btw_child".to_string(),
+            },
+            &mut remote,
+        );
+
+        let restored = App::restore_input_for_reload("session_btw_child")
+            .expect("btw fork should stage the question");
+        assert_eq!(restored.input, "what are we doing?");
+        assert!(restored.submit_on_restore);
+    });
+}
+
+#[test]
+fn test_remote_fork_without_prompt_splits_immediately() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.input = "/fork".to_string();
+    app.cursor_pos = app.input.len();
+
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
+        .expect("/fork should send split request");
+
+    assert!(app.pending_split_prompt.is_none());
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|msg| msg.content.contains("Forking session...")),
+        "bare /fork should split immediately like /split"
+    );
+}
