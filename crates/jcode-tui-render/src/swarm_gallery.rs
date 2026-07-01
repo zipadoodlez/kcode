@@ -275,7 +275,7 @@ pub struct SwarmStripHint {
 /// there are no members or no width.
 ///
 /// ```text
-/// 🐝 swarm  ⠙researcher 8/16  ✓reviewer            2/3 active   ctrl+t controls
+/// 🐝 swarm  · ⠙ researcher 8/16  ✓ reviewer         2/3 active · ctrl+t controls
 /// ```
 pub fn render_swarm_strip(
     members: &[GalleryMember],
@@ -296,96 +296,180 @@ pub fn render_swarm_strip(
         .filter(|m| is_active_status(&m.status))
         .count();
 
-    // ---- Chips line ----
-    let mut spans: Vec<Span<'static>> = vec![
+    // ---- Leading "🐝 swarm" label ----
+    let lead: Vec<Span<'static>> = vec![
         Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
         Span::styled("swarm", Style::default().fg(rgb(160, 160, 170))),
-        Span::raw("  "),
+        Span::styled("  · ", Style::default().fg(rgb(80, 80, 90))),
     ];
+    let lead_w: usize = lead.iter().map(|s| disp_w(&s.content)).sum();
 
-    // Right side: "M/N active" plus, when unfocused, the enter-controls hint.
+    // ---- Right tail: "M/N active" plus, when unfocused, the controls hint.
+    // Degrade gracefully on narrow widths: drop the hint first, then the tally,
+    // so the chips never get pushed past the line width.
     let tally = format!("{active}/{} active", members.len());
-    let right_tail = match (focused, enter_hint) {
-        (false, Some(hint)) => format!("{tally}   {hint}"),
-        _ => tally.clone(),
-    };
-    let right_w = right_tail.chars().count();
+    let tally_w = disp_w(&tally);
+    let hint_text = if focused { None } else { enter_hint };
+    let hint_sep = " · ";
+    let gap = 2usize; // minimum gap between chips and the right tail
+    let hint_w = hint_text
+        .map(|h| disp_w(h) + disp_w(hint_sep))
+        .unwrap_or(0);
 
-    // Build chips: "<glyph><name>[ done/total]".
+    // ---- Chips: "<glyph> <name>[ done/total]" ----
     struct Chip {
-        text: String,
+        glyph: String,
+        name: String,
+        todo: Option<String>,
         color: Color,
         is_sel: bool,
     }
     let chips: Vec<Chip> = ordered
         .iter()
         .enumerate()
-        .map(|(idx, m)| {
-            let is_sel = idx == selected;
-            let glyph = status_glyph(&m.status, spinner_frame);
-            let todo = m
-                .todo
-                .map(|(done, total)| format!(" {done}/{total}"))
-                .unwrap_or_default();
-            Chip {
-                text: format!("{glyph}{}{todo}", m.label),
-                color: status_accent(&m.status),
-                is_sel,
-            }
+        .map(|(idx, m)| Chip {
+            glyph: status_glyph(&m.status, spinner_frame).to_string(),
+            name: m.label.clone(),
+            todo: m.todo.map(|(done, total)| format!("{done}/{total}")),
+            color: status_accent(&m.status),
+            is_sel: idx == selected,
         })
         .collect();
+    let chip_w = |c: &Chip| -> usize {
+        disp_w(&c.glyph)
+            + 1
+            + disp_w(&c.name)
+            + c.todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0)
+    };
 
-    // Width budget for chips: total minus the leading "🐝 swarm  " and the
-    // right tail plus a gap.
-    let lead_w = 3 + 5 + 2; // bee + "swarm" + two spaces
-    let chips_budget = width.saturating_sub(lead_w + right_w + 2);
-    let mut used = 0usize;
+    // Fit as many chips as possible into `budget`, collapsing overflow into a
+    // "+N" marker that is itself budgeted so the line can never exceed `width`.
+    // Returns (chips shown, columns used including any "+N" marker).
+    const CHIP_SEP: &str = "  ";
+    let sep_w = disp_w(CHIP_SEP);
+    let fit_chips = |budget: usize| -> (usize, usize) {
+        let mut shown = 0usize;
+        let mut acc = 0usize;
+        for (i, chip) in chips.iter().enumerate() {
+            let s = if i == 0 { 0 } else { sep_w };
+            let w = chip_w(chip);
+            // Reserve room for a "+N" marker when chips would remain hidden.
+            let remaining_after = chips.len() - i - 1;
+            let reserve = if remaining_after > 0 {
+                1 + 1 + count_digits(remaining_after)
+            } else {
+                0
+            };
+            if acc + s + w + reserve > budget {
+                break;
+            }
+            acc += s + w;
+            shown += 1;
+        }
+        let hidden = chips.len() - shown;
+        if hidden > 0 {
+            acc += 1 + 1 + count_digits(hidden);
+        }
+        (shown, acc)
+    };
+
+    // Pick the richest right tail that still leaves room for the chips:
+    // tally + hint, then tally only, then no tail at all.
+    let mut tail_configs: Vec<usize> = Vec::new();
+    if hint_w > 0 {
+        tail_configs.push(tally_w + hint_w);
+    }
+    tail_configs.push(tally_w);
+    tail_configs.push(0);
     let mut shown = 0usize;
-    for (i, chip) in chips.iter().enumerate() {
-        let sep_w = if i == 0 { 0 } else { 1 };
-        let chip_w = chip.text.chars().count();
-        if used + sep_w + chip_w > chips_budget && shown > 0 {
+    let mut chips_used = 0usize;
+    let mut tail_w = 0usize;
+    for tw in tail_configs {
+        let reserved = if tw > 0 { tw + gap } else { 0 };
+        let budget = match width.checked_sub(lead_w + reserved) {
+            Some(b) => b,
+            None => continue,
+        };
+        let (s, u) = fit_chips(budget);
+        if s > 0 || tw == 0 {
+            shown = s;
+            chips_used = u;
+            tail_w = tw;
             break;
         }
-        if i > 0 {
-            spans.push(Span::raw(" "));
-            used += 1;
-        }
-        let mut style = Style::default().fg(chip.color);
-        if chip.is_sel && focused {
-            style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
-        } else if chip.is_sel {
-            style = style.add_modifier(Modifier::BOLD);
-        }
-        spans.push(Span::styled(chip.text.clone(), style));
-        used += chip_w;
-        shown += 1;
     }
-    let hidden = chips.len().saturating_sub(shown);
-    if hidden > 0 {
-        let more = format!(" +{hidden}");
-        let more_w = more.chars().count();
-        spans.push(Span::styled(more, Style::default().fg(rgb(140, 140, 150))));
-        used += more_w;
+    let show_hint = tail_w > tally_w;
+    let show_tally = tail_w > 0;
+
+    let mut spans: Vec<Span<'static>> = lead;
+    let used: usize;
+    if shown == 0 && !chips.is_empty() {
+        // Degenerate width: show the first chip truncated.
+        let budget = width.saturating_sub(lead_w + if show_tally { tail_w + gap } else { 0 });
+        let c = &chips[0];
+        let avail = budget.saturating_sub(disp_w(&c.glyph) + 1);
+        let name = truncate_label(&c.name, avail.max(1));
+        let style = Style::default().fg(c.color);
+        spans.push(Span::styled(format!("{} ", c.glyph), style));
+        spans.push(Span::styled(name.clone(), style));
+        used = disp_w(&c.glyph) + 1 + disp_w(&name);
+    } else {
+        for (i, chip) in chips.iter().take(shown).enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(CHIP_SEP));
+            }
+            let mut style = Style::default().fg(chip.color);
+            if chip.is_sel && focused {
+                style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+            } else if chip.is_sel {
+                style = style.add_modifier(Modifier::BOLD);
+            }
+            spans.push(Span::styled(
+                format!("{} {}", chip.glyph, chip.name),
+                style,
+            ));
+            if let Some(todo) = &chip.todo {
+                spans.push(Span::styled(
+                    format!(" {todo}"),
+                    Style::default().fg(rgb(130, 130, 140)),
+                ));
+            }
+        }
+        let hidden = chips.len().saturating_sub(shown);
+        if hidden > 0 {
+            spans.push(Span::styled(
+                format!(" +{hidden}"),
+                Style::default().fg(rgb(140, 140, 150)),
+            ));
+        }
+        used = chips_used;
     }
 
-    // Right-align the tail (tally [+ enter hint]).
-    let consumed = lead_w + used;
-    let pad = width.saturating_sub(consumed + right_w).max(1);
-    spans.push(Span::raw(" ".repeat(pad)));
-    spans.push(Span::styled(
-        tally,
-        Style::default().fg(if active > 0 {
-            rgb(255, 200, 100)
-        } else {
-            rgb(120, 120, 130)
-        }),
-    ));
-    if !focused && let Some(hint) = enter_hint {
-        spans.push(Span::styled(
-            format!("   {hint}"),
-            Style::default().fg(rgb(110, 130, 170)),
-        ));
+    // ---- Right-align the tail (tally [+ hint]) ----
+    if show_tally {
+        let consumed = lead_w + used;
+        if consumed + gap + tail_w <= width {
+            let pad = width - consumed - tail_w;
+            spans.push(Span::raw(" ".repeat(pad)));
+            spans.push(Span::styled(
+                tally,
+                Style::default().fg(if active > 0 {
+                    rgb(255, 200, 100)
+                } else {
+                    rgb(120, 120, 130)
+                }),
+            ));
+            if show_hint && let Some(hint) = hint_text {
+                spans.push(Span::styled(
+                    hint_sep.to_string(),
+                    Style::default().fg(rgb(80, 80, 90)),
+                ));
+                spans.push(Span::styled(
+                    hint.to_string(),
+                    Style::default().fg(rgb(110, 130, 170)),
+                ));
+            }
+        }
     }
 
     let mut out = vec![Line::from(spans)];
@@ -442,10 +526,46 @@ pub fn render_swarm_strip(
         }
     }
 
+    // Hard bound: no matter how the budgeting above worked out, never emit a
+    // line wider than the strip (degenerate widths, wide glyphs, etc.).
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
+
     out
 }
 
-/// Header line for the list+detail swarm panel. Adds a focus hint when focused.
+/// Truncate a styled line so its display width never exceeds `max_width`.
+/// Splits mid-span if needed, dropping a trailing wide glyph that would
+/// straddle the boundary.
+fn clamp_line_to_width(line: &mut Line<'static>, max_width: usize) {
+    use unicode_width::UnicodeWidthChar;
+    let mut used = 0usize;
+    let mut clamped: Vec<Span<'static>> = Vec::new();
+    for span in line.spans.drain(..) {
+        let w = disp_w(&span.content);
+        if used + w <= max_width {
+            used += w;
+            clamped.push(span);
+            continue;
+        }
+        // Partial span: take chars while they fit.
+        let mut taken = String::new();
+        for ch in span.content.chars() {
+            let cw = ch.width().unwrap_or(0);
+            if used + cw > max_width {
+                break;
+            }
+            used += cw;
+            taken.push(ch);
+        }
+        if !taken.is_empty() {
+            clamped.push(Span::styled(taken, span.style));
+        }
+        break;
+    }
+    line.spans = clamped;
+}
 fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
     let mut spans = vec![
         Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
@@ -570,6 +690,23 @@ fn truncate_label(s: &str, max: usize) -> String {
     let mut out: String = s.chars().take(max - 1).collect();
     out.push('…');
     out
+}
+
+/// Terminal display width of a string (wide glyphs like 🐝 count as 2).
+fn disp_w(s: &str) -> usize {
+    use unicode_width::UnicodeWidthStr;
+    s.width()
+}
+
+/// Number of decimal digits in `n` (for budgeting "+N" markers).
+fn count_digits(n: usize) -> usize {
+    let mut n = n.max(1);
+    let mut d = 0;
+    while n > 0 {
+        d += 1;
+        n /= 10;
+    }
+    d
 }
 
 #[cfg(test)]
@@ -813,5 +950,74 @@ mod tests {
         assert!(lines[0].width() <= 50, "too wide");
         let chips = plain_line(&lines[0]);
         assert!(chips.contains('+'), "expected +N overflow marker: {chips}");
+    }
+
+    #[test]
+    fn strip_is_display_width_bounded_at_all_widths() {
+        use unicode_width::UnicodeWidthStr;
+        let mut members: Vec<GalleryMember> = (0..9)
+            .map(|i| member(&format!("agent-{i}"), "running", None, &["working"]))
+            .collect();
+        members[0].todo = Some((3, 8));
+        members[0].role = Some("coordinator".into());
+        for width in 8..=140 {
+            for focused in [false, true] {
+                let lines = render_swarm_strip(
+                    &members,
+                    2,
+                    focused,
+                    &hints(),
+                    Some("ctrl+shift+tab controls"),
+                    0,
+                    width,
+                );
+                for line in &lines {
+                    let text = plain_line(line);
+                    let w = text.as_str().width();
+                    assert!(
+                        w <= width,
+                        "width {width} focused {focused}: line overflows ({w}): {text:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn strip_drops_hint_before_tally_when_narrow() {
+        let members: Vec<GalleryMember> = (0..6)
+            .map(|i| member(&format!("agent-{i}"), "running", None, &[]))
+            .collect();
+        // Narrow enough that the long hint cannot fit, but the tally can.
+        let lines = render_swarm_strip(
+            &members,
+            0,
+            false,
+            &hints(),
+            Some("ctrl+shift+tab controls"),
+            0,
+            60,
+        );
+        let chips = plain_line(&lines[0]);
+        assert!(chips.contains("6/6 active"), "tally missing: {chips}");
+        assert!(!chips.contains("controls"), "hint should drop: {chips}");
+    }
+
+    #[test]
+    fn strip_right_tail_is_right_aligned() {
+        use unicode_width::UnicodeWidthStr;
+        let members = vec![
+            member("alpha", "running", None, &[]),
+            member("beta", "done", None, &[]),
+        ];
+        let width = 80;
+        let lines = render_swarm_strip(&members, 0, false, &hints(), Some("alt+w controls"), 0, width);
+        let chips = plain_line(&lines[0]);
+        assert!(
+            chips.as_str().width() == width,
+            "tail should pad to exactly the width: got {} for {chips:?}",
+            chips.as_str().width()
+        );
+        assert!(chips.trim_end().ends_with("controls"), "got: {chips}");
     }
 }
