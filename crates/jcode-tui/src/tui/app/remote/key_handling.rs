@@ -364,8 +364,8 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    // Inline swarm panel: Ctrl+Shift+E focuses/unfocuses the managed-agents
-    // panel. While focused, j/k navigate, o pops out the selected agent, esc exits.
+    // Inline swarm panel: Alt+N focuses/unfocuses the managed-agents panel.
+    // While focused, j/k navigate, o pops out the selected agent, esc exits.
     if app.toggle_keys.swarm_panel_focus.matches(code, modifiers) {
         let focused = app.toggle_swarm_panel_focus();
         app.set_status_notice(if focused {

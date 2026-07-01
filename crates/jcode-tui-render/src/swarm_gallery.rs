@@ -261,7 +261,7 @@ pub fn render_swarm_panel(
 
 /// A key/label pair for the swarm strip hint line.
 pub struct SwarmStripHint {
-    /// The key chord to show, e.g. "ctrl+shift+e" or "j/k".
+    /// The key chord to show, e.g. "alt+n" or "j/k".
     pub key: String,
     /// What it does, e.g. "select".
     pub label: String,
@@ -914,7 +914,7 @@ mod tests {
     fn hints() -> Vec<SwarmStripHint> {
         vec![
             SwarmStripHint {
-                key: "ctrl+shift+e".into(),
+                key: "alt+n".into(),
                 label: "focus".into(),
             },
             SwarmStripHint {
@@ -987,12 +987,12 @@ mod tests {
             0,
             false,
             &hints(),
-            Some("ctrl+shift+e controls"),
+            Some("alt+n controls"),
             0,
             90,
         );
         let chips = plain_line(&lines[0]);
-        assert!(chips.contains("ctrl+shift+e controls"), "got: {chips}");
+        assert!(chips.contains("alt+n controls"), "got: {chips}");
     }
 
     #[test]
@@ -1151,7 +1151,7 @@ mod tests {
             0,
             false,
             &hints(),
-            Some("ctrl+shift+e controls"),
+            Some("alt+n controls"),
             0,
             width,
         );

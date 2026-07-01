@@ -798,8 +798,8 @@ pub struct KeybindingsConfig {
     /// Toggle the info widget (default: "alt+i")
     pub info_widget_toggle: String,
     /// Focus/unfocus the inline swarm panel for keyboard navigation (default:
-    /// "ctrl+shift+e"). Active only when `agents.swarm_spawn_mode = "inline"`
-    /// and the session manages swarm agents.
+    /// "alt+n"). Active only when `agents.swarm_spawn_mode = "inline"` and the
+    /// session manages swarm agents.
     pub swarm_panel_focus: String,
     /// Spawn a fresh jcode session in a new terminal window (default: unbound).
     /// Example: "alt+enter".
@@ -847,7 +847,7 @@ impl Default for KeybindingsConfig {
             typing_scroll_lock_toggle: get("typing_scroll_lock_toggle", "alt+s"),
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
-            swarm_panel_focus: get("swarm_panel_focus", "ctrl+shift+e"),
+            swarm_panel_focus: get("swarm_panel_focus", "alt+n"),
             new_terminal: get("new_terminal", ""),
             open_resume: get(
                 "open_resume",

@@ -335,8 +335,7 @@ impl ToggleBinding {
         )
     }
 
-    /// Load a toggle binding whose default is not the usual `alt+<letter>`
-    /// chord (e.g. the swarm panel's `ctrl+shift+e`).
+    /// Load a toggle binding from an explicit default chord.
     fn load_with_default(raw: &str, default: KeyBinding) -> Self {
         let default_label = format_binding(&default);
         let (binding, _) = parse_optional(raw, default, &default_label);
@@ -402,11 +401,11 @@ pub fn load_toggle_keys() -> ToggleKeys {
     }
 }
 
-/// The default swarm-panel focus chord: Ctrl+Shift+E.
+/// The default swarm-panel focus chord: Alt+N.
 fn swarm_panel_focus_default() -> KeyBinding {
     KeyBinding {
-        code: KeyCode::Char('e'),
-        modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        code: KeyCode::Char('n'),
+        modifiers: KeyModifiers::ALT,
     }
 }
 
@@ -422,7 +421,7 @@ pub(crate) fn side_panel_toggle_key_label() -> &'static str {
 }
 
 /// Human-friendly label for the configured swarm-panel focus chord (e.g.
-/// "Ctrl+Shift+E"), used in the inline swarm strip's enter-controls hint.
+/// "Alt+N"), used in the inline swarm strip's enter-controls hint.
 pub(crate) fn swarm_panel_focus_key_label() -> String {
     let cfg = config();
     let default = swarm_panel_focus_default();

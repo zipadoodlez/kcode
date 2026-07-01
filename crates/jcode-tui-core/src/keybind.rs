@@ -563,8 +563,8 @@ mod tests {
     #[test]
     fn ctrl_shift_letter_matches_uppercase_and_lowercase_encodings() {
         // Terminals with the Kitty keyboard protocol report Ctrl+Shift+E as
-        // either Char('e') or Char('E') with CONTROL|SHIFT. The swarm panel
-        // focus default (ctrl+shift+e) must match both encodings.
+        // either Char('e') or Char('E') with CONTROL|SHIFT. User-configured
+        // ctrl+shift+<letter> chords must match both encodings.
         let binding = parse_keybinding("ctrl+shift+e").expect("ctrl+shift+e parses");
         let mods = KeyModifiers::CONTROL | KeyModifiers::SHIFT;
         assert!(binding.matches(KeyCode::Char('e'), mods));

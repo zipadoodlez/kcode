@@ -69,7 +69,7 @@ info_widget_toggle = "alt+i"
 # Focus the inline swarm panel (list of agents this session manages). While
 # focused: j/k select, o pops the selected agent out to a new terminal, esc
 # exits. Active only with agents.swarm_spawn_mode = "inline".
-swarm_panel_focus = "ctrl+shift+e"
+swarm_panel_focus = "alt+n"
 
 # Spawn a fresh jcode session in a new terminal window, reusing the current
 # session's working directory. Companion to the system-wide launch hotkeys.
