@@ -176,7 +176,13 @@ pub fn render_gallery(
         max_height: max_height.saturating_sub(1).max(4),
         ..Default::default()
     };
-    render_swarm_gallery(&tiles, width, &cfg, Some(header))
+    let mut out = render_swarm_gallery(&tiles, width, &cfg, Some(header));
+    // The grid cells are width-bounded already, but the header (and any
+    // degenerate-width artifacts) are not. Enforce the bound uniformly.
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
+    out
 }
 
 /// Render the swarm panel as a compact list of managed agents plus a detail
@@ -250,6 +256,12 @@ pub fn render_swarm_panel(
     {
         let detail = crate::swarm_tiles::render_single_tile(tile, width, detail_budget);
         out.extend(detail);
+    }
+
+    // Hard bound: the header carries a fixed hint and list rows budget by
+    // display width, but never let any line exceed the panel width.
+    for line in &mut out {
+        clamp_line_to_width(line, width);
     }
 
     out
@@ -637,14 +649,14 @@ fn list_row(member: &GalleryMember, selected: bool, focused: bool, width: usize)
         .map(|a| a.to_string());
 
     let marker_w = 2;
-    let glyph_w = glyph.chars().count();
-    let badge_w = badge.chars().count();
-    let age_w = age.as_ref().map(|a| a.chars().count() + 1).unwrap_or(0);
+    let glyph_w = disp_w(&glyph);
+    let badge_w = disp_w(&badge);
+    let age_w = age.as_ref().map(|a| disp_w(a) + 1).unwrap_or(0);
     // Reserve: marker + glyph + label + space + badge + space + age.
     let reserved = marker_w + glyph_w + 1 + badge_w + age_w + 1;
     let label_budget = width.saturating_sub(reserved).max(4);
     let label = truncate_label(&member.label, label_budget);
-    let label_w = label.chars().count();
+    let label_w = disp_w(&label);
 
     let label_style = if selected {
         Style::default().fg(rgb(235, 235, 245))
@@ -680,14 +692,27 @@ fn list_row(member: &GalleryMember, selected: bool, focused: bool, width: usize)
     Line::from(spans)
 }
 
+/// Truncate `s` to at most `max` display columns (wide glyphs count as 2),
+/// appending an ellipsis when truncated.
 fn truncate_label(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
+    use unicode_width::UnicodeWidthChar;
+    if disp_w(s) <= max {
         return s.to_string();
     }
     if max <= 1 {
         return "…".to_string();
     }
-    let mut out: String = s.chars().take(max - 1).collect();
+    let target = max - 1;
+    let mut out = String::new();
+    let mut used = 0usize;
+    for ch in s.chars() {
+        let cw = ch.width().unwrap_or(0);
+        if used + cw > target {
+            break;
+        }
+        used += cw;
+        out.push(ch);
+    }
     out.push('…');
     out
 }
@@ -1001,6 +1026,74 @@ mod tests {
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("6/6 active"), "tally missing: {chips}");
         assert!(!chips.contains("controls"), "hint should drop: {chips}");
+    }
+
+    #[test]
+    fn panel_is_display_width_bounded_with_wide_labels() {
+        use unicode_width::UnicodeWidthStr;
+        let members = vec![
+            member(
+                "日本語のエージェント名前が長い場合の確認",
+                "running",
+                None,
+                &["· 3s ago"],
+            ),
+            member("ascii", "done", None, &["· 1m ago"]),
+        ];
+        for width in 8..=80 {
+            for focused in [false, true] {
+                for lines in [
+                    render_swarm_panel(&members, 0, focused, width, 14),
+                    render_gallery(&members, width, 12),
+                ] {
+                    for line in &lines {
+                        let text = plain_line(line);
+                        let w = text.as_str().width();
+                        assert!(
+                            w <= width,
+                            "width {width}: line overflows ({w}): {text:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn degenerate_sizes_and_large_member_counts_do_not_panic() {
+        let statuses = [
+            "spawned", "ready", "running", "thinking", "blocked", "failed", "completed",
+            "stopped", "unknown-status",
+        ];
+        for count in [0usize, 1, 3, 50, 400] {
+            let members: Vec<GalleryMember> = (0..count)
+                .map(|i| {
+                    let mut m = member(
+                        &format!("agent-🐝-{i}"),
+                        statuses[i % statuses.len()],
+                        if i == 0 { Some("coordinator") } else { None },
+                        &["line 一二三四五", "· 2s ago"],
+                    );
+                    m.todo = Some((i as u32, (i as u32).max(1)));
+                    m
+                })
+                .collect();
+            for width in [0usize, 1, 2, 7, 8, 9, 40] {
+                for height in [0usize, 1, 2, 3, 7, 20] {
+                    let _ = render_gallery(&members, width, height);
+                    let _ = render_swarm_panel(&members, count + 5, true, width, height);
+                    let _ = render_swarm_strip(
+                        &members,
+                        count + 5,
+                        true,
+                        &hints(),
+                        Some("ctrl+t controls"),
+                        usize::MAX / 2,
+                        width,
+                    );
+                }
+            }
+        }
     }
 
     #[test]
