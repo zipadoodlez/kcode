@@ -639,7 +639,13 @@ impl App {
             return;
         }
         // Only modified chords (or BackTab) can be hotkeys; skip plain typing.
-        if modifiers.is_empty() && code != KeyCode::BackTab {
+        // Exception: macOS terminals that keep Option as a character key send
+        // Option+M as a bare 'µ' with no ALT modifier; `KeyBinding::matches`
+        // translates those, so let them through to the lookup.
+        let macos_option_char = cfg!(target_os = "macos")
+            && modifiers.is_empty()
+            && jcode_tui_core::keybind::macos_option_char_to_ascii_key(code).is_some();
+        if modifiers.is_empty() && code != KeyCode::BackTab && !macos_option_char {
             return;
         }
         // Shift alone on a character is just typing (uppercase letters, symbols).
@@ -777,7 +783,12 @@ mod tests {
             right: vec![alt('l')],
         };
         let dictation = OptionalBinding::default();
-        let new_terminal = OptionalBinding::default();
+        // Bind the optional chords in the fixture so coverage tests can verify
+        // they flow through build_registry when configured.
+        let new_terminal = OptionalBinding {
+            binding: Some(key(KeyCode::Enter, KeyModifiers::ALT)),
+            label: Some("Alt+Enter".to_string()),
+        };
         let open_resume = OptionalBinding {
             binding: Some(alt('r')),
             label: Some("Alt+R".to_string()),
@@ -912,5 +923,97 @@ mod tests {
             last_used_unix: now - STALE_SECS,
         };
         assert!(is_unfamiliar(&stale, now));
+    }
+
+    /// Drift guard: every configurable keybinding in the canonical registry
+    /// must be represented in the hotkey-feedback registry (as one of the
+    /// action ids the builder can emit). If this fails, someone added a new
+    /// keybinding without teaching the feedback system about it, which would
+    /// make `note_unrecognized_hotkey` falsely claim the chord "isn't bound".
+    #[test]
+    fn registry_covers_every_canonical_keybinding_default() {
+        use crate::tui::keybind::KEYBINDING_DEFAULTS;
+
+        // Canonical ids -> the action id(s) the feedback registry uses.
+        // A None mapping documents an intentional exclusion.
+        let mapping: &[(&str, Option<&[&str]>)] = &[
+            ("scroll_up", Some(&["scroll_up"])),
+            ("scroll_down", Some(&["scroll_down"])),
+            ("scroll_page_up", Some(&["scroll_page_up"])),
+            ("scroll_page_down", Some(&["scroll_page_down"])),
+            ("model_switch_next", Some(&["model_switch_next"])),
+            ("model_switch_prev", Some(&["model_switch_prev"])),
+            ("fallback_switch", Some(&["fallback_switch"])),
+            ("effort_increase", Some(&["effort_increase"])),
+            ("effort_decrease", Some(&["effort_decrease"])),
+            ("centered_toggle", Some(&["centered_toggle"])),
+            ("scroll_prompt_up", Some(&["prompt_jump_up"])),
+            ("scroll_prompt_down", Some(&["prompt_jump_down"])),
+            ("scroll_bookmark", Some(&["scroll_bookmark"])),
+            ("scroll_up_fallback", Some(&["scroll_up"])),
+            ("scroll_down_fallback", Some(&["scroll_down"])),
+            ("workspace_left", Some(&["workspace_left"])),
+            ("workspace_down", Some(&["workspace_down"])),
+            ("workspace_up", Some(&["workspace_up"])),
+            ("workspace_right", Some(&["workspace_right"])),
+            ("new_terminal", Some(&["new_terminal"])),
+            ("open_resume", Some(&["open_resume"])),
+        ];
+
+        let registry = test_inputs_registry(true);
+        let registry_actions: std::collections::HashSet<&str> =
+            registry.iter().map(|k| k.action).collect();
+
+        for default in KEYBINDING_DEFAULTS {
+            let entry = mapping.iter().find(|(id, _)| *id == default.id);
+            let Some((_, actions)) = entry else {
+                panic!(
+                    "keybinding default `{}` is not mapped in the hotkey-feedback \
+                     registry test. Add it to build_registry (so users get \
+                     press-feedback and never a false \"isn't bound\" notice) and \
+                     record the mapping here.",
+                    default.id
+                );
+            };
+            if let Some(actions) = actions {
+                for action in *actions {
+                    assert!(
+                        registry_actions.contains(action),
+                        "mapped action `{action}` for keybinding default `{}` is \
+                         missing from build_registry output",
+                        default.id
+                    );
+                }
+            }
+        }
+    }
+
+    /// Drift guard for the pane/mode toggles that live outside
+    /// KEYBINDING_DEFAULTS (ToggleKeys fields). Uses the real loader so a new
+    /// ToggleKeys field without registry coverage fails here.
+    #[test]
+    fn registry_covers_every_toggle_binding() {
+        let registry = test_inputs_registry(false);
+        let toggles = crate::tui::keybind::load_toggle_keys();
+        let toggle_bindings: &[(&str, Option<&KeyBinding>)] = &[
+            ("side_panel_toggle", toggles.side_panel.binding()),
+            ("copy_selection_toggle", toggles.copy_selection.binding()),
+            ("diagram_pane_toggle", toggles.diagram_pane.binding()),
+            (
+                "typing_scroll_lock_toggle",
+                toggles.typing_scroll_lock.binding(),
+            ),
+            ("diff_mode_cycle", toggles.diff_mode_cycle.binding()),
+            ("info_widget_toggle", toggles.info_widget.binding()),
+            ("swarm_panel_focus", toggles.swarm_panel_focus.binding()),
+        ];
+        for (name, binding) in toggle_bindings {
+            let Some(binding) = binding else { continue };
+            assert!(
+                lookup(&registry, true, binding.code, binding.modifiers).is_some(),
+                "toggle `{name}` chord {:?} is not resolvable in the feedback registry",
+                binding
+            );
+        }
     }
 }
