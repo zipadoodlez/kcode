@@ -115,6 +115,49 @@ impl App {
     }
 }
 
+/// Recover an in-flight queued continuation back into the queue.
+///
+/// A queued follow-up that was already taken from `queued_messages` and handed
+/// to `begin_remote_send` lives only in `rate_limit_pending_message` while it
+/// is in flight. That pending shape (`is_system` with `auto_retry == false`)
+/// has no retry path: the tick resend requires a rate-limit reset timestamp
+/// and the disconnect resend requires `auto_retry`. If the connection dies
+/// before the turn completes (typically a server reload handoff racing the
+/// dispatch), clearing the pending message silently drops the user's queued
+/// message (issue #391). Instead, put it back at the front of the queue so it
+/// is re-sent once the turn is proven idle after reconnect, which is the
+/// queue's contract.
+pub(super) fn recover_undelivered_queued_continuation(app: &mut App, reason: &str) -> bool {
+    let is_recoverable = app
+        .rate_limit_pending_message
+        .as_ref()
+        .is_some_and(|pending| {
+            pending.is_system
+                && !pending.auto_retry
+                && (!pending.content.trim().is_empty() || pending.system_reminder.is_some())
+        });
+    if !is_recoverable {
+        return false;
+    }
+    let Some(pending) = app.rate_limit_pending_message.take() else {
+        return false;
+    };
+    app.rate_limit_reset = None;
+    crate::logging::info(&format!(
+        "Recovering in-flight queued continuation into queued follow-ups after {} (content_chars={}, has_reminder={})",
+        reason,
+        pending.content.chars().count(),
+        pending.system_reminder.is_some()
+    ));
+    if let Some(reminder) = pending.system_reminder {
+        app.hidden_queued_system_messages.insert(0, reminder);
+    }
+    if !pending.content.trim().is_empty() {
+        app.queued_messages.insert(0, pending.content);
+    }
+    true
+}
+
 pub(super) fn recover_local_interleave_to_queue(app: &mut App, reason: &str) -> bool {
     let Some(interleave) = app.interleave_message.take() else {
         return false;

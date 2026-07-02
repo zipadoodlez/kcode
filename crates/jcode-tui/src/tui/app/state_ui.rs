@@ -185,6 +185,17 @@ impl App {
                 && !pending.is_system
                 && (!pending.content.trim().is_empty() || !pending.images.is_empty())
         });
+        // A queued follow-up that was dequeued and is currently in flight lives
+        // only in `rate_limit_pending_message` (is_system). Without a scheduled
+        // retry reset, that shape has no dispatch path after a restore (the
+        // tick resend requires `rate_limit_reset`), so persist it back into
+        // the queued/hidden lists instead; the restored queue re-sends it once
+        // the turn is proven idle (issue #391).
+        let inflight_continuation = self.rate_limit_pending_message.as_ref().filter(|pending| {
+            pending.is_system
+                && self.rate_limit_reset.is_none()
+                && (!pending.content.trim().is_empty() || pending.system_reminder.is_some())
+        });
         if self.input.is_empty()
             && self.pending_images.is_empty()
             && self.queued_messages.is_empty()
@@ -198,11 +209,29 @@ impl App {
             && !self.split_view_enabled
             && !self.todos_view_enabled
         {
+            // Nothing to save, but a stale file from an earlier run could
+            // still hold old queued messages/input. Leaving it behind would
+            // resurrect that stale state on the next restore. Only remove
+            // clearly stale files: another client attached to the same session
+            // may have just saved ITS queued messages during the same reload
+            // handoff, and deleting a fresh file here would drop them.
+            if let Ok(jcode_dir) = crate::storage::jcode_dir() {
+                let path = jcode_dir.join(format!("client-input-{}", session_id));
+                let is_stale = std::fs::metadata(&path)
+                    .and_then(|meta| meta.modified())
+                    .ok()
+                    .and_then(|mtime| mtime.elapsed().ok())
+                    .is_some_and(|age| age > Duration::from_secs(300));
+                if is_stale {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
             return;
         }
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
             let path = jcode_dir.join(format!("client-input-{}", session_id));
-            let rate_limit_reset_in_ms = if resume_prompt.is_some() {
+            let rate_limit_reset_in_ms = if resume_prompt.is_some() || inflight_continuation.is_some()
+            {
                 None
             } else {
                 self.rate_limit_reset.map(|reset| {
@@ -214,7 +243,9 @@ impl App {
                     }
                 })
             };
-            let rate_limit_pending_message = if resume_prompt.is_some() {
+            let rate_limit_pending_message = if resume_prompt.is_some()
+                || inflight_continuation.is_some()
+            {
                 None
             } else {
                 self.rate_limit_pending_message.as_ref().map(|pending| {
@@ -228,6 +259,16 @@ impl App {
                     })
                 })
             };
+            let mut queued_messages = self.queued_messages.clone();
+            let mut hidden_queued_system_messages = self.hidden_queued_system_messages.clone();
+            if let Some(pending) = inflight_continuation {
+                if !pending.content.trim().is_empty() {
+                    queued_messages.insert(0, pending.content.clone());
+                }
+                if let Some(reminder) = pending.system_reminder.clone() {
+                    hidden_queued_system_messages.insert(0, reminder);
+                }
+            }
             let resume_input = resume_prompt.map(|pending| pending.content.as_str());
             let resume_images = resume_prompt.map(|pending| pending.images.as_slice());
             let rate_limit_reset_in_ms =
@@ -245,8 +286,8 @@ impl App {
                     "data": data,
                 })).collect::<Vec<_>>(),
                 "submit_on_restore": resume_prompt.is_some(),
-                "queued_messages": self.queued_messages,
-                "hidden_queued_system_messages": self.hidden_queued_system_messages,
+                "queued_messages": queued_messages,
+                "hidden_queued_system_messages": hidden_queued_system_messages,
                 "interleave_message": self.interleave_message,
                 "pending_soft_interrupts": self.pending_soft_interrupts,
                 "pending_soft_interrupt_resend": pending_soft_interrupt_resend,

@@ -28,7 +28,10 @@ mod workspace;
 
 #[cfg(test)]
 pub(super) use key_handling::reload_stale_remote_server_before_update;
-use queue_recovery::{recover_local_interleave_to_queue, recover_stranded_soft_interrupts};
+use queue_recovery::{
+    recover_local_interleave_to_queue, recover_stranded_soft_interrupts,
+    recover_undelivered_queued_continuation,
+};
 // Re-export for sibling modules and tests that access reconnect state and helpers
 // through `super::remote::*` without reaching into private submodules directly.
 #[allow(unused_imports)]
@@ -221,11 +224,32 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
         for msg in &messages {
             app.push_display_message(DisplayMessage::user(msg.clone()));
         }
-        if begin_remote_send(app, remote, combined, vec![], true, reminder, auto_retry, 0)
-            .await
-            .is_err()
+        if begin_remote_send(
+            app,
+            remote,
+            combined.clone(),
+            vec![],
+            true,
+            reminder.clone(),
+            auto_retry,
+            0,
+        )
+        .await
+        .is_err()
         {
-            crate::logging::error("Failed to send queued continuation message");
+            // The send never reached the server (e.g. the socket died under a
+            // reload handoff). Dropping the dequeued messages here would lose
+            // them permanently (issue #391); put them back so the queue
+            // re-dispatches after reconnect.
+            crate::logging::error(
+                "Failed to send queued continuation message; restoring it to the queue",
+            );
+            if let Some(reminder) = reminder {
+                app.hidden_queued_system_messages.insert(0, reminder);
+            }
+            if !combined.is_empty() {
+                app.queued_messages.insert(0, combined);
+            }
         }
         needs_redraw = true;
     }
@@ -243,14 +267,17 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
             String::new(),
             vec![],
             true,
-            Some(combined),
+            Some(combined.clone()),
             true,
             0,
         )
         .await
         .is_err()
         {
-            crate::logging::error("Failed to send hidden continuation reminder");
+            crate::logging::error(
+                "Failed to send hidden continuation reminder; restoring it to the queue",
+            );
+            app.hidden_queued_system_messages.insert(0, combined);
         }
         needs_redraw = true;
     }
@@ -741,7 +768,14 @@ pub(super) fn handle_disconnect(
     let scheduled_retry =
         app.schedule_pending_remote_retry(&format!("⚡ Connection lost ({detail})."));
     if !scheduled_retry {
-        app.clear_pending_remote_retry();
+        // A queued follow-up that was already dispatched (dequeued into an
+        // in-flight send) has no auto-retry path. Dropping it here would lose
+        // the user's queued message when a reload/disconnect races the
+        // turn-end dispatch (issue #391); put it back on the queue instead so
+        // it is re-sent once the turn is proven idle after reconnect.
+        if !recover_undelivered_queued_continuation(app, "disconnect") {
+            app.clear_pending_remote_retry();
+        }
     }
     let recovered_local = recover_local_interleave_to_queue(app, "disconnect");
     app.current_message_id = None;
@@ -1198,22 +1232,52 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
                 app.visible_turn_started = Some(Instant::now());
             }
         }
-        let _ =
-            begin_remote_send(app, remote, combined, vec![], true, reminder, auto_retry, 0).await;
+        if begin_remote_send(
+            app,
+            remote,
+            combined.clone(),
+            vec![],
+            true,
+            reminder.clone(),
+            auto_retry,
+            0,
+        )
+        .await
+        .is_err()
+        {
+            // Do not drop a dequeued follow-up whose send never reached the
+            // server (issue #391); restore it for redispatch after reconnect.
+            crate::logging::error(
+                "Failed to send queued continuation message; restoring it to the queue",
+            );
+            if let Some(reminder) = reminder {
+                app.hidden_queued_system_messages.insert(0, reminder);
+            }
+            if !combined.is_empty() {
+                app.queued_messages.insert(0, combined);
+            }
+        }
     } else if !app.hidden_queued_system_messages.is_empty() {
         let reminders = std::mem::take(&mut app.hidden_queued_system_messages);
         let combined = reminders.join("\n\n");
-        let _ = begin_remote_send(
+        if begin_remote_send(
             app,
             remote,
             String::new(),
             vec![],
             true,
-            Some(combined),
+            Some(combined.clone()),
             true,
             0,
         )
-        .await;
+        .await
+        .is_err()
+        {
+            crate::logging::error(
+                "Failed to send hidden continuation reminder; restoring it to the queue",
+            );
+            app.hidden_queued_system_messages.insert(0, combined);
+        }
     }
 }
 
@@ -1279,10 +1343,19 @@ async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
             if !app.schedule_pending_remote_retry(
                 "⚠ Stream stalled (no response for 2 minutes). Processing cancelled.",
             ) {
+                // Keep a dispatched-but-unfinished queued follow-up on the
+                // queue instead of silently dropping it (issue #391).
+                let recovered = recover_undelivered_queued_continuation(app, "stream stall");
                 app.clear_pending_remote_retry();
-                app.push_display_message(DisplayMessage::system(
-                    "⚠ Stream stalled (no response for 2 minutes). Processing cancelled. You can resend your message.".to_string(),
-                ));
+                if recovered {
+                    app.push_display_message(DisplayMessage::system(
+                        "⚠ Stream stalled (no response for 2 minutes). Processing cancelled. Your queued follow-up stays queued.".to_string(),
+                    ));
+                } else {
+                    app.push_display_message(DisplayMessage::system(
+                        "⚠ Stream stalled (no response for 2 minutes). Processing cancelled. You can resend your message.".to_string(),
+                    ));
+                }
             }
         }
     }

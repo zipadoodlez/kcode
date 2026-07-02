@@ -858,6 +858,34 @@ pub(in crate::tui::app) fn handle_server_event(
             retry_after_secs,
             ..
         } => {
+            // The server rejects a Message request with this error while its
+            // previous turn is still running. This typically happens when a
+            // reload/reconnect raced the turn-end dispatch: the history
+            // activity snapshot said "idle", the client dequeued and sent a
+            // queued follow-up, but the server-side turn had not actually
+            // finished. Dropping the pending send here would silently lose the
+            // user's queued message (issue #391). Instead, put it back on the
+            // queue and re-adopt the running-turn state so the queue
+            // dispatches once the real turn completes.
+            if message == "Already processing a message"
+                && recover_undelivered_queued_continuation(app, "server busy rejection")
+            {
+                app.is_processing = true;
+                app.status = ProcessingStatus::Thinking(Instant::now());
+                app.current_message_id = None;
+                app.processing_started.get_or_insert_with(Instant::now);
+                app.last_stream_activity = Some(Instant::now());
+                app.remote_resume_activity = Some(RemoteResumeActivity {
+                    session_id: app.remote_session_id.clone().unwrap_or_default(),
+                    observed_at: Instant::now(),
+                    current_tool_name: None,
+                });
+                app.set_status_notice("Server still busy; follow-up stays queued");
+                crate::logging::info(
+                    "Server rejected queued continuation because a turn is still running; re-queued it and re-adopted the running turn",
+                );
+                return true;
+            }
             let reset_duration = retry_after_secs
                 .map(Duration::from_secs)
                 .or_else(|| parse_rate_limit_error(&message));
