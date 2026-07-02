@@ -205,6 +205,7 @@ fn main() {
             Some("alt+n controls"),
             0,
             90,
+            12,
         ),
     );
     print_lines(

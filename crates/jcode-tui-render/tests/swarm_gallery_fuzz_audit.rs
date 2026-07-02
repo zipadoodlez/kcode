@@ -16,6 +16,7 @@ fn member(id: &str, status: &str, role: Option<&str>, body: &[&str]) -> GalleryM
         body: body.iter().map(|s| s.to_string()).collect(),
         sort_key: id.to_string(),
         todo: None,
+        todo_items: Vec::new(),
     }
 }
 
@@ -169,6 +170,7 @@ fn strip_never_panics_and_stays_width_bounded() {
                             Some("ctrl+t controls"),
                             spinner,
                             width,
+                            12,
                         );
                         for line in &lines {
                             let text = plain(line);
