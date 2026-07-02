@@ -596,8 +596,17 @@ async fn run_swarm_plan_to_terminal(
 
         let in_flight_sessions = fetch_in_flight_swarm_sessions(&ctx.session_id).await?;
 
-        let terminal_count =
-            summary.completed_ids.len() + summary.blocked_ids.len() + summary.cycle_ids.len();
+        // Count each node at most once: completed_ids, blocked_ids, and cycle_ids
+        // overlap (a cyclic queued node appears in both blocked and cycle sets),
+        // and summing them can exceed item_count while runnable work remains,
+        // making run_plan exit prematurely.
+        let terminal_count = summary
+            .completed_ids
+            .iter()
+            .chain(summary.blocked_ids.iter())
+            .chain(summary.cycle_ids.iter())
+            .collect::<std::collections::HashSet<_>>()
+            .len();
         reporter
             .progress(
                 terminal_count,
@@ -639,7 +648,19 @@ async fn run_swarm_plan_to_terminal(
             if retain_agents {
                 output.push_str("\nRetained spawned workers because retain_agents=true.");
             } else {
-                let cleanup = cleanup_swarm_workers(ctx, params).await?;
+                // Run the automatic end-of-plan cleanup with a sanitized input:
+                // `force`, `session_ids`, and `target_status` on the run_plan
+                // call are meant for explicit stop/cleanup/await actions, and
+                // leaking `force=true` here would force-stop every terminal
+                // swarm member (including user-created idle sessions) instead
+                // of only the workers this coordinator owns.
+                let cleanup_params = CommunicateInput {
+                    force: None,
+                    session_ids: None,
+                    target_status: None,
+                    ..params.clone()
+                };
+                let cleanup = cleanup_swarm_workers(ctx, &cleanup_params).await?;
                 output.push_str(&format!("\n{}", cleanup));
             }
             return Ok(ToolOutput::new(output));

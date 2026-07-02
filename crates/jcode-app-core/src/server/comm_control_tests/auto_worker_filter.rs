@@ -104,10 +104,19 @@ use super::turn_end_should_auto_complete;
 
 #[test]
 fn atomic_turn_auto_completes() {
-    // A plain running/queued atomic node that the worker just ran should be
-    // auto-marked done.
+    // A plain running atomic node that the worker just ran should be
+    // auto-marked done. `running_stale` (revived after a reload) counts too.
     assert!(turn_end_should_auto_complete("running", false));
-    assert!(turn_end_should_auto_complete("queued", false));
+    assert!(turn_end_should_auto_complete("running_stale", false));
+}
+
+#[test]
+fn requeued_node_does_not_auto_complete() {
+    // A node that is `queued` at turn end was re-queued mid-turn by someone
+    // else: a gate that called inject_gap (re-queued behind its gap nodes), or
+    // a reassign/requeue. Force-closing it would bypass gate artifact
+    // validation and strand the injected gap nodes.
+    assert!(!turn_end_should_auto_complete("queued", false));
 }
 
 #[test]

@@ -15,7 +15,7 @@ use super::{
 use crate::protocol::ServerEvent;
 use crate::protocol::TaskGraphNodeSpec;
 use jcode_plan::bridge::{apply_task_graph, parse_kind, to_task_graph};
-use jcode_plan::dag::{self, HandoffArtifact, NodeSpec};
+use jcode_plan::dag::{self, HandoffArtifact, NodeSpec, NodeStatus, TaskGraph};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -82,9 +82,16 @@ async fn ensure_seeder_can_coordinate(
         return false;
     }
 
-    // 3. Promote the seeder; demote any prior (stale) coordinator member.
+    // 3. Promote the seeder; demote any prior (stale) coordinator member. Re-check
+    //    under the write lock that the coordinator is still the one we inspected
+    //    (compare-and-swap): two concurrent seeders race here, and the loser must
+    //    not silently displace the winner it never liveness-checked.
     let prior = {
         let mut coordinators = swarm_coordinators.write().await;
+        if coordinators.get(swarm_id) != current.as_ref() {
+            // Someone else changed the coordinator between our read and write.
+            return coordinators.get(swarm_id).map(String::as_str) == Some(seeder_session_id);
+        }
         coordinators.insert(swarm_id.to_string(), seeder_session_id.to_string())
     };
     {
@@ -100,6 +107,34 @@ async fn ensure_seeder_can_coordinate(
         }
     }
     true
+}
+
+/// Auto-claim a queued node for the participant that is trying to mutate it.
+///
+/// Seeded nodes are unowned until dispatch, but the deep-mode contract tells the
+/// seeding agent to `expand_node`/`complete_node` its own nodes, and the assign
+/// path refuses self-assignment — so without this a solo deep seeder could never
+/// legally touch any node it seeded (observed live as "Complete rejected: actor
+/// does not own node"). Similarly, assignment to a client-attached worker leaves
+/// the item `queued` (the server-run flip to `running` is skipped when a live
+/// client owns the turn), so the assignee's own complete/expand would bounce with
+/// "invalid state Queued".
+///
+/// Claiming is safe only when the node is genuinely available to this actor:
+/// queued, with every dependency done (enforced by `dispatch`), and either
+/// unowned or already assigned to this same actor. A node owned by someone else
+/// is never touched — the engine's `NotOwner` check still applies.
+fn claim_queued_node_for_actor(graph: &mut TaskGraph, node_id: &str, actor: &str) {
+    let claimable = graph.get(node_id).is_some_and(|node| {
+        node.status == NodeStatus::Queued
+            && node.owner.as_deref().is_none_or(|owner| owner == actor)
+    });
+    if claimable {
+        // `dispatch` re-validates queued status and dependency satisfaction; if
+        // deps are not done the claim is skipped and the engine op reports the
+        // real error.
+        let _ = dag::dispatch(graph, node_id, actor);
+    }
 }
 
 fn err(client_event_tx: &mpsc::UnboundedSender<ServerEvent>, id: u64, message: String) {
@@ -223,6 +258,25 @@ pub(super) async fn handle_comm_seed_graph(
             .entry(swarm_id.clone())
             .or_insert_with(VersionedPlan::new);
         if let Some(mode) = resolved_mode {
+            // Guard against silent rigor downgrades: re-seeding an existing deep
+            // plan as light would strip the gates + artifact validation from all
+            // nodes already in flight. Deepening (light -> deep) or re-stating
+            // the same mode is fine; only the downgrade of a non-empty deep plan
+            // is rejected.
+            let downgrades_deep = plan.mode.eq_ignore_ascii_case("deep")
+                && !mode.eq_ignore_ascii_case("deep")
+                && !plan.items.is_empty();
+            if downgrades_deep {
+                err(
+                    client_event_tx,
+                    id,
+                    "Seed rejected: this swarm already has a non-empty deep-mode plan; \
+                     seeding with mode=light would silently strip its gates and artifact \
+                     validation. Omit `mode` to keep deep, or finish/clear the current plan first."
+                        .to_string(),
+                );
+                return;
+            }
             plan.mode = mode;
         }
         plan.participants.insert(req_session_id.clone());
@@ -293,6 +347,7 @@ pub(super) async fn handle_comm_expand_node(
             return;
         };
         let mut graph = to_task_graph(plan);
+        claim_queued_node_for_actor(&mut graph, &node_id, &req_session_id);
         match dag::expand_node(&mut graph, &node_id, &req_session_id, specs) {
             Ok(_) => {
                 apply_task_graph(plan, &graph);
@@ -365,6 +420,7 @@ pub(super) async fn handle_comm_complete_node(
             return;
         };
         let mut graph = to_task_graph(plan);
+        claim_queued_node_for_actor(&mut graph, &node_id, &req_session_id);
         match dag::complete_node(&mut graph, &node_id, &req_session_id, artifact) {
             Ok(()) => {
                 apply_task_graph(plan, &graph);
@@ -431,6 +487,7 @@ pub(super) async fn handle_comm_inject_gap(
             return;
         };
         let mut graph = to_task_graph(plan);
+        claim_queued_node_for_actor(&mut graph, &gate_id, &req_session_id);
         match dag::inject_from_gate(&mut graph, &gate_id, &req_session_id, specs) {
             Ok(_) => {
                 apply_task_graph(plan, &graph);

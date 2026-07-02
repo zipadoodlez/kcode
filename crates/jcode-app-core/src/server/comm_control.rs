@@ -76,12 +76,16 @@ fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
 /// wait for its children (and, in deep mode, its critique/verify gate) before it
 /// can close, and it will be re-woken to synthesize. Likewise a node the worker
 /// already drove to a terminal status (e.g. via `complete_node`, or that failed)
-/// must not be reopened/reclosed. Only a plain atomic turn auto-completes.
+/// must not be reopened/reclosed. A node that is `queued` at turn end was
+/// re-queued mid-turn by someone else (`inject_gap` re-queuing its gate, a
+/// reassign, a requeue): it is no longer this worker's to close, and force-doing
+/// so would bypass gate artifact validation and strand injected gap nodes. Only
+/// a plain, still-running atomic turn auto-completes.
 fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
     if expanded {
         return false;
     }
-    !jcode_plan::is_completed_status(status) && !matches!(status, "failed" | "stopped" | "crashed")
+    matches!(status, "running" | "running_stale")
 }
 
 /// Assignment content for a (re-)dispatched node.

@@ -387,7 +387,10 @@ and an artifact whose findings state what you checked and why no gaps remain.\n"
         out.push_str(&format!(
             "PRIORITY: sibling node(s) [{}] completed with LOW confidence. The server will \
 REJECT your pass unless you either inject follow-up nodes that shore up that work, or name \
-each of those ids in your artifact findings with why the low confidence is acceptable.\n",
+each of those ids in your artifact findings with why the low confidence is acceptable. \
+Injecting follow-ups adds breadth but does not erase the record: when you re-run after they \
+drain, your passing artifact must STILL name each low-confidence id (e.g. 'X was shored up \
+by Y').\n",
             low_confidence_siblings.join(", ")
         ));
     }
