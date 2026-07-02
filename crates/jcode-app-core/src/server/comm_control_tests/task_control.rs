@@ -256,3 +256,207 @@ async fn task_control_without_task_id_rejects_ambiguous_target_assignments() {
         other => panic!("expected Error, got {other:?}"),
     }
 }
+
+/// Regression: resuming a plain-'running' task whose agent is busy must be
+/// rejected BEFORE any plan mutation. The old ordering requeued the live task
+/// first (flipping it to 'queued' and rewriting its progress record) and only
+/// then discovered the agent was busy, so a rejected resume still mangled the
+/// running task's state and run history.
+#[tokio::test]
+async fn task_control_resume_busy_agent_rejects_without_mutating_plan() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let swarm_id = "swarm-task-control-busy";
+    let requester = "coord";
+    let worker = "worker";
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel();
+    let worker_agent = test_agent().await;
+    let sessions = Arc::new(RwLock::new(HashMap::from([(
+        worker.to_string(),
+        Arc::clone(&worker_agent),
+    )])));
+    let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        (requester.to_string(), {
+            let mut member = member(requester, swarm_id, "ready");
+            member.role = "coordinator".to_string();
+            member
+        }),
+        (worker.to_string(), member(worker, swarm_id, "running")),
+    ])));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        HashSet::from([requester.to_string(), worker.to_string()]),
+    )])));
+    let mut assigned = plan_item("busy-task", "running", "high", &[]);
+    assigned.assigned_to = Some(worker.to_string());
+    let prior_progress = crate::server::SwarmTaskProgress {
+        assigned_session_id: Some(worker.to_string()),
+        assignment_summary: Some("original assignment".to_string()),
+        assigned_at_unix_ms: Some(1_000),
+        started_at_unix_ms: Some(2_000),
+        last_heartbeat_unix_ms: Some(3_000),
+        heartbeat_count: Some(7),
+        checkpoint_count: Some(2),
+        checkpoint_summary: Some("halfway".to_string()),
+        ..crate::server::SwarmTaskProgress::default()
+    };
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        VersionedPlan {
+            items: vec![assigned],
+            version: 1,
+            participants: HashSet::from([requester.to_string(), worker.to_string()]),
+            task_progress: HashMap::from([("busy-task".to_string(), prior_progress.clone())]),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
+        },
+    )])));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        requester.to_string(),
+    )])));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
+    let mutation_runtime = SwarmMutationRuntime::default();
+
+    // Hold the agent lock so the resume path sees the worker as busy.
+    let _busy_guard = worker_agent.lock().await;
+
+    handle_comm_task_control(
+        104,
+        requester.to_string(),
+        "resume".to_string(),
+        "busy-task".to_string(),
+        None,
+        None,
+        &client_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &client_connections,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_plans,
+        &swarm_coordinators,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &mutation_runtime,
+    )
+    .await;
+
+    match client_rx.recv().await.expect("response") {
+        ServerEvent::Error { id, message, .. } => {
+            assert_eq!(id, 104);
+            assert!(message.contains("currently busy"), "{message}");
+        }
+        other => panic!("expected busy Error, got {other:?}"),
+    }
+
+    let plans = swarm_plans.read().await;
+    let plan = plans.get(swarm_id).expect("plan exists");
+    let item = plan
+        .items
+        .iter()
+        .find(|item| item.id == "busy-task")
+        .expect("task exists");
+    assert_eq!(
+        item.status, "running",
+        "rejected resume must not flip a live task back to queued"
+    );
+    assert_eq!(plan.version, 1, "rejected resume must not bump the plan");
+    assert_eq!(
+        plan.task_progress.get("busy-task"),
+        Some(&prior_progress),
+        "rejected resume must not touch the task's progress record"
+    );
+}
+
+/// Regression: requeueing an existing assignment (resume of a running/stale
+/// task) must preserve the prior run's history instead of replacing the
+/// progress record. Wiping started_at/heartbeats/checkpoints blinded
+/// staleness monitors and salvage flows to everything the previous run did.
+#[tokio::test]
+async fn requeue_existing_assignment_preserves_prior_progress_history() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let swarm_id = "swarm-requeue-preserve";
+    let requester = "coord";
+    let worker = "worker";
+    let mut assigned = plan_item("requeue-me", "running_stale", "high", &[]);
+    assigned.assigned_to = Some(worker.to_string());
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        VersionedPlan {
+            items: vec![assigned],
+            version: 1,
+            participants: HashSet::from([requester.to_string(), worker.to_string()]),
+            task_progress: HashMap::from([(
+                "requeue-me".to_string(),
+                crate::server::SwarmTaskProgress {
+                    assigned_session_id: Some(worker.to_string()),
+                    assignment_summary: Some("original assignment".to_string()),
+                    assigned_at_unix_ms: Some(1_000),
+                    started_at_unix_ms: Some(2_000),
+                    last_heartbeat_unix_ms: Some(3_000),
+                    last_detail: Some("was working".to_string()),
+                    last_checkpoint_unix_ms: Some(3_500),
+                    checkpoint_summary: Some("halfway".to_string()),
+                    heartbeat_count: Some(7),
+                    checkpoint_count: Some(2),
+                    stale_since_unix_ms: Some(4_000),
+                    completed_at_unix_ms: None,
+                },
+            )]),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
+        },
+    )])));
+
+    let result = super::requeue_existing_assignment(
+        swarm_id,
+        requester,
+        worker,
+        "requeue-me",
+        "resume this work".to_string(),
+        &swarm_plans,
+    )
+    .await;
+    assert!(result.is_some(), "requeue should succeed");
+
+    let plans = swarm_plans.read().await;
+    let plan = plans.get(swarm_id).expect("plan exists");
+    let item = plan
+        .items
+        .iter()
+        .find(|item| item.id == "requeue-me")
+        .expect("task exists");
+    assert_eq!(item.status, "queued");
+    let progress = plan
+        .task_progress
+        .get("requeue-me")
+        .expect("progress exists");
+    assert_eq!(
+        progress.started_at_unix_ms,
+        Some(2_000),
+        "prior run's start time must survive the requeue"
+    );
+    assert_eq!(progress.last_heartbeat_unix_ms, Some(3_000));
+    assert_eq!(progress.heartbeat_count, Some(7));
+    assert_eq!(progress.checkpoint_count, Some(2));
+    assert_eq!(progress.checkpoint_summary.as_deref(), Some("halfway"));
+    assert_eq!(progress.last_detail.as_deref(), Some("was working"));
+    assert_eq!(
+        progress.stale_since_unix_ms, None,
+        "requeued task is no longer stale"
+    );
+    assert_eq!(
+        progress.assignment_summary.as_deref(),
+        Some("resume this work"),
+        "assignment-scoped fields refresh for the new attempt"
+    );
+    assert!(
+        progress.assigned_at_unix_ms.unwrap_or(0) > 1_000,
+        "assigned_at refreshes for the new attempt"
+    );
+}

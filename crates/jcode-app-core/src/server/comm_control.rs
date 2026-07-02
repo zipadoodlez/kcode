@@ -210,6 +210,15 @@ async fn plan_graph_status_for(
     }
 }
 
+/// Re-queue a task on its existing assignee for a task-control restart
+/// (currently only `resume` of a running/stale task reaches this).
+///
+/// The prior run's history (`started_at`, heartbeats, checkpoints, last
+/// detail) is preserved rather than replaced: the requeue is a lifecycle
+/// transition of the same assignment, and wiping the record would blind
+/// staleness monitors and salvage flows to everything the previous run did.
+/// Only the assignment-scoped fields are refreshed, and the terminal/stale
+/// markers are cleared because the task is queued again.
 async fn requeue_existing_assignment(
     swarm_id: &str,
     req_session_id: &str,
@@ -224,15 +233,12 @@ async fn requeue_existing_assignment(
     let item = plan.items.iter_mut().find(|item| item.id == task_id)?;
     item.assigned_to = Some(assignee_session.to_string());
     item.status = "queued".to_string();
-    plan.task_progress.insert(
-        task_id.to_string(),
-        SwarmTaskProgress {
-            assigned_session_id: Some(assignee_session.to_string()),
-            assignment_summary: Some(truncate_detail(&assignment_summary, 120)),
-            assigned_at_unix_ms: Some(now_ms),
-            ..SwarmTaskProgress::default()
-        },
-    );
+    let progress = plan.task_progress.entry(task_id.to_string()).or_default();
+    progress.assigned_session_id = Some(assignee_session.to_string());
+    progress.assignment_summary = Some(truncate_detail(&assignment_summary, 120));
+    progress.assigned_at_unix_ms = Some(now_ms);
+    progress.completed_at_unix_ms = None;
+    progress.stale_since_unix_ms = None;
     plan.version += 1;
     plan.participants.insert(req_session_id.to_string());
     plan.participants.insert(assignee_session.to_string());
@@ -1705,35 +1711,12 @@ pub(super) async fn handle_comm_task_control(
 
             let assignment_text =
                 build_control_assignment_text(action, &snapshot.content, message.as_deref());
-            if snapshot.status != "queued"
-                && requeue_existing_assignment(
-                    &swarm_id,
-                    &req_session_id,
-                    &assignee,
-                    &task_id,
-                    assignment_text.clone(),
-                    swarm_plans,
-                )
-                .await
-                .is_some()
-            {
-                let swarm_state = SwarmState {
-                    members: Arc::clone(swarm_members),
-                    swarms_by_id: Arc::clone(swarms_by_id),
-                    plans: Arc::clone(swarm_plans),
-                    coordinators: Arc::clone(swarm_coordinators),
-                };
-                persist_swarm_state_for(&swarm_id, &swarm_state).await;
-                broadcast_swarm_plan(
-                    &swarm_id,
-                    Some(format!("task_{}", action.as_str())),
-                    swarm_plans,
-                    swarm_members,
-                    swarms_by_id,
-                )
-                .await;
-            }
-
+            // Validate the assignee is actually available BEFORE mutating any
+            // plan state. Resuming a plain-'running' task used to requeue it
+            // (flipping it to 'queued' and rewriting its progress record)
+            // first and only then discover the agent was missing or busy,
+            // leaving a live task falsely queued with its run history mangled
+            // even though the request was rejected.
             let Some(agent_arc) = task_agent_session(&assignee, sessions).await else {
                 let _ = client_event_tx.send(ServerEvent::Error {
                     id,
@@ -1766,6 +1749,35 @@ pub(super) async fn handle_comm_task_control(
             };
 
             if agent_is_idle {
+                if snapshot.status != "queued"
+                    && requeue_existing_assignment(
+                        &swarm_id,
+                        &req_session_id,
+                        &assignee,
+                        &task_id,
+                        assignment_text.clone(),
+                        swarm_plans,
+                    )
+                    .await
+                    .is_some()
+                {
+                    let swarm_state = SwarmState {
+                        members: Arc::clone(swarm_members),
+                        swarms_by_id: Arc::clone(swarms_by_id),
+                        plans: Arc::clone(swarm_plans),
+                        coordinators: Arc::clone(swarm_coordinators),
+                    };
+                    persist_swarm_state_for(&swarm_id, &swarm_state).await;
+                    broadcast_swarm_plan(
+                        &swarm_id,
+                        Some(format!("task_{}", action.as_str())),
+                        swarm_plans,
+                        swarm_members,
+                        swarms_by_id,
+                    )
+                    .await;
+                }
+
                 spawn_assigned_task_run(
                     agent_arc,
                     assignee.clone(),
