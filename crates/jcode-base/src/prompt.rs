@@ -631,6 +631,14 @@ fn get_git_info(working_dir: Option<&Path>) -> Option<String> {
 }
 
 fn hardware_context() -> Option<String> {
+    // Hardware never changes for the life of the process, but this used to be
+    // rebuilt for every session create/attach, forking `lspci` each time. On a
+    // busy shared server that meant one subprocess per client connection.
+    static HARDWARE_CONTEXT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    HARDWARE_CONTEXT.get_or_init(hardware_context_uncached).clone()
+}
+
+fn hardware_context_uncached() -> Option<String> {
     let mut lines = Vec::new();
 
     if let Some(machine) = machine_model() {

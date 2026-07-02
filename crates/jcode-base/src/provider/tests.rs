@@ -500,6 +500,50 @@ fn model_routes_memo_serves_repeats_and_invalidates_on_auth_and_model_changes() 
                 .is_none(),
             "set_model must invalidate the routes memo"
         );
+
+        // A second instance with identical catalog-relevant state must reuse
+        // the shared process-wide memo (this is what collapses shared-server
+        // connect bursts down to one build), and instances with different
+        // state must not share a key.
+        let first_instance = test_multi_provider_with_openai();
+        let second_instance = test_multi_provider_with_openai();
+        assert_eq!(
+            first_instance.routes_memo_key(),
+            second_instance.routes_memo_key(),
+            "identical forks must share a memo key"
+        );
+        let baseline = first_instance.model_routes();
+        assert!(
+            second_instance
+                .routes_memo
+                .lock()
+                .expect("routes memo lock")
+                .is_none(),
+            "second instance has not built anything yet"
+        );
+        let shared = second_instance.model_routes();
+        assert_eq!(baseline, shared, "shared memo must serve identical routes");
+        assert!(
+            second_instance
+                .routes_memo
+                .lock()
+                .expect("routes memo lock")
+                .is_some(),
+            "shared hit should hydrate the instance memo"
+        );
+        let _ = second_instance.set_model(&format!("openai-oauth:{model}"));
+        // Credential-mode switches don't change catalog content (routes come
+        // from global auth status), so the key may legitimately stay equal.
+        // A different *model* must change it: the active model gets special
+        // treatment (endpoint refresh priority) during the build.
+        if let Some(alternate) = known_openai_model_ids().get(1) {
+            let _ = second_instance.set_model(&format!("openai-oauth:{alternate}"));
+            assert_ne!(
+                first_instance.routes_memo_key(),
+                second_instance.routes_memo_key(),
+                "a different active model must change the memo key"
+            );
+        }
     });
 }
 

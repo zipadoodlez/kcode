@@ -41,7 +41,7 @@ use async_trait::async_trait;
 use jcode_provider_core::FailoverDecision;
 use registry::ProviderRegistry;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 pub use catalog_routes::{
     append_simplified_anthropic_model_routes, remote_current_openai_compatible_route_for_model,
@@ -346,22 +346,109 @@ pub struct MultiProvider {
 }
 
 /// Memoized route catalog with the inputs that decide its freshness: build
-/// time (short TTL) and the auth generation at build time (bumped by
-/// `AuthStatus::invalidate_cache()` on login/logout/credential edits).
+/// time (short TTL), the auth generation at build time (bumped by
+/// `AuthStatus::invalidate_cache()` on login/logout/credential edits), and the
+/// catalog generation (bumped by prefetch/refresh completions).
+#[derive(Clone)]
 struct RoutesMemoEntry {
     built_at: std::time::Instant,
     auth_generation: u64,
+    catalog_generation: u64,
     routes: Vec<ModelRoute>,
 }
 
+/// Process-wide route-catalog memo shared across `MultiProvider` instances.
+///
+/// The shared server forks one `MultiProvider` per client connection, so a
+/// per-instance memo cannot deduplicate the builds triggered by a burst of
+/// simultaneous client spawns: every fresh fork still built its own catalog.
+/// Catalog content is derived almost entirely from process-global state
+/// (credential files, disk caches, config), so identical forks can share one
+/// build. Instance-specific inputs (active provider/model/profile) are folded
+/// into the memo key; anything not captured is bounded by the short TTL and
+/// the auth/catalog generations.
+static GLOBAL_ROUTES_MEMO: LazyLock<Mutex<HashMap<String, RoutesMemoEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Bumped whenever provider catalogs change out-of-band (prefetch completion,
+/// forced catalog refresh, auth changes). Invalidates every shared memo entry.
+static CATALOG_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn catalog_generation() -> u64 {
+    CATALOG_GENERATION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 impl MultiProvider {
-    /// Drop the short-TTL route-catalog memo so the next `model_routes()` call
-    /// rebuilds from live provider/credential state. Called whenever anything
-    /// that feeds the catalog changes (auth, active provider, model switches).
+    /// Drop this instance's route-catalog memo. Use for changes that are
+    /// captured by [`Self::routes_memo_key`] (model/provider/profile switches):
+    /// the shared memo stays valid because those instances key differently.
     fn invalidate_routes_memo(&self) {
         if let Ok(mut memo) = self.routes_memo.lock() {
             *memo = None;
         }
+    }
+
+    /// Drop every memoized catalog in the process. Use for changes that alter
+    /// catalog *content* beyond the memo key: credential changes and catalog
+    /// prefetch/refresh completions. Deliberately not called from set_model /
+    /// set_active_provider, which run once per shared-server fork during
+    /// connect bursts and would otherwise defeat the shared memo.
+    fn invalidate_routes_memo_globally(&self) {
+        self.invalidate_routes_memo();
+        CATALOG_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Key identifying the instance-specific state that feeds the route
+    /// catalog. Two `MultiProvider` instances with equal keys (given equal
+    /// auth/catalog generations) produce equivalent catalogs, so shared-server
+    /// forks can reuse one build. The current model matters because the active
+    /// OpenRouter model gets priority endpoint-refresh scheduling and detail
+    /// annotations in the catalog; the configured-provider bitmap matters
+    /// because each configured runtime contributes its own route family.
+    fn routes_memo_key(&self) -> String {
+        let active = self.active_provider();
+        let profile = self
+            .active_openai_compatible_profile
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .unwrap_or_default();
+        let mut compat_profiles: Vec<String> = self
+            .openai_compatible_profiles
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .keys()
+            .cloned()
+            .collect();
+        compat_profiles.sort();
+        let configured = [
+            ("cl", self.claude_provider().is_some()),
+            ("an", self.anthropic_provider().is_some()),
+            ("oa", self.openai_provider().is_some()),
+            ("co", self.copilot_provider().is_some()),
+            ("ag", self.antigravity_provider().is_some()),
+            ("ge", self.gemini_provider().is_some()),
+            ("cu", self.cursor_provider().is_some()),
+            ("be", self.bedrock_provider().is_some()),
+            ("or", self.openrouter_provider().is_some()),
+        ]
+        .iter()
+        .filter(|(_, present)| *present)
+        .map(|(tag, _)| *tag)
+        .collect::<Vec<_>>()
+        .join(",");
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            // Scope by home so sandboxes (tests, JCODE_HOME switches) never
+            // share catalogs that were built from different credential files.
+            std::env::var("JCODE_HOME").unwrap_or_default(),
+            Self::provider_key(active),
+            self.model(),
+            profile,
+            self.use_claude_cli,
+            configured,
+            compat_profiles.join(","),
+        )
     }
 
     #[cfg(test)]
@@ -911,9 +998,9 @@ impl MultiProvider {
 
     fn handle_auth_changed(&self, preserve_existing_openrouter_profile: bool) {
         crate::logging::auth_event("auth_changed_received", "multi-provider", &[]);
-        // Credentials feed route availability/pricing, so any memoized catalog
-        // is stale the moment auth changes.
-        self.invalidate_routes_memo();
+        // Credentials feed route availability/pricing, so every memoized
+        // catalog in the process is stale the moment auth changes.
+        self.invalidate_routes_memo_globally();
         // Auth just changed, so discard any stale full/fast snapshots before
         // using cheap local probes to hot-initialize newly configured providers.
         crate::auth::AuthStatus::invalidate_cache();
@@ -1645,21 +1732,50 @@ impl Provider for MultiProvider {
         const ROUTES_MEMO_TTL: std::time::Duration = std::time::Duration::from_secs(3);
 
         let auth_generation = pricing::auth_pricing_generation();
+        let catalog_gen = catalog_generation();
+        let fresh = |entry: &RoutesMemoEntry| {
+            entry.auth_generation == auth_generation
+                && entry.catalog_generation == catalog_gen
+                && entry.built_at.elapsed() < ROUTES_MEMO_TTL
+        };
+
+        // Fast path: this instance already built (or copied) a fresh catalog.
         if let Ok(memo) = self.routes_memo.lock()
             && let Some(entry) = memo.as_ref()
-            && entry.auth_generation == auth_generation
-            && entry.built_at.elapsed() < ROUTES_MEMO_TTL
+            && fresh(entry)
         {
             return entry.routes.clone();
         }
 
+        // Shared path: another instance with the same catalog-relevant state
+        // (typically a fresh fork on the shared server) built one already.
+        let shared_key = self.routes_memo_key();
+        if let Ok(shared) = GLOBAL_ROUTES_MEMO.lock()
+            && let Some(entry) = shared.get(&shared_key)
+            && fresh(entry)
+        {
+            let routes = entry.routes.clone();
+            if let Ok(mut memo) = self.routes_memo.lock() {
+                *memo = Some(entry.clone());
+            }
+            return routes;
+        }
+
         let routes = catalog_routes::multiprovider_model_routes(self);
+        let entry = RoutesMemoEntry {
+            built_at: std::time::Instant::now(),
+            auth_generation,
+            catalog_generation: catalog_gen,
+            routes: routes.clone(),
+        };
         if let Ok(mut memo) = self.routes_memo.lock() {
-            *memo = Some(RoutesMemoEntry {
-                built_at: std::time::Instant::now(),
-                auth_generation,
-                routes: routes.clone(),
-            });
+            *memo = Some(entry.clone());
+        }
+        if let Ok(mut shared) = GLOBAL_ROUTES_MEMO.lock() {
+            // Tiny keyspace (active provider + model + profile); prune stale
+            // entries opportunistically so it cannot grow unbounded.
+            shared.retain(|_, existing| fresh(existing));
+            shared.insert(shared_key, entry);
         }
         routes
     }
@@ -1791,8 +1907,8 @@ impl Provider for MultiProvider {
             return Err(anyhow!("{}", errors.join("; ")));
         }
 
-        // Fresh catalogs may have arrived; let the next model_routes() rebuild.
-        self.invalidate_routes_memo();
+        // Fresh catalogs may have arrived; retire every memoized copy.
+        self.invalidate_routes_memo_globally();
         Ok(())
     }
 

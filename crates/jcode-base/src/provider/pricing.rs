@@ -45,8 +45,18 @@ pub(crate) fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimat
     core_pricing::anthropic_api_pricing(model)
 }
 
+/// Memoization is skipped in test builds: test sandboxes swap `JCODE_HOME`
+/// and credential env vars between cases without going through
+/// `AuthStatus::invalidate_cache()`, so a TTL'd memo would leak state across
+/// tests. `test-support` covers downstream crates' test targets via feature
+/// unification.
+fn auth_pricing_memos_enabled() -> bool {
+    !cfg!(any(test, feature = "test-support"))
+}
+
 fn anthropic_oauth_subscription_type() -> Option<String> {
-    if let Ok(memo) = SUBSCRIPTION_TYPE_MEMO.lock()
+    if auth_pricing_memos_enabled()
+        && let Ok(memo) = SUBSCRIPTION_TYPE_MEMO.lock()
         && let Some((cached_at, subscription)) = memo.as_ref()
         && cached_at.elapsed() < AUTH_PRICING_MEMO_TTL
     {
@@ -66,7 +76,8 @@ pub(crate) fn anthropic_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
 }
 
 pub(crate) fn openai_effective_auth_mode() -> &'static str {
-    if let Ok(memo) = OPENAI_AUTH_MODE_MEMO.lock()
+    if auth_pricing_memos_enabled()
+        && let Ok(memo) = OPENAI_AUTH_MODE_MEMO.lock()
         && let Some((cached_at, mode)) = memo.as_ref()
         && cached_at.elapsed() < AUTH_PRICING_MEMO_TTL
     {

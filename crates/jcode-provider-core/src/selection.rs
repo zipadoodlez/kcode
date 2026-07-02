@@ -203,8 +203,50 @@ pub fn model_name_for_provider(provider: ActiveProvider, model: &str) -> Cow<'_,
 }
 
 pub fn dedupe_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
-    let mut deduped: Vec<ModelRoute> = Vec::with_capacity(routes.len());
+    use std::collections::HashMap;
 
+    let mut deduped: Vec<ModelRoute> = Vec::with_capacity(routes.len());
+    // Bucket candidate duplicates by (provider, model). The api_method match is
+    // fuzzy (generic vs profile openai-compatible), so buckets keep a linear
+    // scan, but each bucket only holds the handful of routes for one model.
+    // The previous full `deduped.iter().position(..)` scan was O(n^2) over
+    // 2000+ routes and showed up in server connect-burst profiles.
+    let mut buckets: HashMap<(String, String), Vec<usize>> = HashMap::with_capacity(routes.len());
+
+    for route in routes {
+        let key = (route.provider.clone(), route.model.clone());
+        let bucket = buckets.entry(key).or_default();
+
+        if let Some(existing_idx) = bucket
+            .iter()
+            .copied()
+            .find(|&idx| duplicate_route_api_method(&deduped[idx].api_method, &route.api_method))
+        {
+            if should_replace_duplicate_route(&deduped[existing_idx], &route) {
+                deduped[existing_idx] = route;
+            }
+            continue;
+        }
+
+        bucket.push(deduped.len());
+        deduped.push(route);
+    }
+
+    deduped
+}
+
+#[cfg(test)]
+fn duplicate_model_route(existing: &ModelRoute, candidate: &ModelRoute) -> bool {
+    existing.provider == candidate.provider
+        && existing.model == candidate.model
+        && duplicate_route_api_method(&existing.api_method, &candidate.api_method)
+}
+
+/// Reference O(n^2) dedupe used to prove the bucketed implementation above is
+/// behavior-identical (see `bucketed_dedupe_matches_reference` test).
+#[cfg(test)]
+fn dedupe_model_routes_reference(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
+    let mut deduped: Vec<ModelRoute> = Vec::with_capacity(routes.len());
     for route in routes {
         if let Some(existing_idx) = deduped
             .iter()
@@ -215,17 +257,9 @@ pub fn dedupe_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> {
             }
             continue;
         }
-
         deduped.push(route);
     }
-
     deduped
-}
-
-fn duplicate_model_route(existing: &ModelRoute, candidate: &ModelRoute) -> bool {
-    existing.provider == candidate.provider
-        && existing.model == candidate.model
-        && duplicate_route_api_method(&existing.api_method, &candidate.api_method)
 }
 
 fn duplicate_route_api_method(existing: &str, candidate: &str) -> bool {
@@ -569,6 +603,47 @@ mod tests {
         assert!(deduped.iter().any(|route| {
             route.provider == "Cerebras" && route.api_method == "openai-compatible:cerebras-alt"
         }));
+    }
+
+    /// State-space equivalence: the bucketed O(n) dedupe must produce exactly
+    /// the same output (content and order) as the original O(n^2) reference for
+    /// a pseudo-random mix of providers/models/api-methods, including the fuzzy
+    /// generic-vs-profile openai-compatible collisions.
+    #[test]
+    fn bucketed_dedupe_matches_reference() {
+        let providers = ["Anthropic", "OpenAI", "Cerebras", "auto"];
+        let models = ["m1", "m2", "m3", "qwen", "claude-x"];
+        let api_methods = [
+            "claude-oauth",
+            "claude-api",
+            "openrouter",
+            "openai-compatible",
+            "openai-compatible:cerebras",
+            "openai-compatible:other",
+        ];
+
+        // Deterministic pseudo-random stream, dense enough to hit every
+        // provider/model/api-method combination and repeated duplicates.
+        let mut seed = 0x9e37_79b9_u64;
+        let mut routes = Vec::new();
+        for i in 0..600 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let p = providers[(seed >> 7) as usize % providers.len()];
+            let m = models[(seed >> 17) as usize % models.len()];
+            let a = api_methods[(seed >> 27) as usize % api_methods.len()];
+            routes.push(ModelRoute {
+                model: m.to_string(),
+                provider: p.to_string(),
+                api_method: a.to_string(),
+                available: seed & 1 == 0,
+                detail: format!("route-{i}"),
+                cheapness: None,
+            });
+        }
+
+        let expected = dedupe_model_routes_reference(routes.clone());
+        let actual = dedupe_model_routes(routes);
+        assert_eq!(actual, expected);
     }
 
     #[test]
