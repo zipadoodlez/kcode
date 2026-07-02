@@ -99,6 +99,70 @@ pub(crate) fn status_uses_primary_spinner(status: &ProcessingStatus) -> bool {
     )
 }
 
+/// How the next full frame should invalidate ratatui's diff state, if at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FullFrameInvalidation {
+    /// `Terminal::clear()`: an ED2 Clear-All escape plus a full re-emit.
+    /// Needed when the real screen diverged from ratatui's model in cells the
+    /// next diff may not repaint (native terminal scroll, external commands).
+    HardClear,
+    /// Sentinel-invalidate the previous buffer: full re-emit with no
+    /// intermediate clear escape, so the repaint stays atomic inside the
+    /// synchronized update. Used for scroll-driven repaints (issue #404).
+    SoftRepaint,
+    /// Normal incremental diff.
+    None,
+}
+
+/// Pure routing for `draw_full`: a hard clear supersedes a soft repaint.
+pub(crate) fn full_frame_invalidation(
+    force_full_redraw: bool,
+    force_full_repaint: bool,
+) -> FullFrameInvalidation {
+    if force_full_redraw {
+        FullFrameInvalidation::HardClear
+    } else if force_full_repaint {
+        FullFrameInvalidation::SoftRepaint
+    } else {
+        FullFrameInvalidation::None
+    }
+}
+
+/// A cell no real frame produces: a Unicode noncharacter symbol with an
+/// improbable style, so a diff against it sees every cell as changed.
+fn full_repaint_sentinel_cell() -> ratatui::buffer::Cell {
+    let mut cell = ratatui::buffer::Cell::EMPTY;
+    cell.set_symbol("\u{FDD0}");
+    cell.fg = ratatui::style::Color::Rgb(1, 2, 3);
+    cell.bg = ratatui::style::Color::Rgb(3, 2, 1);
+    cell
+}
+
+/// Fill ratatui's "previous" buffer with sentinel cells so the next
+/// `Terminal::draw` diff re-emits every cell.
+///
+/// This is the flicker-free alternative to `Terminal::clear()` for repaints
+/// that need full cell coverage (ratatui #2357 wide-grapheme ghosts on
+/// scroll) but not a real screen wipe: `Terminal::clear()` emits an ED2
+/// Clear-All escape before the frame is redrawn, and terminals that paint
+/// image placeholder cells non-atomically flash blank during the
+/// clear-then-repaint on every scroll tick (issue #404). Overwriting every
+/// cell in place inside the surrounding synchronized update repaints
+/// atomically instead.
+pub(crate) fn invalidate_previous_terminal_buffer<B: ratatui::backend::Backend>(
+    terminal: &mut ratatui::Terminal<B>,
+) {
+    // `swap_buffers` resets the inactive buffer and flips. Two swaps with a
+    // sentinel fill in between leave: previous = all-sentinel, current = reset
+    // and ready for the next `draw`.
+    terminal.swap_buffers();
+    let sentinel = full_repaint_sentinel_cell();
+    for cell in terminal.current_buffer_mut().content.iter_mut() {
+        *cell = sentinel.clone();
+    }
+    terminal.swap_buffers();
+}
+
 #[derive(Default)]
 pub(super) struct StatusSpinnerRenderer {
     last_frame: Option<Buffer>,
@@ -114,17 +178,26 @@ impl StatusSpinnerRenderer {
         app: &mut App,
         terminal: &mut DefaultTerminal,
     ) -> Result<()> {
-        let force_full_redraw = app.force_full_redraw;
+        let invalidation = full_frame_invalidation(app.force_full_redraw, app.force_full_repaint);
+        let force_full_redraw = invalidation != FullFrameInvalidation::None;
         // Wrap the whole frame (optional clear + diff flush) in a synchronized update so the
         // terminal applies every cell change atomically. Without this, ratatui's crossterm
         // backend streams cells one-by-one and eagerly-repainting terminals (and slow/remote or
         // multiplexed sessions) show visible flicker. See issue #282.
         let sync = crossterm::execute!(terminal.backend_mut(), BeginSynchronizedUpdate).is_ok();
-        if app.force_full_redraw {
-            terminal.clear()?;
-            app.force_full_redraw = false;
-            self.invalidate();
+        match invalidation {
+            FullFrameInvalidation::HardClear => {
+                terminal.clear()?;
+                self.invalidate();
+            }
+            FullFrameInvalidation::SoftRepaint => {
+                invalidate_previous_terminal_buffer(terminal);
+                self.invalidate();
+            }
+            FullFrameInvalidation::None => {}
         }
+        app.force_full_redraw = false;
+        app.force_full_repaint = false;
 
         let previous_frame = self.last_frame.as_ref();
         let draw_start = Instant::now();

@@ -1526,8 +1526,10 @@ impl App {
             // Force a full repaint: ratatui's diff does not re-emit the trailing
             // cell after a wide grapheme (emoji/CJK) when the symbol is unchanged,
             // so terminals like kitty/foot leave a stale "ghost" char from the
-            // previous frame. See ratatui issue #2357. A clean redraw avoids it.
-            self.force_full_redraw = true;
+            // previous frame. See ratatui issue #2357. Buffer invalidation re-emits
+            // every cell without the ED2 clear escape that made images flicker
+            // during scroll (issue #404).
+            self.request_full_repaint();
             return true;
         }
         let before = (self.scroll_offset, self.auto_scroll_paused);
@@ -1552,7 +1554,7 @@ impl App {
         if changed {
             // See note above (ratatui #2357): force a clean repaint on scroll so
             // wide-grapheme trailing cells cannot leave a ghost character.
-            self.force_full_redraw = true;
+            self.request_full_repaint();
         }
         changed
     }
@@ -1586,7 +1588,7 @@ impl App {
             anchor.lines_from_bottom = anchor.lines_from_bottom.saturating_sub(amount);
             self.pending_history_anchor = Some(anchor);
             // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
-            self.force_full_redraw = true;
+            self.request_full_repaint();
             return true;
         }
         if !self.auto_scroll_paused {
@@ -1623,7 +1625,7 @@ impl App {
         };
         if changed {
             // ratatui #2357: clean repaint on scroll to avoid wide-grapheme ghosts.
-            self.force_full_redraw = true;
+            self.request_full_repaint();
         }
         changed
     }

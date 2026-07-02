@@ -1338,6 +1338,12 @@ pub struct App {
     /// One-shot flag: force the next paint to clear the terminal first.
     /// Needed after native terminal scrolls mutate the screen outside ratatui's diff model.
     force_full_redraw: bool,
+    /// One-shot flag: force the next paint to re-emit every cell by invalidating
+    /// ratatui's previous buffer, without an intermediate ED2 clear escape.
+    /// Chat scrolling uses this to clear wide-grapheme ghosts (ratatui #2357)
+    /// without the clear-then-repaint flicker around kitty image placeholders
+    /// (issue #404).
+    force_full_repaint: bool,
     /// Last mouse scroll event timestamp (for trackpad velocity detection)
     last_mouse_scroll: Option<Instant>,
     /// Active smooth-scroll target for queued mouse-wheel motion.

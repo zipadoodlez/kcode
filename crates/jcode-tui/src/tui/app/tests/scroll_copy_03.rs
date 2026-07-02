@@ -336,11 +336,17 @@ fn test_scroll_key_then_render() {
 
 /// Regression for the wide-emoji "ghost" artifact (ratatui issue #2357): when
 /// the chat view actually scrolls, `scroll_up`/`scroll_down` must arm a forced
-/// full redraw so the next frame issues a `terminal.clear()`. Ratatui's diff
-/// does not re-emit the trailing cell after a wide grapheme when its symbol is
+/// full repaint so the next frame re-emits every cell. Ratatui's diff does not
+/// re-emit the trailing cell after a wide grapheme when its symbol is
 /// unchanged, so incremental-only diffs leave stale characters on kitty/foot.
+///
+/// Regression for issue #404: the repaint must be the soft buffer-invalidation
+/// kind (`force_full_repaint`), not the hard `terminal.clear()` kind
+/// (`force_full_redraw`). The ED2 Clear-All escape wiped kitty image
+/// placeholder cells before the frame was redrawn, which flickered on every
+/// scroll tick in terminals that repaint image cells non-atomically.
 #[test]
-fn scroll_arms_force_full_redraw_to_clear_wide_grapheme_ghosts() {
+fn scroll_arms_force_full_repaint_to_clear_wide_grapheme_ghosts() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(80, 25, 1, 60);
 
@@ -351,26 +357,36 @@ fn scroll_arms_force_full_redraw_to_clear_wide_grapheme_ghosts() {
     let (up_code, up_mods) = scroll_up_key(&app);
 
     app.force_full_redraw = false;
+    app.force_full_repaint = false;
     app.handle_key(up_code.clone(), up_mods).unwrap();
 
     // The scroll moved the viewport, so a clean repaint must be armed.
     assert!(app.auto_scroll_paused, "scroll up should pause auto-scroll");
     assert!(app.scroll_offset > 0, "scroll up should move the viewport");
     assert!(
-        app.force_full_redraw,
-        "a viewport-moving scroll must arm force_full_redraw to clear ghosts"
+        app.force_full_repaint,
+        "a viewport-moving scroll must arm force_full_repaint to clear ghosts"
+    );
+    assert!(
+        !app.force_full_redraw,
+        "scroll must not arm the hard-clear path: terminal.clear() flickers \
+         around kitty image placeholders (issue #404)"
     );
 
-    // Scrolling back down to the bottom should likewise arm a full redraw.
+    // Scrolling back down to the bottom should likewise arm a full repaint.
     let (down_code, down_mods) = scroll_down_key(&app);
-    app.force_full_redraw = false;
     let mut armed_on_down = false;
+    let mut hard_cleared_on_down = false;
     for _ in 0..80 {
         app.force_full_redraw = false;
+        app.force_full_repaint = false;
         let moved = app.handle_key(down_code.clone(), down_mods).is_ok();
         let _ = moved;
-        if app.force_full_redraw {
+        if app.force_full_repaint {
             armed_on_down = true;
+        }
+        if app.force_full_redraw {
+            hard_cleared_on_down = true;
         }
         if !app.auto_scroll_paused {
             break;
@@ -378,7 +394,105 @@ fn scroll_arms_force_full_redraw_to_clear_wide_grapheme_ghosts() {
     }
     assert!(
         armed_on_down,
-        "a viewport-moving downward scroll must also arm force_full_redraw"
+        "a viewport-moving downward scroll must also arm force_full_repaint"
+    );
+    assert!(
+        !hard_cleared_on_down,
+        "downward scroll must not arm the hard-clear path (issue #404)"
+    );
+}
+
+/// Routing for `draw_full` (issue #404): scrolling requests the soft
+/// buffer-invalidation repaint, screen-corruption recovery requests the hard
+/// `terminal.clear()` path, and a pending hard clear supersedes a soft one.
+#[test]
+fn full_frame_invalidation_routes_hard_clear_over_soft_repaint() {
+    use crate::tui::app::run_shell::{FullFrameInvalidation, full_frame_invalidation};
+
+    assert_eq!(
+        full_frame_invalidation(false, false),
+        FullFrameInvalidation::None
+    );
+    assert_eq!(
+        full_frame_invalidation(false, true),
+        FullFrameInvalidation::SoftRepaint
+    );
+    assert_eq!(
+        full_frame_invalidation(true, false),
+        FullFrameInvalidation::HardClear
+    );
+    assert_eq!(
+        full_frame_invalidation(true, true),
+        FullFrameInvalidation::HardClear,
+        "native-scroll/corruption recovery must not be downgraded by a \
+         concurrently armed scroll repaint"
+    );
+}
+
+/// Regression for issue #404: the scroll-driven full repaint must re-emit
+/// every cell purely through ratatui's diff, without a backend clear. This
+/// re-renders an identical frame after mutating the backend out-of-band; only
+/// a diff that re-emits all cells can repair the artifact, and no
+/// `terminal.clear()` / `Backend::clear` call is involved.
+///
+/// Renders a fixed closure (not the full app UI) so process-wide globals
+/// mutated by parallel tests cannot change the frame between draws. The app
+/// wiring for this path is covered by
+/// `scroll_arms_force_full_repaint_to_clear_wide_grapheme_ghosts` and
+/// `full_frame_invalidation_routes_hard_clear_over_soft_repaint`.
+#[test]
+fn soft_full_repaint_re_emits_all_cells_without_backend_clear() {
+    let backend = ratatui::backend::TestBackend::new(60, 12);
+    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
+    let render = |f: &mut ratatui::Frame| {
+        let area = f.area();
+        for y in 0..area.height {
+            f.render_widget(
+                ratatui::widgets::Paragraph::new(format!("stable line {y:02} with emoji ✅")),
+                ratatui::layout::Rect::new(0, y, area.width, 1),
+            );
+        }
+    };
+
+    terminal.draw(render).expect("initial draw");
+    let clean = buffer_to_text(&terminal);
+    assert!(clean.contains("stable line 00"), "sanity: content rendered");
+
+    // Simulate stale screen content (e.g. a wide-grapheme ghost) directly in
+    // the backend, invisible to ratatui's buffers. Keep the artifact on
+    // single-width cells: ratatui's diff intentionally skips the trailing cell
+    // of a standard wide grapheme (re-printing the wide char covers it on real
+    // terminals), and TestBackend does not emulate that coverage.
+    let ghost = ratatui::buffer::Buffer::with_lines(["ZZZZZZZZZZZZZZZZZZZZZZZZZZ"]);
+    let width = terminal.backend().buffer().area.width;
+    let updates = ghost
+        .content()
+        .iter()
+        .enumerate()
+        .map(|(idx, cell)| ((idx as u16) % width, (idx as u16) / width, cell));
+    terminal
+        .backend_mut()
+        .draw(updates)
+        .expect("inject backend artifact");
+
+    // An ordinary diffed redraw of the identical frame emits nothing and
+    // leaves the artifact behind.
+    terminal
+        .draw(render)
+        .expect("normal redraw after backend mutation");
+    assert!(
+        buffer_to_text(&terminal).contains("ZZZZ"),
+        "plain diff of an identical frame should not repaint the artifact"
+    );
+
+    // The soft repaint invalidates ratatui's previous buffer so the next diff
+    // re-emits every cell. No Backend::clear / ED2 escape is issued.
+    crate::tui::app::run_shell::invalidate_previous_terminal_buffer(&mut terminal);
+    terminal.draw(render).expect("soft full repaint");
+    let repaired = buffer_to_text(&terminal);
+    assert_eq!(
+        repaired, clean,
+        "soft full repaint must restore the frame by re-emitting every cell"
     );
 }
 
