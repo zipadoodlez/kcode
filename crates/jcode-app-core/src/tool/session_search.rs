@@ -6,6 +6,7 @@
 //! - snapshot + journal persistence is searched so recent messages are visible
 //! - results are grouped by session by default to avoid duplicate floods
 
+use super::session_search_index::{self, IndexFileSpec};
 use super::{Tool, ToolContext, ToolOutput};
 use crate::message::ContentBlock;
 use crate::session::{Session, StoredMessage, session_journal_path_from_snapshot};
@@ -32,12 +33,11 @@ use jcode_session_types::{
     session_search_truncate_title_text as truncate_title_text,
     session_search_working_dir_matches as working_dir_matches,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
 use std::time::SystemTime;
 
 /// Max session snapshots/journals to deserialize after raw pre-filtering.
@@ -54,10 +54,8 @@ const DEFAULT_MAX_SCAN_SESSIONS: usize = 1000;
 const MAX_MAX_SCAN_SESSIONS: usize = 10_000;
 const MAX_CONTEXT_MESSAGES: usize = 5;
 const INDEX_SCORE_CANDIDATE_MULTIPLIER: usize = 2;
-const INDEX_VERSION: u32 = 1;
-const INDEX_FILE_NAME: &str = "session_search_recent_index_v1.json";
-static SESSION_SEARCH_INDEX_CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<SessionSearchIndex>>>> =
-    OnceLock::new();
+/// Legacy JSON index file superseded by the binary token-hash indexes.
+const LEGACY_INDEX_FILE_NAME: &str = "session_search_recent_index_v1.json";
 
 #[derive(Debug, Deserialize)]
 struct SearchInput {
@@ -138,31 +136,55 @@ impl Default for SessionSearchTool {
     }
 }
 
-/// Warm the recent-session search index in the background so the first
+/// Warm the recent-session search indexes in the background so the first
 /// interactive `session_search` call does not pay the cold indexing cost.
+/// Covers the jcode store plus the external stores (claude/codex/pi/cursor).
 pub fn spawn_recent_index_warmup() {
     tokio::task::spawn_blocking(|| {
         let start = std::time::Instant::now();
-        let result = (|| -> Result<usize> {
+        remove_legacy_index();
+        let empty_query = QueryProfile::new("__jcode_index_warmup__");
+
+        let jcode_count = (|| -> Result<usize> {
             let sessions_dir = storage::jcode_dir()?.join("sessions");
             let collection = collect_session_files(&sessions_dir, DEFAULT_MAX_SCAN_SESSIONS)?;
             if collection.files.is_empty() {
                 return Ok(0);
             }
-            load_or_build_recent_index(&sessions_dir, &collection.files)?;
+            let _ = jcode_index_candidates(&collection.files, &empty_query)?;
             Ok(collection.files.len())
-        })();
+        })()
+        .unwrap_or_else(|err| {
+            crate::logging::info(&format!("jcode session index warmup skipped: {err}"));
+            0
+        });
 
-        match result {
-            Ok(count) => crate::logging::info(&format!(
-                "Session search index warmup completed for {count} session(s) in {}ms",
-                start.elapsed().as_millis()
-            )),
-            Err(err) => crate::logging::info(&format!(
-                "Session search index warmup skipped/failed after {}ms: {err}",
-                start.elapsed().as_millis()
-            )),
+        let mut external_count = 0usize;
+        for (source, root_relative) in [
+            ("codex", ".codex/sessions"),
+            ("pi", ".pi/agent/sessions"),
+            ("cursor", ".cursor/projects"),
+        ] {
+            let Ok(root) = crate::storage::user_home_path(root_relative) else {
+                continue;
+            };
+            if !root.exists() {
+                continue;
+            }
+            let paths = collect_recent_files_recursive(&root, "jsonl", DEFAULT_MAX_SCAN_SESSIONS);
+            external_count += paths.len();
+            let _ = external_index_candidate_paths(source, &paths, &empty_query);
         }
+        if let Ok(sessions) = crate::import::list_claude_code_sessions_lazy(DEFAULT_MAX_SCAN_SESSIONS)
+        {
+            external_count += sessions.len();
+            let _ = claude_index_candidates(&sessions, &empty_query);
+        }
+
+        crate::logging::info(&format!(
+            "Session search index warmup completed for {jcode_count} jcode + {external_count} external session(s) in {}ms",
+            start.elapsed().as_millis()
+        ));
     });
 }
 
@@ -262,21 +284,6 @@ struct SearchWorkerOutcome {
 struct SessionFileCollection {
     files: Vec<SessionFileCandidate>,
     truncated: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SessionSearchIndex {
-    version: u32,
-    entries: Vec<SessionSearchIndexEntry>,
-    terms: HashMap<String, Vec<usize>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SessionSearchIndexEntry {
-    session_id: String,
-    snapshot_path: PathBuf,
-    journal_path: PathBuf,
-    mtime_ms: u64,
 }
 
 #[async_trait]
@@ -634,9 +641,7 @@ fn search_sessions_blocking(
                         .flat_map(|outcome| outcome.candidates)
                         .collect()
                 } else {
-                    match load_or_build_recent_index(sessions_dir, &files)
-                        .map(|index| index_candidates(&index, query, &files))
-                    {
+                    match jcode_index_candidates(&files, query) {
                         Ok(candidates) => candidates,
                         Err(err) => {
                             crate::logging::warn(&format!(
@@ -657,12 +662,7 @@ fn search_sessions_blocking(
                 candidates.sort_unstable_by(|a, b| b.mtime.cmp(&a.mtime));
                 report.candidate_jcode_sessions = candidates.len();
                 if using_index {
-                    let indexed_budget = options
-                        .limit
-                        .saturating_mul(options.max_per_session)
-                        .saturating_mul(INDEX_SCORE_CANDIDATE_MULTIPLIER)
-                        .max(options.limit)
-                        .max(1);
+                    let indexed_budget = indexed_candidate_budget(options);
                     if candidates.len() > indexed_budget {
                         candidates.truncate(indexed_budget);
                         report.truncated = true;
@@ -790,138 +790,67 @@ fn system_time_from_unix_millis(timestamp_ms: u64) -> SystemTime {
     SystemTime::UNIX_EPOCH + std::time::Duration::from_millis(timestamp_ms)
 }
 
-fn system_time_to_unix_millis(time: SystemTime) -> u64 {
-    time.duration_since(SystemTime::UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
-        .unwrap_or(0)
+fn index_dir() -> Result<PathBuf> {
+    Ok(storage::jcode_dir()?.join("cache"))
 }
 
-fn index_path_for_sessions_dir(sessions_dir: &Path) -> PathBuf {
-    sessions_dir
-        .parent()
-        .unwrap_or(sessions_dir)
-        .join("cache")
-        .join(INDEX_FILE_NAME)
+/// How many index candidates are worth fully parsing/scoring for one search.
+fn indexed_candidate_budget(options: &SearchOptions) -> usize {
+    options
+        .limit
+        .saturating_mul(options.max_per_session)
+        .saturating_mul(INDEX_SCORE_CANDIDATE_MULTIPLIER)
+        .max(options.limit)
+        .max(1)
 }
 
-fn load_or_build_recent_index(
-    sessions_dir: &Path,
+/// Remove the superseded JSON index once so it stops taking up space.
+fn remove_legacy_index() {
+    if let Ok(dir) = index_dir() {
+        let _ = std::fs::remove_file(dir.join(LEGACY_INDEX_FILE_NAME));
+    }
+}
+
+/// Build/update the incremental jcode session index and return the candidate
+/// subset of `files` that plausibly match `query`.
+fn jcode_index_candidates(
     files: &[SessionFileCandidate],
-) -> Result<Arc<SessionSearchIndex>> {
-    let index_path = index_path_for_sessions_dir(sessions_dir);
-    if let Some(index) = get_cached_session_search_index(&index_path, files) {
-        return Ok(index);
-    }
-
-    if let Ok(raw) = std::fs::read(&index_path)
-        && let Ok(index) = serde_json::from_slice::<SessionSearchIndex>(&raw)
-        && index_matches_files(&index, files)
-    {
-        return Ok(cache_session_search_index(index_path, index));
-    }
-
-    let index = build_recent_index(files)?;
-    if let Some(parent) = index_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp_path = index_path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, serde_json::to_vec(&index)?)?;
-    std::fs::rename(tmp_path, &index_path)?;
-    Ok(cache_session_search_index(index_path, index))
-}
-
-fn get_cached_session_search_index(
-    index_path: &Path,
-    files: &[SessionFileCandidate],
-) -> Option<Arc<SessionSearchIndex>> {
-    let cache = SESSION_SEARCH_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let guard = cache.lock().ok()?;
-    let index = guard.get(index_path)?;
-    index_matches_files(index, files).then(|| Arc::clone(index))
-}
-
-fn cache_session_search_index(
-    index_path: PathBuf,
-    index: SessionSearchIndex,
-) -> Arc<SessionSearchIndex> {
-    let index = Arc::new(index);
-    let cache = SESSION_SEARCH_INDEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut guard) = cache.lock() {
-        guard.insert(index_path, Arc::clone(&index));
-    }
-    index
-}
-
-fn index_matches_files(index: &SessionSearchIndex, files: &[SessionFileCandidate]) -> bool {
-    index.version == INDEX_VERSION
-        && index.entries.len() == files.len()
-        && index.entries.iter().zip(files).all(|(entry, file)| {
-            entry.session_id == file.session_id_hint
-                && entry.snapshot_path == file.snapshot_path
-                && entry.journal_path == file.journal_path
-                && entry.mtime_ms == system_time_to_unix_millis(file.mtime)
-        })
-}
-
-fn build_recent_index(files: &[SessionFileCandidate]) -> Result<SessionSearchIndex> {
-    let mut entries = Vec::with_capacity(files.len());
-    let mut terms: HashMap<String, Vec<usize>> = HashMap::new();
-
-    for (idx, file) in files.iter().enumerate() {
-        entries.push(SessionSearchIndexEntry {
-            session_id: file.session_id_hint.clone(),
-            snapshot_path: file.snapshot_path.clone(),
-            journal_path: file.journal_path.clone(),
-            mtime_ms: system_time_to_unix_millis(file.mtime),
-        });
-
-        let mut read_errors = 0;
-        let raw = read_candidate_raw(file, &mut read_errors).unwrap_or_default();
-        let mut doc_terms = tokenize_index_document(&file.session_id_hint, &raw);
-        doc_terms.sort_unstable();
-        doc_terms.dedup();
-        for term in doc_terms {
-            terms.entry(term).or_default().push(idx);
-        }
-    }
-
-    Ok(SessionSearchIndex {
-        version: INDEX_VERSION,
-        entries,
-        terms,
-    })
-}
-
-fn tokenize_index_document(session_id: &str, raw: &[u8]) -> Vec<String> {
-    let mut text = String::with_capacity(session_id.len() + raw.len().min(1024 * 1024));
-    text.push_str(session_id);
-    text.push(' ');
-    text.push_str(&String::from_utf8_lossy(raw));
-    jcode_session_types::tokenize_session_search_query(&text.to_lowercase())
-}
-
-fn index_candidates(
-    index: &SessionSearchIndex,
     query: &QueryProfile,
-    files: &[SessionFileCandidate],
-) -> Vec<SessionFileCandidate> {
-    let mut counts: HashMap<usize, usize> = HashMap::new();
-    for term in &query.terms {
-        if let Some(postings) = index.terms.get(term) {
-            for &idx in postings {
-                *counts.entry(idx).or_insert(0) += 1;
+) -> Result<Vec<SessionFileCandidate>> {
+    let index_path = index_dir()?.join("session_search_jcode_index_v2.bin");
+    let specs: Vec<IndexFileSpec> = files
+        .iter()
+        .map(|file| {
+            // Journals grow after the snapshot is written, so identity covers
+            // both files.
+            let (snap_mtime, snap_size) = session_search_index::stat_ms_size(&file.snapshot_path);
+            let (journal_mtime, journal_size) =
+                session_search_index::stat_ms_size(&file.journal_path);
+            IndexFileSpec {
+                key: file.session_id_hint.clone(),
+                mtime_ms: snap_mtime.max(journal_mtime),
+                size: snap_size.wrapping_add(journal_size),
             }
-        }
-    }
-
-    counts
-        .into_iter()
-        .filter_map(|(idx, count)| {
-            (count >= query.min_term_matches)
-                .then(|| files.get(idx).cloned())
-                .flatten()
         })
-        .collect()
+        .collect();
+
+    let index = session_search_index::build_or_update(&index_path, &specs, &|slot| {
+        let file = &files[slot];
+        let mut read_errors = 0;
+        read_candidate_raw(file, &mut read_errors).map(|raw| {
+            let mut text = String::with_capacity(file.session_id_hint.len() + 1 + raw.len());
+            text.push_str(&file.session_id_hint);
+            text.push(' ');
+            text.push_str(&String::from_utf8_lossy(&raw));
+            text
+        })
+    })?;
+
+    Ok(index
+        .candidate_slots(&query.terms, query.min_term_matches)
+        .into_iter()
+        .filter_map(|slot| files.get(slot).cloned())
+        .collect())
 }
 
 fn modified_time_or_epoch(path: &Path) -> SystemTime {
@@ -1056,7 +985,15 @@ fn search_external_sessions(query: &QueryProfile, options: &SearchOptions) -> Se
             .into_iter()
             .take(options.max_scan_sessions)
             .collect();
-        records.extend(load_claude_candidates_parallel(&sessions, query, options));
+        let mut candidates = claude_index_candidates(&sessions, query);
+        if !options.exhaustive {
+            let budget = indexed_candidate_budget(options);
+            if candidates.len() > budget {
+                candidates.truncate(budget);
+                report.truncated = true;
+            }
+        }
+        records.extend(load_claude_candidates_parallel(&candidates, query, options));
     }
 
     collect_external_jsonl_source(
@@ -1122,10 +1059,71 @@ fn collect_external_jsonl_source(
     }
     report.external_sources.push(source);
     let paths = collect_recent_files_recursive(&root, "jsonl", options.max_scan_sessions);
-    let outcomes = load_external_candidates_parallel(&paths, query, options, loader);
+    let mut candidates = external_index_candidate_paths(source, &paths, query);
+    // Like the jcode path, cap how many candidate files get fully parsed.
+    // Candidates arrive most-recent-first; exhaustive mode skips the cap.
+    if !options.exhaustive {
+        let budget = indexed_candidate_budget(options);
+        if candidates.len() > budget {
+            candidates.truncate(budget);
+            report.truncated = true;
+        }
+    }
+    let outcomes = load_external_candidates_parallel(&candidates, query, options, loader);
     for outcome in outcomes {
         report.parse_errors += outcome.parse_errors;
         records.extend(outcome.records);
+    }
+}
+
+/// Narrow `paths` to plausible matches using the per-source incremental
+/// index. Falls back to scanning everything if the index cannot be built.
+/// Candidates are still re-verified against the real file contents, so index
+/// hash collisions cannot produce wrong results.
+fn external_index_candidate_paths(
+    source: &'static str,
+    paths: &[PathBuf],
+    query: &QueryProfile,
+) -> Vec<PathBuf> {
+    let index = index_dir()
+        .map(|dir| dir.join(format!("session_search_{source}_index_v2.bin")))
+        .and_then(|index_path| {
+            let specs: Vec<IndexFileSpec> = paths
+                .iter()
+                .map(|path| {
+                    let (mtime_ms, size) = session_search_index::stat_ms_size(path);
+                    IndexFileSpec {
+                        key: path.to_string_lossy().into_owned(),
+                        mtime_ms,
+                        size,
+                    }
+                })
+                .collect();
+            session_search_index::build_or_update(&index_path, &specs, &|slot| {
+                let path = &paths[slot];
+                std::fs::read(path).ok().map(|raw| {
+                    let path_text = path.to_string_lossy();
+                    let mut text = String::with_capacity(path_text.len() + 1 + raw.len());
+                    text.push_str(&path_text);
+                    text.push(' ');
+                    text.push_str(&String::from_utf8_lossy(&raw));
+                    text
+                })
+            })
+        });
+
+    match index {
+        Ok(index) => index
+            .candidate_slots(&query.terms, query.min_term_matches)
+            .into_iter()
+            .filter_map(|slot| paths.get(slot).cloned())
+            .collect(),
+        Err(err) => {
+            crate::logging::warn(&format!(
+                "session_search {source} index unavailable; scanning all files: {err}"
+            ));
+            paths.to_vec()
+        }
     }
 }
 
@@ -1181,6 +1179,66 @@ fn load_external_candidates_parallel(
             })
             .collect()
     })
+}
+
+/// Narrow claude sessions to plausible matches with the incremental index.
+/// Indexed text includes the session metadata (id, prompt, summary, project)
+/// so metadata-only matches keep working.
+fn claude_index_candidates(
+    sessions: &[jcode_import_core::ClaudeCodeSessionInfo],
+    query: &QueryProfile,
+) -> Vec<jcode_import_core::ClaudeCodeSessionInfo> {
+    let index = index_dir()
+        .map(|dir| dir.join("session_search_claude_index_v2.bin"))
+        .and_then(|index_path| {
+            let specs: Vec<IndexFileSpec> = sessions
+                .iter()
+                .map(|session| {
+                    let (mtime_ms, size) =
+                        session_search_index::stat_ms_size(Path::new(&session.full_path));
+                    IndexFileSpec {
+                        key: session.full_path.clone(),
+                        mtime_ms,
+                        size,
+                    }
+                })
+                .collect();
+            session_search_index::build_or_update(&index_path, &specs, &|slot| {
+                let session = &sessions[slot];
+                let raw = std::fs::read(&session.full_path).unwrap_or_default();
+                let mut text = String::with_capacity(raw.len() + 256);
+                text.push_str(&session.full_path);
+                text.push(' ');
+                text.push_str(&session.session_id);
+                text.push(' ');
+                text.push_str(&session.first_prompt);
+                if let Some(summary) = &session.summary {
+                    text.push(' ');
+                    text.push_str(summary);
+                }
+                if let Some(project) = &session.project_path {
+                    text.push(' ');
+                    text.push_str(project);
+                }
+                text.push(' ');
+                text.push_str(&String::from_utf8_lossy(&raw));
+                Some(text)
+            })
+        });
+
+    match index {
+        Ok(index) => index
+            .candidate_slots(&query.terms, query.min_term_matches)
+            .into_iter()
+            .filter_map(|slot| sessions.get(slot).cloned())
+            .collect(),
+        Err(err) => {
+            crate::logging::warn(&format!(
+                "session_search claude index unavailable; scanning all files: {err}"
+            ));
+            sessions.to_vec()
+        }
+    }
 }
 
 /// Pre-filter and load Claude Code session files in parallel, mirroring the
