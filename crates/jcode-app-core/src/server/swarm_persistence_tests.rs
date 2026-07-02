@@ -250,6 +250,148 @@ fn deep_plan_mode_and_node_meta_round_trip() {
     assert_eq!(gate_meta.parent.as_deref(), Some("root"));
 }
 
+/// The behavioral counterpart of `deep_plan_mode_and_node_meta_round_trip`:
+/// after a persist -> load cycle (server restart), the reloaded plan must still
+/// drive the deep-mode machinery that reads `node_meta`:
+///
+/// 1. `low_confidence_completed_ids` still reports completed nodes whose stored
+///    artifact self-reported low confidence (gate confidence-debt tracking).
+/// 2. `hydrate_assignment` still injects completed upstream artifacts
+///    (forward dataflow) into assignment content.
+/// 3. Lifting the reloaded plan into the DAG engine still enforces the gate
+///    debt rule: a gate cannot rubber-stamp past an unaddressed low-confidence
+///    sibling, but passes once it addresses that sibling by id.
+#[test]
+fn gate_debt_and_artifact_hydration_survive_reload() {
+    use crate::plan::dag::{DagError, HandoffArtifact, complete_node, dispatch};
+
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let solid_artifact = serde_json::to_string(&HandoffArtifact {
+        findings: "solid scope fully mapped".to_string(),
+        evidence: vec!["crates/foo/api.rs:12".to_string()],
+        confidence: Some("high".to_string()),
+        what_i_did_not_check: vec!["nothing, fully covered".to_string()],
+        ..HandoffArtifact::default()
+    })
+    .unwrap();
+    let shaky_artifact = serde_json::to_string(&HandoffArtifact {
+        findings: "unsure about the edge cases here".to_string(),
+        confidence: Some("low".to_string()),
+        what_i_did_not_check: vec!["error paths".to_string()],
+        ..HandoffArtifact::default()
+    })
+    .unwrap();
+
+    let item = |id: &str, status: &str, blocked_by: Vec<String>| crate::plan::PlanItem {
+        content: format!("work on {id}"),
+        status: status.to_string(),
+        priority: "medium".to_string(),
+        id: id.to_string(),
+        subsystem: None,
+        file_scope: Vec::new(),
+        blocked_by,
+        assigned_to: None,
+    };
+    let meta = |kind: &str, parent: Option<&str>, is_gate: bool, artifact: Option<&str>| {
+        crate::plan::NodeMeta {
+            kind: Some(kind.to_string()),
+            parent: parent.map(str::to_string),
+            expanded: false,
+            is_gate,
+            planner: None,
+            artifact_json: artifact.map(str::to_string),
+        }
+    };
+
+    let mut plan = VersionedPlan::new();
+    plan.mode = "deep".to_string();
+    plan.version = 4;
+    plan.items = vec![
+        {
+            let mut root = item("root", "running", Vec::new());
+            root.assigned_to = Some("planner-1".to_string());
+            root
+        },
+        item("root.solid", "completed", Vec::new()),
+        item("root.shaky", "completed", Vec::new()),
+        item(
+            "root.gate",
+            "queued",
+            vec!["root.solid".to_string(), "root.shaky".to_string()],
+        ),
+    ];
+    plan.node_meta = HashMap::from([
+        ("root".to_string(), {
+            let mut m = meta("explore", None, false, None);
+            m.expanded = true;
+            m.planner = Some("planner-1".to_string());
+            m
+        }),
+        (
+            "root.solid".to_string(),
+            meta("explore", Some("root"), false, Some(&solid_artifact)),
+        ),
+        (
+            "root.shaky".to_string(),
+            meta("explore", Some("root"), false, Some(&shaky_artifact)),
+        ),
+        (
+            "root.gate".to_string(),
+            meta("critique", Some("root"), true, None),
+        ),
+    ]);
+
+    persist_swarm_state("swarm-debt", Some(&plan), None, &[]);
+    let loaded = load_runtime_state();
+    let loaded_plan = loaded.plans.get("swarm-debt").expect("loaded plan");
+
+    // 1. Confidence-debt tracking: the reloaded plan still flags the shaky node.
+    assert_eq!(
+        crate::plan::bridge::low_confidence_completed_ids(loaded_plan),
+        vec!["root.shaky".to_string()]
+    );
+
+    // 2. Upstream artifact hydration: the gate's assignment content still gets
+    // both completed dependency artifacts, including what_i_did_not_check.
+    let hydrated = crate::plan::bridge::hydrate_assignment(loaded_plan, "root.gate", "gate prompt");
+    assert!(hydrated.contains("gate prompt"));
+    assert!(hydrated.contains("Inputs from completed dependencies"));
+    assert!(hydrated.contains("solid scope fully mapped"));
+    assert!(hydrated.contains("crates/foo/api.rs:12"));
+    assert!(hydrated.contains("unsure about the edge cases here"));
+    assert!(hydrated.contains("error paths"));
+
+    // 3. The DAG engine, lifted from the reloaded plan, still enforces the gate
+    // debt rule end to end.
+    let mut graph = crate::plan::bridge::to_task_graph(loaded_plan);
+    assert!(dispatch(&mut graph, "root.gate", "gate-worker"));
+    let err = complete_node(
+        &mut graph,
+        "root.gate",
+        "gate-worker",
+        HandoffArtifact::brief("all good, no gaps"),
+    )
+    .unwrap_err();
+    match &err {
+        DagError::UnaddressedLowConfidence { gate, nodes } => {
+            assert_eq!(gate, "root.gate");
+            assert_eq!(nodes, &vec!["root.shaky".to_string()]);
+        }
+        other => panic!("expected UnaddressedLowConfidence after reload, got {other:?}"),
+    }
+    complete_node(
+        &mut graph,
+        "root.gate",
+        "gate-worker",
+        HandoffArtifact::brief(
+            "root.shaky's low confidence is acceptable: its scope was re-derived and cross-checked",
+        ),
+    )
+    .expect("gate passes once the debt is addressed by id");
+}
+
 #[test]
 fn legacy_snapshot_without_mode_defaults_to_light() {
     let dir = tempfile::TempDir::new().expect("tempdir");
