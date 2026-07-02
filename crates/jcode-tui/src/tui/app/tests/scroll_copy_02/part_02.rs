@@ -726,7 +726,7 @@ fn test_click_on_inline_image_expand_badge_cycles_level() {
         );
     }
 
-    // One more badge click completes the toggle: Large -> Fit.
+    // Further badge clicks continue the cycle: Large -> Full -> Fit.
     let click_badge = |app: &mut App| {
         app.handle_mouse_event(MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
@@ -738,8 +738,14 @@ fn test_click_on_inline_image_expand_badge_cycles_level() {
     click_badge(&mut app);
     assert_eq!(
         app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Full,
+        "second click should expand Large -> Full"
+    );
+    click_badge(&mut app);
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
         ImageExpandLevel::Fit,
-        "toggle should wrap Large -> Fit"
+        "cycle should wrap Full -> Fit"
     );
 }
 
@@ -1073,12 +1079,18 @@ fn test_click_on_inline_image_body_cycles_level() {
         "clicking the image body should expand Fit -> Large"
     );
 
-    // Clicking the body again toggles back.
+    // Clicking the body again advances the cycle.
+    click(&mut app, body_col, body_row);
+    assert_eq!(
+        app.image_expand_level(IMAGE_ID),
+        ImageExpandLevel::Full,
+        "second body click should expand Large -> Full"
+    );
     click(&mut app, body_col, body_row);
     assert_eq!(
         app.image_expand_level(IMAGE_ID),
         ImageExpandLevel::Fit,
-        "second body click should reset Large -> Fit"
+        "third body click should wrap Full -> Fit"
     );
 
     // A click in the blank space to the right of the image must stay inert.

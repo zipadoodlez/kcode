@@ -910,6 +910,7 @@ impl App {
         let status = match next {
             ImageExpandLevel::Fit => "Image size: fit",
             ImageExpandLevel::Large => "Image size: large",
+            ImageExpandLevel::Full => "Image size: full",
         };
         self.set_status_notice(status);
         next
