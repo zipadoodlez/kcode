@@ -721,3 +721,193 @@ fn expand_gate_id_avoids_collision_with_seeded_node() {
     ids.dedup();
     assert_eq!(ids.len(), count, "graph must not contain duplicate ids");
 }
+
+// ----- audit regression tests (2026-07-01 deep swarm audit) -----
+
+#[test]
+fn seed_accepts_duplicate_dependencies_without_false_cycle() {
+    // A repeated dep in agent JSON must not be misread as a cycle: indegree used
+    // to count occurrences while relaxation decremented unique pairs.
+    let mut g = TaskGraph::new(Mode::Deep);
+    let mut a = spec("a", NodeKind::Explore);
+    a.depends_on = vec!["b".into(), "b".into()];
+    seed(&mut g, vec![a, spec("b", NodeKind::Explore)]).expect("duplicate deps are not a cycle");
+    // Deps are deduped on insertion.
+    assert_eq!(g.get("a").unwrap().depends_on, vec!["b".to_string()]);
+    // And the graph drains normally.
+    dispatch(&mut g, "b", "w0");
+    complete_node(&mut g, "b", "w0", sim::deep_artifact("b done")).unwrap();
+    assert_eq!(ready_nodes(&g).len(), 1);
+}
+
+#[test]
+fn seed_rejects_blank_ids() {
+    let mut g = TaskGraph::new(Mode::Light);
+    let blank = NodeSpec::new("", "task", NodeKind::Explore);
+    let err = seed(&mut g, vec![blank]).unwrap_err();
+    assert!(matches!(err, DagError::GateMisuse(_)));
+    let mut ws = TaskGraph::new(Mode::Light);
+    let white = NodeSpec::new("   ", "task", NodeKind::Explore);
+    assert!(seed(&mut ws, vec![white]).is_err());
+}
+
+#[test]
+fn confidence_parse_handles_fractions_and_negation() {
+    use ConfidenceLevel::*;
+    // Fractional scores: honor the explicit denominator.
+    assert_eq!(ConfidenceLevel::parse("1/10"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("9/10"), Some(High));
+    assert_eq!(ConfidenceLevel::parse("1 out of 10"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("3 of 5"), Some(Medium));
+    // Negations must not resolve to the positive rung they contain.
+    assert_eq!(ConfidenceLevel::parse("not high"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("not confident"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("uncertain"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("unsure"), Some(Low));
+    // Bare small integer reads on the 0-10 scale.
+    assert_eq!(ConfidenceLevel::parse("1"), Some(Low));
+    assert_eq!(ConfidenceLevel::parse("8"), Some(High));
+}
+
+#[test]
+fn artifact_accepts_numeric_confidence_json() {
+    // Agents emit {"confidence": 0.8}; the deserializer must coerce, not reject.
+    let artifact: HandoffArtifact =
+        serde_json::from_str(r#"{"findings":"x","confidence":0.8,"what_i_did_not_check":["y"]}"#)
+            .expect("numeric confidence should deserialize");
+    assert_eq!(artifact.confidence_level(), Some(ConfidenceLevel::High));
+    let artifact: HandoffArtifact =
+        serde_json::from_str(r#"{"findings":"x","confidence":"low"}"#).unwrap();
+    assert_eq!(artifact.confidence_level(), Some(ConfidenceLevel::Low));
+}
+
+#[test]
+fn gate_debt_requires_token_level_mention_not_substring() {
+    // A gate must not be able to clear a debt on child "a" just because its
+    // findings contain the letter 'a' somewhere.
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("a", NodeKind::Explore), spec("b", NodeKind::Explore)],
+    )
+    .unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    dispatch(&mut g, "a", "w1");
+    let mut shaky = sim::deep_artifact("shaky");
+    shaky.confidence = Some("low".into());
+    complete_node(&mut g, "a", "w1", shaky).unwrap();
+    dispatch(&mut g, "b", "w2");
+    complete_node(&mut g, "b", "w2", sim::deep_artifact("solid")).unwrap();
+
+    dispatch(&mut g, &gate_id, "w3");
+    // "all good" contains 'a' as a substring but never mentions node `a`.
+    let err = complete_node(
+        &mut g,
+        &gate_id,
+        "w3",
+        HandoffArtifact::brief("all good, no gaps remain"),
+    )
+    .unwrap_err();
+    assert!(matches!(err, DagError::UnaddressedLowConfidence { .. }));
+
+    // A token-level mention passes.
+    assert!(
+        complete_node(
+            &mut g,
+            &gate_id,
+            "w3",
+            HandoffArtifact::brief("child a is low confidence but acceptable: scope re-checked"),
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn gate_debt_cannot_be_cleared_via_gates_own_what_i_did_not_check() {
+    // Declaring "I did not check X" is the opposite of addressing X.
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.shaky", NodeKind::Explore)],
+    )
+    .unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    dispatch(&mut g, "root.shaky", "w1");
+    let mut shaky = sim::deep_artifact("unsure work");
+    shaky.confidence = Some("low".into());
+    complete_node(&mut g, "root.shaky", "w1", shaky).unwrap();
+
+    dispatch(&mut g, &gate_id, "w2");
+    let mut evasive = HandoffArtifact::brief("looks fine overall");
+    evasive.what_i_did_not_check = vec!["root.shaky".into()];
+    let err = complete_node(&mut g, &gate_id, "w2", evasive).unwrap_err();
+    assert!(matches!(err, DagError::UnaddressedLowConfidence { .. }));
+}
+
+#[test]
+fn inject_from_gate_wires_gap_artifacts_into_parent_synthesis() {
+    // The synthesis re-wake must receive the gap node's artifact, not just the
+    // original children's (forward dataflow reads direct deps only).
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(&mut g, "root", "w0", vec![spec("child", NodeKind::Explore)])
+        .unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    dispatch(&mut g, "child", "w1");
+    complete_node(&mut g, "child", "w1", sim::deep_artifact("child findings")).unwrap();
+
+    dispatch(&mut g, &gate_id, "w2");
+    inject_from_gate(&mut g, &gate_id, "w2", vec![spec("gapnode", NodeKind::Explore)]).unwrap();
+    dispatch(&mut g, "gapnode", "w3");
+    complete_node(
+        &mut g,
+        "gapnode",
+        "w3",
+        sim::deep_artifact("gap findings: the missing corner"),
+    )
+    .unwrap();
+    dispatch(&mut g, &gate_id, "w2");
+    complete_node(
+        &mut g,
+        &gate_id,
+        "w2",
+        HandoffArtifact::brief("gapnode drained; no gaps remain"),
+    )
+    .unwrap();
+
+    // Synthesis re-wake input must include BOTH child and gap artifacts.
+    let input = assemble_input(&g, "root");
+    assert!(input.contains("child findings"), "missing child artifact: {input}");
+    assert!(
+        input.contains("gap findings: the missing corner"),
+        "synthesis must be hydrated with injected gap artifacts: {input}"
+    );
+}
+
+#[test]
+fn requeue_failed_unwedges_a_failed_gate() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(&mut g, "root", "w0", vec![spec("c", NodeKind::Explore)]).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    dispatch(&mut g, "c", "w1");
+    complete_node(&mut g, "c", "w1", sim::deep_artifact("done")).unwrap();
+
+    // Gate worker crashes: the gate fails, wedging the composite.
+    dispatch(&mut g, &gate_id, "w2");
+    fail_node(&mut g, &gate_id, "w2").unwrap();
+    assert!(ready_nodes(&g).is_empty(), "composite is wedged behind failed gate");
+
+    // requeue_failed is the recovery primitive.
+    requeue_failed(&mut g, &gate_id).unwrap();
+    let ready: Vec<&str> = ready_nodes(&g).iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(ready, vec![gate_id.as_str()]);
+    // Only failed nodes can be requeued.
+    assert!(requeue_failed(&mut g, "c").is_err());
+}

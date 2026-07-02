@@ -13,14 +13,11 @@ use super::{DagError, HandoffArtifact, Mode, NodeKind, NodeSpec, NodeStatus, Tas
 /// unique, and the result must be acyclic. The seed has no owner yet; ownership is
 /// assigned on dispatch.
 pub fn seed(graph: &mut TaskGraph, specs: Vec<NodeSpec>) -> Result<(), DagError> {
-    // Validate ids: unique within the batch and not already present.
+    // Validate ids: present, unique within the batch, and not already present.
     let mut seen = std::collections::HashSet::new();
     let mut ids = Vec::new();
     for spec in &specs {
-        let id = spec
-            .id
-            .clone()
-            .ok_or_else(|| DagError::GateMisuse("seed specs must carry explicit ids".into()))?;
+        let id = validated_spec_id(spec, "seed")?;
         if graph.contains(&id) || !seen.insert(id.clone()) {
             return Err(DagError::DuplicateNode(id));
         }
@@ -105,10 +102,7 @@ pub fn expand_node(
     // Validate child ids and dependency references.
     let mut seen = std::collections::HashSet::new();
     for spec in &children {
-        let id = spec
-            .id
-            .clone()
-            .ok_or_else(|| DagError::GateMisuse("child specs must carry explicit ids".into()))?;
+        let id = validated_spec_id(spec, "expand")?;
         if graph.contains(&id) || !seen.insert(id.clone()) {
             return Err(DagError::DuplicateNode(id));
         }
@@ -314,10 +308,7 @@ pub fn inject_from_gate(
     // Validate new node ids/deps.
     let mut seen = std::collections::HashSet::new();
     for spec in &new_nodes {
-        let id = spec
-            .id
-            .clone()
-            .ok_or_else(|| DagError::GateMisuse("gap specs must carry explicit ids".into()))?;
+        let id = validated_spec_id(spec, "inject_from_gate")?;
         if graph.contains(&id) || !seen.insert(id.clone()) {
             return Err(DagError::DuplicateNode(id));
         }
@@ -350,12 +341,47 @@ pub fn inject_from_gate(
             }
         }
     }
+    // The composite parent must also depend on the gap nodes directly. Scheduling
+    // alone would not need this (the gate already gates the parent), but forward
+    // dataflow hydration reads only a node's *direct* dependencies, so without
+    // these edges the synthesis re-wake would never receive the gap nodes'
+    // artifacts — the same reason expand_node keeps child edges (doc section 5).
+    if let Some(parent_id) = &parent
+        && let Some(parent_node) = staged.get_mut(parent_id)
+    {
+        for id in &new_ids {
+            if !parent_node.depends_on.contains(id) {
+                parent_node.depends_on.push(id.clone());
+            }
+        }
+    }
     let cycle = staged.cycle_nodes();
     if !cycle.is_empty() {
         return Err(DagError::WouldCreateCycle(cycle));
     }
     *graph = staged;
     Ok(new_ids)
+}
+
+/// Re-queue a failed node so it can be dispatched again (the retry path). The
+/// owner is cleared: the retry may go to any worker. This is the engine-level
+/// counterpart of the live `task_control retry` action; without it a failed
+/// deep-mode gate would wedge its composite forever, because `deps_satisfied`
+/// requires `Done` and every other mutation requires `Running`.
+pub fn requeue_failed(graph: &mut TaskGraph, node_id: &str) -> Result<(), DagError> {
+    let node = graph
+        .get(node_id)
+        .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
+    if node.status != NodeStatus::Failed {
+        return Err(DagError::InvalidState {
+            node: node_id.to_string(),
+            status: node.status,
+        });
+    }
+    let node = graph.get_mut(node_id).unwrap();
+    node.status = NodeStatus::Queued;
+    node.owner = None;
+    Ok(())
 }
 
 /// Derive a gate id for a composite node that does not collide with an existing
@@ -377,7 +403,62 @@ fn unique_gate_id(graph: &TaskGraph, node_id: &str) -> String {
     }
 }
 
+/// Whether free text mentions a node id as a standalone token (not merely as a
+/// substring of a longer word). The confidence-debt rule turns on this: with
+/// bare `contains`, a short child id like "a" or "fix" would match nearly any
+/// English sentence and let a gate rubber-stamp an unaddressed low-confidence
+/// sibling. Boundaries are any non-id characters; ids themselves may contain
+/// alphanumerics plus `-_.:`/`::` (matching the gate-id convention).
+fn mentions_node_id(text: &str, id: &str) -> bool {
+    if id.is_empty() {
+        return false;
+    }
+    let is_id_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ':');
+    let mut start = 0;
+    while let Some(pos) = text[start..].find(id) {
+        let begin = start + pos;
+        let end = begin + id.len();
+        let before_ok = begin == 0 || !text[..begin].chars().next_back().is_some_and(is_id_char);
+        let after_ok = end == text.len() || !text[end..].chars().next().is_some_and(is_id_char);
+        if before_ok && after_ok {
+            return true;
+        }
+        // Advance past the first char of this match (char-boundary safe).
+        let step = text[begin..].chars().next().map_or(1, char::len_utf8);
+        start = begin + step;
+        if start >= text.len() {
+            break;
+        }
+    }
+    false
+}
+
+/// Validate that a spec carries an explicit, non-blank id and return it. A
+/// missing id is a misuse; an empty/whitespace id would corrupt id-based
+/// lookups and edge references just like a duplicate would.
+fn validated_spec_id(spec: &NodeSpec, op: &str) -> Result<String, DagError> {
+    let id = spec
+        .id
+        .clone()
+        .ok_or_else(|| DagError::GateMisuse(format!("{op} specs must carry explicit ids")))?;
+    if id.trim().is_empty() {
+        return Err(DagError::GateMisuse(format!(
+            "{op} specs must carry non-empty ids"
+        )));
+    }
+    Ok(id)
+}
+
 fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {
+    // Dedup dependencies (order-preserving). Agent-supplied specs sometimes
+    // repeat a dep; duplicates carry no meaning and used to trip the cycle
+    // detector's indegree accounting.
+    let mut seen = std::collections::HashSet::new();
+    let depends_on: Vec<String> = spec
+        .depends_on
+        .into_iter()
+        .filter(|dep| seen.insert(dep.clone()))
+        .collect();
     TaskNode {
         id: spec.id.unwrap_or_default(),
         content: spec.content,
@@ -385,7 +466,7 @@ fn spec_to_node(spec: NodeSpec, parent: Option<String>) -> TaskNode {
         status: NodeStatus::Queued,
         owner: None,
         parent,
-        depends_on: spec.depends_on,
+        depends_on,
         expanded: false,
         is_gate: false,
         planner: None,
@@ -460,9 +541,12 @@ fn validate_artifact(
 /// composite finished with LOW confidence, that doubt is on the record, and the
 /// gate may not simply pass over it: it must either have injected follow-up
 /// nodes (`inject_from_gate`, after which the gate re-runs behind them) or
-/// explicitly mention the shaky node's id in its own artifact text, accepting
-/// the low confidence with a stated reason. This keeps confidence honest —
-/// admitting low confidence buys the work a second look instead of nothing.
+/// explicitly mention the shaky node's id in its `findings` or
+/// `open_questions`, accepting the low confidence with a stated reason. The
+/// gate's own `what_i_did_not_check` deliberately does NOT count: declaring "I
+/// did not check X" is the opposite of addressing X. This keeps confidence
+/// honest — admitting low confidence buys the work a second look instead of
+/// nothing.
 fn validate_gate_confidence_debts(
     graph: &TaskGraph,
     gate_id: &str,
@@ -472,12 +556,11 @@ fn validate_gate_confidence_debts(
         return Ok(());
     };
     let addressed = |id: &str| {
-        artifact.findings.contains(id)
-            || artifact.open_questions.iter().any(|q| q.contains(id))
+        mentions_node_id(&artifact.findings, id)
             || artifact
-                .what_i_did_not_check
+                .open_questions
                 .iter()
-                .any(|entry| entry.contains(id))
+                .any(|q| mentions_node_id(q, id))
     };
     let debts: Vec<String> = graph
         .children_of(&parent)

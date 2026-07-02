@@ -18,7 +18,9 @@ pub mod sim;
 #[cfg(test)]
 mod tests;
 
-pub use ops::{ExpandOutcome, complete_node, expand_node, fail_node, inject_from_gate, seed};
+pub use ops::{
+    ExpandOutcome, complete_node, expand_node, fail_node, inject_from_gate, requeue_failed, seed,
+};
 pub use schedule::{
     LIGHT_MODE_SUGGESTED_WORKERS, assemble_input, dispatch, is_terminal, ready_nodes,
 };
@@ -113,15 +115,31 @@ pub enum ConfidenceLevel {
 
 impl ConfidenceLevel {
     /// Lenient parse. Accepts the common shapes agents actually emit: rung
-    /// words with qualifiers ("very low", "medium-high", "High."), and bare
-    /// percentages or 0-1/0-10/0-100 scores. Returns `None` when nothing
-    /// recognizable is present.
+    /// words with qualifiers ("very low", "medium-high", "High."), negations
+    /// ("not confident", "uncertain"), and bare percentages, fractions
+    /// ("1/10", "7 out of 10"), or 0-1/0-10/0-100 scores. Returns `None` when
+    /// nothing recognizable is present.
     pub fn parse(raw: &str) -> Option<Self> {
         let normalized = raw.trim().to_ascii_lowercase();
         if normalized.is_empty() {
             return None;
         }
-        // Word rungs first; check "low" before "high" so "low-to-high" style
+        // Negated/uncertain phrasing reads as low. This must run before the
+        // word rungs, or "not confident" would match "confident" -> High and
+        // silently erase a confidence debt the gate machinery should enforce.
+        const NEGATIONS: [&str; 7] = [
+            "not high",
+            "not confident",
+            "not certain",
+            "not sure",
+            "no confidence",
+            "unsure",
+            "uncertain",
+        ];
+        if NEGATIONS.iter().any(|neg| normalized.contains(neg)) {
+            return Some(Self::Low);
+        }
+        // Word rungs; check "low" before "high" so "low-to-high" style
         // hedges resolve pessimistically.
         if normalized.contains("low") {
             return Some(Self::Low);
@@ -135,16 +153,24 @@ impl ConfidenceLevel {
         {
             return Some(Self::High);
         }
-        // Numeric: take the first number in the string, infer its scale.
-        let number: String = normalized
-            .chars()
-            .skip_while(|c| !c.is_ascii_digit() && *c != '.')
-            .take_while(|c| c.is_ascii_digit() || *c == '.')
-            .collect();
-        let value: f64 = number.parse().ok()?;
-        let percent = if normalized.contains('%') || value > 10.0 {
+        // Numeric: take the first number, honoring an explicit denominator
+        // ("1/10", "7 out of 10", "3 of 5") before inferring the scale, so a
+        // fractional low score is not misread as a 0-1 probability.
+        let (value, raw_token, after) = extract_leading_number(&normalized)?;
+        let after = after.trim_start();
+        let denominator = after
+            .strip_prefix('/')
+            .or_else(|| after.strip_prefix("out of "))
+            .or_else(|| after.strip_prefix("of "))
+            .and_then(|rest| extract_leading_number(rest.trim_start()).map(|(d, _, _)| d))
+            .filter(|d| *d > 0.0);
+        let percent = if let Some(denominator) = denominator {
+            value / denominator * 100.0
+        } else if normalized.contains('%') || value > 10.0 {
             value
-        } else if value <= 1.0 {
+        } else if value <= 1.0 && raw_token.contains('.') {
+            // Only a decimal like "0.9" reads as a 0-1 probability; a bare
+            // integer "1" is a 1-of-10 score, not full confidence.
             value * 100.0
         } else {
             value * 10.0
@@ -165,6 +191,42 @@ impl ConfidenceLevel {
             Self::High => "high",
         }
     }
+}
+
+/// Deserialize `confidence` from either a JSON string or a bare number.
+/// Agents frequently emit `"confidence": 0.8` instead of `"0.8"`; rejecting
+/// that with a serde type error is pointless friction, so numbers are
+/// stringified and handed to the same lenient [`ConfidenceLevel::parse`].
+fn de_confidence_scalar<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Scalar {
+        Text(String),
+        Number(f64),
+        Bool(bool),
+    }
+    Ok(Option::<Scalar>::deserialize(deserializer)?.map(|scalar| match scalar {
+        Scalar::Text(text) => text,
+        Scalar::Number(number) => number.to_string(),
+        Scalar::Bool(flag) => flag.to_string(),
+    }))
+}
+
+/// Extract the first number in `s`, returning its value, raw token, and the
+/// remainder of the string after it. Used by [`ConfidenceLevel::parse`] for
+/// score inference (the raw token distinguishes "0.9" from a bare "1").
+fn extract_leading_number(s: &str) -> Option<(f64, &str, &str)> {
+    let start = s.find(|c: char| c.is_ascii_digit() || c == '.')?;
+    let rest = &s[start..];
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(rest.len());
+    let token = &rest[..end];
+    let value: f64 = token.parse().ok()?;
+    Some((value, token, &rest[end..]))
 }
 
 /// The typed handoff artifact attached to a node on completion. This is the
@@ -188,7 +250,11 @@ pub struct HandoffArtifact {
     pub validation: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub open_questions: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_confidence_scalar"
+    )]
     pub confidence: Option<String>,
     /// The cheat code: explicit unexplored surface. Gates convert these into new
     /// nodes.
@@ -518,11 +584,18 @@ impl TaskGraph {
             indegree.entry(node.id.as_str()).or_insert(0);
         }
         for node in &self.nodes {
-            for dep in &node.depends_on {
-                if known.contains(dep.as_str()) {
-                    *indegree.entry(node.id.as_str()).or_insert(0) += 1;
-                }
-            }
+            // Count each unique in-graph dependency once. `depends_on` can carry
+            // duplicates (agent-supplied specs are not deduped), and the
+            // relaxation below decrements once per unique (dep, dependent) pair,
+            // so counting occurrences here would strand acyclic nodes at
+            // indegree > 0 and falsely report a cycle.
+            let unique_deps: std::collections::HashSet<&str> = node
+                .depends_on
+                .iter()
+                .map(String::as_str)
+                .filter(|dep| known.contains(dep))
+                .collect();
+            *indegree.entry(node.id.as_str()).or_insert(0) += unique_deps.len();
         }
         let mut queue: Vec<&str> = indegree
             .iter()

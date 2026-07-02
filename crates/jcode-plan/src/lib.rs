@@ -302,8 +302,11 @@ pub fn task_control_action_allows_status(action: TaskControlAction, status: &str
         TaskControlAction::Start | TaskControlAction::Wake => status == "queued",
         TaskControlAction::Resume => matches!(status, "queued" | "running" | "running_stale"),
         TaskControlAction::Retry => matches!(status, "failed" | "running_stale"),
+        // A completed node must never be reopened by handoff actions: deep-mode
+        // complete_node persists "completed" (not just "done"), and reassigning
+        // it would re-queue finished work and clobber its artifact.
         TaskControlAction::Reassign | TaskControlAction::Replace | TaskControlAction::Salvage => {
-            !matches!(status, "done")
+            !is_completed_status(status)
         }
     }
 }
