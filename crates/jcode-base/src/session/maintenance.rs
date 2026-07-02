@@ -22,15 +22,48 @@ use std::path::Path;
 /// recovery copy.
 const BACKUP_RETENTION_DAYS: i64 = 30;
 
+/// Minimum interval between prune passes across all jcode processes.
+///
+/// The prune walks the entire sessions directory (easily 100k+ entries on a
+/// long-lived install), which profiles as the single largest CPU cost of TUI
+/// startup when it runs unconditionally. Backups only need to be reclaimed
+/// eventually, so one pass per interval per machine is plenty; a marker file's
+/// mtime coordinates that across concurrently spawned processes.
+const PRUNE_INTERVAL_SECS: u64 = 24 * 60 * 60;
+
 /// Remove stale `<id>.bak` files from the sessions directory.
 ///
 /// Best-effort: any I/O error is ignored so this can run on a background thread
-/// at startup without ever affecting launch.
+/// at startup without ever affecting launch. Skips cheaply (one stat) unless
+/// the machine-wide prune interval has elapsed, so spawning many jcode
+/// processes at once does not trigger many full directory walks.
 pub fn prune_old_session_backups() {
     if let Ok(base) = storage::jcode_dir() {
         let sessions_dir = base.join("sessions");
+        if !claim_prune_slot(&base) {
+            return;
+        }
         prune_old_session_backups_in(&sessions_dir, Local::now());
     }
+}
+
+/// Returns true when this process should run the prune pass now, updating the
+/// marker so other processes (and future spawns) skip until the next interval.
+///
+/// The marker touch happens before the walk, so a burst of simultaneous spawns
+/// resolves to at most a couple of walkers (racing between the stat and the
+/// touch) instead of one per process, and steady-state spawns do a single stat.
+fn claim_prune_slot(base: &Path) -> bool {
+    let marker = base.join("sessions-bak-prune.stamp");
+    if let Ok(metadata) = std::fs::metadata(&marker)
+        && let Ok(modified) = metadata.modified()
+        && let Ok(age) = std::time::SystemTime::now().duration_since(modified)
+        && age.as_secs() < PRUNE_INTERVAL_SECS
+    {
+        return false;
+    }
+    // Touch (create or refresh) the marker to claim the slot.
+    std::fs::write(&marker, b"").is_ok()
 }
 
 /// Core of [`prune_old_session_backups`], parameterized on the directory and
@@ -63,6 +96,44 @@ mod tests {
     use std::fs::{self, File};
     use std::io::Write;
     use std::time::{Duration as StdDuration, SystemTime};
+
+    #[test]
+    fn claim_prune_slot_rate_limits_within_interval_and_reclaims_after() {
+        let dir = std::env::temp_dir().join(format!(
+            "jcode-bak-claim-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+
+        // First claim wins and creates the marker.
+        assert!(claim_prune_slot(&dir), "first claim should win");
+        let marker = dir.join("sessions-bak-prune.stamp");
+        assert!(marker.exists(), "marker should be created");
+
+        // A concurrent/subsequent spawn within the interval is rejected.
+        assert!(
+            !claim_prune_slot(&dir),
+            "second claim within interval should be skipped"
+        );
+
+        // Once the marker is older than the interval the slot opens again.
+        let old = SystemTime::now() - StdDuration::from_secs(PRUNE_INTERVAL_SECS + 60);
+        File::options()
+            .write(true)
+            .open(&marker)
+            .and_then(|f| f.set_modified(old))
+            .expect("age the marker");
+        assert!(
+            claim_prune_slot(&dir),
+            "claim should succeed after the interval elapses"
+        );
+
+        fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn prunes_only_old_bak_files() {

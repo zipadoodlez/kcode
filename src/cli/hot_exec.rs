@@ -214,18 +214,46 @@ pub fn get_repo_dir() -> Option<std::path::PathBuf> {
     build::get_repo_dir()
 }
 
+/// Minimum interval between `git fetch` update probes across all jcode
+/// processes. Every source-build client spawn used to fetch unconditionally,
+/// so spawning N clients at once ran N concurrent `git fetch` + ssh sessions
+/// against the remote. One probe per interval per machine is plenty; a marker
+/// file's mtime coordinates it (same pattern as the session-backup pruner).
+const UPDATE_FETCH_INTERVAL_SECS: u64 = 15 * 60;
+
+fn claim_update_fetch_slot() -> bool {
+    let Ok(base) = crate::storage::jcode_dir() else {
+        // Cannot coordinate without a home dir; fall back to probing.
+        return true;
+    };
+    let marker = base.join("update-fetch.stamp");
+    if let Ok(metadata) = std::fs::metadata(&marker)
+        && let Ok(modified) = metadata.modified()
+        && let Ok(age) = std::time::SystemTime::now().duration_since(modified)
+        && age.as_secs() < UPDATE_FETCH_INTERVAL_SECS
+    {
+        return false;
+    }
+    // Touch before fetching so a spawn burst collapses to ~one fetch.
+    std::fs::write(&marker, b"").is_ok()
+}
+
 pub fn check_for_updates() -> Option<bool> {
     let repo_dir = get_repo_dir()?;
 
-    let fetch = ProcessCommand::new("git")
-        .args(["fetch", "-q"])
-        .current_dir(&repo_dir)
-        .output()
-        .ok()?;
+    if claim_update_fetch_slot() {
+        let fetch = ProcessCommand::new("git")
+            .args(["fetch", "-q"])
+            .current_dir(&repo_dir)
+            .output()
+            .ok()?;
 
-    if !fetch.status.success() {
-        return None;
+        if !fetch.status.success() {
+            return None;
+        }
     }
+    // When the fetch slot was claimed by another recent process, still answer
+    // from the (fresh enough) local refs instead of skipping the check.
 
     let behind = ProcessCommand::new("git")
         .args(["rev-list", "--count", "HEAD..@{u}"])
