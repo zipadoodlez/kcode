@@ -511,8 +511,13 @@ pub fn format_comm_awaited_members_with_reports(
     members: &[AwaitedMemberStatus],
     reports: &HashMap<String, String>,
 ) -> String {
-    let mut output = if completed {
+    // An any-mode wait can complete while some members are still pending, so
+    // only claim "All members done" when every member actually matched.
+    let all_done = members.iter().all(|member| member.done);
+    let mut output = if completed && all_done {
         format!("All members done. {}\n", summary)
+    } else if completed {
+        format!("Await satisfied. {}\n", summary)
     } else {
         format!("Await incomplete. {}\n", summary)
     };

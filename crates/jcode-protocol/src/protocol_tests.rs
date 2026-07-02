@@ -12,5 +12,6 @@ fn parse_event_json(json: &str) -> Result<ServerEvent> {
 include!("protocol_tests/core_events.rs");
 include!("protocol_tests/comm_requests.rs");
 include!("protocol_tests/comm_responses.rs");
+include!("protocol_tests/comm_format_awaited.rs");
 include!("protocol_tests/misc_events.rs");
 include!("protocol_tests/randomized.rs");

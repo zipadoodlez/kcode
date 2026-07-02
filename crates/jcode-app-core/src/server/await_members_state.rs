@@ -237,6 +237,19 @@ pub fn pending_await_members_for_session(session_id: &str) -> Vec<PersistedAwait
 /// files as a side effect. Used both for per-session lookups and for resuming
 /// backgrounded watchers after a server reload.
 pub(super) fn all_pending_await_members() -> Vec<PersistedAwaitMembersState> {
+    let now = now_unix_ms();
+    all_pending_await_members_including_expired()
+        .into_iter()
+        .filter(|state| state.deadline_unix_ms > now)
+        .collect()
+}
+
+/// Like [`all_pending_await_members`], but also returns pending states whose
+/// deadline has already passed (still within the pending TTL). Startup resume
+/// uses this so background awaits that expired while the server was down can
+/// be finalized with a timeout instead of silently dropping the promised
+/// notify/wake.
+pub(super) fn all_pending_await_members_including_expired() -> Vec<PersistedAwaitMembersState> {
     let dir = state_dir(AWAIT_MEMBERS_DIR);
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -256,7 +269,7 @@ pub(super) fn all_pending_await_members() -> Vec<PersistedAwaitMembersState> {
             let _ = std::fs::remove_file(path);
             continue;
         }
-        if state.is_pending() && state.deadline_unix_ms > now_unix_ms() {
+        if state.is_pending() {
             pending.push(state);
         }
     }
