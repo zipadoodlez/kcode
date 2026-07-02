@@ -460,3 +460,158 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
         "assigned_at refreshes for the new attempt"
     );
 }
+
+/// Regression: an identical coordinator retry issued shortly after a
+/// previous retry succeeded must actually re-dispatch the task. The durable
+/// mutation layer used to replay the persisted assign_task success for any
+/// identical request within the final-state TTL (30s), so a worker that
+/// failed quickly made the second retry a silent no-op: the coordinator got
+/// a success response while the task stayed failed.
+#[tokio::test]
+async fn task_control_retry_re_dispatches_after_recent_identical_retry() {
+    let (_env, _runtime) = RuntimeEnvGuard::new();
+    let swarm_id = "swarm-retry-replay";
+    let requester = "coord";
+    let worker = "worker";
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel();
+    let worker_agent = test_agent().await;
+    let sessions = Arc::new(RwLock::new(HashMap::from([(
+        worker.to_string(),
+        worker_agent,
+    )])));
+    let soft_interrupt_queues = Arc::new(RwLock::new(HashMap::new()));
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        (requester.to_string(), {
+            let mut member = member(requester, swarm_id, "ready");
+            member.role = "coordinator".to_string();
+            member
+        }),
+        (worker.to_string(), member(worker, swarm_id, "ready")),
+    ])));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        HashSet::from([requester.to_string(), worker.to_string()]),
+    )])));
+    let mut assigned = plan_item("flaky-task", "failed", "high", &[]);
+    assigned.assigned_to = Some(worker.to_string());
+    let swarm_plans = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        VersionedPlan {
+            items: vec![assigned],
+            version: 1,
+            participants: HashSet::from([requester.to_string(), worker.to_string()]),
+            task_progress: HashMap::new(),
+            mode: "light".to_string(),
+            node_meta: HashMap::new(),
+        },
+    )])));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        requester.to_string(),
+    )])));
+    let event_history = Arc::new(RwLock::new(VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(1));
+    let (swarm_event_tx, _swarm_event_rx) = broadcast::channel(32);
+    let mutation_runtime = SwarmMutationRuntime::default();
+
+    let run_retry = |id: u64| {
+        let requester = requester.to_string();
+        let client_tx = client_tx.clone();
+        let sessions = Arc::clone(&sessions);
+        let soft_interrupt_queues = Arc::clone(&soft_interrupt_queues);
+        let client_connections = Arc::clone(&client_connections);
+        let swarm_members = Arc::clone(&swarm_members);
+        let swarms_by_id = Arc::clone(&swarms_by_id);
+        let swarm_plans = Arc::clone(&swarm_plans);
+        let swarm_coordinators = Arc::clone(&swarm_coordinators);
+        let event_history = Arc::clone(&event_history);
+        let event_counter = Arc::clone(&event_counter);
+        let swarm_event_tx = swarm_event_tx.clone();
+        let mutation_runtime = mutation_runtime.clone();
+        async move {
+            handle_comm_task_control(
+                id,
+                requester,
+                "retry".to_string(),
+                "flaky-task".to_string(),
+                None,
+                None,
+                &client_tx,
+                &sessions,
+                &soft_interrupt_queues,
+                &client_connections,
+                &swarm_members,
+                &swarms_by_id,
+                &swarm_plans,
+                &swarm_coordinators,
+                &event_history,
+                &event_counter,
+                &swarm_event_tx,
+                &mutation_runtime,
+            )
+            .await;
+        }
+    };
+
+    let wait_for_status_leaving_failed = || {
+        let swarm_plans = Arc::clone(&swarm_plans);
+        async move {
+            for _ in 0..200 {
+                {
+                    let plans = swarm_plans.read().await;
+                    let status = plans
+                        .get(swarm_id)
+                        .and_then(|plan| plan.items.iter().find(|item| item.id == "flaky-task"))
+                        .map(|item| item.status.clone())
+                        .unwrap_or_default();
+                    if status != "failed" {
+                        return status;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            "failed".to_string()
+        }
+    };
+
+    // First retry dispatches the task.
+    run_retry(201).await;
+    match client_rx.recv().await.expect("first retry response") {
+        ServerEvent::CommAssignTaskResponse { id, task_id, .. } => {
+            assert_eq!(id, 201);
+            assert_eq!(task_id, "flaky-task");
+        }
+        other => panic!("expected CommAssignTaskResponse, got {other:?}"),
+    }
+    let status = wait_for_status_leaving_failed().await;
+    assert_ne!(status, "failed", "first retry should dispatch the task");
+
+    // Simulate the worker failing quickly, well within the final-state TTL.
+    {
+        let mut plans = swarm_plans.write().await;
+        let plan = plans.get_mut(swarm_id).expect("plan exists");
+        let item = plan
+            .items
+            .iter_mut()
+            .find(|item| item.id == "flaky-task")
+            .expect("task exists");
+        item.status = "failed".to_string();
+    }
+
+    // Identical second retry must re-dispatch instead of replaying the
+    // persisted success from the first retry.
+    run_retry(202).await;
+    match client_rx.recv().await.expect("second retry response") {
+        ServerEvent::CommAssignTaskResponse { id, task_id, .. } => {
+            assert_eq!(id, 202);
+            assert_eq!(task_id, "flaky-task");
+        }
+        other => panic!("expected CommAssignTaskResponse, got {other:?}"),
+    }
+    let status = wait_for_status_leaving_failed().await;
+    assert_ne!(
+        status, "failed",
+        "second identical retry must actually re-dispatch the task"
+    );
+}

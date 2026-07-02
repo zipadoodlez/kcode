@@ -3,7 +3,8 @@
 use super::append_swarm_completion_report_instructions;
 use super::swarm::{now_unix_ms, swarm_task_heartbeat_interval, touch_swarm_task_progress};
 use super::swarm_mutation_state::{
-    PersistedSwarmMutationResponse, begin_or_replay as begin_swarm_mutation_or_replay,
+    PersistedSwarmMutationResponse, begin_or_join_in_flight as begin_swarm_mutation_no_replay,
+    begin_or_replay as begin_swarm_mutation_or_replay,
     finish_request as finish_swarm_mutation_request, request_key as swarm_mutation_request_key,
 };
 use super::{
@@ -1027,6 +1028,21 @@ pub(super) async fn handle_comm_assign_role(
     .await;
 }
 
+/// How an assign_task request interacts with the durable mutation dedup layer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AssignDedupMode {
+    /// Direct client requests: an identical request within the final-state
+    /// TTL replays the persisted response instead of re-dispatching. This
+    /// absorbs client-side retries of the same logical request.
+    ReplayFinal,
+    /// Task-control-driven dispatches (retry/reassign/replace/salvage): each
+    /// invocation is a deliberate new attempt, so a persisted success from a
+    /// previous identical attempt must not swallow the re-dispatch (a worker
+    /// failing within the TTL would otherwise make the coordinator's retry a
+    /// silent no-op). Concurrent in-flight duplicates still coalesce.
+    AlwaysDispatch,
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "task assignment coordinates sessions, interrupts, connections, swarm plan state, and event history"
@@ -1037,6 +1053,53 @@ pub(super) async fn handle_comm_assign_task(
     target_session: Option<String>,
     task_id: Option<String>,
     message: Option<String>,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+    sessions: &SessionAgents,
+    soft_interrupt_queues: &super::SessionInterruptQueues,
+    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
+    event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
+    event_counter: &Arc<std::sync::atomic::AtomicU64>,
+    swarm_event_tx: &broadcast::Sender<SwarmEvent>,
+    swarm_mutation_runtime: &SwarmMutationRuntime,
+) {
+    handle_comm_assign_task_with_mode(
+        id,
+        req_session_id,
+        target_session,
+        task_id,
+        message,
+        AssignDedupMode::ReplayFinal,
+        client_event_tx,
+        sessions,
+        soft_interrupt_queues,
+        client_connections,
+        swarm_members,
+        swarms_by_id,
+        swarm_plans,
+        swarm_coordinators,
+        event_history,
+        event_counter,
+        swarm_event_tx,
+        swarm_mutation_runtime,
+    )
+    .await;
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "task assignment coordinates sessions, interrupts, connections, swarm plan state, and event history"
+)]
+async fn handle_comm_assign_task_with_mode(
+    id: u64,
+    req_session_id: String,
+    target_session: Option<String>,
+    task_id: Option<String>,
+    message: Option<String>,
+    dedup_mode: AssignDedupMode,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     soft_interrupt_queues: &super::SessionInterruptQueues,
@@ -1088,16 +1151,31 @@ pub(super) async fn handle_comm_assign_task(
             message.clone().unwrap_or_default(),
         ],
     );
-    let Some(mutation_state) = begin_swarm_mutation_or_replay(
-        swarm_mutation_runtime,
-        &mutation_key,
-        "assign_task",
-        &req_session_id,
-        id,
-        client_event_tx,
-    )
-    .await
-    else {
+    let mutation_state = match dedup_mode {
+        AssignDedupMode::ReplayFinal => {
+            begin_swarm_mutation_or_replay(
+                swarm_mutation_runtime,
+                &mutation_key,
+                "assign_task",
+                &req_session_id,
+                id,
+                client_event_tx,
+            )
+            .await
+        }
+        AssignDedupMode::AlwaysDispatch => {
+            begin_swarm_mutation_no_replay(
+                swarm_mutation_runtime,
+                &mutation_key,
+                "assign_task",
+                &req_session_id,
+                id,
+                client_event_tx,
+            )
+            .await
+        }
+    };
+    let Some(mutation_state) = mutation_state else {
         return;
     };
 
@@ -1860,12 +1938,13 @@ pub(super) async fn handle_comm_task_control(
                     )
                 },
             );
-            handle_comm_assign_task(
+            handle_comm_assign_task_with_mode(
                 id,
                 req_session_id,
                 Some(assignee),
                 Some(task_id),
                 Some(retry_note),
+                AssignDedupMode::AlwaysDispatch,
                 client_event_tx,
                 sessions,
                 soft_interrupt_queues,
@@ -1983,12 +2062,13 @@ pub(super) async fn handle_comm_task_control(
                 message
             };
 
-            handle_comm_assign_task(
+            handle_comm_assign_task_with_mode(
                 id,
                 req_session_id,
                 Some(new_target),
                 Some(task_id),
                 forwarded_message,
+                AssignDedupMode::AlwaysDispatch,
                 client_event_tx,
                 sessions,
                 soft_interrupt_queues,

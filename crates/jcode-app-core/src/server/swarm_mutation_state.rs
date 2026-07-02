@@ -1,4 +1,3 @@
-use crate::protocol::PlanGraphStatus;
 use crate::protocol::ServerEvent;
 use crate::server::durable_state::{
     elapsed_exceeds, hashed_request_key, load_json_state, now_unix_ms, save_json_state,
@@ -14,23 +13,11 @@ const FINAL_STATE_TTL: Duration = Duration::from_secs(30);
 const PENDING_STATE_TTL: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "durable mutation responses prioritize straightforward serde persistence over boxing the summary payload"
-)]
 pub(crate) enum PersistedSwarmMutationResponse {
     Done,
     AssignTask {
         task_id: String,
         target_session: String,
-    },
-    TaskControl {
-        action: String,
-        task_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        target_session: Option<String>,
-        status: String,
-        summary: PlanGraphStatus,
     },
     Error {
         message: String,
@@ -53,20 +40,6 @@ impl PersistedSwarmMutationResponse {
                 id,
                 task_id,
                 target_session,
-            },
-            Self::TaskControl {
-                action,
-                task_id,
-                target_session,
-                status,
-                summary,
-            } => ServerEvent::CommTaskControlResponse {
-                id,
-                action,
-                task_id,
-                target_session,
-                status,
-                summary,
             },
             Self::Error {
                 message,
@@ -101,51 +74,26 @@ struct SwarmMutationWaiter {
     client_event_tx: mpsc::UnboundedSender<ServerEvent>,
 }
 
-#[derive(Clone, Default)]
-pub(crate) struct SwarmMutationRuntime {
-    active_keys: Arc<RwLock<HashSet<String>>>,
-    waiters: Arc<RwLock<HashMap<String, Vec<SwarmMutationWaiter>>>>,
+/// In-memory coordination for in-flight swarm mutations.
+///
+/// A single lock guards both the active-key set and the waiter map so the
+/// persisted-final check, waiter registration, and active-claim in
+/// [`begin_or_replay`] form one atomic step with respect to
+/// [`finish_request`] draining waiters and releasing the claim. Splitting
+/// these across separate locks allowed a TOCTOU where a duplicate request
+/// could observe "no final state" before the original finished, then
+/// register itself after the finisher had already drained waiters and
+/// cleared the active claim, re-executing the whole mutation (double
+/// assign/spawn).
+#[derive(Default)]
+struct SwarmMutationSync {
+    active_keys: HashSet<String>,
+    waiters: HashMap<String, Vec<SwarmMutationWaiter>>,
 }
 
-impl SwarmMutationRuntime {
-    pub(super) async fn add_waiter(
-        &self,
-        key: &str,
-        request_id: u64,
-        client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-    ) {
-        let mut waiters = self.waiters.write().await;
-        waiters
-            .entry(key.to_string())
-            .or_default()
-            .push(SwarmMutationWaiter {
-                request_id,
-                client_event_tx: client_event_tx.clone(),
-            });
-    }
-
-    pub(super) async fn mark_active_if_new(&self, key: &str) -> bool {
-        let mut active = self.active_keys.write().await;
-        active.insert(key.to_string())
-    }
-
-    pub(super) async fn clear_active(&self, key: &str) {
-        self.active_keys.write().await.remove(key);
-    }
-
-    pub(super) async fn take_waiters(
-        &self,
-        key: &str,
-    ) -> Vec<(u64, mpsc::UnboundedSender<ServerEvent>)> {
-        self.waiters
-            .write()
-            .await
-            .remove(key)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|waiter| (waiter.request_id, waiter.client_event_tx))
-            .collect()
-    }
+#[derive(Clone, Default)]
+pub(crate) struct SwarmMutationRuntime {
+    sync: Arc<RwLock<SwarmMutationSync>>,
 }
 
 fn is_stale(state: &PersistedSwarmMutationState) -> bool {
@@ -211,17 +159,96 @@ pub(super) async fn begin_or_replay(
     request_id: u64,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) -> Option<PersistedSwarmMutationState> {
-    if let Some(final_response) = load_state(key).and_then(|state| state.final_response) {
-        let _ = client_event_tx.send(final_response.into_server_event(request_id, session_id));
-        return None;
+    begin_with_mode(
+        runtime,
+        key,
+        action,
+        session_id,
+        request_id,
+        client_event_tx,
+        true,
+    )
+    .await
+}
+
+/// Like [`begin_or_replay`], but never replays a persisted final response.
+///
+/// Explicit control-driven mutations (retry/reassign/replace/salvage) must
+/// re-dispatch even when an identical mutation finished moments ago: a worker
+/// that fails within `FINAL_STATE_TTL` would otherwise turn the coordinator's
+/// follow-up retry into a silent no-op replay. Concurrent in-flight duplicates
+/// still join the active execution as waiters.
+pub(super) async fn begin_or_join_in_flight(
+    runtime: &SwarmMutationRuntime,
+    key: &str,
+    action: &str,
+    session_id: &str,
+    request_id: u64,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) -> Option<PersistedSwarmMutationState> {
+    begin_with_mode(
+        runtime,
+        key,
+        action,
+        session_id,
+        request_id,
+        client_event_tx,
+        false,
+    )
+    .await
+}
+
+async fn begin_with_mode(
+    runtime: &SwarmMutationRuntime,
+    key: &str,
+    action: &str,
+    session_id: &str,
+    request_id: u64,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+    replay_final: bool,
+) -> Option<PersistedSwarmMutationState> {
+    {
+        // Hold the sync lock across the persisted-final check, waiter
+        // registration, and active-claim. If the original executor finishes
+        // concurrently it either persisted the final response before we
+        // loaded (we replay it here) or still holds the active claim (we
+        // become a waiter that its finish drains). It can never slip fully
+        // between the check and the claim, because finish drains/clears
+        // under this same lock only after persisting the final state.
+        let mut sync = runtime.sync.write().await;
+        if replay_final
+            && let Some(final_response) = load_state(key).and_then(|state| state.final_response)
+        {
+            let _ = client_event_tx.send(final_response.into_server_event(request_id, session_id));
+            return None;
+        }
+        sync.waiters
+            .entry(key.to_string())
+            .or_default()
+            .push(SwarmMutationWaiter {
+                request_id,
+                client_event_tx: client_event_tx.clone(),
+            });
+        if !sync.active_keys.insert(key.to_string()) {
+            return None;
+        }
     }
 
-    runtime.add_waiter(key, request_id, client_event_tx).await;
-    if !runtime.mark_active_if_new(key).await {
-        return None;
+    if replay_final {
+        Some(ensure_pending_state(key, action, session_id))
+    } else {
+        // A control-driven mutation is a fresh attempt: never resurrect a
+        // stale persisted final response as this attempt's state.
+        let state = PersistedSwarmMutationState {
+            key: key.to_string(),
+            action: action.to_string(),
+            session_id: session_id.to_string(),
+            created_at_unix_ms: now_unix_ms(),
+            final_response: None,
+        };
+        save_state(&state);
+        Some(state)
     }
-
-    Some(ensure_pending_state(key, action, session_id))
 }
 
 pub(super) async fn finish_request(
@@ -229,21 +256,24 @@ pub(super) async fn finish_request(
     state: &PersistedSwarmMutationState,
     response: PersistedSwarmMutationResponse,
 ) {
-    let persisted = persist_final_response(state, response);
-    let session_id = persisted.session_id.clone();
-    let Some(final_response) = persisted.final_response else {
-        runtime.clear_active(&persisted.key).await;
-        return;
+    // Persist the final response BEFORE draining waiters/releasing the
+    // active claim: a duplicate request that misses the drain below must be
+    // able to observe the persisted final state and replay it instead of
+    // re-executing the mutation.
+    let persisted = persist_final_response(state, response.clone());
+    let waiters = {
+        let mut sync = runtime.sync.write().await;
+        let waiters = sync.waiters.remove(&persisted.key).unwrap_or_default();
+        sync.active_keys.remove(&persisted.key);
+        waiters
     };
-
-    for (request_id, client_event_tx) in runtime.take_waiters(&persisted.key).await {
-        let _ = client_event_tx.send(
-            final_response
+    for waiter in waiters {
+        let _ = waiter.client_event_tx.send(
+            response
                 .clone()
-                .into_server_event(request_id, &session_id),
+                .into_server_event(waiter.request_id, &persisted.session_id),
         );
     }
-    runtime.clear_active(&persisted.key).await;
 }
 
 #[cfg(test)]
