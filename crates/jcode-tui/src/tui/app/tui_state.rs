@@ -1207,20 +1207,7 @@ impl crate::tui::TuiState for App {
         };
 
         let todos = if self.swarm_enabled && !self.swarm_plan_items.is_empty() {
-            self.swarm_plan_items
-                .iter()
-                .map(|item| crate::todo::TodoItem {
-                    content: item.content.clone(),
-                    status: item.status.clone(),
-                    priority: item.priority.clone(),
-                    id: item.id.clone(),
-                    group: None,
-                    blocked_by: item.blocked_by.clone(),
-                    assigned_to: item.assigned_to.clone(),
-                    confidence: None,
-                    completion_confidence: None,
-                })
-                .collect()
+            crate::tui::info_widget::swarm_plan_todos(&self.swarm_plan_items)
         } else {
             gather_todos_for_session(session_id)
         };
