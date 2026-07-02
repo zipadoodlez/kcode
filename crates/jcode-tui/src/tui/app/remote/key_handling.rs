@@ -1861,21 +1861,35 @@ async fn handle_remote_key_internal(
                 if trimmed == "/commit"
                     || trimmed == "/commit-push"
                     || trimmed == "/commit-and-push"
+                    || trimmed == "/cut-release"
+                    || trimmed == "/commit-push-release"
                 {
+                    let is_release =
+                        trimmed == "/cut-release" || trimmed == "/commit-push-release";
                     let is_push = trimmed != "/commit";
-                    let prompt = if is_push {
+                    let prompt = if is_release {
+                        app_mod::commands::build_cut_release_prompt()
+                    } else if is_push {
                         app_mod::commands::build_commit_push_prompt()
                     } else {
                         app_mod::commands::build_commit_prompt()
                     };
                     let launch_notice = |interrupted: bool| {
-                        if is_push {
+                        if is_release {
+                            app_mod::commands::cut_release_launch_notice(interrupted)
+                        } else if is_push {
                             app_mod::commands::commit_push_launch_notice(interrupted)
                         } else {
                             app_mod::commands::commit_launch_notice(interrupted)
                         }
                     };
-                    let cmd_label = if is_push { "/commit-push" } else { "/commit" };
+                    let cmd_label = if is_release {
+                        "/cut-release"
+                    } else if is_push {
+                        "/commit-push"
+                    } else {
+                        "/commit"
+                    };
                     if app.is_processing {
                         app.push_display_message(DisplayMessage::system(launch_notice(true)));
                         match remote.soft_interrupt(prompt.clone(), false).await {

@@ -61,6 +61,9 @@ impl App {
             "commit-push" | "commit-and-push" => {
                 "/commit-push\nSame as /commit, then push the new commits to the remote tracking branch.\n\nThe agent groups related changes into logical commits, preserves unrelated work, then runs git push (using git push -u if the branch has no upstream). It will not force-push or rewrite already-pushed history, and reports the commits created plus the push result."
             }
+            "cut-release" | "commit-push-release" => {
+                "/cut-release\nSame as /commit-push, then cut a release.\n\nThe agent reviews the changes since the last release tag to pick the semver bump (patch/minor/major), bumps the version in Cargo.toml, commits and pushes the bump, then runs scripts/quick-release.sh to tag, build, and publish the GitHub release. It never force-pushes or moves existing tags, and reports the new version plus the release result."
+            }
             "catchup" => {
                 "/catchup\nOpen the Catch Up picker for finished sessions that need attention.\n\n/catchup next\nTeleport to the next session needing attention and open a Catch Up brief in the side panel.\n\n/catchup list\nAlias for opening the picker."
             }

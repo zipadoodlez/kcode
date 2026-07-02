@@ -1671,6 +1671,11 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
+    if trimmed == "/cut-release" || trimmed == "/commit-push-release" {
+        handle_cut_release_command_local(app);
+        return true;
+    }
+
     if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
         app.open_session_picker();
         app.record_keybinding_slow(super::shortcut_hints::LearnableAction::Resume);
@@ -2084,6 +2089,15 @@ pub(super) fn build_commit_push_prompt() -> String {
     prompt
 }
 
+pub(super) fn build_cut_release_prompt() -> String {
+    let mut prompt = build_commit_push_prompt();
+    prompt.push(' ');
+    prompt.push_str(
+        "Then cut a release. Find the last release tag (git describe --tags --abbrev=0 or gh release list) and review everything that changed since it to pick the semver bump: patch for fixes and small internal changes, minor for new features, major only for breaking changes. Bump the version in the root Cargo.toml, refresh Cargo.lock (for example with cargo check), commit the version bump, and push it. Then run scripts/quick-release.sh v<version> to tag, build, and publish the GitHub release. Do not force-push or move existing tags. Finally, report the new version, the commits created, and the release result.",
+    );
+    prompt
+}
+
 pub(super) fn commit_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits...".to_string()
@@ -2097,6 +2111,14 @@ pub(super) fn commit_push_launch_notice(interrupted: bool) -> String {
         "👉 Interrupting and starting logical commits + push...".to_string()
     } else {
         "🚀 Starting logical commits + push...".to_string()
+    }
+}
+
+pub(super) fn cut_release_launch_notice(interrupted: bool) -> String {
+    if interrupted {
+        "👉 Interrupting and starting logical commits + push + release cut...".to_string()
+    } else {
+        "🚀 Starting logical commits + push + release cut...".to_string()
     }
 }
 
@@ -2126,6 +2148,21 @@ fn handle_commit_push_command_local(app: &mut App) {
         );
     } else {
         app.push_display_message(DisplayMessage::system(commit_push_launch_notice(false)));
+        super::commands_improve::start_synthetic_user_turn(app, prompt);
+    }
+}
+
+fn handle_cut_release_command_local(app: &mut App) {
+    let prompt = build_cut_release_prompt();
+    if app.is_processing {
+        super::commands_improve::interrupt_and_queue_synthetic_message(
+            app,
+            prompt,
+            "Interrupting for /cut-release...",
+            cut_release_launch_notice(true),
+        );
+    } else {
+        app.push_display_message(DisplayMessage::system(cut_release_launch_notice(false)));
         super::commands_improve::start_synthetic_user_turn(app, prompt);
     }
 }

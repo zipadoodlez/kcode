@@ -67,6 +67,11 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "/commit-push",
         "Make logical commits from current changes, then push",
     ),
+    RegisteredCommand::public(
+        "/cut-release",
+        "Commit + push current changes, bump version, and cut a release",
+    ),
+    RegisteredCommand::hidden("/commit-push-release", "Alias for /cut-release"),
     RegisteredCommand::public("/transcript", "Open the current session transcript file"),
     RegisteredCommand::public("/subagent-model", "Show/change subagent model policy"),
     RegisteredCommand::public("/autoreview", "Show/toggle automatic end-of-turn review"),
