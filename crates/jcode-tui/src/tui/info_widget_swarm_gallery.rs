@@ -21,6 +21,18 @@ fn member_label(member: &SwarmMemberStatus) -> String {
         .unwrap_or_else(|| member.session_id.chars().take(8).collect())
 }
 
+/// Age marker appended to member bodies, e.g. "· 7s ago" or "· now".
+/// `humanize_age` already yields "now" for fresh updates, which reads wrong
+/// with an "ago" suffix.
+fn age_marker(age: u64) -> String {
+    let human = humanize_age(age);
+    if human == "now" {
+        "· now".to_string()
+    } else {
+        format!("· {human} ago")
+    }
+}
+
 /// Build the body lines shown inside a member's viewport. Prefers live streamed
 /// output (the tail) when present; otherwise surfaces the latest detail plus a
 /// status-age hint.
@@ -29,7 +41,7 @@ fn member_body(member: &SwarmMemberStatus) -> Vec<String> {
     if let Some(tail) = member.output_tail.as_ref().filter(|t| !t.trim().is_empty()) {
         let mut body: Vec<String> = tail.lines().map(|l| l.to_string()).collect();
         if let Some(age) = member.status_age_secs {
-            body.push(format!("· {} ago", humanize_age(age)));
+            body.push(age_marker(age));
         }
         return body;
     }
@@ -38,7 +50,7 @@ fn member_body(member: &SwarmMemberStatus) -> Vec<String> {
         body.push(detail.clone());
     }
     if let Some(age) = member.status_age_secs {
-        body.push(format!("· {} ago", humanize_age(age)));
+        body.push(age_marker(age));
     }
     body
 }
