@@ -2093,7 +2093,7 @@ pub(super) fn build_cut_release_prompt() -> String {
     let mut prompt = build_commit_push_prompt();
     prompt.push(' ');
     prompt.push_str(
-        "Then cut a release. Find the last release tag (git describe --tags --abbrev=0 or gh release list) and review everything that changed since it to pick the semver bump: patch for fixes and small internal changes, minor for new features, major only for breaking changes. Bump the version in the root Cargo.toml, refresh Cargo.lock (for example with cargo check), commit the version bump, and push it. Then run scripts/quick-release.sh v<version> to tag, build, and publish the GitHub release. Do not force-push or move existing tags. Finally, report the new version, the commits created, and the release result.",
+        "Then cut a release. Find the last release tag (git describe --tags --abbrev=0 or gh release list) and review everything that changed since it to pick the semver bump: patch for fixes and small internal changes, minor for new features, major only for breaking changes. Bump the version in the root Cargo.toml, refresh Cargo.lock (for example with cargo check), and, if the repo has a changelog/ directory, write a user-facing changelog entry changelog/v<version>.json following changelog/README.md (translate commits into user-visible effects, skip internal-only changes, update changelog/index.json). Commit the version bump together with the changelog entry, and push. Then run scripts/quick-release.sh v<version> to tag, build, and publish the GitHub release, using the changelog entry as the basis for the release notes when possible. Do not force-push or move existing tags. Finally, report the new version, the commits created, and the release result.",
     );
     prompt
 }

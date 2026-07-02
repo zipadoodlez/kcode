@@ -1,0 +1,25 @@
+{
+  "version": "0.34.0",
+  "date": "2026-07-02",
+  "highlights": [
+    "Swarm agents now spawn inline by default with a live gallery viewport, and the focused strip expands into a transcript view with todos",
+    "New /cut-release command commits, pushes, bumps the version, and publishes a GitHub release in one step",
+    "New /hotkeys command lists every chord along with your personal usage stats"
+  ],
+  "improvements": [
+    "Inline images are now fully clickable and cycle through Fit, Large, and Full expand levels",
+    "Gmail drafts support file attachments, and reading messages surfaces attachment metadata",
+    "Session search is significantly faster with SIMD scanning and parallel source reads",
+    "Provider guardrail and refusal stops are surfaced instead of ending turns silently",
+    "Plan cards wrap long content instead of truncating at the border",
+    "Rare or unknown hotkey chords get inline feedback instead of doing nothing"
+  ],
+  "fixes": [
+    "Queued follow-up messages are no longer lost across disconnects and reloads",
+    "Swarm task retries no longer replay stale results or race duplicate mutations",
+    "Scrolling no longer causes inline images to flicker",
+    "Corrupt protocol frames are skipped instead of killing the session",
+    "Clicks in kitty terminals are no longer swallowed by same-cell drag jitter",
+    "Fixed a startup panic in the info-widget cache and stale widget anchors after resizes"
+  ]
+}
