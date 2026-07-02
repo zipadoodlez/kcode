@@ -96,10 +96,27 @@ pub fn websocket_next_activity_timeout_secs(
     last_api_activity_at: Instant,
     saw_api_activity: bool,
 ) -> Option<u64> {
+    websocket_next_activity_timeout_secs_with_completion(
+        ws_started_at,
+        last_api_activity_at,
+        saw_api_activity,
+        WEBSOCKET_COMPLETION_TIMEOUT_SECS,
+    )
+}
+
+/// Like [`websocket_next_activity_timeout_secs`], but with a caller-supplied
+/// completion (idle-between-events) budget so configurable idle timeouts
+/// (`[provider] stream_idle_timeout_secs`) can extend the default.
+pub fn websocket_next_activity_timeout_secs_with_completion(
+    ws_started_at: Instant,
+    last_api_activity_at: Instant,
+    saw_api_activity: bool,
+    completion_timeout_secs: u64,
+) -> Option<u64> {
     if !saw_api_activity {
         websocket_remaining_timeout_secs(ws_started_at, WEBSOCKET_FIRST_EVENT_TIMEOUT_SECS)
     } else {
-        websocket_remaining_timeout_secs(last_api_activity_at, WEBSOCKET_COMPLETION_TIMEOUT_SECS)
+        websocket_remaining_timeout_secs(last_api_activity_at, completion_timeout_secs)
     }
 }
 

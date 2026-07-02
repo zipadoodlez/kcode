@@ -293,7 +293,9 @@ cross_provider_failover = "countdown"
 # Max seconds to wait for streaming data before timing out a request with no
 # data received. Raise this for slow reasoning models (e.g. DeepSeek) that think
 # silently for minutes before emitting tokens. Default: 180.
-# Also overridable per-launch via JCODE_STREAM_IDLE_TIMEOUT_SECS.
+# Applies to every streaming provider path (OpenAI native, Anthropic, Copilot,
+# OpenRouter/OpenAI-compatible). The TUI's client-side stall guard also extends
+# to match this value. Also overridable per-launch via JCODE_STREAM_IDLE_TIMEOUT_SECS.
 # stream_idle_timeout_secs = 600
 
 [agents]

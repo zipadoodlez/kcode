@@ -1163,13 +1163,14 @@ use self::websocket_health::{
     is_stream_activity_event, is_websocket_activity_payload, is_websocket_fallback_notice,
     is_websocket_first_activity_payload, record_websocket_fallback, record_websocket_success,
     summarize_websocket_fallback_reason, websocket_activity_timeout_kind,
-    websocket_cooldown_remaining, websocket_next_activity_timeout_secs,
+    websocket_cooldown_remaining, websocket_next_activity_timeout_secs_with_completion,
 };
 #[cfg(test)]
 use self::websocket_health::{
     WEBSOCKET_MODEL_COOLDOWN_BASE_SECS, WEBSOCKET_MODEL_COOLDOWN_MAX_SECS, WebsocketFallbackReason,
     clear_websocket_cooldown, normalize_transport_model, set_websocket_cooldown,
-    websocket_cooldown_for_streak, websocket_remaining_timeout_secs,
+    websocket_cooldown_for_streak, websocket_next_activity_timeout_secs,
+    websocket_remaining_timeout_secs,
 };
 
 #[cfg(test)]

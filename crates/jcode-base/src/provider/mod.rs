@@ -105,6 +105,20 @@ pub fn active_provider_fork() -> Option<Arc<dyn Provider>> {
         .map(|p| p.fork())
 }
 
+/// Provider-agnostic streaming idle timeout: max seconds to wait between
+/// streamed chunks/events before treating the connection as dead. Resolved
+/// from `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+/// (default 180). Shared by every streaming provider path so slow reasoning
+/// models that think silently for minutes don't trip a premature timeout on
+/// one transport but not another (issue #434).
+pub fn stream_idle_timeout() -> std::time::Duration {
+    let secs = crate::config::config()
+        .provider
+        .stream_idle_timeout_secs
+        .max(1);
+    std::time::Duration::from_secs(secs)
+}
+
 /// Whether reasoning deltas should be persisted in session history for later
 /// provider context reconstruction.
 ///

@@ -1281,16 +1281,45 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
     }
 }
 
+/// Client-side stall budget before the TUI cancels an in-flight turn.
+///
+/// The server relays provider events over the local socket; when the upstream
+/// model reasons silently, no events cross the socket, so a hardcoded short
+/// watchdog cannot distinguish a dead connection from a healthy long think
+/// (issue #434). Derive the budget from the provider-agnostic
+/// `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+/// setting plus grace time so the server-side idle timeout (which produces a
+/// visible error event) always fires first. Never below 2 minutes.
+fn stall_timeout() -> Duration {
+    const MIN_STALL_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+    const GRACE: Duration = Duration::from_secs(30);
+    let provider_idle = crate::provider::stream_idle_timeout();
+    provider_idle.saturating_add(GRACE).max(MIN_STALL_TIMEOUT)
+}
+
+/// Human-readable stall duration for user-facing stall messages, e.g.
+/// "2 minutes", "3.5 minutes", or "90 seconds".
+fn format_stall_duration(timeout: Duration) -> String {
+    let secs = timeout.as_secs();
+    if secs < 120 {
+        format!("{} seconds", secs)
+    } else if secs % 60 == 0 {
+        format!("{} minutes", secs / 60)
+    } else {
+        format!("{:.1} minutes", secs as f64 / 60.0)
+    }
+}
+
 async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
-    const STALL_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+    let stall_timeout = stall_timeout();
     let is_running_tool = matches!(app.status, ProcessingStatus::RunningTool(_));
     if app.is_processing && !is_running_tool {
         let stalled = app
             .last_stream_activity
-            .map(|t| t.elapsed() > STALL_TIMEOUT)
+            .map(|t| t.elapsed() > stall_timeout)
             .unwrap_or_else(|| {
                 app.processing_started
-                    .map(|t| t.elapsed() > STALL_TIMEOUT)
+                    .map(|t| t.elapsed() > stall_timeout)
                     .unwrap_or(false)
             });
         if stalled {
@@ -1340,21 +1369,22 @@ async fn detect_and_cancel_stall(app: &mut App, remote: &mut RemoteConnection) {
                     });
                 }
             }
-            if !app.schedule_pending_remote_retry(
-                "⚠ Stream stalled (no response for 2 minutes). Processing cancelled.",
-            ) {
+            let stall_desc = format_stall_duration(stall_timeout);
+            if !app.schedule_pending_remote_retry(&format!(
+                "⚠ Stream stalled (no response for {stall_desc}). Processing cancelled.",
+            )) {
                 // Keep a dispatched-but-unfinished queued follow-up on the
                 // queue instead of silently dropping it (issue #391).
                 let recovered = recover_undelivered_queued_continuation(app, "stream stall");
                 app.clear_pending_remote_retry();
                 if recovered {
-                    app.push_display_message(DisplayMessage::system(
-                        "⚠ Stream stalled (no response for 2 minutes). Processing cancelled. Your queued follow-up stays queued.".to_string(),
-                    ));
+                    app.push_display_message(DisplayMessage::system(format!(
+                        "⚠ Stream stalled (no response for {stall_desc}). Processing cancelled. Your queued follow-up stays queued.",
+                    )));
                 } else {
-                    app.push_display_message(DisplayMessage::system(
-                        "⚠ Stream stalled (no response for 2 minutes). Processing cancelled. You can resend your message.".to_string(),
-                    ));
+                    app.push_display_message(DisplayMessage::system(format!(
+                        "⚠ Stream stalled (no response for {stall_desc}). Processing cancelled. You can resend your message. Raise `[provider] stream_idle_timeout_secs` in config.toml if your model thinks silently for longer.",
+                    )));
                 }
             }
         }
@@ -1697,4 +1727,48 @@ fn handle_disconnected_key_internal(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod stall_guard_tests {
+    use super::*;
+
+    #[test]
+    fn stall_timeout_never_below_two_minutes() {
+        // Even with the default 180s provider idle timeout, the client stall
+        // guard must give the server-side timeout room to fire first.
+        let timeout = stall_timeout();
+        assert!(
+            timeout >= Duration::from_secs(2 * 60),
+            "stall timeout regressed below 2 minutes: {timeout:?}"
+        );
+        // And it must exceed the provider idle timeout so a healthy silent
+        // reasoning stretch is cancelled server-side (visible error + retry)
+        // rather than by the client watchdog (issue #434).
+        let provider_idle = crate::provider::stream_idle_timeout();
+        assert!(
+            timeout > provider_idle,
+            "stall timeout {timeout:?} must exceed provider idle timeout {provider_idle:?}"
+        );
+    }
+
+    #[test]
+    fn format_stall_duration_is_human_readable() {
+        assert_eq!(
+            format_stall_duration(Duration::from_secs(90)),
+            "90 seconds"
+        );
+        assert_eq!(
+            format_stall_duration(Duration::from_secs(120)),
+            "2 minutes"
+        );
+        assert_eq!(
+            format_stall_duration(Duration::from_secs(210)),
+            "3.5 minutes"
+        );
+        assert_eq!(
+            format_stall_duration(Duration::from_secs(430)),
+            "7.2 minutes"
+        );
+    }
 }

@@ -1834,15 +1834,24 @@ async fn stream_response(
         ..SseStreamState::default()
     };
 
-    const SSE_CHUNK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+    // Idle timeout between streamed chunks. Configurable via
+    // `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+    // so slow reasoning models don't trip a premature timeout (issue #434).
+    let sse_chunk_timeout = crate::provider::stream_idle_timeout();
 
     loop {
-        let chunk = match tokio::time::timeout(SSE_CHUNK_TIMEOUT, stream.next()).await {
+        let chunk = match tokio::time::timeout(sse_chunk_timeout, stream.next()).await {
             Ok(Some(chunk_result)) => chunk_result.context("Error reading stream chunk")?,
             Ok(None) => break, // stream ended normally
             Err(_) => {
-                crate::logging::warn("Anthropic SSE stream timed out (no data for 180s)");
-                anyhow::bail!("Stream read timeout: no data received for 180 seconds");
+                crate::logging::warn(&format!(
+                    "Anthropic SSE stream timed out (no data for {}s)",
+                    sse_chunk_timeout.as_secs()
+                ));
+                anyhow::bail!(
+                    "Stream read timeout: no data received for {} seconds",
+                    sse_chunk_timeout.as_secs()
+                );
             }
         };
         let chunk_str = String::from_utf8_lossy(&chunk);
