@@ -1326,6 +1326,7 @@ impl crate::tui::TuiState for App {
                         output_tail: None,
                         report_back_to_session_id: None,
                         todo_progress: None,
+                        todo_items: Vec::new(),
                     });
                 }
                 (
@@ -1996,6 +1997,7 @@ mod inline_swarm_subtree_tests {
             output_tail: None,
             report_back_to_session_id: parent.map(str::to_string),
             todo_progress: None,
+            todo_items: Vec::new(),
         }
     }
 

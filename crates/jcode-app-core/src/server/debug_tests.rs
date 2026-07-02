@@ -130,6 +130,7 @@ mod transcript_routing_tests {
             is_headless: false,
             output_tail: None,
             todo_progress: None,
+            todo_items: Vec::new(),
         }
     }
 

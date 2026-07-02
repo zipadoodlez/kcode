@@ -178,6 +178,7 @@ pub(super) async fn create_headless_session(
                 is_headless: true,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         );
     }

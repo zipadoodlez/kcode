@@ -79,8 +79,8 @@ fn reload_interrupted_tool_result(tc: &ToolCall, elapsed_secs: f64) -> (String, 
 /// viewports from the worker's in-progress assistant text. Keeps only the last
 /// few lines and caps total length so the bus payload stays small.
 fn build_inline_output_tail(text: &str) -> String {
-    const MAX_LINES: usize = 6;
-    const MAX_CHARS: usize = 600;
+    const MAX_LINES: usize = 14;
+    const MAX_CHARS: usize = 1400;
     let trimmed = text.trim_end_matches('\n');
     let tail_lines: Vec<&str> = trimmed
         .lines()
@@ -1523,13 +1523,13 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         let tail = build_inline_output_tail(&text);
-        assert!(tail.lines().count() <= 6);
+        assert!(tail.lines().count() <= 14);
         assert!(tail.ends_with("line 19"));
         assert!(!tail.contains("line 0\n"));
 
         let huge = "x".repeat(5000);
         let capped = build_inline_output_tail(&huge);
-        assert!(capped.len() <= 600);
+        assert!(capped.len() <= 1400);
     }
 
     fn tool_call(name: &str, input: serde_json::Value) -> ToolCall {

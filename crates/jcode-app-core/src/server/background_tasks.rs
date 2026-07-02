@@ -216,10 +216,11 @@ pub(super) async fn dispatch_swarm_output_tail(
     }
 }
 
-/// Update a swarm member's aggregate todo progress (completed/total) from a
-/// `TodoUpdated` bus event and rebroadcast swarm status so coordinators see the
-/// counter move on the inline strip. Only the counts cross the swarm boundary,
-/// never the todo items themselves.
+/// Update a swarm member's aggregate todo progress (completed/total) and a
+/// compact snapshot of the items themselves from a `TodoUpdated` bus event,
+/// then rebroadcast swarm status so coordinators see the counter move and the
+/// focused inline panel can list what the agent is working through. Only the
+/// counts and capped display essentials cross the swarm boundary.
 pub(super) async fn dispatch_swarm_todo_progress(
     event: &crate::bus::TodoEvent,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
@@ -236,21 +237,59 @@ pub(super) async fn dispatch_swarm_todo_progress(
     } else {
         Some((completed, total))
     };
+    let items = compact_todo_items(&event.todos);
 
     let swarm_id = {
         let mut members = swarm_members.write().await;
         let Some(member) = members.get_mut(&event.session_id) else {
             return;
         };
-        if member.todo_progress == progress {
+        if member.todo_progress == progress && member.todo_items == items {
             return; // no change, skip the broadcast
         }
         member.todo_progress = progress;
+        member.todo_items = items;
         member.swarm_id.clone()
     };
     if let Some(swarm_id) = swarm_id {
         super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
     }
+}
+
+/// Max todo entries mirrored across the swarm status boundary per member.
+const SWARM_TODO_ITEMS_CAP: usize = 12;
+/// Max characters per mirrored todo entry.
+const SWARM_TODO_CONTENT_CAP: usize = 120;
+
+/// Build the capped, display-only todo snapshot that crosses the swarm
+/// boundary. Prefers showing the active window: everything from the first
+/// non-completed item onward, then backfills with the most recent completed
+/// items if there is room left in the cap.
+fn compact_todo_items(todos: &[crate::todo::TodoItem]) -> Vec<crate::protocol::SwarmTodoItem> {
+    let first_open = todos
+        .iter()
+        .position(|t| t.status != "completed")
+        .unwrap_or_else(|| todos.len().saturating_sub(SWARM_TODO_ITEMS_CAP));
+    // Show a little completed context above the active window when possible.
+    let start = first_open.saturating_sub(2);
+    todos
+        .iter()
+        .skip(start)
+        .take(SWARM_TODO_ITEMS_CAP)
+        .map(|t| crate::protocol::SwarmTodoItem {
+            content: cap_chars(&t.content, SWARM_TODO_CONTENT_CAP),
+            status: t.status.clone(),
+        })
+        .collect()
+}
+
+fn cap_chars(s: &str, cap: usize) -> String {
+    if s.chars().count() <= cap {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(cap.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 pub(super) async fn dispatch_ui_activity(

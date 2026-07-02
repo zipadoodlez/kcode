@@ -309,6 +309,12 @@ pub struct PlanGraphStatus {
     pub active_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completed_ids: Vec<String>,
+    /// Terminal without completing: failed, stopped, or crashed items. A plan
+    /// whose run "finished" with entries here did not finish cleanly, so
+    /// schedulers and reports must surface these instead of reading the
+    /// terminal state as success.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cycle_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -343,6 +349,7 @@ impl PlanGraphStatus {
             blocked_ids: Vec::new(),
             active_ids: Vec::new(),
             completed_ids: Vec::new(),
+            failed_ids: Vec::new(),
             cycle_ids: Vec::new(),
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: Vec::new(),
@@ -367,6 +374,7 @@ impl PlanGraphStatus {
             blocked_ids: graph.blocked_ids,
             active_ids: graph.active_ids,
             completed_ids: graph.completed_ids,
+            failed_ids: graph.failed_ids,
             cycle_ids: graph.cycle_ids,
             unresolved_dependency_ids: graph.unresolved_dependency_ids,
             next_ready_ids: next_runnable_item_ids(&plan.items, next_ready_limit),
@@ -414,6 +422,20 @@ pub struct SwarmMemberStatus {
     /// Surfaced on the inline swarm strip as a compact "C/T" counter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub todo_progress: Option<(u32, u32)>,
+    /// Compact snapshot of this member's todo list (content + status), capped
+    /// by the producer. Rendered in the focused inline swarm panel so the
+    /// coordinator can see what each agent is working through.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub todo_items: Vec<SwarmTodoItem>,
+}
+
+/// One compact todo entry crossing the swarm status boundary. Only the
+/// display essentials travel; full todo metadata stays in the owning session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmTodoItem {
+    pub content: String,
+    /// "pending", "in_progress", or "completed".
+    pub status: String,
 }
 
 /// Status of a member being awaited by comm_await_members

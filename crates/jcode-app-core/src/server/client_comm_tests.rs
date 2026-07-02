@@ -84,6 +84,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
         (
@@ -106,6 +107,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
     ])));
@@ -241,6 +243,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
         (
@@ -263,6 +266,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
     ])));
@@ -387,6 +391,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
         (
@@ -409,6 +414,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
     ])));
@@ -489,6 +495,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
         (
@@ -511,6 +518,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
     ])));
@@ -617,6 +625,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
         (
@@ -639,6 +648,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
         (
@@ -661,6 +671,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 is_headless: false,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
         ),
     ])));

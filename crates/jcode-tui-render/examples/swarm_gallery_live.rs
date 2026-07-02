@@ -103,6 +103,7 @@ fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
                 body,
                 sort_key: w.name.clone(),
                 todo: None,
+                todo_items: Vec::new(),
             }
         })
         .collect()

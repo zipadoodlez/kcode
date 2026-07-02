@@ -391,6 +391,18 @@ impl App {
                         output_tail: Some(samples[i % samples.len()].to_string()),
                         report_back_to_session_id: None,
                         todo_progress: Some(((i as u32 * 3) % 9, 9)),
+                        todo_items: (0..5)
+                            .map(|t| crate::protocol::SwarmTodoItem {
+                                content: format!("step {} of synthetic plan", t + 1),
+                                status: if (t as u32) < (i as u32 * 3) % 9 {
+                                    "completed".to_string()
+                                } else if t as u32 == (i as u32 * 3) % 9 {
+                                    "in_progress".to_string()
+                                } else {
+                                    "pending".to_string()
+                                },
+                            })
+                            .collect(),
                     })
                     .collect();
                 self.debug_force_inline_gallery = true;
@@ -427,6 +439,7 @@ impl App {
                         output_tail: None,
                         report_back_to_session_id: None,
                         todo_progress: None,
+                        todo_items: Vec::new(),
                     }],
                 })
                 .to_string()

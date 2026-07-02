@@ -338,6 +338,7 @@ async fn broadcast_swarm_status_now(
                     output_tail: m.output_tail.clone(),
                     report_back_to_session_id: m.report_back_to_session_id.clone(),
                     todo_progress: m.todo_progress,
+                    todo_items: m.todo_items.clone(),
                 })
         })
         .collect();
@@ -1244,6 +1245,7 @@ mod tests {
                 is_headless,
                 output_tail: None,
                 todo_progress: None,
+                todo_items: Vec::new(),
             },
             event_rx,
         )

@@ -132,6 +132,7 @@ fn main() {
         body: body.iter().map(|s| s.to_string()).collect(),
         sort_key: name.to_string(),
         todo: None,
+        todo_items: Vec::new(),
     };
     let panel_members = vec![
         gm(
@@ -208,10 +209,10 @@ fn main() {
     );
     print_lines(
         "STRIP: focused, selected #1 @ width 90",
-        &render_swarm_strip(&panel_members, 1, true, &hints, None, 3, 90),
+        &render_swarm_strip(&panel_members, 1, true, &hints, None, 3, 90, 12),
     );
     print_lines(
         "STRIP: focused narrow @ width 54",
-        &render_swarm_strip(&panel_members, 0, true, &hints, None, 5, 54),
+        &render_swarm_strip(&panel_members, 0, true, &hints, None, 5, 54, 12),
     );
 }

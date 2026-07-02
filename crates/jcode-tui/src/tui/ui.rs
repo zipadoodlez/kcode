@@ -2638,13 +2638,19 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     // Inline swarm strip: when `swarm_spawn_mode = inline` and this session
     // manages agents, render a compact strip (agent chips + keybinding hints)
-    // directly above the status line instead of a big gallery band.
+    // directly above the status line instead of a big gallery band. When the
+    // panel is focused, the strip expands into a taller viewport showing the
+    // hovered agent's live transcript tail and todo list.
     let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
         let members = app.inline_swarm_members();
         if chat_area.width >= 24 {
             let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();
             // ~8 fps spinner from the wall-clock animation timer.
             let spinner_frame = (app.animation_elapsed() * 8.0) as usize;
+            // Focused budget: chips + hints + a ~14-line detail viewport, but
+            // never more than a third of the chat column so the transcript
+            // stays usable on short terminals.
+            let focused_budget = ((chat_area.height as usize) / 3).clamp(3, 16);
             super::info_widget::swarm_gallery::render_swarm_strip_lines(
                 &members,
                 app.swarm_panel_selected(),
@@ -2652,6 +2658,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 &focus_key,
                 spinner_frame,
                 chat_area.width as usize,
+                focused_budget,
             )
         } else {
             Vec::new()

@@ -227,6 +227,10 @@ pub struct SwarmMember {
     /// updated from `TodoUpdated` bus events. Surfaced on the inline swarm
     /// strip; not persisted.
     pub todo_progress: Option<(u32, u32)>,
+    /// Compact snapshot of this member's todo list (content + status), capped
+    /// at a few entries by the bus monitor. Rendered in the focused inline
+    /// swarm panel; not persisted.
+    pub todo_items: Vec<crate::protocol::SwarmTodoItem>,
 }
 
 impl SwarmMember {
@@ -278,6 +282,7 @@ impl SwarmMember {
             is_headless: record.is_headless,
             output_tail: None,
             todo_progress: None,
+            todo_items: Vec::new(),
         }
     }
 }

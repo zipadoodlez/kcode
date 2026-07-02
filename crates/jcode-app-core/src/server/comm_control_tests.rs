@@ -70,6 +70,7 @@ fn member(session_id: &str, swarm_id: &str, status: &str) -> SwarmMember {
         is_headless: false,
         output_tail: None,
         todo_progress: None,
+        todo_items: Vec::new(),
     }
 }
 
@@ -152,5 +153,9 @@ include!("comm_control_tests/await_disconnect.rs");
 include!("comm_control_tests/await_any.rs");
 include!("comm_control_tests/await_reload_deadline.rs");
 include!("comm_control_tests/await_reload_final.rs");
+include!("comm_control_tests/await_lagged.rs");
+include!("comm_control_tests/await_resume_expired.rs");
+include!("comm_control_tests/await_background_expired.rs");
+include!("comm_control_tests/await_upgrade_background.rs");
 include!("comm_control_tests/dag_e2e.rs");
 include!("comm_control_tests/auto_worker_filter.rs");

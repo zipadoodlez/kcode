@@ -54,6 +54,14 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
             body: member_body(member),
             sort_key: member.session_id.clone(),
             todo: member.todo_progress,
+            todo_items: member
+                .todo_items
+                .iter()
+                .map(|t| jcode_tui_render::swarm_gallery::GalleryTodo {
+                    content: t.content.clone(),
+                    status: t.status.clone(),
+                })
+                .collect(),
         })
         .collect()
 }
@@ -98,7 +106,8 @@ pub(crate) fn render_swarm_panel_lines(
 ///
 /// `focus_key` is the configured chord to enter the controls (e.g. "ctrl+t"),
 /// used both for the unfocused enter-hint and as the first focused hint.
-/// `spinner_frame` animates active agents' glyphs.
+/// `spinner_frame` animates active agents' glyphs. `max_height` bounds the
+/// focused strip (chips + expanded hovered-agent detail + hints).
 pub(crate) fn render_swarm_strip_lines(
     members: &[SwarmMemberStatus],
     selected: usize,
@@ -106,6 +115,7 @@ pub(crate) fn render_swarm_strip_lines(
     focus_key: &str,
     spinner_frame: usize,
     width: usize,
+    max_height: usize,
 ) -> Vec<Line<'static>> {
     if members.is_empty() {
         return Vec::new();
@@ -137,6 +147,7 @@ pub(crate) fn render_swarm_strip_lines(
         },
         spinner_frame,
         width,
+        max_height,
     )
 }
 
@@ -177,6 +188,7 @@ mod tests {
             output_tail: None,
             report_back_to_session_id: None,
             todo_progress: None,
+            todo_items: Vec::new(),
         }
     }
 

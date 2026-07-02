@@ -39,6 +39,7 @@ fn member(session_id: &str, status: &str) -> SwarmMember {
         is_headless: false,
         output_tail: None,
         todo_progress: None,
+        todo_items: Vec::new(),
     }
 }
 

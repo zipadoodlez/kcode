@@ -354,6 +354,7 @@ async fn ensure_client_swarm_member(
                     is_headless: false,
                     output_tail: None,
                     todo_progress: None,
+                    todo_items: Vec::new(),
                 },
             );
             inserted = true;
