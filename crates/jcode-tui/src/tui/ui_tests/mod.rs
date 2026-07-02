@@ -141,6 +141,10 @@ struct TestState {
     inline_images_visible: bool,
     chat_overscroll_active: bool,
     cache_ttl_status: Option<crate::tui::CacheTtlInfo>,
+    status_notice: Option<String>,
+    swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
+    swarm_panel_selected: usize,
+    swarm_panel_focused: bool,
 }
 
 impl crate::tui::TuiState for TestState {
@@ -289,7 +293,19 @@ impl crate::tui::TuiState for TestState {
         None
     }
     fn status_notice(&self) -> Option<String> {
-        None
+        self.status_notice.clone()
+    }
+    fn inline_swarm_gallery_active(&self) -> bool {
+        !self.swarm_members.is_empty()
+    }
+    fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        self.swarm_members.clone()
+    }
+    fn swarm_panel_selected(&self) -> usize {
+        self.swarm_panel_selected
+    }
+    fn swarm_panel_focused(&self) -> bool {
+        self.swarm_panel_focused
     }
     fn remote_startup_phase_active(&self) -> bool {
         self.remote_startup_phase_active
@@ -479,5 +495,7 @@ mod onboarding;
 mod prepared_messages_tests;
 #[path = "rendering.rs"]
 mod rendering;
+#[path = "swarm_buffer.rs"]
+mod swarm_buffer;
 #[path = "tools.rs"]
 mod tools;
