@@ -104,12 +104,14 @@ tempfile = "3"
 agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.3" }
 
 [features]
-default = ["pdf", "embeddings"]
+default = ["pdf", "embeddings", "bedrock"]
 # jemalloc allocator stats live in jcode-base (process_memory); forward there.
 jemalloc = ["jcode-base/jemalloc"]
 jemalloc-prof = ["jcode-base/jemalloc-prof"]
 # local embeddings live in jcode-base (embedding); forward there.
 embeddings = ["jcode-base/embeddings"]
+# live AWS Bedrock support lives in jcode-base (provider/bedrock); forward there.
+bedrock = ["jcode-base/bedrock"]
 # PDF text extraction lives in this crate (tool/read.rs).
 pdf = ["dep:jcode-pdf"]
 # Compiles this crate's test-only helpers/accessors (e.g. the

@@ -177,7 +177,7 @@ tempfile = "3"
 # semantic retrieval, and embedding-backed features work out of the box.
 # Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
-default = ["pdf", "embeddings"]
+default = ["pdf", "embeddings", "bedrock"]
 dev-bins = ["jcode-tui/dev-bins"]
 jemalloc = [
     "dep:tikv-jemallocator",
@@ -192,6 +192,9 @@ jemalloc-prof = [
 # Local embeddings and PDF extraction live in jcode-base / jcode-app-core;
 # these features just forward down the stack.
 embeddings = ["jcode-tui/embeddings"]
+# Live AWS Bedrock support (the AWS SDK stack) lives in jcode-provider-bedrock;
+# forwards down through jcode-tui -> jcode-app-core -> jcode-base.
+bedrock = ["jcode-tui/bedrock"]
 mmdr-size-api = ["jcode-tui/mmdr-size-api"]
 pdf = ["jcode-tui/pdf"]
 

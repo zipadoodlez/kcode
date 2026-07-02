@@ -1,31 +1,47 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
+#[cfg(feature = "aws-sdk")]
+use anyhow::Context;
 use async_trait::async_trait;
+#[cfg(feature = "aws-sdk")]
 use aws_config::BehaviorVersion;
+#[cfg(feature = "aws-sdk")]
 use aws_credential_types::Credentials;
+#[cfg(feature = "aws-sdk")]
 use aws_sdk_bedrock::Client as BedrockControlClient;
+#[cfg(feature = "aws-sdk")]
 use aws_sdk_bedrockruntime::Client as BedrockRuntimeClient;
+#[cfg(feature = "aws-sdk")]
 use aws_sdk_bedrockruntime::types::{
     ContentBlock, ContentBlockDelta, ContentBlockStart, ConversationRole, ConverseStreamOutput,
     ImageBlock, ImageFormat, ImageSource, InferenceConfiguration, Message,
     ReasoningContentBlockDelta, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
     ToolSpecification,
 };
+#[cfg(feature = "aws-sdk")]
 use aws_smithy_types::Blob;
+#[cfg(feature = "aws-sdk")]
 use base64::Engine;
+#[cfg(feature = "aws-sdk")]
 use base64::engine::general_purpose::STANDARD as BASE64;
-use jcode_message_types::{
-    ContentBlock as JContentBlock, Message as JMessage, Role as JRole, StreamEvent, ToolDefinition,
-};
+#[cfg(feature = "aws-sdk")]
+use jcode_message_types::{ContentBlock as JContentBlock, Role as JRole, StreamEvent};
+use jcode_message_types::{Message as JMessage, ToolDefinition};
+#[cfg(feature = "aws-sdk")]
+use jcode_provider_core::summarize_model_catalog_refresh;
 use jcode_provider_core::{
     DEFAULT_CONTEXT_LIMIT, EventStream, ModelCatalogRefreshSummary, ModelRoute, Provider,
-    RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource, summarize_model_catalog_refresh,
+    RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "aws-sdk")]
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
+#[cfg(feature = "aws-sdk")]
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
+#[cfg(feature = "aws-sdk")]
 use tokio::sync::mpsc;
+#[cfg(feature = "aws-sdk")]
 use tokio_stream::wrappers::ReceiverStream;
 
 const DEFAULT_MODEL: &str = "anthropic.claude-3-5-sonnet-20241022-v2:0";
@@ -33,6 +49,9 @@ const DEFAULT_MAX_OUTPUT_TOKENS: usize = 4096;
 pub const ENV_FILE: &str = "bedrock.env";
 pub const API_KEY_ENV: &str = "AWS_BEARER_TOKEN_BEDROCK";
 pub const REGION_ENV: &str = "JCODE_BEDROCK_REGION";
+#[cfg(not(feature = "aws-sdk"))]
+const NO_AWS_SDK_SUPPORT: &str =
+    "jcode was built without AWS Bedrock support (feature `bedrock` disabled)";
 
 #[derive(Debug, Clone)]
 struct BedrockModelInfo {
@@ -106,6 +125,7 @@ impl BedrockProvider {
         has_region && has_credential_hint
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn sdk_config() -> aws_types::SdkConfig {
         let mut loader = aws_config::defaults(BehaviorVersion::latest());
         if let Some(token) = Self::configured_bearer_token() {
@@ -125,6 +145,7 @@ impl BedrockProvider {
         loader.load().await
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn credentials_from_aws_login_profile(profile: &str) -> Option<Credentials> {
         if std::env::var_os("AWS_ACCESS_KEY_ID").is_some()
             || std::env::var_os("AWS_SECRET_ACCESS_KEY").is_some()
@@ -174,16 +195,19 @@ impl BedrockProvider {
         ))
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn runtime_client() -> BedrockRuntimeClient {
         let config = Self::sdk_config().await;
         BedrockRuntimeClient::new(&config)
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn control_client() -> BedrockControlClient {
         let config = Self::sdk_config().await;
         BedrockControlClient::new(&config)
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn validate_credentials_if_requested() -> Result<()> {
         let validate = std::env::var("JCODE_BEDROCK_VALIDATE_STS")
             .ok()
@@ -231,6 +255,9 @@ impl BedrockProvider {
         jcode_storage::read_json(&path).ok()
     }
 
+    // Only written from aws-sdk catalog refreshes, but kept ungated so cached
+    // catalogs behave identically in both build modes (and for tests).
+    #[cfg_attr(not(feature = "aws-sdk"), allow(dead_code))]
     fn persist_catalog(
         models: &[String],
         inference_profiles: &[String],
@@ -300,6 +327,8 @@ impl BedrockProvider {
         }
     }
 
+    // Pure string logic; only reachable from aws-sdk request paths and tests.
+    #[cfg_attr(not(feature = "aws-sdk"), allow(dead_code))]
     fn classify_error_message(raw: &str) -> String {
         let lower = raw.to_ascii_lowercase();
         let is_legacy_model_error = lower.contains("marked by provider as legacy")
@@ -352,6 +381,7 @@ impl BedrockProvider {
         format!("{} Original error: {}", hint, raw.trim())
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn sdk_error_message(err: &(impl std::fmt::Display + std::fmt::Debug)) -> String {
         let display = err.to_string();
         let trimmed = display.trim();
@@ -365,6 +395,7 @@ impl BedrockProvider {
         }
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn json_to_document(value: &serde_json::Value) -> aws_smithy_types::Document {
         match value {
             serde_json::Value::Null => aws_smithy_types::Document::Null,
@@ -392,6 +423,7 @@ impl BedrockProvider {
         }
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn image_format_for_media_type(media_type: &str) -> Option<ImageFormat> {
         match media_type.trim().to_ascii_lowercase().as_str() {
             "image/png" => Some(ImageFormat::Png),
@@ -402,6 +434,7 @@ impl BedrockProvider {
         }
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn image_block(media_type: &str, data: &str) -> Result<ImageBlock> {
         let format = Self::image_format_for_media_type(media_type).ok_or_else(|| {
             anyhow::anyhow!(
@@ -419,6 +452,7 @@ impl BedrockProvider {
             .context("Failed to build Bedrock image block")
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn to_bedrock_messages(messages: &[JMessage], allow_images: bool) -> Result<Vec<Message>> {
         messages
             .iter()
@@ -502,6 +536,7 @@ impl BedrockProvider {
             .collect()
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn tool_config(tools: &[ToolDefinition]) -> Option<ToolConfiguration> {
         if tools.is_empty() {
             return None;
@@ -529,6 +564,7 @@ impl BedrockProvider {
         }
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn inference_config() -> Option<InferenceConfiguration> {
         let max_tokens = std::env::var("JCODE_BEDROCK_MAX_TOKENS")
             .ok()
@@ -583,6 +619,7 @@ impl BedrockProvider {
         value
     }
 
+    #[cfg(feature = "aws-sdk")]
     fn foundation_model_id_from_arn(arn: &str) -> Option<String> {
         arn.rsplit_once("foundation-model/")
             .map(|(_, model)| model.trim())
@@ -910,6 +947,7 @@ impl BedrockProvider {
         models
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn refresh_catalog(&self) -> Result<(Vec<String>, Vec<String>)> {
         let client = Self::control_client().await;
         let mut models = Vec::new();
@@ -1025,6 +1063,7 @@ impl Default for BedrockProvider {
 
 #[async_trait]
 impl Provider for BedrockProvider {
+    #[cfg(feature = "aws-sdk")]
     async fn complete(
         &self,
         messages: &[JMessage],
@@ -1197,6 +1236,17 @@ impl Provider for BedrockProvider {
             >)
     }
 
+    #[cfg(not(feature = "aws-sdk"))]
+    async fn complete(
+        &self,
+        _messages: &[JMessage],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        Err(anyhow::anyhow!(NO_AWS_SDK_SUPPORT))
+    }
+
     fn name(&self) -> &str {
         "bedrock"
     }
@@ -1296,10 +1346,18 @@ impl Provider for BedrockProvider {
             .collect()
     }
 
+    #[cfg(feature = "aws-sdk")]
     async fn prefetch_models(&self) -> Result<()> {
         self.refresh_catalog().await.map(|_| ())
     }
 
+    #[cfg(not(feature = "aws-sdk"))]
+    async fn prefetch_models(&self) -> Result<()> {
+        // No live catalog without the AWS SDK; cached/known models still work.
+        Ok(())
+    }
+
+    #[cfg(feature = "aws-sdk")]
     async fn refresh_model_catalog(&self) -> Result<ModelCatalogRefreshSummary> {
         let before_models = self.available_models_display();
         let before_routes = self.model_routes();
@@ -1312,6 +1370,11 @@ impl Provider for BedrockProvider {
             before_routes,
             after_routes,
         ))
+    }
+
+    #[cfg(not(feature = "aws-sdk"))]
+    async fn refresh_model_catalog(&self) -> Result<ModelCatalogRefreshSummary> {
+        Err(anyhow::anyhow!(NO_AWS_SDK_SUPPORT))
     }
 
     fn context_window(&self) -> usize {

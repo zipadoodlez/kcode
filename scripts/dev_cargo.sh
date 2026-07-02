@@ -174,7 +174,7 @@ feature_args_from_profile() {
       printf '%s\0' --no-default-features --features embeddings
       ;;
     full)
-      printf '%s\0' --features embeddings,pdf
+      printf '%s\0' --features embeddings,pdf,bedrock
       ;;
     *)
       return 1
