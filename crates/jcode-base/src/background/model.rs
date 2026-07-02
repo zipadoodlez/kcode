@@ -57,6 +57,19 @@ pub struct TaskStatusFile {
     pub duration_secs: Option<f64>,
     #[serde(default)]
     pub pid: Option<u32>,
+    /// PID of the process whose in-process future owns (or owned) this task.
+    /// `None` for files written by older builds. Used to reconcile phantom
+    /// `Running` entries after the owning server crashes or exec-reloads;
+    /// files without owner metadata are deliberately never reconciled, so a
+    /// task genuinely running in another live process cannot be clobbered.
+    #[serde(default)]
+    pub owner_pid: Option<u32>,
+    /// Per-process random instance token of the owning process. Exec-based
+    /// server reloads keep the PID, so PID alone cannot distinguish "this
+    /// process, task still bootstrapping" from "same PID after exec, task
+    /// future is gone". A fresh token per process image resolves that.
+    #[serde(default)]
+    pub owner_instance: Option<String>,
     #[serde(default)]
     pub detached: bool,
     #[serde(default = "default_true")]
@@ -71,6 +84,16 @@ pub struct TaskStatusFile {
 
 fn default_true() -> bool {
     true
+}
+
+/// Random per-process-image instance token for `owner_instance`. Generated
+/// once per process image (exec-based reloads get a fresh token even though
+/// the PID is unchanged), so status files can tell "this process, task still
+/// alive" apart from "same PID after exec, task future is gone".
+pub fn process_instance_token() -> &'static str {
+    use std::sync::OnceLock;
+    static TOKEN: OnceLock<String> = OnceLock::new();
+    TOKEN.get_or_init(|| uuid::Uuid::new_v4().simple().to_string())
 }
 
 pub(super) fn normalize_delivery(notify: bool, wake: bool) -> (bool, bool) {

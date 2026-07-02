@@ -39,7 +39,10 @@ pub struct BackgroundTaskManager {
 }
 
 impl BackgroundTaskManager {
-    fn with_output_dir(output_dir: PathBuf) -> Self {
+    /// Create a manager rooted at a specific output directory.
+    ///
+    /// Primarily for tests; production code should use [`global`].
+    pub fn with_output_dir(output_dir: PathBuf) -> Self {
         std::fs::create_dir_all(&output_dir).ok();
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
@@ -245,6 +248,10 @@ impl BackgroundTaskManager {
             completed_at: None,
             duration_secs: None,
             pid: Some(pid),
+            // Detached processes outlive this server, so no in-process owner:
+            // reconciliation must never clobber them.
+            owner_pid: None,
+            owner_instance: None,
             detached: true,
             notify,
             wake,
@@ -312,6 +319,8 @@ impl BackgroundTaskManager {
             completed_at: None,
             duration_secs: None,
             pid: None,
+            owner_pid: Some(std::process::id()),
+            owner_instance: Some(model::process_instance_token().to_string()),
             detached: false,
             notify,
             wake,
@@ -383,6 +392,8 @@ impl BackgroundTaskManager {
                 completed_at: Some(chrono::Utc::now().to_rfc3339()),
                 duration_secs: Some(duration_secs),
                 pid: None,
+                owner_pid: Some(std::process::id()),
+                owner_instance: Some(model::process_instance_token().to_string()),
                 detached: false,
                 notify: notify_flag,
                 wake: wake_flag,
@@ -496,6 +507,8 @@ impl BackgroundTaskManager {
             completed_at: None,
             duration_secs: None,
             pid: None,
+            owner_pid: Some(std::process::id()),
+            owner_instance: Some(model::process_instance_token().to_string()),
             detached: false,
             notify,
             wake,
@@ -576,6 +589,8 @@ impl BackgroundTaskManager {
                 completed_at: Some(chrono::Utc::now().to_rfc3339()),
                 duration_secs: Some(duration_secs),
                 pid: None,
+                owner_pid: Some(std::process::id()),
+                owner_instance: Some(model::process_instance_token().to_string()),
                 detached: false,
                 notify: notify_flag,
                 wake: wake_flag,
@@ -965,6 +980,8 @@ impl BackgroundTaskManager {
                 completed_at: Some(chrono::Utc::now().to_rfc3339()),
                 duration_secs: Some(task.started_at.elapsed().as_secs_f64()),
                 pid: None,
+                owner_pid: Some(std::process::id()),
+                owner_instance: Some(model::process_instance_token().to_string()),
                 detached: false,
                 notify: notify_flag,
                 wake: wake_flag,
