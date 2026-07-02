@@ -250,7 +250,15 @@ pub(crate) fn calculate_placements_anchored(
                 anchor.content_top,
             )
         } else {
-            let row = prev.rect.y.saturating_sub(messages_area.y) as usize;
+            if prev.rect.y < messages_area.y {
+                // The messages area shifted down since this anchor was recorded
+                // (e.g. a banner appeared above it), so the recorded slot now
+                // starts above the area. Rendering at the stale `prev.rect.y`
+                // would draw over whatever now occupies those rows, so drop the
+                // anchor and let Phase 2 re-home the widget inside the bounds.
+                continue;
+            }
+            let row = (prev.rect.y - messages_area.y) as usize;
             (row, prev.rect.y, margins.scroll_top + row)
         };
         let row_end = row_start + height;
