@@ -36,10 +36,10 @@ fn preserve_reasoning_context_defaults_to_enabled() {
 }
 
 #[test]
-fn swarm_spawn_mode_defaults_to_visible() {
+fn swarm_spawn_mode_defaults_to_inline() {
     assert_eq!(
         Config::default().agents.swarm_spawn_mode,
-        SwarmSpawnMode::Visible
+        SwarmSpawnMode::Inline
     );
 }
 
@@ -431,7 +431,7 @@ fn test_generated_default_config_uses_low_openai_reasoning_effort() {
         "generated default config should document ACP profile settings"
     );
     assert!(
-        content.contains("[agents]") && content.contains("swarm_spawn_mode = \"visible\""),
+        content.contains("[agents]") && content.contains("swarm_spawn_mode = \"inline\""),
         "generated default config should document agent spawn defaults"
     );
 
@@ -454,7 +454,7 @@ fn test_generated_default_config_uses_low_openai_reasoning_effort() {
     // The generated file must always be valid TOML for the current Config schema.
     let parsed: Config =
         toml::from_str(&content).expect("generated default config should parse as Config");
-    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Visible);
+    assert_eq!(parsed.agents.swarm_spawn_mode, SwarmSpawnMode::Inline);
 
     if let Some(prev) = prev_home {
         crate::env::set_var("JCODE_HOME", prev);

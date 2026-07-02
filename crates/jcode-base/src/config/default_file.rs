@@ -307,13 +307,13 @@ cross_provider_failover = "countdown"
 # swarm_model = "inherit"
 #
 # How swarm-created agents are spawned:
-#   "visible"  - open a headed terminal window (default; alias: "headed")
+#   "inline"   - in-process (no window), shown as a live gallery viewport in the coordinator (default)
+#   "visible"  - open a headed terminal window (alias: "headed")
 #   "headless" - create the worker in-process with no terminal window
-#   "inline"   - in-process (no window), shown as a live gallery viewport in the coordinator
 #   "auto"     - try visible first, fall back to headless if no window can open
 # The swarm tool's per-call `spawn_mode` overrides this when set.
 # Env override: JCODE_SWARM_SPAWN_MODE
-swarm_spawn_mode = "visible"
+swarm_spawn_mode = "inline"
 #
 # Max swarm worker agents run_plan keeps active AT ONCE in a deep-mode task graph.
 # This bounds parallelism, not the total agents spawned over the run (that is the

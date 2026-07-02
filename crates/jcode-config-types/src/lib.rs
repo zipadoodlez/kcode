@@ -586,13 +586,13 @@ impl Default for AgentsConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SwarmSpawnMode {
-    /// Open a visible/headed terminal window. This preserves historical behavior.
-    #[default]
+    /// Open a visible/headed terminal window. This was the historical default.
     Visible,
     /// Create the worker in-process without opening a terminal window.
     Headless,
     /// Like headless (no terminal window), but the coordinator renders a live
     /// inline gallery viewport of each worker's streaming output.
+    #[default]
     Inline,
     /// Try visible first and fall back to headless if a window cannot be opened.
     Auto,
