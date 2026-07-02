@@ -1573,7 +1573,12 @@ impl crate::tui::TuiState for App {
         };
         match self_id {
             Some(self_id) => filter_inline_swarm_subtree(&self.remote_swarm_members, self_id),
-            None => self.remote_swarm_members.clone(),
+            // Session identity is not known yet (e.g. right after connect,
+            // before the History event sets `remote_session_id`). Showing all
+            // swarm members here caused the inline strip to flash on startup
+            // and then disappear once the subtree filter kicked in. Hide the
+            // strip until we know who we are.
+            None => Vec::new(),
         }
     }
 
