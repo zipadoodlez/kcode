@@ -506,6 +506,104 @@ impl RunPlanReporter {
     }
 }
 
+/// Per-process registry of sessions with a `run_plan` driver claimed or
+/// running. The duplicate-driver guard does its check-and-insert under this
+/// one lock, so two `run_plan` calls racing in the same batch cannot both
+/// pass. Deliberately per-process: a stale `Running` status file left on disk
+/// by a previous (reloaded/crashed) server process must never block
+/// restarting the driver.
+fn run_plan_driver_claims() -> &'static std::sync::Mutex<HashMap<String, RunPlanDriverClaim>> {
+    static CLAIMS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, RunPlanDriverClaim>>> =
+        std::sync::OnceLock::new();
+    CLAIMS.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+enum RunPlanDriverClaim {
+    /// Claimed, background task not spawned yet.
+    Starting,
+    /// Driver spawned as this background task.
+    Running(String),
+}
+
+enum RunPlanDriverClaimResult {
+    Claimed(RunPlanClaimGuard),
+    /// A driver already holds the claim. Carries its task id when known
+    /// (None while the winner is still between claim and spawn).
+    AlreadyRunning(Option<String>),
+}
+
+/// RAII holder for a `Starting` claim. Dropping it without
+/// [`RunPlanClaimGuard::record_task`] releases the claim, so a cancelled or
+/// failed startup path cannot permanently block `run_plan` for the session.
+struct RunPlanClaimGuard {
+    session_id: String,
+    defused: bool,
+}
+
+impl RunPlanClaimGuard {
+    /// Upgrade the claim to `Running(task_id)`. From here staleness is
+    /// resolved via `BackgroundTaskManager::is_live_task`: once the driver
+    /// task finishes (and is pruned from the live map), the next claim
+    /// replaces this entry.
+    fn record_task(mut self, task_id: &str) {
+        let mut claims = run_plan_driver_claims()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        claims.insert(
+            self.session_id.clone(),
+            RunPlanDriverClaim::Running(task_id.to_string()),
+        );
+        self.defused = true;
+    }
+}
+
+impl Drop for RunPlanClaimGuard {
+    fn drop(&mut self) {
+        if self.defused {
+            return;
+        }
+        let mut claims = run_plan_driver_claims()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Only release a claim this guard still owns.
+        if matches!(claims.get(&self.session_id), Some(RunPlanDriverClaim::Starting)) {
+            claims.remove(&self.session_id);
+        }
+    }
+}
+
+/// Atomically claim the `run_plan` driver slot for `session_id`.
+///
+/// Check-and-insert happens under one lock. An existing `Running` claim only
+/// blocks while its background task is still live in this process; a claim
+/// left by a finished (pruned) or pre-reload driver is replaced.
+fn try_claim_run_plan_driver(
+    manager: &crate::background::BackgroundTaskManager,
+    session_id: &str,
+) -> RunPlanDriverClaimResult {
+    let mut claims = run_plan_driver_claims()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match claims.get(session_id) {
+        Some(RunPlanDriverClaim::Starting) => {
+            return RunPlanDriverClaimResult::AlreadyRunning(None);
+        }
+        Some(RunPlanDriverClaim::Running(task_id)) => {
+            if manager.is_live_task(task_id) {
+                return RunPlanDriverClaimResult::AlreadyRunning(Some(task_id.clone()));
+            }
+            // Stale claim: the driver task already finished or belonged to a
+            // previous process image. Fall through and take over.
+        }
+        None => {}
+    }
+    claims.insert(session_id.to_string(), RunPlanDriverClaim::Starting);
+    RunPlanDriverClaimResult::Claimed(RunPlanClaimGuard {
+        session_id: session_id.to_string(),
+        defused: false,
+    })
+}
+
 /// Drive `run_plan` as a managed background task and return immediately.
 ///
 /// The coordinating agent stays responsive: the plan loop runs inside the
@@ -524,22 +622,28 @@ async fn run_swarm_plan_in_background(
     }
 
     // Refuse to start a second driver for the same session: two concurrent
-    // run_plan loops would race on assignments and double-spawn workers. Only
-    // tasks live in this process count; a stale "running" status file left by
-    // a server reload must not block restarting the driver.
+    // run_plan loops would race on assignments and double-spawn workers. The
+    // claim is check-and-insert under one lock, so two run_plan calls in the
+    // same batch cannot both pass. Only drivers live in this process count; a
+    // stale "running" status file left by a server reload must not block
+    // restarting the driver (the claim map is per-process and dead task ids
+    // fail the is_live_task check).
     let manager = crate::background::global();
-    if let Some(existing) = manager.list().await.into_iter().find(|task| {
-        task.tool_name == "swarm"
-            && task.session_id == ctx.session_id
-            && matches!(task.status, crate::bus::BackgroundTaskStatus::Running)
-            && manager.is_live_task(&task.task_id)
-    }) {
-        return Ok(ToolOutput::new(format!(
-            "A swarm run_plan driver is already running for this session (task {}). \
-             Check it with `bg action=\"status\" task_id=\"{}\"` or `swarm plan_status` instead of starting another.",
-            existing.task_id, existing.task_id
-        )));
-    }
+    let claim = match try_claim_run_plan_driver(manager, &ctx.session_id) {
+        RunPlanDriverClaimResult::Claimed(claim) => claim,
+        RunPlanDriverClaimResult::AlreadyRunning(existing) => {
+            return Ok(ToolOutput::new(match existing {
+                Some(task_id) => format!(
+                    "A swarm run_plan driver is already running for this session (task {}). \
+                     Check it with `bg action=\"status\" task_id=\"{}\"` or `swarm plan_status` instead of starting another.",
+                    task_id, task_id
+                ),
+                None => "A swarm run_plan driver is already starting for this session. \
+                         Check it with `swarm plan_status` instead of starting another."
+                    .to_string(),
+            }));
+        }
+    };
 
     let notify = params.notify.unwrap_or(true);
     let wake = params.wake.unwrap_or(true);
@@ -574,6 +678,7 @@ async fn run_swarm_plan_in_background(
             },
         )
         .await;
+    claim.record_task(&info.task_id);
 
     let delivery_note = if wake {
         "You'll be woken with the result when the plan reaches a terminal state."

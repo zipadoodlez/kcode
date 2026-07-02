@@ -77,6 +77,146 @@ async fn run_plan_reporter_inline_is_a_no_op() {
     reporter.finalize("ignored").await;
 }
 
+#[tokio::test]
+async fn run_plan_driver_guard_blocks_while_driver_task_is_live() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let manager = crate::background::BackgroundTaskManager::with_output_dir(dir.path().into());
+    let session = "session-guard-live";
+
+    // Keep the fake driver alive long enough for the second claim to observe it.
+    let info = manager
+        .spawn_with_notify("swarm", None, session, false, false, |_| async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(crate::background::TaskResult::completed(Some(0)))
+        })
+        .await;
+    assert!(manager.is_live_task(&info.task_id));
+
+    match super::try_claim_run_plan_driver(&manager, session) {
+        super::RunPlanDriverClaimResult::Claimed(claim) => claim.record_task(&info.task_id),
+        super::RunPlanDriverClaimResult::AlreadyRunning(_) => {
+            panic!("first claim for a fresh session must succeed")
+        }
+    }
+
+    match super::try_claim_run_plan_driver(&manager, session) {
+        super::RunPlanDriverClaimResult::AlreadyRunning(Some(task_id)) => {
+            assert_eq!(task_id, info.task_id);
+        }
+        super::RunPlanDriverClaimResult::AlreadyRunning(None) => {
+            panic!("claim was recorded with a task id, so the blocker should carry it")
+        }
+        super::RunPlanDriverClaimResult::Claimed(_) => {
+            panic!("second claim must be blocked while the driver task is live")
+        }
+    }
+
+    manager.cancel(&info.task_id).await.expect("cancel driver");
+}
+
+#[tokio::test]
+async fn run_plan_driver_guard_allows_restart_after_stale_driver() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let manager = crate::background::BackgroundTaskManager::with_output_dir(dir.path().into());
+    let session = "session-guard-stale";
+
+    // Simulate the pre-reload world: a status file on disk still says a swarm
+    // driver is Running for this session, and the per-process claim map still
+    // holds its task id, but no such task is live in this process (the map is
+    // fresh after reload / the task was pruned on completion).
+    let stale_task_id = "stalezzzz1";
+    let stale_status = serde_json::json!({
+        "task_id": stale_task_id,
+        "tool_name": "swarm",
+        "session_id": session,
+        "status": "running",
+        "exit_code": null,
+        "error": null,
+        "started_at": chrono::Utc::now().to_rfc3339(),
+        "completed_at": null,
+        "duration_secs": null,
+        "detached": false,
+        "notify": false,
+        "wake": false
+    });
+    tokio::fs::write(
+        manager.status_path_for(stale_task_id),
+        serde_json::to_string_pretty(&stale_status).expect("serialize stale status"),
+    )
+    .await
+    .expect("write stale status file");
+
+    match super::try_claim_run_plan_driver(&manager, session) {
+        super::RunPlanDriverClaimResult::Claimed(claim) => claim.record_task(stale_task_id),
+        super::RunPlanDriverClaimResult::AlreadyRunning(_) => {
+            panic!("fresh session must be claimable")
+        }
+    }
+    assert!(
+        !manager.is_live_task(stale_task_id),
+        "stale task must not be live in this process"
+    );
+
+    // The stale Running status file and stale claim must not block restarting
+    // the driver.
+    match super::try_claim_run_plan_driver(&manager, session) {
+        super::RunPlanDriverClaimResult::Claimed(_claim) => {}
+        super::RunPlanDriverClaimResult::AlreadyRunning(_) => {
+            panic!("stale (non-live) driver must not block a restart")
+        }
+    }
+}
+
+#[tokio::test]
+async fn run_plan_driver_guard_is_atomic_for_racing_claims() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let manager: &'static crate::background::BackgroundTaskManager = Box::leak(Box::new(
+        crate::background::BackgroundTaskManager::with_output_dir(dir.path().into()),
+    ));
+    let session = "session-guard-race";
+
+    // Two run_plan calls in one batch race the claim; exactly one may win.
+    let mut join_set = tokio::task::JoinSet::new();
+    for _ in 0..2 {
+        join_set.spawn(async move {
+            match super::try_claim_run_plan_driver(manager, session) {
+                // Keep the claim held (as the winner does while spawning).
+                super::RunPlanDriverClaimResult::Claimed(claim) => Some(claim),
+                super::RunPlanDriverClaimResult::AlreadyRunning(_) => None,
+            }
+        });
+    }
+    let mut held_claims = Vec::new();
+    while let Some(result) = join_set.join_next().await {
+        if let Some(claim) = result.expect("claim task should not panic") {
+            held_claims.push(claim);
+        }
+    }
+    assert_eq!(held_claims.len(), 1, "exactly one racing claim may win");
+}
+
+#[tokio::test]
+async fn run_plan_driver_guard_releases_claim_on_drop_without_task() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let manager = crate::background::BackgroundTaskManager::with_output_dir(dir.path().into());
+    let session = "session-guard-drop";
+
+    match super::try_claim_run_plan_driver(&manager, session) {
+        super::RunPlanDriverClaimResult::Claimed(claim) => drop(claim),
+        super::RunPlanDriverClaimResult::AlreadyRunning(_) => {
+            panic!("fresh session must be claimable")
+        }
+    }
+
+    // A failed/cancelled startup path must not permanently block the session.
+    match super::try_claim_run_plan_driver(&manager, session) {
+        super::RunPlanDriverClaimResult::Claimed(_claim) => {}
+        super::RunPlanDriverClaimResult::AlreadyRunning(_) => {
+            panic!("dropped Starting claim must be released")
+        }
+    }
+}
+
 #[test]
 fn run_plan_concurrency_is_mode_aware() {
     // Light mode (no explicit limit) keeps the small cheap fan-out default.
