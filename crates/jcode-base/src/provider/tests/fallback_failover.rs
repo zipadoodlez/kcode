@@ -191,6 +191,7 @@ fn test_set_model_rejects_cross_provider_without_creds() {
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: Some(ActiveProvider::OpenAI),
+        routes_memo: std::sync::Mutex::new(None),
     };
 
     let err = provider
@@ -306,6 +307,7 @@ fn test_no_provider_error_mentions_tokens_and_details() {
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: None,
+        routes_memo: std::sync::Mutex::new(None),
     };
     let err = provider.no_provider_available_error(&[
         "OpenAI: rate limited".to_string(),
@@ -344,6 +346,7 @@ fn test_active_compat_profile_counts_as_configured_openrouter_slot() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             // Activate a direct compat profile exactly like

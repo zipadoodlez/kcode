@@ -991,6 +991,9 @@ impl ModelCatalogSnapshot {
     }
 
     pub fn from_provider(provider: &dyn Provider) -> Self {
+        // Note: on multi-providers both calls below build the same route
+        // catalog; MultiProvider memoizes it (short TTL) so this stays one
+        // build instead of two.
         Self::new(
             Some(provider.display_name()),
             Some(provider.model()),

@@ -41,7 +41,7 @@ use async_trait::async_trait;
 use jcode_provider_core::FailoverDecision;
 use registry::ProviderRegistry;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 pub use catalog_routes::{
     append_simplified_anthropic_model_routes, remote_current_openai_compatible_route_for_model,
@@ -333,9 +333,37 @@ pub struct MultiProvider {
     /// Optional explicit provider lock set by CLI `--provider`.
     /// When present, cross-provider fallback is disabled.
     forced_provider: Option<ActiveProvider>,
+    /// Short-TTL memo for the full route-catalog build.
+    ///
+    /// Building the catalog is expensive (per-route pricing lookups, endpoint
+    /// cache reads, credential probes) and the shared server rebuilds it for
+    /// every connection whenever a `ModelsUpdated` bus event fans out. During
+    /// a burst of client spawns that multiplied into hundreds of builds within
+    /// a couple of seconds, saturating every core. The memo collapses those
+    /// into one build per TTL window; auth/model changes invalidate it
+    /// explicitly so pickers never see stale routes after a switch.
+    routes_memo: Mutex<Option<RoutesMemoEntry>>,
+}
+
+/// Memoized route catalog with the inputs that decide its freshness: build
+/// time (short TTL) and the auth generation at build time (bumped by
+/// `AuthStatus::invalidate_cache()` on login/logout/credential edits).
+struct RoutesMemoEntry {
+    built_at: std::time::Instant,
+    auth_generation: u64,
+    routes: Vec<ModelRoute>,
 }
 
 impl MultiProvider {
+    /// Drop the short-TTL route-catalog memo so the next `model_routes()` call
+    /// rebuilds from live provider/credential state. Called whenever anything
+    /// that feeds the catalog changes (auth, active provider, model switches).
+    fn invalidate_routes_memo(&self) {
+        if let Ok(mut memo) = self.routes_memo.lock() {
+            *memo = None;
+        }
+    }
+
     #[cfg(test)]
     fn same_provider_account_candidates(provider: ActiveProvider) -> Vec<String> {
         account_failover::same_provider_account_candidates(provider)
@@ -883,6 +911,9 @@ impl MultiProvider {
 
     fn handle_auth_changed(&self, preserve_existing_openrouter_profile: bool) {
         crate::logging::auth_event("auth_changed_received", "multi-provider", &[]);
+        // Credentials feed route availability/pricing, so any memoized catalog
+        // is stale the moment auth changes.
+        self.invalidate_routes_memo();
         // Auth just changed, so discard any stale full/fast snapshots before
         // using cheap local probes to hot-initialize newly configured providers.
         crate::auth::AuthStatus::invalidate_cache();
@@ -1413,6 +1444,9 @@ impl Provider for MultiProvider {
     fn set_model(&self, model: &str) -> Result<()> {
         self.spawn_anthropic_catalog_refresh_if_needed();
         self.spawn_openai_catalog_refresh_if_needed();
+        // Model/profile switches change route availability details; rebuild
+        // the catalog on next read instead of serving the memoized copy.
+        self.invalidate_routes_memo();
 
         let requested_model = model.trim();
         if requested_model.is_empty() {
@@ -1608,7 +1642,26 @@ impl Provider for MultiProvider {
     }
 
     fn model_routes(&self) -> Vec<ModelRoute> {
-        catalog_routes::multiprovider_model_routes(self)
+        const ROUTES_MEMO_TTL: std::time::Duration = std::time::Duration::from_secs(3);
+
+        let auth_generation = pricing::auth_pricing_generation();
+        if let Ok(memo) = self.routes_memo.lock()
+            && let Some(entry) = memo.as_ref()
+            && entry.auth_generation == auth_generation
+            && entry.built_at.elapsed() < ROUTES_MEMO_TTL
+        {
+            return entry.routes.clone();
+        }
+
+        let routes = catalog_routes::multiprovider_model_routes(self);
+        if let Ok(mut memo) = self.routes_memo.lock() {
+            *memo = Some(RoutesMemoEntry {
+                built_at: std::time::Instant::now(),
+                auth_generation,
+                routes: routes.clone(),
+            });
+        }
+        routes
     }
 
     async fn prefetch_models(&self) -> Result<()> {
@@ -1738,6 +1791,8 @@ impl Provider for MultiProvider {
             return Err(anyhow!("{}", errors.join("; ")));
         }
 
+        // Fresh catalogs may have arrived; let the next model_routes() rebuild.
+        self.invalidate_routes_memo();
         Ok(())
     }
 
@@ -2274,6 +2329,7 @@ impl Provider for MultiProvider {
             use_claude_cli: self.use_claude_cli,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: self.forced_provider,
+            routes_memo: Mutex::new(None),
         };
 
         provider.spawn_anthropic_catalog_refresh_if_needed();

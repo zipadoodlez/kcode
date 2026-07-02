@@ -542,7 +542,10 @@ pub fn load_credentials() -> Result<ClaudeCredentials> {
     if claude_code_path()
         .ok()
         .map(|path| {
-            crate::config::Config::external_auth_source_allowed_for_path(
+            // Hot path: this runs per credential probe (route pricing, auth
+            // status, subscription checks). Use the process-cached config
+            // snapshot instead of re-parsing config.toml on every call.
+            crate::config::Config::external_auth_source_allowed_for_path_cached(
                 CLAUDE_CODE_AUTH_SOURCE_ID,
                 &path,
             )
@@ -581,10 +584,10 @@ pub fn load_credentials() -> Result<ClaudeCredentials> {
     if opencode_path()
         .ok()
         .map(|path| {
-            crate::config::Config::external_auth_source_allowed_for_path(
+            crate::config::Config::external_auth_source_allowed_for_path_cached(
                 OPENCODE_AUTH_SOURCE_ID,
                 &path,
-            ) || crate::config::Config::external_auth_source_allowed_for_path(
+            ) || crate::config::Config::external_auth_source_allowed_for_path_cached(
                 crate::auth::external::OPENCODE_AUTH_JSON_SOURCE_ID,
                 &path,
             )

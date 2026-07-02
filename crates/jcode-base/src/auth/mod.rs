@@ -777,6 +777,7 @@ impl AuthStatus {
             *cache = None;
         }
         crate::auth::copilot::invalidate_github_token_cache();
+        crate::provider::pricing::invalidate_auth_pricing_memos();
         crate::logging::auth_event("auth_status_cache_invalidated", "all", &[]);
     }
 

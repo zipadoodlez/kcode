@@ -95,6 +95,7 @@ fn test_available_models_display_uses_route_models_and_filters_placeholder_rows(
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: None,
+        routes_memo: std::sync::Mutex::new(None),
     };
 
     let models = provider.available_models_display();
@@ -143,6 +144,7 @@ fn test_cerebras_model_routes_are_profile_scoped_and_unique() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: Some(ActiveProvider::OpenRouter),
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             let routes = provider.model_routes();
@@ -240,6 +242,7 @@ fn test_direct_chutes_ignores_legacy_openrouter_catalog_cache() {
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: Some(ActiveProvider::OpenRouter),
+                    routes_memo: std::sync::Mutex::new(None),
                 };
 
                 let routes = provider.model_routes();
@@ -299,6 +302,7 @@ fn test_auth_changed_preserves_existing_direct_profile_session() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::OpenRouter),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::env::set_var("GROQ_API_KEY", "test-groq-key");
@@ -360,6 +364,7 @@ fn test_auth_changed_replaces_template_direct_profile_for_new_logins() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::OpenRouter),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::env::set_var("GROQ_API_KEY", "test-groq-key");
@@ -413,6 +418,7 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::env::set_var(nvidia.api_key_env, "test-nvidia-key");
@@ -600,6 +606,7 @@ fn test_openrouter_and_compatible_profile_transition_invariants() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider
@@ -671,6 +678,7 @@ fn test_set_model_accepts_bare_openai_openrouter_pin_when_openrouter_available()
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             provider
@@ -712,6 +720,7 @@ fn test_forced_openrouter_treats_claude_like_model_as_provider_local() {
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: Some(ActiveProvider::OpenRouter),
+                            routes_memo: std::sync::Mutex::new(None),
                         };
 
                         provider.set_model("claude-opus4.6-thinking").expect(
@@ -756,6 +765,7 @@ fn test_forced_openrouter_preserves_custom_at_sign_model_ids() {
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: Some(ActiveProvider::OpenRouter),
+                            routes_memo: std::sync::Mutex::new(None),
                         };
 
                         provider
@@ -803,6 +813,7 @@ fn test_config_default_provider_openai_compatible_keeps_gpt_model_provider_local
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: None,
+                            routes_memo: std::sync::Mutex::new(None),
                         };
 
                         provider
@@ -853,6 +864,7 @@ fn test_custom_compatible_model_routes_do_not_request_openrouter_rewrite() {
                             use_claude_cli: false,
                             startup_notices: RwLock::new(Vec::new()),
                             forced_provider: Some(ActiveProvider::OpenRouter),
+                            routes_memo: std::sync::Mutex::new(None),
                         };
 
                         provider.set_model("claude-opus4.6-thinking").expect(
@@ -898,6 +910,7 @@ fn test_configured_direct_compatible_profiles_are_listed_without_openrouter_key(
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: None,
+                    routes_memo: std::sync::Mutex::new(None),
                 };
 
                 let routes = provider.model_routes();
@@ -950,6 +963,7 @@ fn test_profile_prefixed_model_switch_reinitializes_direct_compatible_runtime() 
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: None,
+                    routes_memo: std::sync::Mutex::new(None),
                 };
 
                 provider
@@ -1007,6 +1021,7 @@ fn test_openai_auth_mode_prefixed_model_switch_changes_credentials() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
@@ -1073,6 +1088,7 @@ fn test_anthropic_auth_mode_prefixed_model_switch_changes_credentials() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
@@ -1149,6 +1165,7 @@ fn test_config_default_provider_anthropic_api_pins_api_credential() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
             };
             let rt = enter_test_runtime();
             let _runtime_guard = rt.enter();
@@ -1228,6 +1245,7 @@ fn test_config_default_model_with_credential_prefix_applies_model_and_pin() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
             };
             let rt = enter_test_runtime();
             let _runtime_guard = rt.enter();
@@ -1301,6 +1319,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider
@@ -1350,6 +1369,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider
@@ -1388,6 +1408,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
         };
         provider
             .set_model("cerebras:qwen-3-235b-a22b-instruct-2507")
@@ -1422,6 +1443,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             provider
@@ -1455,6 +1477,7 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             provider
@@ -1495,6 +1518,7 @@ fn test_forced_copilot_treats_claude_like_model_as_provider_local() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Copilot),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider
@@ -1530,6 +1554,7 @@ fn test_provider_specific_model_prefix_cannot_bypass_provider_lock() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: Some(ActiveProvider::OpenRouter),
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             let err = provider

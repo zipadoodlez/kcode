@@ -90,6 +90,7 @@ fn test_on_auth_changed_hot_initializes_openai_and_marks_routes_available() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::OpenAI),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::auth::codex::upsert_account_from_tokens(
@@ -154,6 +155,7 @@ fn test_on_auth_changed_refreshes_existing_openai_provider_credentials() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::OpenAI),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider.on_auth_changed();
@@ -188,6 +190,7 @@ fn test_on_auth_changed_hot_initializes_anthropic_and_marks_routes_available() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Claude),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::auth::claude::upsert_account(crate::auth::claude::AnthropicAccount {
@@ -232,6 +235,7 @@ fn test_on_auth_changed_hot_initializes_anthropic_from_api_key_and_marks_routes_
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Claude),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::provider_catalog::save_env_value_to_env_file(
@@ -295,6 +299,7 @@ fn test_anthropic_model_routes_keep_plain_4_6_available_without_extra_usage() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Claude),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         crate::auth::claude::upsert_account(crate::auth::claude::AnthropicAccount {
@@ -359,6 +364,7 @@ fn test_on_auth_changed_hot_initializes_openrouter_and_marks_routes_available() 
                     use_claude_cli: false,
                     startup_notices: RwLock::new(Vec::new()),
                     forced_provider: Some(ActiveProvider::OpenRouter),
+                    routes_memo: std::sync::Mutex::new(None),
                 };
 
                 provider.on_auth_changed();
@@ -399,6 +405,7 @@ fn test_on_auth_changed_hot_initializes_copilot_and_marks_routes_available() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: Some(ActiveProvider::Copilot),
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             provider.on_auth_changed();
@@ -467,6 +474,7 @@ fn test_on_auth_changed_hot_initializes_antigravity_when_tokens_exist_but_are_ex
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Antigravity),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider.on_auth_changed();
@@ -496,6 +504,7 @@ fn test_multi_provider_antigravity_routes_do_not_include_legacy_duplicate_entrie
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: Some(ActiveProvider::Antigravity),
+        routes_memo: std::sync::Mutex::new(None),
     };
 
     let routes = provider.model_routes();
@@ -596,6 +605,7 @@ fn test_on_auth_changed_hot_initializes_gemini_and_marks_routes_available() {
             use_claude_cli: false,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider: Some(ActiveProvider::Gemini),
+            routes_memo: std::sync::Mutex::new(None),
         };
 
         provider.on_auth_changed();
@@ -631,6 +641,7 @@ fn test_on_auth_changed_hot_initializes_cursor_and_marks_routes_available() {
                 use_claude_cli: false,
                 startup_notices: RwLock::new(Vec::new()),
                 forced_provider: Some(ActiveProvider::Cursor),
+                routes_memo: std::sync::Mutex::new(None),
             };
 
             provider.on_auth_changed();

@@ -19,7 +19,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -50,7 +50,11 @@ struct PricingCache {
 /// In-memory pricing cache keyed by the on-disk cache path it was loaded
 /// from, so changing `JCODE_HOME` (tests, multi-home setups) never serves
 /// pricing that belongs to a different home directory.
-static MEMORY_CACHE: Mutex<Option<(PathBuf, PricingCache)>> = Mutex::new(None);
+///
+/// Held behind an `Arc` so per-route pricing lookups share one parsed catalog
+/// instead of deep-cloning the multi-thousand-model map on every call (that
+/// clone dominated server CPU during client connect bursts).
+static MEMORY_CACHE: Mutex<Option<(PathBuf, Arc<PricingCache>)>> = Mutex::new(None);
 static REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 fn cache_path() -> PathBuf {
@@ -67,19 +71,20 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn load_cache() -> Option<PricingCache> {
+fn load_cache() -> Option<Arc<PricingCache>> {
     let path = cache_path();
     {
         let memory = MEMORY_CACHE.lock().ok()?;
         if let Some((cached_path, cache)) = memory.as_ref()
             && cached_path == &path
         {
-            return Some(cache.clone());
+            return Some(Arc::clone(cache));
         }
     }
     let cache: PricingCache = crate::storage::read_json(&path).ok()?;
+    let cache = Arc::new(cache);
     if let Ok(mut memory) = MEMORY_CACHE.lock() {
-        *memory = Some((path, cache.clone()));
+        *memory = Some((path, Arc::clone(&cache)));
     }
     Some(cache)
 }
@@ -87,7 +92,7 @@ fn load_cache() -> Option<PricingCache> {
 fn save_cache(cache: &PricingCache) {
     let path = cache_path();
     if let Ok(mut memory) = MEMORY_CACHE.lock() {
-        *memory = Some((path.clone(), cache.clone()));
+        *memory = Some((path.clone(), Arc::new(cache.clone())));
     }
     let _ = crate::storage::write_json(&path, cache);
 }
@@ -161,7 +166,7 @@ pub fn lookup(jcode_provider: &str, model: &str) -> Option<ModelCost> {
 }
 
 /// Return the freshest cache available, scheduling a refresh if needed.
-fn ensure_cache_fresh() -> Option<PricingCache> {
+fn ensure_cache_fresh() -> Option<Arc<PricingCache>> {
     let cache = load_cache();
     let stale = cache
         .as_ref()

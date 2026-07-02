@@ -78,6 +78,7 @@ impl MultiProvider {
             .active
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = provider;
+        self.invalidate_routes_memo();
     }
 
     pub fn config_default_provider_for_login_provider(

@@ -200,6 +200,7 @@ fn test_multi_provider_with_openai() -> MultiProvider {
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: None,
+        routes_memo: std::sync::Mutex::new(None),
     }
 }
 
@@ -448,6 +449,60 @@ fn openai_model_routes_cover_oauth_api_and_no_auth_state_space() {
     });
 }
 
+/// The route-catalog memo must serve repeated `model_routes()` calls without
+/// rebuilding (a shared server fans one ModelsUpdated event out to every
+/// connection, each of which snapshots the catalog), while auth invalidation
+/// and model switches must bypass it immediately.
+#[test]
+fn model_routes_memo_serves_repeats_and_invalidates_on_auth_and_model_changes() {
+    with_clean_provider_test_env(|| {
+        let rt = enter_test_runtime();
+        let _runtime_guard = rt.enter();
+        let provider = test_multi_provider_with_openai();
+
+        let first = provider.model_routes();
+        let second = provider.model_routes();
+        assert_eq!(
+            first, second,
+            "memoized catalog must be identical across back-to-back reads"
+        );
+        assert!(
+            provider
+                .routes_memo
+                .lock()
+                .expect("routes memo lock")
+                .is_some(),
+            "memo should be populated after a build"
+        );
+
+        // Auth invalidation bumps the pricing generation, which must make the
+        // memo stale even within the TTL window (verified behaviorally by the
+        // oauth/api state-space test above; here we check the memo mechanism).
+        let generation_before = crate::provider::pricing::auth_pricing_generation();
+        crate::auth::AuthStatus::invalidate_cache();
+        assert!(
+            crate::provider::pricing::auth_pricing_generation() > generation_before,
+            "auth invalidation must advance the pricing generation"
+        );
+
+        // A model switch drops the memo outright.
+        let model = known_openai_model_ids()
+            .first()
+            .expect("at least one OpenAI model")
+            .clone();
+        provider.model_routes();
+        let _ = provider.set_model(&format!("openai-api:{model}"));
+        assert!(
+            provider
+                .routes_memo
+                .lock()
+                .expect("routes memo lock")
+                .is_none(),
+            "set_model must invalidate the routes memo"
+        );
+    });
+}
+
 fn assert_openai_compatible_route_available(provider: &MultiProvider, model: &str) {
     let routes = provider.model_routes();
     assert!(
@@ -674,6 +729,7 @@ fn test_multi_provider_with_cursor() -> MultiProvider {
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
         forced_provider: None,
+        routes_memo: std::sync::Mutex::new(None),
     }
 }
 

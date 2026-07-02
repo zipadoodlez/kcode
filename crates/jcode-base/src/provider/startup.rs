@@ -311,6 +311,7 @@ impl MultiProvider {
             use_claude_cli,
             startup_notices: RwLock::new(Vec::new()),
             forced_provider,
+            routes_memo: Mutex::new(None),
         };
 
         if let Some(model) = provider_state.default_model() {

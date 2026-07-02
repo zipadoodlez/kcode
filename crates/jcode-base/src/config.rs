@@ -202,8 +202,11 @@ struct ConfigCache {
 }
 
 static CONFIG_CACHE: LazyLock<RwLock<ConfigCache>> = LazyLock::new(|| {
-    let fingerprint = ConfigCacheFingerprint::current();
     let config = leak_config(Config::load());
+    // Fingerprint after the load: applying env overrides may set env vars
+    // (e.g. copilot_premium -> JCODE_COPILOT_PREMIUM), and fingerprinting
+    // first would guarantee a spurious full reload on the next check.
+    let fingerprint = ConfigCacheFingerprint::current();
     // Seed the global context-limit cache from named provider configs on first
     // load so every codepath (TUI info widget, compaction budget, model
     // switching) sees user-configured `context_window` values from the start.
@@ -283,7 +286,11 @@ pub fn config() -> &'static Config {
                 &fingerprint,
             ));
             cache.config = leak_config(Config::load());
-            cache.fingerprint = fingerprint;
+            // Loading applies env overrides that can themselves set env vars
+            // (e.g. copilot_premium propagates config -> JCODE_COPILOT_PREMIUM).
+            // Re-fingerprint after the load so those self-inflicted env changes
+            // don't trigger a guaranteed second reload on the next check.
+            cache.fingerprint = ConfigCacheFingerprint::current();
             cache.force_reload = false;
         }
         cache.config

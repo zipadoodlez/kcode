@@ -3,6 +3,42 @@ use crate::auth;
 use crate::provider::models::provider_for_model;
 use jcode_provider_core::pricing as core_pricing;
 use jcode_provider_core::{RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Route-catalog builds call the pricing helpers once per route, and the
+/// Anthropic/OpenAI ones re-read credential files (and re-parse config.toml
+/// for external-source trust checks) on every call. Across a 2000+ route
+/// catalog that dominated build time, so the auth-derived inputs are memoized
+/// here with a short TTL. Invalidated eagerly via
+/// [`invalidate_auth_pricing_memos`] whenever auth state changes.
+const AUTH_PRICING_MEMO_TTL: Duration = Duration::from_secs(5);
+
+static SUBSCRIPTION_TYPE_MEMO: Mutex<Option<(Instant, Option<String>)>> = Mutex::new(None);
+static OPENAI_AUTH_MODE_MEMO: Mutex<Option<(Instant, &'static str)>> = Mutex::new(None);
+
+/// Monotonic generation bumped on every auth invalidation. Route-catalog memos
+/// snapshot this at build time so `AuthStatus::invalidate_cache()` immediately
+/// invalidates every provider's memoized catalog, not just the pricing inputs.
+static AUTH_PRICING_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) fn auth_pricing_generation() -> u64 {
+    AUTH_PRICING_GENERATION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Drop memoized auth-derived pricing inputs (subscription type, effective
+/// OpenAI auth mode). Called from `AuthStatus::invalidate_cache()` so pricing
+/// labels update immediately after logins/logouts instead of after the TTL.
+pub(crate) fn invalidate_auth_pricing_memos() {
+    AUTH_PRICING_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if let Ok(mut memo) = SUBSCRIPTION_TYPE_MEMO.lock() {
+        *memo = None;
+    }
+    if let Ok(mut memo) = OPENAI_AUTH_MODE_MEMO.lock() {
+        *memo = None;
+    }
+}
 
 #[cfg(test)]
 pub(crate) fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
@@ -10,7 +46,18 @@ pub(crate) fn anthropic_api_pricing(model: &str) -> Option<RouteCheapnessEstimat
 }
 
 fn anthropic_oauth_subscription_type() -> Option<String> {
-    auth::claude::get_subscription_type().map(|raw| raw.trim().to_ascii_lowercase())
+    if let Ok(memo) = SUBSCRIPTION_TYPE_MEMO.lock()
+        && let Some((cached_at, subscription)) = memo.as_ref()
+        && cached_at.elapsed() < AUTH_PRICING_MEMO_TTL
+    {
+        return subscription.clone();
+    }
+    let subscription =
+        auth::claude::get_subscription_type().map(|raw| raw.trim().to_ascii_lowercase());
+    if let Ok(mut memo) = SUBSCRIPTION_TYPE_MEMO.lock() {
+        *memo = Some((Instant::now(), subscription.clone()));
+    }
+    subscription
 }
 
 pub(crate) fn anthropic_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
@@ -19,7 +66,13 @@ pub(crate) fn anthropic_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
 }
 
 pub(crate) fn openai_effective_auth_mode() -> &'static str {
-    match auth::codex::load_credentials() {
+    if let Ok(memo) = OPENAI_AUTH_MODE_MEMO.lock()
+        && let Some((cached_at, mode)) = memo.as_ref()
+        && cached_at.elapsed() < AUTH_PRICING_MEMO_TTL
+    {
+        return mode;
+    }
+    let mode = match auth::codex::load_credentials() {
         Ok(creds) if !creds.refresh_token.is_empty() || creds.id_token.is_some() => "oauth",
         Ok(_) => "api-key",
         Err(_) => {
@@ -33,7 +86,11 @@ pub(crate) fn openai_effective_auth_mode() -> &'static str {
                 "oauth"
             }
         }
+    };
+    if let Ok(mut memo) = OPENAI_AUTH_MODE_MEMO.lock() {
+        *memo = Some((Instant::now(), mode));
     }
+    mode
 }
 
 pub(crate) fn openai_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
