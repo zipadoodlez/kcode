@@ -209,6 +209,138 @@ impl BackgroundTaskManager {
         status
     }
 
+    /// True when a non-detached `Running` status file provably belongs to a
+    /// process image that no longer exists, so no future can ever finalize it.
+    ///
+    /// Rules, deliberately conservative because the task dir is shared by
+    /// every jcode process on the machine:
+    /// - Terminal, detached, or pid-bearing files are never orphans here
+    ///   (detached reconciliation is `finalize_detached_status_if_needed`).
+    /// - Files owned by this exact process image are never orphans: the
+    ///   initial status file is written before the task lands in the live
+    ///   map, so "Running + not in map + my instance" can simply mean the
+    ///   task is still bootstrapping.
+    /// - Files owned by this PID but a different instance token are orphans:
+    ///   an exec-based reload replaced the process image, so the owning
+    ///   future is gone even though the PID matches.
+    /// - Files owned by another PID are orphans only once that process is
+    ///   dead.
+    /// - Files without owner metadata (written by older builds) are left
+    ///   alone; only the explicit startup sweep in
+    ///   [`Self::reconcile_orphaned_tasks`] handles those.
+    fn status_is_reconcilable_orphan(status: &TaskStatusFile) -> bool {
+        if status.status != BackgroundTaskStatus::Running
+            || status.detached
+            || status.pid.is_some()
+        {
+            return false;
+        }
+        let Some(owner_pid) = status.owner_pid else {
+            return false;
+        };
+        if status.owner_instance.as_deref() == Some(model::process_instance_token()) {
+            return false;
+        }
+        if owner_pid == std::process::id() {
+            return true;
+        }
+        !crate::platform::is_process_running(owner_pid)
+    }
+
+    /// Finalize an orphaned non-detached `Running` status file as `Failed`.
+    ///
+    /// The owning process's task future died with the process (crash or
+    /// exec-based server reload), so without this the file reads `Running`
+    /// forever: `bg list`/`bg status` show a phantom task and `bg wait`
+    /// blocks until its timeout.
+    async fn finalize_orphaned_status_if_needed(
+        &self,
+        mut status: TaskStatusFile,
+        status_path: &std::path::Path,
+    ) -> TaskStatusFile {
+        if !Self::status_is_reconcilable_orphan(&status) {
+            return status;
+        }
+        // Belt and braces: never rewrite a task this process is executing.
+        if self.is_live_task(&status.task_id) {
+            return status;
+        }
+
+        let completed_at = Utc::now();
+        let duration_secs = Self::status_duration_secs(&status.started_at, completed_at);
+        let error =
+            "Task orphaned: the owning server process exited (reloaded or crashed) before the task finished"
+                .to_string();
+        status.status = BackgroundTaskStatus::Failed;
+        status.exit_code = None;
+        status.error = Some(error.clone());
+        status.completed_at = Some(completed_at.to_rfc3339());
+        status.duration_secs = duration_secs;
+        push_task_event(
+            &mut status,
+            terminal_event_record(BackgroundTaskStatus::Failed, None, Some(&error)),
+        );
+        self.write_status_file(status_path, &status).await;
+
+        let output_path = self.output_path_for(&status.task_id);
+        let output = fs::read_to_string(&output_path).await.unwrap_or_default();
+        let output_preview = if output.len() > 500 {
+            format!("{}...", crate::util::truncate_str(&output, 500))
+        } else {
+            output
+        };
+        Bus::global().publish(BusEvent::BackgroundTaskCompleted(BackgroundTaskCompleted {
+            task_id: status.task_id.clone(),
+            tool_name: status.tool_name.clone(),
+            display_name: status.display_name.clone(),
+            session_id: status.session_id.clone(),
+            status: BackgroundTaskStatus::Failed,
+            exit_code: None,
+            output_preview,
+            output_file: output_path,
+            duration_secs: duration_secs.unwrap_or_default(),
+            notify: status.notify,
+            wake: status.wake,
+        }));
+
+        status
+    }
+
+    /// Startup/reload sweep: mark orphaned non-detached `Running` status
+    /// files as `Failed` with a "server reloaded" note.
+    ///
+    /// Only owner-tagged files are considered, using the liveness rules of
+    /// [`Self::status_is_reconcilable_orphan`]. Files without owner metadata
+    /// (written by older builds, or by processes that legitimately still run
+    /// them) are left untouched: the task dir is shared machine-wide, so
+    /// without owner metadata there is no safe way to distinguish a phantom
+    /// from another live process's task. Returns how many files were
+    /// reconciled.
+    pub async fn reconcile_orphaned_tasks(&self) -> usize {
+        let mut reconciled = 0;
+        let Ok(mut entries) = fs::read_dir(&self.output_dir).await else {
+            return reconciled;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(status) = self.read_status_file(&path).await else {
+                continue;
+            };
+            if !Self::status_is_reconcilable_orphan(&status) {
+                continue;
+            }
+            if self.tasks.read().await.contains_key(&status.task_id) {
+                continue;
+            }
+            self.finalize_orphaned_status_if_needed(status, &path).await;
+            reconciled += 1;
+        }
+        reconciled
+    }
+
     pub fn reserve_task_info(&self) -> BackgroundTaskInfo {
         let task_id = Self::generate_task_id();
         let output_file = self.output_path_for(&task_id);
@@ -347,6 +479,8 @@ impl BackgroundTaskManager {
         let started_at = Instant::now();
         let started_at_rfc3339_for_task = started_at_rfc3339.clone();
         let (delivery_flags_tx, delivery_flags_rx) = watch::channel((notify, wake));
+        let tasks_for_prune = Arc::clone(&self.tasks);
+        let (registered_tx, registered_rx) = tokio::sync::oneshot::channel::<()>();
 
         // Spawn the background task
         let handle = tokio::spawn(async move {
@@ -408,6 +542,17 @@ impl BackgroundTaskManager {
                 let _ = tokio::fs::write(&status_path_clone, json).await;
             }
 
+            // Drop this task from the live map now that its terminal status is
+            // persisted. Order matters: pruning only after the status-file
+            // write keeps "in the live map while the status file says Running"
+            // equivalent to "a task future is actually executing", which the
+            // run_plan duplicate-driver guard and self-dev build reconciliation
+            // rely on. Awaiting registration first means a task that finishes
+            // instantly cannot race the insert below and leave a permanent
+            // phantom entry in the map.
+            let _ = registered_rx.await;
+            tasks_for_prune.write().await.remove(&task_id_clone);
+
             // Read output preview for notification
             let output_preview = tokio::fs::read_to_string(&output_path_clone)
                 .await
@@ -455,6 +600,7 @@ impl BackgroundTaskManager {
             .write()
             .await
             .insert(task_id.clone(), running_task);
+        let _ = registered_tx.send(());
 
         BackgroundTaskInfo {
             task_id,
@@ -535,6 +681,8 @@ impl BackgroundTaskManager {
         let started_at_rfc3339 = initial_status.started_at.clone();
         let display_name_owned = initial_status.display_name.clone();
         let (delivery_flags_tx, delivery_flags_rx) = watch::channel((notify, wake));
+        let tasks_for_prune = Arc::clone(&self.tasks);
+        let (registered_tx, registered_rx) = tokio::sync::oneshot::channel::<()>();
 
         let wrapper_handle = tokio::spawn(async move {
             let tool_result = handle.await;
@@ -605,6 +753,12 @@ impl BackgroundTaskManager {
                 let _ = tokio::fs::write(&status_path_clone, json).await;
             }
 
+            // Prune the live-map entry only after the terminal status file is
+            // persisted (and after registration below, so instant completions
+            // cannot race the insert and leave a phantom entry).
+            let _ = registered_rx.await;
+            tasks_for_prune.write().await.remove(&task_id_clone);
+
             let output_preview = if output_text.len() > 500 {
                 format!("{}...", crate::util::truncate_str(&output_text, 500))
             } else {
@@ -648,6 +802,7 @@ impl BackgroundTaskManager {
             .write()
             .await
             .insert(task_id.clone(), running_task);
+        let _ = registered_tx.send(());
 
         BackgroundTaskInfo {
             task_id,
@@ -668,6 +823,9 @@ impl BackgroundTaskManager {
                     && let Some(status) = self.read_status_file(&path).await
                 {
                     let reconciled = self.finalize_detached_status_if_needed(status, &path).await;
+                    let reconciled = self
+                        .finalize_orphaned_status_if_needed(reconciled, &path)
+                        .await;
                     results.push(reconciled);
                 }
             }
@@ -682,8 +840,11 @@ impl BackgroundTaskManager {
     pub async fn status(&self, task_id: &str) -> Option<TaskStatusFile> {
         let status_path = self.status_path_for(task_id);
         let status = self.read_status_file(&status_path).await?;
+        let status = self
+            .finalize_detached_status_if_needed(status, &status_path)
+            .await;
         Some(
-            self.finalize_detached_status_if_needed(status, &status_path)
+            self.finalize_orphaned_status_if_needed(status, &status_path)
                 .await,
         )
     }

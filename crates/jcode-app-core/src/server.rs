@@ -985,6 +985,22 @@ impl Server {
         // indexing cost while leaving exhaustive searches available on demand.
         crate::tool::spawn_recent_index_warmup();
 
+        // Reconcile background-task status files orphaned by a previous
+        // process image (crash or exec-based reload). Non-detached tasks die
+        // with their owning process but their status files still say Running,
+        // which leaves phantom entries in `bg list` and blocks `bg wait`
+        // until timeout. Detached tasks are untouched (they survive reloads
+        // and reconcile via their real pid).
+        tokio::spawn(async move {
+            let reconciled = crate::background::global().reconcile_orphaned_tasks().await;
+            if reconciled > 0 {
+                crate::logging::info(&format!(
+                    "Marked {} orphaned background task(s) from a previous server process as failed",
+                    reconciled
+                ));
+            }
+        });
+
         // Spawn reload monitor (event-driven via in-process channel).
         // In the unified server design, self-dev sessions share the main server,
         // so the shared server must always listen for reload signals.
