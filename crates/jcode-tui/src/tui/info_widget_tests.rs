@@ -1104,6 +1104,7 @@ fn swarm_widget_renders_member_roles_and_details() {
                     output_tail: None,
                     report_back_to_session_id: None,
                     todo_progress: None,
+                    todo_items: Vec::new(),
                 },
                 SwarmMemberStatus {
                     session_id: "tree-12345678".to_string(),
@@ -1117,6 +1118,7 @@ fn swarm_widget_renders_member_roles_and_details() {
                     output_tail: None,
                     report_back_to_session_id: None,
                     todo_progress: None,
+                    todo_items: Vec::new(),
                 },
             ],
             ..Default::default()
@@ -1172,6 +1174,7 @@ fn swarm_widget_handles_empty_swarm_and_zero_area_without_panic() {
         output_tail: None,
         report_back_to_session_id: None,
         todo_progress: None,
+        todo_items: Vec::new(),
     }];
     let _ = super::render_swarm_widget(&member_data, Rect::new(0, 0, 0, 0));
     let _ = super::render_swarm_widget(&member_data, Rect::new(0, 0, 3, 1));
@@ -1192,6 +1195,7 @@ fn swarm_widget_caps_member_rows_for_large_swarms() {
             output_tail: None,
             report_back_to_session_id: None,
             todo_progress: None,
+            todo_items: Vec::new(),
         })
         .collect();
     let data = InfoWidgetData {
@@ -1418,4 +1422,90 @@ fn placements_never_include_border_only_widgets() {
         "found border-only widget placement: {:?}",
         placements
     );
+}
+
+/// The compact overview page must render exactly as many lines as
+/// `compute_page_layout` reserved for it. A mismatch either clips the last
+/// sections (background tasks were the historical victim, since they render
+/// last) or leaves blank reserved rows.
+#[test]
+fn compact_page_height_estimate_matches_rendered_lines() {
+    use super::InfoPageKind;
+
+    // No todos/memory so the only candidate page is CompactOnly, and the
+    // background section (rendered last) is included.
+    let data = InfoWidgetData {
+        model: Some("claude-test-1".to_string()),
+        provider_name: Some("anthropic".to_string()),
+        session_count: Some(2),
+        context_info: Some(crate::prompt::ContextInfo {
+            system_prompt_chars: 10_000,
+            total_chars: 30_000,
+            ..Default::default()
+        }),
+        background_info: Some(BackgroundInfo {
+            running_count: 2,
+            running_tasks: vec!["bash".to_string(), "task".to_string()],
+            ..Default::default()
+        }),
+        usage_info: Some(UsageInfo {
+            provider: UsageProvider::Anthropic,
+            five_hour: 0.3,
+            seven_day: 0.5,
+            available: true,
+            ..Default::default()
+        }),
+        cache_hit_info: Some(CacheHitInfo {
+            reported_input_tokens: 1_000,
+            read_tokens: 800,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let inner = Rect::new(0, 0, 38, 30);
+    let layout = super::compute_page_layout(&data, inner.width as usize, inner.height);
+    assert_eq!(layout.pages.len(), 1, "expected a single compact page");
+    assert_eq!(layout.pages[0].kind, InfoPageKind::CompactOnly);
+
+    let lines = super::render_page(InfoPageKind::CompactOnly, &data, inner);
+    assert_eq!(
+        lines.len() as u16,
+        layout.pages[0].height,
+        "compact page height estimate must match rendered line count \
+         (background section is rendered last and gets clipped on mismatch)"
+    );
+}
+
+/// Same consistency check for a cost-based (API key) provider, whose usage
+/// section renders a single line.
+#[test]
+fn compact_page_height_matches_for_cost_based_usage() {
+    use super::InfoPageKind;
+
+    let data = InfoWidgetData {
+        model: Some("gpt-test".to_string()),
+        background_info: Some(BackgroundInfo {
+            running_count: 1,
+            running_tasks: vec!["bash".to_string()],
+            ..Default::default()
+        }),
+        usage_info: Some(UsageInfo {
+            provider: UsageProvider::CostBased,
+            total_cost: 0.42,
+            input_tokens: 10_000,
+            output_tokens: 2_000,
+            available: true,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let inner = Rect::new(0, 0, 38, 30);
+    let layout = super::compute_page_layout(&data, inner.width as usize, inner.height);
+    assert_eq!(layout.pages.len(), 1);
+    assert_eq!(layout.pages[0].kind, InfoPageKind::CompactOnly);
+
+    let lines = super::render_page(InfoPageKind::CompactOnly, &data, inner);
+    assert_eq!(lines.len() as u16, layout.pages[0].height);
 }

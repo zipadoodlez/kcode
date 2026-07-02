@@ -137,7 +137,13 @@ fn compact_model_height(data: &InfoWidgetData) -> u16 {
         if has_provider || data.auth_method != AuthMethod::Unknown {
             lines += 1;
         }
-        if data.session_count.is_some() || data.session_name.is_some() {
+        // Mirror render_model_info: a blank session name alone produces no line.
+        let has_session_line = data.session_count.is_some()
+            || data
+                .session_name
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty());
+        if has_session_line {
             lines += 1;
         }
         lines
@@ -161,15 +167,18 @@ fn compact_usage_height(data: &InfoWidgetData) -> u16 {
     if let Some(info) = &data.usage_info
         && info.available
     {
-        match info.provider {
-            UsageProvider::CostBased | UsageProvider::Copilot => return 2,
-            _ => {
-                let label = info.provider.label();
-                let label_line = u16::from(!label.is_empty());
-                let spark_line = u16::from(info.spark.is_some());
-                return 2 + label_line + spark_line;
-            }
+        // Must mirror render_usage_compact exactly, otherwise the compact
+        // overview page either clips its last lines or reserves blank rows.
+        if matches!(info.provider, UsageProvider::CostBased) {
+            // Single "$cost · tokens" line.
+            return 1;
         }
+        // Subscription-style providers render an optional label line plus the
+        // 5-hour and weekly bars, plus an optional Spark bar.
+        let label = info.provider.label();
+        let label_line = u16::from(!label.is_empty());
+        let spark_line = u16::from(info.spark.is_some());
+        return 2 + label_line + spark_line;
     }
     0
 }
@@ -217,6 +226,10 @@ fn expanded_memory_height(data: &InfoWidgetData) -> u16 {
         && (info.total_count > 0 || info.activity.is_some())
     {
         let mut height = 1u16;
+        if info.total_count > 0 {
+            // render_memory_expanded emits a dedicated count line.
+            height += 1;
+        }
         if info.activity.is_some() {
             height += 1 + 4;
         }

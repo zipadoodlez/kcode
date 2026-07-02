@@ -147,7 +147,12 @@ pub(crate) fn calculate_placements_anchored(
         // long lines), fall back to the instantaneous widths so we still show
         // something rather than nothing. Phase 1 always sizes pinned widgets to the
         // instantaneous widths for full coverage.
-        let dock = dock_widths_with_fallback(margins.right_dock_widths(), &margins.right_widths);
+        let mut dock =
+            dock_widths_with_fallback(margins.right_dock_widths(), &margins.right_widths);
+        // Never dock below the messages area: a margin profile longer than the
+        // area (caller bug or stale data) must not let a widget escape the
+        // viewport and draw over the input/status rows beneath it.
+        dock.truncate(messages_area.height as usize);
         margin_spaces.push(MarginSpace {
             side: Side::Right,
             widths: dock,
@@ -155,7 +160,8 @@ pub(crate) fn calculate_placements_anchored(
         });
     }
     if margins.centered && !margins.left_widths.is_empty() {
-        let dock = dock_widths_with_fallback(margins.left_dock_widths(), &margins.left_widths);
+        let mut dock = dock_widths_with_fallback(margins.left_dock_widths(), &margins.left_widths);
+        dock.truncate(messages_area.height as usize);
         margin_spaces.push(MarginSpace {
             side: Side::Left,
             widths: dock,
@@ -168,7 +174,10 @@ pub(crate) fn calculate_placements_anchored(
     for (margin_idx, margin) in margin_spaces.iter().enumerate() {
         let rects = find_all_empty_rects(&margin.widths, MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT);
         for (top, height, width) in rects {
-            let clamped_width = width.min(MAX_WIDGET_WIDTH);
+            // Clamp to the area width as well: a margin profile reporting more
+            // free width than the area is wide (caller bug) must not produce a
+            // rect that pokes out of the viewport and panics the renderer.
+            let clamped_width = width.min(MAX_WIDGET_WIDTH).min(messages_area.width);
             let x = match margin.side {
                 Side::Right => margin.x_offset.saturating_sub(clamped_width),
                 Side::Left => margin.x_offset,
@@ -266,7 +275,7 @@ pub(crate) fn calculate_placements_anchored(
             Side::Right => &margins.right_widths,
             Side::Left => &margins.left_widths,
         };
-        if height == 0 || row_end > widths.len() {
+        if height == 0 || row_end > widths.len() || row_end > messages_area.height as usize {
             continue;
         }
 
@@ -276,7 +285,8 @@ pub(crate) fn calculate_placements_anchored(
             .copied()
             .min()
             .unwrap_or(0)
-            .min(MAX_WIDGET_WIDTH);
+            .min(MAX_WIDGET_WIDTH)
+            .min(messages_area.width);
         let renderable = fit_width >= MIN_WIDGET_WIDTH;
 
         // Width is monotonic non-increasing for the life of an anchor: it shrinks to
@@ -450,7 +460,9 @@ pub(crate) fn calculate_placements_anchored(
             .copied()
             .min()
             .unwrap_or(0);
-        let new_min_width = actual_min_width.min(MAX_WIDGET_WIDTH);
+        let new_min_width = actual_min_width
+            .min(MAX_WIDGET_WIDTH)
+            .min(messages_area.width);
         all_rects[idx].3 = new_min_width;
         all_rects[idx].4 = match side {
             Side::Right => margin.x_offset.saturating_sub(new_min_width),
@@ -560,3 +572,7 @@ fn add_region_rects(
         rects.push((start as u16, region_height as u16, min_w));
     }
 }
+
+#[cfg(test)]
+#[path = "info_widget_layout_tests.rs"]
+mod tests;
