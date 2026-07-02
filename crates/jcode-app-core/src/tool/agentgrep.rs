@@ -42,7 +42,8 @@ use self::render::{
 struct AgentGrepInput {
     #[serde(default = "default_agentgrep_mode")]
     mode: String,
-    #[serde(default)]
+    // `pattern` accepted for legacy grep-tool calls aliased to agentgrep.
+    #[serde(default, alias = "pattern")]
     query: Option<String>,
     #[serde(default)]
     file: Option<String>,
@@ -52,7 +53,8 @@ struct AgentGrepInput {
     regex: Option<bool>,
     #[serde(default)]
     path: Option<String>,
-    #[serde(default)]
+    // `include` accepted for legacy grep-tool calls aliased to agentgrep.
+    #[serde(default, alias = "include")]
     glob: Option<String>,
     #[serde(rename = "type", default)]
     file_type: Option<String>,

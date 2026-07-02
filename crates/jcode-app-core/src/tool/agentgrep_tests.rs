@@ -751,3 +751,20 @@ fn tuning_detects_file_changed_since_seen() {
     assert!(tuned.current_version_confidence < 0.6);
     assert!(tuned.reasons.contains(&"file_changed_since_seen"));
 }
+
+#[test]
+fn input_accepts_legacy_grep_param_aliases() {
+    // Models sometimes call the removed native `grep` tool, which is now
+    // aliased to agentgrep. Its `pattern`/`include` params must map to
+    // agentgrep's `query`/`glob`.
+    let input: AgentGrepInput = serde_json::from_value(serde_json::json!({
+        "pattern": "fn main",
+        "include": "*.rs",
+        "path": "src"
+    }))
+    .expect("legacy grep params should deserialize");
+    assert_eq!(input.query.as_deref(), Some("fn main"));
+    assert_eq!(input.glob.as_deref(), Some("*.rs"));
+    assert_eq!(input.path.as_deref(), Some("src"));
+    assert_eq!(input.mode, "grep");
+}
