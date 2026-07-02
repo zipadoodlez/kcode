@@ -17,7 +17,6 @@ path = "src/lib.rs"
 
 [dependencies]
 # Memory allocator (reduces fragmentation for long-running server)
-tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"], optional = true }
 tikv-jemalloc-ctl = { version = "0.6", optional = true }
 tikv-jemalloc-sys = { version = "0.6", optional = true }
 
@@ -37,10 +36,6 @@ serde_yaml = "0.9"
 toml = "0.8"
 
 # File operations
-glob = "0.3"
-ignore = "0.4"           # gitignore-aware file walking
-walkdir = "2"
-similar = "2"            # diffing for edits
 
 # Utilities
 dirs = "5"               # home directory
@@ -111,7 +106,6 @@ jcode-memory-types = { path = "../jcode-memory-types" }
 jcode-message-types = { path = "../jcode-message-types" }
 jcode-plan = { path = "../jcode-plan" }
 jcode-protocol = { path = "../jcode-protocol" }
-jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-session-types = { path = "../jcode-session-types" }
 jcode-storage = { path = "../jcode-storage" }
 jcode-task-types = { path = "../jcode-task-types" }
@@ -122,7 +116,6 @@ jcode-side-panel-types = { path = "../jcode-side-panel-types" }
 # Gzip decoding (used by provider import/helpers)
 flate2 = "1"
 tempfile = "3"
-agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.2" }
 qrcode = { version = "0.14.1", default-features = false }
 
 [features]
@@ -134,15 +127,12 @@ default = ["embeddings"]
 # (non-test) builds.
 test-support = []
 jemalloc = [
-    "dep:tikv-jemallocator",
     "dep:tikv-jemalloc-ctl",
     "dep:tikv-jemalloc-sys",
-    "tikv-jemallocator/stats",
     "tikv-jemalloc-ctl/stats",
 ]
 jemalloc-prof = [
     "jemalloc",
-    "tikv-jemallocator/profiling",
     "tikv-jemalloc-ctl/profiling",
 ]
 embeddings = ["dep:jcode-embedding"]
