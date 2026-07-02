@@ -196,6 +196,9 @@ pub struct PlanGraphSummary {
     pub blocked_ids: Vec<String>,
     pub active_ids: Vec<String>,
     pub completed_ids: Vec<String>,
+    /// Terminal without completing: failed, stopped, or crashed items. These are
+    /// finished from the scheduler's perspective but must not read as success.
+    pub failed_ids: Vec<String>,
     pub terminal_ids: Vec<String>,
     pub unresolved_dependency_ids: Vec<String>,
     pub cycle_ids: Vec<String>,
@@ -214,6 +217,12 @@ pub fn is_terminal_status(status: &str) -> bool {
 
 pub fn is_active_status(status: &str) -> bool {
     matches!(status, "running" | "running_stale")
+}
+
+/// Terminal without completing: the item is finished from the scheduler's
+/// perspective but did not succeed (failed, stopped, or crashed).
+pub fn is_failed_status(status: &str) -> bool {
+    is_terminal_status(status) && !is_completed_status(status)
 }
 
 pub fn is_runnable_status(status: &str) -> bool {
@@ -454,6 +463,7 @@ pub fn summarize_plan_graph(items: &[PlanItem]) -> PlanGraphSummary {
     let mut blocked_ids = Vec::new();
     let mut active_ids = Vec::new();
     let mut completed = BTreeSet::new();
+    let mut failed = BTreeSet::new();
     let mut terminal = BTreeSet::new();
     let mut unresolved = BTreeSet::new();
 
@@ -469,6 +479,9 @@ pub fn summarize_plan_graph(items: &[PlanItem]) -> PlanGraphSummary {
         }
         if is_completed_status(&item.status) {
             completed.insert(item.id.clone());
+        }
+        if is_failed_status(&item.status) {
+            failed.insert(item.id.clone());
         }
         if is_terminal_status(&item.status) {
             terminal.insert(item.id.clone());
@@ -494,6 +507,7 @@ pub fn summarize_plan_graph(items: &[PlanItem]) -> PlanGraphSummary {
         blocked_ids,
         active_ids,
         completed_ids: completed.into_iter().collect(),
+        failed_ids: failed.into_iter().collect(),
         terminal_ids: terminal.into_iter().collect(),
         unresolved_dependency_ids: unresolved.into_iter().collect(),
         cycle_ids,
@@ -757,6 +771,39 @@ mod tests {
         ];
 
         assert_eq!(newly_ready_item_ids(&before, &after), vec!["follow-up"]);
+    }
+
+    #[test]
+    fn summarize_plan_graph_reports_failed_items_separately_from_completed() {
+        let items = vec![
+            item("ok", "completed", &[]),
+            item("boom", "failed", &[]),
+            item("halted", "stopped", &[]),
+            item("crashed-task", "crashed", &[]),
+            item("pending-task", "queued", &[]),
+        ];
+
+        let summary = summarize_plan_graph(&items);
+        assert_eq!(summary.completed_ids, vec!["ok".to_string()]);
+        assert_eq!(
+            summary.failed_ids,
+            vec![
+                "boom".to_string(),
+                "crashed-task".to_string(),
+                "halted".to_string()
+            ]
+        );
+        // Terminal covers both success and failure; failed is the non-success subset.
+        assert_eq!(
+            summary.terminal_ids,
+            vec![
+                "boom".to_string(),
+                "crashed-task".to_string(),
+                "halted".to_string(),
+                "ok".to_string()
+            ]
+        );
+        assert_eq!(summary.ready_ids, vec!["pending-task".to_string()]);
     }
 
     #[test]

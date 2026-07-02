@@ -193,6 +193,45 @@ async fn cleanup_swarm_workers(ctx: &ToolContext, params: &CommunicateInput) -> 
         ));
     }
 
+    Ok(stop_swarm_sessions(ctx, candidates, force).await.describe())
+}
+
+/// Result of stopping a batch of swarm sessions: which stops succeeded and
+/// which failed (with reasons). Split from the human-readable formatting so
+/// callers like the mid-run capacity recovery can count freed slots.
+struct WorkerCleanupOutcome {
+    stopped: Vec<String>,
+    failed: Vec<String>,
+}
+
+impl WorkerCleanupOutcome {
+    fn describe(&self) -> String {
+        let mut output = String::new();
+        if self.stopped.is_empty() {
+            output.push_str("Stopped no swarm workers.");
+        } else {
+            output.push_str(&format!(
+                "Stopped {} swarm worker(s): {}",
+                self.stopped.len(),
+                self.stopped.join(", ")
+            ));
+        }
+        if !self.failed.is_empty() {
+            output.push_str(&format!(
+                "\nFailed to stop {} worker(s): {}",
+                self.failed.len(),
+                self.failed.join(", ")
+            ));
+        }
+        output
+    }
+}
+
+async fn stop_swarm_sessions(
+    ctx: &ToolContext,
+    candidates: Vec<String>,
+    force: bool,
+) -> WorkerCleanupOutcome {
     let mut stopped = Vec::new();
     let mut failed = Vec::new();
     for target in candidates {
@@ -210,25 +249,48 @@ async fn cleanup_swarm_workers(ctx: &ToolContext, params: &CommunicateInput) -> 
             Err(error) => failed.push(format!("{} ({})", target, error)),
         }
     }
+    WorkerCleanupOutcome { stopped, failed }
+}
 
-    let mut output = String::new();
-    if stopped.is_empty() {
-        output.push_str("Stopped no swarm workers.");
-    } else {
-        output.push_str(&format!(
-            "Stopped {} swarm worker(s): {}",
-            stopped.len(),
-            stopped.join(", ")
-        ));
+/// Free swarm member capacity mid-run by stopping finished workers owned by
+/// this coordinator. `run_plan` spawns a fresh worker per node by default and
+/// normally cleans up only at the end of the run, so on large plans membership
+/// grows monotonically toward the swarm member cap and fresh spawns start
+/// getting refused. `exclude` protects workers assigned earlier in this loop
+/// whose queued status may not have propagated yet. Returns how many workers
+/// were stopped.
+///
+/// Tradeoff: a stopped `ready` worker may have been a composite planner whose
+/// synthesis node would otherwise be routed back to it (planner affinity).
+/// Assignment falls back to a fresh or other eligible worker in that case,
+/// which is an acceptable degradation when the alternative is aborting the run
+/// at the member cap.
+async fn cleanup_finished_workers_for_capacity(
+    ctx: &ToolContext,
+    exclude: &[String],
+    reporter: &RunPlanReporter,
+) -> usize {
+    let Ok(members) = fetch_swarm_members(&ctx.session_id).await else {
+        return 0;
+    };
+    let candidates: Vec<String> = cleanup_candidate_session_ids(
+        &ctx.session_id,
+        &members,
+        &default_cleanup_target_statuses(),
+        &[],
+        false,
+    )
+    .into_iter()
+    .filter(|session_id| !exclude.iter().any(|assigned| assigned == session_id))
+    .collect();
+    if candidates.is_empty() {
+        return 0;
     }
-    if !failed.is_empty() {
-        output.push_str(&format!(
-            "\nFailed to stop {} worker(s): {}",
-            failed.len(),
-            failed.join(", ")
-        ));
-    }
-    Ok(output)
+    let outcome = stop_swarm_sessions(ctx, candidates, false).await;
+    reporter
+        .log(&format!("member-cap recovery: {}", outcome.describe()))
+        .await;
+    outcome.stopped.len()
 }
 
 async fn await_swarm_progress(
@@ -548,7 +610,132 @@ async fn run_swarm_plan_in_background(
         })))
 }
 
+/// Hint appended to every `run_plan` driver failure: the driver exits without
+/// the end-of-run cleanup, so spawned workers keep running even when
+/// `retain_agents=false`, and the caller must know how to stop or resume them.
+const RUN_PLAN_WORKER_RETENTION_HINT: &str = "\nSpawned workers were retained; run `swarm cleanup` to stop them, rerun `swarm run_plan` to resume driving the same plan, or `swarm plan_status` to inspect.";
+
+/// Append the worker-retention hint to a driver failure message, idempotently
+/// so wrappers that re-report an already-hinted error do not duplicate it.
+fn with_worker_retention_hint(message: String) -> String {
+    if message.contains("swarm cleanup") {
+        message
+    } else {
+        format!("{message}{RUN_PLAN_WORKER_RETENTION_HINT}")
+    }
+}
+
+/// How the `run_plan` assignment loop should react to a `CommAssignNext` error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AssignErrorAction {
+    /// No more runnable work or no eligible workers: stop assigning this loop
+    /// and continue with in-flight work.
+    BreakGracefully,
+    /// The swarm hit its total member cap so fresh spawns are refused: free
+    /// finished owned workers and/or fall back to reusing ready workers instead
+    /// of aborting the whole run.
+    RecoverCapacity,
+    /// Anything else is a real failure.
+    Fail,
+}
+
+fn classify_assign_error(message: &str) -> AssignErrorAction {
+    if message.contains("No runnable unassigned tasks")
+        || message.contains("No ready or completed swarm agents")
+    {
+        AssignErrorAction::BreakGracefully
+    } else if message.contains("Swarm member limit reached") {
+        AssignErrorAction::RecoverCapacity
+    } else {
+        AssignErrorAction::Fail
+    }
+}
+
+/// Next step for a slot whose assignment was refused by the member cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CapRecoveryStep {
+    /// Cleanup freed capacity: retry the slot keeping the fresh-spawn preference.
+    RetryFresh,
+    /// Nothing was freed: retry the slot in reuse-only mode (no spawning).
+    RetryReuse,
+    /// Recovery already ran and the cap still refuses this slot: stop assigning
+    /// this loop and continue with in-flight work.
+    GiveUp,
+}
+
+/// Pure recovery policy for a member-cap refusal, keyed on how many times this
+/// slot already hit the cap (`cap_hits`) and how many workers the incremental
+/// cleanup freed. Kept side-effect free so the fallback contract is unit
+/// testable without a live swarm.
+fn cap_recovery_step(cap_hits: usize, freed: usize) -> CapRecoveryStep {
+    if cap_hits > 1 {
+        CapRecoveryStep::GiveUp
+    } else if freed > 0 {
+        CapRecoveryStep::RetryFresh
+    } else {
+        CapRecoveryStep::RetryReuse
+    }
+}
+
+/// Count each plan node at most once as terminal: completed, failed, blocked,
+/// and cycle sets overlap in places (and failed nodes appear in none of the
+/// legacy three), so a plain sum both over- and under-counts.
+fn plan_terminal_node_count(summary: &PlanGraphStatus) -> usize {
+    summary
+        .completed_ids
+        .iter()
+        .chain(summary.failed_ids.iter())
+        .chain(summary.blocked_ids.iter())
+        .chain(summary.cycle_ids.iter())
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+}
+
+/// Terminal-state summary line for `run_plan`, including failed nodes so a run
+/// with failures never reads like a clean finish. Pure for unit testing.
+fn format_run_plan_terminal_summary(
+    loop_count: usize,
+    summary: &PlanGraphStatus,
+    assignment_count: usize,
+) -> String {
+    let mut output = format!(
+        "Swarm plan reached terminal/blocked state after {} loop(s). completed={} failed={} blocked={} cycles={} active={} assignments={}",
+        loop_count,
+        summary.completed_ids.len(),
+        summary.failed_ids.len(),
+        summary.blocked_ids.len(),
+        summary.cycle_ids.len(),
+        summary.active_ids.len(),
+        assignment_count
+    );
+    if !summary.failed_ids.is_empty() {
+        output.push_str(&format!(
+            "\nFailed nodes: {}. This run did NOT finish cleanly; inspect them with `swarm plan_status` and retry or salvage before trusting the result.",
+            summary.failed_ids.join(", ")
+        ));
+    }
+    output
+}
+
 async fn run_swarm_plan_to_terminal(
+    ctx: &ToolContext,
+    params: &CommunicateInput,
+    reporter: &RunPlanReporter,
+) -> Result<ToolOutput> {
+    // Every driver-failure exit (assignment failure, await timeout, stall,
+    // max-loops, even a mid-run plan-status fetch error) leaves spawned workers
+    // running because the end-of-run cleanup never executes, regardless of
+    // retain_agents. Append the retention hint uniformly here so no failure
+    // path can forget it.
+    match run_swarm_plan_loop(ctx, params, reporter).await {
+        Ok(output) => Ok(output),
+        Err(error) => Err(anyhow::anyhow!(with_worker_retention_hint(
+            error.to_string()
+        ))),
+    }
+}
+
+async fn run_swarm_plan_loop(
     ctx: &ToolContext,
     params: &CommunicateInput,
     reporter: &RunPlanReporter,
@@ -596,24 +783,15 @@ async fn run_swarm_plan_to_terminal(
 
         let in_flight_sessions = fetch_in_flight_swarm_sessions(&ctx.session_id).await?;
 
-        // Count each node at most once: completed_ids, blocked_ids, and cycle_ids
-        // overlap (a cyclic queued node appears in both blocked and cycle sets),
-        // and summing them can exceed item_count while runnable work remains,
-        // making run_plan exit prematurely.
-        let terminal_count = summary
-            .completed_ids
-            .iter()
-            .chain(summary.blocked_ids.iter())
-            .chain(summary.cycle_ids.iter())
-            .collect::<std::collections::HashSet<_>>()
-            .len();
+        let terminal_count = plan_terminal_node_count(&summary);
         reporter
             .progress(
                 terminal_count,
                 summary.item_count,
                 format!(
-                    "completed {} · blocked {} · active {} · assignments {}",
+                    "completed {} · failed {} · blocked {} · active {} · assignments {}",
                     summary.completed_ids.len(),
+                    summary.failed_ids.len(),
                     summary.blocked_ids.len(),
                     summary.active_ids.len(),
                     assignment_count
@@ -624,15 +802,8 @@ async fn run_swarm_plan_to_terminal(
             && summary.next_ready_ids.is_empty()
             && in_flight_sessions.is_empty();
         if no_more_runnable || terminal_count >= summary.item_count {
-            let mut output = format!(
-                "Swarm plan reached terminal/blocked state after {} loop(s). completed={} blocked={} cycles={} active={} assignments={}",
-                loop_count,
-                summary.completed_ids.len(),
-                summary.blocked_ids.len(),
-                summary.cycle_ids.len(),
-                summary.active_ids.len(),
-                assignment_count
-            );
+            let mut output =
+                format_run_plan_terminal_summary(loop_count, &summary, assignment_count);
             output.push_str(&format!(
                 "\n{}",
                 utilization.report(concurrency_limit, is_deep)
@@ -669,14 +840,26 @@ async fn run_swarm_plan_to_terminal(
         let active_count = summary.active_ids.len().max(in_flight_sessions.len());
         let available_slots = concurrency_limit.saturating_sub(active_count);
         let mut assigned_sessions = Vec::new();
-        for _ in 0..available_slots {
+        // Member-cap fallback state, reset each coordination loop. When the swarm
+        // hits its total member cap, fresh spawns are refused; instead of aborting
+        // the whole run we first free finished owned workers (incremental cleanup)
+        // and retry, then fall back to reuse-only assignment (no spawning), and
+        // only after that stop assigning and continue with in-flight work.
+        let mut cap_hits = 0usize;
+        let mut reuse_only = false;
+        let mut slots_remaining = available_slots;
+        while slots_remaining > 0 {
             let request = Request::CommAssignNext {
                 id: REQUEST_ID,
                 session_id: ctx.session_id.clone(),
                 target_session: params.target_session.clone(),
                 working_dir: params.working_dir.clone(),
-                prefer_spawn,
-                spawn_if_needed,
+                prefer_spawn: if reuse_only { Some(false) } else { prefer_spawn },
+                spawn_if_needed: if reuse_only {
+                    Some(false)
+                } else {
+                    spawn_if_needed
+                },
                 message: params.message.clone(),
             };
             match send_request(request).await {
@@ -686,16 +869,56 @@ async fn run_swarm_plan_to_terminal(
                     ..
                 }) => {
                     assignment_count += 1;
+                    slots_remaining -= 1;
                     reporter
                         .log(&format!("assigned {} -> {}", task_id, target_session))
                         .await;
                     assigned_sessions.push(target_session);
                 }
-                Ok(ServerEvent::Error { message, .. })
-                    if message.contains("No runnable unassigned tasks")
-                        || message.contains("No ready or completed swarm agents") =>
-                {
-                    break;
+                Ok(ServerEvent::Error { message, .. }) => {
+                    match classify_assign_error(&message) {
+                        AssignErrorAction::BreakGracefully => break,
+                        AssignErrorAction::RecoverCapacity => {
+                            cap_hits += 1;
+                            let freed = if cap_hits == 1 {
+                                cleanup_finished_workers_for_capacity(
+                                    ctx,
+                                    &assigned_sessions,
+                                    reporter,
+                                )
+                                .await
+                            } else {
+                                0
+                            };
+                            match cap_recovery_step(cap_hits, freed) {
+                                CapRecoveryStep::RetryFresh => {
+                                    // Cleanup freed member slots; retry this slot
+                                    // with the fresh-spawn preference intact.
+                                }
+                                CapRecoveryStep::RetryReuse => {
+                                    reuse_only = true;
+                                    reporter
+                                        .log(
+                                            "member cap reached and no finished workers to free; \
+                                             falling back to reusing ready workers (prefer_spawn=false)",
+                                        )
+                                        .await;
+                                }
+                                CapRecoveryStep::GiveUp => {
+                                    reporter
+                                        .log(
+                                            "member cap still reached after recovery; \
+                                             continuing with in-flight work",
+                                        )
+                                        .await;
+                                    break;
+                                }
+                            }
+                        }
+                        AssignErrorAction::Fail => {
+                            return Err(anyhow::anyhow!(message));
+                        }
+                    }
                 }
                 Ok(response) => ensure_success(&response)?,
                 Err(e) => return Err(anyhow::anyhow!("Failed to assign next swarm task: {}", e)),

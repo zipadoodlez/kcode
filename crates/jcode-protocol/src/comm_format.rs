@@ -431,6 +431,12 @@ pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
             summary.completed_ids.join(", ")
         ));
     }
+    if !summary.failed_ids.is_empty() {
+        output.push_str(&format!(
+            "  Failed (terminal without completing): {}\n",
+            summary.failed_ids.join(", ")
+        ));
+    }
     if !summary.low_confidence_ids.is_empty() {
         output.push_str(&format!(
             "  Low confidence (completed but shaky; widen with follow-up nodes): {}\n",

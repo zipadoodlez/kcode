@@ -114,6 +114,7 @@ mod tests {
             blocked_ids: vec!["task-4".to_string()],
             active_ids: Vec::new(),
             completed_ids: vec!["task-1".to_string()],
+            failed_ids: Vec::new(),
             cycle_ids: Vec::new(),
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: vec!["task-2".to_string()],

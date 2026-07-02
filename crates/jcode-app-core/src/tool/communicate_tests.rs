@@ -165,6 +165,7 @@ fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
         blocked_ids: Vec::new(),
         active_ids: vec!["b".to_string()],
         completed_ids: vec!["c".to_string()],
+        failed_ids: Vec::new(),
         cycle_ids: Vec::new(),
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
@@ -199,6 +200,144 @@ fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
     // deep_cap=0 (unbounded) surfaces the member cap as the budget.
     let unbounded = super::plan_status_budget_line(&base, 0).unwrap();
     assert!(unbounded.contains("1000 (member cap)"));
+}
+
+#[test]
+fn assign_error_classification_recovers_on_member_cap_instead_of_failing() {
+    use super::AssignErrorAction;
+
+    // Graceful exhaustion of work or workers ends the assignment burst.
+    assert_eq!(
+        super::classify_assign_error("No runnable unassigned tasks are available in the swarm plan"),
+        AssignErrorAction::BreakGracefully
+    );
+    assert_eq!(
+        super::classify_assign_error(
+            "No ready or completed swarm agents are available for automatic task assignment."
+        ),
+        AssignErrorAction::BreakGracefully
+    );
+
+    // The member cap must trigger recovery (cleanup + reuse fallback), not a
+    // run-aborting failure. The server wraps the cap message in a spawn-failure
+    // prefix, so classification must match on the substring.
+    assert_eq!(
+        super::classify_assign_error(
+            "Failed to spawn preferred worker: Swarm member limit reached (max 1000). \
+             This swarm already has 1000 agents; it cannot spawn more."
+        ),
+        AssignErrorAction::RecoverCapacity
+    );
+
+    // Anything else is still a real failure.
+    assert_eq!(
+        super::classify_assign_error("Not in a swarm."),
+        AssignErrorAction::Fail
+    );
+}
+
+#[test]
+fn cap_recovery_prefers_cleanup_then_reuse_then_gives_up() {
+    use super::CapRecoveryStep;
+
+    // First cap hit with freed capacity: retry keeping the fresh-spawn preference.
+    assert_eq!(super::cap_recovery_step(1, 3), CapRecoveryStep::RetryFresh);
+    // First cap hit but nothing could be freed: fall back to reusing ready workers.
+    assert_eq!(super::cap_recovery_step(1, 0), CapRecoveryStep::RetryReuse);
+    // Recovery already ran and the cap still refuses: continue with in-flight
+    // work instead of aborting or spinning.
+    assert_eq!(super::cap_recovery_step(2, 0), CapRecoveryStep::GiveUp);
+    assert_eq!(super::cap_recovery_step(3, 5), CapRecoveryStep::GiveUp);
+}
+
+#[test]
+fn run_plan_driver_failures_carry_worker_retention_hint() {
+    // Every driver-failure path must tell the caller the spawned workers are
+    // still running and how to stop them.
+    let hinted = super::with_worker_retention_hint(
+        "run_plan stalled after 3 loop(s): no ready tasks and no in-flight workers.".to_string(),
+    );
+    assert!(hinted.contains("Spawned workers were retained"));
+    assert!(hinted.contains("swarm cleanup"));
+
+    // Max-loops keeps its intentional retention-for-inspection wording but
+    // still gains the actionable hint.
+    let max_loops = super::with_worker_retention_hint(
+        "run_plan exceeded 200 coordination loops; leaving workers untouched for inspection"
+            .to_string(),
+    );
+    assert!(max_loops.contains("swarm cleanup"));
+
+    // Idempotent: re-wrapping (e.g. the background wrapper re-reporting the
+    // error) must not duplicate the hint.
+    let twice = super::with_worker_retention_hint(hinted.clone());
+    assert_eq!(twice.matches("Spawned workers were retained").count(), 1);
+}
+
+#[test]
+fn run_plan_terminal_summary_reports_failed_nodes() {
+    let base = crate::protocol::PlanGraphStatus {
+        swarm_id: Some("swarm-a".to_string()),
+        version: 1,
+        item_count: 4,
+        ready_ids: Vec::new(),
+        blocked_ids: Vec::new(),
+        active_ids: Vec::new(),
+        completed_ids: vec!["a".to_string(), "b".to_string()],
+        failed_ids: vec!["c".to_string(), "d".to_string()],
+        cycle_ids: Vec::new(),
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
+        mode: "deep".to_string(),
+    };
+
+    let with_failures = super::format_run_plan_terminal_summary(5, &base, 7);
+    assert!(with_failures.contains("completed=2"));
+    assert!(with_failures.contains("failed=2"));
+    assert!(with_failures.contains("Failed nodes: c, d"));
+    assert!(with_failures.contains("did NOT finish cleanly"));
+
+    // A clean run reports failed=0 and no failure callout.
+    let clean = crate::protocol::PlanGraphStatus {
+        completed_ids: vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+        ],
+        failed_ids: Vec::new(),
+        ..base
+    };
+    let clean_summary = super::format_run_plan_terminal_summary(5, &clean, 7);
+    assert!(clean_summary.contains("failed=0"));
+    assert!(!clean_summary.contains("Failed nodes"));
+}
+
+#[test]
+fn plan_terminal_node_count_includes_failed_without_double_counting() {
+    let summary = crate::protocol::PlanGraphStatus {
+        swarm_id: Some("swarm-a".to_string()),
+        version: 1,
+        item_count: 4,
+        ready_ids: Vec::new(),
+        blocked_ids: vec!["x".to_string()],
+        active_ids: Vec::new(),
+        completed_ids: vec!["a".to_string()],
+        failed_ids: vec!["c".to_string()],
+        // "x" is both blocked and cyclic; it must count once.
+        cycle_ids: vec!["x".to_string()],
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
+        mode: "light".to_string(),
+    };
+    // a (completed) + c (failed) + x (blocked/cycle, deduped) = 3. Without
+    // failed_ids in the terminal count a run with failed nodes would never
+    // satisfy terminal_count >= item_count and run_plan could spin or stall.
+    assert_eq!(super::plan_terminal_node_count(&summary), 3);
 }
 
 #[test]
@@ -258,6 +397,7 @@ fn format_plan_status_includes_next_ready() {
         blocked_ids: vec!["task-4".to_string()],
         active_ids: vec!["task-1".to_string()],
         completed_ids: vec!["setup".to_string()],
+        failed_ids: Vec::new(),
         cycle_ids: Vec::new(),
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["task-2".to_string()],
@@ -282,6 +422,7 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         blocked_ids: Vec::new(),
         active_ids: vec!["running-plan-task".to_string()],
         completed_ids: Vec::new(),
+        failed_ids: Vec::new(),
         cycle_ids: Vec::new(),
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: vec!["queued-assigned".to_string()],
@@ -353,6 +494,7 @@ fn in_flight_count_excludes_foreign_queued_session() {
         blocked_ids: Vec::new(),
         active_ids: Vec::new(),
         completed_ids: vec!["done-task".to_string()],
+        failed_ids: Vec::new(),
         cycle_ids: Vec::new(),
         unresolved_dependency_ids: Vec::new(),
         next_ready_ids: Vec::new(),
