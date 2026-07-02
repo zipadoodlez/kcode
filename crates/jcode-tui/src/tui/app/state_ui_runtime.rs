@@ -10,6 +10,29 @@ impl App {
             .unwrap_or_else(|_| self.skills.clone())
     }
 
+    /// Re-read skills from disk for the active session working directory and
+    /// sync the TUI-side registry snapshot.
+    ///
+    /// The agent-side `skill_manage reload_all` tool updates only the server
+    /// process's `SkillRegistry`; the TUI keeps an independent copy that was
+    /// otherwise refreshed only at startup or on a slash-command miss. Calling
+    /// this before rendering `/skills` (and on demand elsewhere) keeps newly
+    /// added skills visible without a session restart (issue #431).
+    pub(super) fn refresh_skills_snapshot(&mut self) {
+        let working_dir = self
+            .session
+            .working_dir
+            .as_deref()
+            .map(std::path::Path::new);
+        if let Ok(reloaded) = crate::skill::SkillRegistry::load_for_working_dir(working_dir) {
+            self.skills = std::sync::Arc::new(reloaded.clone());
+            if let Ok(mut shared) = self.registry.skills().try_write() {
+                *shared = reloaded;
+            }
+            self.invalidate_command_candidates_cache();
+        }
+    }
+
     pub fn cursor_pos(&self) -> usize {
         self.cursor_pos
     }

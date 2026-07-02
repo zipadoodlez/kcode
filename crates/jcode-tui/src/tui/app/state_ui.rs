@@ -1721,6 +1721,10 @@ fn build_skills_report(app: &App) -> String {
 
 pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
     if trimmed == "/skills" {
+        // Sync from disk first so skills added by agent-side `skill_manage
+        // reload_all` (which only updates the server process registry) show up
+        // without a restart (issue #431).
+        app.refresh_skills_snapshot();
         app.push_display_message(
             DisplayMessage::system(build_skills_report(app)).with_title("Skills"),
         );

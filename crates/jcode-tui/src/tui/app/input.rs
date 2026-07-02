@@ -3057,19 +3057,8 @@ impl App {
             // directory before reporting Unknown skill so project-local skills such
             // as .jcode/skills/optimization work immediately after reload/build.
             if skill.is_none() {
-                let working_dir = self
-                    .session
-                    .working_dir
-                    .as_deref()
-                    .map(std::path::Path::new);
-                if let Ok(reloaded) = SkillRegistry::load_for_working_dir(working_dir) {
-                    skill = reloaded.get(skill_name).cloned();
-                    self.skills = std::sync::Arc::new(reloaded.clone());
-                    if let Ok(mut shared) = self.registry.skills().try_write() {
-                        *shared = reloaded;
-                    }
-                    self.invalidate_command_candidates_cache();
-                }
+                self.refresh_skills_snapshot();
+                skill = self.current_skills_snapshot().get(skill_name).cloned();
             }
 
             if let Some(skill) = skill {

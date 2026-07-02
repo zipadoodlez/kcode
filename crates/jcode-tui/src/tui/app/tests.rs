@@ -581,6 +581,43 @@ fn skills_command_marks_active_skill_in_remote_mode() {
     );
 }
 
+/// Regression for issue #431: skills added on disk after startup (e.g. by the
+/// agent-side `skill_manage reload_all`, which only refreshes the server
+/// process registry) must show up in `/skills` without a session restart.
+#[test]
+fn skills_command_refreshes_registry_from_disk_before_listing() {
+    let mut app = create_test_app();
+
+    // Point the session at a fresh project dir and add a project-local skill
+    // after the app (and its skill snapshot) was created.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let skill_dir = temp.path().join(".jcode").join("skills").join("late-skill");
+    std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: late-skill\ndescription: Added after startup\n---\n# Late skill\n",
+    )
+    .expect("write SKILL.md");
+    app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
+
+    assert!(
+        app.current_skills_snapshot().get("late-skill").is_none(),
+        "snapshot must start without the new skill for this regression test"
+    );
+
+    assert!(super::state_ui::handle_info_command(&mut app, "/skills"));
+    let content = app.display_messages().last().unwrap().content.clone();
+
+    assert!(
+        content.contains("- /late-skill"),
+        "expected late-added skill in /skills output:\n{content}"
+    );
+    assert!(
+        app.current_skills_snapshot().get("late-skill").is_some(),
+        "registry snapshot must be synced so /late-skill invocations resolve"
+    );
+}
+
 #[test]
 fn update_command_reloads_stale_remote_server_before_client_update_check() {
     use tokio::io::AsyncBufReadExt;
