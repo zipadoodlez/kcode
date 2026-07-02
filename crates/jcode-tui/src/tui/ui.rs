@@ -2204,6 +2204,24 @@ fn expand_badge_start_col(text: &str) -> Option<usize> {
     Some(line_display_width(&text[..byte_idx]))
 }
 
+/// Display column of a trailing badge verb (`expand` / `reset`) when the line
+/// ends with one. Long image labels wrap in the transcript, and the wrap can
+/// split inside the badge, leaving only the verb on the final label row (the
+/// row the region mapping identifies). The verb is then the whole visible
+/// badge on that row, so it must stay clickable even without the icon/dots.
+fn expand_badge_verb_start_col(text: &str) -> Option<usize> {
+    let trimmed = text.trim_end();
+    for verb in ["expand", "reset"] {
+        if let Some(prefix) = trimmed.strip_suffix(verb) {
+            // Must be a whole trailing token, not the tail of a longer word.
+            if prefix.is_empty() || prefix.ends_with(char::is_whitespace) {
+                return Some(line_display_width(prefix));
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod expand_badge_hit_tests {
     use super::expand_badge_start_col;
@@ -2238,6 +2256,19 @@ mod expand_badge_hit_tests {
         // Prefix is "abc " (display width 4); the icon is the first badge cell.
         assert_eq!(expand_badge_start_col(&text), Some(4));
     }
+
+    #[test]
+    fn verb_fallback_matches_wrapped_badge_tail() {
+        use super::expand_badge_verb_start_col;
+        // A wrapped label row can carry only the badge verb.
+        assert_eq!(expand_badge_verb_start_col("expand"), Some(0));
+        assert_eq!(expand_badge_verb_start_col("reset"), Some(0));
+        assert_eq!(expand_badge_verb_start_col("  expand  "), Some(2));
+        // Must be a whole trailing token, not a word tail or mid-line text.
+        assert_eq!(expand_badge_verb_start_col("preexpand"), None);
+        assert_eq!(expand_badge_verb_start_col("expand more"), None);
+        assert_eq!(expand_badge_verb_start_col("shot.png 600×400"), None);
+    }
 }
 
 /// If a screen click landed on an inline-image expand badge, return the image
@@ -2248,7 +2279,9 @@ pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> O
     let snapshot = copy_snapshot_for_pane(point.pane)?;
     let image_id = snapshot.inline_image_id_for_label_line(point.abs_line)?;
     let text = snapshot.wrapped_plain_line(point.abs_line)?;
-    let badge_start = expand_badge_start_col(text)?;
+    // Long labels wrap: the final label row may carry only the badge verb
+    // (`expand`/`reset`), with the icon and dots on the previous wrapped row.
+    let badge_start = expand_badge_start_col(text).or_else(|| expand_badge_verb_start_col(text))?;
     if point.column >= badge_start {
         Some(image_id)
     } else {
@@ -2276,7 +2309,8 @@ pub(crate) fn debug_chat_image_regions_json() -> String {
         .map(|region| {
             let label_line = region.abs_line_idx.saturating_sub(1);
             let label_text = snapshot.wrapped_plain_line(label_line).unwrap_or("");
-            let badge_col = expand_badge_start_col(label_text);
+            let badge_col =
+                expand_badge_start_col(label_text).or_else(|| expand_badge_verb_start_col(label_text));
             let label_visible =
                 label_line >= snapshot.scroll && label_line < snapshot.visible_end;
             let badge_screen = badge_col.filter(|_| label_visible).map(|col| {
