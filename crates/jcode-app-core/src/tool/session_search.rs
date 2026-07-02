@@ -1052,7 +1052,10 @@ fn search_external_sessions(query: &QueryProfile, options: &SearchOptions) -> Se
             crate::import::list_claude_code_sessions_lazy(options.max_scan_sessions)
     {
         report.external_sources.push("claude");
-        let sessions: Vec<_> = sessions.into_iter().take(options.max_scan_sessions).collect();
+        let sessions: Vec<_> = sessions
+            .into_iter()
+            .take(options.max_scan_sessions)
+            .collect();
         records.extend(load_claude_candidates_parallel(&sessions, query, options));
     }
 

@@ -10,38 +10,41 @@ pub fn new_id(prefix: &str) -> String {
 ///
 /// Servers now use location nouns while sessions use client/entity nouns,
 /// producing names like "harbor fox" or "observatory otter".
+///
+/// Icon constraints match `SESSION_NAMES`: single codepoints with default
+/// emoji presentation (no VS16), see the comment there.
 const SERVER_MODIFIERS: &[(&str, &str)] = &[
     // Natural places
     ("cove", "🌊"),
     ("grove", "🌳"),
     ("meadow", "🌾"),
     ("marsh", "🌿"),
-    ("lake", "🏞️"),
-    ("river", "🏞️"),
+    ("lake", "🛶"),
+    ("river", "🚣"),
     ("creek", "💧"),
     ("brook", "💧"),
-    ("cliff", "🏔️"),
-    ("peak", "⛰️"),
-    ("summit", "🏔️"),
+    ("cliff", "🧗"),
+    ("peak", "🗻"),
+    ("summit", "🚠"),
     ("forest", "🌲"),
     ("garden", "🌷"),
-    ("island", "🏝️"),
-    ("desert", "🏜️"),
-    ("beach", "🏖️"),
+    ("island", "🌴"),
+    ("desert", "🌵"),
+    ("beach", "🏄"),
     // Built places
     ("harbor", "⚓"),
     ("camp", "⛺"),
     ("forge", "🔥"),
-    ("citadel", "🏛️"),
+    ("citadel", "🏯"),
     ("station", "🚉"),
     ("observatory", "🔭"),
-    ("workshop", "🛠️"),
+    ("workshop", "🔨"),
     ("lighthouse", "🗼"),
-    ("temple", "🏛️"),
+    ("temple", "⛪"),
     ("castle", "🏰"),
     ("bridge", "🌉"),
     ("fountain", "⛲"),
-    ("stadium", "🏟️"),
+    ("stadium", "🎪"),
     ("factory", "🏭"),
     ("pagoda", "🛕"),
     ("hut", "🛖"),
@@ -50,8 +53,11 @@ const SERVER_MODIFIERS: &[(&str, &str)] = &[
 /// Session/client names with their icons.
 const SESSION_NAMES: &[(&str, &str)] = &[
     // Animals and client entities. Every emoji here is a single, widely-supported
-    // codepoint (Unicode <= 12.0, no ZWJ sequences) so it renders as one glyph on
-    // older terminal fonts instead of tofu boxes or split pieces.
+    // codepoint (Unicode <= 12.0, no ZWJ sequences) with *default emoji
+    // presentation* (no VS16 / U+FE0F needed). Text-default codepoints that rely
+    // on VS16 render as monochrome outlines or tofu in macOS window titles
+    // (Ghostty/Terminal tab and titlebar fonts ignore the selector), so they are
+    // banned by `session_icons_render_as_single_safe_glyphs`.
     ("ant", "🐜"),
     ("bat", "🦇"),
     ("bee", "🐝"),
@@ -60,12 +66,12 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("cat", "🐱"),
     ("chicken", "🐔"),
     ("chick", "🐥"),
-    ("chipmunk", "🐿️"),
+    ("chipmunk", "🌰"),
     ("cow", "🐄"),
     ("crocodile", "🐊"),
     ("cricket", "🦗"),
     ("dog", "🐕"),
-    ("dove", "🕊️"),
+    ("dove", "🤍"),
     ("eagle", "🦅"),
     ("fish", "🐟"),
     ("fox", "🦊"),
@@ -107,7 +113,7 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("sloth", "🦥"),
     ("snail", "🐌"),
     ("snake", "🐍"),
-    ("spider", "🕷️"),
+    ("spider", "🧶"),
     ("squid", "🦑"),
     ("swan", "🦢"),
     ("t-rex", "🦖"),
@@ -305,12 +311,16 @@ mod tests {
     }
 
     /// Returns true for emoji that commonly fail to render as a single glyph on
-    /// older terminal fonts: ZWJ sequences (split into pieces) and codepoints
-    /// added in Unicode 13.0 or later (rendered as tofu boxes on fonts that
-    /// predate them). We avoid a broad block range here because the
-    /// Supplemental Symbols block mixes safe Unicode 11/12 emoji (otter, sloth)
-    /// with risky Unicode 13+ ones (mammoth, beaver), so we list the unsafe
-    /// codepoints explicitly.
+    /// older terminal fonts or in window titles: ZWJ sequences (split into
+    /// pieces), codepoints added in Unicode 13.0 or later (rendered as tofu
+    /// boxes on fonts that predate them), and VS16 variation sequences
+    /// (text-default codepoints + U+FE0F, which macOS window/tab title fonts
+    /// render as monochrome outlines or tofu because the title renderer
+    /// ignores the emoji-presentation selector - the Ghostty-on-macOS bug).
+    /// We avoid a broad block range here because the Supplemental Symbols
+    /// block mixes safe Unicode 11/12 emoji (otter, sloth) with risky Unicode
+    /// 13+ ones (mammoth, beaver), so we list the unsafe codepoints
+    /// explicitly.
     fn is_fragile_emoji(emoji: &str) -> bool {
         // Unicode 13.0+ additions in the Supplemental Symbols block (U+1F900..U+1F9FF).
         const UNSAFE_SUPPLEMENTAL: &[u32] = &[
@@ -323,6 +333,8 @@ mod tests {
         emoji.chars().any(|c| {
             let cp = c as u32;
             c == '\u{200D}'
+                // VS16: emoji needing it are text-default and misrender in titles.
+                || c == '\u{FE0F}'
                 // Symbols and Pictographs Extended-A (entirely Unicode 13+).
                 || (0x1FA70..=0x1FAFF).contains(&cp)
                 || UNSAFE_SUPPLEMENTAL.contains(&cp)

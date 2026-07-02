@@ -9,9 +9,7 @@
 use super::{handle_comm_approve_plan, handle_comm_propose_plan, plan_cycle_error};
 use crate::plan::PlanItem;
 use crate::protocol::ServerEvent;
-use crate::server::{
-    SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime, VersionedPlan,
-};
+use crate::server::{SharedContext, SwarmEvent, SwarmMember, SwarmMutationRuntime, VersionedPlan};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -282,7 +280,9 @@ async fn coordinator_direct_update_rejects_cyclic_plan_without_mutating_it() {
     let events = fx.drain_events();
     let errors = error_messages(&events);
     assert!(
-        errors.iter().any(|m| m.contains("cycle") && m.contains("b, c")),
+        errors
+            .iter()
+            .any(|m| m.contains("cycle") && m.contains("b, c")),
         "expected cycle error naming b and c, got: {errors:?}"
     );
     assert!(!saw_done(&events), "rejected update must not ack Done");
@@ -300,7 +300,9 @@ async fn coordinator_direct_update_rejects_self_dependency() {
     let events = fx.drain_events();
     let errors = error_messages(&events);
     assert!(
-        errors.iter().any(|m| m.contains("cycle") && m.contains("loop")),
+        errors
+            .iter()
+            .any(|m| m.contains("cycle") && m.contains("loop")),
         "expected self-dependency rejection, got: {errors:?}"
     );
 }
@@ -340,8 +342,11 @@ async fn worker_proposal_with_internal_cycle_is_rejected_before_storage() {
     let mut fx = plan_fixture("swarm-prop-cycle", "coord-wp", "worker-wp");
 
     let worker = fx.worker.clone();
-    fx.propose(&worker, vec![plan_item("b", &["c"]), plan_item("c", &["b"])])
-        .await;
+    fx.propose(
+        &worker,
+        vec![plan_item("b", &["c"]), plan_item("c", &["b"])],
+    )
+    .await;
 
     // No proposal stored for the coordinator to approve.
     let context = fx.shared_context.read().await;

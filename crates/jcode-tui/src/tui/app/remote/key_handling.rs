@@ -1864,8 +1864,7 @@ async fn handle_remote_key_internal(
                     || trimmed == "/cut-release"
                     || trimmed == "/commit-push-release"
                 {
-                    let is_release =
-                        trimmed == "/cut-release" || trimmed == "/commit-push-release";
+                    let is_release = trimmed == "/cut-release" || trimmed == "/commit-push-release";
                     let is_push = trimmed != "/commit";
                     let prompt = if is_release {
                         app_mod::commands::build_cut_release_prompt()

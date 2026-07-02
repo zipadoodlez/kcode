@@ -2352,10 +2352,9 @@ pub(crate) fn debug_chat_image_regions_json() -> String {
         .map(|region| {
             let label_line = region.abs_line_idx.saturating_sub(1);
             let label_text = snapshot.wrapped_plain_line(label_line).unwrap_or("");
-            let badge_col =
-                expand_badge_start_col(label_text).or_else(|| expand_badge_verb_start_col(label_text));
-            let label_visible =
-                label_line >= snapshot.scroll && label_line < snapshot.visible_end;
+            let badge_col = expand_badge_start_col(label_text)
+                .or_else(|| expand_badge_verb_start_col(label_text));
+            let label_visible = label_line >= snapshot.scroll && label_line < snapshot.visible_end;
             let badge_screen = badge_col.filter(|_| label_visible).map(|col| {
                 let rel_row = label_line - snapshot.scroll;
                 let left_margin = snapshot.left_margins.get(rel_row).copied().unwrap_or(0);

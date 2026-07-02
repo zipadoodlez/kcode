@@ -856,14 +856,20 @@ fn inject_from_gate_wires_gap_artifacts_into_parent_synthesis() {
     // original children's (forward dataflow reads direct deps only).
     let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
     dispatch(&mut g, "root", "w0");
-    let outcome = expand_node(&mut g, "root", "w0", vec![spec("child", NodeKind::Explore)])
-        .unwrap();
+    let outcome =
+        expand_node(&mut g, "root", "w0", vec![spec("child", NodeKind::Explore)]).unwrap();
     let gate_id = outcome.gate_id.unwrap();
     dispatch(&mut g, "child", "w1");
     complete_node(&mut g, "child", "w1", sim::deep_artifact("child findings")).unwrap();
 
     dispatch(&mut g, &gate_id, "w2");
-    inject_from_gate(&mut g, &gate_id, "w2", vec![spec("gapnode", NodeKind::Explore)]).unwrap();
+    inject_from_gate(
+        &mut g,
+        &gate_id,
+        "w2",
+        vec![spec("gapnode", NodeKind::Explore)],
+    )
+    .unwrap();
     dispatch(&mut g, "gapnode", "w3");
     complete_node(
         &mut g,
@@ -883,7 +889,10 @@ fn inject_from_gate_wires_gap_artifacts_into_parent_synthesis() {
 
     // Synthesis re-wake input must include BOTH child and gap artifacts.
     let input = assemble_input(&g, "root");
-    assert!(input.contains("child findings"), "missing child artifact: {input}");
+    assert!(
+        input.contains("child findings"),
+        "missing child artifact: {input}"
+    );
     assert!(
         input.contains("gap findings: the missing corner"),
         "synthesis must be hydrated with injected gap artifacts: {input}"
@@ -902,7 +911,10 @@ fn requeue_failed_unwedges_a_failed_gate() {
     // Gate worker crashes: the gate fails, wedging the composite.
     dispatch(&mut g, &gate_id, "w2");
     fail_node(&mut g, &gate_id, "w2").unwrap();
-    assert!(ready_nodes(&g).is_empty(), "composite is wedged behind failed gate");
+    assert!(
+        ready_nodes(&g).is_empty(),
+        "composite is wedged behind failed gate"
+    );
 
     // requeue_failed is the recovery primitive.
     requeue_failed(&mut g, &gate_id).unwrap();

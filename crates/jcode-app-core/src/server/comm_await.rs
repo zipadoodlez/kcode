@@ -171,9 +171,7 @@ fn background_completion_notification(
 /// prefs (background/notify/wake) can be updated by duplicate requests after a
 /// watcher captured its own copy at spawn, so re-reading before exit/finalize
 /// keeps the watcher in sync with what the requesting tool was last told.
-fn refresh_pending_state(
-    state: &PersistedAwaitMembersState,
-) -> Option<PersistedAwaitMembersState> {
+fn refresh_pending_state(state: &PersistedAwaitMembersState) -> Option<PersistedAwaitMembersState> {
     load_state(&state.key).filter(PersistedAwaitMembersState::is_pending)
 }
 
@@ -613,11 +611,10 @@ pub(super) async fn resume_background_awaits(
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
     await_members_runtime: &AwaitMembersRuntime,
 ) {
-    let pending: Vec<PersistedAwaitMembersState> =
-        all_pending_await_members_including_expired()
-            .into_iter()
-            .filter(|state| state.background)
-            .collect();
+    let pending: Vec<PersistedAwaitMembersState> = all_pending_await_members_including_expired()
+        .into_iter()
+        .filter(|state| state.background)
+        .collect();
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

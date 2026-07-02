@@ -208,11 +208,13 @@ where
         Number(f64),
         Bool(bool),
     }
-    Ok(Option::<Scalar>::deserialize(deserializer)?.map(|scalar| match scalar {
-        Scalar::Text(text) => text,
-        Scalar::Number(number) => number.to_string(),
-        Scalar::Bool(flag) => flag.to_string(),
-    }))
+    Ok(
+        Option::<Scalar>::deserialize(deserializer)?.map(|scalar| match scalar {
+            Scalar::Text(text) => text,
+            Scalar::Number(number) => number.to_string(),
+            Scalar::Bool(flag) => flag.to_string(),
+        }),
+    )
 }
 
 /// Extract the first number in `s`, returning its value, raw token, and the

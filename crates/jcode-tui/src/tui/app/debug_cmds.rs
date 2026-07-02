@@ -217,10 +217,9 @@ impl App {
                 Some(pair) => pair,
                 None => return "mouse error: expected mouse:<kind>:<col>,<row>".to_string(),
             };
-            let (col, row) = match coords
-                .split_once(',')
-                .and_then(|(c, r)| Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?)))
-            {
+            let (col, row) = match coords.split_once(',').and_then(|(c, r)| {
+                Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?))
+            }) {
                 Some(pair) => pair,
                 None => return "mouse error: bad coords (expected <col>,<row>)".to_string(),
             };
@@ -265,10 +264,9 @@ impl App {
         } else if cmd.starts_with("image-click-target:") {
             // Probe the inline-image expand badge hit-test at screen coords.
             let raw = cmd.strip_prefix("image-click-target:").unwrap_or("");
-            let (col, row) = match raw
-                .split_once(',')
-                .and_then(|(c, r)| Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?)))
-            {
+            let (col, row) = match raw.split_once(',').and_then(|(c, r)| {
+                Some((c.trim().parse::<u16>().ok()?, r.trim().parse::<u16>().ok()?))
+            }) {
                 Some(pair) => pair,
                 None => return "image-click-target error: expected <col>,<row>".to_string(),
             };

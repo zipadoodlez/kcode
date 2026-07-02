@@ -1181,7 +1181,10 @@ fn guardrail_stop_reason_detection() {
 fn guardrail_notice_for_refusal_stop() {
     let notice = Agent::provider_guardrail_notice(Some("refusal"), true, true)
         .expect("refusal with empty text must produce a notice");
-    assert!(notice.contains("refusal"), "notice should name the stop reason: {notice}");
+    assert!(
+        notice.contains("refusal"),
+        "notice should name the stop reason: {notice}"
+    );
     assert!(notice.to_lowercase().contains("guardrail"));
 
     // Guardrail stop with visible text still surfaces (partial output then refusal).

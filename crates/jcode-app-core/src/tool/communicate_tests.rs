@@ -348,7 +348,9 @@ fn assign_error_classification_recovers_on_member_cap_instead_of_failing() {
 
     // Graceful exhaustion of work or workers ends the assignment burst.
     assert_eq!(
-        super::classify_assign_error("No runnable unassigned tasks are available in the swarm plan"),
+        super::classify_assign_error(
+            "No runnable unassigned tasks are available in the swarm plan"
+        ),
         AssignErrorAction::BreakGracefully
     );
     assert_eq!(

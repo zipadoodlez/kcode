@@ -182,18 +182,12 @@ fn degenerate_sizes_with_full_contention_never_panic_or_escape() {
                     let area = Rect::new(2, 1, 100, h);
                     let margins = margins_for(margin_w, h as usize, centered, content_anchored);
 
-                    let fresh =
-                        calculate_placements_anchored(area, &margins, &data, true, &[]);
+                    let fresh = calculate_placements_anchored(area, &margins, &data, true, &[]);
                     assert_placements_sane(&format!("{label} (fresh)"), area, &fresh.visible);
 
                     // Same frame with the fresh anchors fed back (steady state).
-                    let steady = calculate_placements_anchored(
-                        area,
-                        &margins,
-                        &data,
-                        true,
-                        &fresh.anchors,
-                    );
+                    let steady =
+                        calculate_placements_anchored(area, &margins, &data, true, &fresh.anchors);
                     assert_placements_sane(&format!("{label} (steady)"), area, &steady.visible);
 
                     // Anchors recorded against a bigger frame must not let a
@@ -234,13 +228,8 @@ fn todo_and_background_contention_prioritizes_todos_without_overlap() {
     // One pocket of 6 rows: Overview (min 8 + borders) can't fit; todos
     // (height 5) wins the pocket and background is dropped.
     let area = Rect::new(0, 0, 80, 6);
-    let outcome = calculate_placements_anchored(
-        area,
-        &margins_for(40, 6, false, false),
-        &data,
-        true,
-        &[],
-    );
+    let outcome =
+        calculate_placements_anchored(area, &margins_for(40, 6, false, false), &data, true, &[]);
     assert_placements_sane("short pocket", area, &outcome.visible);
     let kinds: Vec<WidgetKind> = outcome.visible.iter().map(|p| p.kind).collect();
     assert_eq!(
@@ -278,13 +267,8 @@ fn todo_and_background_contention_prioritizes_todos_without_overlap() {
 fn overview_suppresses_mergeable_widgets_under_contention() {
     let data = contended_data();
     let area = Rect::new(0, 0, 100, 40);
-    let outcome = calculate_placements_anchored(
-        area,
-        &margins_for(40, 40, false, false),
-        &data,
-        true,
-        &[],
-    );
+    let outcome =
+        calculate_placements_anchored(area, &margins_for(40, 40, false, false), &data, true, &[]);
     assert_placements_sane("overview contention", area, &outcome.visible);
     let kinds: Vec<WidgetKind> = outcome.visible.iter().map(|p| p.kind).collect();
     assert!(
@@ -313,20 +297,11 @@ fn swarm_status_widget_is_intentionally_disabled() {
         !data.has_data_for(WidgetKind::SwarmStatus),
         "SwarmStatus must stay disabled (superseded by the swarm gallery)"
     );
-    assert!(
-        !data
-            .available_widgets()
-            .contains(&WidgetKind::SwarmStatus)
-    );
+    assert!(!data.available_widgets().contains(&WidgetKind::SwarmStatus));
 
     let area = Rect::new(0, 0, 100, 40);
-    let outcome = calculate_placements_anchored(
-        area,
-        &margins_for(40, 40, true, false),
-        &data,
-        true,
-        &[],
-    );
+    let outcome =
+        calculate_placements_anchored(area, &margins_for(40, 40, true, false), &data, true, &[]);
     assert!(
         outcome
             .visible
@@ -371,13 +346,8 @@ fn stale_anchor_above_shifted_area_is_rehomed_not_drawn_out_of_bounds() {
     let data = contended_data();
 
     let area0 = Rect::new(0, 0, 80, 20);
-    let first = calculate_placements_anchored(
-        area0,
-        &margins_for(40, 20, false, false),
-        &data,
-        true,
-        &[],
-    );
+    let first =
+        calculate_placements_anchored(area0, &margins_for(40, 20, false, false), &data, true, &[]);
     assert!(!first.visible.is_empty());
     assert!(
         first.visible.iter().any(|p| p.rect.y < 5),

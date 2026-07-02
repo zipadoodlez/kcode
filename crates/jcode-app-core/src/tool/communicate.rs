@@ -566,7 +566,10 @@ impl Drop for RunPlanClaimGuard {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         // Only release a claim this guard still owns.
-        if matches!(claims.get(&self.session_id), Some(RunPlanDriverClaim::Starting)) {
+        if matches!(
+            claims.get(&self.session_id),
+            Some(RunPlanDriverClaim::Starting)
+        ) {
             claims.remove(&self.session_id);
         }
     }
@@ -959,7 +962,11 @@ async fn run_swarm_plan_loop(
                 session_id: ctx.session_id.clone(),
                 target_session: params.target_session.clone(),
                 working_dir: params.working_dir.clone(),
-                prefer_spawn: if reuse_only { Some(false) } else { prefer_spawn },
+                prefer_spawn: if reuse_only {
+                    Some(false)
+                } else {
+                    prefer_spawn
+                },
                 spawn_if_needed: if reuse_only {
                     Some(false)
                 } else {

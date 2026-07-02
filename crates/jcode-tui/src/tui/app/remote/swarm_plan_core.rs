@@ -21,7 +21,10 @@ impl RemoteSwarmPlanSnapshot {
             .as_ref()
             .map(|summary| summary.item_count)
             .unwrap_or_else(|| self.items.len());
-        let mut notice = format!("Swarm plan synced (v{}, {} items)", self.version, item_count);
+        let mut notice = format!(
+            "Swarm plan synced (v{}, {} items)",
+            self.version, item_count
+        );
         if let Some(summary) = &self.summary {
             // Task-DAG progress breakdown: how the graph currently partitions by
             // scheduling state. Only show segments that are non-empty so the line

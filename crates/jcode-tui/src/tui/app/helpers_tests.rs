@@ -452,7 +452,10 @@ fn backdated_now_never_panics_and_prefers_past_instants() {
     // Huge backdate (longer than any plausible uptime) must not panic and
     // must still return something no later than now.
     let ancient = super::backdated_now(Duration::from_secs(60 * 60 * 24 * 365 * 100));
-    assert!(ancient <= now, "saturated backdate must not be in the future");
+    assert!(
+        ancient <= now,
+        "saturated backdate must not be in the future"
+    );
 
     // Zero backdate is a no-op.
     let zero = super::backdated_now(Duration::ZERO);

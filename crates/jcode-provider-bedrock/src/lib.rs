@@ -1,6 +1,6 @@
-use anyhow::Result;
 #[cfg(feature = "aws-sdk")]
 use anyhow::Context;
+use anyhow::Result;
 use async_trait::async_trait;
 #[cfg(feature = "aws-sdk")]
 use aws_config::BehaviorVersion;

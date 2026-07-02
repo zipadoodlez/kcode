@@ -173,11 +173,7 @@ async fn test_batch_resolves_oauth_names() {
     };
 
     let result = registry
-        .execute(
-            "shell_exec",
-            serde_json::json!({"command": "true"}),
-            ctx,
-        )
+        .execute("shell_exec", serde_json::json!({"command": "true"}), ctx)
         .await;
     assert!(result.is_ok(), "shell_exec should resolve to bash tool");
 }
@@ -201,11 +197,7 @@ async fn registry_execute_enforces_session_tool_policy_after_alias_resolution() 
     };
 
     let result = registry
-        .execute(
-            "shell_exec",
-            serde_json::json!({"command": "true"}),
-            ctx,
-        )
+        .execute("shell_exec", serde_json::json!({"command": "true"}), ctx)
         .await;
 
     clear_session_tool_policy(session_id);
@@ -588,8 +580,7 @@ async fn gemini_build_tools_from_registry_definitions_omits_const_keywords() {
     fn schema_contains_key(schema: &serde_json::Value, key: &str) -> bool {
         match schema {
             serde_json::Value::Object(map) => {
-                map.contains_key(key)
-                    || map.values().any(|value| schema_contains_key(value, key))
+                map.contains_key(key) || map.values().any(|value| schema_contains_key(value, key))
             }
             serde_json::Value::Array(items) => {
                 items.iter().any(|value| schema_contains_key(value, key))

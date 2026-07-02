@@ -230,35 +230,34 @@ impl App {
         }
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
             let path = jcode_dir.join(format!("client-input-{}", session_id));
-            let rate_limit_reset_in_ms = if resume_prompt.is_some() || inflight_continuation.is_some()
-            {
-                None
-            } else {
-                self.rate_limit_reset.map(|reset| {
-                    let now = Instant::now();
-                    if reset <= now {
-                        0
-                    } else {
-                        (reset - now).as_millis().min(u64::MAX as u128) as u64
-                    }
-                })
-            };
-            let rate_limit_pending_message = if resume_prompt.is_some()
-                || inflight_continuation.is_some()
-            {
-                None
-            } else {
-                self.rate_limit_pending_message.as_ref().map(|pending| {
-                    serde_json::json!({
-                        "content": pending.content,
-                        "images": pending.images,
-                        "is_system": pending.is_system,
-                        "system_reminder": pending.system_reminder,
-                        "auto_retry": pending.auto_retry,
-                        "retry_attempts": pending.retry_attempts,
+            let rate_limit_reset_in_ms =
+                if resume_prompt.is_some() || inflight_continuation.is_some() {
+                    None
+                } else {
+                    self.rate_limit_reset.map(|reset| {
+                        let now = Instant::now();
+                        if reset <= now {
+                            0
+                        } else {
+                            (reset - now).as_millis().min(u64::MAX as u128) as u64
+                        }
                     })
-                })
-            };
+                };
+            let rate_limit_pending_message =
+                if resume_prompt.is_some() || inflight_continuation.is_some() {
+                    None
+                } else {
+                    self.rate_limit_pending_message.as_ref().map(|pending| {
+                        serde_json::json!({
+                            "content": pending.content,
+                            "images": pending.images,
+                            "is_system": pending.is_system,
+                            "system_reminder": pending.system_reminder,
+                            "auto_retry": pending.auto_retry,
+                            "retry_attempts": pending.retry_attempts,
+                        })
+                    })
+                };
             let mut queued_messages = self.queued_messages.clone();
             let mut hidden_queued_system_messages = self.hidden_queued_system_messages.clone();
             if let Some(pending) = inflight_continuation {

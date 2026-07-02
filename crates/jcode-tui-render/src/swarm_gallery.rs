@@ -643,10 +643,7 @@ fn render_hovered_detail(
             format!("{} {}", status_glyph(&m.status, spinner_frame), m.label),
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            format!(" · {}", m.status),
-            Style::default().fg(dim),
-        ),
+        Span::styled(format!(" · {}", m.status), Style::default().fg(dim)),
     ];
     if let Some(age) = age {
         header.push(Span::styled(format!(" · {age}"), Style::default().fg(dim)));

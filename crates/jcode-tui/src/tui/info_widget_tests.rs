@@ -1157,7 +1157,10 @@ fn swarm_widget_handles_empty_swarm_and_zero_area_without_panic() {
     assert_eq!(lines.len(), 1, "expected only the stats line");
     // session_count == 0 and client_count == None: stats line is just the bee icon.
     let text = lines_text(&lines);
-    assert!(!text.contains("0s"), "zero sessions must not render: {text}");
+    assert!(
+        !text.contains("0s"),
+        "zero sessions must not render: {text}"
+    );
 
     // Zero-size rect must not panic or underflow.
     let _ = super::render_swarm_widget(&data, Rect::new(0, 0, 0, 0));

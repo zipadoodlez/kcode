@@ -1015,9 +1015,7 @@ pub fn cursor_cwd_from_transcript_path(path: &Path) -> Option<String> {
         .components()
         .map(|c| c.as_os_str().to_string_lossy().to_string())
         .collect();
-    let idx = components
-        .iter()
-        .position(|c| c == "agent-transcripts")?;
+    let idx = components.iter().position(|c| c == "agent-transcripts")?;
     if idx == 0 {
         return None;
     }
@@ -1051,7 +1049,11 @@ pub fn load_cursor_external_session(
         let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
             continue;
         };
-        let role = match value.get("role").and_then(|v| v.as_str()).unwrap_or_default() {
+        let role = match value
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+        {
             "user" | "human" => "user",
             "assistant" | "model" => "assistant",
             _ => continue,
@@ -1281,7 +1283,10 @@ mod tests {
         // rest with literal hyphens. With no real dirs it returns the all-slash
         // best-effort decode of the first segment plus a hyphen-joined tail.
         let decoded = cursor_cwd_from_project_dir("tmp-cursor-demo").unwrap();
-        assert!(decoded.starts_with('/'), "decoded path must be absolute: {decoded}");
+        assert!(
+            decoded.starts_with('/'),
+            "decoded path must be absolute: {decoded}"
+        );
         assert!(decoded.contains("tmp"));
         assert_eq!(cursor_cwd_from_project_dir("projects"), None);
         assert_eq!(cursor_cwd_from_project_dir("empty-window"), None);
@@ -1289,9 +1294,8 @@ mod tests {
 
     #[test]
     fn cursor_cwd_from_transcript_path_walks_to_project_dir() {
-        let path = Path::new(
-            "/home/u/.cursor/projects/Users-alex-Repo/agent-transcripts/abc/abc.jsonl",
-        );
+        let path =
+            Path::new("/home/u/.cursor/projects/Users-alex-Repo/agent-transcripts/abc/abc.jsonl");
         let cwd = cursor_cwd_from_transcript_path(path).unwrap();
         assert!(cwd.starts_with('/'));
         assert!(cwd.contains("Users"));
@@ -1303,9 +1307,8 @@ mod tests {
             "/home/u/.cursor/projects/demo/agent-transcripts/parent/subagents/child.jsonl",
         );
         assert!(is_cursor_subagent_transcript(subagent));
-        let top_level = Path::new(
-            "/home/u/.cursor/projects/demo/agent-transcripts/parent/parent.jsonl",
-        );
+        let top_level =
+            Path::new("/home/u/.cursor/projects/demo/agent-transcripts/parent/parent.jsonl");
         assert!(!is_cursor_subagent_transcript(top_level));
     }
 
@@ -1332,7 +1335,9 @@ mod tests {
         .unwrap();
         drop(file);
         assert!(
-            load_cursor_external_session(&path, false).unwrap().is_none(),
+            load_cursor_external_session(&path, false)
+                .unwrap()
+                .is_none(),
             "subagent transcripts should be skipped"
         );
         let _ = std::fs::remove_dir_all(&dir);
