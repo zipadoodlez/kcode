@@ -25,6 +25,28 @@ type TodosCache = std::collections::HashMap<String, (std::time::Instant, Vec<Tod
 static TODOS_CACHE: std::sync::LazyLock<Mutex<TodosCache>> =
     std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
+/// Backdate `Instant::now()` by up to `amount`, saturating instead of
+/// panicking when the clock's epoch is too recent.
+///
+/// `Instant` counts from boot on Windows (QPC) and Linux (CLOCK_MONOTONIC), so
+/// `Instant::now() - one_hour` panics with "overflow when subtracting duration
+/// from instant" when the machine booted more recently than that. This hit
+/// real users right after a reboot: the git cache invalidation below runs
+/// after every bash/edit tool, crashing the whole TUI (issue #424).
+pub(crate) fn backdated_now(amount: Duration) -> std::time::Instant {
+    let now = std::time::Instant::now();
+    let mut backdate = amount;
+    loop {
+        if let Some(instant) = now.checked_sub(backdate) {
+            return instant;
+        }
+        if backdate < Duration::from_millis(1) {
+            return now;
+        }
+        backdate /= 2;
+    }
+}
+
 /// Force the git-status widget cache to refetch on its next read.
 ///
 /// Call this right after the app changes the working tree or HEAD (commits,
@@ -38,7 +60,7 @@ pub(crate) fn invalidate_git_info_cache() {
         // Backdate the timestamp past the TTL so the next `gather_git_info`
         // treats the entry as expired and spawns a refresh, while still
         // returning the last-known value (no flicker to empty).
-        *ts = std::time::Instant::now() - Duration::from_secs(3600);
+        *ts = backdated_now(Duration::from_secs(3600));
         *refreshing = false;
     }
 }
@@ -51,7 +73,7 @@ pub(crate) fn invalidate_todos_cache(session_id: &str) {
     if let Ok(mut cache) = TODOS_CACHE.lock()
         && let Some((ts, _todos, refreshing)) = cache.get_mut(session_id)
     {
-        *ts = std::time::Instant::now() - Duration::from_secs(3600);
+        *ts = backdated_now(Duration::from_secs(3600));
         *refreshing = false;
     }
 }
@@ -65,7 +87,7 @@ pub(crate) fn invalidate_ambient_info_cache() {
     if let Ok(mut guard) = AMBIENT_INFO_CACHE.lock()
         && let Some((ts, _enabled, _cached, refreshing)) = guard.as_mut()
     {
-        *ts = std::time::Instant::now() - Duration::from_secs(3600);
+        *ts = backdated_now(Duration::from_secs(3600));
         *refreshing = false;
     }
 }
@@ -1083,7 +1105,7 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
             return stale;
         }
 
-        *guard = Some((Instant::now() - TTL - Duration::from_secs(1), None, true));
+        *guard = Some((backdated_now(TTL + Duration::from_secs(1)), None, true));
         std::thread::spawn(|| {
             let result = gather_git_info_inner();
             if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
@@ -1127,7 +1149,7 @@ pub(super) fn gather_todos_for_session(session_id: Option<&str>) -> Vec<TodoItem
         cache.insert(
             session_id.clone(),
             (
-                Instant::now() - TTL - Duration::from_secs(1),
+                backdated_now(TTL + Duration::from_secs(1)),
                 Vec::new(),
                 true,
             ),
@@ -1197,7 +1219,7 @@ pub(super) fn gather_memory_info(memory_enabled: bool) -> Option<MemoryInfo> {
             return stale;
         }
 
-        *guard = Some((Instant::now() - TTL - Duration::from_secs(1), None, true));
+        *guard = Some((backdated_now(TTL + Duration::from_secs(1)), None, true));
         std::thread::spawn(|| {
             let result = gather_memory_info_inner();
             if let Ok(mut guard) = CACHE.lock() {
@@ -1322,7 +1344,7 @@ pub(super) fn gather_ambient_info(ambient_enabled: bool) -> Option<AmbientWidget
         }
 
         *guard = Some((
-            Instant::now() - TTL - Duration::from_secs(1),
+            backdated_now(TTL + Duration::from_secs(1)),
             ambient_enabled,
             None,
             true,

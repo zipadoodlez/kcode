@@ -433,3 +433,28 @@ fn fresh_session_command_omits_blank_socket() {
     let command = super::build_fresh_session_command(None);
     assert_eq!(command.args, vec!["--fresh-spawn".to_string()]);
 }
+
+/// Regression for issue #424: `Instant::now() - Duration` panics with
+/// "overflow when subtracting duration from instant" when the monotonic clock
+/// epoch (boot time) is more recent than the backdate amount. `backdated_now`
+/// must saturate instead of panicking, and still return a value in the past
+/// when possible so TTL checks treat the entry as expired.
+#[test]
+fn backdated_now_never_panics_and_prefers_past_instants() {
+    use std::time::{Duration, Instant};
+
+    let now = Instant::now();
+
+    // Typical case: small backdate should land in the past.
+    let recent = super::backdated_now(Duration::from_millis(10));
+    assert!(recent <= now, "backdated instant must not be in the future");
+
+    // Huge backdate (longer than any plausible uptime) must not panic and
+    // must still return something no later than now.
+    let ancient = super::backdated_now(Duration::from_secs(60 * 60 * 24 * 365 * 100));
+    assert!(ancient <= now, "saturated backdate must not be in the future");
+
+    // Zero backdate is a no-op.
+    let zero = super::backdated_now(Duration::ZERO);
+    assert!(zero <= Instant::now());
+}
