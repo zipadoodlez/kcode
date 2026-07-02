@@ -18,6 +18,24 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 
+/// Reject plans whose dependency graph contains a cycle. Cyclic items can never
+/// become runnable (`summarize_plan_graph` parks them in `blocked_ids` forever),
+/// so letting one into a live plan silently wedges all dependent work. This
+/// mirrors the acyclicity validation `jcode_plan::dag::seed`/`expand` already
+/// enforce on the task-graph paths. Returns a user-facing error naming the
+/// cyclic item ids, or `None` when the graph is a valid DAG.
+fn plan_cycle_error(items: &[PlanItem]) -> Option<String> {
+    let cycle_ids = crate::plan::cycle_item_ids(items);
+    if cycle_ids.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Plan rejected: dependency cycle among item(s): {}. Fix the blocked_by \
+         edges so the plan forms a DAG, then propose again.",
+        cycle_ids.join(", ")
+    ))
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "plan proposal updates sessions, swarm coordination, shared context, interrupts, and event history"
@@ -81,6 +99,20 @@ pub(super) async fn handle_comm_propose_plan(
     };
 
     if coordinator_id == req_session_id {
+        // Close the last entry path for dependency cycles into live plans: the
+        // dag seed/expand ops validate acyclicity, but this direct-update path
+        // used to write `plan.items` verbatim. A cyclic task can never become
+        // runnable (it lands in blocked_ids forever), silently wedging all
+        // dependent work, so reject for light plans too, matching `dag::seed`
+        // which rejects cycles in both modes.
+        if let Some(message) = plan_cycle_error(&items) {
+            let _ = client_event_tx.send(ServerEvent::Error {
+                id,
+                message,
+                retry_after_secs: None,
+            });
+            return;
+        }
         let (version, participant_ids) = {
             let mut plans = swarm_plans.write().await;
             let plan = plans
@@ -161,6 +193,20 @@ pub(super) async fn handle_comm_propose_plan(
         .await;
 
         let _ = client_event_tx.send(ServerEvent::Done { id });
+        return;
+    }
+
+    // Non-coordinator proposal path. A cycle among the proposed items alone is
+    // a cycle in any merged graph, so reject it here for immediate proposer
+    // feedback instead of storing a proposal that can only bounce at approval.
+    // (Cycles that only form against the *existing* plan are caught at
+    // approve-time, where the merge is authoritative.)
+    if let Some(message) = plan_cycle_error(&items) {
+        let _ = client_event_tx.send(ServerEvent::Error {
+            id,
+            message,
+            retry_after_secs: None,
+        });
         return;
     }
 
@@ -340,6 +386,32 @@ pub(super) async fn handle_comm_approve_plan(
     };
 
     if let Ok(items) = serde_json::from_str::<Vec<PlanItem>>(&proposal) {
+        // Validate the merged graph (existing plan + proposed items) for
+        // dependency cycles before committing. A cycle here permanently wedges
+        // every task that depends on it, so reject the approval and keep the
+        // proposal pending for the proposer to fix and re-propose.
+        let merged_cycle_error = {
+            let plans = swarm_plans.read().await;
+            let mut merged: Vec<PlanItem> = plans
+                .get(&swarm_id)
+                .map(|plan| plan.items.clone())
+                .unwrap_or_default();
+            merged.extend(items.iter().cloned());
+            plan_cycle_error(&merged)
+        };
+        if let Some(message) = merged_cycle_error {
+            finish_request(
+                swarm_mutation_runtime,
+                &mutation_state,
+                PersistedSwarmMutationResponse::Error {
+                    message,
+                    retry_after_secs: None,
+                },
+            )
+            .await;
+            return;
+        }
+
         let participant_ids = {
             let mut plans = swarm_plans.write().await;
             let plan = plans
@@ -580,6 +652,10 @@ pub(super) async fn handle_comm_reject_plan(
     )
     .await;
 }
+
+#[cfg(test)]
+#[path = "comm_plan_tests.rs"]
+mod tests;
 
 async fn require_coordinator_swarm(
     id: u64,
