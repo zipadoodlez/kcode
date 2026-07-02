@@ -572,7 +572,10 @@ pub fn debug_copy_selection_text_for_bench(range: CopySelectionRange) -> Option<
 pub(crate) fn connection_type_icon(connection_type: Option<&str>) -> Option<&'static str> {
     let normalized = connection_type?.trim().to_ascii_lowercase();
     if normalized.contains("websocket") || normalized == "ws" || normalized == "wss" {
-        Some("🕸️")
+        // 🔌 is a single emoji-default codepoint. The previous 🕸️ (U+1F578 +
+        // VS16) is text-default and rendered as a monochrome outline/tofu in
+        // macOS window titles (Ghostty/Terminal ignore the VS16 selector there).
+        Some("🔌")
     } else if normalized.contains("http") {
         Some("🌐")
     } else {
@@ -1887,13 +1890,31 @@ mod tests {
 
     #[test]
     fn connection_type_icon_uses_protocol_specific_icons() {
-        assert_eq!(connection_type_icon(Some("websocket")), Some("🕸️"));
-        assert_eq!(connection_type_icon(Some("wss")), Some("🕸️"));
+        assert_eq!(connection_type_icon(Some("websocket")), Some("🔌"));
+        assert_eq!(connection_type_icon(Some("wss")), Some("🔌"));
         assert_eq!(connection_type_icon(Some("https")), Some("🌐"));
         assert_eq!(connection_type_icon(Some("https/sse")), Some("🌐"));
         assert_eq!(connection_type_icon(Some("http")), Some("🌐"));
         assert_eq!(connection_type_icon(Some("unknown")), None);
         assert_eq!(connection_type_icon(None), None);
+    }
+
+    #[test]
+    fn connection_type_icons_avoid_vs16_sequences() {
+        // macOS window/tab title fonts ignore the VS16 emoji-presentation
+        // selector, so title icons must be single emoji-default codepoints.
+        for connection in ["websocket", "wss", "https", "https/sse", "http"] {
+            let icon = connection_type_icon(Some(connection)).unwrap();
+            assert_eq!(
+                icon.chars().count(),
+                1,
+                "connection icon for '{connection}' must be a single codepoint, got {icon:?}"
+            );
+            assert!(
+                !icon.contains('\u{FE0F}'),
+                "connection icon for '{connection}' must not need VS16, got {icon:?}"
+            );
+        }
     }
 
     #[test]

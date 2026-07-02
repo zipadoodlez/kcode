@@ -594,7 +594,7 @@ pub(super) fn build_persistent_header(app: &dyn TuiState, width: u16) -> Vec<Lin
     let server_name = app.server_display_name();
     // The client line is identified by its session name, so show that name's
     // icon (e.g. "ram" -> 🐏). Previously a remote http/ws connection icon
-    // (🌐/🕸️) replaced it entirely, which hid the name icon for every remote
+    // (🌐/🔌) replaced it entirely, which hid the name icon for every remote
     // client. Keep the connection icon as a separate trailing hint instead.
     let icon = crate::id::session_icon(&session_name);
     let connection_icon = connection_type_icon(app.connection_type().as_deref());
@@ -1242,7 +1242,7 @@ mod tests {
             "client line should show the name icon: {client_line}"
         );
         assert!(
-            !client_line.contains('🌐') && !client_line.contains('🕸'),
+            !client_line.contains('🌐') && !client_line.contains('🔌'),
             "client line should not carry a connection hint when unknown: {client_line}"
         );
     }
