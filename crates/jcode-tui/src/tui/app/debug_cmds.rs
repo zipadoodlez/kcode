@@ -273,11 +273,14 @@ impl App {
                 None => return "image-click-target error: expected <col>,<row>".to_string(),
             };
             let image_id = crate::tui::ui::inline_image_expand_target_from_screen(col, row);
+            let body_id =
+                crate::tui::ui::inline_image_body_target_from_screen(col, row, self.centered);
             let link = crate::tui::ui::link_target_from_screen(col, row);
             serde_json::json!({
                 "col": col,
                 "row": row,
                 "image_expand_target": image_id,
+                "image_body_target": body_id,
                 "link_target": link,
             })
             .to_string()

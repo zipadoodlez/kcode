@@ -177,11 +177,16 @@ impl App {
         self.last_visible_diagram_hash = self.current_visible_diagram_hash();
     }
 
-    /// If a left-click landed on an inline image's `expand` badge, cycle that
-    /// image's size and return `true`. Returns `false` (so the click can fall
-    /// through to link/selection handling) when no badge was hit.
+    /// If a left-click landed on an inline image's `expand` badge or on the
+    /// rendered image itself, cycle that image's size and return `true`.
+    /// Returns `false` (so the click can fall through to link/selection
+    /// handling) when neither was hit.
     pub(super) fn try_cycle_image_expand_at(&mut self, column: u16, row: u16) -> bool {
+        let centered = self.centered;
         let Some(image_id) = super::super::ui::inline_image_expand_target_from_screen(column, row)
+            .or_else(|| {
+                super::super::ui::inline_image_body_target_from_screen(column, row, centered)
+            })
         else {
             return false;
         };

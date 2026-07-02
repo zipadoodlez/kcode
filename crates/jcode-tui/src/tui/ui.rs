@@ -2289,6 +2289,49 @@ pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> O
     }
 }
 
+/// If a screen click landed on the rendered body of an inline image (its
+/// placeholder rows), return the image id so the caller can cycle that image's
+/// size. This makes the whole picture clickable, not just the label badge.
+/// The hit-region is bounded by the image's rendered width (`region.width`,
+/// which includes the 2-cell left border), shifted right when `centered` mode
+/// horizontally centers the drawn pixels, so clicks in empty space beside a
+/// narrow image stay inert.
+pub(crate) fn inline_image_body_target_from_screen(
+    column: u16,
+    row: u16,
+    centered: bool,
+) -> Option<u64> {
+    let point = copy_point_from_screen(column, row)?;
+    let snapshot = copy_snapshot_for_pane(point.pane)?;
+    let prepared = match &snapshot.data {
+        CopyViewportData::ChatFrame { prepared } => prepared,
+        CopyViewportData::Dense { .. } => return None,
+    };
+    let region = prepared.image_regions.iter().find(|region| {
+        region.render == jcode_tui_messages::ImageRegionRender::Fit
+            && point.abs_line >= region.abs_line_idx
+            && point.abs_line < region.end_line
+    })?;
+    let area = snapshot.content_area;
+    let rel_col = column.saturating_sub(area.x);
+    // `width == 0` means unknown; treat the rows as fully occupied then.
+    let width = if region.width == 0 {
+        area.width
+    } else {
+        region.width.min(area.width)
+    };
+    // Centered mode draws the border at the left edge but centers the image
+    // pixels; accept the full band from the border through the image's right
+    // edge so both the border and the picture are clickable.
+    let right_edge = if centered {
+        let offset = area.width.saturating_sub(width) / 2;
+        offset.saturating_add(width)
+    } else {
+        width
+    };
+    (rel_col < right_edge).then_some(region.hash)
+}
+
 /// Debug dump of the live chat snapshot's inline-image regions plus the screen
 /// coordinates of each visible expand badge, so external drivers (debug
 /// socket) can compute real click targets against the running TUI.
