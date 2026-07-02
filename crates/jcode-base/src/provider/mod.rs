@@ -355,6 +355,10 @@ struct RoutesMemoEntry {
     auth_generation: u64,
     catalog_generation: u64,
     routes: Vec<ModelRoute>,
+    /// `listable_model_names_from_routes(&routes)`, cached because the
+    /// non-chat-model heuristic string-scans every route name and callers
+    /// (catalog snapshots) ask for names and routes together.
+    listable_models: Vec<String>,
 }
 
 /// Process-wide route-catalog memo shared across `MultiProvider` instances.
@@ -369,6 +373,14 @@ struct RoutesMemoEntry {
 /// the auth/catalog generations.
 static GLOBAL_ROUTES_MEMO: LazyLock<Mutex<HashMap<String, RoutesMemoEntry>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Single-flight guard for catalog builds. During a client connect burst every
+/// connection calls `model_routes()` at nearly the same instant; without this
+/// they all miss the still-empty memo and build the same catalog in parallel
+/// (a thundering herd that pegs every core). Holding this lock across the
+/// build makes followers block (sleep, not spin) until the leader publishes
+/// its result, which they then serve from the shared memo.
+static GLOBAL_ROUTES_BUILD_LOCK: Mutex<()> = Mutex::new(());
 
 /// Bumped whenever provider catalogs change out-of-band (prefetch completion,
 /// forced catalog refresh, auth changes). Invalidates every shared memo entry.
@@ -449,6 +461,82 @@ impl MultiProvider {
             configured,
             compat_profiles.join(","),
         )
+    }
+
+    /// Return a fresh memoized catalog entry (routes + listable model names),
+    /// building it at most once per TTL window per catalog-relevant state.
+    ///
+    /// Freshness is keyed on a short TTL plus the auth and catalog
+    /// generations. Lookup order: this instance's memo, the process-wide
+    /// shared memo (so shared-server forks reuse one build), then a
+    /// single-flight build that followers wait on instead of duplicating.
+    fn fresh_routes_memo_entry(&self) -> RoutesMemoEntry {
+        const ROUTES_MEMO_TTL: std::time::Duration = std::time::Duration::from_secs(3);
+
+        let auth_generation = pricing::auth_pricing_generation();
+        let catalog_gen = catalog_generation();
+        let fresh = |entry: &RoutesMemoEntry| {
+            entry.auth_generation == auth_generation
+                && entry.catalog_generation == catalog_gen
+                && entry.built_at.elapsed() < ROUTES_MEMO_TTL
+        };
+
+        // Fast path: this instance already built (or copied) a fresh catalog.
+        if let Ok(memo) = self.routes_memo.lock()
+            && let Some(entry) = memo.as_ref()
+            && fresh(entry)
+        {
+            return entry.clone();
+        }
+
+        // Shared path: another instance with the same catalog-relevant state
+        // (typically a fresh fork on the shared server) built one already.
+        let shared_key = self.routes_memo_key();
+        let try_shared = || -> Option<RoutesMemoEntry> {
+            let shared = GLOBAL_ROUTES_MEMO.lock().ok()?;
+            let entry = shared.get(&shared_key)?;
+            if !fresh(entry) {
+                return None;
+            }
+            let entry = entry.clone();
+            if let Ok(mut memo) = self.routes_memo.lock() {
+                *memo = Some(entry.clone());
+            }
+            Some(entry)
+        };
+        if let Some(entry) = try_shared() {
+            return entry;
+        }
+
+        // Single-flight: serialize builds so a connect burst produces one
+        // build and N-1 memo hits instead of N parallel builds.
+        let _build_guard = GLOBAL_ROUTES_BUILD_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Re-check after acquiring the lock: the leader that held it may have
+        // just published exactly the entry this instance needs.
+        if let Some(entry) = try_shared() {
+            return entry;
+        }
+
+        let routes = catalog_routes::multiprovider_model_routes(self);
+        let entry = RoutesMemoEntry {
+            built_at: std::time::Instant::now(),
+            auth_generation,
+            catalog_generation: catalog_gen,
+            listable_models: listable_model_names_from_routes(&routes),
+            routes,
+        };
+        if let Ok(mut memo) = self.routes_memo.lock() {
+            *memo = Some(entry.clone());
+        }
+        if let Ok(mut shared) = GLOBAL_ROUTES_MEMO.lock() {
+            // Tiny keyspace (active provider + model + profile); prune stale
+            // entries opportunistically so it cannot grow unbounded.
+            shared.retain(|_, existing| fresh(existing));
+            shared.insert(shared_key, entry.clone());
+        }
+        entry
     }
 
     #[cfg(test)]
@@ -1692,7 +1780,7 @@ impl Provider for MultiProvider {
     }
 
     fn available_models_display(&self) -> Vec<String> {
-        listable_model_names_from_routes(&self.model_routes())
+        self.fresh_routes_memo_entry().listable_models
     }
 
     fn available_providers_for_model(&self, model: &str) -> Vec<String> {
@@ -1729,55 +1817,7 @@ impl Provider for MultiProvider {
     }
 
     fn model_routes(&self) -> Vec<ModelRoute> {
-        const ROUTES_MEMO_TTL: std::time::Duration = std::time::Duration::from_secs(3);
-
-        let auth_generation = pricing::auth_pricing_generation();
-        let catalog_gen = catalog_generation();
-        let fresh = |entry: &RoutesMemoEntry| {
-            entry.auth_generation == auth_generation
-                && entry.catalog_generation == catalog_gen
-                && entry.built_at.elapsed() < ROUTES_MEMO_TTL
-        };
-
-        // Fast path: this instance already built (or copied) a fresh catalog.
-        if let Ok(memo) = self.routes_memo.lock()
-            && let Some(entry) = memo.as_ref()
-            && fresh(entry)
-        {
-            return entry.routes.clone();
-        }
-
-        // Shared path: another instance with the same catalog-relevant state
-        // (typically a fresh fork on the shared server) built one already.
-        let shared_key = self.routes_memo_key();
-        if let Ok(shared) = GLOBAL_ROUTES_MEMO.lock()
-            && let Some(entry) = shared.get(&shared_key)
-            && fresh(entry)
-        {
-            let routes = entry.routes.clone();
-            if let Ok(mut memo) = self.routes_memo.lock() {
-                *memo = Some(entry.clone());
-            }
-            return routes;
-        }
-
-        let routes = catalog_routes::multiprovider_model_routes(self);
-        let entry = RoutesMemoEntry {
-            built_at: std::time::Instant::now(),
-            auth_generation,
-            catalog_generation: catalog_gen,
-            routes: routes.clone(),
-        };
-        if let Ok(mut memo) = self.routes_memo.lock() {
-            *memo = Some(entry.clone());
-        }
-        if let Ok(mut shared) = GLOBAL_ROUTES_MEMO.lock() {
-            // Tiny keyspace (active provider + model + profile); prune stale
-            // entries opportunistically so it cannot grow unbounded.
-            shared.retain(|_, existing| fresh(existing));
-            shared.insert(shared_key, entry);
-        }
-        routes
+        self.fresh_routes_memo_entry().routes
     }
 
     async fn prefetch_models(&self) -> Result<()> {
