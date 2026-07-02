@@ -579,3 +579,34 @@ async fn unknown_tool_error_lists_available_tools_and_suggestions() {
         "available list should include registered ambient tools: {msg}"
     );
 }
+
+#[tokio::test]
+async fn gemini_build_tools_from_registry_definitions_omits_const_keywords() {
+    // Moved from jcode-base/src/provider/gemini_tests.rs: this is the one test
+    // that needs the upper-layer tool::Registry, so it lives here instead of
+    // forcing a base -> app-core dev-dependency cycle.
+    fn schema_contains_key(schema: &serde_json::Value, key: &str) -> bool {
+        match schema {
+            serde_json::Value::Object(map) => {
+                map.contains_key(key)
+                    || map.values().any(|value| schema_contains_key(value, key))
+            }
+            serde_json::Value::Array(items) => {
+                items.iter().any(|value| schema_contains_key(value, key))
+            }
+            _ => false,
+        }
+    }
+
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider).await;
+    let defs = registry.definitions(None).await;
+
+    let built = crate::provider::gemini::build_tools(&defs).expect("gemini tools");
+    let parameters = &built[0].function_declarations;
+
+    assert!(!schema_contains_key(
+        &serde_json::json!(parameters),
+        "const"
+    ));
+}

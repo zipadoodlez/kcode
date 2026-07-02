@@ -154,7 +154,3 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_
 global-hotkey = "0.7"
 
 [dev-dependencies]
-# Cross-layer test (provider/gemini_tests.rs builds a tool::Registry, which lives
-# in the upper jcode-app-core layer). Dev-dependency cycles are permitted by
-# Cargo and do not affect the library build.
-jcode-app-core = { path = "../jcode-app-core", default-features = false }

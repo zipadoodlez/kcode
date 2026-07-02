@@ -3549,7 +3549,6 @@ dependencies = [
  "ignore",
  "image",
  "jcode-agent-runtime",
- "jcode-app-core",
  "jcode-auth-types",
  "jcode-azure-auth",
  "jcode-background-types",
