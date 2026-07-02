@@ -114,9 +114,12 @@ pub(super) async fn handle_lightweight_control_request(
     let event_handle = tokio::spawn(async move {
         while let Some(event) = client_event_rx.recv().await {
             if let Err(error) = write_direct_event(&writer_clone, &event).await {
+                // Routine on client reload/disconnect; avoid dumping the full
+                // event (an await response can embed whole completion reports).
+                let event_desc = crate::logging::truncate_for_log(&format!("{:?}", event), 200);
                 crate::logging::warn(&format!(
-                    "lightweight control writer failed while sending {:?}: {}",
-                    event, error
+                    "lightweight control writer failed while sending {}: {}",
+                    event_desc, error
                 ));
                 break;
             }

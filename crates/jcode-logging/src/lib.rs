@@ -276,6 +276,18 @@ pub fn warn(message: &str) {
     }
 }
 
+/// Truncate a value for inclusion in a log line, appending an ellipsis marker
+/// with the original length when cut. Char-boundary safe. Use this for
+/// payload-bearing values (event debug dumps, request bodies) so a routine
+/// warning cannot flood the log with a multi-kilobyte line.
+pub fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let truncated: String = value.chars().take(max_chars).collect();
+    format!("{}… [{} chars total]", truncated, value.chars().count())
+}
+
 /// Log a debug message (only if JCODE_TRACE is set)
 #[expect(
     clippy::collapsible_if,

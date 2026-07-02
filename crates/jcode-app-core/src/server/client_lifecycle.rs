@@ -540,9 +540,13 @@ pub(super) async fn handle_client(
             let json = encode_event(&event);
             let mut w = writer_clone.lock().await;
             if let Err(error) = w.write_all(json.as_bytes()).await {
+                // A broken pipe here is routine (client reload/disconnect mid
+                // broadcast), so keep the line short: a full Debug dump of e.g.
+                // a SwarmStatus event prints every member and floods the log.
+                let event_desc = crate::logging::truncate_for_log(&format!("{:?}", event), 200);
                 crate::logging::warn(&format!(
-                    "event_forwarder write failed for connection {} while sending {:?}: {}",
-                    client_connection_id_for_events, event, error
+                    "event_forwarder write failed for connection {} while sending {}: {}",
+                    client_connection_id_for_events, event_desc, error
                 ));
                 break;
             }
