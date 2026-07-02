@@ -219,6 +219,29 @@ fn bench_real_session_search_corpus() {
             report.truncated
         );
     }
+
+    // Repeat with external sources included; on real machines the external
+    // stores (codex/claude/etc.) are the dominant IO cost.
+    options.include_external = true;
+    for query in ["session_search", "nonexistentneedle123"] {
+        let start = Instant::now();
+        let report = search_sessions_blocking(
+            &sessions_dir,
+            &QueryProfile::new(query),
+            &options,
+            "benchmark-log-session",
+        )
+        .expect("search succeeds");
+        eprintln!(
+            "BENCH_EXTERNAL query={query} elapsed_ms={} scanned_jcode={} scanned_external={} sources={:?} results={} truncated={}",
+            start.elapsed().as_millis(),
+            report.scanned_jcode_sessions,
+            report.scanned_external_sessions,
+            report.external_sources,
+            report.results.len(),
+            report.truncated
+        );
+    }
 }
 
 #[test]

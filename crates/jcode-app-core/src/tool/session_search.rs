@@ -1052,46 +1052,8 @@ fn search_external_sessions(query: &QueryProfile, options: &SearchOptions) -> Se
             crate::import::list_claude_code_sessions_lazy(options.max_scan_sessions)
     {
         report.external_sources.push("claude");
-        for session in sessions.into_iter().take(options.max_scan_sessions) {
-            let path = PathBuf::from(&session.full_path);
-            if !external_path_or_raw_matches_query(&path, query)
-                && !external_text_matches_query(&session.session_id, query)
-                && !external_text_matches_query(&session.first_prompt, query)
-                && !session
-                    .summary
-                    .as_deref()
-                    .is_some_and(|summary| external_text_matches_query(summary, query))
-                && !session
-                    .project_path
-                    .as_deref()
-                    .is_some_and(|project| external_text_matches_query(project, query))
-            {
-                continue;
-            }
-            let messages = load_claude_external_messages(&path, options.include_tools);
-            let created_at = session.created.unwrap_or_else(Utc::now);
-            let updated_at = session.modified.or(session.created).unwrap_or(created_at);
-            let title = session
-                .summary
-                .filter(|summary| !summary.trim().is_empty())
-                .unwrap_or_else(|| truncate_title_text(&session.first_prompt, 72));
-            records.push(ExternalSessionRecord {
-                source: "claude",
-                session_id: session.session_id.clone(),
-                short_name: Some(format!(
-                    "claude {}",
-                    jcode_core::util::truncate_str(&session.session_id, 8)
-                )),
-                title: Some(title),
-                working_dir: session.project_path,
-                provider_key: Some("claude-code".to_string()),
-                model: None,
-                created_at,
-                updated_at,
-                path,
-                messages,
-            });
-        }
+        let sessions: Vec<_> = sessions.into_iter().take(options.max_scan_sessions).collect();
+        records.extend(load_claude_candidates_parallel(&sessions, query, options));
     }
 
     collect_external_jsonl_source(
@@ -1156,16 +1118,143 @@ fn collect_external_jsonl_source(
         return;
     }
     report.external_sources.push(source);
-    for path in collect_recent_files_recursive(&root, "jsonl", options.max_scan_sessions) {
-        if !external_path_or_raw_matches_query(&path, query) {
-            continue;
-        }
-        match loader(&path, options.include_tools) {
-            Ok(Some(record)) => records.push(record),
-            Ok(None) => {}
-            Err(_) => report.parse_errors += 1,
-        }
+    let paths = collect_recent_files_recursive(&root, "jsonl", options.max_scan_sessions);
+    let outcomes = load_external_candidates_parallel(&paths, query, options, loader);
+    for outcome in outcomes {
+        report.parse_errors += outcome.parse_errors;
+        records.extend(outcome.records);
     }
+}
+
+#[derive(Default)]
+struct ExternalLoadOutcome {
+    records: Vec<ExternalSessionRecord>,
+    parse_errors: usize,
+}
+
+/// Pre-filter and load external session files in parallel. External stores
+/// like `~/.codex/sessions` can hold gigabytes of JSONL, so scanning them on a
+/// single thread dominates search latency.
+fn load_external_candidates_parallel(
+    paths: &[PathBuf],
+    query: &QueryProfile,
+    options: &SearchOptions,
+    loader: fn(&Path, bool) -> ImportCoreResult<Option<ExternalSessionRecord>>,
+) -> Vec<ExternalLoadOutcome> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    let thread_count = SCAN_THREADS.min(paths.len());
+    let chunk_size = paths.len().div_ceil(thread_count);
+
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for chunk in paths.chunks(chunk_size) {
+            handles.push(scope.spawn(move || {
+                let mut outcome = ExternalLoadOutcome::default();
+                for path in chunk {
+                    if !external_path_or_raw_matches_query(path, query) {
+                        continue;
+                    }
+                    match loader(path, options.include_tools) {
+                        Ok(Some(record)) => outcome.records.push(record),
+                        Ok(None) => {}
+                        Err(_) => outcome.parse_errors += 1,
+                    }
+                }
+                outcome
+            }));
+        }
+        handles
+            .into_iter()
+            .map(|handle| match handle.join() {
+                Ok(outcome) => outcome,
+                Err(_) => {
+                    crate::logging::warn(
+                        "session_search external scan worker panicked; skipping that worker's sessions",
+                    );
+                    ExternalLoadOutcome::default()
+                }
+            })
+            .collect()
+    })
+}
+
+/// Pre-filter and load Claude Code session files in parallel, mirroring the
+/// JSONL source scan above.
+fn load_claude_candidates_parallel(
+    sessions: &[jcode_import_core::ClaudeCodeSessionInfo],
+    query: &QueryProfile,
+    options: &SearchOptions,
+) -> Vec<ExternalSessionRecord> {
+    if sessions.is_empty() {
+        return Vec::new();
+    }
+    let thread_count = SCAN_THREADS.min(sessions.len());
+    let chunk_size = sessions.len().div_ceil(thread_count);
+
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for chunk in sessions.chunks(chunk_size) {
+            handles.push(scope.spawn(move || {
+                let mut records = Vec::new();
+                for session in chunk {
+                    let path = PathBuf::from(&session.full_path);
+                    if !external_path_or_raw_matches_query(&path, query)
+                        && !external_text_matches_query(&session.session_id, query)
+                        && !external_text_matches_query(&session.first_prompt, query)
+                        && !session
+                            .summary
+                            .as_deref()
+                            .is_some_and(|summary| external_text_matches_query(summary, query))
+                        && !session
+                            .project_path
+                            .as_deref()
+                            .is_some_and(|project| external_text_matches_query(project, query))
+                    {
+                        continue;
+                    }
+                    let messages = load_claude_external_messages(&path, options.include_tools);
+                    let created_at = session.created.unwrap_or_else(Utc::now);
+                    let updated_at = session.modified.or(session.created).unwrap_or(created_at);
+                    let title = session
+                        .summary
+                        .clone()
+                        .filter(|summary| !summary.trim().is_empty())
+                        .unwrap_or_else(|| truncate_title_text(&session.first_prompt, 72));
+                    records.push(ExternalSessionRecord {
+                        source: "claude",
+                        session_id: session.session_id.clone(),
+                        short_name: Some(format!(
+                            "claude {}",
+                            jcode_core::util::truncate_str(&session.session_id, 8)
+                        )),
+                        title: Some(title),
+                        working_dir: session.project_path.clone(),
+                        provider_key: Some("claude-code".to_string()),
+                        model: None,
+                        created_at,
+                        updated_at,
+                        path,
+                        messages,
+                    });
+                }
+                records
+            }));
+        }
+        handles
+            .into_iter()
+            .flat_map(|handle| match handle.join() {
+                Ok(records) => records,
+                Err(_) => {
+                    crate::logging::warn(
+                        "session_search claude scan worker panicked; skipping that worker's sessions",
+                    );
+                    Vec::new()
+                }
+            })
+            .collect()
+    })
 }
 
 fn external_path_or_raw_matches_query(path: &Path, query: &QueryProfile) -> bool {

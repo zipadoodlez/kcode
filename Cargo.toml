@@ -456,6 +456,15 @@ opt-level = 3
 [profile.test.package.base64]
 opt-level = 3
 
+# session_search scans multi-megabyte session files with memchr-based
+# case-insensitive matching; keep the SIMD scanner optimized everywhere.
+[profile.dev.package.memchr]
+opt-level = 3
+[profile.selfdev.package.memchr]
+opt-level = 3
+[profile.test.package.memchr]
+opt-level = 3
+
 [profile.test]
 debug = 0
 incremental = true

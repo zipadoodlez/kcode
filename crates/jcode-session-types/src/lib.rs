@@ -502,27 +502,44 @@ pub fn minimum_session_search_term_matches(term_count: usize) -> usize {
 
 /// Fast case-insensitive byte search. Avoids allocating a lowercase copy of the
 /// entire file for the common ASCII-query case.
+///
+/// Uses memchr's SIMD-accelerated scan to find candidate positions for the
+/// first needle byte (both cases when it is an ASCII letter), then verifies the
+/// remainder case-insensitively. This is orders of magnitude faster than a
+/// naive byte-by-byte scan over multi-megabyte session files.
 pub fn contains_case_insensitive_bytes(haystack: &[u8], needle_lower: &[u8]) -> bool {
-    if needle_lower.is_empty() {
+    let Some((&first_lower, rest)) = needle_lower.split_first() else {
         return true;
-    }
+    };
     if haystack.len() < needle_lower.len() {
         return false;
     }
-    let end = haystack.len() - needle_lower.len();
-    'outer: for i in 0..=end {
-        for (j, &nb) in needle_lower.iter().enumerate() {
-            let hb = haystack[i + j];
-            let hb_lower = if hb.is_ascii_uppercase() {
-                hb | 0x20
-            } else {
-                hb
-            };
-            if hb_lower != nb {
-                continue 'outer;
-            }
+
+    let search_end = haystack.len() - needle_lower.len();
+    let first_upper = first_lower.to_ascii_uppercase();
+    let mut offset = 0;
+    while offset <= search_end {
+        let window = &haystack[offset..];
+        let found = if first_upper == first_lower {
+            memchr::memchr(first_lower, window)
+        } else {
+            memchr::memchr2(first_lower, first_upper, window)
+        };
+        let Some(pos) = found else {
+            return false;
+        };
+        let candidate = offset + pos;
+        if candidate > search_end {
+            return false;
         }
-        return true;
+        if haystack[candidate + 1..candidate + needle_lower.len()]
+            .iter()
+            .zip(rest)
+            .all(|(&hb, &nb)| hb.to_ascii_lowercase() == nb)
+        {
+            return true;
+        }
+        offset = candidate + 1;
     }
     false
 }
@@ -954,6 +971,49 @@ mod session_search_tests {
             "/TMP/PROJECT/NEEDLE.json",
             &query
         ));
+    }
+
+    #[test]
+    fn contains_case_insensitive_bytes_matches_naive_reference() {
+        fn naive(haystack: &[u8], needle_lower: &[u8]) -> bool {
+            if needle_lower.is_empty() {
+                return true;
+            }
+            haystack
+                .windows(needle_lower.len())
+                .any(|window| window.eq_ignore_ascii_case(needle_lower))
+        }
+
+        let haystacks: &[&[u8]] = &[
+            b"",
+            b"a",
+            b"A",
+            b"needle",
+            b"NEEDLE",
+            b"NeEdLe",
+            b"xxneedle",
+            b"needlexx",
+            b"xxNEEDLExx",
+            b"nee",
+            b"neenee needle",
+            b"nnnnnnnnnn",
+            b"9needle9",
+            b"\xff\xfeNEEDLE\xff",
+            b"the ne edle is split",
+            b"ends with nee",
+            b"NEEDLNEEDLE",
+        ];
+        let needles: &[&[u8]] = &[b"", b"n", b"needle", b"9", b"\xff", b"ee", b"edle"];
+
+        for haystack in haystacks {
+            for needle in needles {
+                assert_eq!(
+                    contains_case_insensitive_bytes(haystack, needle),
+                    naive(haystack, needle),
+                    "mismatch for haystack={haystack:?} needle={needle:?}"
+                );
+            }
+        }
     }
 
     #[test]

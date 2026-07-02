@@ -7,4 +7,5 @@ publish = false
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 jcode-message-types = { path = "../jcode-message-types" }
+memchr = "2"
 serde = { version = "1", features = ["derive"] }
