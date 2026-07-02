@@ -3,6 +3,35 @@ use crate::provider_catalog::{LoginProviderAuthKind, LoginProviderDescriptor};
 
 pub const VALIDATION_STALE_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
+/// True when `jcode provider-doctor` has a native-runtime driver for
+/// `provider_id` (a provider whose live path is not OpenAI-compatible and so
+/// cannot be exercised by the generic OpenAI-compatible doctor). Today this is
+/// the Claude OAuth/subscription provider, the Antigravity (Google OAuth Cloud
+/// Code) provider, and the generic native-runtime providers (OpenAI, Gemini,
+/// Cursor, Copilot, Bedrock, jcode, Azure OpenAI).
+///
+/// The drivers themselves live downstream in the `jcode-provider-doctor`
+/// crate (which re-exports this predicate); this roster lives here so
+/// `live_tests` can annotate the monitoring roster without depending on that
+/// crate. A sync test in `jcode-provider-doctor` asserts this list matches its
+/// `NativeProviderKind` specs.
+pub fn native_doctor_supports_provider(provider_id: &str) -> bool {
+    matches!(
+        crate::auth::lifecycle::normalized_auth_provider_id(Some(provider_id)),
+        Some(
+            "claude"
+                | "antigravity"
+                | "openai"
+                | "gemini"
+                | "cursor"
+                | "copilot"
+                | "bedrock"
+                | "jcode"
+                | "azure-openai"
+        )
+    )
+}
+
 pub fn validation_is_stale(checked_at_ms: i64) -> bool {
     let now_ms = chrono::Utc::now().timestamp_millis();
     now_ms.saturating_sub(checked_at_ms) > VALIDATION_STALE_AFTER_MS

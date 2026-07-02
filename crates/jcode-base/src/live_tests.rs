@@ -1713,7 +1713,7 @@ fn doctor_tier_for_stage(stage_id: &str) -> &'static str {
 /// native providers are not perpetually marked "needs native suite".
 fn doctor_supports_provider(provider_id: &str) -> bool {
     crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some()
-        || crate::auth::provider_e2e::native_doctor_supports_provider(provider_id)
+        || crate::auth::doctor::native_doctor_supports_provider(provider_id)
 }
 
 /// True when a credential for `provider_id` is reachable, either via an

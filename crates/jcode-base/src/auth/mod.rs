@@ -14,16 +14,9 @@ pub mod google;
 pub(crate) mod google_oauth;
 pub mod integration;
 pub mod lifecycle;
-#[cfg(any(test, feature = "test-support"))]
-// The driver's items are exercised by its internal #[cfg(test)] tests; under
-// a plain `--features test-support` lib build they are intentionally unused.
-#[cfg_attr(not(test), allow(dead_code, unused_imports))]
-pub(crate) mod lifecycle_driver;
-pub(crate) mod live_provider_probes;
 pub mod login_diagnostics;
 pub mod login_flows;
 pub mod oauth;
-pub mod provider_e2e;
 pub(crate) mod refresh_coordinator;
 pub mod refresh_state;
 mod status_types;

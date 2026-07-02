@@ -50,6 +50,7 @@ members = [
     "crates/jcode-provider-openrouter",
     "crates/jcode-provider-openai",
     "crates/jcode-provider-gemini",
+    "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
     "crates/jcode-usage-types",
@@ -167,6 +168,9 @@ jcode-build-meta = { path = "crates/jcode-build-meta" }
 # so the root feature set fully controls the downstream features (see
 # [features]).
 jcode-tui = { path = "crates/jcode-tui", default-features = false }
+# `jcode provider-doctor` / provider diagnostics; sits downstream of jcode-base
+# so doctor edits do not rebuild the base -> app-core -> tui spine.
+jcode-provider-doctor = { path = "crates/jcode-provider-doctor" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)

@@ -3288,6 +3288,7 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
+ "jcode-provider-doctor",
  "jcode-selfdev-types",
  "jcode-tui",
  "jcode-tui-session-picker",
@@ -3763,6 +3764,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tokio",
+]
+
+[[package]]
+name = "jcode-provider-doctor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "jcode-base",
+ "jcode-provider-metadata",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

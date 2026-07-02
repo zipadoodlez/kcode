@@ -586,16 +586,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
-    "crates/jcode-base/src/auth/lifecycle_driver.rs": {
-      "dot_ok": 1,
-      "let_underscore": 0,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/auth/live_provider_probes.rs": {
-      "dot_ok": 2,
-      "let_underscore": 0,
-      "unwrap_or_default": 7
-    },
     "crates/jcode-base/src/auth/login_flows.rs": {
       "dot_ok": 0,
       "let_underscore": 2,
@@ -610,11 +600,6 @@
       "dot_ok": 4,
       "let_underscore": 17,
       "unwrap_or_default": 3
-    },
-    "crates/jcode-base/src/auth/provider_e2e.rs": {
-      "dot_ok": 1,
-      "let_underscore": 2,
-      "unwrap_or_default": 2
     },
     "crates/jcode-base/src/auth/refresh_state.rs": {
       "dot_ok": 0,
@@ -1295,6 +1280,21 @@
       "dot_ok": 1,
       "let_underscore": 0,
       "unwrap_or_default": 0
+    },
+    "crates/jcode-provider-doctor/src/lifecycle_driver.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/jcode-provider-doctor/src/live_provider_probes.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 7
+    },
+    "crates/jcode-provider-doctor/src/provider_e2e.rs": {
+      "dot_ok": 1,
+      "let_underscore": 2,
+      "unwrap_or_default": 2
     },
     "crates/jcode-provider-env/src/lib.rs": {
       "dot_ok": 4,
