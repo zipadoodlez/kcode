@@ -141,10 +141,7 @@ impl SessionPicker {
     }
 
     pub(super) fn session_is_cursor(session: &SessionInfo) -> bool {
-        jcode_tui_session_picker::session_is_cursor(
-            session.source,
-            session.provider_key.as_deref(),
-        )
+        jcode_tui_session_picker::session_is_cursor(session.source, session.provider_key.as_deref())
     }
 
     fn session_matches_filter_mode(session: &SessionInfo, filter_mode: SessionFilterMode) -> bool {

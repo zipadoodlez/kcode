@@ -2704,7 +2704,11 @@ pub(super) fn load_cursor_preview_from_path(path: &Path) -> Option<Vec<PreviewMe
         let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
             continue;
         };
-        let role = match value.get("role").and_then(|v| v.as_str()).unwrap_or_default() {
+        let role = match value
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+        {
             "user" | "human" => "user",
             "assistant" | "model" => "assistant",
             _ => continue,
@@ -2751,7 +2755,11 @@ fn load_cursor_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
             continue;
         };
-        let role = match value.get("role").and_then(|v| v.as_str()).unwrap_or_default() {
+        let role = match value
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+        {
             "user" | "human" => "user",
             "assistant" | "model" => "assistant",
             _ => continue,

@@ -502,7 +502,15 @@ pub(super) fn inferred_reasoning_efforts(
     let model = model_name.unwrap_or_default().to_ascii_lowercase();
 
     if provider.contains("openrouter") {
-        return vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"];
+        return vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "swarm",
+            "swarm-deep",
+        ];
     }
 
     let is_anthropic = provider.contains("anthropic")
@@ -528,14 +536,30 @@ pub(super) fn inferred_reasoning_efforts(
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
         {
-            return vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"];
+            return vec![
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "swarm",
+                "swarm-deep",
+            ];
         }
         return vec!["none", "low", "medium", "high", "swarm", "swarm-deep"];
     }
 
     let is_deepseek = provider.contains("deepseek") || model.contains("deepseek");
     if is_deepseek {
-        return vec!["none", "low", "medium", "high", "max", "swarm", "swarm-deep"];
+        return vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "max",
+            "swarm",
+            "swarm-deep",
+        ];
     }
 
     let is_openai = provider.contains("openai")
@@ -546,7 +570,15 @@ pub(super) fn inferred_reasoning_efforts(
         || model.starts_with("o4")
         || model.starts_with("o5");
     if is_openai {
-        return vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"];
+        return vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "swarm",
+            "swarm-deep",
+        ];
     }
 
     Vec::new()

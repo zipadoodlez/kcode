@@ -199,11 +199,7 @@ fn pick_action_id<'a>(
                 && stat.hints_shown < MAX_HINTS_PER_ACTION
                 && now_unix.saturating_sub(stat.last_hint_unix) >= HINT_COOLDOWN_SECS
         })
-        .max_by(|a, b| {
-            a.1.slow_uses
-                .cmp(&b.1.slow_uses)
-                .then_with(|| b.0.cmp(a.0))
-        })
+        .max_by(|a, b| a.1.slow_uses.cmp(&b.1.slow_uses).then_with(|| b.0.cmp(a.0)))
         .map(|(id, _, _)| *id)
 }
 
@@ -231,7 +227,13 @@ fn next_learn_hint() -> Option<String> {
 
     let candidates: Vec<(&'static str, &ActionStat, bool)> = LearnableAction::ALL
         .into_iter()
-        .map(|a| (a.id(), stats.get(a.id()).unwrap(), labels.contains_key(a.id())))
+        .map(|a| {
+            (
+                a.id(),
+                stats.get(a.id()).unwrap(),
+                labels.contains_key(a.id()),
+            )
+        })
         .collect();
 
     let chosen_id = pick_action_id(&candidates, now)?;

@@ -598,7 +598,10 @@ mod tests {
         // 2-column chars never split mid-glyph and result stays within budget.
         for max in 1..8usize {
             let out = truncate_w("日本語テスト", max);
-            assert!(UnicodeWidthStr::width(out.as_str()) <= max, "max={max} out={out}");
+            assert!(
+                UnicodeWidthStr::width(out.as_str()) <= max,
+                "max={max} out={out}"
+            );
         }
     }
 

@@ -406,7 +406,11 @@ impl App {
     /// The card is also re-applied once the remote History bootstrap clears the
     /// transcript for a brand-new session, so launch-hotkey / welcome tips stay
     /// visible on the idle screen instead of flashing for a moment and vanishing.
-    pub fn set_pending_startup_notice(&mut self, title: impl Into<String>, message: impl Into<String>) {
+    pub fn set_pending_startup_notice(
+        &mut self,
+        title: impl Into<String>,
+        message: impl Into<String>,
+    ) {
         let title = title.into();
         let message = message.into();
         self.push_display_message(

@@ -77,20 +77,52 @@ fn inferred_reasoning_efforts_use_provider_specific_order_and_max_semantics() {
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("anthropic"), Some("claude-opus-4-7")),
-        vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"]
+        vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "swarm",
+            "swarm-deep"
+        ]
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("openrouter"), Some("anthropic/claude-sonnet-4.6")),
-        vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"]
+        vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "swarm",
+            "swarm-deep"
+        ]
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("openrouter"), Some("deepseek/deepseek-r1")),
-        vec!["none", "low", "medium", "high", "xhigh", "swarm", "swarm-deep"],
+        vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "swarm",
+            "swarm-deep"
+        ],
         "OpenRouter uses unified reasoning where max is only an alias, not a cycle level"
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("deepseek"), Some("deepseek-v4-pro")),
-        vec!["none", "low", "medium", "high", "max", "swarm", "swarm-deep"],
+        vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "max",
+            "swarm",
+            "swarm-deep"
+        ],
         "DeepSeek direct keeps max as a real provider level"
     );
     assert!(inferred_reasoning_efforts(Some("ollama"), Some("llama3")).is_empty());
