@@ -1090,11 +1090,31 @@ impl RemoteConnection {
         match serde_json::from_str(&text) {
             Ok(event) => LineOutcome::Event(Box::new(event)),
             Err(error) => {
+                // A single unparseable JSON line (e.g. the tail half of a frame
+                // split by a lost write, or an event variant this client build
+                // doesn't know) must not kill the whole session. Count it
+                // against the stray-line budget and resync on the next line;
+                // only give up if the stream keeps failing to parse (which
+                // indicates a real protocol/version mismatch). See issue #422:
+                // huge sessions used to die permanently on one corrupt frame.
+                *stray_lines += 1;
+                let preview: String = text.chars().take(240).collect();
                 crate::logging::warn(&format!(
-                    "RemoteConnection::next_event: protocol error={} line={:?} (session_id={:?}, client_instance_id={:?})",
-                    error, text, self.session_id, self.client_instance_id
+                    "RemoteConnection::next_event: skipping unparseable protocol line {}/{} error={} preview={:?} (session_id={:?}, client_instance_id={:?})",
+                    *stray_lines,
+                    MAX_STRAY_REMOTE_PROTOCOL_LINES,
+                    error,
+                    preview,
+                    self.session_id,
+                    self.client_instance_id
                 ));
-                LineOutcome::Disconnect(RemoteDisconnectReason::Protocol(error.to_string()))
+                if *stray_lines >= MAX_STRAY_REMOTE_PROTOCOL_LINES {
+                    return LineOutcome::Disconnect(RemoteDisconnectReason::Protocol(format!(
+                        "too many unparseable protocol lines; last error: {}",
+                        error
+                    )));
+                }
+                LineOutcome::Skip
             }
         }
     }
@@ -1351,6 +1371,71 @@ mod tests {
         match remote.next_event().await {
             RemoteRead::Event(ServerEvent::Done { id }) => assert_eq!(id, 7),
             other => panic!("expected Done event after stray line, got {other:?}"),
+        }
+    }
+
+    /// Regression for issue #422: a single corrupt frame (e.g. the tail half of
+    /// a split multi-megabyte event, or an event variant this client build does
+    /// not know) must not permanently kill the session. The client should skip
+    /// the bad line, resync on the next newline, and deliver the next valid
+    /// event.
+    #[tokio::test]
+    async fn next_event_skips_corrupt_json_frame_and_recovers() {
+        let mut remote = RemoteConnection::dummy();
+        let peer = remote
+            ._dummy_peer
+            .take()
+            .expect("dummy remote should retain peer stream");
+        let (_reader, mut writer) = peer.into_split();
+
+        // Corrupt JSON that passes the '{' prefix check but fails to parse.
+        writer
+            .write_all(b"{\"type\":\"done\",\"id\":\n")
+            .await
+            .expect("corrupt frame should write");
+        // Valid JSON that is not a ServerEvent (unknown variant / wrong shape).
+        writer
+            .write_all(b"{\"type\":\"event_from_a_newer_server_version\"}\n")
+            .await
+            .expect("unknown-variant frame should write");
+        writer
+            .write_all(crate::protocol::encode_event(&ServerEvent::Done { id: 9 }).as_bytes())
+            .await
+            .expect("valid event should write");
+
+        match remote.next_event().await {
+            RemoteRead::Event(ServerEvent::Done { id }) => assert_eq!(id, 9),
+            other => panic!("expected Done event after corrupt frames, got {other:?}"),
+        }
+    }
+
+    /// A stream that keeps failing to parse (real protocol/version mismatch)
+    /// must still disconnect once the stray-line budget is exhausted, instead
+    /// of spinning forever.
+    #[tokio::test]
+    async fn next_event_disconnects_after_too_many_corrupt_json_frames() {
+        let mut remote = RemoteConnection::dummy();
+        let peer = remote
+            ._dummy_peer
+            .take()
+            .expect("dummy remote should retain peer stream");
+        let (_reader, mut writer) = peer.into_split();
+
+        for _ in 0..MAX_STRAY_REMOTE_PROTOCOL_LINES {
+            writer
+                .write_all(b"{\"not\":\"a server event\"}\n")
+                .await
+                .expect("corrupt frame should write");
+        }
+
+        match remote.next_event().await {
+            RemoteRead::Disconnected(RemoteDisconnectReason::Protocol(message)) => {
+                assert!(
+                    message.contains("too many unparseable protocol lines"),
+                    "unexpected protocol disconnect message: {message}"
+                );
+            }
+            other => panic!("expected protocol disconnect after budget exhaustion, got {other:?}"),
         }
     }
 
