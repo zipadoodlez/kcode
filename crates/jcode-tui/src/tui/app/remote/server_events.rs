@@ -747,7 +747,9 @@ pub(in crate::tui::app) fn handle_server_event(
                 .as_deref()
                 .filter(|r| !r.trim().is_empty())
                 .unwrap_or("guardrail");
-            app.push_display_message(DisplayMessage::system(format!("🛡 {}", message)));
+            // Plain text prefix: U+1F6E1 shield renders poorly in some
+            // terminals (kitty shows a narrow monochrome glyph).
+            app.push_display_message(DisplayMessage::system(format!("[guardrail] {}", message)));
             app.set_status_notice(format!("Provider guardrail: {}", label));
             // Guardrail refusals are model-side policy stops: retrying the
             // same model usually refuses again, but a stronger model often

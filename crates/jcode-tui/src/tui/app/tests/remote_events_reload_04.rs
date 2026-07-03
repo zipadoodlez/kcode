@@ -671,7 +671,7 @@ fn test_provider_guardrail_event_offers_opus_reroute_with_resend_payload() {
     assert!(
         app.display_messages()
             .iter()
-            .any(|m| m.role == "system" && m.content.contains("🛡")),
+            .any(|m| m.role == "system" && m.content.contains("[guardrail]")),
         "guardrail notice itself should still be shown"
     );
 }
@@ -749,7 +749,7 @@ fn test_guardrail_reroute_not_offered_when_already_on_opus() {
     assert!(
         app.display_messages()
             .iter()
-            .any(|m| m.role == "system" && m.content.contains("🛡")),
+            .any(|m| m.role == "system" && m.content.contains("[guardrail]")),
         "guardrail notice should still be shown"
     );
 }
