@@ -363,55 +363,59 @@ fn reasoning_preceded_by_answer_keeps_order_and_drops_reasoning() {
 
 #[test]
 fn multiple_reasoning_blocks_anchor_in_order_and_clear_next_prompt() {
-    // Each closed block anchors in the transcript flow, in order, and stays
-    // readable for the whole turn. The next user prompt clears them all.
-    let mut app = create_test_app();
+    // Hermetic JCODE_HOME: these assertions depend on the default
+    // `reasoning_display = "current"` config (see sibling anchor/GC tests).
+    with_temp_jcode_home(|| {
+        // Each closed block anchors in the transcript flow, in order, and stays
+        // readable for the whole turn. The next user prompt clears them all.
+        let mut app = create_test_app();
 
-    app.open_reasoning_region();
-    app.append_reasoning_text("first block thinking\n");
-    app.close_reasoning_region(None);
-    app.append_streaming_text("Answer one.");
-    app.commit_pending_streaming_assistant_message();
+        app.open_reasoning_region();
+        app.append_reasoning_text("first block thinking\n");
+        app.close_reasoning_region(None);
+        app.append_streaming_text("Answer one.");
+        app.commit_pending_streaming_assistant_message();
 
-    app.open_reasoning_region();
-    app.append_reasoning_text("second block thinking\n");
-    app.close_reasoning_region(None);
+        app.open_reasoning_region();
+        app.append_reasoning_text("second block thinking\n");
+        app.close_reasoning_region(None);
 
-    let reasoning_msgs: Vec<usize> = app
-        .display_messages
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| m.role == "reasoning")
-        .map(|(i, _)| i)
-        .collect();
-    assert_eq!(
-        reasoning_msgs.len(),
-        2,
-        "both traces anchor for the duration of the turn"
-    );
-    assert!(
-        !app.streaming_text()
-            .contains(jcode_tui_markdown::REASONING_SENTINEL),
-        "no reasoning markup should linger in the stream: {:?}",
-        app.streaming_text()
-    );
-
-    // The next prompt removes the turn's traces (ephemeral across turns).
-    app.clear_turn_reasoning_traces();
-    assert_eq!(
-        app.display_messages
+        let reasoning_msgs: Vec<usize> = app
+            .display_messages
             .iter()
-            .filter(|m| m.role == "reasoning")
-            .count(),
-        0,
-        "next prompt clears the turn's anchored traces"
-    );
-    assert!(
-        app.display_messages
-            .iter()
-            .any(|m| m.content.contains("Answer one.")),
-        "committed answers survive trace cleanup"
-    );
+            .enumerate()
+            .filter(|(_, m)| m.role == "reasoning")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            reasoning_msgs.len(),
+            2,
+            "both traces anchor for the duration of the turn"
+        );
+        assert!(
+            !app.streaming_text()
+                .contains(jcode_tui_markdown::REASONING_SENTINEL),
+            "no reasoning markup should linger in the stream: {:?}",
+            app.streaming_text()
+        );
+
+        // The next prompt removes the turn's traces (ephemeral across turns).
+        app.clear_turn_reasoning_traces();
+        assert_eq!(
+            app.display_messages
+                .iter()
+                .filter(|m| m.role == "reasoning")
+                .count(),
+            0,
+            "next prompt clears the turn's anchored traces"
+        );
+        assert!(
+            app.display_messages
+                .iter()
+                .any(|m| m.content.contains("Answer one.")),
+            "committed answers survive trace cleanup"
+        );
+    });
 }
 
 #[test]
