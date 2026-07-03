@@ -1095,7 +1095,8 @@ impl App {
                         continue;
                     }
                     let effort_label = match *effort {
-                        "xhigh" => "max",
+                        "xhigh" => "xhigh",
+                        "max" => "max",
                         "high" => "high",
                         "medium" => "med",
                         "low" => "low",

@@ -263,7 +263,7 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     lines.push(help_entry("/agents", "Configure models for agent roles"));
     lines.push(help_entry(
         "/effort <level>",
-        "Set effort (none|low|medium|high|xhigh|swarm|swarm-deep)",
+        "Set effort (none|low|medium|high|xhigh|max|swarm|swarm-deep)",
     ));
     lines.push(help_entry(
         "/fast [on|off|status|default ...]",

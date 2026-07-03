@@ -337,6 +337,7 @@ fn short_reasoning_effort(effort: &str) -> Option<&str> {
         return None;
     }
     Some(match effort {
+        "max" => "max",
         "xhigh" => "xhi",
         "high" => "hi",
         "medium" => "med",

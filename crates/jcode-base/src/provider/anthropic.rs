@@ -620,6 +620,15 @@ impl AnthropicProvider {
             || model.contains("claude-opus-4-7")
     }
 
+    /// `max` effort ("absolute maximum capability with no constraints on token
+    /// spending") is a real API level on the `output_config` effort models,
+    /// except Claude Opus 4.5 where manual thinking keeps `max` as an alias for
+    /// the strongest supported level.
+    fn model_supports_max_effort(model: &str) -> bool {
+        Self::model_supports_output_effort(model)
+            && !Self::normalized_model_key(model).contains("claude-opus-4-5")
+    }
+
     fn model_supports_reasoning_effort(model: &str) -> bool {
         Self::model_supports_output_effort(model) || Self::model_supports_manual_thinking(model)
     }
@@ -647,7 +656,18 @@ impl AnthropicProvider {
     }
 
     fn actual_effort_for_model(model: &str, effort: &str) -> String {
-        if effort == "max" || crate::prompt::is_swarm_effort(effort) {
+        if crate::prompt::is_swarm_effort(effort) {
+            // Swarm rungs sit above `max` on the ladder and mean "strongest
+            // reasoning the model supports", so cycling upward never lowers
+            // the wire effort.
+            if Self::model_supports_max_effort(model) {
+                "max".to_string()
+            } else if Self::model_supports_xhigh_effort(model) {
+                "xhigh".to_string()
+            } else {
+                "high".to_string()
+            }
+        } else if effort == "max" && !Self::model_supports_max_effort(model) {
             if Self::model_supports_xhigh_effort(model) {
                 "xhigh".to_string()
             } else {
@@ -676,12 +696,19 @@ impl AnthropicProvider {
 
     /// Default reasoning effort to apply when the user has *not* explicitly
     /// configured one. Claude Opus models are reasoning-heavy flagships, so we
-    /// default them to their strongest supported thinking level (`xhigh` on
-    /// Opus 4.7/4.8, clamped to `high` on older Opus). Every other model keeps
-    /// the model's own default (no forced effort) so cheaper models stay cheap.
+    /// default them to `xhigh` where supported (Opus 4.7/4.8), clamped to
+    /// `high` on older Opus. Deliberately NOT `max`: Anthropic recommends
+    /// `xhigh` as the starting point for coding/agentic work and reserves
+    /// `max` for frontier problems (it costs much more and can overthink).
+    /// Every other model keeps the model's own default (no forced effort) so
+    /// cheaper models stay cheap.
     fn default_reasoning_effort_for_model(model: &str) -> Option<String> {
         if Self::normalized_model_key(model).contains("claude-opus") {
-            Some(Self::actual_effort_for_model(model, "max"))
+            Some(if Self::model_supports_xhigh_effort(model) {
+                "xhigh".to_string()
+            } else {
+                "high".to_string()
+            })
         } else {
             None
         }
@@ -1204,7 +1231,9 @@ impl Provider for AnthropicProvider {
             );
         }
         if normalized.as_deref() == Some("xhigh") && !Self::model_supports_xhigh_effort(&model) {
-            anyhow::bail!("Anthropic xhigh effort is only supported for Claude Opus 4.7 models");
+            anyhow::bail!(
+                "Anthropic xhigh effort is only supported for Claude Opus 4.7/4.8 and Fable 5 models"
+            );
         }
         let normalized = normalized.map(|effort| Self::store_effort_for_model(&model, &effort));
         match self.reasoning_effort.write() {
@@ -1224,19 +1253,15 @@ impl Provider for AnthropicProvider {
         if !Self::model_supports_reasoning_effort(&model) {
             return vec![];
         }
+        let mut efforts = vec!["none", "low", "medium", "high"];
         if Self::model_supports_xhigh_effort(&model) {
-            vec![
-                "none",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "swarm",
-                "swarm-deep",
-            ]
-        } else {
-            vec!["none", "low", "medium", "high", "swarm", "swarm-deep"]
+            efforts.push("xhigh");
         }
+        if Self::model_supports_max_effort(&model) {
+            efforts.push("max");
+        }
+        efforts.extend(["swarm", "swarm-deep"]);
+        efforts
     }
 
     fn service_tier(&self) -> Option<String> {

@@ -73,7 +73,7 @@ fn partition_queued_messages_moves_system_messages_into_reminders() {
 fn inferred_reasoning_efforts_use_provider_specific_order_and_max_semantics() {
     assert_eq!(
         inferred_reasoning_efforts(Some("anthropic"), Some("claude-sonnet-4-6")),
-        vec!["none", "low", "medium", "high", "swarm", "swarm-deep"]
+        vec!["none", "low", "medium", "high", "max", "swarm", "swarm-deep"]
     );
     assert_eq!(
         inferred_reasoning_efforts(Some("anthropic"), Some("claude-opus-4-7")),
@@ -83,6 +83,7 @@ fn inferred_reasoning_efforts_use_provider_specific_order_and_max_semantics() {
             "medium",
             "high",
             "xhigh",
+            "max",
             "swarm",
             "swarm-deep"
         ]

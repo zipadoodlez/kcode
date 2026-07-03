@@ -423,7 +423,7 @@ pub(super) fn effort_display_label(effort: &str) -> &str {
         "swarm" => "Swarm (light fan-out)",
         "swarm-deep" => "Swarm Deep (Max + task graph)",
         "max" => "Max",
-        "xhigh" => "xHigh (Max)",
+        "xhigh" => "xHigh",
         "high" => "High",
         "medium" => "Medium",
         "low" => "Low",
@@ -564,6 +564,24 @@ pub(super) fn inferred_reasoning_efforts(
                 "medium",
                 "high",
                 "xhigh",
+                "max",
+                "swarm",
+                "swarm-deep",
+            ];
+        }
+        // `output_config` effort models without xhigh (Opus/Sonnet 4.6, Mythos)
+        // still support the real `max` API level. Manual-thinking models
+        // (Opus 4.5, Claude 3.7 Sonnet) top out at high.
+        if model.contains("claude-mythos")
+            || model.contains("claude-opus-4-6")
+            || model.contains("claude-sonnet-4-6")
+        {
+            return vec![
+                "none",
+                "low",
+                "medium",
+                "high",
+                "max",
                 "swarm",
                 "swarm-deep",
             ];

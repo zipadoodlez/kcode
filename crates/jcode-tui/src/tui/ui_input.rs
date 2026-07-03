@@ -1864,6 +1864,7 @@ fn overscroll_short_reasoning(effort: &str) -> Option<&str> {
         return None;
     }
     Some(match effort {
+        "max" => "max",
         "xhigh" => "xhigh",
         "high" => "high",
         "medium" => "medium",
