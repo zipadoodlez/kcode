@@ -1558,11 +1558,11 @@ pub(crate) fn redraw_interval_with_policy(
     }
 
     // Swarm status spinners animate at a fixed ~8 fps off the wall clock.
-    // While the coordinator itself is processing/streaming the branches below
-    // already repaint fast enough; this branch keeps the spinner smooth when
-    // the coordinator is otherwise quiet and only its agents are working.
+    // Streaming/scroll branches below already repaint faster than this, but
+    // both the quiet-coordinator case and the processing-without-streaming
+    // case (which otherwise idles at the 1s passive-liveness cadence) need
+    // this to keep agent spinners smooth while the swarm works.
     if swarm_spinner_redraw_active(state)
-        && !state.is_processing()
         && state.streaming_text().is_empty()
         && !state.has_pending_mouse_scroll_animation()
     {
