@@ -49,6 +49,9 @@ fn buffer_rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
 fn swarm_strip_full_draw_writes_chips_row_above_status_line() {
     let _lock = viewport_snapshot_test_lock();
     clear_flicker_frame_history_for_tests();
+    // Placement state is process-global; a dock placed by another test would
+    // make the strip stand down. Clear it so this frame is self-contained.
+    crate::tui::info_widget::clear_widget_placements_for_tests();
     let state = TestState {
         display_messages: vec![DisplayMessage::assistant("hello from the coordinator")],
         messages_version: 1,
@@ -86,6 +89,7 @@ fn swarm_strip_full_draw_writes_chips_row_above_status_line() {
 #[test]
 fn swarm_strip_full_draw_survives_narrow_width_sweep() {
     let _lock = viewport_snapshot_test_lock();
+    crate::tui::info_widget::clear_widget_placements_for_tests();
     let state = TestState {
         display_messages: vec![DisplayMessage::assistant("narrow sweep")],
         messages_version: 1,
@@ -114,6 +118,7 @@ fn swarm_strip_full_draw_survives_narrow_width_sweep() {
 #[test]
 fn swarm_strip_full_draw_handles_wide_glyph_member_names() {
     let _lock = viewport_snapshot_test_lock();
+    crate::tui::info_widget::clear_widget_placements_for_tests();
     let mut coordinator = strip_member("s0", "調整役エージェント", "running");
     coordinator.role = Some("coordinator".to_string());
     let mut streaming = strip_member("s1", "深度搜索智能体", "running");

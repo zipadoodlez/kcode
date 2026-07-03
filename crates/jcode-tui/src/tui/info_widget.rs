@@ -925,6 +925,19 @@ pub(crate) fn swarm_dock_visible_last_frame() -> bool {
             .any(|p| p.kind == WidgetKind::SwarmStatus)
 }
 
+/// Clear the remembered per-frame widget placements (and anchors). Tests that
+/// assert on placement-dependent behavior (e.g. the swarm strip standing down
+/// while the dock is visible) call this so state from earlier tests in the
+/// same process cannot leak into their frame.
+#[cfg(test)]
+pub(crate) fn clear_widget_placements_for_tests() {
+    let mut guard = get_or_init_state();
+    if let Some(state) = guard.as_mut() {
+        state.placements.clear();
+        state.anchors.clear();
+    }
+}
+
 /// Facts surfaced by the info-widget HUD as of the last rendered frame.
 ///
 /// The bottom bar (status line + idle input hint) draws *before* widget
