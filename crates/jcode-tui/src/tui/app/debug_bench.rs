@@ -756,9 +756,9 @@ impl App {
 
         let diagram_mode = cfg.diagram_mode.unwrap_or(self.diagram_mode);
         let expectations = ScrollTestExpectations {
-            expect_inline: cfg
-                .expect_inline
-                .unwrap_or(diagram_mode != crate::config::DiagramDisplayMode::Pinned),
+            // Diagrams flow inline (via the inline-image fit pipeline) in every
+            // mode; Pinned additionally mirrors them into the side pane.
+            expect_inline: cfg.expect_inline.unwrap_or(true),
             expect_pane: cfg
                 .expect_pane
                 .unwrap_or(diagram_mode == crate::config::DiagramDisplayMode::Pinned),
