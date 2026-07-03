@@ -232,6 +232,84 @@ fn notification_full_draw_survives_overwide_swarm_plan_notice() {
     }
 }
 
+/// The swarm dock widget renders managed agents at the cell level: place it
+/// through the real `calculate_placements` + `render_all` path into a
+/// TestBackend and assert the agent rows landed inside the placement rect.
+#[test]
+fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
+    let _lock = viewport_snapshot_test_lock();
+    let mut coordinator = strip_member("s0", "researcher", "running");
+    coordinator.role = Some("coordinator".to_string());
+    coordinator.output_tail = Some("tracing the refresh path".to_string());
+    let data = crate::tui::info_widget::InfoWidgetData {
+        swarm_info: Some(crate::tui::info_widget::SwarmInfo {
+            managed_members: vec![coordinator, strip_member("s1", "reviewer", "completed")],
+            plan_progress: Some((3, 7)),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let backend = TestBackend::new(120, 30);
+    let mut terminal = Terminal::new(backend).expect("test terminal");
+    let messages_area = Rect::new(0, 0, 120, 26);
+    let margins = crate::tui::info_widget::Margins {
+        right_widths: vec![44; 26],
+        left_widths: Vec::new(),
+        centered: false,
+        ..Default::default()
+    };
+    let mut dock_rect: Option<Rect> = None;
+    terminal
+        .draw(|frame| {
+            let placements =
+                crate::tui::info_widget::calculate_placements(messages_area, &margins, &data);
+            dock_rect = placements
+                .iter()
+                .find(|p| p.kind == crate::tui::info_widget::WidgetKind::SwarmStatus)
+                .map(|p| p.rect);
+            crate::tui::info_widget::render_all(frame, &placements, &data);
+        })
+        .expect("dock widget render should not panic");
+
+    let rect = dock_rect.expect("SwarmStatus dock should be placed with a wide free margin");
+    let rows = buffer_rows(&terminal);
+    let dock_text: String = rows[rect.y as usize..(rect.y + rect.height) as usize]
+        .iter()
+        .map(|row| {
+            row.chars()
+                .skip(rect.x as usize)
+                .take(rect.width as usize)
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        dock_text.contains("researcher"),
+        "expected agent row inside dock rect, got:\n{dock_text}"
+    );
+    assert!(
+        dock_text.contains("reviewer"),
+        "expected second agent row inside dock rect, got:\n{dock_text}"
+    );
+    assert!(
+        dock_text.contains("1/2 active"),
+        "expected active tally header inside dock rect, got:\n{dock_text}"
+    );
+    assert!(
+        dock_text.contains("plan 3/7"),
+        "expected plan progress in dock header, got:\n{dock_text}"
+    );
+    // Nothing from the dock leaked left of its rect.
+    for row in &rows[rect.y as usize..(rect.y + rect.height) as usize] {
+        let left: String = row.chars().take(rect.x as usize).collect();
+        assert!(
+            left.trim().is_empty(),
+            "dock must not write left of its rect, got: {left:?}"
+        );
+    }
+}
+
 #[test]
 fn draw_notification_clips_overwide_notice_at_area_width() {
     let notice: String = "Swarm plan v3 · 12/24 tasks · gate blocked · ".repeat(8);
