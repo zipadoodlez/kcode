@@ -189,6 +189,15 @@ pub struct McpServerConfig {
     /// URL for HTTP/SSE servers (Claude Code compat). Unused by jcode today.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// Whether this server is enabled (default: true). Disabled servers stay
+    /// registered in config but are not spawned or connected at load time
+    /// until re-enabled (issue #436). opencode-style `"enabled": false`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Claude Code style alias: `"disabled": true`. Wins over `enabled` when
+    /// both are present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
 }
 
 impl McpServerConfig {
@@ -203,6 +212,17 @@ impl McpServerConfig {
             }
         }
         !self.command.trim().is_empty()
+    }
+
+    /// Whether this server should be spawned/connected automatically.
+    /// Defaults to true. `"disabled": true` (Claude Code style) wins over
+    /// `"enabled"` (opencode style) when both are present. Disabled servers
+    /// stay in config and can still be connected on demand by name.
+    pub fn is_enabled(&self) -> bool {
+        if let Some(disabled) = self.disabled {
+            return !disabled;
+        }
+        self.enabled.unwrap_or(true)
     }
 }
 
@@ -358,6 +378,8 @@ impl McpConfig {
                             shared,
                             transport: None,
                             url: None,
+                            enabled: None,
+                            disabled: None,
                         },
                     );
                 }

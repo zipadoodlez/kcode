@@ -156,8 +156,18 @@ impl McpManagementTool {
         let manager = self.manager.read().await;
         let servers = manager.connected_servers().await;
         let all_tools = manager.all_tools().await;
+        // Configured-but-not-connected servers, including disabled ones
+        // (issue #436), so the full config state is visible.
+        let mut configured: Vec<(String, bool)> = manager
+            .config()
+            .servers
+            .iter()
+            .filter(|(name, _)| !servers.contains(name))
+            .map(|(name, cfg)| (name.clone(), cfg.is_enabled()))
+            .collect();
+        configured.sort();
 
-        if servers.is_empty() {
+        if servers.is_empty() && configured.is_empty() {
             return Ok(ToolOutput::new(
                 "No MCP servers connected.\n\n\
                 To connect a server, use:\n\
@@ -189,6 +199,23 @@ impl McpManagementTool {
             output.push('\n');
         }
 
+        if !configured.is_empty() {
+            output.push_str("Configured but not connected:\n");
+            for (name, enabled) in &configured {
+                if *enabled {
+                    output.push_str(&format!(
+                        "  - {} (enabled; connect with {{\"action\": \"connect\", \"server\": \"{}\"}})\n",
+                        name, name
+                    ));
+                } else {
+                    output.push_str(&format!(
+                        "  - {} (disabled in config; connect on demand with {{\"action\": \"connect\", \"server\": \"{}\"}})\n",
+                        name, name
+                    ));
+                }
+            }
+        }
+
         Ok(ToolOutput::new(output).with_title("MCP: Server list"))
     }
 
@@ -196,17 +223,32 @@ impl McpManagementTool {
         let server_name = params
             .server
             .ok_or_else(|| anyhow::anyhow!("'server' is required for connect action"))?;
-        let command = params
-            .command
-            .ok_or_else(|| anyhow::anyhow!("'command' is required for connect action"))?;
 
-        let config = McpServerConfig {
-            command,
-            args: params.args.unwrap_or_default(),
-            env: params.env.unwrap_or_default(),
-            shared: true,
-            transport: None,
-            url: None,
+        // With an explicit command this is an ad-hoc connect. Without one, fall
+        // back to the configured server of that name, which also lets disabled
+        // configured servers be connected on demand, session-scoped, without
+        // rewriting config (issue #436).
+        let config = if let Some(command) = params.command {
+            McpServerConfig {
+                command,
+                args: params.args.unwrap_or_default(),
+                env: params.env.unwrap_or_default(),
+                shared: true,
+                transport: None,
+                url: None,
+                enabled: None,
+                disabled: None,
+            }
+        } else {
+            let manager = self.manager.read().await;
+            let configured = manager.config().servers.get(&server_name).cloned();
+            drop(manager);
+            configured.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "'command' is required for connect action ('{}' is not in the MCP config)",
+                    server_name
+                )
+            })?
         };
 
         let manager = self.manager.read().await;
@@ -360,11 +402,22 @@ impl McpManagementTool {
             }
         }
 
+        let enabled_count = config
+            .servers
+            .values()
+            .filter(|cfg| cfg.is_enabled())
+            .count();
+        let disabled_count = config.servers.len() - enabled_count;
         let mut output = format!(
             "Reloaded MCP config. Connected: {}/{}\n\n",
-            successes,
-            config.servers.len()
+            successes, enabled_count
         );
+        if disabled_count > 0 {
+            output.push_str(&format!(
+                "{} server(s) disabled in config (kept, not spawned).\n\n",
+                disabled_count
+            ));
+        }
 
         // Show failures first
         if !failures.is_empty() {
@@ -413,7 +466,12 @@ mod tests {
     use std::path::PathBuf;
 
     fn create_test_tool() -> McpManagementTool {
-        let manager = Arc::new(RwLock::new(McpManager::new()));
+        // Use an explicit empty config so tests are hermetic: McpManager::new()
+        // would load the developer's real ~/.jcode/mcp.json, and list output
+        // now includes configured-but-not-connected servers (issue #436).
+        let manager = Arc::new(RwLock::new(McpManager::with_config(
+            crate::mcp::McpConfig::default(),
+        )));
         McpManagementTool::new(manager)
     }
 
@@ -510,6 +568,41 @@ mod tests {
 
         let result = tool.execute(input, ctx).await.unwrap();
         assert!(result.output.contains("No MCP servers connected"));
+    }
+
+    #[tokio::test]
+    async fn test_list_shows_disabled_configured_server() {
+        // Issue #436: disabled servers stay visible in the list with their
+        // state, so users can see and enable them on demand.
+        let mut config = crate::mcp::McpConfig::default();
+        config.servers.insert(
+            "off-server".to_string(),
+            McpServerConfig {
+                command: "some-bin".to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                shared: true,
+                transport: None,
+                url: None,
+                enabled: Some(false),
+                disabled: None,
+            },
+        );
+        let manager = Arc::new(RwLock::new(McpManager::with_config(config)));
+        let tool = McpManagementTool::new(manager);
+        let ctx = create_test_context();
+
+        let result = tool.execute(json!({"action": "list"}), ctx).await.unwrap();
+        assert!(
+            result.output.contains("off-server"),
+            "disabled server must be listed: {}",
+            result.output
+        );
+        assert!(
+            result.output.contains("disabled in config"),
+            "disabled state must be visible: {}",
+            result.output
+        );
     }
 
     #[tokio::test]

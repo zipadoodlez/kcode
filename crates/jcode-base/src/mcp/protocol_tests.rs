@@ -184,6 +184,53 @@ fn test_load_project_locals_merge_order() {
 }
 
 #[test]
+fn test_server_enabled_defaults_true() {
+    // Existing configs without the flag keep current behavior (issue #436).
+    let json = r#"{"servers":{"srv":{"command":"bin"}}}"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    assert!(config.servers.get("srv").unwrap().is_enabled());
+}
+
+#[test]
+fn test_server_enabled_false_opencode_style() {
+    let json = r#"{"servers":{"srv":{"command":"bin","enabled":false}}}"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    assert!(!config.servers.get("srv").unwrap().is_enabled());
+}
+
+#[test]
+fn test_server_disabled_true_claude_style() {
+    let json = r#"{"mcpServers":{"srv":{"command":"bin","disabled":true}}}"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    assert!(!config.servers.get("srv").unwrap().is_enabled());
+}
+
+#[test]
+fn test_server_disabled_wins_over_enabled() {
+    // `disabled` (Claude Code style) wins when both spellings are present.
+    let json = r#"{"servers":{"srv":{"command":"bin","enabled":true,"disabled":true}}}"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    assert!(!config.servers.get("srv").unwrap().is_enabled());
+
+    let json = r#"{"servers":{"srv":{"command":"bin","enabled":false,"disabled":false}}}"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    assert!(config.servers.get("srv").unwrap().is_enabled());
+}
+
+#[test]
+fn test_disabled_server_survives_save_roundtrip() {
+    // Disabled servers must stay in config (kept, not spawned), including
+    // through a save/load cycle.
+    let json = r#"{"servers":{"off":{"command":"bin","enabled":false}}}"#;
+    let config: McpConfig = serde_json::from_str(json).unwrap();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let path = temp.path().join("mcp.json");
+    config.save_to_file(&path).unwrap();
+    let reloaded = McpConfig::load_from_file(&path).unwrap();
+    assert!(!reloaded.servers.get("off").unwrap().is_enabled());
+}
+
+#[test]
 fn test_tool_def_deserialization() {
     let json = r#"{
             "name": "read_file",

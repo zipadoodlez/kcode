@@ -69,6 +69,11 @@ impl SharedMcpPool {
         let mut connect_futures = Vec::new();
 
         for (name, server_config) in &config.servers {
+            // Disabled servers stay configured but are never auto-spawned
+            // (issue #436); they can still be connected on demand by name.
+            if !server_config.is_enabled() {
+                continue;
+            }
             let name = name.clone();
             let server_config = server_config.clone();
             connect_futures.push(async move {

@@ -776,14 +776,29 @@ impl Registry {
         self.register("mcp".to_string(), Arc::new(mcp_tool) as Arc<dyn Tool>)
             .await;
 
-        // Check if we have servers to connect to
-        let server_count = {
+        // Check if we have enabled servers to connect to. Disabled servers stay
+        // configured (visible to the mcp management tool, connectable by name)
+        // but are not spawned, advertised, or shown as connecting (issue #436).
+        let (enabled_count, disabled_count) = {
             let manager = mcp_manager.read().await;
-            manager.config().servers.len()
+            let enabled = manager
+                .config()
+                .servers
+                .values()
+                .filter(|cfg| cfg.is_enabled())
+                .count();
+            (enabled, manager.config().servers.len() - enabled)
         };
 
-        if server_count > 0 {
-            crate::logging::info(&format!("MCP: Found {} server(s) in config", server_count));
+        if disabled_count > 0 {
+            crate::logging::info(&format!(
+                "MCP: {} disabled server(s) in config (kept, not spawned)",
+                disabled_count
+            ));
+        }
+
+        if enabled_count > 0 {
+            crate::logging::info(&format!("MCP: Found {} server(s) in config", enabled_count));
 
             // Send immediate "connecting" status so the TUI shows loading state
             // Server names with count 0 means "connecting..."
@@ -793,8 +808,9 @@ impl Registry {
                     manager
                         .config()
                         .servers
-                        .keys()
-                        .map(|name| format!("{}:0", name))
+                        .iter()
+                        .filter(|(_, cfg)| cfg.is_enabled())
+                        .map(|(name, _)| format!("{}:0", name))
                         .collect()
                 };
                 let _ = tx.send(crate::protocol::ServerEvent::McpStatus {
@@ -819,6 +835,7 @@ impl Registry {
                         .config()
                         .servers
                         .iter()
+                        .filter(|(_, cfg)| cfg.is_enabled())
                         .map(|(name, cfg)| (name.clone(), cfg.clone()))
                         .collect()
                 };

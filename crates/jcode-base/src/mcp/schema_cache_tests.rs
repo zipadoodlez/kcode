@@ -13,6 +13,8 @@ fn cfg(command: &str, args: &[&str]) -> McpServerConfig {
         shared: true,
         transport: None,
         url: None,
+        enabled: None,
+        disabled: None,
     }
 }
 
