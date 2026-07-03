@@ -1754,14 +1754,8 @@ mod stall_guard_tests {
 
     #[test]
     fn format_stall_duration_is_human_readable() {
-        assert_eq!(
-            format_stall_duration(Duration::from_secs(90)),
-            "90 seconds"
-        );
-        assert_eq!(
-            format_stall_duration(Duration::from_secs(120)),
-            "2 minutes"
-        );
+        assert_eq!(format_stall_duration(Duration::from_secs(90)), "90 seconds");
+        assert_eq!(format_stall_duration(Duration::from_secs(120)), "2 minutes");
         assert_eq!(
             format_stall_duration(Duration::from_secs(210)),
             "3.5 minutes"
