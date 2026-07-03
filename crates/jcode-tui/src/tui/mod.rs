@@ -35,6 +35,7 @@ pub mod screenshot;
 pub(crate) mod session_facts;
 pub mod session_picker;
 mod stream_buffer;
+pub(crate) mod swarm_plan_graph;
 pub mod test_harness;
 mod ui;
 mod ui_diff;

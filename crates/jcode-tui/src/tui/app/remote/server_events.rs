@@ -1650,6 +1650,23 @@ pub(in crate::tui::app) fn handle_server_event(
             app.swarm_plan_swarm_id = Some(snapshot.swarm_id.clone());
             app.swarm_plan_version = Some(snapshot.version);
             app.swarm_plan_items = snapshot.items.clone();
+            // Render the plan's task DAG as a mermaid diagram so the pinned
+            // pane / margin widget shows the swarm graph. Deferred render:
+            // enqueues in the background and registers the diagram on
+            // completion, so plan updates never block the event loop. Gated
+            // like transcript mermaid: a diagram surface must be enabled and
+            // mermaid rendering itself must be switched on (currently the
+            // JCODE_ENABLE_MERMAID=1 rollout gate while the renderer
+            // stabilizes), so plan graphs follow the same rollout switch.
+            if app.diagram_mode != crate::config::DiagramDisplayMode::None
+                && std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "1")
+                && let Some(graph) =
+                    crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
+            {
+                let _ = crate::tui::mermaid::render_mermaid_deferred_with_registration(
+                    &graph, None, true,
+                );
+            }
             persist_swarm_plan_snapshot(
                 app,
                 snapshot.swarm_id,
