@@ -56,7 +56,15 @@ impl InterruptSignal {
     }
 
     pub async fn notified(&self) {
-        let notified = self.notify.notified();
+        let mut notified = std::pin::pin!(self.notify.notified());
+        // Explicitly register this waiter with the Notify before checking the
+        // flag. `notify_waiters()` (used by `fire()`) wakes only registered
+        // waiters; current tokio registers a `notified()` future at creation,
+        // but `enable()` makes the registration explicit rather than relying
+        // on that version-specific guarantee, since a lost wakeup here parks
+        // the cancel path (agent stream loop, tool-wait select) until an
+        // unrelated event arrives (issue #428).
+        notified.as_mut().enable();
         if self.is_set() {
             return;
         }
@@ -87,5 +95,95 @@ impl StreamError {
             message,
             retry_after_secs,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// Documents the tokio semantics `InterruptSignal::notified()` relies on:
+    /// current tokio guarantees a `notified()` future receives wakeups from
+    /// `notify_waiters()` from the moment it is *created*, even before its
+    /// first poll. The explicit `enable()` in `notified()` makes that
+    /// registration explicit instead of relying on the version-specific
+    /// creation-time guarantee (hardening for issue #428).
+    #[tokio::test]
+    async fn notified_future_receives_notify_waiters_from_creation() {
+        let notify = tokio::sync::Notify::new();
+
+        // Created before the notification, not yet polled: must be woken.
+        let created_before = notify.notified();
+        notify.notify_waiters();
+        tokio::time::timeout(Duration::from_millis(100), created_before)
+            .await
+            .expect("a notified() future created before notify_waiters() must be woken");
+
+        // Created after the notification: must NOT be woken (notify_waiters
+        // stores no permit). This is why fire() also sets the atomic flag.
+        let created_after = notify.notified();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), created_after)
+                .await
+                .is_err(),
+            "notify_waiters() must not store a permit for future waiters"
+        );
+    }
+
+    /// Probabilistic race hammer for issue #428: `fire()` must never be lost
+    /// regardless of where the waiter is between creating the `notified()`
+    /// future and its first poll. The agent stream loop recreates this future
+    /// per stream event, so under fast token streams the pre-fix race made
+    /// Esc/Ctrl+C cancels appear to be ignored.
+    #[test]
+    fn fire_never_loses_wakeup_while_notified_races() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_time()
+            .build()
+            .expect("runtime");
+        rt.block_on(async {
+            for i in 0..2000 {
+                let signal = InterruptSignal::new();
+                let waiter = {
+                    let signal = signal.clone();
+                    tokio::spawn(async move { signal.notified().await })
+                };
+                // Fire concurrently: the waiter may be anywhere between
+                // future creation and first poll.
+                signal.fire();
+                tokio::time::timeout(Duration::from_secs(2), waiter)
+                    .await
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "lost wakeup on iteration {i}: notified() missed fire() (issue #428)"
+                        )
+                    })
+                    .expect("waiter task must not panic");
+            }
+        });
+    }
+
+    /// A fire() that happened before notified() is observed immediately.
+    #[tokio::test]
+    async fn notified_returns_immediately_when_already_fired() {
+        let signal = InterruptSignal::new();
+        signal.fire();
+        tokio::time::timeout(Duration::from_millis(100), signal.notified())
+            .await
+            .expect("pre-fired signal must resolve notified() immediately");
+    }
+
+    /// reset() clears the flag so subsequent notified() calls wait again.
+    #[tokio::test]
+    async fn reset_clears_fired_state() {
+        let signal = InterruptSignal::new();
+        signal.fire();
+        assert!(signal.is_set());
+        signal.reset();
+        assert!(!signal.is_set());
+        let waited = tokio::time::timeout(Duration::from_millis(50), signal.notified()).await;
+        assert!(waited.is_err(), "reset signal must park notified() again");
     }
 }
