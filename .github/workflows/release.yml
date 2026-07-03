@@ -23,14 +23,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # Publish the (empty) release up front so each platform build can attach
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Render a human-readable changelog for the release body (issue #435):
+      # changelog/v<version>.json when present, otherwise grouped commit
+      # subjects since the previous tag, always ending with the compare link.
+      - name: Generate release notes
+        run: scripts/generate_release_notes.sh "${GITHUB_REF_NAME}" > release_notes.md
+
+      # Publish the release up front so each platform build can attach
       # its own asset the moment it finishes, instead of everyone waiting for
       # the slowest job. action-gh-release is idempotent: it creates the release
       # for this tag if missing and updates it otherwise.
       - name: Create release if missing
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: release_notes.md
 
   build-linux-macos:
     name: Build (${{ matrix.target }})

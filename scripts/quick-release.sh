@@ -110,11 +110,23 @@ else
 fi
 
 echo "▸ Creating GitHub release..."
-gh release create "$VERSION" \
-    "$DIST/jcode-linux-x86_64.tar.gz" \
-    "$DIST/jcode-macos-aarch64.tar.gz" \
-    --title "$TITLE" \
-    --generate-notes
+# Human-readable changelog body (issue #435): changelog/v<version>.json when
+# present, otherwise grouped commit subjects, always with the compare link.
+NOTES_FILE="$DIST/release_notes.md"
+if scripts/generate_release_notes.sh "$VERSION" > "$NOTES_FILE" && [[ -s "$NOTES_FILE" ]]; then
+    gh release create "$VERSION" \
+        "$DIST/jcode-linux-x86_64.tar.gz" \
+        "$DIST/jcode-macos-aarch64.tar.gz" \
+        --title "$TITLE" \
+        --notes-file "$NOTES_FILE"
+else
+    echo "  Warning: release notes generation failed, falling back to --generate-notes"
+    gh release create "$VERSION" \
+        "$DIST/jcode-linux-x86_64.tar.gz" \
+        "$DIST/jcode-macos-aarch64.tar.gz" \
+        --title "$TITLE" \
+        --generate-notes
+fi
 
 # Close issues marked fixed-but-not-yet-released.
 PENDING_LABEL="triage: fixed-pending-release"
