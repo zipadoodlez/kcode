@@ -416,48 +416,54 @@ fn multiple_reasoning_blocks_anchor_in_order_and_clear_next_prompt() {
 
 #[test]
 fn anchored_trace_never_moves_and_clears_on_next_prompt() {
-    // Anchored traces are ordinary transcript entries: they keep their index
-    // as later content is appended (no bottom-following, no hoisting) and are
-    // removed when the next user prompt begins.
-    let mut app = create_test_app();
+    // Hermetic JCODE_HOME: these assertions depend on the default
+    // `reasoning_display = "current"` config and on ambient/info state
+    // not leaking in from the developer's real ~/.jcode (other tests
+    // write config overrides into the shared per-process test home).
+    with_temp_jcode_home(|| {
+        // Anchored traces are ordinary transcript entries: they keep their index
+        // as later content is appended (no bottom-following, no hoisting) and are
+        // removed when the next user prompt begins.
+        let mut app = create_test_app();
 
-    app.open_reasoning_region();
-    app.append_reasoning_text("first trace\n");
-    app.close_reasoning_region(None);
+        app.open_reasoning_region();
+        app.append_reasoning_text("first trace\n");
+        app.close_reasoning_region(None);
 
-    let trace_idx = app
-        .display_messages
-        .iter()
-        .position(|m| m.role == "reasoning")
-        .expect("first trace anchored");
-
-    // Later activity appends below; the trace index is unchanged.
-    app.append_streaming_text("answer text");
-    app.commit_pending_streaming_assistant_message();
-    app.open_reasoning_region();
-    app.append_reasoning_text("second trace\n");
-    app.close_reasoning_region(None);
-
-    assert_eq!(
-        app.display_messages[trace_idx].role, "reasoning",
-        "anchored trace must keep its transcript position"
-    );
-    assert!(
-        app.display_messages[trace_idx]
-            .content
-            .contains("first trace"),
-        "anchored trace content unchanged"
-    );
-
-    // Next prompt clears all of the turn's traces.
-    app.clear_turn_reasoning_traces();
-    assert_eq!(
-        app.display_messages
+        let trace_idx = app
+            .display_messages
             .iter()
-            .filter(|m| m.role == "reasoning")
-            .count(),
-        0
-    );
+            .position(|m| m.role == "reasoning")
+            .expect("first trace anchored");
+
+        // Later activity appends below; the trace index is unchanged.
+        app.append_streaming_text("answer text");
+        app.commit_pending_streaming_assistant_message();
+        app.open_reasoning_region();
+        app.append_reasoning_text("second trace\n");
+        app.close_reasoning_region(None);
+
+        assert_eq!(
+            app.display_messages[trace_idx].role, "reasoning",
+            "anchored trace must keep its transcript position"
+        );
+        assert!(
+            app.display_messages[trace_idx]
+                .content
+                .contains("first trace"),
+            "anchored trace content unchanged"
+        );
+
+        // Next prompt clears all of the turn's traces.
+        app.clear_turn_reasoning_traces();
+        assert_eq!(
+            app.display_messages
+                .iter()
+                .filter(|m| m.role == "reasoning")
+                .count(),
+            0
+        );
+    });
 }
 
 #[test]
@@ -543,36 +549,42 @@ fn remote_reasoning_then_text_preserves_order_through_paced_buffer() {
 
 #[test]
 fn anchored_trace_survives_tool_commit_and_answer_commit() {
-    // Anchored traces are independent transcript entries: neither a tool-only
-    // commit nor an answer commit touches them, so the thought stays readable
-    // (and stationary) for the rest of the turn.
-    let mut app = create_test_app();
-    app.is_processing = true;
+    // Hermetic JCODE_HOME: these assertions depend on the default
+    // `reasoning_display = "current"` config and on ambient/info state
+    // not leaking in from the developer's real ~/.jcode (other tests
+    // write config overrides into the shared per-process test home).
+    with_temp_jcode_home(|| {
+        // Anchored traces are independent transcript entries: neither a tool-only
+        // commit nor an answer commit touches them, so the thought stays readable
+        // (and stationary) for the rest of the turn.
+        let mut app = create_test_app();
+        app.is_processing = true;
 
-    app.open_reasoning_region();
-    app.append_reasoning_text("pre-tool thinking\n");
-    app.close_reasoning_region(None);
-    assert_eq!(trace_count(&app), 1);
+        app.open_reasoning_region();
+        app.append_reasoning_text("pre-tool thinking\n");
+        app.close_reasoning_region(None);
+        assert_eq!(trace_count(&app), 1);
 
-    // Tool-only commit (no streamed answer text).
-    app.commit_pending_streaming_assistant_message();
-    assert_eq!(trace_count(&app), 1, "tool commit leaves the trace anchored");
+        // Tool-only commit (no streamed answer text).
+        app.commit_pending_streaming_assistant_message();
+        assert_eq!(trace_count(&app), 1, "tool commit leaves the trace anchored");
 
-    // Answer commit.
-    app.append_streaming_text("the final answer");
-    app.commit_pending_streaming_assistant_message();
-    assert_eq!(
-        trace_count(&app),
-        1,
-        "answer commit leaves the trace anchored"
-    );
-    assert!(
-        !app
-            .display_messages
-            .iter()
-            .any(|m| m.role == "assistant" && m.content.contains("thought")),
-        "no thought-summary residue may be committed"
-    );
+        // Answer commit.
+        app.append_streaming_text("the final answer");
+        app.commit_pending_streaming_assistant_message();
+        assert_eq!(
+            trace_count(&app),
+            1,
+            "answer commit leaves the trace anchored"
+        );
+        assert!(
+            !app
+                .display_messages
+                .iter()
+                .any(|m| m.role == "assistant" && m.content.contains("thought")),
+            "no thought-summary residue may be committed"
+        );
+    });
 }
 
 fn trace_count(app: &App) -> usize {
@@ -584,78 +596,90 @@ fn trace_count(app: &App) -> usize {
 
 #[test]
 fn gc_dissolves_stale_traces_only_when_provably_offscreen() {
-    // Stale traces (all but the most recent) are GC'd only once the transcript
-    // has grown a full viewport past their anchor point, so removal can never
-    // cause visible motion while tail-following.
-    let mut app = create_test_app();
-    app.is_processing = true;
+    // Hermetic JCODE_HOME: these assertions depend on the default
+    // `reasoning_display = "current"` config and on ambient/info state
+    // not leaking in from the developer's real ~/.jcode (other tests
+    // write config overrides into the shared per-process test home).
+    with_temp_jcode_home(|| {
+        // Stale traces (all but the most recent) are GC'd only once the transcript
+        // has grown a full viewport past their anchor point, so removal can never
+        // cause visible motion while tail-following.
+        let mut app = create_test_app();
+        app.is_processing = true;
 
-    // Two traces: the first anchored when the transcript was 10 lines tall.
-    crate::tui::ui::set_last_total_wrapped_lines(10);
-    app.open_reasoning_region();
-    app.append_reasoning_text("old thought\n");
-    app.close_reasoning_region(None);
+        // Two traces: the first anchored when the transcript was 10 lines tall.
+        crate::tui::ui::set_last_total_wrapped_lines(10);
+        app.open_reasoning_region();
+        app.append_reasoning_text("old thought\n");
+        app.close_reasoning_region(None);
 
-    crate::tui::ui::set_last_total_wrapped_lines(40);
-    app.open_reasoning_region();
-    app.append_reasoning_text("current thought\n");
-    app.close_reasoning_region(None);
+        crate::tui::ui::set_last_total_wrapped_lines(40);
+        app.open_reasoning_region();
+        app.append_reasoning_text("current thought\n");
+        app.close_reasoning_region(None);
 
-    let viewport_h = 20u16;
-    crate::tui::ui::record_layout_snapshot(
-        ratatui::layout::Rect::new(0, 0, 80, viewport_h),
-        None,
-        None,
-        None,
-    );
+        let viewport_h = 20u16;
+        crate::tui::ui::record_layout_snapshot(
+            ratatui::layout::Rect::new(0, 0, 80, viewport_h),
+            None,
+            None,
+            None,
+        );
 
-    // Transcript hasn't grown enough yet: 25 - 10 = 15 <= 20 + 2 margin.
-    crate::tui::ui::set_last_total_wrapped_lines(25);
-    assert!(!app.gc_offscreen_reasoning_traces());
-    assert_eq!(trace_count(&app), 2, "no GC while possibly on screen");
+        // Transcript hasn't grown enough yet: 25 - 10 = 15 <= 20 + 2 margin.
+        crate::tui::ui::set_last_total_wrapped_lines(25);
+        assert!(!app.gc_offscreen_reasoning_traces());
+        assert_eq!(trace_count(&app), 2, "no GC while possibly on screen");
 
-    // Transcript grew a viewport past the first anchor: 40 - 10 = 30 > 22.
-    crate::tui::ui::set_last_total_wrapped_lines(40);
-    assert!(app.gc_offscreen_reasoning_traces());
-    assert_eq!(trace_count(&app), 1, "stale off-screen trace dissolved");
-    assert!(
-        app.display_messages
-            .iter()
-            .any(|m| m.role == "reasoning" && m.content.contains("current thought")),
-        "the most recent trace always survives"
-    );
+        // Transcript grew a viewport past the first anchor: 40 - 10 = 30 > 22.
+        crate::tui::ui::set_last_total_wrapped_lines(40);
+        assert!(app.gc_offscreen_reasoning_traces());
+        assert_eq!(trace_count(&app), 1, "stale off-screen trace dissolved");
+        assert!(
+            app.display_messages
+                .iter()
+                .any(|m| m.role == "reasoning" && m.content.contains("current thought")),
+            "the most recent trace always survives"
+        );
+    });
 }
 
 #[test]
 fn gc_never_runs_while_user_scrolled_up() {
-    let mut app = create_test_app();
-    app.is_processing = true;
+    // Hermetic JCODE_HOME: these assertions depend on the default
+    // `reasoning_display = "current"` config and on ambient/info state
+    // not leaking in from the developer's real ~/.jcode (other tests
+    // write config overrides into the shared per-process test home).
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.is_processing = true;
 
-    crate::tui::ui::set_last_total_wrapped_lines(10);
-    app.open_reasoning_region();
-    app.append_reasoning_text("old thought\n");
-    app.close_reasoning_region(None);
-    app.open_reasoning_region();
-    app.append_reasoning_text("current thought\n");
-    app.close_reasoning_region(None);
+        crate::tui::ui::set_last_total_wrapped_lines(10);
+        app.open_reasoning_region();
+        app.append_reasoning_text("old thought\n");
+        app.close_reasoning_region(None);
+        app.open_reasoning_region();
+        app.append_reasoning_text("current thought\n");
+        app.close_reasoning_region(None);
 
-    crate::tui::ui::record_layout_snapshot(
-        ratatui::layout::Rect::new(0, 0, 80, 20),
-        None,
-        None,
-        None,
-    );
-    crate::tui::ui::set_last_total_wrapped_lines(200);
+        crate::tui::ui::record_layout_snapshot(
+            ratatui::layout::Rect::new(0, 0, 80, 20),
+            None,
+            None,
+            None,
+        );
+        crate::tui::ui::set_last_total_wrapped_lines(200);
 
-    // Scrolled up: the user may be reading the old trace; never remove it.
-    app.auto_scroll_paused = true;
-    assert!(!app.gc_offscreen_reasoning_traces());
-    assert_eq!(trace_count(&app), 2);
+        // Scrolled up: the user may be reading the old trace; never remove it.
+        app.auto_scroll_paused = true;
+        assert!(!app.gc_offscreen_reasoning_traces());
+        assert_eq!(trace_count(&app), 2);
 
-    // Back at the tail: GC may proceed.
-    app.auto_scroll_paused = false;
-    assert!(app.gc_offscreen_reasoning_traces());
-    assert_eq!(trace_count(&app), 1);
+        // Back at the tail: GC may proceed.
+        app.auto_scroll_paused = false;
+        assert!(app.gc_offscreen_reasoning_traces());
+        assert_eq!(trace_count(&app), 1);
+    });
 }
 
 #[test]
@@ -760,25 +784,31 @@ fn open_reasoning_region_closed_at_turn_finish_is_anchored_not_dropped() {
 
 #[test]
 fn gc_keeps_single_trace_indefinitely() {
-    // With only one (current) trace there is nothing stale to collect, no
-    // matter how much the transcript grows.
-    let mut app = create_test_app();
-    app.is_processing = true;
+    // Hermetic JCODE_HOME: these assertions depend on the default
+    // `reasoning_display = "current"` config and on ambient/info state
+    // not leaking in from the developer's real ~/.jcode (other tests
+    // write config overrides into the shared per-process test home).
+    with_temp_jcode_home(|| {
+        // With only one (current) trace there is nothing stale to collect, no
+        // matter how much the transcript grows.
+        let mut app = create_test_app();
+        app.is_processing = true;
 
-    crate::tui::ui::set_last_total_wrapped_lines(10);
-    app.open_reasoning_region();
-    app.append_reasoning_text("only thought\n");
-    app.close_reasoning_region(None);
+        crate::tui::ui::set_last_total_wrapped_lines(10);
+        app.open_reasoning_region();
+        app.append_reasoning_text("only thought\n");
+        app.close_reasoning_region(None);
 
-    crate::tui::ui::record_layout_snapshot(
-        ratatui::layout::Rect::new(0, 0, 80, 20),
-        None,
-        None,
-        None,
-    );
-    crate::tui::ui::set_last_total_wrapped_lines(500);
-    assert!(!app.gc_offscreen_reasoning_traces());
-    assert_eq!(trace_count(&app), 1, "the current thought is never GC'd");
+        crate::tui::ui::record_layout_snapshot(
+            ratatui::layout::Rect::new(0, 0, 80, 20),
+            None,
+            None,
+            None,
+        );
+        crate::tui::ui::set_last_total_wrapped_lines(500);
+        assert!(!app.gc_offscreen_reasoning_traces());
+        assert_eq!(trace_count(&app), 1, "the current thought is never GC'd");
+    });
 }
 
 #[test]
