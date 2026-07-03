@@ -2554,18 +2554,20 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             crate::config::DiagramPanePosition::Side => {
                 const MIN_DIAGRAM_WIDTH: u16 = 24;
                 const MIN_CHAT_WIDTH: u16 = 20;
-                const AUTO_DIAGRAM_WIDTH_CAP_PERCENT: u32 = 75;
                 let max_diagram = area.width.saturating_sub(MIN_CHAT_WIDTH);
                 if max_diagram >= MIN_DIAGRAM_WIDTH {
                     let ratio = app.diagram_pane_ratio().clamp(25, 100) as u32;
                     let ratio_target = ((area.width as u32 * ratio) / 100) as u16;
-                    let auto_cap =
-                        ((area.width as u32 * AUTO_DIAGRAM_WIDTH_CAP_PERCENT) / 100) as u16;
                     let needed =
                         estimate_pinned_diagram_pane_width(diagram, area.height, MIN_DIAGRAM_WIDTH);
-                    let auto_target = needed.min(max_diagram).min(auto_cap.max(MIN_DIAGRAM_WIDTH));
+                    // The configured ratio is the upper bound for the pane so the
+                    // transcript (which still renders the diagram inline) is never
+                    // crushed. Shrink below the ratio when a diagram is narrow
+                    // enough to need less, but do not grow past it: a large/tall
+                    // diagram just scales down to fit the pane instead of eating
+                    // the chat column.
                     let diagram_width = ratio_target
-                        .max(auto_target)
+                        .min(needed.max(MIN_DIAGRAM_WIDTH))
                         .max(MIN_DIAGRAM_WIDTH)
                         .min(max_diagram);
                     let chat_width = area.width.saturating_sub(diagram_width);
@@ -2602,8 +2604,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                         area.width,
                         MIN_DIAGRAM_HEIGHT,
                     );
+                    // Cap the pane at the configured ratio so the transcript keeps
+                    // its rows; shrink below it when the diagram is short. A tall
+                    // diagram scales down to fit rather than swallowing the chat.
                     let diagram_height = ratio_target
-                        .max(needed.min(max_diagram))
+                        .min(needed.max(MIN_DIAGRAM_HEIGHT))
                         .max(MIN_DIAGRAM_HEIGHT)
                         .min(max_diagram);
                     let chat_height = area.height.saturating_sub(diagram_height);
