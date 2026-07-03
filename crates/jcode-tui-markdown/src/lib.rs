@@ -473,10 +473,6 @@ struct CenteredStructuredBlockState {
     ranges: Vec<std::ops::Range<usize>>,
 }
 
-fn diagram_side_only() -> bool {
-    matches!(effective_diagram_mode(), DiagramDisplayMode::Pinned)
-}
-
 fn mermaid_should_register_active() -> bool {
     !matches!(effective_diagram_mode(), DiagramDisplayMode::None)
 }
