@@ -151,6 +151,13 @@ pub mod linux {
         // A process's children are tracked per-thread, so union across all
         // threads of `pid`.
         let mut children = Vec::new();
+        // Distinguish "interface works and the process has no children" (the
+        // common leaf-process case) from "interface unavailable". Falling back
+        // to the full /proc scan on a merely-empty result reintroduced the
+        // exact per-poll whole-/proc scan this function exists to avoid
+        // (issue #392 A1): every childless polled process triggered a scan of
+        // every PID's status file on each 500ms stdin poll.
+        let mut children_interface_readable = false;
         if let Ok(threads) = std::fs::read_dir(format!("/proc/{}/task", pid)) {
             for thread in threads.flatten() {
                 let tid = thread.file_name();
@@ -158,6 +165,7 @@ pub mod linux {
                 if let Ok(list) =
                     std::fs::read_to_string(format!("/proc/{}/task/{}/children", pid, tid))
                 {
+                    children_interface_readable = true;
                     for child in list.split_whitespace() {
                         if let Ok(child_pid) = child.parse::<u32>() {
                             children.push(child_pid);
@@ -167,7 +175,7 @@ pub mod linux {
             }
         }
 
-        if !children.is_empty() {
+        if children_interface_readable {
             return children;
         }
 

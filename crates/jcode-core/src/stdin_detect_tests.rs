@@ -285,3 +285,37 @@ fn test_multiple_sequential_reads() {
     let status = child.wait().expect("failed to wait");
     assert!(status.success());
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn direct_children_of_childless_process_does_not_scan_proc() {
+    // Regression test for issue #392 A1 (second occurrence): a childless
+    // process must return an empty list via /proc/<pid>/task/<tid>/children
+    // without falling back to the whole-/proc scan. We can't observe syscalls
+    // here, but we can assert the interface itself reports readable-and-empty
+    // for a leaf process we control, which is the branch condition the fix
+    // keys on.
+    let mut child = std::process::Command::new("sleep")
+        .arg("5")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+
+    // `sleep` spawns no children. The children interface must be readable so
+    // direct_children() returns empty WITHOUT the proc-scan fallback.
+    let path = format!("/proc/{}/task/{}/children", pid, pid);
+    let readable = std::fs::read_to_string(&path).is_ok();
+    let children = super::linux::direct_children(pid);
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        readable,
+        "kernel lacks CONFIG_PROC_CHILDREN; fallback scan is expected on this system"
+    );
+    assert!(
+        children.is_empty(),
+        "sleep should have no children, got {children:?}"
+    );
+}
