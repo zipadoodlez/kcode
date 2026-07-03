@@ -267,6 +267,34 @@ So comprehensiveness now means two things, both enforced as gates: did we cover
 the surface (critique), and does it actually work (verify). Both convert
 gaps/failures into new nodes.
 
+### 6.4 Implemented enforcement (2026-07: growth mechanics)
+
+The pressures above are implemented as hard engine rules in `jcode-plan`'s
+`dag` module, not prompt requests:
+
+- **Root gate (plan-wide audit).** Every deep-mode `seed` auto-inserts a
+  parent-less gate (`plan::gate`) depending on every root-level node. A flat
+  seed whose nodes all execute atomically still cannot reach a terminal state
+  without a final adversarial pass, and that pass can `inject_gap` new
+  top-level nodes (growth at the top of the tree). Re-seeding widens the root
+  gate's scope and re-opens it if it had already passed.
+- **Enumerated gate coverage.** A passing deep gate artifact must address
+  EVERY done node in its audit scope by id (scope = the gate's non-gate
+  `depends_on`, one rule for composite and root gates), up to an enumeration
+  cap of 20, after which only the low-confidence debt rule binds. "All good,
+  no gaps" is structurally rejected (`UncoveredSiblings`). A stale-scope rule
+  (`StaleGateScope`) rejects a pass when nodes entered the scope after the
+  gate was dispatched.
+- **Artifact-or-nothing turn ends.** Deep mode has no auto-complete: a worker
+  turn that ends with its node still running gets the node re-queued once to a
+  fresh worker (`no_artifact_requeues`) and failed on repeat. The only ways a
+  deep node closes are `expand_node` (decompose) or `complete_node` (validated
+  artifact).
+- **Growth accounting.** Every node records an origin (`seed`/`expand`/`gap`/
+  `gate`); `PlanGraphStatus` carries `seeded_count`/`grown_count` and
+  `plan_status`/`run_plan` print a growth line, so a deep plan that never
+  outgrew its seed is visibly under-explored.
+
 ---
 
 ## 7. Bias budget: what is fixed vs emergent
