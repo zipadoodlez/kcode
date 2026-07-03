@@ -25,7 +25,9 @@ pub(crate) fn copy_badge_alt_badge() -> String {
 }
 
 fn copy_badge_shortcut_width(key_label: &str) -> usize {
-    UnicodeWidthStr::width(format!("{} [⇧] [{key_label}]", copy_badge_alt_badge()).as_str())
+    // Includes the single separator space rendered between the row content and
+    // the first badge.
+    UnicodeWidthStr::width(format!(" {} [⇧] [{key_label}]", copy_badge_alt_badge()).as_str())
 }
 
 /// Display width reserved for the inline expand-edit badge (`[Alt] [⇧] [E] …`).
@@ -190,6 +192,24 @@ pub(crate) fn truncate_line_in_place_to_width(line: &mut Line<'static>, max_widt
     line.spans = kept;
 }
 
+/// Remove trailing plain spaces from a line so an appended badge sits exactly
+/// one separator space after the content, regardless of how the source line
+/// was rendered (code block headers end with a space, blockquote lines don't).
+pub(crate) fn trim_line_trailing_spaces(line: &mut Line<'static>) {
+    while let Some(last) = line.spans.last_mut() {
+        let trimmed = last.content.trim_end_matches(' ');
+        if trimmed.len() == last.content.len() {
+            break;
+        }
+        if trimmed.is_empty() {
+            line.spans.pop();
+        } else {
+            last.content = std::borrow::Cow::Owned(trimmed.to_string());
+            break;
+        }
+    }
+}
+
 pub(crate) fn copy_badge_reserved_width(
     key: char,
     copy_badge_ui: &crate::tui::app::CopyBadgeUiState,
@@ -197,8 +217,10 @@ pub(crate) fn copy_badge_reserved_width(
 ) -> usize {
     let mut reserved = copy_badge_shortcut_width("A");
     if copy_badge_ui.feedback_for_key(key, now).is_some() {
-        // Includes the trailing spacer inserted between feedback and the shortcut badges.
-        reserved = reserved.saturating_add(UnicodeWidthStr::width(" ✓ Copied! "));
+        // Feedback text plus the spacer between it and the shortcut badges.
+        // The separator before the feedback is already counted in
+        // `copy_badge_shortcut_width`.
+        reserved = reserved.saturating_add(UnicodeWidthStr::width("✓ Copied! "));
     }
     reserved
 }
@@ -748,6 +770,10 @@ pub(super) fn draw_messages(
             let reserved = copy_badge_reserved_width(key, &copy_badge_ui, copy_badge_now);
             let max_content_width = (content_area.width as usize).saturating_sub(reserved);
             truncate_line_in_place_to_width(line, max_content_width);
+            // Normalize the gap between the row content and the badge to
+            // exactly one space (the reserved width accounts for it).
+            trim_line_trailing_spaces(line);
+            line.spans.push(Span::raw(" "));
 
             let alt_style = if copy_badge_ui.alt_is_active(copy_badge_now) {
                 Style::default().fg(queued_color()).bold()
@@ -772,9 +798,9 @@ pub(super) fn draw_messages(
                     Style::default().fg(Color::Red).bold()
                 };
                 let feedback_text = if success {
-                    " ✓ Copied!"
+                    "✓ Copied!"
                 } else {
-                    " ✗ Copy failed"
+                    "✗ Copy failed"
                 };
                 line.spans.push(Span::styled(feedback_text, feedback_style));
                 line.spans.push(Span::raw(" "));

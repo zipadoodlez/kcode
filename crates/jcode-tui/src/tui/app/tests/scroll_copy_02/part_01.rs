@@ -1412,3 +1412,4 @@ fn test_changelog_overlay_mouse_drag_release_copies_text() {
         Some("Copied selection") | Some("Failed to copy selection") | Some("Selection is empty")
     ));
 }
+
