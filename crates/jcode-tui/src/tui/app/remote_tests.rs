@@ -839,3 +839,73 @@ fn remote_history_watchdog_advises_restart_after_giving_up() {
     assert!(!redraw2);
     assert_eq!(app.display_messages().len(), before + 1);
 }
+
+/// Regression for issue #427: picking an effort-variant model row (e.g.
+/// "gpt-5.5 (high)") in remote mode must forward the chosen effort to the
+/// server after the model-switch request. Previously the effort was applied
+/// only to the local stand-in provider, so the server kept its configured
+/// default (low by default) and silently ran the new model at low effort.
+#[test]
+fn forward_pending_reasoning_effort_sends_effort_request_to_server() {
+    use tokio::io::AsyncBufReadExt;
+
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.pending_reasoning_effort = Some("high".to_string());
+
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let line = rt.block_on(async {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        let peer = remote
+            .take_dummy_peer()
+            .expect("dummy remote should retain peer stream");
+        let (reader, _writer) = peer.into_split();
+        let mut reader = tokio::io::BufReader::new(reader);
+
+        super::forward_pending_reasoning_effort(&mut app, &mut remote).await;
+
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .await
+            .expect("effort request should be readable by peer");
+        line
+    });
+
+    match serde_json::from_str::<crate::protocol::Request>(&line)
+        .expect("effort request should deserialize")
+    {
+        crate::protocol::Request::SetReasoningEffort { effort, .. } => {
+            assert_eq!(effort, "high", "the picker-selected effort must be sent");
+        }
+        other => panic!("expected SetReasoningEffort request, got {:?}", other),
+    }
+
+    assert!(
+        app.pending_reasoning_effort.is_none(),
+        "staged effort must be consumed after dispatch"
+    );
+    assert_eq!(
+        app.remote_reasoning_effort.as_deref(),
+        Some("high"),
+        "requested effort should be tracked optimistically for the UI"
+    );
+}
+
+/// The dispatcher must be a no-op when no effort variant was staged (plain
+/// model rows without an effort suffix).
+#[test]
+fn forward_pending_reasoning_effort_is_noop_without_staged_effort() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    assert!(app.pending_reasoning_effort.is_none());
+
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    rt.block_on(async {
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        super::forward_pending_reasoning_effort(&mut app, &mut remote).await;
+    });
+
+    assert!(app.remote_reasoning_effort.is_none());
+    assert!(app.pending_reasoning_effort.is_none());
+}

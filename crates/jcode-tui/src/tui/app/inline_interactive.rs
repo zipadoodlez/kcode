@@ -2753,6 +2753,14 @@ impl App {
                             self.status_detail = None;
                             self.pending_route_selection = Some(route_selection);
                             self.pending_model_switch = Some(spec);
+                            // In remote mode `self.provider` is a local
+                            // stand-in, so applying the picked effort variant
+                            // to it does not reach the server. Stage it so the
+                            // remote dispatcher forwards it right after the
+                            // model switch; otherwise the server keeps its
+                            // configured default (low) and silently runs e.g.
+                            // "gpt-5.5 (high)" at low effort (issue #427).
+                            self.pending_reasoning_effort = effort.clone();
                         } else {
                             match self.provider.set_route_selection(&route_selection) {
                                 Ok(()) => {

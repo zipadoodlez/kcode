@@ -1256,3 +1256,90 @@ fn test_handle_input_shell_completed_renders_markdown_blocks() {
         Some("Shell command completed".to_string())
     );
 }
+
+/// Regression for issue #427: selecting an effort-variant model row (e.g.
+/// "gpt-5.5 (high)") in the remote model picker must stage the chosen effort
+/// alongside the pending model switch. Previously only the model spec was
+/// staged, so the server kept its configured default effort (low) and the
+/// session silently ran gpt-5.5 at low effort.
+#[test]
+fn test_model_picker_effort_variant_selection_stages_effort_in_remote_mode() {
+    let mut app = create_test_app();
+    configure_test_remote_models_with_openai_recommendations(&mut app);
+
+    app.open_model_picker();
+
+    let picker = app
+        .inline_interactive_state
+        .as_ref()
+        .expect("model picker should be open");
+
+    let entry_idx = picker
+        .entries
+        .iter()
+        .position(|m| m.name == "gpt-5.5 (high)")
+        .expect("gpt-5.5 (high) should be in picker");
+    assert_eq!(
+        picker.entries[entry_idx].effort.as_deref(),
+        Some("high"),
+        "effort variant rows must carry their effort"
+    );
+
+    let filtered_pos = picker
+        .filtered
+        .iter()
+        .position(|&i| i == entry_idx)
+        .expect("gpt-5.5 (high) should be in filtered list");
+    app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
+
+    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
+        .unwrap();
+
+    assert!(app.inline_interactive_state.is_none(), "picker should close");
+    assert!(
+        app.pending_route_selection.is_some(),
+        "model switch should be staged for the remote dispatcher"
+    );
+    assert_eq!(
+        app.pending_reasoning_effort.as_deref(),
+        Some("high"),
+        "the picked effort variant must be staged so it reaches the server (issue #427)"
+    );
+}
+
+/// Plain model rows (no effort suffix) must not stage a reasoning effort.
+#[test]
+fn test_model_picker_plain_selection_stages_no_effort_in_remote_mode() {
+    let mut app = create_test_app();
+    configure_test_remote_models_with_openai_recommendations(&mut app);
+
+    app.open_model_picker();
+
+    let picker = app
+        .inline_interactive_state
+        .as_ref()
+        .expect("model picker should be open");
+
+    // claude-opus-4-8 rows are built without effort variants in this fixture.
+    let entry_idx = picker
+        .entries
+        .iter()
+        .position(|m| m.name == "claude-opus-4-8" && m.effort.is_none())
+        .expect("claude-opus-4-8 should be in picker without an effort variant");
+
+    let filtered_pos = picker
+        .filtered
+        .iter()
+        .position(|&i| i == entry_idx)
+        .expect("claude-opus-4-8 should be in filtered list");
+    app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
+
+    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
+        .unwrap();
+
+    assert!(app.inline_interactive_state.is_none(), "picker should close");
+    assert!(
+        app.pending_reasoning_effort.is_none(),
+        "plain rows must not override the server's effort"
+    );
+}
