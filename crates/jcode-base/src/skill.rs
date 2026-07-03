@@ -33,6 +33,13 @@ pub struct SkillRegistry {
     skills: HashMap<String, Skill>,
 }
 
+/// Maximum directory depth scanned under a Claude Code plugin root when
+/// looking for `skills/<name>/SKILL.md` entries. Plugin layouts vary across
+/// Claude Code versions (`cache/<marketplace>/<plugin>/<version>/skills/...`,
+/// `repos/<owner>/<repo>/skills/...`, nested `.claude/skills/...`), so we scan
+/// defensively but with a bound to avoid walking arbitrarily deep trees.
+const PLUGIN_SCAN_MAX_DEPTH: usize = 5;
+
 impl SkillRegistry {
     /// Process-wide shared mutable registry used by both `skill_manage` and
     /// direct slash invocation paths. Keeping a single registry prevents slash
@@ -211,6 +218,12 @@ impl SkillRegistry {
 
         let mut registry = Self::default();
 
+        // Load skills provided by Claude Code plugins/marketplace installs
+        // first, so explicit jcode/agents skills with the same name win below.
+        if let Some(plugins_root) = Self::claude_plugins_root() {
+            registry.load_plugin_skills_from_root(&plugins_root);
+        }
+
         // Load from ~/.jcode/skills/ (jcode's own global skills)
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
             let jcode_skills = jcode_dir.join("skills");
@@ -256,6 +269,133 @@ impl SkillRegistry {
         }
 
         Ok(())
+    }
+
+    /// Root of the Claude Code plugin store (`~/.claude/plugins`), if present.
+    fn claude_plugins_root() -> Option<PathBuf> {
+        crate::storage::user_home_path(".claude/plugins")
+            .ok()
+            .filter(|p| p.is_dir())
+    }
+
+    /// Load skills provided by Claude Code plugins under `plugins_root`.
+    /// Returns the number of skills loaded. Errors are skipped so a broken
+    /// plugin never prevents jcode's own skills from loading.
+    fn load_plugin_skills_from_root(&mut self, plugins_root: &Path) -> usize {
+        let mut count = 0;
+        for dir in Self::plugin_skill_dirs_under(plugins_root) {
+            count += self.load_from_dir_count(&dir).unwrap_or(0);
+        }
+        count
+    }
+
+    /// Discover `skills/` directories provided by Claude Code plugins under
+    /// the given plugins root (normally `~/.claude/plugins`).
+    ///
+    /// Sources, in order of trust:
+    /// - `installed_plugins.json` install paths (current Claude Code layout,
+    ///   pointing into `cache/<marketplace>/<plugin>/<version>/`).
+    /// - `repos/` checkouts (legacy plugin layout).
+    /// - `cache/` as a fallback only when the manifest is missing/unparsable,
+    ///   since the cache holds installed plugins.
+    ///
+    /// `marketplaces/` is intentionally not scanned: it mirrors the full
+    /// marketplace catalog, including plugins the user never installed.
+    fn plugin_skill_dirs_under(plugins_root: &Path) -> Vec<PathBuf> {
+        if !plugins_root.is_dir() {
+            return Vec::new();
+        }
+
+        let mut roots: Vec<PathBuf> =
+            Self::installed_plugin_paths(&plugins_root.join("installed_plugins.json"));
+        if roots.is_empty() {
+            let cache = plugins_root.join("cache");
+            if cache.is_dir() {
+                roots.push(cache);
+            }
+        }
+        let repos = plugins_root.join("repos");
+        if repos.is_dir() {
+            roots.push(repos);
+        }
+
+        let mut dirs = std::collections::BTreeSet::new();
+        for root in roots {
+            Self::collect_plugin_skills_dirs(&root, PLUGIN_SCAN_MAX_DEPTH, &mut dirs);
+        }
+        dirs.into_iter().collect()
+    }
+
+    /// Parse install paths from a Claude Code `installed_plugins.json`
+    /// manifest. Tolerates both a list of installs per plugin (version 2) and
+    /// a single install object, and skips paths that no longer exist.
+    fn installed_plugin_paths(manifest: &Path) -> Vec<PathBuf> {
+        let Ok(raw) = std::fs::read_to_string(manifest) else {
+            return Vec::new();
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return Vec::new();
+        };
+        let Some(plugins) = value.get("plugins").and_then(|p| p.as_object()) else {
+            return Vec::new();
+        };
+
+        let mut paths = Vec::new();
+        for installs in plugins.values() {
+            let installs: Vec<&serde_json::Value> = match installs {
+                serde_json::Value::Array(list) => list.iter().collect(),
+                other => vec![other],
+            };
+            for install in installs {
+                if let Some(path) = install.get("installPath").and_then(|p| p.as_str()) {
+                    let path = PathBuf::from(path);
+                    if path.is_dir() {
+                        paths.push(path);
+                    }
+                }
+            }
+        }
+        paths
+    }
+
+    /// Recursively collect directories named `skills` that contain at least
+    /// one `<name>/SKILL.md`, up to `depth` levels below `root`.
+    fn collect_plugin_skills_dirs(
+        root: &Path,
+        depth: usize,
+        out: &mut std::collections::BTreeSet<PathBuf>,
+    ) {
+        if depth == 0 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(root) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() || path.is_symlink() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == ".git" || name == "node_modules" {
+                continue;
+            }
+            if name == "skills" && Self::dir_contains_skill(&path) {
+                out.insert(path);
+                continue;
+            }
+            Self::collect_plugin_skills_dirs(&path, depth - 1, out);
+        }
+    }
+
+    /// True if `dir` has at least one immediate subdirectory with a SKILL.md.
+    fn dir_contains_skill(dir: &Path) -> bool {
+        std::fs::read_dir(dir).ok().is_some_and(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.path().join("SKILL.md").is_file())
+        })
     }
 
     /// Load skills from a directory
@@ -380,6 +520,12 @@ impl SkillRegistry {
         self.skills.clear();
 
         let mut count = 0;
+
+        // Load skills provided by Claude Code plugins/marketplace installs
+        // first, so explicit jcode/agents skills with the same name win below.
+        if let Some(plugins_root) = Self::claude_plugins_root() {
+            count += self.load_plugin_skills_from_root(&plugins_root);
+        }
 
         // Load from ~/.jcode/skills/ (jcode's own global skills)
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
@@ -935,5 +1081,177 @@ mod tests {
         let registry = SkillRegistry::load_for_working_dir(Some(temp.path())).expect("load skills");
         assert!(registry.contains("present-skill"));
         assert!(!registry.contains("missing-skill"));
+    }
+
+    /// Write `SKILL.md` for `name` inside `<plugin_dir>/skills/<name>/`.
+    fn write_plugin_skill(plugin_dir: &Path, name: &str) {
+        write_plugin_skill_with_description(plugin_dir, name, &format!("Plugin skill {name}"));
+    }
+
+    fn write_plugin_skill_with_description(plugin_dir: &Path, name: &str, description: &str) {
+        let dir = plugin_dir.join("skills").join(name);
+        std::fs::create_dir_all(&dir).expect("create plugin skill dir");
+        std::fs::write(
+            dir.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: {description}\n---\n\nUse {name}.\n"),
+        )
+        .expect("write plugin skill");
+    }
+
+    fn write_installed_plugins_manifest(plugins_root: &Path, install_paths: &[&Path]) {
+        let plugins: serde_json::Map<String, serde_json::Value> = install_paths
+            .iter()
+            .enumerate()
+            .map(|(i, path)| {
+                (
+                    format!("plugin-{i}@test-marketplace"),
+                    serde_json::json!([{ "scope": "user", "installPath": path, "version": "1.0.0" }]),
+                )
+            })
+            .collect();
+        std::fs::write(
+            plugins_root.join("installed_plugins.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "version": 2,
+                "plugins": plugins,
+            }))
+            .expect("serialize manifest"),
+        )
+        .expect("write manifest");
+    }
+
+    #[test]
+    fn plugin_skills_load_from_installed_plugins_manifest() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugins_root = temp.path();
+
+        // Mirror the real Claude Code layout:
+        // cache/<marketplace>/<plugin>/<version>/skills/<skill>/SKILL.md
+        let install = plugins_root.join("cache/test-marketplace/vercel/0.40.1");
+        write_plugin_skill(&install, "ai-gateway");
+        // Nested `.claude/skills` variant inside the same install.
+        write_plugin_skill(&install.join(".claude"), "benchmark-agents");
+        write_installed_plugins_manifest(plugins_root, &[&install]);
+
+        let mut registry = SkillRegistry::default();
+        let count = registry.load_plugin_skills_from_root(plugins_root);
+
+        assert_eq!(count, 2);
+        assert!(registry.contains("ai-gateway"));
+        assert!(registry.contains("benchmark-agents"));
+    }
+
+    #[test]
+    fn plugin_skills_fall_back_to_cache_scan_without_manifest() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugins_root = temp.path();
+
+        let install = plugins_root.join("cache/test-marketplace/my-plugin/1.0.0");
+        write_plugin_skill(&install, "cache-skill");
+
+        let mut registry = SkillRegistry::default();
+        let count = registry.load_plugin_skills_from_root(plugins_root);
+
+        assert_eq!(count, 1);
+        assert!(registry.contains("cache-skill"));
+    }
+
+    #[test]
+    fn plugin_skills_load_from_repos_layout() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugins_root = temp.path();
+
+        let repo = plugins_root.join("repos/owner/my-plugin");
+        write_plugin_skill(&repo, "repo-skill");
+
+        let mut registry = SkillRegistry::default();
+        let count = registry.load_plugin_skills_from_root(plugins_root);
+
+        assert_eq!(count, 1);
+        assert!(registry.contains("repo-skill"));
+    }
+
+    #[test]
+    fn plugin_scan_skips_marketplace_catalog_when_manifest_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugins_root = temp.path();
+
+        // Installed plugin listed in the manifest.
+        let install = plugins_root.join("cache/test-marketplace/installed/1.0.0");
+        write_plugin_skill(&install, "installed-skill");
+        write_installed_plugins_manifest(plugins_root, &[&install]);
+
+        // Marketplace catalog entry the user never installed.
+        write_plugin_skill(
+            &plugins_root.join("marketplaces/test-marketplace/plugins/uninstalled"),
+            "uninstalled-skill",
+        );
+        // Cache entry not referenced by the manifest (stale install).
+        write_plugin_skill(
+            &plugins_root.join("cache/test-marketplace/stale/0.1.0"),
+            "stale-skill",
+        );
+
+        let mut registry = SkillRegistry::default();
+        registry.load_plugin_skills_from_root(plugins_root);
+
+        assert!(registry.contains("installed-skill"));
+        assert!(
+            !registry.contains("uninstalled-skill"),
+            "marketplace catalog skills must not load"
+        );
+        assert!(
+            !registry.contains("stale-skill"),
+            "cache entries outside the manifest must not load when a manifest exists"
+        );
+    }
+
+    #[test]
+    fn plugin_scan_respects_depth_bound() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugins_root = temp.path();
+
+        // Deeper than PLUGIN_SCAN_MAX_DEPTH below the cache root.
+        let too_deep = plugins_root.join("cache/a/b/c/d/e/f");
+        write_plugin_skill(&too_deep, "too-deep-skill");
+
+        let mut registry = SkillRegistry::default();
+        let count = registry.load_plugin_skills_from_root(plugins_root);
+
+        assert_eq!(count, 0);
+        assert!(!registry.contains("too-deep-skill"));
+    }
+
+    #[test]
+    fn explicit_jcode_skill_wins_over_plugin_skill_with_same_name() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let plugins_root = temp.path().join("plugins");
+
+        let install = plugins_root.join("cache/test-marketplace/my-plugin/1.0.0");
+        write_plugin_skill_with_description(&install, "shared-name", "plugin version");
+
+        // Explicit jcode skill with the same name.
+        write_test_skill(temp.path(), ".jcode", "shared-name");
+
+        // Mirror load ordering: plugins first, then explicit skill dirs, so
+        // the later (explicit) insert wins in the registry map.
+        let mut registry = SkillRegistry::default();
+        registry.load_plugin_skills_from_root(&plugins_root);
+        registry
+            .load_from_dir(&temp.path().join(".jcode/skills"))
+            .expect("load explicit skills");
+
+        let skill = registry.get("shared-name").expect("skill present");
+        assert_eq!(
+            skill.description, "Test skill shared-name",
+            "explicit jcode skill must override the plugin-provided one"
+        );
+    }
+
+    #[test]
+    fn plugin_skill_dirs_empty_for_missing_root() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let missing = temp.path().join("does-not-exist");
+        assert!(SkillRegistry::plugin_skill_dirs_under(&missing).is_empty());
     }
 }
