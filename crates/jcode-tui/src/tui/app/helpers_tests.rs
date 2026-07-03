@@ -179,8 +179,28 @@ fn resume_invocation_args_omits_blank_socket() {
     );
 }
 
+/// Pin JCODE_HOME to a tempdir containing a `builds/current/jcode` binary so
+/// `launch_client_executable()` resolves deterministically, independent of
+/// whether the developer machine has a published local build channel and of
+/// other tests mutating JCODE_HOME in parallel. Returns the guards that keep
+/// the environment pinned for the duration of the test.
+fn pinned_resume_test_home() -> (
+    std::sync::MutexGuard<'static, ()>,
+    tempfile::TempDir,
+    EnvVarGuard,
+) {
+    let env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let current = temp.path().join("builds").join("current");
+    std::fs::create_dir_all(&current).expect("create builds/current");
+    std::fs::write(current.join("jcode"), b"#!/bin/sh\n").expect("write fake jcode binary");
+    let home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    (env_lock, temp, home)
+}
+
 #[test]
 fn build_resume_command_uses_imported_jcode_session_for_claude_code() {
+    let _pinned = pinned_resume_test_home();
     let (program, args, title) = build_resume_command(
         &ResumeTarget::ClaudeCodeSession {
             session_id: "claude-session-123".to_string(),
@@ -207,6 +227,7 @@ fn build_resume_command_uses_imported_jcode_session_for_claude_code() {
 
 #[test]
 fn build_resume_command_uses_imported_jcode_session_for_codex() {
+    let _pinned = pinned_resume_test_home();
     let (program, args, title) = build_resume_command(
         &ResumeTarget::CodexSession {
             session_id: "codex-session-123".to_string(),
