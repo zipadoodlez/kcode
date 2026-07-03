@@ -329,3 +329,108 @@ fn test_handle_server_event_compaction_mode_changed_updates_remote_mode() {
     let last = app.display_messages().last().expect("missing response");
     assert_eq!(last.content, "✓ Compaction mode → semantic");
 }
+
+#[test]
+fn test_tool_done_preserves_sibling_streaming_tool_inputs_and_intents() {
+    // When one assistant message emits multiple tool calls, ToolDone for the
+    // first call must not wipe the parsed input/intent of siblings that are
+    // still waiting for their own results. A full clear made the second
+    // webfetch/websearch row render with no intent or URL/query summary.
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    // First tool call streams in and finishes parsing its input.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolStart {
+            id: "tool_a".to_string(),
+            name: "webfetch".to_string(),
+        },
+        &mut remote,
+    );
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolInput {
+            delta: r#"{"url":"https://example.com/a","intent":"Fetch page A"}"#.to_string(),
+        },
+        &mut remote,
+    );
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolExec {
+            id: "tool_a".to_string(),
+            name: "webfetch".to_string(),
+        },
+        &mut remote,
+    );
+
+    // Second tool call from the same assistant message also finishes parsing.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolStart {
+            id: "tool_b".to_string(),
+            name: "webfetch".to_string(),
+        },
+        &mut remote,
+    );
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolInput {
+            delta: r#"{"url":"https://example.com/b","intent":"Fetch page B"}"#.to_string(),
+        },
+        &mut remote,
+    );
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolExec {
+            id: "tool_b".to_string(),
+            name: "webfetch".to_string(),
+        },
+        &mut remote,
+    );
+
+    // First result arrives. This must not erase tool_b's streamed input.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolDone {
+            id: "tool_a".to_string(),
+            name: "webfetch".to_string(),
+            output: "page A body".to_string(),
+            error: None,
+        },
+        &mut remote,
+    );
+
+    let remaining = app.streaming_tool_calls();
+    assert_eq!(remaining.len(), 1, "sibling tool call should survive");
+    assert_eq!(remaining[0].id, "tool_b");
+    assert_eq!(remaining[0].intent.as_deref(), Some("Fetch page B"));
+    assert_eq!(
+        remaining[0].input.get("url").and_then(|v| v.as_str()),
+        Some("https://example.com/b")
+    );
+
+    // Second result arrives and its display message keeps the intent/url.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ToolDone {
+            id: "tool_b".to_string(),
+            name: "webfetch".to_string(),
+            output: "page B body".to_string(),
+            error: None,
+        },
+        &mut remote,
+    );
+    assert!(app.streaming_tool_calls().is_empty());
+
+    let tool_b_msg = app
+        .display_messages()
+        .iter()
+        .rev()
+        .find(|dm| {
+            dm.tool_data
+                .as_ref()
+                .is_some_and(|td| td.id == "tool_b")
+        })
+        .expect("missing tool_b display message");
+    let tool_b = tool_b_msg.tool_data.as_ref().unwrap();
+    assert_eq!(tool_b.intent.as_deref(), Some("Fetch page B"));
+    assert_eq!(
+        tool_b.input.get("url").and_then(|v| v.as_str()),
+        Some("https://example.com/b")
+    );
+}
