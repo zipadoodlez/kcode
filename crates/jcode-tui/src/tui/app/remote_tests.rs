@@ -38,6 +38,12 @@ impl Provider for MockProvider {
 }
 
 fn create_test_app() -> crate::tui::app::App {
+    ensure_test_jcode_home_if_unset();
+    // `has_notification()` (via `unfocused_redraw_warranted`) consults a
+    // process-wide ambient-info cache that another test may have populated
+    // from its own JCODE_HOME (scheduled reminders read as a notification).
+    // Reset it so these tests observe only their own state.
+    crate::tui::app::helpers::clear_ambient_info_cache_for_tests();
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
@@ -45,6 +51,28 @@ fn create_test_app() -> crate::tui::app::App {
     app.queue_mode = false;
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app
+}
+
+/// Point JCODE_HOME at a per-process temp dir when the environment does not
+/// already pin one, so tests never read the developer's real `~/.jcode`
+/// state (e.g. a populated ambient queue turns `has_notification()` on and
+/// breaks the unfocused-redraw assertions). Mirrors the helper of the same
+/// name used by the main app test suite.
+fn ensure_test_jcode_home_if_unset() {
+    use std::sync::OnceLock;
+
+    static TEST_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
+
+    if std::env::var_os("JCODE_HOME").is_some() {
+        return;
+    }
+
+    let path = TEST_HOME.get_or_init(|| {
+        let path = std::env::temp_dir().join(format!("jcode-test-home-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&path);
+        path
+    });
+    crate::env::set_var("JCODE_HOME", path);
 }
 
 #[test]
@@ -346,7 +374,24 @@ fn auth_changed_event_for_cerebras_login_carries_runtime_and_catalog_identity() 
 
 #[test]
 fn reload_handoff_inactive_without_flag_or_marker() {
-    assert!(!reconnect::reload_handoff_active(&RemoteRunState::default()));
+    // `reload_handoff_active` falls back to the on-disk reload marker in the
+    // runtime dir. Point the runtime dir at an empty tempdir so a real
+    // `jcode.reload` left by a live self-dev reload on this machine cannot
+    // leak into the assertion.
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new().expect("create temp dir");
+    let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+    crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+
+    let inactive = !reconnect::reload_handoff_active(&RemoteRunState::default());
+
+    if let Some(prev_runtime) = prev_runtime {
+        crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+    } else {
+        crate::env::remove_var("JCODE_RUNTIME_DIR");
+    }
+
+    assert!(inactive);
 }
 
 #[test]
