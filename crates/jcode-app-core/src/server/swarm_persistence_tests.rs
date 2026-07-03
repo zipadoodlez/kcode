@@ -391,10 +391,11 @@ fn gate_debt_and_artifact_hydration_survive_reload() {
         "root.gate",
         "gate-worker",
         HandoffArtifact::brief(
-            "root.shaky's low confidence is acceptable: its scope was re-derived and cross-checked",
+            "root.shaky's low confidence is acceptable: its scope was re-derived and \
+             cross-checked; root.solid audited clean",
         ),
     )
-    .expect("gate passes once the debt is addressed by id");
+    .expect("gate passes once every audited node is addressed by id");
 }
 
 #[test]
