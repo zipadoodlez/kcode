@@ -1468,6 +1468,127 @@ fn repro_scroll_held_across_reasoning_close_and_answer() {
     );
 }
 
+
+/// Regression for the overscroll flicker (revealing the elastic status line
+/// must not re-layout the transcript).
+///
+/// When the transcript height sat exactly at the fits/overflows boundary, the
+/// one-row overscroll reveal flipped the `overflows` decision: the native
+/// scrollbar appeared, the whole transcript re-wrapped one column narrower,
+/// and every visible line shifted. On rebound it flipped back (or worse,
+/// stayed latched because the narrower wrap produced more lines). On screen
+/// this read as a full-screen flicker whenever overscroll was activated.
+///
+/// The scrollbar/overflow decision must therefore ignore the transient
+/// overscroll row: for every content height around the boundary, the
+/// transcript region rendered during the dwell must be identical to the frame
+/// before the reveal, and the frame after the rebound must equal the frame
+/// before the reveal exactly.
+#[test]
+fn overscroll_reveal_does_not_relayout_transcript() {
+    let _lock = scroll_render_test_lock();
+
+    for pad in 4..30usize {
+        let (mut app, mut terminal) = create_scroll_test_app(100, 24, 0, pad);
+        app.chat_native_scrollbar = true;
+        app.context_info = crate::prompt::ContextInfo {
+            total_chars: 40_000,
+            ..Default::default()
+        };
+        app.context_limit = 200_000;
+
+        let before = render_and_snap(&app, &mut terminal);
+        let max_before = crate::tui::ui::last_max_scroll();
+
+        // Wheel-down while pinned at the bottom: registers an overscroll tick
+        // and reveals the status line for the dwell window.
+        app.handle_mouse_event(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::empty(),
+        });
+        assert!(
+            app.chat_overscroll_active(),
+            "pad={pad}: wheel-down at the bottom should register an overscroll"
+        );
+        let during = render_and_snap(&app, &mut terminal);
+        let max_during = crate::tui::ui::last_max_scroll();
+
+        // The reveal may slide the transcript up by at most the one row the
+        // elastic line claims (the intended pull-to-reveal). It must not jump
+        // further, and it must never re-wrap: every transcript row shown
+        // during the dwell must be a row that already existed before the
+        // reveal (a re-wrap breaks lines at a different column, producing
+        // brand-new row strings, which is the full-screen flicker).
+        assert!(
+            max_during <= max_before + 1,
+            "pad={pad}: reveal moved the viewport by more than the elastic \
+             row (max {max_before} -> {max_during})"
+        );
+        let before_rows: Vec<&str> = before.lines().collect();
+        let during_rows: Vec<&str> = during.lines().collect();
+        // A re-wrap breaks lines at a different column, producing brand-new
+        // row strings. Compare the transcript body rows (the "Intro line"
+        // filler) as an ordered sequence: they may slide up by the one
+        // elastic row, but their content must be byte-identical. Header rows
+        // composite with the fixed-position context widget overlay and the
+        // bottom rows (idle hint, input, elastic line) legitimately change,
+        // so only body rows are compared.
+        let body = |rows: &[&str]| -> Vec<String> {
+            rows.iter()
+                .filter(|row| row.contains("quick brown fox"))
+                .map(|row| {
+                    // Drop the native scrollbar column: its thumb glyph
+                    // legitimately moves with the one-row elastic slide.
+                    row.trim_end()
+                        .trim_end_matches(['│', '╷', '╵', '•'])
+                        .trim_end()
+                        .to_string()
+                })
+                .collect()
+        };
+        let body_before = body(&before_rows);
+        let body_during = body(&during_rows);
+        assert!(
+            !body_before.is_empty(),
+            "pad={pad}: expected filler body rows in the pre-reveal frame"
+        );
+        // The intended elastic behavior when the transcript already overflows
+        // is a one-row slide: the top body row scrolls out and every other row
+        // keeps its exact content. A re-wrap instead rewrites every row. So
+        // the dwell body must be a suffix of the pre-reveal body missing at
+        // most one leading row.
+        let dropped = body_before.len().saturating_sub(body_during.len());
+        assert!(
+            dropped <= 1 && body_before[dropped..] == body_during[..],
+            "pad={pad}: transcript body rows re-wrapped while the overscroll \
+             line was revealed (scrollbar/wrap flip):\nbefore:\n{before}\nduring:\n{during}"
+        );
+
+        // After the dwell expires the transcript must return to the exact
+        // pre-overscroll layout: no latched scrollbar, no residual re-wrap.
+        // (The idle status line rotates its own hint content over time, so
+        // only the transcript region is compared, plus the scroll extent.)
+        app.chat_overscroll_last = None;
+        let after = render_and_snap(&app, &mut terminal);
+        let max_after = crate::tui::ui::last_max_scroll();
+        assert_eq!(
+            max_before, max_after,
+            "pad={pad}: the rebound must restore the pre-overscroll scroll \
+             extent (scrollbar/wrap stayed latched)"
+        );
+        let after_rows: Vec<&str> = after.lines().collect();
+        let body_after = body(&after_rows);
+        assert_eq!(
+            body_before, body_after,
+            "pad={pad}: transcript body rows did not return to their \
+             pre-overscroll content after the rebound:\nbefore:\n{before}\nafter:\n{after}"
+        );
+    }
+}
+
+
 #[cfg(test)]
 #[path = "../tests_input_scroll.rs"]
 mod input_scroll_tests;

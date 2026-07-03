@@ -2788,8 +2788,17 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         + overscroll_height
         + donut_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut
     let available_height = chat_area.height;
+    // Overflow decisions (native scrollbar, and thus the wrap width) must not
+    // depend on the transient overscroll row. Otherwise revealing the line at
+    // the fits/overflows boundary flips the scrollbar on, re-wraps the whole
+    // transcript one column narrower, and the extra wrapped lines keep the
+    // scrollbar latched after the rebound: the screen visibly re-wraps twice
+    // per overscroll and can settle in a different state than it started
+    // (flicker). The packed/scrolling choice below still accounts for the real
+    // row so the elastic reveal remains a clean one-row slide.
+    let stable_fixed_height = fixed_height - overscroll_height;
     let overflows = |prepared: &PreparedChatFrame| {
-        (prepared.total_wrapped_lines().max(1) as u16) + fixed_height > available_height
+        (prepared.total_wrapped_lines().max(1) as u16) + stable_fixed_height > available_height
     };
 
     // Resolving native-scrollbar overflow can require wrapping the transcript at
