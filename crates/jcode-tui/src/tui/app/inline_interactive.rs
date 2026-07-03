@@ -3265,24 +3265,32 @@ mod tests {
             &unavailable_openai_oauth_route,
         ));
 
+        // Current policy (see jcode-provider-core): claude-opus-4-8 is the
+        // recommended Anthropic flagship; older Opus and OpenRouter/Copilot
+        // routes are not recommended.
         assert!(model_picker_route_is_recommended(
-            "claude-opus-4-7",
+            "claude-opus-4-8",
             &claude_oauth_route,
         ));
         assert!(!model_picker_route_is_recommended(
             "claude-opus-4-7",
+            &claude_oauth_route,
+        ));
+        assert!(!model_picker_route_is_recommended(
+            "claude-opus-4-8",
             &claude_openrouter_route,
         ));
         assert!(!model_picker_route_is_recommended(
-            "claude-opus-4-7",
+            "claude-opus-4-8",
             &copilot_route,
         ));
 
-        assert!(model_picker_route_is_recommended(
+        // DeepSeek routes are no longer in the recommended set at all.
+        assert!(!model_picker_route_is_recommended(
             "deepseek/deepseek-v4-pro",
             &openrouter_auto_route,
         ));
-        assert!(model_picker_route_is_recommended(
+        assert!(!model_picker_route_is_recommended(
             "deepseek/deepseek-v4-pro",
             &deepseek_direct_route,
         ));
