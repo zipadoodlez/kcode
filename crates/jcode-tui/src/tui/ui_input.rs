@@ -216,7 +216,7 @@ fn highlight_command_spans(cmd: &str, needle: Option<&str>, base: Style) -> Vec<
 
 /// Blend a palette color toward white to emphasize a matched character while
 /// keeping its original hue.
-fn brighten_command_color(color: Option<Color>) -> Color {
+pub(crate) fn brighten_command_color(color: Option<Color>) -> Color {
     match color {
         Some(Color::Rgb(r, g, b)) => {
             let lift = |c: u8| -> u8 { c.saturating_add((255 - c) / 2) };
@@ -227,7 +227,7 @@ fn brighten_command_color(color: Option<Color>) -> Color {
 }
 
 /// Blend a palette color toward black so unmatched characters recede.
-fn dim_command_color(color: Option<Color>) -> Color {
+pub(crate) fn dim_command_color(color: Option<Color>) -> Color {
     match color {
         Some(Color::Rgb(r, g, b)) => rgb(r / 2, g / 2, b / 2),
         other => other.unwrap_or_else(dim_color),
