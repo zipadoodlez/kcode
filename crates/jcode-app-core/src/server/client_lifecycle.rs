@@ -2770,7 +2770,7 @@ async fn cancel_processing_message(
             *state.task = Some(handle);
             return;
         }
-        session_control.request_cancel();
+        let cancel_epoch = session_control.request_cancel();
         crate::logging::info(&format!(
             "SERVER_INTERRUPT_CANCEL_SIGNALLED request_id={:?} session={} message_id={:?} wait_ms=500",
             request_id, session_label, *state.message_id
@@ -2810,7 +2810,10 @@ async fn cancel_processing_message(
                 }
             }
         }
-        session_control.reset_cancel();
+        // Only clear the cancel we fired: a newer cancel (repeated Esc, jade
+        // relay, another connection) must not be erased before its target
+        // observes it (issue #428).
+        session_control.reset_cancel_if_epoch(cancel_epoch);
         *state.task = None;
         *state.client_is_processing = false;
         if let Some(session_id) = state.session_id.take() {
@@ -2846,11 +2849,17 @@ async fn cancel_processing_message(
             *state.client_is_processing,
             *state.message_id
         ));
-        session_control.request_cancel();
+        let cancel_epoch = session_control.request_cancel();
         let reset_control = session_control.clone();
         tokio::spawn(async move {
+            // The running turn is not owned by this connection (post-reload
+            // recovery, server-initiated turn, or attach), so we cannot await
+            // it. Clear the flag later so the *next* turn is not aborted by a
+            // stale cancel, but only if no newer cancel fired in the meantime:
+            // an unconditional reset here used to erase rapid repeated Esc
+            // cancels before the busy turn observed them (issue #428).
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            reset_control.reset_cancel();
+            reset_control.reset_cancel_if_epoch(cancel_epoch);
         });
         *state.client_is_processing = false;
         let status_session_id = state

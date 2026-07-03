@@ -247,6 +247,79 @@ async fn cancel_without_local_task_still_signals_session_control() {
     ));
 }
 
+/// Regression for issue #428: the detached-turn cancel path schedules a
+/// deferred reset of the shared stop signal. That reset must be epoch-guarded:
+/// if a newer cancel fires during the reset window (rapid repeated Esc), the
+/// stale timer must not clear it, otherwise the running turn never observes
+/// the interrupt and keeps generating.
+#[tokio::test]
+async fn deferred_cancel_reset_does_not_erase_newer_cancel() {
+    let soft_interrupt_queue = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let stop_signal = InterruptSignal::new();
+    let control = SessionControlHandle::cancel_only(
+        "session_detached_cancel_race",
+        Arc::clone(&soft_interrupt_queue),
+        stop_signal.clone(),
+    );
+    let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
+    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
+    let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
+    let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (swarm_event_tx, _) = broadcast::channel(8);
+
+    let cancel_via_no_task_path = async |request_id: u64| {
+        let mut client_is_processing = true;
+        let mut message_id = Some(request_id);
+        let mut session_id = Some("session_detached_cancel_race".to_string());
+        let mut task = None;
+        cancel_processing_message(
+            &mut ProcessingState {
+                client_is_processing: &mut client_is_processing,
+                message_id: &mut message_id,
+                session_id: &mut session_id,
+                task: &mut task,
+            },
+            &control,
+            &client_event_tx,
+            &SwarmStatusRefs {
+                members: &swarm_members,
+                swarms_by_id: &swarms_by_id,
+                event_history: &event_history,
+                event_counter: &event_counter,
+                event_tx: &swarm_event_tx,
+            },
+            Some(request_id),
+            None,
+        )
+        .await;
+    };
+
+    // First Esc: fires the signal and schedules a 500ms deferred reset.
+    cancel_via_no_task_path(1).await;
+    assert!(stop_signal.is_set());
+
+    // 400ms later the user presses Esc again (turn still hasn't stopped).
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    cancel_via_no_task_path(2).await;
+    assert!(stop_signal.is_set());
+
+    // The first press's timer expires now. It must NOT clear the second
+    // press's still-unobserved cancel.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        stop_signal.is_set(),
+        "stale deferred reset erased a newer cancel (issue #428)"
+    );
+
+    // The second press's own timer may still clear it afterwards.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(
+        !stop_signal.is_set(),
+        "the newest cancel's deferred reset should eventually clear the flag"
+    );
+}
+
 impl IsolatedRuntimeDir {
     fn new() -> Self {
         let temp = tempfile::TempDir::new().expect("runtime dir");

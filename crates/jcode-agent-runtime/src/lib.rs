@@ -31,6 +31,10 @@ pub type GracefulShutdownSignal = Arc<std::sync::atomic::AtomicBool>;
 #[derive(Clone)]
 pub struct InterruptSignal {
     flag: Arc<std::sync::atomic::AtomicBool>,
+    /// Monotonic fire counter. Lets owners of a timed/deferred reset detect
+    /// that a *newer* fire landed in the meantime and skip the reset instead
+    /// of erasing a cancel the target has not observed yet (issue #428).
+    epoch: Arc<std::sync::atomic::AtomicU64>,
     notify: Arc<tokio::sync::Notify>,
 }
 
@@ -38,11 +42,14 @@ impl InterruptSignal {
     pub fn new() -> Self {
         Self {
             flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            epoch: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             notify: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
     pub fn fire(&self) {
+        self.epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
         self.notify.notify_waiters();
     }
@@ -53,6 +60,33 @@ impl InterruptSignal {
 
     pub fn reset(&self) {
         self.flag.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Current fire epoch. Capture this right after a [`fire`](Self::fire) to
+    /// later reset only that specific fire via
+    /// [`reset_if_epoch`](Self::reset_if_epoch).
+    pub fn epoch(&self) -> u64 {
+        self.epoch.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Reset the signal only if no newer [`fire`](Self::fire) happened since
+    /// `epoch` was captured. Returns `true` when the reset was applied.
+    ///
+    /// If a racing fire lands between the epoch check and the reset, the
+    /// fire is restored (flag re-set and waiters re-notified) so no cancel
+    /// is ever silently erased.
+    pub fn reset_if_epoch(&self, epoch: u64) -> bool {
+        if self.epoch.load(std::sync::atomic::Ordering::SeqCst) != epoch {
+            return false;
+        }
+        self.flag.store(false, std::sync::atomic::Ordering::SeqCst);
+        if self.epoch.load(std::sync::atomic::Ordering::SeqCst) != epoch {
+            // A newer fire raced with the reset; restore it.
+            self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            self.notify.notify_waiters();
+            return false;
+        }
+        true
     }
 
     pub async fn notified(&self) {
@@ -185,5 +219,58 @@ mod tests {
         assert!(!signal.is_set());
         let waited = tokio::time::timeout(Duration::from_millis(50), signal.notified()).await;
         assert!(waited.is_err(), "reset signal must park notified() again");
+    }
+
+    /// reset_if_epoch() clears the flag only for the fire that captured the
+    /// epoch. A deferred reset (e.g. the server's 500ms timer for detached
+    /// turns) must not erase a newer cancel fired in the meantime, otherwise
+    /// rapid repeated Esc presses cancel each other out (issue #428).
+    #[test]
+    fn reset_if_epoch_skips_when_newer_fire_landed() {
+        let signal = InterruptSignal::new();
+        signal.fire();
+        let first_epoch = signal.epoch();
+
+        // A second cancel (repeated Esc) fires before the deferred reset runs.
+        signal.fire();
+        assert!(
+            !signal.reset_if_epoch(first_epoch),
+            "stale deferred reset must be skipped"
+        );
+        assert!(
+            signal.is_set(),
+            "newer cancel must survive the stale deferred reset"
+        );
+
+        // The reset scheduled for the latest fire still works.
+        let second_epoch = signal.epoch();
+        assert!(signal.reset_if_epoch(second_epoch));
+        assert!(!signal.is_set());
+
+        // And a reset for an already-consumed epoch stays a no-op.
+        assert!(!signal.reset_if_epoch(first_epoch));
+    }
+
+    /// A fire() racing the flag-clear inside reset_if_epoch() is restored
+    /// rather than silently erased.
+    #[test]
+    fn reset_if_epoch_never_erases_concurrent_fire() {
+        for _ in 0..2000 {
+            let signal = InterruptSignal::new();
+            signal.fire();
+            let epoch = signal.epoch();
+
+            let firer = {
+                let signal = signal.clone();
+                std::thread::spawn(move || signal.fire())
+            };
+            let _ = signal.reset_if_epoch(epoch);
+            firer.join().expect("firer thread");
+
+            assert!(
+                signal.is_set(),
+                "a concurrent fire() must never be erased by reset_if_epoch()"
+            );
+        }
     }
 }
