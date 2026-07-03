@@ -2690,8 +2690,13 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // hovered agent's live transcript tail and todo list. The strip stands
     // down while the SwarmStatus dock widget (margin HUD) is showing the same
     // agents, unless the panel is focused (keyboard interaction lives here).
+    // The stand-down is sticky (anchored blinks count as engaged, plus a short
+    // linger after disengagement) because each strip appearance adds a row to
+    // the bottom chrome and shoves the transcript up: reacting to raw
+    // frame-by-frame dock visibility made the strip pop in and out and the
+    // whole screen bounce (flicker).
     let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active()
-        && (app.swarm_panel_focused() || !super::info_widget::swarm_dock_visible_last_frame())
+        && (app.swarm_panel_focused() || !super::info_widget::swarm_strip_stands_down_for_dock())
     {
         let members = app.inline_swarm_members();
         if chat_area.width >= 24 {
@@ -3189,11 +3194,19 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         widget_render_ms = Some(widget_start.elapsed().as_secs_f32() * 1000.0);
 
         // Optional visual overlay for placements
-    } else if let Some(ref mut capture) = debug_capture {
-        capture.info_widgets = Some(InfoWidgetCapture {
-            summary: build_info_widget_summary(&widget_data),
-            placements: Vec::new(),
-        });
+    } else {
+        // The widget pass did not run (idle donut takeover or no widget data),
+        // so nothing from the previous frame is on screen anymore. Clear the
+        // remembered placements/anchors so consumers of last-frame state (the
+        // swarm strip stand-down, idle fallback facts) do not keep reacting to
+        // widgets that are no longer drawn.
+        info_widget::note_widget_pass_skipped();
+        if let Some(ref mut capture) = debug_capture {
+            capture.info_widgets = Some(InfoWidgetCapture {
+                summary: build_info_widget_summary(&widget_data),
+                placements: Vec::new(),
+            });
+        }
     }
 
     if visual_debug::overlay_enabled() {
