@@ -169,7 +169,7 @@ fn test_render_swarm_message_centered_mode_left_aligns_with_shared_padding() {
         header_pad, body_pad,
         "centered swarm block should share one left pad"
     );
-    assert_eq!(rendered[0].trim_start(), "│ ☰ Plan · sheep");
+    assert_eq!(rendered[0].trim_start(), "│ ≡ Plan · sheep");
     assert_eq!(rendered[1].trim_start(), "│ 4 items · v1");
     for line in &lines {
         assert_eq!(
