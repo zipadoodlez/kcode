@@ -113,6 +113,8 @@ mod tests {
             swarm_id: Some("swarm-a".to_string()),
             version: 5,
             item_count: 4,
+            seeded_count: 4,
+            grown_count: 0,
             ready_ids: vec!["task-2".to_string()],
             blocked_ids: vec!["task-4".to_string()],
             active_ids: Vec::new(),
