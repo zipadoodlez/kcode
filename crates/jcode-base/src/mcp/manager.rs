@@ -42,6 +42,9 @@ pub struct McpManager {
     owned_clients: RwLock<HashMap<String, McpClient>>,
     config: McpConfig,
     session_id: String,
+    /// Project directory used to resolve project-local MCP config. `None`
+    /// falls back to the process working directory (local/headless mode).
+    project_dir: Option<std::path::PathBuf>,
 }
 
 impl McpManager {
@@ -53,17 +56,30 @@ impl McpManager {
             owned_clients: RwLock::new(HashMap::new()),
             config: McpConfig::load(),
             session_id: "owned".to_string(),
+            project_dir: None,
         }
     }
 
     /// Create a manager backed by a shared pool (daemon mode)
     pub fn with_shared_pool(pool: Arc<SharedMcpPool>, session_id: String) -> Self {
+        Self::with_shared_pool_for_dir(pool, session_id, None)
+    }
+
+    /// Create a manager backed by a shared pool, resolving project-local MCP
+    /// config against `project_dir` instead of the server process cwd
+    /// (issue #420: remote/client sessions must use the session working dir).
+    pub fn with_shared_pool_for_dir(
+        pool: Arc<SharedMcpPool>,
+        session_id: String,
+        project_dir: Option<std::path::PathBuf>,
+    ) -> Self {
         Self {
             pool: Some(pool),
             pool_handles: RwLock::new(HashMap::new()),
             owned_clients: RwLock::new(HashMap::new()),
-            config: McpConfig::load(),
+            config: McpConfig::load_for_dir(project_dir.as_deref()),
             session_id,
+            project_dir,
         }
     }
 
@@ -75,6 +91,7 @@ impl McpManager {
             owned_clients: RwLock::new(HashMap::new()),
             config,
             session_id: "owned".to_string(),
+            project_dir: None,
         }
     }
 
@@ -362,7 +379,7 @@ impl McpManager {
         self.disconnect_all().await;
 
         // Reload config
-        self.config = McpConfig::load();
+        self.config = McpConfig::load_for_dir(self.project_dir.as_deref());
 
         // If we have a pool, reload it too (reconnects shared servers)
         if let Some(pool) = &self.pool {
@@ -376,6 +393,12 @@ impl McpManager {
     /// Get config
     pub fn config(&self) -> &McpConfig {
         &self.config
+    }
+
+    /// Load a fresh copy of the config from disk, resolved against this
+    /// manager's project directory (or the process cwd when unset).
+    pub fn load_fresh_config(&self) -> McpConfig {
+        McpConfig::load_for_dir(self.project_dir.as_deref())
     }
 
     pub fn debug_memory_profile(&self) -> McpManagerMemoryProfile {

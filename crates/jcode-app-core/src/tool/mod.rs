@@ -740,13 +740,32 @@ impl Registry {
         shared_pool: Option<std::sync::Arc<crate::mcp::SharedMcpPool>>,
         session_id: Option<String>,
     ) {
+        self.register_mcp_tools_for_dir(event_tx, shared_pool, session_id, None)
+            .await
+    }
+
+    /// Like [`Self::register_mcp_tools`], but resolves project-local MCP config
+    /// (`.mcp.json`, `.jcode/mcp.json`, `.claude/mcp.json`) against
+    /// `working_dir` instead of the server process cwd. Remote/client sessions
+    /// must pass their session working directory here (issue #420).
+    pub async fn register_mcp_tools_for_dir(
+        &self,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::protocol::ServerEvent>>,
+        shared_pool: Option<std::sync::Arc<crate::mcp::SharedMcpPool>>,
+        session_id: Option<String>,
+        working_dir: Option<std::path::PathBuf>,
+    ) {
         use crate::mcp::McpManager;
         use std::sync::Arc;
         use tokio::sync::RwLock;
 
         let mcp_manager = if let Some(pool) = shared_pool {
             let sid = session_id.unwrap_or_else(|| "unknown".to_string());
-            Arc::new(RwLock::new(McpManager::with_shared_pool(pool, sid)))
+            Arc::new(RwLock::new(McpManager::with_shared_pool_for_dir(
+                pool,
+                sid,
+                working_dir,
+            )))
         } else {
             Arc::new(RwLock::new(McpManager::new()))
         };

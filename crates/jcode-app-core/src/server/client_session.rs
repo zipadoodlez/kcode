@@ -604,11 +604,22 @@ pub(super) async fn handle_subscribe(
 
     let mcp_register_ms = if register_mcp_tools {
         let mcp_register_start = Instant::now();
+        // Resolve project-local MCP config against the session working dir,
+        // not the server process cwd (issue #420). Prefer the subscribe
+        // request's dir; fall back to the agent's stored session dir.
+        let mcp_working_dir = match subscribe_working_dir.as_ref() {
+            Some(dir) => Some(PathBuf::from(dir)),
+            None => {
+                let agent_guard = agent.lock().await;
+                agent_guard.working_dir().map(PathBuf::from)
+            }
+        };
         registry
-            .register_mcp_tools(
+            .register_mcp_tools_for_dir(
                 Some(client_event_tx.clone()),
                 Some(Arc::clone(mcp_pool)),
                 Some(client_session_id.to_string()),
+                mcp_working_dir,
             )
             .await;
         mcp_register_start.elapsed().as_millis()
@@ -1065,11 +1076,18 @@ pub(super) async fn handle_resume_session(
         )
         .await?;
         let _ = client_event_tx.send(ServerEvent::Done { id });
+        // Resolve project-local MCP config against the resumed session's
+        // working dir, not the server process cwd (issue #420).
+        let mcp_working_dir = {
+            let agent_guard = live_target_agent.lock().await;
+            agent_guard.working_dir().map(PathBuf::from)
+        };
         registry
-            .register_mcp_tools(
+            .register_mcp_tools_for_dir(
                 Some(client_event_tx.clone()),
                 Some(Arc::clone(mcp_pool)),
                 Some(session_id.clone()),
+                mcp_working_dir,
             )
             .await;
         spawn_model_prefetch_update(Arc::clone(provider), Arc::clone(live_target_agent));
@@ -1353,11 +1371,18 @@ pub(super) async fn handle_resume_session(
             )
             .await?;
             let _ = client_event_tx.send(ServerEvent::Done { id });
+            // Resolve project-local MCP config against the restored session's
+            // working dir, not the server process cwd (issue #420).
+            let mcp_working_dir = {
+                let agent_guard = agent.lock().await;
+                agent_guard.working_dir().map(PathBuf::from)
+            };
             registry
-                .register_mcp_tools(
+                .register_mcp_tools_for_dir(
                     Some(client_event_tx.clone()),
                     Some(Arc::clone(mcp_pool)),
                     Some(session_id.clone()),
+                    mcp_working_dir,
                 )
                 .await;
             spawn_model_prefetch_update(Arc::clone(provider), Arc::clone(agent));

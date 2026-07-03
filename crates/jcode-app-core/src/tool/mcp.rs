@@ -1,6 +1,6 @@
 //! MCP management tool - connect, disconnect, list, reload MCP servers
 
-use crate::mcp::{McpConfig, McpManager, McpServerConfig};
+use crate::mcp::{McpManager, McpServerConfig};
 use crate::tool::{Tool, ToolContext, ToolOutput};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -323,8 +323,9 @@ impl McpManagementTool {
     }
 
     async fn reload_config(&self, session_id: &str) -> Result<ToolOutput> {
-        // Load fresh config
-        let config = McpConfig::load();
+        // Load fresh config, resolved against the session's project directory
+        // rather than the server process cwd (issue #420).
+        let config = self.manager.read().await.load_fresh_config();
 
         if config.servers.is_empty() {
             // Unregister all existing MCP tools before reporting empty

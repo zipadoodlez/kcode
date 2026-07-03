@@ -408,12 +408,42 @@ impl McpConfig {
         config
     }
 
-    /// Load from default locations (merges jcode global + local, local overrides)
+    /// Load project-local MCP config files from `project_root`, in override
+    /// order: `.jcode/mcp.json`, then `.mcp.json` (Claude Code project config),
+    /// then `.claude/mcp.json` (legacy compatibility). Later files override
+    /// same-named servers from earlier ones.
+    fn load_project_locals(project_root: &std::path::Path) -> Self {
+        let mut merged = Self::default();
+        for relative in [".jcode/mcp.json", ".mcp.json", ".claude/mcp.json"] {
+            let path = project_root.join(relative);
+            if path.exists()
+                && let Ok(config) = Self::load_from_file(&path)
+            {
+                merged.servers.extend(config.servers);
+            }
+        }
+        merged
+    }
+
+    /// Load from default locations (merges jcode global + local, local overrides),
+    /// resolving project-local config against the process working directory.
+    pub fn load() -> Self {
+        Self::load_for_dir(None)
+    }
+
+    /// Load from default locations, resolving project-local config
+    /// (`.jcode/mcp.json`, `.mcp.json`, `.claude/mcp.json`, and the per-project
+    /// entries in `~/.claude.json`) against `project_dir` instead of the
+    /// process working directory when provided.
+    ///
+    /// Remote/client sessions run inside a long-lived server whose cwd is
+    /// unrelated to the session's project, so the session working directory
+    /// must be threaded through explicitly (issue #420).
     #[expect(
         clippy::collapsible_if,
         reason = "Import logic keeps source-specific MCP config merge order explicit"
     )]
-    pub fn load() -> Self {
+    pub fn load_for_dir(project_dir: Option<&std::path::Path>) -> Self {
         // First-run import from Claude Code / Codex CLI
         Self::import_from_external();
 
@@ -430,38 +460,25 @@ impl McpConfig {
         }
 
         // Claude Code user/global config (~/.claude.json): top-level mcpServers
-        // plus per-project entries for the current working directory.
+        // plus per-project entries for the project directory.
         if let Ok(claude_json) = crate::storage::user_home_path(".claude.json") {
             if claude_json.exists() {
-                let cwd = std::env::current_dir().ok();
+                let cwd = match project_dir {
+                    Some(dir) => Some(dir.to_path_buf()),
+                    None => std::env::current_dir().ok(),
+                };
                 let config = Self::load_claude_json(&claude_json, cwd.as_deref());
                 merged.servers.extend(config.servers);
             }
         }
 
-        // Load project-local jcode config (.jcode/mcp.json)
-        let local_jcode = std::path::Path::new(".jcode/mcp.json");
-        if local_jcode.exists() {
-            if let Ok(config) = Self::load_from_file(local_jcode) {
-                merged.servers.extend(config.servers);
-            }
-        }
-
-        // Claude Code project config: `.mcp.json` at the repo root.
-        let local_mcp = std::path::Path::new(".mcp.json");
-        if local_mcp.exists() {
-            if let Ok(config) = Self::load_from_file(local_mcp) {
-                merged.servers.extend(config.servers);
-            }
-        }
-
-        // Fallback: project-local Claude config (.claude/mcp.json) for compatibility
-        let local_claude = std::path::Path::new(".claude/mcp.json");
-        if local_claude.exists() {
-            if let Ok(config) = Self::load_from_file(local_claude) {
-                merged.servers.extend(config.servers);
-            }
-        }
+        // Project-local config files, resolved against the project directory.
+        let project_root = project_dir
+            .map(|dir| dir.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        merged
+            .servers
+            .extend(Self::load_project_locals(&project_root).servers);
 
         // jcode only supports stdio servers today. Drop HTTP/SSE entries (common
         // in Claude Code configs) so they don't fail to spawn, but log them so

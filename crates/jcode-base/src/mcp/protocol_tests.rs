@@ -122,6 +122,68 @@ fn test_load_claude_json_global_and_project_servers() {
 }
 
 #[test]
+fn test_load_project_locals_resolves_against_given_dir_not_cwd() {
+    // Issue #420: remote/client sessions must load project-local MCP config
+    // from the session working directory, not the server process cwd.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path().join("client-project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join(".mcp.json"),
+        r#"{"mcpServers":{"example-server":{"command":"npx","args":["-y","some-mcp-server"]}}}"#,
+    )
+    .unwrap();
+
+    // The process cwd (this repo) is unrelated to `project`; resolution must
+    // come from the explicit path.
+    let config = McpConfig::load_project_locals(&project);
+    assert_eq!(config.servers.len(), 1);
+    let server = config.servers.get("example-server").unwrap();
+    assert_eq!(server.command, "npx");
+    assert!(server.is_stdio());
+
+    // A directory with no project-local config yields nothing.
+    let empty = temp.path().join("empty-project");
+    std::fs::create_dir_all(&empty).unwrap();
+    assert!(McpConfig::load_project_locals(&empty).servers.is_empty());
+}
+
+#[test]
+fn test_load_project_locals_merge_order() {
+    // `.jcode/mcp.json` loads first, then `.mcp.json` overrides same-named
+    // servers, then `.claude/mcp.json`.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let project = temp.path();
+    std::fs::create_dir_all(project.join(".jcode")).unwrap();
+    std::fs::create_dir_all(project.join(".claude")).unwrap();
+    std::fs::write(
+        project.join(".jcode/mcp.json"),
+        r#"{"servers":{"shared-name":{"command":"jcode-bin"},"jcode-only":{"command":"a"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join(".mcp.json"),
+        r#"{"mcpServers":{"shared-name":{"command":"claude-bin"}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join(".claude/mcp.json"),
+        r#"{"mcpServers":{"legacy-only":{"command":"c"}}}"#,
+    )
+    .unwrap();
+
+    let config = McpConfig::load_project_locals(project);
+    assert_eq!(config.servers.len(), 3);
+    assert_eq!(
+        config.servers.get("shared-name").unwrap().command,
+        "claude-bin",
+        ".mcp.json must override .jcode/mcp.json for same-named servers"
+    );
+    assert!(config.servers.contains_key("jcode-only"));
+    assert!(config.servers.contains_key("legacy-only"));
+}
+
+#[test]
 fn test_tool_def_deserialization() {
     let json = r#"{
             "name": "read_file",

@@ -653,10 +653,11 @@ impl Server {
                 registry.register_selfdev_tools().await;
             }
             registry
-                .register_mcp_tools(
+                .register_mcp_tools_for_dir(
                     None,
                     Some(Arc::clone(&mcp_pool)),
                     Some("headless".to_string()),
+                    session.working_dir.as_ref().map(std::path::PathBuf::from),
                 )
                 .await;
 
