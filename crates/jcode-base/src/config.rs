@@ -231,21 +231,7 @@ fn leak_config(config: Config) -> &'static Config {
 /// deadlock) and shares its logic with
 /// `crate::provider::populate_context_limits_from_config`.
 fn populate_context_limits_from_config_ref(cfg: &Config) {
-    let mut limits = std::collections::HashMap::new();
-    for provider_cfg in cfg.providers.values() {
-        for model in &provider_cfg.models {
-            let id = model.id.trim();
-            if id.is_empty() {
-                continue;
-            }
-            if let Some(limit) = model.context_window {
-                limits.insert(id.to_ascii_lowercase(), limit);
-            }
-        }
-    }
-    if !limits.is_empty() {
-        crate::provider::populate_context_limits(limits);
-    }
+    crate::provider::populate_context_limits_from_config_value(cfg);
 }
 
 /// Get the global config instance.

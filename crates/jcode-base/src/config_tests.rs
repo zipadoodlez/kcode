@@ -874,3 +874,63 @@ fn populate_context_limits_from_config_ref_seeds_global_cache() {
         "global context-limit resolution should respect named provider context_window"
     );
 }
+
+#[test]
+fn populate_context_limits_from_config_seeds_qualified_runtime_model_shapes() {
+    use super::{NamedProviderConfig, NamedProviderModelConfig};
+
+    // Regression test for issue #421: the runtime request model can be
+    // provider-qualified (`cachyai-a2000:qwen...`) or a slash path served by
+    // llama.cpp (`ornith-box-1:/opt/models/ornith-1.0-35b-Q4_K_M.gguf`). The
+    // configured context_window must resolve for every shape, not just the
+    // bare id, otherwise budgeting falls back to the 200K default and
+    // over-sends context.
+    let mut cfg = Config::default();
+    cfg.providers.insert(
+        "issue421-gateway".to_string(),
+        NamedProviderConfig {
+            base_url: "http://10.15.15.53:8080/v1".to_string(),
+            models: vec![
+                NamedProviderModelConfig {
+                    id: "issue421-qwen-128k".to_string(),
+                    context_window: Some(131_072),
+                    input: Vec::new(),
+                },
+                NamedProviderModelConfig {
+                    id: "/opt/models/issue421-ornith-35b-q4.gguf".to_string(),
+                    context_window: Some(131_072),
+                    input: Vec::new(),
+                },
+            ],
+            ..Default::default()
+        },
+    );
+
+    populate_context_limits_from_config_ref(&cfg);
+
+    // Bare id.
+    assert_eq!(
+        crate::provider::context_limit_for_model("issue421-qwen-128k"),
+        Some(131_072)
+    );
+    // Profile-qualified spec, as persisted by session restore.
+    assert_eq!(
+        crate::provider::context_limit_for_model("issue421-gateway:issue421-qwen-128k"),
+        Some(131_072),
+        "profile-qualified model spec must resolve the configured context_window"
+    );
+    // Slash-path model id: the lookup reduces to the slash base.
+    assert_eq!(
+        crate::provider::context_limit_for_model("/opt/models/issue421-ornith-35b-q4.gguf"),
+        Some(131_072),
+        "slash-path model id must resolve the configured context_window"
+    );
+    // Profile-qualified slash-path spec, exactly as reported in issue #421.
+    assert_eq!(
+        crate::provider::context_limit_for_model(
+            "issue421-gateway:/opt/models/issue421-ornith-35b-q4.gguf"
+        ),
+        Some(131_072),
+        "profile-qualified slash-path spec must resolve the configured context_window"
+    );
+}
