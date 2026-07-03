@@ -345,23 +345,51 @@ fn push_block_separator(
 }
 
 fn normalize_block_separators(lines: &mut Vec<Line<'static>>) {
-    let mut normalized = Vec::with_capacity(lines.len());
+    let mut normalized: Vec<Line<'static>> = Vec::with_capacity(lines.len());
     let mut previous_blank = true;
+    // Blank lines that belong to an image/diagram placeholder body. The
+    // marker line is followed by `rows - 1` intentionally blank lines that the
+    // draw step paints the image over, and the region scan
+    // (`compute_image_regions`) sizes the image by the blank run following the
+    // marker. Collapsing that run shrinks the rendered diagram to a sliver, so
+    // it must survive separator normalization verbatim.
+    let mut preserve_blanks: usize = 0;
+    // Prefix of `normalized` that trailing-blank trimming must not touch:
+    // a placeholder body can legitimately end the rendered text.
+    let mut protected_len = 0usize;
 
     for line in lines.drain(..) {
         let is_blank = line_is_blank(&line);
         if is_blank {
+            if preserve_blanks > 0 {
+                preserve_blanks -= 1;
+                normalized.push(Line::default());
+                protected_len = normalized.len();
+                previous_blank = true;
+                continue;
+            }
             if previous_blank {
                 continue;
             }
             normalized.push(Line::default());
         } else {
+            preserve_blanks =
+                if let Some((_, rows, _)) = mermaid::parse_inline_image_placeholder(&line) {
+                    rows.saturating_sub(1) as usize
+                } else if mermaid::parse_image_placeholder(&line).is_some() {
+                    // Crop-style markers (video export) do not encode their
+                    // height; keep every directly following blank fill line.
+                    usize::MAX
+                } else {
+                    0
+                };
             normalized.push(line);
         }
         previous_blank = is_blank;
     }
 
-    while normalized.last().map(line_is_blank).unwrap_or(false) {
+    while normalized.len() > protected_len && normalized.last().map(line_is_blank).unwrap_or(false)
+    {
         normalized.pop();
     }
 
