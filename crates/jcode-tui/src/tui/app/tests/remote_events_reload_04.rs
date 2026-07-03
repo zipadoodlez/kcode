@@ -391,6 +391,206 @@ fn test_remote_connectivity_error_without_auto_retry_still_waits_for_network() {
     );
 }
 
+fn openai_oauth_route(model: &str) -> crate::provider::ModelRoute {
+    crate::provider::ModelRoute {
+        model: model.to_string(),
+        provider: "OpenAI".to_string(),
+        api_method: "openai-oauth".to_string(),
+        available: true,
+        detail: String::new(),
+        cheapness: None,
+    }
+}
+
+fn claude_oauth_route(model: &str) -> crate::provider::ModelRoute {
+    crate::provider::ModelRoute {
+        model: model.to_string(),
+        provider: "Anthropic".to_string(),
+        api_method: "claude-oauth".to_string(),
+        available: true,
+        detail: String::new(),
+        cheapness: None,
+    }
+}
+
+/// The motivating scenario: a remote session's OpenAI OAuth session expires
+/// (token refresh fails, non-retryable), and a working Claude OAuth route
+/// exists. The terminal error should arm a one-keypress fallback offer that
+/// carries the failed payload for resend.
+#[test]
+fn test_remote_auth_error_arms_fallback_offer_with_resend_payload() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.5".to_string());
+    app.remote_model_options = vec![
+        openai_oauth_route("gpt-5.5"),
+        openai_oauth_route("gpt-5.4"),
+        claude_oauth_route("claude-sonnet-4"),
+    ];
+    app.rate_limit_pending_message = Some(PendingRemoteMessage {
+        content: "hi".to_string(),
+        images: vec![],
+        is_system: false,
+        system_reminder: None,
+        auto_retry: false,
+        retry_attempts: 0,
+        retry_at: None,
+    });
+    app.last_submitted_input = Some("hi".to_string());
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Error {
+            id: 21,
+            message: "OpenAI token refresh failed; run /login to re-authenticate: {\"error\":{\"message\":\"Your session has ended. Please log in again.\",\"type\":\"invalid_request_error\",\"code\":\"refresh_token_invalidated\"}}".to_string(),
+            retry_after_secs: None,
+        },
+        &mut remote,
+    );
+
+    let offer = app
+        .pending_fallback_offer
+        .as_ref()
+        .expect("terminal auth error should arm a fallback offer");
+    // A credential failure must not offer a sibling model behind the same
+    // broken OpenAI login; it must hop to the working Anthropic route.
+    assert_eq!(offer.selection.provider_label, "Anthropic");
+    let resend = offer
+        .remote_resend
+        .as_ref()
+        .expect("remote offer should capture the failed payload");
+    assert_eq!(resend.content, "hi");
+    assert_eq!(resend.raw_input.as_deref(), Some("hi"));
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.role == "system" && m.content.contains("Fallback available")),
+        "offer message should be shown"
+    );
+}
+
+/// Accepting a remote fallback offer stages the route switch (SetRoute via the
+/// dispatcher) and the payload resend; the ModelChanged confirmation then
+/// dispatches the resend through process_remote_followups.
+#[test]
+fn test_remote_fallback_offer_accept_stages_switch_and_resends() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.5".to_string());
+    app.remote_model_options = vec![
+        openai_oauth_route("gpt-5.5"),
+        claude_oauth_route("claude-sonnet-4"),
+    ];
+    app.rate_limit_pending_message = Some(PendingRemoteMessage {
+        content: "hi".to_string(),
+        images: vec![],
+        is_system: false,
+        system_reminder: None,
+        auto_retry: false,
+        retry_attempts: 0,
+        retry_at: None,
+    });
+    app.last_submitted_input = Some("hi".to_string());
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Error {
+            id: 22,
+            message: "OpenAI token refresh failed; run /login to re-authenticate: refresh_token_invalidated".to_string(),
+            retry_after_secs: None,
+        },
+        &mut remote,
+    );
+    assert!(app.pending_fallback_offer.is_some());
+
+    assert!(app.apply_pending_fallback_offer());
+    assert!(
+        app.pending_route_selection.is_some(),
+        "accept should stage a SetRoute request for the remote dispatcher"
+    );
+    let staged = app
+        .pending_fallback_resend
+        .as_ref()
+        .expect("accept should stage the failed payload for resend");
+    assert_eq!(staged.content, "hi");
+
+    // Server confirms the switch.
+    app.pending_route_selection = None;
+    app.remote_model_switch_in_flight = true;
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ModelChanged {
+            id: 0,
+            model: "claude-sonnet-4".to_string(),
+            provider_name: Some("Anthropic".to_string()),
+            error: None,
+        },
+        &mut remote,
+    );
+    assert!(!app.remote_model_switch_in_flight);
+
+    // The followup dispatcher resends the failed payload on the new route.
+    rt.block_on(remote::process_remote_followups(&mut app, &mut remote));
+    assert!(app.pending_fallback_resend.is_none());
+    assert!(app.is_processing, "resend should start a new turn");
+    assert!(matches!(app.status, ProcessingStatus::Sending));
+    let pending = app
+        .rate_limit_pending_message
+        .as_ref()
+        .expect("resend should repopulate the pending retry slot");
+    assert_eq!(pending.content, "hi");
+}
+
+/// A failed route switch must drop the staged resend instead of firing it on
+/// the old (broken) route.
+#[test]
+fn test_remote_fallback_resend_dropped_when_switch_fails() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    app.is_remote = true;
+    app.pending_fallback_resend = Some(crate::tui::app::FallbackResendPayload {
+        content: "hi".to_string(),
+        images: vec![],
+        is_system: false,
+        auto_retry: false,
+        system_reminder: None,
+        raw_input: Some("hi".to_string()),
+    });
+    app.remote_model_switch_in_flight = true;
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ModelChanged {
+            id: 0,
+            model: "claude-sonnet-4".to_string(),
+            provider_name: None,
+            error: Some("switch failed".to_string()),
+        },
+        &mut remote,
+    );
+
+    assert!(app.pending_fallback_resend.is_none());
+    assert_eq!(app.input, "hi", "prompt should be restored to the input box");
+
+    rt.block_on(remote::process_remote_followups(&mut app, &mut remote));
+    assert!(!app.is_processing, "no resend should fire");
+}
+
 #[test]
 fn test_schedule_pending_remote_retry_respects_retry_limit() {
     let mut app = create_test_app();

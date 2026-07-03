@@ -353,6 +353,9 @@ pub(super) async fn handle_terminal_event(
                         }
                         Err(error) => {
                             app.pending_reasoning_effort = None;
+                            // A fallback-offer resend must not fire without its
+                            // route switch; drop it with the failed request.
+                            app.pending_fallback_resend = None;
                             app.push_display_message(DisplayMessage::error(format!(
                                 "Failed to request model switch: {}",
                                 error
@@ -1061,6 +1064,44 @@ pub(super) async fn process_remote_followups(app: &mut App, remote: &mut RemoteC
 
     if app.pending_queued_dispatch {
         note_startup_submit_deferred(app, "pending_queued_dispatch in progress");
+        return;
+    }
+
+    if !app.remote_model_switch_in_flight
+        && !app.is_processing
+        && let Some(payload) = app.pending_fallback_resend.take()
+    {
+        // A fallback offer was accepted and the server confirmed the route
+        // switch: resend the failed turn's payload on the new route. The
+        // original user message is already in the transcript from the failed
+        // attempt, so do not echo it again; just clear the input box if the
+        // error path restored the prompt there.
+        if let Some(raw_input) = payload.raw_input.as_deref()
+            && app.input == raw_input
+        {
+            app.input.clear();
+            app.cursor_pos = 0;
+        }
+        app.last_submitted_input = payload.raw_input.clone();
+        crate::logging::info("Resending failed turn after accepted fallback route switch");
+        if let Err(error) = begin_remote_send(
+            app,
+            remote,
+            payload.content,
+            payload.images,
+            payload.is_system,
+            payload.system_reminder,
+            payload.auto_retry,
+            0,
+        )
+        .await
+        {
+            app.push_display_message(DisplayMessage::error(format!(
+                "Failed to resend after fallback switch: {}",
+                error
+            )));
+            app.set_status_notice("Fallback resend failed");
+        }
         return;
     }
 

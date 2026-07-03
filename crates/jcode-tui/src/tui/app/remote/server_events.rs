@@ -918,6 +918,20 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             let is_failover_prompt =
                 crate::provider::parse_failover_prompt_message(&message).is_some();
+            // Snapshot the failed turn's payload before the cleanup below (and
+            // the retry-budget bookkeeping) clears it, so a fallback offer
+            // armed at a terminal no-retry point can resend it after the user
+            // accepts a switch to a working route.
+            let failed_fallback_payload = app.rate_limit_pending_message.as_ref().map(|pending| {
+                app_mod::FallbackResendPayload {
+                    content: pending.content.clone(),
+                    images: pending.images.clone(),
+                    is_system: pending.is_system,
+                    auto_retry: pending.auto_retry,
+                    system_reminder: pending.system_reminder.clone(),
+                    raw_input: app.last_submitted_input.clone(),
+                }
+            });
             app.push_display_message(DisplayMessage {
                 role: "error".to_string(),
                 content: message.clone(),
@@ -973,6 +987,12 @@ pub(in crate::tui::app) fn handle_server_event(
                 ));
                 app.set_status_notice("Stopped: model/endpoint mismatch");
                 app.restore_failed_input_to_box();
+                // Switching models is exactly the right fix for a
+                // model/endpoint mismatch: offer the next best route.
+                app.offer_fallback_after_error_with_payload(
+                    &message,
+                    failed_fallback_payload.clone(),
+                );
                 return false;
             }
             if app.auto_poke_incomplete_todos
@@ -985,9 +1005,20 @@ pub(in crate::tui::app) fn handle_server_event(
                     return false;
                 }
                 crate::tui::app::commands::stop_auto_poke_for_non_retryable_error(app, &message);
+                // Terminal: no retry will fire. Offer a one-keypress switch to
+                // the next best model/auth-method (e.g. an expired OAuth login
+                // -> a working provider) with the failed payload staged.
+                app.offer_fallback_after_error_with_payload(
+                    &message,
+                    failed_fallback_payload.clone(),
+                );
                 return false;
             }
             if app.stop_overnight_auto_poke_for_non_retryable_error(&message) {
+                app.offer_fallback_after_error_with_payload(
+                    &message,
+                    failed_fallback_payload.clone(),
+                );
                 return false;
             }
             if !is_failover_prompt && !app.schedule_pending_remote_retry("⚠ Remote request failed.")
@@ -996,6 +1027,11 @@ pub(in crate::tui::app) fn handle_server_event(
                 // No automatic retry will resend this turn, so restore the prompt the
                 // user typed back into the input box instead of dropping it.
                 app.restore_failed_input_to_box();
+                // Offer a one-keypress switch to the next best model/auth-method
+                // and resend (e.g. expired OpenAI OAuth session -> a provider
+                // that is known to work), instead of leaving the user to run
+                // /login or /model manually.
+                app.offer_fallback_after_error_with_payload(&message, failed_fallback_payload);
                 return app.schedule_auto_poke_followup_if_needed()
                     || app.schedule_overnight_poke_followup_if_needed();
             }
@@ -1721,6 +1757,16 @@ pub(in crate::tui::app) fn handle_server_event(
             if let Some(err) = error {
                 if let Some(prepared) = app.pending_prompt_after_model_switch.take() {
                     super::input_dispatch::restore_prepared_remote_input(app, prepared);
+                }
+                // A fallback-offer resend cannot go out on the failed switch;
+                // drop it and put the prompt back in the input box instead.
+                if let Some(payload) = app.pending_fallback_resend.take()
+                    && let Some(raw_input) = payload.raw_input
+                    && !raw_input.trim().is_empty()
+                    && app.input.is_empty()
+                {
+                    app.input = raw_input;
+                    app.cursor_pos = app.input.len();
                 }
                 app.push_display_message(DisplayMessage::error(
                     crate::tui::app::model_context::model_switch_failure_message(&err, true),

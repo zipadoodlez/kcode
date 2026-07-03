@@ -2751,6 +2751,12 @@ impl App {
                             self.inline_interactive_state = None;
                             self.upstream_provider = None;
                             self.status_detail = None;
+                            // Track the chosen method client-side so post-error
+                            // fallback picks know which credential path the
+                            // active route uses (remote sessions have no other
+                            // route bookkeeping).
+                            self.session.route_api_method =
+                                Some(route_selection.api_method.clone());
                             self.pending_route_selection = Some(route_selection);
                             self.pending_model_switch = Some(spec);
                             // In remote mode `self.provider` is a local

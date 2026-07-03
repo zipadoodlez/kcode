@@ -320,6 +320,29 @@ struct PendingFallbackOffer {
     target_label: String,
     /// Short label for what just failed (e.g. "Claude via API key").
     from_label: String,
+    /// Remote sessions only: the failed turn's payload, captured before error
+    /// cleanup clears it, so accepting the offer can resend it on the new
+    /// route. Local sessions resend via `pending_turn` instead.
+    remote_resend: Option<FallbackResendPayload>,
+}
+
+/// The failed remote turn's payload, held by a [`PendingFallbackOffer`] so a
+/// one-keypress accept can resend it after the route switch completes.
+#[derive(Debug, Clone)]
+struct FallbackResendPayload {
+    /// Expanded message content that was sent to the server.
+    content: String,
+    /// Inline image attachments that accompanied the message.
+    images: Vec<(String, String)>,
+    /// Whether the failed send was a system continuation (poke/reminder).
+    is_system: bool,
+    /// Whether the failed send was flagged for automatic retries.
+    auto_retry: bool,
+    /// Hidden system reminder that accompanied the message, if any.
+    system_reminder: Option<String>,
+    /// The raw prompt the user typed, when known. Used to de-duplicate the
+    /// input box (the error path restores the prompt there) on accept.
+    raw_input: Option<String>,
 }
 
 /// An interactive "let a jcode agent merge the diverged update for you" offer.
@@ -797,6 +820,9 @@ pub struct App {
     // Interactive "switch to next best model/method and resend" offer surfaced
     // after a provider turn error; accepted with a keypress.
     pending_fallback_offer: Option<PendingFallbackOffer>,
+    // Remote sessions: the failed turn payload staged by an accepted fallback
+    // offer, dispatched once the server confirms the route switch.
+    pending_fallback_resend: Option<FallbackResendPayload>,
     // Interactive "spawn a jcode agent to merge the diverged update" offer shown
     // after an update fails because the local checkout and upstream diverged.
     // Accepted with the same key as the fallback offer.

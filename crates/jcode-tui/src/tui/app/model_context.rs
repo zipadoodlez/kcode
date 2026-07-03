@@ -262,15 +262,41 @@ impl App {
     /// This is the manual counterpart to automatic cross-provider failover: it can
     /// switch *auth methods on the same provider* (e.g. from a broken API key to a
     /// working OAuth login), which the automatic path never does.
+    ///
+    /// Works in both local and remote sessions. Remote offers capture the failed
+    /// turn's payload (from the pending retry slot) so accepting the offer can
+    /// resend it after the server confirms the route switch; callers must arm the
+    /// offer *before* clearing the pending retry state.
     pub(super) fn offer_fallback_after_error(&mut self, error: &str) -> bool {
+        // Remote sessions resend through the server: capture the failed turn's
+        // payload from the pending retry slot while it is still populated.
+        let remote_resend = if self.is_remote {
+            self.rate_limit_pending_message
+                .as_ref()
+                .map(|pending| super::FallbackResendPayload {
+                    content: pending.content.clone(),
+                    images: pending.images.clone(),
+                    is_system: pending.is_system,
+                    auto_retry: pending.auto_retry,
+                    system_reminder: pending.system_reminder.clone(),
+                    raw_input: self.last_submitted_input.clone(),
+                })
+        } else {
+            None
+        };
+        self.offer_fallback_after_error_with_payload(error, remote_resend)
+    }
+
+    /// [`Self::offer_fallback_after_error`] with an explicitly captured resend
+    /// payload, for callers whose error-cleanup already cleared the pending
+    /// retry slot before the offer could be armed.
+    pub(super) fn offer_fallback_after_error_with_payload(
+        &mut self,
+        error: &str,
+        remote_resend: Option<super::FallbackResendPayload>,
+    ) -> bool {
         // Never compete with the automatic countdown switcher.
         if self.pending_provider_failover.is_some() {
-            return false;
-        }
-        // Remote sessions switch + resend through the server connection, which is
-        // not reachable from this synchronous error path; mirror the failover
-        // countdown's local-only precedent for now.
-        if self.is_remote {
             return false;
         }
         let routes = self.fallback_candidate_routes();
@@ -281,11 +307,19 @@ impl App {
         let current_provider = self.current_provider_label_for_fallback();
         let current_api_method = self.current_route_api_method().unwrap_or_default();
 
-        let Some(index) = crate::provider::pick_next_fallback_route(
+        // A credential failure (expired OAuth session, failed token refresh,
+        // broken API key) breaks every route behind that credential, so widen
+        // the exclusion set: offering a sibling model on the same broken
+        // credential would fail identically.
+        let options = crate::provider::FallbackPickOptions {
+            credential_failure: crate::provider::error_looks_like_credential_failure(error),
+        };
+        let Some(index) = crate::provider::pick_next_fallback_route_with_options(
             &routes,
             &current_model,
             &current_provider,
             &current_api_method,
+            options,
         ) else {
             return false;
         };
@@ -297,6 +331,8 @@ impl App {
         } else {
             format!("{} via {}", current_provider, from_method.display_label())
         };
+
+        let remote_resend = if self.is_remote { remote_resend } else { None };
 
         let key_label = crate::tui::keybind::fallback_switch_key_label();
         self.push_display_message(DisplayMessage::system(format!(
@@ -311,20 +347,44 @@ impl App {
             selection: crate::provider::RouteSelection::from_model_route(&route),
             target_label,
             from_label,
+            remote_resend,
         });
         true
     }
 
     pub(super) fn clear_pending_fallback_offer(&mut self) {
         self.pending_fallback_offer = None;
+        self.pending_fallback_resend = None;
     }
 
     /// Apply the armed fallback offer: switch to the alternative route and resend
     /// the failed turn. Returns true when an offer was present and consumed.
+    ///
+    /// Local sessions switch the provider route directly and queue a local
+    /// resend. Remote sessions stage the route selection for the remote
+    /// dispatcher (which sends `SetRoute` to the server) and stage the failed
+    /// payload for resend once the server confirms the switch.
     pub(super) fn apply_pending_fallback_offer(&mut self) -> bool {
         let Some(offer) = self.pending_fallback_offer.take() else {
             return false;
         };
+
+        if self.is_remote {
+            self.upstream_provider = None;
+            self.status_detail = None;
+            // Track the method we are switching to so subsequent fallback picks
+            // know the active credential path (remote sessions have no other
+            // client-side route bookkeeping).
+            self.session.route_api_method = Some(offer.selection.api_method.clone());
+            self.pending_route_selection = Some(offer.selection);
+            self.pending_fallback_resend = offer.remote_resend;
+            self.push_display_message(DisplayMessage::system(format!(
+                "↪ Switching to {} and resending (was {}).",
+                offer.target_label, offer.from_label,
+            )));
+            self.set_status_notice(format!("Switching → {} (will retry)", offer.target_label));
+            return true;
+        }
 
         match self.provider.set_route_selection(&offer.selection) {
             Ok(()) => {

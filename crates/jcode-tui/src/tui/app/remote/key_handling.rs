@@ -343,6 +343,18 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
+    // Accept an armed post-error fallback offer: stage the route switch and
+    // resend so the remote dispatcher applies it (SetRoute + payload resend).
+    // Checked before the merge offer to match the local key-handling order
+    // (both share the same accept key).
+    if app.pending_fallback_offer.is_some()
+        && !app.is_processing
+        && app.fallback_switch_key_matches(code, modifiers)
+    {
+        app.apply_pending_fallback_offer();
+        return Ok(());
+    }
+
     // Accept an armed "merge the diverged update" offer (self-dev/remote
     // sessions surface the same update card as local ones).
     if app.merge_offer_key_matches(code, modifiers) {
