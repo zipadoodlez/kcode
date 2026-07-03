@@ -538,15 +538,31 @@ impl App {
         } else if cmd == "render-stats" {
             use crate::tui::visual_debug;
             visual_debug::enable();
+            let draw_calls = crate::tui::ui::debug_draw_call_history(16);
             match visual_debug::latest_frame() {
                 Some(frame) => serde_json::to_string_pretty(&serde_json::json!({
                     "frame_id": frame.frame_id,
                     "render_timing": frame.render_timing,
                     "render_order": frame.render_order,
+                    "draw_calls": draw_calls,
                 }))
                 .unwrap_or_else(|_| "{}".to_string()),
-                None => "render-stats: no frames captured".to_string(),
+                None => serde_json::to_string_pretty(&serde_json::json!({
+                    "frame_id": serde_json::Value::Null,
+                    "render_timing": serde_json::Value::Null,
+                    "render_order": serde_json::Value::Null,
+                    "draw_calls": draw_calls,
+                }))
+                .unwrap_or_else(|_| "render-stats: no frames captured".to_string()),
             }
+        } else if cmd == "draw-stats" {
+            let payload = crate::tui::ui::debug_draw_call_history(32);
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
+        } else if cmd.starts_with("draw-stats ") {
+            let raw_limit = cmd.strip_prefix("draw-stats ").unwrap_or("32").trim();
+            let limit = raw_limit.parse::<usize>().unwrap_or(32);
+            let payload = crate::tui::ui::debug_draw_call_history(limit);
+            serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
         } else if cmd == "render-order" {
             use crate::tui::visual_debug;
             visual_debug::enable();
@@ -872,7 +888,8 @@ impl App {
                  - layout - dump latest layout JSON\n\
                  - margins - dump layout margins JSON\n\
                  - widgets - dump info widget summary/placements\n\
-                 - render-stats - dump render timing + order JSON\n\
+                 - render-stats - dump render timing + order + draw-call attribution JSON\n\
+                 - draw-stats [n] - dump per-draw attribution history (render_ms, changed cells)\n\
                  - render-order - dump render order list\n\
                  - anomalies - dump visual debug anomalies\n\
                  - theme - dump current palette snapshot\n\

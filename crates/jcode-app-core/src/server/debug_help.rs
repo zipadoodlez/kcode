@@ -117,7 +117,8 @@ CLIENT COMMANDS (client: prefix):
   client:layout            - Get latest layout JSON
   client:margins           - Get layout margins JSON
   client:widgets           - Get info widget summary/placements
-  client:render-stats      - Get render timing + order JSON
+  client:render-stats      - Get render timing + order + draw-call attribution JSON
+  client:draw-stats [n]    - Get per-draw attribution history (render_ms, changed cells)
   client:render-order      - Get render order list
   client:anomalies         - Get latest visual debug anomalies
   client:theme             - Get palette snapshot
