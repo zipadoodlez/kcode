@@ -482,9 +482,9 @@ fn mermaid_should_register_active() -> bool {
 }
 
 fn mermaid_rendering_enabled() -> bool {
-    // Temporarily disable Mermaid for users while the renderer is unstable.
-    // Developers can opt in explicitly to keep iterating on the feature.
-    std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "1")
+    // Mermaid rendering is enabled by default (renderer v0.3.0+ passes the
+    // hard geometry gate). Set JCODE_ENABLE_MERMAID=0 to opt out.
+    !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
 }
 
 fn mermaid_sidebar_placeholder(text: &str) -> Line<'static> {

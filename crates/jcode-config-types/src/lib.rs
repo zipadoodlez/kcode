@@ -912,7 +912,8 @@ pub struct DisplayConfig {
     #[serde(default)]
     reasoning_display: Option<ReasoningDisplayMode>,
     /// How to display mermaid diagrams (none/margin/pinned, default: none).
-    /// Mermaid rendering is temporarily disabled for users unless JCODE_ENABLE_MERMAID=1.
+    /// `none` still renders diagrams inline in the transcript via the inline
+    /// image pipeline; `margin`/`pinned` add dedicated widget placements.
     pub diagram_mode: DiagramDisplayMode,
     /// Markdown block spacing style (compact/document, default: compact)
     pub markdown_spacing: MarkdownSpacingMode,
