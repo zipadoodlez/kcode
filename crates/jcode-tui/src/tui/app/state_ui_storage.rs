@@ -98,6 +98,43 @@ fn compact_tool_input_for_display(name: &str, input: &serde_json::Value) -> serd
                 .cloned()
                 .unwrap_or(serde_json::Value::Null),
         )]),
+        // Web/search tools: keep the URL/query so the transcript row still
+        // shows what was fetched or searched after storage compaction.
+        "webfetch" => obj(vec![(
+            "url",
+            input
+                .get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| serde_json::Value::String(crate::util::truncate_str(s, 200).to_string()))
+                .unwrap_or(serde_json::Value::Null),
+        )]),
+        "websearch" | "codesearch" | "session_search" | "conversation_search" => obj(vec![(
+            "query",
+            input
+                .get("query")
+                .and_then(|v| v.as_str())
+                .map(|s| serde_json::Value::String(crate::util::truncate_str(s, 200).to_string()))
+                .unwrap_or(serde_json::Value::Null),
+        )]),
+        "open" => obj(vec![
+            (
+                "action",
+                input
+                    .get("action")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "target",
+                input
+                    .get("target")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 200).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+        ]),
         "grep" => obj(vec![
             (
                 "pattern",
@@ -268,4 +305,82 @@ pub(super) fn infer_spawned_session_startup_hints(
     };
 
     Some((format!("{} starting", label), (label.to_string(), body)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tool_message(name: &str, input: serde_json::Value) -> DisplayMessage {
+        DisplayMessage {
+            role: "tool".to_string(),
+            content: "output".to_string(),
+            tool_calls: vec![],
+            duration_secs: None,
+            title: None,
+            tool_data: Some(crate::message::ToolCall {
+                id: "call-1".to_string(),
+                name: name.to_string(),
+                input: input.clone(),
+                intent: crate::message::ToolCall::intent_from_input(&input),
+                thought_signature: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn compaction_keeps_webfetch_url_for_transcript_summary() {
+        let mut message = tool_message(
+            "webfetch",
+            serde_json::json!({
+                "url": "https://example.com/docs/api",
+                "format": "markdown",
+                "timeout": 30
+            }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        assert_eq!(
+            tool.input.get("url").and_then(|v| v.as_str()),
+            Some("https://example.com/docs/api")
+        );
+        let summary = crate::tui::ui::tools_ui::get_tool_summary(&tool);
+        assert!(
+            summary.contains("example.com"),
+            "summary should surface the fetched URL: {summary:?}"
+        );
+    }
+
+    #[test]
+    fn compaction_keeps_websearch_query_for_transcript_summary() {
+        let mut message = tool_message(
+            "websearch",
+            serde_json::json!({ "query": "rust async traits", "num_results": 5 }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        assert_eq!(
+            tool.input.get("query").and_then(|v| v.as_str()),
+            Some("rust async traits")
+        );
+        let summary = crate::tui::ui::tools_ui::get_tool_summary(&tool);
+        assert!(
+            summary.contains("rust async traits"),
+            "summary should surface the search query: {summary:?}"
+        );
+    }
+
+    #[test]
+    fn compaction_preserves_model_provided_intent() {
+        let mut message = tool_message(
+            "webfetch",
+            serde_json::json!({
+                "intent": "Check release notes",
+                "url": "https://example.com/releases"
+            }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        assert_eq!(tool.intent.as_deref(), Some("Check release notes"));
+    }
 }
