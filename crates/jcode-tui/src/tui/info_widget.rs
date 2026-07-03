@@ -261,6 +261,18 @@ pub struct SwarmInfo {
     pub session_names: Vec<String>,
     /// Swarm member lifecycle status updates
     pub members: Vec<SwarmMemberStatus>,
+    /// Agents this session manages (spawn-subtree filtered), shown in the
+    /// swarm dock widget. Empty = no dock.
+    pub managed_members: Vec<SwarmMemberStatus>,
+    /// Selected agent index in the dock (display order), mirrors the inline
+    /// swarm panel selection so both surfaces agree.
+    pub selected: usize,
+    /// Whether the swarm panel/dock has keyboard focus.
+    pub focused: bool,
+    /// Swarm plan progress (completed, total), when a plan is active.
+    pub plan_progress: Option<(u32, u32)>,
+    /// Spinner frame for animating active agents' status glyphs.
+    pub spinner_frame: usize,
 }
 
 /// Background task status for the info widget
@@ -620,10 +632,7 @@ pub struct CompactionInfo {
 
 impl InfoWidgetData {
     fn widget_disabled(kind: WidgetKind) -> bool {
-        matches!(
-            kind,
-            WidgetKind::SwarmStatus | WidgetKind::AmbientMode | WidgetKind::Tips
-        )
+        matches!(kind, WidgetKind::AmbientMode | WidgetKind::Tips)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -713,7 +722,11 @@ impl InfoWidgetData {
                 .as_ref()
                 .map(|m| m.total_count > 0 || m.activity.is_some())
                 .unwrap_or(false),
-            WidgetKind::SwarmStatus => false,
+            WidgetKind::SwarmStatus => self
+                .swarm_info
+                .as_ref()
+                .map(|s| !s.managed_members.is_empty())
+                .unwrap_or(false),
             WidgetKind::BackgroundTasks => self
                 .background_info
                 .as_ref()
@@ -781,6 +794,17 @@ impl InfoWidgetData {
                 } else {
                     kind.priority()
                 }
+            }
+            WidgetKind::SwarmStatus => {
+                // A session actively managing agents wants them visible: the
+                // dock is the cockpit for the swarm, so rank it just under
+                // todos while any managed agent is still live.
+                let managing = self
+                    .swarm_info
+                    .as_ref()
+                    .map(|s| !s.managed_members.is_empty())
+                    .unwrap_or(false);
+                if managing { 3 } else { kind.priority() }
             }
             _ => kind.priority(),
         }
@@ -880,6 +904,25 @@ pub fn calculate_placements(
     state.anchors = outcome.anchors;
     state.placements = outcome.visible.clone();
     outcome.visible
+}
+
+/// Whether the SwarmStatus dock widget was placed on the last rendered frame.
+///
+/// The inline swarm strip (above the status line) is built before widget
+/// placement runs each frame, so it checks the previous frame's placements,
+/// like [`widget_visible_facts`]. Used to avoid showing the same agents twice:
+/// when the dock is visible, the strip stands down. One frame of overlap
+/// during transitions is visually harmless.
+pub(crate) fn swarm_dock_visible_last_frame() -> bool {
+    let guard = get_or_init_state();
+    let Some(state) = guard.as_ref() else {
+        return false;
+    };
+    state.enabled
+        && state
+            .placements
+            .iter()
+            .any(|p| p.kind == WidgetKind::SwarmStatus)
 }
 
 /// Facts surfaced by the info-widget HUD as of the last rendered frame.
@@ -1007,19 +1050,15 @@ pub(crate) fn calculate_widget_height(
             let Some(info) = &data.swarm_info else {
                 return 0;
             };
-            if info.subagent_status.is_none()
-                && info.session_count <= 1
-                && info.client_count.is_none()
-                && info.members.is_empty()
-            {
+            if info.managed_members.is_empty() {
                 return 0;
             }
-            let mut h = 1u16; // Stats line
-            if info.subagent_status.is_some() {
-                h += 1;
-            }
-            h += info.session_names.len().min(3) as u16;
-            h
+            // Header + one row per agent + selected tail (2) + focus hints,
+            // capped by what the margin column can give us.
+            let rows = info.managed_members.len() as u16;
+            let tail = 2u16;
+            let hints = u16::from(info.focused);
+            (1 + rows + tail + hints).min(max_height.saturating_sub(border_height))
         }
         WidgetKind::BackgroundTasks => {
             if data

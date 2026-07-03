@@ -2682,8 +2682,12 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // manages agents, render a compact strip (agent chips + keybinding hints)
     // directly above the status line instead of a big gallery band. When the
     // panel is focused, the strip expands into a taller viewport showing the
-    // hovered agent's live transcript tail and todo list.
-    let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active() {
+    // hovered agent's live transcript tail and todo list. The strip stands
+    // down while the SwarmStatus dock widget (margin HUD) is showing the same
+    // agents, unless the panel is focused (keyboard interaction lives here).
+    let swarm_strip_lines: Vec<Line<'static>> = if app.inline_swarm_gallery_active()
+        && (app.swarm_panel_focused() || !super::info_widget::swarm_dock_visible_last_frame())
+    {
         let members = app.inline_swarm_members();
         if chat_area.width >= 24 {
             let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();

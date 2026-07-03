@@ -2,10 +2,10 @@ use super::{
     BackgroundInfo, CacheHitInfo, CacheMissAttribution, GraphEdge, GraphNode, InfoWidgetData,
     Margins, MemoryActivity, MemoryEvent, MemoryEventKind, MemoryInfo, MemoryState, PipelineState,
     StepStatus, SwarmInfo, UsageInfo, UsageProvider, WidgetKind, calculate_placements,
-    effective_prompt_tokens, occasional_status_tip, render_kv_cache_widget, render_memory_compact,
-    render_memory_widget, render_model_widget, render_todos_compact, render_todos_expanded,
-    render_todos_widget, render_usage_compact, render_usage_widget, swarm_plan_todos,
-    truncate_smart,
+    calculate_widget_height, effective_prompt_tokens, occasional_status_tip,
+    render_kv_cache_widget, render_memory_compact, render_memory_widget, render_model_widget,
+    render_todos_compact, render_todos_expanded, render_todos_widget, render_usage_compact,
+    render_usage_widget, swarm_plan_todos, truncate_smart,
 };
 use crate::protocol::SwarmMemberStatus;
 use ratatui::layout::Rect;
@@ -1082,6 +1082,75 @@ fn render_context_compact_reports_updating_when_snapshot_is_stale() {
     assert!(
         !text.contains("100k/200k"),
         "stale snapshots must not render old usage as current: {text}"
+    );
+}
+
+fn managed_member(id: &str, status: &str, role: Option<&str>) -> SwarmMemberStatus {
+    SwarmMemberStatus {
+        session_id: id.to_string(),
+        friendly_name: Some(id.to_string()),
+        status: status.to_string(),
+        detail: None,
+        role: role.map(str::to_string),
+        is_headless: Some(true),
+        live_attachments: None,
+        status_age_secs: Some(3),
+        output_tail: Some("streaming some work".to_string()),
+        report_back_to_session_id: Some("parent".to_string()),
+        todo_progress: Some((2, 5)),
+        todo_items: Vec::new(),
+    }
+}
+
+/// With managed members present, the SwarmStatus widget switches to dock
+/// mode: agent rows + tally header + plan progress, and has_data_for admits
+/// the widget into layout.
+#[test]
+fn swarm_widget_dock_mode_lists_managed_agents() {
+    let data = InfoWidgetData {
+        swarm_info: Some(SwarmInfo {
+            managed_members: vec![
+                managed_member("researcher", "running", Some("coordinator")),
+                managed_member("reviewer", "completed", None),
+            ],
+            plan_progress: Some((3, 7)),
+            selected: 0,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert!(data.has_data_for(WidgetKind::SwarmStatus));
+    // Managing agents bumps the dock's effective priority near the top.
+    assert!(data.effective_priority(WidgetKind::SwarmStatus) < WidgetKind::SwarmStatus.priority());
+
+    let text = lines_text(&super::render_swarm_widget(&data, Rect::new(0, 0, 34, 10)));
+    assert!(text.contains("1/2 active"), "got: {text}");
+    assert!(text.contains("plan 3/7"), "got: {text}");
+    assert!(text.contains("researcher"), "got: {text}");
+    assert!(text.contains("reviewer"), "got: {text}");
+    // Selected agent (coordinator sorts first) shows its live output tail.
+    assert!(text.contains("streaming some work"), "got: {text}");
+    // Height accounts for header + rows + tail.
+    let h = calculate_widget_height(WidgetKind::SwarmStatus, &data, 34, 20);
+    assert!(h >= 5, "dock height too small: {h}");
+}
+
+/// Without managed members the legacy session-list rendering is preserved and
+/// the widget stays out of layout (has_data_for is false).
+#[test]
+fn swarm_widget_without_managed_agents_stays_hidden_from_layout() {
+    let data = InfoWidgetData {
+        swarm_info: Some(SwarmInfo {
+            session_count: 4,
+            session_names: vec!["alpha".to_string()],
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    assert!(!data.has_data_for(WidgetKind::SwarmStatus));
+    assert_eq!(
+        calculate_widget_height(WidgetKind::SwarmStatus, &data, 34, 20),
+        0
     );
 }
 

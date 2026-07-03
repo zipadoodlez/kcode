@@ -559,6 +559,231 @@ pub fn render_swarm_strip(
     out
 }
 
+/// Render the swarm dock: a narrow, vertical agent list sized for the
+/// info-widget margins (~20-38 inner columns).
+///
+/// Layout (all lines bounded to `width`, at most `max_height` lines):
+/// ```text
+/// 🐝 2/4 active · plan 3/7 · ⚠1
+/// ▸ ★ coordinator      ⠋ 4/9
+///   │ ⚙ bash cargo build 47s
+///   │ carving gallery band
+///   researcher         ⠙ 2/5
+///   reviewer           ✓
+///   +2 more
+///   j/k · enter · esc
+/// ```
+///
+/// The selected agent (clamped into range) gets a short live tail from its
+/// `body` directly beneath its row: up to 2 lines, or 4 when `focused`. When
+/// not all agents fit, the list windows around the selection and a `+N more`
+/// line reports the rest. The hint line appears only when `focused`.
+pub fn render_swarm_dock(
+    members: &[GalleryMember],
+    selected: usize,
+    focused: bool,
+    plan: Option<(u32, u32)>,
+    spinner_frame: usize,
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() || width < 12 || max_height < 2 {
+        return Vec::new();
+    }
+    let ordered = sort_members_for_display(members);
+    let selected = selected.min(ordered.len() - 1);
+    let active = members
+        .iter()
+        .filter(|m| is_active_status(&m.status))
+        .count();
+    let attention = members
+        .iter()
+        .filter(|m| {
+            matches!(
+                m.status.as_str(),
+                "blocked" | "failed" | "crashed" | "waiting_network"
+            )
+        })
+        .count();
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    out.push(dock_header(members.len(), active, attention, plan, width));
+
+    // ---- Line budget: header (emitted) + rows + selected tail + hints ----
+    let hint_rows = usize::from(focused);
+    let budget = max_height.saturating_sub(1 + hint_rows);
+    let n = ordered.len();
+    let tail_want = if focused { 4 } else { 2 };
+    // Prefer listing every agent; leftover lines become the selected tail.
+    // When agents alone overflow, window around the selection and spend one
+    // line on the "+N more" marker.
+    let (list_rows, tail_rows) = if n <= budget {
+        (n, budget.saturating_sub(n).min(tail_want))
+    } else {
+        (budget.saturating_sub(1).max(1), 0)
+    };
+    let hidden = n.saturating_sub(list_rows);
+    let first = if selected >= list_rows {
+        selected + 1 - list_rows
+    } else {
+        0
+    };
+
+    let tail_lines = if tail_rows > 0 {
+        dock_tail_lines(ordered[selected], width, tail_rows)
+    } else {
+        Vec::new()
+    };
+
+    for (idx, member) in ordered.iter().enumerate().skip(first).take(list_rows) {
+        let is_sel = idx == selected;
+        out.push(dock_row(member, is_sel, focused, spinner_frame, width));
+        if is_sel {
+            out.extend(tail_lines.iter().cloned());
+        }
+    }
+    if hidden > 0 {
+        out.push(Line::from(Span::styled(
+            format!("  +{hidden} more"),
+            Style::default().fg(rgb(130, 130, 140)),
+        )));
+    }
+
+    if focused {
+        out.push(Line::from(vec![
+            Span::styled("  j/k", Style::default().fg(rgb(150, 170, 210))),
+            Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))),
+            Span::styled("enter", Style::default().fg(rgb(150, 170, 210))),
+            Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))),
+            Span::styled("esc", Style::default().fg(rgb(150, 170, 210))),
+        ]));
+    }
+
+    // Hard bounds: never exceed the height budget (tiny budgets can otherwise
+    // overflow via the header + marker + hint fixed rows) or the width.
+    out.truncate(max_height);
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
+    out
+}
+
+/// Dock header: bee + active tally, then plan progress and attention count,
+/// dropped right-to-left when the width is too tight.
+fn dock_header(
+    total: usize,
+    active: usize,
+    attention: usize,
+    plan: Option<(u32, u32)>,
+    width: usize,
+) -> Line<'static> {
+    let sep_style = Style::default().fg(rgb(80, 80, 90));
+    let mut spans: Vec<Span<'static>> = vec![
+        Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+        Span::styled(
+            format!("{active}/{total} active"),
+            Style::default().fg(if active > 0 {
+                rgb(255, 200, 100)
+            } else {
+                rgb(120, 120, 130)
+            }),
+        ),
+    ];
+    let mut used: usize = spans.iter().map(|s| disp_w(&s.content)).sum();
+    if let Some((done, total)) = plan {
+        let text = format!("plan {done}/{total}");
+        if used + 3 + disp_w(&text) <= width {
+            used += 3 + disp_w(&text);
+            spans.push(Span::styled(" · ", sep_style));
+            spans.push(Span::styled(text, Style::default().fg(rgb(160, 160, 170))));
+        }
+    }
+    if attention > 0 {
+        let text = format!("⚠{attention}");
+        if used + 3 + disp_w(&text) <= width {
+            spans.push(Span::styled(" · ", sep_style));
+            spans.push(Span::styled(text, Style::default().fg(rgb(255, 170, 80))));
+        }
+    }
+    Line::from(spans)
+}
+
+/// One dock row: selection marker, optional role glyph, label, then a
+/// right-aligned status glyph and optional todo counter.
+fn dock_row(
+    member: &GalleryMember,
+    selected: bool,
+    focused: bool,
+    spinner_frame: usize,
+    width: usize,
+) -> Line<'static> {
+    let accent = status_accent(&member.status);
+    let marker = if selected { "▸ " } else { "  " };
+    let glyph = role_glyph(member.role.as_deref())
+        .map(|g| format!("{g} "))
+        .unwrap_or_default();
+    let status = status_glyph(&member.status, spinner_frame);
+    let todo = member.todo.map(|(d, t)| format!(" {d}/{t}"));
+
+    let right_w = disp_w(status) + todo.as_ref().map(|t| disp_w(t)).unwrap_or(0);
+    let fixed = 2 + disp_w(&glyph) + 1 + right_w;
+    let label = truncate_label(&member.label, width.saturating_sub(fixed).max(4));
+    let filler = width
+        .saturating_sub(2 + disp_w(&glyph) + disp_w(&label) + right_w)
+        .max(1);
+
+    let mut label_style = Style::default().fg(if selected {
+        rgb(235, 235, 245)
+    } else {
+        rgb(170, 170, 180)
+    });
+    if selected && focused {
+        label_style = label_style.add_modifier(Modifier::BOLD);
+    }
+    let mut spans = vec![Span::styled(
+        marker.to_string(),
+        Style::default().fg(if selected { accent } else { rgb(90, 90, 100) }),
+    )];
+    if !glyph.is_empty() {
+        spans.push(Span::styled(glyph, Style::default().fg(accent)));
+    }
+    spans.push(Span::styled(label, label_style));
+    spans.push(Span::raw(" ".repeat(filler)));
+    spans.push(Span::styled(
+        status.to_string(),
+        Style::default().fg(accent),
+    ));
+    if let Some(todo) = todo {
+        spans.push(Span::styled(todo, Style::default().fg(rgb(130, 130, 140))));
+    }
+    Line::from(spans)
+}
+
+/// The selected agent's live tail: the last `rows` non-meta body lines,
+/// dim, behind a `│` gutter.
+fn dock_tail_lines(member: &GalleryMember, width: usize, rows: usize) -> Vec<Line<'static>> {
+    let text_budget = width.saturating_sub(4);
+    member
+        .body
+        .iter()
+        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('·'))
+        .rev()
+        .take(rows)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|l| {
+            Line::from(vec![
+                Span::styled("  │ ", Style::default().fg(rgb(80, 80, 90))),
+                Span::styled(
+                    truncate_label(l, text_budget),
+                    Style::default().fg(rgb(160, 160, 170)),
+                ),
+            ])
+        })
+        .collect()
+}
+
 /// Truncate a styled line so its display width never exceeds `max_width`.
 /// Splits mid-span if needed, dropping a trailing wide glyph that would
 /// straddle the boundary.
@@ -1395,5 +1620,118 @@ mod tests {
             chips.as_str().width()
         );
         assert!(chips.trim_end().ends_with("controls"), "got: {chips}");
+    }
+
+    #[test]
+    fn dock_empty_renders_nothing() {
+        assert!(render_swarm_dock(&[], 0, false, None, 0, 30, 10).is_empty());
+    }
+
+    #[test]
+    fn dock_lists_agents_with_header_and_selected_tail() {
+        let mut m1 = member(
+            "researcher",
+            "thinking",
+            Some("coordinator"),
+            &["tracing refresh path", "· 2s ago"],
+        );
+        m1.todo = Some((2, 5));
+        let m2 = member("implementer", "running", None, &["building"]);
+        let m3 = member("reviewer", "completed", None, &["LGTM"]);
+        let lines = render_swarm_dock(&[m1, m2, m3], 0, false, Some((3, 7)), 0, 34, 12);
+        let all: Vec<String> = lines.iter().map(plain_line).collect();
+        let joined = all.join("\n");
+        assert!(joined.contains("2/3 active"), "got:\n{joined}");
+        assert!(joined.contains("plan 3/7"), "got:\n{joined}");
+        for name in ["researcher", "implementer", "reviewer"] {
+            assert!(joined.contains(name), "missing {name} in:\n{joined}");
+        }
+        // Selected (coordinator, sorts first) shows its live tail with gutter.
+        assert!(joined.contains("│ tracing refresh path"), "got:\n{joined}");
+        // Meta age line stays out of the tail.
+        assert!(!joined.contains("2s ago"), "got:\n{joined}");
+        // Todo counter on the row.
+        assert!(joined.contains("2/5"), "got:\n{joined}");
+        // Unfocused: no hint line.
+        assert!(!joined.contains("j/k"), "got:\n{joined}");
+    }
+
+    #[test]
+    fn dock_focused_shows_hints_and_attention_count() {
+        let members = vec![
+            member("a", "running", None, &["working"]),
+            member("b", "blocked", None, &["stuck"]),
+            member("c", "failed", None, &["boom"]),
+        ];
+        let lines = render_swarm_dock(&members, 1, true, None, 0, 34, 14);
+        let joined: String = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert!(joined.contains("⚠2"), "got:\n{joined}");
+        assert!(joined.contains("j/k"), "got:\n{joined}");
+        // Selected row marked.
+        let sel = lines
+            .iter()
+            .map(plain_line)
+            .find(|l| l.contains('▸'))
+            .expect("selected row");
+        assert!(sel.contains('b'), "got: {sel}");
+    }
+
+    #[test]
+    fn dock_windows_list_and_reports_overflow() {
+        let members: Vec<GalleryMember> = (0..12)
+            .map(|i| member(&format!("agent-{i:02}"), "running", None, &["w"]))
+            .collect();
+        // Budget: header + 5 rows -> 7 hidden.
+        let lines = render_swarm_dock(&members, 11, false, None, 0, 30, 7);
+        assert!(lines.len() <= 7, "got {} lines", lines.len());
+        let joined: String = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        // Selection stays visible even at the end of the list.
+        assert!(joined.contains("agent-11"), "got:\n{joined}");
+        assert!(joined.contains("+7 more"), "got:\n{joined}");
+    }
+
+    #[test]
+    fn dock_is_display_width_bounded_at_all_widths() {
+        use unicode_width::UnicodeWidthStr;
+        let mut members: Vec<GalleryMember> = (0..6)
+            .map(|i| {
+                member(
+                    &format!("agent-🐝-{i}"),
+                    "running",
+                    None,
+                    &["line 一二三四五"],
+                )
+            })
+            .collect();
+        members[0].role = Some("coordinator".into());
+        members[0].todo = Some((3, 9));
+        for width in 8..=60 {
+            for focused in [false, true] {
+                for height in [0usize, 1, 2, 3, 8, 20] {
+                    let lines = render_swarm_dock(
+                        &members,
+                        3,
+                        focused,
+                        Some((2, 9)),
+                        usize::MAX / 2,
+                        width,
+                        height,
+                    );
+                    assert!(
+                        lines.len() <= height.max(1),
+                        "width {width} height {height}: {} lines",
+                        lines.len()
+                    );
+                    for line in &lines {
+                        let text = plain_line(line);
+                        let w = text.as_str().width();
+                        assert!(
+                            w <= width,
+                            "width {width} focused {focused}: line overflows ({w}): {text:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

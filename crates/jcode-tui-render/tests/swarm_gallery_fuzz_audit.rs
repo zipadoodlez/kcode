@@ -3,7 +3,8 @@
 //! member counts, tiny widths/heights, wide glyphs).
 
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, render_gallery, render_swarm_panel, render_swarm_strip,
+    GalleryMember, SwarmStripHint, render_gallery, render_swarm_dock, render_swarm_panel,
+    render_swarm_strip,
 };
 use ratatui::prelude::Line;
 use unicode_width::UnicodeWidthStr;
@@ -180,6 +181,46 @@ fn strip_never_panics_and_stays_width_bounded() {
                                 "strip width={width} n={} overflow {w}: {text:?}",
                                 members.len()
                             );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn dock_never_panics_and_respects_width_and_height_bounds() {
+    for members in member_sets() {
+        for width in 0..=48 {
+            for max_height in 0..=16 {
+                for selected in [0usize, 3, usize::MAX] {
+                    for focused in [false, true] {
+                        for plan in [None, Some((3u32, 7u32))] {
+                            let lines = render_swarm_dock(
+                                &members,
+                                selected,
+                                focused,
+                                plan,
+                                usize::MAX,
+                                width,
+                                max_height,
+                            );
+                            assert!(
+                                lines.len() <= max_height.max(1),
+                                "dock width={width} h={max_height} n={}: {} lines",
+                                members.len(),
+                                lines.len()
+                            );
+                            for line in &lines {
+                                let text = plain(line);
+                                let w = text.as_str().width();
+                                assert!(
+                                    w <= width,
+                                    "dock width={width} n={} overflow {w}: {text:?}",
+                                    members.len()
+                                );
+                            }
                         }
                     }
                 }

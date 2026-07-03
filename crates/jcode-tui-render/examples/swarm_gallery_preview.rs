@@ -3,7 +3,7 @@
 //! Run with: `cargo run --profile selfdev -p jcode-tui-render --example swarm_gallery_preview`
 
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, render_swarm_panel, render_swarm_strip,
+    GalleryMember, SwarmStripHint, render_swarm_dock, render_swarm_panel, render_swarm_strip,
 };
 use jcode_tui_render::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 use ratatui::prelude::*;
@@ -215,5 +215,19 @@ fn main() {
     print_lines(
         "STRIP: focused narrow @ width 54",
         &render_swarm_strip(&panel_members, 0, true, &hints, None, 5, 54, 12),
+    );
+
+    // ---- Dock (vertical agent list for the info-widget margins) ----
+    print_lines(
+        "DOCK: 4 agents, selected #0, unfocused @ width 34 h 12",
+        &render_swarm_dock(&panel_members, 0, false, Some((3, 7)), 0, 34, 12),
+    );
+    print_lines(
+        "DOCK: 4 agents, selected #1, focused @ width 34 h 14",
+        &render_swarm_dock(&panel_members, 1, true, Some((3, 7)), 2, 34, 14),
+    );
+    print_lines(
+        "DOCK: narrow @ width 24 h 8",
+        &render_swarm_dock(&panel_members, 2, false, None, 0, 24, 8),
     );
 }

@@ -9,8 +9,8 @@
 
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery, render_swarm_panel,
-    render_swarm_strip,
+    GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery, render_swarm_dock,
+    render_swarm_panel, render_swarm_strip,
 };
 use ratatui::prelude::*;
 
@@ -157,6 +157,32 @@ pub(crate) fn render_swarm_strip_lines(
         } else {
             Some(enter_hint.as_str())
         },
+        spinner_frame,
+        width,
+        max_height,
+    )
+}
+
+/// Render the swarm dock widget body: a narrow vertical agent list for the
+/// info-widget margins. `plan` is the coordinator's swarm plan progress
+/// (completed, total), shown in the header when present.
+pub(crate) fn render_swarm_dock_lines(
+    members: &[SwarmMemberStatus],
+    selected: usize,
+    focused: bool,
+    plan: Option<(u32, u32)>,
+    spinner_frame: usize,
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() {
+        return Vec::new();
+    }
+    render_swarm_dock(
+        &members_to_gallery(members),
+        selected,
+        focused,
+        plan,
         spinner_frame,
         width,
         max_height,
