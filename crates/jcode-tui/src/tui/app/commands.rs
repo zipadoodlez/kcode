@@ -171,17 +171,17 @@ pub(super) fn is_non_retryable_auto_poke_error(error: &str) -> bool {
 /// [`is_non_retryable_auto_poke_error`] precisely so a transient disconnect is
 /// never treated as a permanent failure.
 pub(super) fn is_auto_poke_connectivity_error(error: &str) -> bool {
+    // Delegate to the shared connectivity classifier (jcode-app-core's
+    // network_retry) so this list can never drift out of sync with the wait-
+    // for-network path, then add wrappers specific to this call site.
+    if crate::network_retry::classify_message(error).is_some() {
+        return true;
+    }
+
     let lower = error.to_ascii_lowercase();
 
     let connectivity_markers = [
         "failed to send openai-compatible chat request",
-        "dns error",
-        "failed to lookup address information",
-        "name or service not known",
-        "temporary failure in name resolution",
-        "no route to host",
-        "network is unreachable",
-        "host is unreachable",
         "could not resolve host",
         "couldn't resolve host",
     ];

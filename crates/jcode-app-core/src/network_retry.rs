@@ -34,6 +34,17 @@ fn classify_text(text: &str) -> Option<String> {
         "host is down",
         "no route to host",
         "not connected",
+        // TLS-level drops. rustls reports an abrupt close as "peer closed
+        // connection without sending TLS close_notify" (its docs URL spells
+        // it "unexpected-eof", which the plain "unexpected eof" marker below
+        // does not match).
+        "close_notify",
+        "peer closed connection",
+        "tls handshake eof",
+        // reqwest/hyper wrap connect-phase failures as "client error
+        // (Connect)" and connection-level faults as "connection error: ...".
+        "client error (connect)",
+        "connection error",
         "dns error",
         "failed to lookup address",
         "temporary failure in name resolution",
@@ -172,5 +183,70 @@ mod tests {
         assert!(classify_message("temporary failure in name resolution").is_some());
         assert!(classify_message("network is unreachable").is_some());
         assert!(classify_message("401 unauthorized").is_none());
+    }
+
+    /// Real error strings harvested from ~/.jcode/logs. Every wifi-outage
+    /// shape observed in the wild must classify as a network interruption so
+    /// the wait-for-network path engages instead of failing the turn.
+    #[test]
+    fn classifies_real_world_outage_errors() {
+        let real_errors = [
+            // DNS failure: wifi down when a new request starts, or link up
+            // before DHCP delivers DNS servers.
+            "Failed to send request to Anthropic API: error sending request for url \
+             (https://api.anthropic.com/v1/messages): client error (Connect): dns error: \
+             failed to lookup address information: Name or service not known",
+            "error sending request for url (https://models.dev/api.json): client error \
+             (Connect): dns error: failed to lookup address information: Temporary failure \
+             in name resolution",
+            // Stale pooled HTTP/2 connection dying after an outage.
+            "Failed to send request to Anthropic API: error sending request for url \
+             (https://api.anthropic.com/v1/messages): client error (SendRequest): \
+             http2 error: keep-alive timed out: operation timed out",
+            // rustls abrupt-close shape (docs URL spells "unexpected-eof" so
+            // the plain "unexpected eof" marker never matched it).
+            "error sending request for url (https://generativelanguage.googleapis.com/v1beta/models): \
+             client error (SendRequest): connection error: peer closed connection without \
+             sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof",
+            // Connect-phase timeout.
+            "error sending request for url (https://html.duckduckgo.com/html/): \
+             client error (Connect): operation timed out",
+            // Connection-level timeout on an established connection.
+            "error sending request for url (https://dblp.org/search/author/api): \
+             client error (SendRequest): connection error: timed out",
+            // TLS handshake dying mid-outage.
+            "error sending request for url (https://generativelanguage.googleapis.com/v1beta/models): \
+             client error (Connect): tls handshake eof",
+            // Body cut off mid-stream.
+            "error decoding response body: request or response body error: operation timed out",
+        ];
+        for error in real_errors {
+            assert!(
+                classify_message(error).is_some(),
+                "should classify as network interruption: {error}"
+            );
+        }
+    }
+
+    /// Deterministic failures must NOT trigger the wait-for-network path,
+    /// otherwise a bad API key or exhausted quota would hang forever waiting
+    /// for connectivity that is already fine.
+    #[test]
+    fn does_not_classify_deterministic_failures() {
+        let deterministic = [
+            "401 unauthorized",
+            "403 forbidden: permission_denied",
+            "invalid x-api-key",
+            "404 not_found_error: model: claude-fable-5",
+            "insufficient_quota: your credit balance is too low",
+            "400 bad request: context length exceeded",
+            "content_policy_violation",
+        ];
+        for error in deterministic {
+            assert!(
+                classify_message(error).is_none(),
+                "should NOT classify as network interruption: {error}"
+            );
+        }
     }
 }

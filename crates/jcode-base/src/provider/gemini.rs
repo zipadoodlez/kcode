@@ -1038,13 +1038,13 @@ fn gemini_http_client() -> reqwest::Client {
 }
 
 fn is_transient_gemini_transport_error(err: &reqwest::Error) -> bool {
-    let lower = err.to_string().to_ascii_lowercase();
+    // Delegate to the shared transport classifier so Gemini recognizes the
+    // same transient faults as every other provider (close_notify, connection
+    // reset, DNS, HTTP/2 stream errors, ...), plus reqwest's structured
+    // connect/timeout flags which don't always surface in the message text.
     err.is_connect()
         || err.is_timeout()
-        || lower.contains("unexpected eof")
-        || lower.contains("connection reset")
-        || lower.contains("broken pipe")
-        || lower.contains("tls handshake eof")
+        || crate::provider::is_transient_transport_error(&err.to_string())
 }
 
 fn is_gemini_model_not_found_error(err: &anyhow::Error) -> bool {
