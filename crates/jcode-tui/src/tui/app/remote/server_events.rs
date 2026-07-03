@@ -749,6 +749,12 @@ pub(in crate::tui::app) fn handle_server_event(
                 .unwrap_or("guardrail");
             app.push_display_message(DisplayMessage::system(format!("🛡 {}", message)));
             app.set_status_notice(format!("Provider guardrail: {}", label));
+            // Guardrail refusals are model-side policy stops: retrying the
+            // same model usually refuses again, but a stronger model often
+            // handles the same legitimate request. Offer a one-keypress
+            // reroute to the strongest Anthropic route and resend. The offer
+            // sets its own (more actionable) status notice when armed.
+            app.offer_guardrail_reroute();
             true
         }
         ServerEvent::Done { id } => {

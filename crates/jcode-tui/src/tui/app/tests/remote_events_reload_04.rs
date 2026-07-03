@@ -614,6 +614,173 @@ fn test_schedule_pending_remote_retry_respects_retry_limit() {
     );
 }
 
+/// A provider guardrail refusal (e.g. Anthropic stop_reason "refusal") should
+/// arm a one-keypress reroute offer to claude-opus-4-8, carrying the refused
+/// payload so accepting the offer resends it on the stronger route.
+#[test]
+fn test_provider_guardrail_event_offers_opus_reroute_with_resend_payload() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.5".to_string());
+    app.remote_model_options = vec![
+        openai_oauth_route("gpt-5.5"),
+        claude_oauth_route("claude-sonnet-4"),
+        claude_oauth_route("claude-opus-4-8"),
+    ];
+    app.rate_limit_pending_message = Some(PendingRemoteMessage {
+        content: "please help".to_string(),
+        images: vec![],
+        is_system: false,
+        system_reminder: None,
+        auto_retry: false,
+        retry_attempts: 0,
+        retry_at: None,
+    });
+    app.last_submitted_input = Some("please help".to_string());
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ProviderGuardrail {
+            stop_reason: Some("refusal".to_string()),
+            message: "Provider guardrail stopped the response (stop_reason: refusal). The model declined to answer this request.".to_string(),
+        },
+        &mut remote,
+    );
+
+    let offer = app
+        .pending_fallback_offer
+        .as_ref()
+        .expect("guardrail event should arm a reroute offer");
+    assert_eq!(offer.selection.model, "claude-opus-4-8");
+    assert_eq!(offer.selection.provider_label, "Anthropic");
+    let resend = offer
+        .remote_resend
+        .as_ref()
+        .expect("offer should capture the refused payload for resend");
+    assert_eq!(resend.content, "please help");
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.role == "system" && m.content.contains("Reroute available")),
+        "reroute offer message should be shown"
+    );
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.role == "system" && m.content.contains("🛡")),
+        "guardrail notice itself should still be shown"
+    );
+}
+
+/// The reroute offer must prefer native Anthropic auth over aggregator routes
+/// that also expose claude-opus-4-8.
+#[test]
+fn test_guardrail_reroute_prefers_native_anthropic_route() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.5".to_string());
+    app.remote_model_options = vec![
+        openai_oauth_route("gpt-5.5"),
+        crate::provider::ModelRoute {
+            model: "claude-opus-4-8".to_string(),
+            provider: "OpenRouter".to_string(),
+            api_method: "openrouter".to_string(),
+            available: true,
+            detail: String::new(),
+            cheapness: None,
+        },
+        claude_oauth_route("claude-opus-4-8"),
+    ];
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ProviderGuardrail {
+            stop_reason: Some("refusal".to_string()),
+            message: "refused".to_string(),
+        },
+        &mut remote,
+    );
+
+    let offer = app
+        .pending_fallback_offer
+        .as_ref()
+        .expect("guardrail event should arm a reroute offer");
+    assert_eq!(offer.selection.provider_label, "Anthropic");
+    assert_eq!(offer.selection.api_method, "claude-oauth");
+}
+
+/// No reroute offer when the session is already on claude-opus-4-8: there is
+/// nothing stronger to hop to, so only the guardrail notice should appear.
+#[test]
+fn test_guardrail_reroute_not_offered_when_already_on_opus() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_provider_name = Some("Anthropic".to_string());
+    app.remote_provider_model = Some("claude-opus-4-8".to_string());
+    app.remote_model_options = vec![
+        claude_oauth_route("claude-opus-4-8"),
+        claude_oauth_route("claude-sonnet-4"),
+    ];
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ProviderGuardrail {
+            stop_reason: Some("refusal".to_string()),
+            message: "refused".to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(
+        app.pending_fallback_offer.is_none(),
+        "no reroute offer when already on the reroute target"
+    );
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.role == "system" && m.content.contains("🛡")),
+        "guardrail notice should still be shown"
+    );
+}
+
+/// No reroute offer when no claude-opus-4-8 route exists in the catalog.
+#[test]
+fn test_guardrail_reroute_not_offered_without_opus_route() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.5".to_string());
+    app.remote_model_options = vec![
+        openai_oauth_route("gpt-5.5"),
+        openai_oauth_route("gpt-5.4"),
+    ];
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::ProviderGuardrail {
+            stop_reason: Some("refusal".to_string()),
+            message: "refused".to_string(),
+        },
+        &mut remote,
+    );
+
+    assert!(app.pending_fallback_offer.is_none());
+}
+
 #[test]
 fn test_info_widget_data_includes_connection_type() {
     let mut app = create_test_app();
