@@ -223,11 +223,30 @@ async fn e2e_seed_creates_plan_with_kinds_and_edges() {
     let plans = fx.swarm_plans.read().await;
     let plan = &plans[&fx.swarm_id];
     assert_eq!(plan.mode, "deep");
-    assert_eq!(plan.items.len(), 2);
+    // 2 seeded nodes + the auto-inserted plan-wide root gate.
+    assert_eq!(plan.items.len(), 3);
     assert_eq!(plan.node_meta["explore"].kind.as_deref(), Some("explore"));
     assert_eq!(plan.node_meta["synth"].kind.as_deref(), Some("synthesize"));
     let synth = plan.items.iter().find(|i| i.id == "synth").unwrap();
     assert_eq!(synth.blocked_by, vec!["explore".to_string()]);
+    // The root gate audits every seeded root node and blocks plan completion
+    // until the final adversarial pass succeeds.
+    let root_gate = plan
+        .items
+        .iter()
+        .find(|i| {
+            plan.node_meta
+                .get(&i.id)
+                .map(|m| m.is_gate && m.parent.is_none())
+                .unwrap_or(false)
+        })
+        .expect("deep seed must insert a plan-wide root gate");
+    assert!(root_gate.blocked_by.contains(&"explore".to_string()));
+    assert!(root_gate.blocked_by.contains(&"synth".to_string()));
+    assert_eq!(
+        plan.node_meta[&root_gate.id].origin.as_deref(),
+        Some("gate")
+    );
 }
 
 #[tokio::test]
@@ -505,7 +524,8 @@ async fn e2e_deep_gate_assignment_carries_inject_gap_contract() {
             .find(|i| {
                 plan.node_meta
                     .get(&i.id)
-                    .map(|m| m.is_gate)
+                    // The composite's own gate, not the plan-wide root gate.
+                    .map(|m| m.is_gate && m.parent.as_deref() == Some("root"))
                     .unwrap_or(false)
             })
             .map(|i| i.id.clone())

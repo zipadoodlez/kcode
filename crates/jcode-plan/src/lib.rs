@@ -51,6 +51,12 @@ pub struct SwarmTaskProgress {
     pub heartbeat_count: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint_count: Option<u64>,
+    /// How many times this node was re-queued because a deep-mode worker's turn
+    /// ended without a `complete_node` artifact. Deep mode gives the node one
+    /// fresh attempt, then fails it: there must be no path to "done" that skips
+    /// artifact validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_artifact_requeues: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

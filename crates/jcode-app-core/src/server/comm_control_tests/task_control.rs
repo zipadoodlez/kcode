@@ -406,6 +406,7 @@ async fn requeue_existing_assignment_preserves_prior_progress_history() {
                     checkpoint_count: Some(2),
                     stale_since_unix_ms: Some(4_000),
                     completed_at_unix_ms: None,
+                    no_artifact_requeues: None,
                 },
             )]),
             mode: "light".to_string(),

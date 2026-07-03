@@ -64,6 +64,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                     stale_since_unix_ms: None,
                     heartbeat_count: Some(2),
                     checkpoint_count: Some(1),
+                    no_artifact_requeues: None,
                 },
             )]),
             mode: "light".to_string(),
@@ -174,6 +175,7 @@ fn deep_plan_mode_and_node_meta_round_trip() {
             is_gate: false,
             planner: Some("session-1".to_string()),
             artifact_json: Some(r#"{"findings":"found it","confidence":"high"}"#.to_string()),
+            origin: Some("seed".to_string()),
         },
     );
     node_meta.insert(
@@ -185,6 +187,7 @@ fn deep_plan_mode_and_node_meta_round_trip() {
             is_gate: true,
             planner: None,
             artifact_json: None,
+            origin: Some("gate".to_string()),
         },
     );
 
@@ -303,6 +306,7 @@ fn gate_debt_and_artifact_hydration_survive_reload() {
             is_gate,
             planner: None,
             artifact_json: artifact.map(str::to_string),
+            origin: None,
         }
     };
 

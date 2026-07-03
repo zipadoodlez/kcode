@@ -312,6 +312,8 @@ fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
         newly_ready_ids: Vec::new(),
         low_confidence_ids: Vec::new(),
         mode: "deep".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
     };
 
     // Light plans get no budget line at all.
@@ -433,6 +435,8 @@ fn run_plan_terminal_summary_reports_failed_nodes() {
         newly_ready_ids: Vec::new(),
         low_confidence_ids: Vec::new(),
         mode: "deep".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
     };
 
     let with_failures = super::format_run_plan_terminal_summary(5, &base, 7);
@@ -475,6 +479,8 @@ fn plan_terminal_node_count_includes_failed_without_double_counting() {
         newly_ready_ids: Vec::new(),
         low_confidence_ids: Vec::new(),
         mode: "light".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
     };
     // a (completed) + c (failed) + x (blocked/cycle, deduped) = 3. Without
     // failed_ids in the terminal count a run with failed nodes would never
@@ -546,6 +552,8 @@ fn format_plan_status_includes_next_ready() {
         newly_ready_ids: vec!["task-3".to_string()],
         low_confidence_ids: Vec::new(),
         mode: "deep".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
     });
     let text = output.output;
     assert!(text.contains("Plan status for swarm swarm-a"));
@@ -571,6 +579,8 @@ fn in_flight_slot_accounting_counts_queued_workers_not_coordinator() {
         newly_ready_ids: Vec::new(),
         low_confidence_ids: Vec::new(),
         mode: "light".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
     };
     let members = vec![
         AgentInfo {
@@ -643,6 +653,8 @@ fn in_flight_count_excludes_foreign_queued_session() {
         newly_ready_ids: Vec::new(),
         low_confidence_ids: Vec::new(),
         mode: "light".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
     };
     let members = vec![
         AgentInfo {

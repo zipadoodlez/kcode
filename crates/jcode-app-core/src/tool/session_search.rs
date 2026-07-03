@@ -175,7 +175,8 @@ pub fn spawn_recent_index_warmup() {
             external_count += paths.len();
             let _ = external_index_candidate_paths(source, &paths, &empty_query);
         }
-        if let Ok(sessions) = crate::import::list_claude_code_sessions_lazy(DEFAULT_MAX_SCAN_SESSIONS)
+        if let Ok(sessions) =
+            crate::import::list_claude_code_sessions_lazy(DEFAULT_MAX_SCAN_SESSIONS)
         {
             external_count += sessions.len();
             let _ = claude_index_candidates(&sessions, &empty_query);

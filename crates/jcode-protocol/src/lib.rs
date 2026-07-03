@@ -333,6 +333,16 @@ pub struct PlanGraphStatus {
     /// mode-appropriate concurrency policy. Defaults to "light" for legacy plans.
     #[serde(default = "default_plan_mode")]
     pub mode: String,
+    /// Growth accounting: nodes from the initial seed (legacy/unknown origins
+    /// count as seeded).
+    #[serde(default)]
+    pub seeded_count: usize,
+    /// Growth accounting: machinery-generated nodes (expand children, gate-
+    /// injected gaps, and the gates themselves). `seeded_count + grown_count ==
+    /// item_count`. A deep plan with `grown_count == 0` never decomposed or
+    /// gated anything, which almost always means under-exploration.
+    #[serde(default)]
+    pub grown_count: usize,
 }
 
 fn default_plan_mode() -> String {
@@ -356,6 +366,8 @@ impl PlanGraphStatus {
             newly_ready_ids: Vec::new(),
             low_confidence_ids: Vec::new(),
             mode: default_plan_mode(),
+            seeded_count: 0,
+            grown_count: 0,
         }
     }
 
@@ -366,6 +378,7 @@ impl PlanGraphStatus {
         newly_ready_ids: Vec<String>,
     ) -> Self {
         let graph = summarize_plan_graph(&plan.items);
+        let growth = jcode_plan::bridge::growth_stats(plan);
         Self {
             swarm_id: Some(swarm_id.into()),
             version: plan.version,
@@ -381,6 +394,8 @@ impl PlanGraphStatus {
             newly_ready_ids,
             low_confidence_ids: jcode_plan::bridge::low_confidence_completed_ids(plan),
             mode: plan.mode.clone(),
+            seeded_count: growth.seeded,
+            grown_count: growth.grown(),
         }
     }
 }

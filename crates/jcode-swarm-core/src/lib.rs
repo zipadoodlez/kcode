@@ -340,7 +340,8 @@ open_questions, a REQUIRED confidence (low, medium, or high; report low honestly
 follow-up work to shore up your scope instead of counting against you), and an honest \
 what_i_did_not_check (the critique gate turns those into new nodes, so listing them is how \
 coverage grows).\n\
-Do not leave the node to auto-complete without an artifact.\n"
+These are the ONLY two ways this node can close: a turn that ends without expand_node or \
+complete_node gets the node re-queued to a fresh agent, and a repeat fails it.\n"
     ));
     out.push_str("</system-reminder>");
     out
@@ -352,15 +353,18 @@ Do not leave the node to auto-complete without an artifact.\n"
 /// gaps. A gate that just rubber-stamps its parent wastes the swarm's capacity,
 /// so the directive names the two legal finishes (`inject_gap` with new nodes,
 /// or `complete_node` when genuinely clean) and reminds the gate to mine the
-/// children's `what_i_did_not_check` lists. `low_confidence_siblings` are
-/// completed siblings whose artifacts self-reported low confidence: the server
-/// enforces that the gate cannot pass while these are unaddressed, so the
-/// directive names them up front as priority probe targets. Shares the
-/// idempotency marker with [`append_deep_node_instructions`] since a single
-/// assignment gets exactly one deep directive.
+/// children's `what_i_did_not_check` lists. `audited_ids` is the gate's audit
+/// scope: the server rejects a pass whose artifact does not account for each of
+/// these ids by name (enumerated accounting is what separates an audit from a
+/// rubber stamp), so the directive lists them up front. `low_confidence_siblings`
+/// are completed scope nodes whose artifacts self-reported low confidence: the
+/// strictest debts, named as priority probe targets. Shares the idempotency
+/// marker with [`append_deep_node_instructions`] since a single assignment gets
+/// exactly one deep directive.
 pub fn append_deep_gate_instructions(
     message: &str,
     gate_id: &str,
+    audited_ids: &[String],
     low_confidence_siblings: &[String],
 ) -> String {
     if message.contains(SWARM_DEEP_NODE_MARKER) {
@@ -375,14 +379,24 @@ pub fn append_deep_gate_instructions(
     out.push_str(SWARM_DEEP_NODE_MARKER);
     out.push_str(&format!(
         "\nYou are executing critique/verify gate '{gate_id}' of a deep task graph. Your job is \
-to find gaps, not to pass work through. Read every sibling artifact, especially each \
+to find gaps, not to pass work through. Read every audited artifact, especially each \
 what_i_did_not_check list, and probe them. Finish in one of exactly two ways:\n\
 1. Gaps or failures found: call the swarm tool with action=\"inject_gap\", \
 gate_id=\"{gate_id}\", and one new node per gap (they run in parallel and you re-run \
-afterwards). The parent cannot close until they drain, so be thorough now.\n\
+afterwards). The parent cannot close until they drain, so be thorough now. Injecting nodes \
+is SUCCESS for a gate, not failure: a growing graph is the system working.\n\
 2. Genuinely clean: call the swarm tool with action=\"complete_node\", node_id=\"{gate_id}\", \
-and an artifact whose findings state what you checked and why no gaps remain.\n"
+and an artifact whose findings account for EVERY node you audited BY ID with what you \
+checked and why no gaps remain. The server rejects a pass whose findings/open_questions \
+do not name each audited node id.\n"
     ));
+    if !audited_ids.is_empty() {
+        out.push_str(&format!(
+            "AUDIT SCOPE: you are auditing node(s) [{}]. A passing artifact must address each \
+of these ids explicitly.\n",
+            audited_ids.join(", ")
+        ));
+    }
     if !low_confidence_siblings.is_empty() {
         out.push_str(&format!(
             "PRIORITY: sibling node(s) [{}] completed with LOW confidence. The server will \
@@ -570,22 +584,36 @@ mod tests {
 
     #[test]
     fn deep_gate_instructions_carry_inject_gap_contract() {
-        let out = append_deep_gate_instructions("Critique the work", "root::gate", &[]);
+        let out = append_deep_gate_instructions("Critique the work", "root::gate", &[], &[]);
         assert!(out.contains(SWARM_DEEP_NODE_MARKER));
         assert!(out.contains("action=\"inject_gap\", gate_id=\"root::gate\""));
         assert!(out.contains("action=\"complete_node\", node_id=\"root::gate\""));
         assert!(out.contains("what_i_did_not_check"));
-        // No low-confidence siblings: no priority callout.
+        // No audit scope / low-confidence siblings: no callouts.
+        assert!(!out.contains("AUDIT SCOPE"));
         assert!(!out.contains("PRIORITY"));
         // Shares the marker with the node directive: one deep directive per assignment.
-        assert_eq!(append_deep_gate_instructions(&out, "root::gate", &[]), out);
+        assert_eq!(
+            append_deep_gate_instructions(&out, "root::gate", &[], &[]),
+            out
+        );
         assert_eq!(append_deep_node_instructions(&out, "root::gate"), out);
+    }
+
+    #[test]
+    fn deep_gate_instructions_enumerate_audit_scope() {
+        let scope = vec!["root.a".to_string(), "root.b".to_string()];
+        let out = append_deep_gate_instructions("Critique the work", "root::gate", &scope, &[]);
+        assert!(out.contains("AUDIT SCOPE"));
+        assert!(out.contains("root.a, root.b"));
+        // The coverage contract is stated: each id must be addressed.
+        assert!(out.contains("address each"));
     }
 
     #[test]
     fn deep_gate_instructions_name_low_confidence_probe_targets() {
         let shaky = vec!["root.shaky".to_string(), "root.wobble".to_string()];
-        let out = append_deep_gate_instructions("Critique the work", "root::gate", &shaky);
+        let out = append_deep_gate_instructions("Critique the work", "root::gate", &shaky, &shaky);
         assert!(out.contains("PRIORITY"));
         assert!(out.contains("root.shaky, root.wobble"));
         assert!(out.contains("LOW confidence"));

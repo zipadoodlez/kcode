@@ -122,9 +122,7 @@ impl TokenHashIndex {
     fn matches_specs(&self, specs: &[IndexFileSpec]) -> bool {
         self.entries.len() == specs.len()
             && self.entries.iter().zip(specs).all(|(entry, spec)| {
-                entry.key == spec.key
-                    && entry.mtime_ms == spec.mtime_ms
-                    && entry.size == spec.size
+                entry.key == spec.key && entry.mtime_ms == spec.mtime_ms && entry.size == spec.size
             })
     }
 

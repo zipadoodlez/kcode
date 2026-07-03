@@ -82,11 +82,61 @@ fn is_drivable_auto_worker(member: &SwarmMember, req_session_id: &str) -> bool {
 /// reassign, a requeue): it is no longer this worker's to close, and force-doing
 /// so would bypass gate artifact validation and strand injected gap nodes. Only
 /// a plain, still-running atomic turn auto-completes.
-fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
-    if expanded {
-        return false;
+/// What to do with a node whose worker turn ended while the node is still
+/// marked running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnEndDisposition {
+    /// Light mode: the worker just ran an atomic node; mark it done.
+    AutoComplete,
+    /// Deep mode, first offense: the worker never called `complete_node`, so
+    /// re-queue the node for a fresh worker. Deep completion is artifact-or-
+    /// nothing; silently marking it done would bypass artifact validation and
+    /// every gate rule.
+    RequeueNoArtifact,
+    /// Deep mode, repeated offense: fail the node loudly instead of cycling
+    /// workers forever. `task_control retry` / `requeue_failed` remain the
+    /// recovery paths.
+    FailNoArtifact,
+    /// The node is already terminal, queued (expanded or gap-injected this
+    /// turn), or otherwise not this turn's responsibility.
+    LeaveAlone,
+}
+
+/// Decide the turn-end disposition for a node.
+///
+/// Light mode keeps the historical lenient behavior: a running atomic node
+/// auto-completes, an expanded composite stays open for synthesis. Deep mode
+/// abolishes auto-complete entirely — the typed artifact contract is only real
+/// if there is no path to "done" that skips it. A running node at turn end
+/// (atomic without `complete_node`, or a re-woken composite synthesis that
+/// never synthesized) gets one fresh attempt, then fails.
+fn turn_end_disposition(
+    is_deep: bool,
+    status: &str,
+    expanded: bool,
+    prior_no_artifact_requeues: u32,
+) -> TurnEndDisposition {
+    let running = matches!(status, "running" | "running_stale");
+    if !running {
+        return TurnEndDisposition::LeaveAlone;
     }
-    matches!(status, "running" | "running_stale")
+    if is_deep {
+        return if prior_no_artifact_requeues == 0 {
+            TurnEndDisposition::RequeueNoArtifact
+        } else {
+            TurnEndDisposition::FailNoArtifact
+        };
+    }
+    if expanded {
+        // The worker decomposed the node; it must stay open to synthesize later.
+        return TurnEndDisposition::LeaveAlone;
+    }
+    TurnEndDisposition::AutoComplete
+}
+
+#[cfg(test)]
+fn turn_end_should_auto_complete(status: &str, expanded: bool) -> bool {
+    turn_end_disposition(false, status, expanded, 0) == TurnEndDisposition::AutoComplete
 }
 
 /// Assignment content for a (re-)dispatched node.
@@ -147,26 +197,42 @@ fn deep_mode_assignment_content(
         .map(|meta| meta.is_gate)
         .unwrap_or(false);
     if is_gate {
-        // Point the gate at completed siblings (under the same composite parent)
-        // whose artifacts self-reported low confidence: the engine's debt rule
-        // will reject the gate's pass while these are unaddressed, so the
-        // directive names them up front instead of letting the gate discover
-        // the rejection by trial and error.
-        let parent = plan
-            .node_meta
-            .get(item_id)
-            .and_then(|meta| meta.parent.clone());
+        // The gate's audit scope is its non-gate dependencies (composite gates
+        // audit their siblings; the root gate audits the whole root set). The
+        // server rejects a pass whose artifact does not account for each of
+        // these by id, so the directive enumerates them up front instead of
+        // letting the gate discover the rejection by trial and error.
+        let audited_ids: Vec<String> = plan
+            .items
+            .iter()
+            .find(|item| item.id == item_id)
+            .map(|item| {
+                item.blocked_by
+                    .iter()
+                    .filter(|dep| {
+                        plan.node_meta
+                            .get(dep.as_str())
+                            .map(|meta| !meta.is_gate)
+                            .unwrap_or(true)
+                    })
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Completed scope nodes whose artifacts self-reported low confidence:
+        // the strictest debts, named as priority probe targets.
+        let audited: HashSet<&str> = audited_ids.iter().map(String::as_str).collect();
         let low_confidence_siblings: Vec<String> =
             jcode_plan::bridge::low_confidence_completed_ids(plan)
                 .into_iter()
-                .filter(|id| {
-                    plan.node_meta
-                        .get(id)
-                        .map(|meta| meta.parent == parent)
-                        .unwrap_or(false)
-                })
+                .filter(|id| audited.contains(id.as_str()))
                 .collect();
-        jcode_swarm_core::append_deep_gate_instructions(content, item_id, &low_confidence_siblings)
+        jcode_swarm_core::append_deep_gate_instructions(
+            content,
+            item_id,
+            &audited_ids,
+            &low_confidence_siblings,
+        )
     } else {
         jcode_swarm_core::append_deep_node_instructions(content, item_id)
     }
@@ -635,6 +701,7 @@ fn spawn_assigned_task_run(
                         .map(|plan| plan.items.clone())
                         .unwrap_or_default()
                 };
+                let mut applied_disposition = TurnEndDisposition::LeaveAlone;
                 {
                     let now_ms = now_unix_ms();
                     let mut plans = swarm_plans.write().await;
@@ -648,26 +715,78 @@ fn spawn_assigned_task_run(
                         //     finish; it is re-woken later to synthesize.
                         //  2. it already finished the node via `complete_node` -> the
                         //     node is terminal and owned by no one.
-                        //  3. it just ran (atomic) -> fall through and mark it done.
-                        // Only case 3 should auto-complete here. Blindly forcing
-                        // `done` would close a composite before its children run and
-                        // strand the whole subtree.
+                        //  3. it just ran and the node is still `running`.
+                        // Case 3 is mode-dependent: light mode auto-completes
+                        // (cheap fan-out, artifacts optional), deep mode never
+                        // does — a deep node only closes through `complete_node`
+                        // with a validated artifact, so an artifact-less turn is
+                        // re-queued once to a fresh worker and then failed.
                         let expanded = plan
                             .node_meta
                             .get(&task_id)
                             .map(|m| m.expanded && !m.is_gate)
                             .unwrap_or(false);
-                        if turn_end_should_auto_complete(&item.status, expanded) {
-                            item.status = "done".to_string();
-                            let progress = plan.task_progress.entry(task_id.clone()).or_default();
-                            progress.last_heartbeat_unix_ms = Some(now_ms);
-                            progress.last_checkpoint_unix_ms = Some(now_ms);
-                            progress.checkpoint_summary = Some("task completed".to_string());
-                            progress.completed_at_unix_ms = Some(now_ms);
-                            progress.stale_since_unix_ms = None;
-                            progress.checkpoint_count =
-                                Some(progress.checkpoint_count.unwrap_or(0) + 1);
-                            plan.version += 1;
+                        let is_deep = plan.mode.eq_ignore_ascii_case("deep");
+                        let prior_requeues = plan
+                            .task_progress
+                            .get(&task_id)
+                            .and_then(|p| p.no_artifact_requeues)
+                            .unwrap_or(0);
+                        match turn_end_disposition(is_deep, &item.status, expanded, prior_requeues)
+                        {
+                            TurnEndDisposition::AutoComplete => {
+                                applied_disposition = TurnEndDisposition::AutoComplete;
+                                item.status = "done".to_string();
+                                let progress =
+                                    plan.task_progress.entry(task_id.clone()).or_default();
+                                progress.last_heartbeat_unix_ms = Some(now_ms);
+                                progress.last_checkpoint_unix_ms = Some(now_ms);
+                                progress.checkpoint_summary = Some("task completed".to_string());
+                                progress.completed_at_unix_ms = Some(now_ms);
+                                progress.stale_since_unix_ms = None;
+                                progress.checkpoint_count =
+                                    Some(progress.checkpoint_count.unwrap_or(0) + 1);
+                                plan.version += 1;
+                            }
+                            TurnEndDisposition::RequeueNoArtifact => {
+                                applied_disposition = TurnEndDisposition::RequeueNoArtifact;
+                                item.status = "queued".to_string();
+                                item.assigned_to = None;
+                                let progress =
+                                    plan.task_progress.entry(task_id.clone()).or_default();
+                                progress.assigned_session_id = None;
+                                progress.no_artifact_requeues = Some(prior_requeues + 1);
+                                progress.last_heartbeat_unix_ms = Some(now_ms);
+                                progress.last_checkpoint_unix_ms = Some(now_ms);
+                                progress.checkpoint_summary = Some(
+                                    "requeued: deep-mode turn ended without a complete_node \
+                                     artifact"
+                                        .to_string(),
+                                );
+                                progress.stale_since_unix_ms = None;
+                                progress.checkpoint_count =
+                                    Some(progress.checkpoint_count.unwrap_or(0) + 1);
+                                plan.version += 1;
+                            }
+                            TurnEndDisposition::FailNoArtifact => {
+                                applied_disposition = TurnEndDisposition::FailNoArtifact;
+                                item.status = "failed".to_string();
+                                let progress =
+                                    plan.task_progress.entry(task_id.clone()).or_default();
+                                progress.last_heartbeat_unix_ms = Some(now_ms);
+                                progress.last_checkpoint_unix_ms = Some(now_ms);
+                                progress.checkpoint_summary = Some(
+                                    "failed: repeated deep-mode turns ended without a \
+                                     complete_node artifact"
+                                        .to_string(),
+                                );
+                                progress.completed_at_unix_ms = Some(now_ms);
+                                progress.stale_since_unix_ms = None;
+                                progress.checkpoint_count =
+                                    Some(progress.checkpoint_count.unwrap_or(0) + 1);
+                                plan.version += 1;
+                            }
+                            TurnEndDisposition::LeaveAlone => {}
                         }
                     }
                 }
@@ -678,15 +797,24 @@ fn spawn_assigned_task_run(
                     coordinators: Arc::clone(&swarm_coordinators),
                 };
                 persist_swarm_state_for(&swarm_id, &swarm_state).await;
+                let plan_reason = match applied_disposition {
+                    TurnEndDisposition::RequeueNoArtifact => "task_requeued_no_artifact",
+                    TurnEndDisposition::FailNoArtifact => "task_failed_no_artifact",
+                    _ => "task_completed",
+                };
                 broadcast_swarm_plan_with_previous(
                     &swarm_id,
-                    Some("task_completed".to_string()),
+                    Some(plan_reason.to_string()),
                     Some(&previous_items),
                     &swarm_plans,
                     &swarm_members,
                     &swarms_by_id,
                 )
                 .await;
+                // The worker's member status reflects its own turn (it ran to
+                // completion) even when its node was requeued/failed for missing
+                // an artifact: lifecycle and node state are separate axes, and a
+                // "completed" worker is reusable for the requeued node.
                 update_member_status_with_report(
                     &target_session,
                     "completed",
