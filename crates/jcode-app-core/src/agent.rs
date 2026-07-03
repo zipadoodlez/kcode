@@ -2,6 +2,7 @@
 
 mod compaction;
 mod environment;
+mod inline_tail;
 mod interrupts;
 mod messages;
 mod prompting;
@@ -239,6 +240,10 @@ pub struct Agent {
     /// output tail to the global bus so the coordinator's inline gallery can
     /// render a live viewport. Off for normal sessions to avoid bus traffic.
     inline_output_tap: bool,
+    /// Rolling activity tail (text + tool markers) for the inline output tap.
+    /// Persists across turns so the coordinator's viewport never blanks at
+    /// turn boundaries or freezes during long tool calls.
+    inline_tail: inline_tail::InlineTailBuffer,
 }
 
 impl Agent {
@@ -291,6 +296,7 @@ impl Agent {
             stdin_request_tx: None,
             provider_runtime_state: ProviderRuntimeState::observed(initial_provider_model),
             inline_output_tap: false,
+            inline_tail: inline_tail::InlineTailBuffer::default(),
         };
         crate::tool::set_session_tool_policy(
             &agent.session.id,

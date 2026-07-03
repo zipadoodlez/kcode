@@ -304,6 +304,20 @@ impl Agent {
         self.inline_output_tap
     }
 
+    /// Publish the current rolling activity tail to the bus for the
+    /// coordinator's inline gallery. No-op unless the inline tap is enabled.
+    pub(crate) fn publish_inline_tail(&self) {
+        if !self.inline_output_tap {
+            return;
+        }
+        crate::bus::Bus::global().publish(crate::bus::BusEvent::SwarmOutputTail(
+            crate::bus::SwarmOutputTail {
+                session_id: self.session.id.clone(),
+                tail: self.inline_tail.render(),
+            },
+        ));
+    }
+
     /// Check whether memory features are enabled for this session.
     pub fn memory_enabled(&self) -> bool {
         self.memory_enabled
