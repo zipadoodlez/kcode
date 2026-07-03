@@ -40,7 +40,7 @@ jobs:
       - name: Build and test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.2"
+          release: "15.1"
           usesh: true
           # Give the build VM enough room: aws-lc-sys + tract pull in heavy C/Rust.
           mem: 6144

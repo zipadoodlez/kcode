@@ -278,9 +278,77 @@ jobs:
         run: |
           gh release upload "${env:GITHUB_REF_NAME}" "dist/${{ matrix.artifact }}.tar.gz" "dist/${{ matrix.artifact }}.exe" --clobber
 
+  build-freebsd:
+    name: Build (x86_64-unknown-freebsd)
+    runs-on: ubuntu-latest
+    needs: create-release
+    # GitHub has no native FreeBSD runners, so build inside a FreeBSD VM
+    # (QEMU via vmactions), same approach as freebsd-smoke.yml (issues #416,
+    # #433). Best-effort: a flaky VM build must not block the rest of the
+    # release, so failures are surfaced but non-fatal.
+    continue-on-error: true
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build release binary in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.1"
+          usesh: true
+          # Give the build VM enough room: aws-lc-sys + tract pull in heavy C/Rust.
+          mem: 6144
+          cpu: 4
+          # The project is OpenSSL-free (rustls + aws-lc-rs): only a C/C++
+          # toolchain, cmake, and rust are needed.
+          prepare: |
+            pkg install -y rust cmake gmake pkgconf bash git
+          run: |
+            set -e
+            echo "::group::Toolchain versions"
+            uname -a
+            cc --version | head -1
+            cargo --version
+            rustc --version
+            echo "::endgroup::"
+
+            export CARGO_TERM_COLOR=always
+            # CARGO_BUILD_JOBS keeps memory in check; aws-lc-sys is memory hungry.
+            export CARGO_BUILD_JOBS=3
+            export JCODE_RELEASE_BUILD=1
+            export JCODE_BUILD_SEMVER="${{ github.ref_name }}"
+
+            echo "::group::cargo build (jcode binary)"
+            cargo build --locked --release -p jcode --bin jcode
+            echo "::endgroup::"
+
+            echo "::group::Verify binary launches"
+            ./target/release/jcode --version
+            echo "::endgroup::"
+
+            mkdir -p dist
+            cp target/release/jcode dist/jcode-freebsd-x86_64
+            chmod +x dist/jcode-freebsd-x86_64
+            cd dist && tar czf jcode-freebsd-x86_64.tar.gz jcode-freebsd-x86_64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jcode-freebsd-x86_64
+          path: dist/jcode-freebsd-x86_64.tar.gz
+
+      - name: Publish asset to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" "dist/jcode-freebsd-x86_64.tar.gz" --clobber
+
   release:
     name: Finalize release
-    needs: [build-linux-macos, build-windows]
+    needs: [build-linux-macos, build-windows, build-freebsd]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
