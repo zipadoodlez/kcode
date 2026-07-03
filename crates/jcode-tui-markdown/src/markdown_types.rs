@@ -18,6 +18,7 @@ pub enum MarkdownSpacingMode {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CopyTargetKind {
     CodeBlock { language: Option<String> },
+    Blockquote,
     Error,
     ToolOutput,
 }
@@ -30,6 +31,7 @@ impl CopyTargetKind {
                 .filter(|lang| !lang.is_empty())
                 .unwrap_or("code")
                 .to_string(),
+            Self::Blockquote => "quote".to_string(),
             Self::Error => "error".to_string(),
             Self::ToolOutput => "output".to_string(),
         }
@@ -44,6 +46,7 @@ impl CopyTargetKind {
                     .unwrap_or("code block");
                 format!("Copied {}", label)
             }
+            Self::Blockquote => "Copied quote".to_string(),
             Self::Error => "Copied error".to_string(),
             Self::ToolOutput => "Copied output".to_string(),
         }

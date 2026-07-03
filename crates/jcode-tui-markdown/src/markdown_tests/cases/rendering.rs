@@ -29,6 +29,58 @@ fn test_extract_copy_targets_from_rendered_lines_for_code_block() {
 }
 
 #[test]
+fn test_extract_copy_targets_from_rendered_lines_for_blockquote() {
+    let lines = render_markdown("before\n\n> quoted line\n> second line\n\nafter");
+    let targets = extract_copy_targets_from_rendered_lines(&lines);
+
+    assert_eq!(targets.len(), 1);
+    let target = &targets[0];
+    assert_eq!(target.kind, CopyTargetKind::Blockquote);
+    assert_eq!(target.content, "quoted line\nsecond line");
+    assert_eq!(target.start_raw_line, target.badge_raw_line);
+    assert!(target.end_raw_line > target.start_raw_line);
+}
+
+#[test]
+fn test_extract_copy_targets_nested_blockquote_strips_all_gutters() {
+    let lines = render_markdown("> outer\n>> inner");
+    let targets = extract_copy_targets_from_rendered_lines(&lines);
+
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].kind, CopyTargetKind::Blockquote);
+    assert_eq!(targets[0].content, "outer\n\ninner");
+}
+
+#[test]
+fn test_extract_copy_targets_blockquote_and_code_block_are_separate() {
+    let lines = render_markdown("> quoted\n\n```rust\nfn main() {}\n```");
+    let targets = extract_copy_targets_from_rendered_lines(&lines);
+
+    assert_eq!(targets.len(), 2);
+    assert_eq!(targets[0].kind, CopyTargetKind::Blockquote);
+    assert_eq!(targets[0].content, "quoted");
+    assert_eq!(
+        targets[1].kind,
+        CopyTargetKind::CodeBlock {
+            language: Some("rust".to_string())
+        }
+    );
+}
+
+#[test]
+fn test_extract_copy_targets_table_rows_are_not_blockquotes() {
+    let lines = render_markdown("| A | B |\n| - | - |\n| 1 | 2 |");
+    let targets = extract_copy_targets_from_rendered_lines(&lines);
+
+    assert!(
+        targets
+            .iter()
+            .all(|t| t.kind != CopyTargetKind::Blockquote),
+        "table separators must not be detected as blockquotes: {targets:?}"
+    );
+}
+
+#[test]
 fn test_progress_bar() {
     let bar = progress_bar(0.5, 10);
     assert_eq!(bar.chars().count(), 10);
@@ -830,3 +882,4 @@ fn test_reasoning_summary_line_markup_folds_to_single_dim_italic_trace() {
     }
     assert!(saw_marker, "summary marker '▸' must be visible: {lines:?}");
 }
+

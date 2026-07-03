@@ -99,6 +99,40 @@ fn create_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBacke
     (app, terminal)
 }
 
+fn create_blockquote_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
+    let mut app = create_test_app();
+    app.display_messages = vec![
+        DisplayMessage {
+            role: "user".to_string(),
+            content: "Quote something".to_string(),
+            tool_calls: vec![],
+            duration_secs: None,
+            title: None,
+            tool_data: None,
+        },
+        DisplayMessage {
+            role: "assistant".to_string(),
+            content: "As they say:\n\n> the quick brown fox\n> jumps over the lazy dog\n\nDone."
+                .to_string(),
+            tool_calls: vec![],
+            duration_secs: None,
+            title: None,
+            tool_data: None,
+        },
+    ];
+    app.bump_display_messages_version();
+    app.scroll_offset = 0;
+    app.auto_scroll_paused = false;
+    app.is_processing = false;
+    app.streaming.streaming_text.clear();
+    app.status = ProcessingStatus::Idle;
+    app.session.short_name = Some("test".to_string());
+
+    let backend = ratatui::backend::TestBackend::new(100, 30);
+    let terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
+    (app, terminal)
+}
+
 fn create_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::TestBackend>) {
     let mut app = create_test_app();
     app.display_messages = vec![

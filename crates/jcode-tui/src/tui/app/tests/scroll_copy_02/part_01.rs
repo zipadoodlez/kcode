@@ -74,6 +74,31 @@ fn test_local_tool_failed_output_copy_badge_shortcut_supported() {
 }
 
 #[test]
+fn test_local_blockquote_copy_badge_shortcut_supported() {
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, mut terminal) = create_blockquote_copy_test_app();
+
+    let initial = render_and_snap(&app, &mut terminal);
+    assert!(
+        initial.contains("[S]"),
+        "expected visible blockquote copy badge: {}",
+        initial
+    );
+
+    app.handle_key(KeyCode::Char('S'), KeyModifiers::ALT)
+        .unwrap();
+
+    assert_eq!(app.status_notice(), Some("Copied quote".to_string()));
+
+    let text = render_and_snap(&app, &mut terminal);
+    assert!(
+        text.contains("Copied!"),
+        "expected inline copied feedback: {}",
+        text
+    );
+}
+
+#[test]
 fn test_copy_selection_mode_toggle_shows_notification() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_copy_test_app();

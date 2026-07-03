@@ -46,10 +46,79 @@ pub fn extract_copy_targets_from_rendered_lines(lines: &[Line<'static>]) -> Vec<
             });
             continue;
         }
+        // Blockquote lines render flush-left with a `│ ` gutter (repeated when
+        // nested). Code/math frame bodies also use the gutter, but those are
+        // consumed by the `┌─` frame branch above, so any gutter line reached
+        // here belongs to a blockquote.
+        if is_blockquote_gutter_line(&text) {
+            let start = idx;
+            let mut content_lines = Vec::new();
+            while idx < lines.len() {
+                let line_text = line_plain_text(&lines[idx]);
+                if is_blockquote_gutter_line(&line_text) {
+                    content_lines.push(strip_blockquote_gutter(&line_text).to_string());
+                    idx += 1;
+                    continue;
+                }
+                // Nested quotes (and multi-paragraph quotes) render a blank
+                // separator line between gutter runs. Bridge blank lines when
+                // the run resumes with another gutter line so the whole quote
+                // gets a single badge.
+                if line_text.trim().is_empty() {
+                    let mut probe = idx + 1;
+                    while probe < lines.len()
+                        && line_plain_text(&lines[probe]).trim().is_empty()
+                    {
+                        probe += 1;
+                    }
+                    if probe < lines.len()
+                        && is_blockquote_gutter_line(&line_plain_text(&lines[probe]))
+                    {
+                        for _ in idx..probe {
+                            content_lines.push(String::new());
+                        }
+                        idx = probe;
+                        continue;
+                    }
+                }
+                break;
+            }
+            targets.push(RawCopyTarget {
+                kind: CopyTargetKind::Blockquote,
+                content: content_lines.join("\n"),
+                start_raw_line: start,
+                end_raw_line: idx,
+                badge_raw_line: start,
+            });
+            continue;
+        }
         idx += 1;
     }
 
     targets
+}
+
+/// A rendered blockquote line starts (without indentation) with the `│ `
+/// gutter or is a bare `│` continuation. Table rows use ` │ ` separators
+/// mid-line and pad the first cell, so requiring a flush-left gutter avoids
+/// misclassifying them.
+fn is_blockquote_gutter_line(text: &str) -> bool {
+    text.starts_with("│ ") || text.trim_end() == "│"
+}
+
+/// Strip every leading `│ ` gutter level (nested quotes repeat it) from a
+/// rendered blockquote line.
+fn strip_blockquote_gutter(text: &str) -> &str {
+    let mut rest = text;
+    loop {
+        if let Some(next) = rest.strip_prefix("│ ") {
+            rest = next;
+        } else if rest.trim_end() == "│" {
+            return "";
+        } else {
+            return rest;
+        }
+    }
 }
 
 /// Render a table as ASCII-style lines
