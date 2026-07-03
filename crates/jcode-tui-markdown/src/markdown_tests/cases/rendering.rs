@@ -178,6 +178,25 @@ fn test_mixed_code_and_mermaid() {
     );
 }
 
+#[cfg(feature = "mermaid-renderer")]
+#[test]
+fn test_mermaid_renders_inline_even_in_pinned_diagram_mode() {
+    // Regression: pinned/margin diagram modes must not replace the inline
+    // diagram with a "see sidebar" text stub. The transcript always renders
+    // the diagram (or its placeholder) inline; pinned mode only *adds* the
+    // dedicated pane.
+    let md = "```mermaid\nflowchart LR\n    A --> B\n```";
+    set_diagram_mode_override(Some(DiagramDisplayMode::Pinned));
+    let lines = render_markdown(md);
+    set_diagram_mode_override(None);
+    let text = lines_to_string(&lines);
+
+    assert!(
+        !text.contains("sidebar"),
+        "Pinned mode must not emit a sidebar-only stub in the transcript: {text}"
+    );
+}
+
 #[test]
 fn test_inline_math_render() {
     let lines = render_markdown("Area is $a^2$.");
