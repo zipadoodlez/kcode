@@ -305,7 +305,8 @@ fn deep_gate_cannot_pass_over_unaddressed_low_confidence_sibling() {
             &gate_id,
             "w3",
             HandoffArtifact::brief(
-                "root.shaky was shored up by root.shaky.recheck; no gaps remain"
+                "root.solid verified clean; root.shaky was shored up by root.shaky.recheck; \
+                 no gaps remain"
             ),
         )
         .is_ok()
@@ -448,11 +449,18 @@ fn gate_injection_reblocks_composite_until_gap_drains() {
     // The gap node is the only newly-ready work.
     assert!(ready_nodes(&g).iter().any(|n| n.id == "root.gap"));
 
-    // Drain the gap, gate passes, root finally closes.
+    // Drain the gap, gate passes (accounting for everything it audited), root
+    // finally closes.
     dispatch(&mut g, "root.gap", "w0");
     complete_node(&mut g, "root.gap", "w0", sim::deep_artifact("gap covered")).unwrap();
     dispatch(&mut g, &gate_id, "w0");
-    complete_node(&mut g, &gate_id, "w0", HandoffArtifact::brief("passed")).unwrap();
+    complete_node(
+        &mut g,
+        &gate_id,
+        "w0",
+        HandoffArtifact::brief("audited root.1 and root.gap; no gaps remain"),
+    )
+    .unwrap();
     assert!(ready_nodes(&g).iter().any(|n| n.id == "root"));
 }
 
@@ -510,8 +518,9 @@ fn simulator_runs_deep_graph_with_composite_and_gap_to_completion() {
     let mut expanded: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut gate_fired: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    let mut worker = move |id: &str, kind: NodeKind, _input: &str| -> WorkerAction {
-        // Gate nodes: first time, find a gap and inject a node; second time, pass.
+    let mut worker = move |id: &str, kind: NodeKind, input: &str| -> WorkerAction {
+        // Gate nodes: first time, find a gap and inject a node; second time, pass
+        // with an artifact that accounts for every audited node (coverage rule).
         if kind == NodeKind::Critique || kind == NodeKind::Verify {
             if id == "explore::gate" && gate_fired.insert(id.to_string()) {
                 return WorkerAction::InjectGap(vec![NodeSpec::new(
@@ -520,7 +529,7 @@ fn simulator_runs_deep_graph_with_composite_and_gap_to_completion() {
                     NodeKind::Explore,
                 )]);
             }
-            return WorkerAction::Complete(HandoffArtifact::brief("gate passed"));
+            return WorkerAction::Complete(sim::gate_pass_artifact(input));
         }
 
         match id {
@@ -557,6 +566,14 @@ fn simulator_runs_deep_graph_with_composite_and_gap_to_completion() {
 
     // Downstream synthesis ran after explore completed.
     assert!(g.get("synth").unwrap().is_done());
+
+    // The auto-inserted root gate audited the whole plan before it finished.
+    let root_gate = g
+        .nodes()
+        .iter()
+        .find(|n| n.is_gate && n.parent.is_none())
+        .expect("deep seed must insert a root gate");
+    assert!(root_gate.is_done());
 }
 
 #[test]
@@ -672,7 +689,7 @@ fn composite_synthesis_rewake_is_hydrated_with_child_artifacts() {
         &mut g,
         &gate_id,
         "w0",
-        HandoffArtifact::brief("gate passed"),
+        HandoffArtifact::brief("audited root.1; gate passed"),
     )
     .unwrap();
 
@@ -813,13 +830,15 @@ fn gate_debt_requires_token_level_mention_not_substring() {
     .unwrap_err();
     assert!(matches!(err, DagError::UnaddressedLowConfidence { .. }));
 
-    // A token-level mention passes.
+    // A token-level mention passes (naming node b too: coverage accounting).
     assert!(
         complete_node(
             &mut g,
             &gate_id,
             "w3",
-            HandoffArtifact::brief("child a is low confidence but acceptable: scope re-checked"),
+            HandoffArtifact::brief(
+                "child a is low confidence but acceptable: scope re-checked; b verified solid"
+            ),
         )
         .is_ok()
     );
@@ -883,7 +902,7 @@ fn inject_from_gate_wires_gap_artifacts_into_parent_synthesis() {
         &mut g,
         &gate_id,
         "w2",
-        HandoffArtifact::brief("gapnode drained; no gaps remain"),
+        HandoffArtifact::brief("child audited; gapnode drained; no gaps remain"),
     )
     .unwrap();
 
@@ -922,4 +941,313 @@ fn requeue_failed_unwedges_a_failed_gate() {
     assert_eq!(ready, vec![gate_id.as_str()]);
     // Only failed nodes can be requeued.
     assert!(requeue_failed(&mut g, "c").is_err());
+}
+
+// ----- unbounded-growth mechanics (root gate, coverage debt, stale scope) -----
+
+/// Every deep seed gets a plan-wide root gate: a flat plan whose nodes all
+/// execute atomically still cannot finish without a final adversarial audit.
+#[test]
+fn deep_seed_inserts_root_gate_over_all_roots() {
+    let g = dag(
+        Mode::Deep,
+        vec![
+            spec("a", NodeKind::Explore),
+            spec("b", NodeKind::Explore),
+            spec("c", NodeKind::Implement).depends_on(["a"]),
+        ],
+    );
+    let root_gate = g
+        .nodes()
+        .iter()
+        .find(|n| n.is_gate && n.parent.is_none())
+        .expect("deep seed must insert a root gate");
+    assert_eq!(root_gate.id, "plan::gate");
+    assert_eq!(root_gate.kind, NodeKind::Critique);
+    assert_eq!(root_gate.origin, Some(NodeOrigin::Gate));
+    for id in ["a", "b", "c"] {
+        assert!(
+            root_gate.depends_on.contains(&id.to_string()),
+            "root gate must audit '{id}': {:?}",
+            root_gate.depends_on
+        );
+    }
+    // Non-terminal until the audit passes even after all work completes.
+    assert!(!g.all_terminal());
+}
+
+#[test]
+fn deep_seed_of_pure_code_plan_gets_verify_root_gate() {
+    let g = dag(
+        Mode::Deep,
+        vec![
+            spec("impl1", NodeKind::Implement),
+            spec("fix1", NodeKind::Fix),
+        ],
+    );
+    let root_gate = g
+        .nodes()
+        .iter()
+        .find(|n| n.is_gate && n.parent.is_none())
+        .expect("root gate");
+    assert_eq!(root_gate.kind, NodeKind::Verify);
+}
+
+#[test]
+fn light_seed_inserts_no_root_gate() {
+    let g = dag(Mode::Light, vec![spec("a", NodeKind::Explore)]);
+    assert!(g.nodes().iter().all(|n| !n.is_gate));
+}
+
+/// Re-seeding widens the root gate's audit scope, and re-opens it if it had
+/// already passed: new work re-opens the plan-wide audit.
+#[test]
+fn reseed_widens_and_reopens_root_gate() {
+    let mut g = dag(Mode::Deep, vec![spec("a", NodeKind::Explore)]);
+    dispatch(&mut g, "a", "w0");
+    complete_node(&mut g, "a", "w0", sim::deep_artifact("did a")).unwrap();
+    dispatch(&mut g, "plan::gate", "w1");
+    complete_node(
+        &mut g,
+        "plan::gate",
+        "w1",
+        HandoffArtifact::brief("audited a; clean"),
+    )
+    .unwrap();
+    assert!(g.all_terminal());
+
+    // New root work arrives: the passed root gate must re-open and audit it.
+    seed(&mut g, vec![spec("b", NodeKind::Explore)]).unwrap();
+    let root_gate = g.get("plan::gate").unwrap();
+    assert_eq!(root_gate.status, NodeStatus::Queued);
+    assert!(root_gate.depends_on.contains(&"b".to_string()));
+    assert!(!g.all_terminal());
+
+    // Drain the new node; the gate re-runs and must account for BOTH nodes.
+    dispatch(&mut g, "b", "w0");
+    complete_node(&mut g, "b", "w0", sim::deep_artifact("did b")).unwrap();
+    dispatch(&mut g, "plan::gate", "w1");
+    let err = complete_node(
+        &mut g,
+        "plan::gate",
+        "w1",
+        HandoffArtifact::brief("audited b; clean"),
+    )
+    .unwrap_err();
+    assert!(matches!(err, DagError::UncoveredSiblings { .. }));
+    complete_node(
+        &mut g,
+        "plan::gate",
+        "w1",
+        HandoffArtifact::brief("re-audited a and b; clean"),
+    )
+    .unwrap();
+    assert!(g.all_terminal());
+}
+
+/// The coverage-debt rule: a passing gate must account for EVERY done node in
+/// its audit scope by id, not just the low-confidence ones. "All good, no
+/// gaps" is structurally rejected.
+#[test]
+fn gate_pass_requires_enumerated_coverage_of_all_siblings() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![
+            spec("root.x", NodeKind::Explore),
+            spec("root.y", NodeKind::Explore),
+        ],
+    )
+    .unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    dispatch(&mut g, "root.x", "w1");
+    complete_node(&mut g, "root.x", "w1", sim::deep_artifact("solid x")).unwrap();
+    dispatch(&mut g, "root.y", "w2");
+    complete_node(&mut g, "root.y", "w2", sim::deep_artifact("solid y")).unwrap();
+
+    // Both children are HIGH confidence, yet a rubber stamp still fails.
+    dispatch(&mut g, &gate_id, "w3");
+    let err = complete_node(
+        &mut g,
+        &gate_id,
+        "w3",
+        HandoffArtifact::brief("all good, no gaps"),
+    )
+    .unwrap_err();
+    match &err {
+        DagError::UncoveredSiblings { gate, nodes } => {
+            assert_eq!(gate, &gate_id);
+            assert_eq!(
+                nodes,
+                &vec!["root.x".to_string(), "root.y".to_string()],
+                "every unaddressed sibling is listed"
+            );
+        }
+        other => panic!("expected UncoveredSiblings, got {other:?}"),
+    }
+    // Naming only one still fails, listing the remaining debt.
+    let err = complete_node(
+        &mut g,
+        &gate_id,
+        "w3",
+        HandoffArtifact::brief("root.x verified clean"),
+    )
+    .unwrap_err();
+    assert!(matches!(err, DagError::UncoveredSiblings { ref nodes, .. } if nodes == &vec!["root.y".to_string()]));
+    // Accounting via open_questions also counts as addressing.
+    let mut pass = HandoffArtifact::brief("root.x verified clean; no gaps remain");
+    pass.open_questions = vec!["root.y: minor doubt about edge ordering, acceptable".into()];
+    complete_node(&mut g, &gate_id, "w3", pass).unwrap();
+}
+
+/// Above the enumeration cap the per-id coverage rule relaxes (an artifact
+/// naming 30+ ids degenerates into a list), but low-confidence debts still
+/// bind at any width.
+#[test]
+fn gate_coverage_enumeration_relaxes_above_cap_but_confidence_debt_remains() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let children: Vec<NodeSpec> = (0..GATE_COVERAGE_ENUMERATION_CAP + 1)
+        .map(|i| spec(&format!("root.c{i}"), NodeKind::Explore))
+        .collect();
+    let outcome = expand_node(&mut g, "root", "w0", children).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    for i in 0..GATE_COVERAGE_ENUMERATION_CAP + 1 {
+        let id = format!("root.c{i}");
+        dispatch(&mut g, &id, "w1");
+        let mut artifact = sim::deep_artifact(&format!("did {id}"));
+        if i == 3 {
+            artifact.confidence = Some("low".into());
+        }
+        complete_node(&mut g, &id, "w1", artifact).unwrap();
+    }
+    dispatch(&mut g, &gate_id, "w2");
+    // Wide scope: full enumeration not required, but the LOW node still is.
+    let err = complete_node(
+        &mut g,
+        &gate_id,
+        "w2",
+        HandoffArtifact::brief("sampled the set; looks clean"),
+    )
+    .unwrap_err();
+    assert!(matches!(err, DagError::UnaddressedLowConfidence { ref nodes, .. } if nodes == &vec!["root.c3".to_string()]));
+    complete_node(
+        &mut g,
+        &gate_id,
+        "w2",
+        HandoffArtifact::brief(
+            "sampled the set; root.c3's low confidence acceptable after cross-check",
+        ),
+    )
+    .unwrap();
+}
+
+/// A gate cannot pass while nodes entered its audit scope after dispatch and
+/// are unfinished (stale view), e.g. a re-seed widened the root gate while it
+/// was running.
+#[test]
+fn running_gate_cannot_pass_over_scope_added_after_dispatch() {
+    let mut g = dag(Mode::Deep, vec![spec("a", NodeKind::Explore)]);
+    dispatch(&mut g, "a", "w0");
+    complete_node(&mut g, "a", "w0", sim::deep_artifact("did a")).unwrap();
+    dispatch(&mut g, "plan::gate", "w1");
+    // While the root gate runs, a re-seed adds node "b" to its scope.
+    seed(&mut g, vec![spec("b", NodeKind::Explore)]).unwrap();
+    let err = complete_node(
+        &mut g,
+        "plan::gate",
+        "w1",
+        HandoffArtifact::brief("audited a; clean"),
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, DagError::StaleGateScope { ref pending, .. } if pending == &vec!["b".to_string()]),
+        "got: {err:?}"
+    );
+}
+
+/// Origins are stamped by every op: seed/expand/gap/gate.
+#[test]
+fn node_origins_are_recorded_per_op() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    assert_eq!(g.get("root").unwrap().origin, Some(NodeOrigin::Seed));
+    assert_eq!(g.get("plan::gate").unwrap().origin, Some(NodeOrigin::Gate));
+
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    assert_eq!(g.get("root.1").unwrap().origin, Some(NodeOrigin::Expand));
+    assert_eq!(g.get(&gate_id).unwrap().origin, Some(NodeOrigin::Gate));
+
+    dispatch(&mut g, "root.1", "w1");
+    complete_node(&mut g, "root.1", "w1", sim::deep_artifact("done")).unwrap();
+    dispatch(&mut g, &gate_id, "w2");
+    inject_from_gate(&mut g, &gate_id, "w2", vec![spec("root.gap", NodeKind::Explore)]).unwrap();
+    assert_eq!(g.get("root.gap").unwrap().origin, Some(NodeOrigin::Gap));
+}
+
+/// mentions_node_id treats trailing sentence punctuation as a boundary, so
+/// "audited explore.hot.udev." addresses `explore.hot.udev` but not a longer
+/// id like `explore.hot.udev.x`.
+#[test]
+fn gate_pass_accepts_id_followed_by_sentence_punctuation() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.only", NodeKind::Explore)],
+    )
+    .unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    dispatch(&mut g, "root.only", "w1");
+    complete_node(&mut g, "root.only", "w1", sim::deep_artifact("done")).unwrap();
+    dispatch(&mut g, &gate_id, "w2");
+    complete_node(
+        &mut g,
+        &gate_id,
+        "w2",
+        HandoffArtifact::brief("I audited root.only. No gaps remain"),
+    )
+    .unwrap();
+}
+
+/// End-to-end: a flat deep seed with lazy atomic workers STILL ends in a
+/// root-gate audit that spawns growth before the plan can finish.
+#[test]
+fn simulator_flat_deep_seed_grows_via_root_gate() {
+    let mut g = dag(
+        Mode::Deep,
+        vec![
+            spec("t1", NodeKind::Explore),
+            spec("t2", NodeKind::Explore),
+        ],
+    );
+    let mut gate_fired = false;
+    let mut worker = move |id: &str, kind: NodeKind, input: &str| -> WorkerAction {
+        if kind == NodeKind::Critique || kind == NodeKind::Verify {
+            if !gate_fired {
+                gate_fired = true;
+                return WorkerAction::InjectGap(vec![NodeSpec::new(
+                    "t3.missed",
+                    "the facet the flat seed never covered",
+                    NodeKind::Explore,
+                )]);
+            }
+            return WorkerAction::Complete(sim::gate_pass_artifact(input));
+        }
+        WorkerAction::Complete(sim::deep_artifact(&format!("did {id}")))
+    };
+    let report = sim::run(&mut g, 8, 100, &mut worker).unwrap();
+    assert!(!report.stalled, "flat deep plan must not stall: {report:?}");
+    assert!(g.all_terminal());
+    // The audit grew the plan beyond its seed.
+    let gap = g.get("t3.missed").expect("root gate must have grown the plan");
+    assert!(gap.is_done());
+    assert_eq!(gap.origin, Some(NodeOrigin::Gap));
+    assert!(g.get("plan::gate").unwrap().is_done());
 }

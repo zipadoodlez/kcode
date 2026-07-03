@@ -19,7 +19,8 @@ pub mod sim;
 mod tests;
 
 pub use ops::{
-    ExpandOutcome, complete_node, expand_node, fail_node, inject_from_gate, requeue_failed, seed,
+    ExpandOutcome, GATE_COVERAGE_ENUMERATION_CAP, complete_node, expand_node, fail_node,
+    inject_from_gate, requeue_failed, seed,
 };
 pub use schedule::{
     LIGHT_MODE_SUGGESTED_WORKERS, assemble_input, dispatch, is_terminal, ready_nodes,
@@ -45,6 +46,24 @@ impl Mode {
     pub fn requires_gates(self) -> bool {
         matches!(self, Mode::Deep)
     }
+}
+
+/// Where a node came from. Deep mode's growth pressure is measured against
+/// this: `Seed` nodes are the first agent's draft, everything else is growth
+/// the machinery generated (decomposition, gate-injected gaps, or the gates
+/// themselves). Status surfaces report seeded-vs-grown so a plan that never
+/// outgrew its seed is visibly under-explored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NodeOrigin {
+    /// Part of the initial `seed` batch (or a later re-seed).
+    Seed,
+    /// Born from `expand_node` decomposition.
+    Expand,
+    /// Injected by a gate that found a gap or failure.
+    Gap,
+    /// An auto-inserted critique/verify gate (including the root gate).
+    Gate,
 }
 
 /// The terminal action a node represents. The DAG is task-type agnostic; only the
@@ -362,6 +381,10 @@ pub struct TaskNode {
     /// The typed handoff artifact, present once `Done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<HandoffArtifact>,
+    /// Where this node came from (seed vs machinery-generated growth). `None`
+    /// on legacy nodes, which are treated as seeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<NodeOrigin>,
 }
 
 impl TaskNode {
@@ -435,6 +458,14 @@ pub enum DagError {
     /// unaddressed. The gate must either `inject_from_gate` to convert the doubt
     /// into new nodes, or explicitly address each listed node id in its artifact.
     UnaddressedLowConfidence { gate: NodeId, nodes: Vec<NodeId> },
+    /// A deep gate tried to pass without accounting for every completed node in
+    /// its audit scope. A passing gate artifact must name each id it reviewed;
+    /// enumeration is what makes the audit real instead of a rubber stamp.
+    UncoveredSiblings { gate: NodeId, nodes: Vec<NodeId> },
+    /// A deep gate tried to pass while its audit scope has non-terminal nodes
+    /// (new work arrived after the gate was dispatched, e.g. a re-seed widened
+    /// the root set). The gate's view is stale; it must re-run after they drain.
+    StaleGateScope { gate: NodeId, pending: Vec<NodeId> },
     /// A gate kind was supplied as user work, or vice versa.
     GateMisuse(String),
 }
@@ -474,6 +505,25 @@ impl std::fmt::Display for DagError {
                      inject_gap with follow-up nodes that shore up that work, or name each \
                      id in your findings with why its low confidence is acceptable",
                     nodes.join(", ")
+                )
+            }
+            DagError::UncoveredSiblings { gate, nodes } => {
+                write!(
+                    f,
+                    "gate '{gate}' cannot pass: completed node(s) [{}] in its audit scope are \
+                     not addressed in the gate artifact. A passing deep gate must account for \
+                     every node it audits: name each id in findings/open_questions with what \
+                     you checked, or inject_gap with follow-up nodes for anything shaky",
+                    nodes.join(", ")
+                )
+            }
+            DagError::StaleGateScope { gate, pending } => {
+                write!(
+                    f,
+                    "gate '{gate}' cannot pass: node(s) [{}] entered its audit scope after it \
+                     was dispatched and are not finished. The gate's view is stale; it re-runs \
+                     after they drain",
+                    pending.join(", ")
                 )
             }
             DagError::GateMisuse(msg) => write!(f, "gate misuse: {msg}"),

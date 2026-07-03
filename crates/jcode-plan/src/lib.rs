@@ -117,6 +117,11 @@ pub struct NodeMeta {
     /// JSON text so the protocol/persistence layers need no extra types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_json: Option<String>,
+    /// Where the node came from: "seed" | "expand" | "gap" | "gate". Powers the
+    /// growth accounting (seeded vs machinery-grown) on status surfaces. Absent
+    /// on legacy plans, which count as seeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 /// Versioned shared swarm plan state.

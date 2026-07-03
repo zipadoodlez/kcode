@@ -8,7 +8,7 @@
 //! engine op, then lower the result back. This keeps a single source of truth and
 //! reuses the existing persistence/broadcast/scheduler machinery.
 
-use crate::dag::{HandoffArtifact, Mode, NodeKind, NodeStatus, TaskGraph, TaskNode};
+use crate::dag::{HandoffArtifact, Mode, NodeKind, NodeOrigin, NodeStatus, TaskGraph, TaskNode};
 use crate::{NodeMeta, PlanItem, VersionedPlan};
 
 /// Parse a mode string ("deep"/"light"); unknown values fall back to light.
@@ -46,6 +46,27 @@ pub fn kind_str(kind: NodeKind) -> &'static str {
         NodeKind::Fix => "fix",
         NodeKind::Synthesize => "synthesize",
         NodeKind::Critique => "critique",
+    }
+}
+
+/// Parse a node-origin string; unknown/absent values yield `None` (legacy
+/// nodes, treated as seeded by the growth accounting).
+pub fn parse_origin(origin: Option<&str>) -> Option<NodeOrigin> {
+    match origin.map(|o| o.trim().to_ascii_lowercase()).as_deref() {
+        Some("seed") => Some(NodeOrigin::Seed),
+        Some("expand") => Some(NodeOrigin::Expand),
+        Some("gap") => Some(NodeOrigin::Gap),
+        Some("gate") => Some(NodeOrigin::Gate),
+        _ => None,
+    }
+}
+
+pub fn origin_str(origin: NodeOrigin) -> &'static str {
+    match origin {
+        NodeOrigin::Seed => "seed",
+        NodeOrigin::Expand => "expand",
+        NodeOrigin::Gap => "gap",
+        NodeOrigin::Gate => "gate",
     }
 }
 
@@ -91,6 +112,7 @@ pub fn to_task_graph(plan: &VersionedPlan) -> TaskGraph {
             planner: meta.planner.clone(),
             priority: crate::priority_rank(&item.priority),
             output: artifact,
+            origin: parse_origin(meta.origin.as_deref()),
         });
     }
     graph
@@ -138,6 +160,7 @@ pub fn apply_task_graph(plan: &mut VersionedPlan, graph: &TaskGraph) {
                     .output
                     .as_ref()
                     .and_then(|a| serde_json::to_string(a).ok()),
+                origin: node.origin.map(|o| origin_str(o).to_string()),
             },
         );
     }
@@ -206,6 +229,65 @@ pub fn hydrate_assignment(plan: &VersionedPlan, task_id: &str, content: &str) ->
         Some(context) => format!("{content}\n\n{context}"),
         None => content.to_string(),
     }
+}
+
+/// Growth accounting for a plan: how far the graph outgrew its seed. This is
+/// deep mode's visibility signal — a deep plan whose node count equals its
+/// seed count never decomposed or gated anything, which almost always means
+/// under-exploration rather than a genuinely atomic plan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GrowthStats {
+    /// Nodes from the initial seed batch (plus legacy nodes with no origin).
+    pub seeded: usize,
+    /// Nodes born from `expand_node` decomposition.
+    pub from_expansion: usize,
+    /// Nodes injected by gates that found gaps/failures.
+    pub from_gaps: usize,
+    /// Auto-inserted critique/verify gates (including the root gate).
+    pub gates: usize,
+}
+
+impl GrowthStats {
+    pub fn total(&self) -> usize {
+        self.seeded + self.from_expansion + self.from_gaps + self.gates
+    }
+
+    /// Machinery-generated nodes (everything that is not seed).
+    pub fn grown(&self) -> usize {
+        self.from_expansion + self.from_gaps + self.gates
+    }
+
+    /// One-line human summary, e.g.
+    /// `12 seeded -> 87 nodes (+55 expansion, +14 gap, +6 gates)`.
+    pub fn summary_line(&self) -> String {
+        format!(
+            "{} seeded -> {} nodes (+{} expansion, +{} gap, +{} gates)",
+            self.seeded,
+            self.total(),
+            self.from_expansion,
+            self.from_gaps,
+            self.gates
+        )
+    }
+}
+
+/// Compute growth stats from the plan's `node_meta` origin records. Nodes with
+/// no recorded origin (legacy plans, hand-written items) count as seeded.
+pub fn growth_stats(plan: &VersionedPlan) -> GrowthStats {
+    let mut stats = GrowthStats::default();
+    for item in &plan.items {
+        let origin = plan
+            .node_meta
+            .get(&item.id)
+            .and_then(|meta| parse_origin(meta.origin.as_deref()));
+        match origin {
+            Some(NodeOrigin::Expand) => stats.from_expansion += 1,
+            Some(NodeOrigin::Gap) => stats.from_gaps += 1,
+            Some(NodeOrigin::Gate) => stats.gates += 1,
+            Some(NodeOrigin::Seed) | None => stats.seeded += 1,
+        }
+    }
+    stats
 }
 
 /// Ids of completed plan items whose stored artifact self-reported LOW
@@ -284,7 +366,8 @@ mod tests {
         let mut plan = VersionedPlan::new();
         plan.mode = "deep".to_string();
 
-        // Seed via engine, lower back into the plan.
+        // Seed via engine, lower back into the plan. Deep mode auto-inserts a
+        // plan-wide root gate alongside the seeded node.
         let mut graph = to_task_graph(&plan);
         seed(
             &mut graph,
@@ -292,11 +375,27 @@ mod tests {
         )
         .unwrap();
         apply_task_graph(&mut plan, &graph);
-        assert_eq!(plan.items.len(), 1);
+        assert_eq!(plan.items.len(), 2);
         assert_eq!(plan.node_meta["root"].kind.as_deref(), Some("explore"));
+        assert_eq!(plan.node_meta["root"].origin.as_deref(), Some("seed"));
+        let root_gate_id = plan
+            .items
+            .iter()
+            .map(|i| i.id.clone())
+            .find(|id| {
+                plan.node_meta
+                    .get(id)
+                    .map(|m| m.is_gate && m.parent.is_none())
+                    .unwrap_or(false)
+            })
+            .expect("deep seed must lower a root gate into the plan");
+        assert_eq!(
+            plan.node_meta[&root_gate_id].origin.as_deref(),
+            Some("gate")
+        );
 
-        // Dispatch + expand via engine, lower back; the gate must appear in the
-        // plan with the composite parent marked expanded.
+        // Dispatch + expand via engine, lower back; the composite's own gate must
+        // appear in the plan with the composite parent marked expanded.
         let mut graph = to_task_graph(&plan);
         dispatch(&mut graph, "root", "w0");
         expand_node(
@@ -309,13 +408,14 @@ mod tests {
         apply_task_graph(&mut plan, &graph);
 
         assert!(plan.node_meta["root"].expanded);
+        assert_eq!(plan.node_meta["root.1"].origin.as_deref(), Some("expand"));
         let gate = plan
             .items
             .iter()
             .find(|i| {
                 plan.node_meta
                     .get(&i.id)
-                    .map(|m| m.is_gate)
+                    .map(|m| m.is_gate && m.parent.as_deref() == Some("root"))
                     .unwrap_or(false)
             })
             .expect("gate should exist in lowered plan");
