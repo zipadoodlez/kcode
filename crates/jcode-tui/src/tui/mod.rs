@@ -1442,6 +1442,30 @@ fn primary_status_spinner_needs_full_redraw_with_policy(
         && !primary_status_spinner_fast_path_available_with_policy(state, policy)
 }
 
+/// Redraw cadence while the inline swarm strip/dock is animating an agent
+/// status spinner. The spinner samples the wall clock at ~8 fps
+/// (`animation_elapsed() * 8.0`), so repaint at the same rate: faster wastes
+/// frames on an unchanged glyph, slower makes the spinner visibly stutter.
+pub(crate) const REDRAW_SWARM_SPINNER: Duration = Duration::from_millis(125);
+
+/// Whether the swarm strip (above the status line) or the SwarmStatus dock
+/// widget is currently animating a status spinner for an active agent.
+///
+/// Both surfaces derive the spinner glyph from the wall clock, but managed
+/// agents keep running long after the coordinator session itself goes quiet.
+/// Without a dedicated wakeup the idle loop stops repainting (deep idle stops
+/// it entirely) and the spinner freezes, only twitching when a bus update
+/// happens to arrive. Unfocused clients skip this so backgrounded windows do
+/// not burn CPU animating a glyph nobody can see; terminal statuses render
+/// fixed glyphs and need no animation frames.
+fn swarm_spinner_redraw_active(state: &dyn TuiState) -> bool {
+    state.client_focused()
+        && state
+            .inline_swarm_members()
+            .iter()
+            .any(|m| jcode_tui_render::swarm_gallery::is_active_status(&m.status))
+}
+
 fn fps_to_duration(fps: u32) -> Duration {
     Duration::from_millis((1000 / fps.max(1)) as u64)
 }
@@ -1507,6 +1531,7 @@ pub(crate) fn redraw_interval_with_policy(
         && !cache_cold_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
         && !state.onboarding_welcome_active()
+        && !swarm_spinner_redraw_active(state)
     {
         return REDRAW_DEEP_IDLE;
     }
@@ -1529,6 +1554,23 @@ pub(crate) fn redraw_interval_with_policy(
         return match policy.tier {
             crate::perf::PerformanceTier::Minimal => REDRAW_IDLE,
             _ => fast_interval,
+        };
+    }
+
+    // Swarm status spinners animate at a fixed ~8 fps off the wall clock.
+    // While the coordinator itself is processing/streaming the branches below
+    // already repaint fast enough; this branch keeps the spinner smooth when
+    // the coordinator is otherwise quiet and only its agents are working.
+    if swarm_spinner_redraw_active(state)
+        && !state.is_processing()
+        && state.streaming_text().is_empty()
+        && !state.has_pending_mouse_scroll_animation()
+    {
+        return match policy.tier {
+            // Minimal tier drops decorative animation; a liveness-rate tick
+            // still advances the glyph so agents never look frozen.
+            crate::perf::PerformanceTier::Minimal => REDRAW_PASSIVE_LIVENESS,
+            _ => REDRAW_SWARM_SPINNER,
         };
     }
 
@@ -1589,6 +1631,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         && !cache_cold_countdown_redraw_active(state)
         && crate::build::read_build_progress().is_none()
         && !state.onboarding_welcome_active()
+        && !swarm_spinner_redraw_active(state)
     {
         return false;
     }
@@ -1598,6 +1641,10 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
     }
 
     if full_frame_status_animation_active_with_policy(state, &policy) {
+        return true;
+    }
+
+    if swarm_spinner_redraw_active(state) {
         return true;
     }
 
