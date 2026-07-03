@@ -52,6 +52,12 @@ pub struct RenderedMessage {
     pub content: String,
     pub tool_calls: Vec<String>,
     pub tool_data: Option<ToolCall>,
+    /// Index of the stored session message this rendered message came from.
+    /// `None` for synthetic UI-only messages (e.g. the compacted-history
+    /// notice). Used to map user-facing rewind targets back to the stored
+    /// transcript (issue #432).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stored_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

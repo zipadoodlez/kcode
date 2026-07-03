@@ -363,10 +363,16 @@ pub fn render_messages_and_images_with_compacted_history(
             content,
             tool_calls: Vec::new(),
             tool_data: None,
+            stored_index: None,
         });
     }
 
-    for msg in session.messages.iter().skip(render_start_idx) {
+    for (stored_index, msg) in session
+        .messages
+        .iter()
+        .enumerate()
+        .skip(render_start_idx)
+    {
         if is_internal_system_reminder(msg) {
             continue;
         }
@@ -449,6 +455,7 @@ pub fn render_messages_and_images_with_compacted_history(
                             content: combined,
                             tool_calls: tool_calls.clone(),
                             tool_data: None,
+                            stored_index: Some(stored_index),
                         });
                     }
 
@@ -468,6 +475,7 @@ pub fn render_messages_and_images_with_compacted_history(
                         content: content.clone(),
                         tool_calls: Vec::new(),
                         tool_data,
+                        stored_index: Some(stored_index),
                     });
                 }
                 ContentBlock::Reasoning { text: t } | ContentBlock::ReasoningTrace { text: t } => {
@@ -509,6 +517,7 @@ pub fn render_messages_and_images_with_compacted_history(
                 content: combined,
                 tool_calls,
                 tool_data: None,
+                stored_index: Some(stored_index),
             });
         } else if !pending_prompt_image_indices.is_empty() {
             // The message carried images but produced no rendered user prompt;

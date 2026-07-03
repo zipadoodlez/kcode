@@ -1924,7 +1924,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             return true;
         };
 
-        let current_count = app.session.visible_conversation_message_count();
+        let current_count = app.session.rewind_target_count();
         let restored = snapshot.visible_message_count.saturating_sub(current_count);
         app.session.replace_messages(snapshot.messages);
         app.provider_session_id = snapshot.provider_session_id;
@@ -1955,8 +1955,14 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/rewind" {
-        let visible_messages = app.session.visible_conversation_messages();
-        if visible_messages.is_empty() {
+        // Number the same rendered transcript entries `/rewind N` targets so
+        // the printed numbers always match what a rewind actually does
+        // (issue #432).
+        let rendered_targets: Vec<_> = crate::session::render_messages(&app.session)
+            .into_iter()
+            .filter(|message| matches!(message.role.as_str(), "user" | "assistant"))
+            .collect();
+        if rendered_targets.is_empty() {
             app.push_display_message(DisplayMessage::system(
                 "No messages in conversation.".to_string(),
             ));
@@ -1964,13 +1970,14 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         }
 
         let mut history = String::from("Conversation history:\n\n");
-        for (i, msg) in visible_messages.iter().enumerate() {
-            let role_str = match msg.role {
-                Role::User => "👤 User",
-                Role::Assistant => "🤖 Assistant",
+        for (i, msg) in rendered_targets.iter().enumerate() {
+            let role_str = match msg.role.as_str() {
+                "user" => "👤 User",
+                "assistant" => "🤖 Assistant",
+                _ => "💬 Message",
             };
-            let content = msg.content_preview();
-            let preview = crate::util::truncate_str(&content, 80);
+            let content = msg.content.replace('\n', " ");
+            let preview = crate::util::truncate_str(content.trim(), 80);
             history.push_str(&format!("  {} {} - {}\n", i + 1, role_str, preview));
         }
         history.push_str("\nUse /rewind N to rewind to message N (removes all messages after). After rewinding, use /rewind undo to restore the removed messages.");
@@ -1981,7 +1988,8 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
 
     if let Some(num_str) = trimmed.strip_prefix("/rewind ") {
         let num_str = num_str.trim();
-        let visible_count = app.session.visible_conversation_message_count();
+        let targets = app.session.rewind_target_stored_indices();
+        let visible_count = targets.len();
         match num_str.parse::<usize>() {
             Ok(n) if n > 0 && n <= visible_count => {
                 let removed = visible_count - n;
@@ -1991,10 +1999,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
                     session_provider_session_id: app.session.provider_session_id.clone(),
                     visible_message_count: visible_count,
                 });
-                if let Some(stored_len) = app.session.stored_len_for_visible_conversation_message(n)
-                {
-                    app.session.truncate_messages(stored_len);
-                }
+                app.session.truncate_messages(targets[n - 1] + 1);
                 let provider_messages = app.session.messages_for_provider_uncached();
                 app.replace_provider_messages(provider_messages);
                 app.session.updated_at = chrono::Utc::now();

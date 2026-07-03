@@ -1051,7 +1051,7 @@ impl App {
 
         if prefix.starts_with("/rewind ") {
             let arg = prefix.strip_prefix("/rewind ").unwrap_or_default().trim();
-            let visible_count = self.session.visible_conversation_message_count();
+            let visible_count = self.session.rewind_target_count();
 
             // Rewind targets are 1-based visible conversation message numbers.
             // Do not fuzzy-rank numeric arguments: `/rewind 10` should never be

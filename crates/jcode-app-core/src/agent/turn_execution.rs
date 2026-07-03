@@ -176,22 +176,27 @@ impl Agent {
         self.persist_session_best_effort("provider session reset");
     }
 
-    /// Rewind the conversation to a 1-based visible conversation message index.
+    /// Rewind the conversation to a 1-based visible transcript message index.
+    ///
+    /// The index is interpreted against the same rendered transcript the TUI
+    /// numbers in `/rewind` (user/assistant entries only, tool cards and
+    /// system notices excluded). Mapping through raw stored messages instead
+    /// would count tool-result messages the UI never numbers, sending
+    /// `/rewind N` far earlier than the on-screen message N (issue #432).
     ///
     /// Provider-side resumable sessions are reset so the next request sends the
     /// truncated context from scratch instead of continuing from a stale upstream
     /// conversation.
     pub fn rewind_to_message(&mut self, message_index: usize) -> Result<usize, String> {
-        let message_count = self.session.visible_conversation_message_count();
-        let Some(stored_len) = self
-            .session
-            .stored_len_for_visible_conversation_message(message_index)
-        else {
+        let targets = self.session.rewind_target_stored_indices();
+        let message_count = targets.len();
+        if message_index == 0 || message_index > message_count {
             return Err(format!(
                 "Invalid message number: {}. Valid range: 1-{}",
                 message_index, message_count
             ));
-        };
+        }
+        let stored_len = targets[message_index - 1] + 1;
 
         let removed = message_count - message_index;
         self.rewind_undo_snapshot = Some(RewindUndoSnapshot {
@@ -216,7 +221,7 @@ impl Agent {
             return Err("No rewind to undo.".to_string());
         };
 
-        let current_count = self.session.visible_conversation_message_count();
+        let current_count = self.session.rewind_target_count();
         let restored = snapshot.visible_message_count.saturating_sub(current_count);
         self.session.replace_messages(snapshot.messages);
         self.provider_session_id = snapshot.provider_session_id;
