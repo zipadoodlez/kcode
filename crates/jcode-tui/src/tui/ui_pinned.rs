@@ -1877,7 +1877,17 @@ fn render_side_panel_markdown_lines_cached(
     markdown::set_diagram_mode_override(saved_override);
 
     let placeholder_hashes: Vec<Option<u64>> = if has_protocol {
-        lines.iter().map(mermaid::parse_image_placeholder).collect()
+        lines
+            .iter()
+            .map(|line| {
+                mermaid::parse_image_placeholder(line).or_else(|| {
+                    // Mermaid diagrams now emit inline-fit markers (same as
+                    // raster images); the side panel draws them through its
+                    // own placement machinery, keyed by hash.
+                    mermaid::parse_inline_image_placeholder(line).map(|(hash, _, _)| hash)
+                })
+            })
+            .collect()
     } else {
         vec![None; lines.len()]
     };
@@ -1914,7 +1924,10 @@ fn wrap_side_panel_markdown_lines(lines: Vec<Line<'static>>, width: usize) -> Ve
     lines
         .into_iter()
         .flat_map(|line| {
-            if is_rendered_table_line(&line) || mermaid::parse_image_placeholder(&line).is_some() {
+            if is_rendered_table_line(&line)
+                || mermaid::parse_image_placeholder(&line).is_some()
+                || mermaid::parse_inline_image_placeholder(&line).is_some()
+            {
                 vec![line]
             } else {
                 markdown::wrap_line(line, width)
