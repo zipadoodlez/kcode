@@ -1232,8 +1232,17 @@ async fn ensure_spawn_coordinator_swarm(
         };
         let coordinator_is_stale = coordinator_id.as_ref().is_some_and(|coordinator| {
             !members.get(coordinator).is_some_and(|member| {
+                // A coordinator is stale for slot-reclaim purposes when it left
+                // the swarm, reached a terminal status, or can no longer be
+                // reached at all (every event channel closed). The last case
+                // catches a wedged coordinator whose client died without a
+                // clean status transition; without it the slot stays blocked
+                // until the status sweep happens to notice.
+                let unreachable = member.event_tx.is_closed()
+                    && member.event_txs.values().all(|tx| tx.is_closed());
                 member.swarm_id.as_deref() == swarm_id.as_deref()
                     && !swarm_member_status_is_stale_for_coordination(&member.status)
+                    && !unreachable
             })
         });
         (
