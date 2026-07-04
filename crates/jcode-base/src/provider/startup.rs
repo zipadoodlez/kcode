@@ -120,7 +120,7 @@ impl MultiProvider {
             crate::logging::info(
                 "Using deprecated Claude CLI provider (forced by JCODE_USE_CLAUDE_CLI=1)",
             );
-            Some(Arc::new(claude::ClaudeProvider::new()))
+            external::instantiate_expected_external_provider(external::CLAUDE_CLI_RUNTIME)
         } else {
             None
         };

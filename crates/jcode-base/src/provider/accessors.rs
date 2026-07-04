@@ -1,7 +1,7 @@
 use super::*;
 
 impl MultiProvider {
-    pub(super) fn claude_provider(&self) -> Option<Arc<claude::ClaudeProvider>> {
+    pub(super) fn claude_provider(&self) -> Option<Arc<dyn Provider>> {
         self.claude
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

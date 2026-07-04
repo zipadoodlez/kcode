@@ -319,7 +319,7 @@ pub use self::state::{ProviderModelSelectionSource, ProviderRuntimeState, Provid
 /// MultiProvider wraps multiple providers and allows seamless model switching
 pub struct MultiProvider {
     /// Claude Code CLI provider
-    claude: RwLock<Option<Arc<claude::ClaudeProvider>>>,
+    claude: RwLock<Option<Arc<dyn Provider>>>,
     /// Direct Anthropic API provider (no Python dependency)
     anthropic: RwLock<Option<Arc<anthropic::AnthropicProvider>>>,
     openai: RwLock<Option<Arc<openai::OpenAIProvider>>>,
@@ -1124,13 +1124,16 @@ impl MultiProvider {
         crate::auth::AuthStatus::invalidate_cache();
 
         if self.use_claude_cli {
-            if self.claude_provider().is_none() && crate::auth::claude::load_credentials().is_ok() {
+            if self.claude_provider().is_none()
+                && crate::auth::claude::load_credentials().is_ok()
+                && let Some(claude) =
+                    external::instantiate_expected_external_provider(external::CLAUDE_CLI_RUNTIME)
+            {
                 crate::logging::info("Hot-initialized Claude CLI provider after auth change");
                 *self
                     .claude
                     .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                    Some(Arc::new(claude::ClaudeProvider::new()));
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(claude);
             }
         } else if self.anthropic_provider().is_none()
             && (crate::auth::claude::load_credentials().is_ok()
@@ -2437,7 +2440,7 @@ impl Provider for MultiProvider {
 
         let claude = if matches!(active, ActiveProvider::Claude) && self.claude_provider().is_some()
         {
-            Some(Arc::new(claude::ClaudeProvider::new()))
+            external::instantiate_expected_external_provider(external::CLAUDE_CLI_RUNTIME)
         } else {
             None
         };
