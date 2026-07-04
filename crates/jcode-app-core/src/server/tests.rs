@@ -217,6 +217,7 @@ fn attached_swarm_member(
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        task_label: None,
     }
 }
 
@@ -246,6 +247,7 @@ fn persisted_headless_member(
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        task_label: None,
     }
 }
 

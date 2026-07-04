@@ -93,6 +93,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        task_label: None,
     }];
 
     persist_swarm_state(
@@ -523,6 +524,7 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        task_label: None,
     }];
 
     persist_swarm_state("swarm-gamma", None, Some("coord-1"), &members);

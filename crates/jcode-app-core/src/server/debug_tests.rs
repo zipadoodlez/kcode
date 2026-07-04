@@ -131,6 +131,7 @@ mod transcript_routing_tests {
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            task_label: None,
         }
     }
 
