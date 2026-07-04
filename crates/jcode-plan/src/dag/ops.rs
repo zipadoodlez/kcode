@@ -655,8 +655,8 @@ fn validate_artifact(
 }
 
 /// Above this many audited nodes, a passing gate artifact no longer has to
-/// enumerate every id (the artifact would degenerate into a list); the
-/// low-confidence debt rule still applies at any width.
+/// enumerate every id (the artifact would degenerate into a list); instead only
+/// non-HIGH-confidence nodes must be addressed by id (see `validate_gate_pass`).
 pub const GATE_COVERAGE_ENUMERATION_CAP: usize = 20;
 
 /// A gate's audit scope: the non-gate nodes it depends on. For a composite
@@ -690,7 +690,10 @@ fn gate_audit_scope<'a>(graph: &'a TaskGraph, gate: &TaskNode) -> Vec<&'a TaskNo
 ///    nodes, the passing artifact must address EVERY done node in scope, not
 ///    just the shaky ones. Enumerated accounting is what separates an audit
 ///    from a rubber stamp: "all good, no gaps" cannot pass over work it never
-///    names.
+///    names. Above the cap, enumeration relaxes only for HIGH-confidence
+///    nodes: every node that self-reported medium/low/unparseable confidence
+///    must still be addressed by id, so rigor does not silently degrade on
+///    exactly the widest scopes where the audit matters most.
 fn validate_gate_pass(
     graph: &TaskGraph,
     gate_id: &str,
@@ -745,6 +748,30 @@ fn validate_gate_pass(
     if scope.len() <= GATE_COVERAGE_ENUMERATION_CAP {
         let uncovered: Vec<String> = scope
             .iter()
+            .filter(|node| !addressed(&node.id))
+            .map(|node| node.id.clone())
+            .collect();
+        if !uncovered.is_empty() {
+            return Err(DagError::UncoveredSiblings {
+                gate: gate_id.to_string(),
+                nodes: uncovered,
+            });
+        }
+    } else {
+        // Wide scope: naming every id would degenerate into a list, so full
+        // enumeration relaxes. But the audit must still drain every doubt by
+        // id: any node that did not self-report HIGH confidence (medium, low,
+        // or unparseable) stays on the hook and must be addressed. Without
+        // this, gate rigor would silently degrade exactly when the scope is
+        // largest and the audit matters most.
+        let uncovered: Vec<String> = scope
+            .iter()
+            .filter(|node| {
+                node.output
+                    .as_ref()
+                    .and_then(HandoffArtifact::confidence_level)
+                    != Some(super::ConfidenceLevel::High)
+            })
             .filter(|node| !addressed(&node.id))
             .map(|node| node.id.clone())
             .collect();

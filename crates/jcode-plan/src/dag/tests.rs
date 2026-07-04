@@ -1103,9 +1103,9 @@ fn gate_pass_requires_enumerated_coverage_of_all_siblings() {
     complete_node(&mut g, &gate_id, "w3", pass).unwrap();
 }
 
-/// Above the enumeration cap the per-id coverage rule relaxes (an artifact
-/// naming 30+ ids degenerates into a list), but low-confidence debts still
-/// bind at any width.
+/// Above the enumeration cap the per-id coverage rule relaxes for
+/// HIGH-confidence nodes (an artifact naming 30+ ids degenerates into a list),
+/// but low-confidence debts still bind at any width.
 #[test]
 fn gate_coverage_enumeration_relaxes_above_cap_but_confidence_debt_remains() {
     let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
@@ -1141,6 +1141,47 @@ fn gate_coverage_enumeration_relaxes_above_cap_but_confidence_debt_remains() {
         HandoffArtifact::brief(
             "sampled the set; root.c3's low confidence acceptable after cross-check",
         ),
+    )
+    .unwrap();
+}
+
+/// Above the enumeration cap, only HIGH-confidence nodes escape per-id
+/// accounting: a node that self-reported medium confidence must still be
+/// addressed, so gate rigor does not silently collapse on wide scopes.
+#[test]
+fn gate_coverage_above_cap_still_binds_non_high_confidence_nodes() {
+    let mut g = dag(Mode::Deep, vec![spec("root", NodeKind::Explore)]);
+    dispatch(&mut g, "root", "w0");
+    let children: Vec<NodeSpec> = (0..GATE_COVERAGE_ENUMERATION_CAP + 1)
+        .map(|i| spec(&format!("root.c{i}"), NodeKind::Explore))
+        .collect();
+    let outcome = expand_node(&mut g, "root", "w0", children).unwrap();
+    let gate_id = outcome.gate_id.unwrap();
+    for i in 0..GATE_COVERAGE_ENUMERATION_CAP + 1 {
+        let id = format!("root.c{i}");
+        dispatch(&mut g, &id, "w1");
+        let mut artifact = sim::deep_artifact(&format!("did {id}"));
+        if i == 5 {
+            artifact.confidence = Some("medium".into());
+        }
+        complete_node(&mut g, &id, "w1", artifact).unwrap();
+    }
+    dispatch(&mut g, &gate_id, "w2");
+    // Wide scope: HIGH nodes need not be enumerated, but the MEDIUM node must
+    // still be addressed by id.
+    let err = complete_node(
+        &mut g,
+        &gate_id,
+        "w2",
+        HandoffArtifact::brief("sampled the set; looks clean"),
+    )
+    .unwrap_err();
+    assert!(matches!(err, DagError::UncoveredSiblings { ref nodes, .. } if nodes == &vec!["root.c5".to_string()]));
+    complete_node(
+        &mut g,
+        &gate_id,
+        "w2",
+        HandoffArtifact::brief("spot-checked root.c5's medium-confidence findings; they hold up"),
     )
     .unwrap();
 }
