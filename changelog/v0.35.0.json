@@ -1,0 +1,35 @@
+{
+  "version": "0.35.0",
+  "date": "2026-07-04",
+  "highlights": [
+    "Mermaid diagrams now render inline in chat like images, on by default, with aspect-aware sizing and cached re-rasterization on resize",
+    "Swarm deep mode grows a live task graph with gate audits and renders it as a live mermaid plan diagram, plus a swarm dock widget with a live agent list",
+    "After provider guardrail refusals or terminal errors, jcode offers a one-keypress reroute to a fallback model instead of silently ending the turn"
+  ],
+  "improvements": [
+    "Anthropic models gain a 'max' reasoning effort rung above xhigh",
+    "GitHub release notes are now generated from the human-readable changelog",
+    "Skills installed via Claude Code plugins and marketplaces are picked up automatically",
+    "MCP servers can be individually disabled with a per-server enabled flag",
+    "FreeBSD x86_64 release binaries are now shipped",
+    "/login guides you through provider filtering instead of instant-launching a login",
+    "Onboarding imports logins with a summary-first flow and a one-time resume picker",
+    "Session search got faster with incremental per-source indexes, and startup connect bursts use much less CPU",
+    "Rendered markdown blockquotes show a copy badge",
+    "New scripts/uninstall.sh performs a clean wipe",
+    "Swarm agent lifecycle transitions are surfaced as status notices, and swarm activity tails interleave live tool output"
+  ],
+  "fixes": [
+    "Rapid Esc presses are no longer swallowed by a stale cancel reset",
+    "Project-local MCP config loads from the session working directory instead of the server's",
+    "Reasoning effort picked in the model picker is forwarded correctly in remote sessions",
+    "Real-world network outage errors are retried as transient instead of failing the turn",
+    "Stream stall detection now works across all providers, not just one",
+    "Scrolling no longer flips the scrollbar layout or causes flicker during overscroll",
+    "Webfetch URLs and search queries survive display compaction",
+    "Swarm spinners keep animating while the coordinator processes without streaming",
+    "The pinned diagram pane is capped so it never crushes the transcript",
+    "/rewind N now matches the numbered transcript entries shown in the TUI",
+    "Fixed border shear from ambiguous-width glyphs in info widgets"
+  ]
+}
