@@ -435,6 +435,36 @@ opt-level = 3
 opt-level = 3
 [profile.test.package.tract-data]
 opt-level = 3
+[profile.dev.package.tract-hir]
+opt-level = 3
+[profile.selfdev.package.tract-hir]
+opt-level = 3
+[profile.test.package.tract-hir]
+opt-level = 3
+[profile.dev.package.tract-onnx]
+opt-level = 3
+[profile.selfdev.package.tract-onnx]
+opt-level = 3
+[profile.test.package.tract-onnx]
+opt-level = 3
+[profile.dev.package.tract-onnx-opl]
+opt-level = 3
+[profile.selfdev.package.tract-onnx-opl]
+opt-level = 3
+[profile.test.package.tract-onnx-opl]
+opt-level = 3
+[profile.dev.package.tract-nnef]
+opt-level = 3
+[profile.selfdev.package.tract-nnef]
+opt-level = 3
+[profile.test.package.tract-nnef]
+opt-level = 3
+[profile.dev.package.ndarray]
+opt-level = 3
+[profile.selfdev.package.ndarray]
+opt-level = 3
+[profile.test.package.ndarray]
+opt-level = 3
 [profile.dev.package.tokenizers]
 opt-level = 3
 [profile.selfdev.package.tokenizers]
