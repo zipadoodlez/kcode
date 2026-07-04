@@ -85,6 +85,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
         (
@@ -108,6 +109,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
     ])));
@@ -245,6 +247,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
         (
@@ -268,6 +271,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
     ])));
@@ -394,6 +398,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
         (
@@ -417,6 +422,7 @@ async fn comm_list_includes_member_status_and_detail() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
     ])));
@@ -498,6 +504,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
         (
@@ -521,6 +528,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
     ])));
@@ -629,6 +637,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
         (
@@ -652,6 +661,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
         (
@@ -675,6 +685,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                task_label: None,
             },
         ),
     ])));
@@ -726,4 +737,155 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
         }
         other => panic!("unexpected client event: {:?}", other),
     }
+}
+
+/// Broadcasts are subtree-scoped: a non-coordinator sender reaches only the
+/// agents it (transitively) spawned, never unrelated peers, while a
+/// coordinator retains whole-swarm reach.
+#[tokio::test]
+async fn comm_broadcast_reaches_only_senders_spawned_subtree() {
+    fn member(
+        session_id: &str,
+        role: &str,
+        report_back_to: Option<&str>,
+        swarm_id: &str,
+    ) -> (SwarmMember, mpsc::UnboundedReceiver<ServerEvent>) {
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        (
+            SwarmMember {
+                session_id: session_id.to_string(),
+                event_tx,
+                event_txs: HashMap::new(),
+                working_dir: None,
+                swarm_id: Some(swarm_id.to_string()),
+                swarm_enabled: true,
+                status: "ready".to_string(),
+                detail: None,
+                friendly_name: Some(session_id.to_string()),
+                report_back_to_session_id: report_back_to.map(str::to_string),
+                latest_completion_report: None,
+                role: role.to_string(),
+                joined_at: Instant::now(),
+                last_status_change: Instant::now(),
+                is_headless: true,
+                output_tail: None,
+                todo_progress: None,
+                todo_items: Vec::new(),
+                task_label: None,
+            },
+            event_rx,
+        )
+    }
+
+    let swarm_id = "swarm-subtree";
+    // Tree: coord (coordinator, root)
+    //       sender (root peer) -> child -> grandchild
+    //       outsider (root peer, unrelated)
+    let (coord, mut coord_rx) = member("coord", "coordinator", None, swarm_id);
+    let (sender, _sender_rx) = member("sender", "agent", None, swarm_id);
+    let (child, mut child_rx) = member("child", "agent", Some("sender"), swarm_id);
+    let (grandchild, mut grandchild_rx) = member("grandchild", "agent", Some("child"), swarm_id);
+    let (outsider, mut outsider_rx) = member("outsider", "agent", None, swarm_id);
+
+    let swarm_members = Arc::new(RwLock::new(HashMap::from([
+        ("coord".to_string(), coord),
+        ("sender".to_string(), sender),
+        ("child".to_string(), child),
+        ("grandchild".to_string(), grandchild),
+        ("outsider".to_string(), outsider),
+    ])));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+        swarm_id.to_string(),
+        HashSet::from([
+            "coord".to_string(),
+            "sender".to_string(),
+            "child".to_string(),
+            "grandchild".to_string(),
+            "outsider".to_string(),
+        ]),
+    )])));
+    let sessions = Arc::new(RwLock::new(HashMap::new()));
+    let soft_interrupt_queues: SessionInterruptQueues = Arc::new(RwLock::new(HashMap::new()));
+    let channel_subscriptions = Arc::new(RwLock::new(HashMap::new()));
+    let event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>> =
+        Arc::new(RwLock::new(std::collections::VecDeque::new()));
+    let event_counter = Arc::new(AtomicU64::new(0));
+    let (swarm_event_tx, _) = broadcast::channel(16);
+    let client_connections = Arc::new(RwLock::new(HashMap::new()));
+    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
+
+    handle_comm_message(
+        1,
+        "sender".to_string(),
+        "subtree update".to_string(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &client_event_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &swarm_members,
+        &swarms_by_id,
+        &channel_subscriptions,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &client_connections,
+    )
+    .await;
+
+    match client_event_rx.recv().await.expect("done event") {
+        ServerEvent::Done { id } => assert_eq!(id, 1),
+        other => panic!("unexpected client event: {:?}", other),
+    }
+
+    // Direct child and transitive grandchild both receive the broadcast.
+    assert!(matches!(
+        child_rx.try_recv(),
+        Ok(ServerEvent::Notification { .. })
+    ));
+    assert!(matches!(
+        grandchild_rx.try_recv(),
+        Ok(ServerEvent::Notification { .. })
+    ));
+    // Unrelated root peers and the coordinator do not.
+    assert!(outsider_rx.try_recv().is_err());
+    assert!(coord_rx.try_recv().is_err());
+
+    // Coordinator broadcast still reaches the whole swarm.
+    handle_comm_message(
+        2,
+        "coord".to_string(),
+        "swarm-wide notice".to_string(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        &client_event_tx,
+        &sessions,
+        &soft_interrupt_queues,
+        &swarm_members,
+        &swarms_by_id,
+        &channel_subscriptions,
+        &event_history,
+        &event_counter,
+        &swarm_event_tx,
+        &client_connections,
+    )
+    .await;
+    match client_event_rx.recv().await.expect("done event") {
+        ServerEvent::Done { id } => assert_eq!(id, 2),
+        other => panic!("unexpected client event: {:?}", other),
+    }
+    assert!(matches!(
+        outsider_rx.try_recv(),
+        Ok(ServerEvent::Notification { .. })
+    ));
+    assert!(matches!(
+        child_rx.try_recv(),
+        Ok(ServerEvent::Notification { .. })
+    ));
 }
