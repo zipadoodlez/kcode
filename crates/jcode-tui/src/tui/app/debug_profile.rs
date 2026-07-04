@@ -672,11 +672,7 @@ fn build_debug_summary(payload: &serde_json::Value) -> serde_json::Value {
     let total_app_owned_estimate_bytes: usize = buckets.iter().map(|(_, value)| *value).sum();
     let unattributed_process_pss_bytes =
         process_pss_bytes.saturating_sub(total_app_owned_estimate_bytes);
-    let coverage_ratio = if process_pss_bytes == 0 {
-        0.0
-    } else {
-        total_app_owned_estimate_bytes as f64 / process_pss_bytes as f64
-    };
+    let app_owned_coverage_ratio = ratio(total_app_owned_estimate_bytes, process_pss_bytes);
 
     // Explain the unattributed remainder with allocator-level stats: split it
     // into heap the app still holds (unlabeled live) vs freed-but-retained
@@ -702,18 +698,78 @@ fn build_debug_summary(payload: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::Null
     };
 
+    // Process-level buckets that app-owned estimators can never see: freed
+    // heap the allocator retains, file-backed mappings (binary text/rodata),
+    // thread stacks, and shmem. Together with the app-owned estimates these
+    // explain most of PSS, so the coverage ratio measures estimator quality
+    // instead of allocator behavior.
+    let pss_anon_bytes = nested_opt_u64(payload, &["process", "os", "pss_anon_bytes"])
+        .or_else(|| nested_opt_u64(payload, &["process", "os", "rss_anon_bytes"]));
+    let allocator_retained_estimate_bytes =
+        crate::runtime_memory_log::allocator_retained_resident_estimate(
+            nested_opt_u64(
+                payload,
+                &["process", "allocator", "stats", "retained_bytes"],
+            ),
+            nested_opt_u64(
+                payload,
+                &["process", "allocator", "stats", "allocated_bytes"],
+            ),
+            pss_anon_bytes,
+        )
+        .unwrap_or(0) as usize;
+    let thread_stack_estimate_bytes = crate::runtime_memory_log::thread_stack_estimate(
+        nested_opt_u64(payload, &["process", "thread_count"]),
+        nested_opt_u64(payload, &["process", "main_stack_bytes"]),
+    )
+    .unwrap_or(0) as usize;
+    let file_backed_pss_bytes = nested_usize(payload, &["process", "os", "pss_file_bytes"]);
+    let shmem_pss_bytes = nested_usize(payload, &["process", "os", "pss_shmem_bytes"]);
+    let mut process_buckets = vec![
+        (
+            "allocator_retained_estimate_bytes",
+            allocator_retained_estimate_bytes,
+        ),
+        ("file_backed_pss_bytes", file_backed_pss_bytes),
+        ("thread_stack_estimate_bytes", thread_stack_estimate_bytes),
+        ("shmem_pss_bytes", shmem_pss_bytes),
+    ];
+    process_buckets.retain(|(_, value)| *value > 0);
+    process_buckets.sort_by(|left, right| right.1.cmp(&left.1));
+    let total_process_bucket_bytes: usize = process_buckets.iter().map(|(_, value)| *value).sum();
+    let total_explained_bytes = process_pss_bytes
+        .min(total_app_owned_estimate_bytes.saturating_add(total_process_bucket_bytes));
+    let coverage_ratio = ratio(total_explained_bytes, process_pss_bytes);
+    let live_heap_coverage_ratio = ratio(total_app_owned_estimate_bytes, allocator_live_bytes);
+
     serde_json::json!({
         "process_pss_bytes": process_pss_bytes,
         "total_app_owned_estimate_bytes": total_app_owned_estimate_bytes,
         "unattributed_process_pss_bytes": unattributed_process_pss_bytes,
+        "total_explained_bytes": total_explained_bytes,
+        "unexplained_process_pss_bytes": process_pss_bytes.saturating_sub(total_explained_bytes),
         "coverage_ratio": coverage_ratio,
+        "app_owned_coverage_ratio": app_owned_coverage_ratio,
+        "live_heap_coverage_ratio": live_heap_coverage_ratio,
         "allocator_breakdown": allocator_breakdown,
+        "process_buckets": process_buckets
+            .into_iter()
+            .map(|(name, bytes)| serde_json::json!({"name": name, "bytes": bytes}))
+            .collect::<Vec<_>>(),
         "top_buckets": buckets
             .into_iter()
             .take(16)
             .map(|(name, bytes)| serde_json::json!({"name": name, "bytes": bytes}))
             .collect::<Vec<_>>(),
     })
+}
+
+fn ratio(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
 }
 
 fn estimate_pending_remote_message_bytes(value: &PendingRemoteMessage) -> usize {
@@ -766,4 +822,88 @@ fn nested_usize(value: &serde_json::Value, path: &[&str]) -> usize {
         .as_u64()
         .and_then(|value| usize::try_from(value).ok())
         .unwrap_or(0)
+}
+
+/// Like [`nested_usize`] but preserves absence, for estimators that need to
+/// distinguish "missing" from zero.
+fn nested_opt_u64(value: &serde_json::Value, path: &[&str]) -> Option<u64> {
+    let mut cursor = value;
+    for key in path {
+        cursor = cursor.get(*key)?;
+    }
+    cursor.as_u64()
+}
+
+#[cfg(test)]
+mod debug_summary_tests {
+    use super::build_debug_summary;
+
+    #[test]
+    fn summary_explains_pss_with_process_buckets() {
+        // Numbers mirror a real client capture: 146MB PSS with 22MB live heap,
+        // 110MB allocator retention, 11MB file-backed PSS, 10 threads.
+        let mb = 1024 * 1024_u64;
+        let payload = serde_json::json!({
+            "process": {
+                "thread_count": 10,
+                "main_stack_bytes": 132 * 1024,
+                "os": {
+                    "pss_bytes": 146 * mb,
+                    "pss_anon_bytes": 127 * mb,
+                    "pss_file_bytes": 11 * mb,
+                    "pss_shmem_bytes": 0,
+                },
+                "allocator": {
+                    "stats": {
+                        "allocated_bytes": 22 * mb,
+                        "retained_bytes": 110 * mb,
+                    },
+                },
+            },
+            "session": { "totals": { "json_bytes": 5 * mb } },
+        });
+
+        let summary = build_debug_summary(&payload);
+
+        assert_eq!(summary["process_pss_bytes"], 146 * mb);
+        assert_eq!(summary["total_app_owned_estimate_bytes"], 5 * mb);
+        // Retention capped at pss_anon - allocated = 105MB.
+        let process_buckets = summary["process_buckets"].as_array().unwrap();
+        assert_eq!(
+            process_buckets[0]["name"],
+            "allocator_retained_estimate_bytes"
+        );
+        assert_eq!(process_buckets[0]["bytes"], 105 * mb);
+        assert_eq!(process_buckets[1]["name"], "file_backed_pss_bytes");
+        assert_eq!(process_buckets[1]["bytes"], 11 * mb);
+        // Explained = 5 (app) + 105 (retained) + 11 (file) + ~0.7MB stacks.
+        let explained = summary["total_explained_bytes"].as_u64().unwrap();
+        assert!(explained >= 121 * mb, "explained={explained}");
+        let coverage = summary["coverage_ratio"].as_f64().unwrap();
+        assert!(coverage > 0.8, "coverage_ratio={coverage}");
+        let app_owned = summary["app_owned_coverage_ratio"].as_f64().unwrap();
+        assert!(app_owned < 0.05, "app_owned_coverage_ratio={app_owned}");
+        // Live-heap coverage: 5MB attributed of 22MB live heap.
+        let live = summary["live_heap_coverage_ratio"].as_f64().unwrap();
+        assert!(
+            (live - 5.0 / 22.0).abs() < 0.01,
+            "live_heap_coverage_ratio={live}"
+        );
+    }
+
+    #[test]
+    fn summary_coverage_never_exceeds_one() {
+        // Overlapping estimates (app-owned + retention) must clamp at PSS.
+        let payload = serde_json::json!({
+            "process": {
+                "os": { "pss_bytes": 100_u64, "pss_anon_bytes": 100_u64, "pss_file_bytes": 50_u64 },
+                "allocator": { "stats": { "allocated_bytes": 10_u64, "retained_bytes": 90_u64 } },
+            },
+            "session": { "totals": { "json_bytes": 80_u64 } },
+        });
+        let summary = build_debug_summary(&payload);
+        assert_eq!(summary["total_explained_bytes"], 100);
+        assert_eq!(summary["coverage_ratio"].as_f64().unwrap(), 1.0);
+        assert_eq!(summary["unexplained_process_pss_bytes"], 0);
+    }
 }

@@ -33,6 +33,13 @@ pub struct ProcessMemorySnapshot {
     pub rss_bytes: Option<u64>,
     pub peak_rss_bytes: Option<u64>,
     pub virtual_bytes: Option<u64>,
+    /// Number of OS threads (`Threads:` in `/proc/self/status`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_count: Option<u64>,
+    /// Main thread stack size (`VmStk:` in `/proc/self/status`). Auxiliary
+    /// thread stacks live in anonymous mappings and are not included here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main_stack_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub os: Option<OsProcessMemoryInfo>,
     pub allocator: AllocatorInfo,
@@ -41,6 +48,22 @@ pub struct ProcessMemorySnapshot {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct OsProcessMemoryInfo {
     pub pss_bytes: Option<u64>,
+    /// Proportional set size of anonymous mappings (`Pss_Anon:` in
+    /// smaps_rollup): heap + thread stacks + other private anon memory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pss_anon_bytes: Option<u64>,
+    /// Proportional set size of file-backed mappings (`Pss_File:`): mostly
+    /// the executable text/rodata and shared libraries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pss_file_bytes: Option<u64>,
+    /// Proportional set size of shmem mappings (`Pss_Shmem:`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pss_shmem_bytes: Option<u64>,
+    /// Bytes backed by transparent huge pages (`AnonHugePages:`); a subset of
+    /// anon memory that amplifies allocator retention (one live allocation
+    /// pins a whole 2MB page).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anon_huge_pages_bytes: Option<u64>,
     pub rss_anon_bytes: Option<u64>,
     pub rss_file_bytes: Option<u64>,
     pub rss_shmem_bytes: Option<u64>,
@@ -138,6 +161,8 @@ pub fn snapshot_with_source(source: impl Into<String>) -> ProcessMemorySnapshot 
         rss_bytes: parse_proc_status_value_bytes(&status, "VmRSS:"),
         peak_rss_bytes: parse_proc_status_value_bytes(&status, "VmHWM:"),
         virtual_bytes: parse_proc_status_value_bytes(&status, "VmSize:"),
+        thread_count: parse_proc_status_count(&status, "Threads:"),
+        main_stack_bytes: parse_proc_status_value_bytes(&status, "VmStk:"),
         os: read_linux_memory_info(&status),
         allocator: allocator_info(),
     };
@@ -471,6 +496,18 @@ fn read_linux_memory_info(status: &str) -> Option<OsProcessMemoryInfo> {
         pss_bytes: smaps
             .as_deref()
             .and_then(|text| parse_proc_value_bytes(text, "Pss:")),
+        pss_anon_bytes: smaps
+            .as_deref()
+            .and_then(|text| parse_proc_value_bytes(text, "Pss_Anon:")),
+        pss_file_bytes: smaps
+            .as_deref()
+            .and_then(|text| parse_proc_value_bytes(text, "Pss_File:")),
+        pss_shmem_bytes: smaps
+            .as_deref()
+            .and_then(|text| parse_proc_value_bytes(text, "Pss_Shmem:")),
+        anon_huge_pages_bytes: smaps
+            .as_deref()
+            .and_then(|text| parse_proc_value_bytes(text, "AnonHugePages:")),
         rss_anon_bytes: parse_proc_status_value_bytes(status, "RssAnon:"),
         rss_file_bytes: parse_proc_status_value_bytes(status, "RssFile:"),
         rss_shmem_bytes: parse_proc_status_value_bytes(status, "RssShmem:"),
@@ -659,6 +696,15 @@ fn parse_proc_status_value_bytes(status: &str, key: &str) -> Option<u64> {
     parse_proc_value_bytes(status, key)
 }
 
+/// Parse a unit-less `/proc` counter such as `Threads:\t10`.
+#[cfg(target_os = "linux")]
+fn parse_proc_status_count(status: &str, key: &str) -> Option<u64> {
+    status.lines().find_map(|line| {
+        let rest = line.trim_start().strip_prefix(key)?;
+        rest.split_whitespace().next()?.parse::<u64>().ok()
+    })
+}
+
 #[cfg(target_os = "linux")]
 fn parse_proc_value_bytes(status: &str, key: &str) -> Option<u64> {
     status.lines().find_map(|line| {
@@ -752,6 +798,39 @@ mod tests {
         assert_eq!(
             parse_proc_value_bytes(text, "Retained:"),
             Some(1024 * 1024 * 1024)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn parse_proc_status_count_reads_unitless_counters() {
+        let text = "Name:\tjcode\nThreads:\t10\nVmStk:\t     132 kB\n";
+        assert_eq!(parse_proc_status_count(text, "Threads:"), Some(10));
+        assert_eq!(parse_proc_status_count(text, "Missing:"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn snapshot_populates_thread_and_stack_and_pss_split_fields() {
+        let snapshot = snapshot_with_source("unit_test_coverage_fields");
+        assert!(
+            snapshot.thread_count.unwrap_or(0) >= 1,
+            "a live process has at least one thread"
+        );
+        assert!(
+            snapshot.main_stack_bytes.unwrap_or(0) > 0,
+            "main stack should be nonzero"
+        );
+        let os = snapshot.os.expect("linux os info");
+        // smaps_rollup reports Pss_Anon/Pss_File on kernels >= 4.14; both
+        // should be present and their sum should not exceed total PSS by more
+        // than rounding.
+        let pss = os.pss_bytes.expect("pss");
+        let anon = os.pss_anon_bytes.expect("pss_anon");
+        let file = os.pss_file_bytes.expect("pss_file");
+        assert!(
+            anon + file <= pss + 2 * 1024 * 1024,
+            "pss split should be consistent"
         );
     }
 }

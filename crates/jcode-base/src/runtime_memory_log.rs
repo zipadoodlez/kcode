@@ -162,10 +162,22 @@ pub struct ServerRuntimeMemoryProcessDiagnostics {
     pub allocator_resident_minus_active_bytes: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allocator_retained_bytes: Option<u64>,
+    /// Allocator retention capped to what can actually be resident: freed
+    /// heap the allocator still holds, bounded by anonymous PSS minus live
+    /// allocations. This is the "freed-but-held" share of process memory
+    /// that attribution estimators can never see.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allocator_retained_resident_estimate_bytes: Option<u64>,
+    /// Main thread stack plus a fixed per-thread resident estimate for
+    /// auxiliary thread stacks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_stack_estimate_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rss_minus_allocator_resident_bytes: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pss_minus_allocator_allocated_bytes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pss_anon_minus_allocator_allocated_bytes: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -684,14 +696,59 @@ pub fn build_process_diagnostics(
     let active_bytes = allocator_stats.and_then(|stats| stats.active_bytes);
     let resident_bytes = allocator_stats.and_then(|stats| stats.resident_bytes);
     let retained_bytes = allocator_stats.and_then(|stats| stats.retained_bytes);
+    let pss_anon_bytes = process
+        .os
+        .as_ref()
+        .and_then(|os| os.pss_anon_bytes.or(os.rss_anon_bytes));
 
     ServerRuntimeMemoryProcessDiagnostics {
         allocator_active_minus_allocated_bytes: delta_i64(active_bytes, allocated_bytes),
         allocator_resident_minus_active_bytes: delta_i64(resident_bytes, active_bytes),
         allocator_retained_bytes: retained_bytes,
+        allocator_retained_resident_estimate_bytes: allocator_retained_resident_estimate(
+            retained_bytes,
+            allocated_bytes,
+            pss_anon_bytes,
+        ),
+        thread_stack_estimate_bytes: thread_stack_estimate(
+            process.thread_count,
+            process.main_stack_bytes,
+        ),
         rss_minus_allocator_resident_bytes: delta_i64(rss_bytes, resident_bytes),
         pss_minus_allocator_allocated_bytes: delta_i64(pss_bytes, allocated_bytes),
+        pss_anon_minus_allocator_allocated_bytes: delta_i64(pss_anon_bytes, allocated_bytes),
     }
+}
+
+/// Estimate the resident share of allocator retention (freed-but-held heap).
+///
+/// mallinfo2's `fordblks` (retained) counts free chunks whether or not their
+/// pages are resident, so cap it by anonymous PSS minus live allocations,
+/// which is the most anon memory that could be freed-but-held.
+pub fn allocator_retained_resident_estimate(
+    retained_bytes: Option<u64>,
+    allocated_bytes: Option<u64>,
+    pss_anon_bytes: Option<u64>,
+) -> Option<u64> {
+    let retained = retained_bytes?;
+    match (pss_anon_bytes, allocated_bytes) {
+        (Some(pss_anon), Some(allocated)) => Some(retained.min(pss_anon.saturating_sub(allocated))),
+        _ => Some(retained),
+    }
+}
+
+/// Resident bytes assumed per auxiliary thread stack. Aux stacks reserve
+/// megabytes of virtual space but typically touch only a few pages (~0.6MB
+/// resident across 9 threads was measured on a live client).
+const AUX_THREAD_STACK_RESIDENT_ESTIMATE_BYTES: u64 = 64 * 1024;
+
+pub fn thread_stack_estimate(
+    thread_count: Option<u64>,
+    main_stack_bytes: Option<u64>,
+) -> Option<u64> {
+    let main_stack = main_stack_bytes?;
+    let aux_threads = thread_count.unwrap_or(1).saturating_sub(1);
+    Some(main_stack.saturating_add(aux_threads * AUX_THREAD_STACK_RESIDENT_ESTIMATE_BYTES))
 }
 
 fn env_u64(name: &str) -> Option<u64> {

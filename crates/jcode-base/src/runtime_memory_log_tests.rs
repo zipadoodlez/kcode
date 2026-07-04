@@ -203,3 +203,103 @@ fn controller_defers_attribution_until_min_spacing() {
             .is_some()
     );
 }
+
+#[test]
+fn allocator_retained_resident_estimate_caps_by_anon_pss_minus_live() {
+    // Retained larger than resident anon minus live: cap wins.
+    assert_eq!(
+        allocator_retained_resident_estimate(
+            Some(110 * 1024 * 1024),
+            Some(22 * 1024 * 1024),
+            Some(127 * 1024 * 1024),
+        ),
+        Some(105 * 1024 * 1024)
+    );
+    // Retained smaller than the cap: retained wins.
+    assert_eq!(
+        allocator_retained_resident_estimate(Some(10), Some(5), Some(100)),
+        Some(10)
+    );
+    // No PSS info: fall back to raw retained.
+    assert_eq!(
+        allocator_retained_resident_estimate(Some(42), None, None),
+        Some(42)
+    );
+    // No retained stat: absent, not zero.
+    assert_eq!(
+        allocator_retained_resident_estimate(None, Some(5), Some(100)),
+        None
+    );
+    // Live exceeding anon PSS must not underflow.
+    assert_eq!(
+        allocator_retained_resident_estimate(Some(50), Some(200), Some(100)),
+        Some(0)
+    );
+}
+
+#[test]
+fn thread_stack_estimate_adds_fixed_cost_per_aux_thread() {
+    let main_stack = 132 * 1024_u64;
+    // 10 threads: main stack + 9 aux stacks at 64KiB each.
+    assert_eq!(
+        thread_stack_estimate(Some(10), Some(main_stack)),
+        Some(main_stack + 9 * 64 * 1024)
+    );
+    // Single-threaded: just the main stack.
+    assert_eq!(
+        thread_stack_estimate(Some(1), Some(main_stack)),
+        Some(main_stack)
+    );
+    // Unknown thread count: assume single-threaded.
+    assert_eq!(
+        thread_stack_estimate(None, Some(main_stack)),
+        Some(main_stack)
+    );
+    // No stack info: absent.
+    assert_eq!(thread_stack_estimate(Some(4), None), None);
+}
+
+#[test]
+fn build_process_diagnostics_populates_coverage_estimates() {
+    let process = crate::process_memory::ProcessMemorySnapshot {
+        rss_bytes: Some(231 * 1024 * 1024),
+        peak_rss_bytes: None,
+        virtual_bytes: None,
+        thread_count: Some(10),
+        main_stack_bytes: Some(132 * 1024),
+        os: Some(crate::process_memory::OsProcessMemoryInfo {
+            pss_bytes: Some(146 * 1024 * 1024),
+            pss_anon_bytes: Some(127 * 1024 * 1024),
+            pss_file_bytes: Some(11 * 1024 * 1024),
+            pss_shmem_bytes: Some(0),
+            anon_huge_pages_bytes: Some(30 * 1024 * 1024),
+            rss_anon_bytes: Some(140 * 1024 * 1024),
+            ..Default::default()
+        }),
+        allocator: crate::process_memory::AllocatorInfo {
+            name: "system",
+            stats_available: true,
+            stats: Some(crate::process_memory::AllocatorStats {
+                allocated_bytes: Some(22 * 1024 * 1024),
+                retained_bytes: Some(110 * 1024 * 1024),
+                ..Default::default()
+            }),
+            tuning: None,
+            profiling: None,
+        },
+    };
+
+    let diagnostics = build_process_diagnostics(&process);
+    assert_eq!(
+        diagnostics.allocator_retained_resident_estimate_bytes,
+        Some(105 * 1024 * 1024)
+    );
+    assert_eq!(
+        diagnostics.thread_stack_estimate_bytes,
+        Some(132 * 1024 + 9 * 64 * 1024)
+    );
+    assert_eq!(
+        diagnostics.pss_anon_minus_allocator_allocated_bytes,
+        Some((127 - 22) * 1024 * 1024)
+    );
+}
