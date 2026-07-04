@@ -1078,13 +1078,22 @@ impl App {
 
     /// Get command suggestions based on current input
     pub fn command_suggestions(&self) -> Vec<(String, &'static str)> {
-        if self
-            .inline_interactive_state
-            .as_ref()
-            .is_some_and(|picker| picker.preview && picker.kind == crate::tui::PickerKind::Model)
+        // While an inline picker preview is open for the command being typed,
+        // the picker itself is the suggestion surface. Rendering the textual
+        // suggestion list underneath would duplicate it (and its rows are not
+        // arrow-navigable anyway, since the preview claims Up/Down first).
+        if let Some(picker) = self.inline_interactive_state.as_ref()
+            && picker.preview
         {
             let input = self.input.trim_start();
-            if input.starts_with("/model") || input.starts_with("/models") {
+            let suppress = match picker.kind {
+                crate::tui::PickerKind::Model => {
+                    input.starts_with("/model") || input.starts_with("/models")
+                }
+                crate::tui::PickerKind::Login => input.starts_with("/login"),
+                _ => false,
+            };
+            if suppress {
                 return Vec::new();
             }
         }
@@ -1164,6 +1173,7 @@ impl App {
         self.cursor_pos = self.input.len();
         self.tab_completion_state = None;
         self.command_suggestion_selected = 0;
+        self.sync_model_picker_preview_from_input();
         true
     }
 

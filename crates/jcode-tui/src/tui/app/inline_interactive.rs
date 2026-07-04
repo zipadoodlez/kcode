@@ -1637,6 +1637,20 @@ impl App {
                         self.cursor_pos = 0;
                         return Ok(true);
                     }
+                    // `/login` + immediate Enter should not silently launch the
+                    // first provider's login flow. Without a filter or an
+                    // explicit selection there is no clear user choice yet, so
+                    // activate the picker and let them pick deliberately.
+                    if picker.kind == PickerKind::Login
+                        && picker.filter.is_empty()
+                        && picker.selected == 0
+                    {
+                        picker.preview = false;
+                        picker.column = 0;
+                        self.input.clear();
+                        self.cursor_pos = 0;
+                        return Ok(true);
+                    }
                     picker.preview = false;
                     if picker.kind == PickerKind::Usage {
                         picker.column = 0;

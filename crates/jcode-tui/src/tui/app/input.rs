@@ -674,9 +674,38 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
         return;
     }
 
+    let at_end = app.cursor_pos == app.input.len();
+
+    // A habitual space typed right after `/login ` (auto-inserted below)
+    // would only add noise; swallow it so `/login` + space + filter still
+    // produces a single separator.
+    if text == " " && at_end && app.input.trim_start() == "/login " {
+        return;
+    }
+
     app.remember_input_undo_state();
+
+    // After `/login` is fully typed (or tab-completed without a trailing
+    // space), the next printable character starts the provider filter;
+    // insert the separating space so it filters the login picker instead of
+    // producing `/loginzai` and closing the preview.
+    if at_end && app.input.trim_start() == "/login" && !text.starts_with(char::is_whitespace) {
+        app.input.push(' ');
+        app.cursor_pos = app.input.len();
+    }
+
     app.input.insert_str(app.cursor_pos, text);
     app.cursor_pos += text.len();
+
+    // Typing the final char of `/login` immediately arms provider filtering:
+    // insert the separating space so the very next keystrokes filter the
+    // login picker. Without this, users press Enter without realizing they
+    // can filter first.
+    if app.cursor_pos == app.input.len() && app.input.trim_start() == "/login" {
+        app.input.push(' ');
+        app.cursor_pos = app.input.len();
+    }
+
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
 }

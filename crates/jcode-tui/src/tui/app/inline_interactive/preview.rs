@@ -173,6 +173,24 @@ impl App {
             self.cursor_pos = 0;
             return true;
         }
+        // `/login` + immediate Enter must not silently start the first
+        // provider's login flow. With no filter and no explicit selection,
+        // just focus the picker so the user chooses deliberately.
+        if self
+            .inline_interactive_state
+            .as_ref()
+            .map(|picker| {
+                picker.kind == PickerKind::Login && picker.filter.is_empty() && picker.selected == 0
+            })
+            .unwrap_or(false)
+        {
+            if let Some(ref mut picker) = self.inline_interactive_state {
+                picker.column = 0;
+            }
+            self.input.clear();
+            self.cursor_pos = 0;
+            return true;
+        }
         self.input.clear();
         self.cursor_pos = 0;
         let _ = self.handle_inline_interactive_key(KeyCode::Enter, KeyModifiers::NONE);
