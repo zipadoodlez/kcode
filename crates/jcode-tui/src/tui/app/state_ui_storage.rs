@@ -211,6 +211,72 @@ fn compact_tool_input_for_display(name: &str, input: &serde_json::Value) -> serd
                     .unwrap_or(serde_json::Value::Null),
             ),
         ]),
+        // Swarm rows: keep the action and routing fields so the transcript
+        // summary ("spawn '...'", "dm → worker-1", ...) survives compaction.
+        "swarm" => obj(vec![
+            (
+                "action",
+                input
+                    .get("action")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "to_session",
+                input
+                    .get("to_session")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "target_session",
+                input
+                    .get("target_session")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "channel",
+                input
+                    .get("channel")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "working_dir",
+                input
+                    .get("working_dir")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "task_id",
+                input
+                    .get("task_id")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "prompt",
+                input
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 160).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "message",
+                input
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 160).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+        ]),
         "batch" => {
             let tool_calls = input
                 .get("tool_calls")
@@ -382,5 +448,54 @@ mod tests {
         compact_display_message_tool_data(&mut message);
         let tool = message.tool_data.expect("tool data");
         assert_eq!(tool.intent.as_deref(), Some("Check release notes"));
+    }
+
+    #[test]
+    fn compaction_keeps_swarm_action_and_intent_for_transcript_summary() {
+        let mut message = tool_message(
+            "swarm",
+            serde_json::json!({
+                "intent": "Spin up a parser-fix worker",
+                "action": "spawn",
+                "prompt": "Fix the parser bug in crates/parser and add tests",
+                "spawn_mode": "inline"
+            }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        assert_eq!(tool.intent.as_deref(), Some("Spin up a parser-fix worker"));
+        assert_eq!(
+            tool.input.get("action").and_then(|v| v.as_str()),
+            Some("spawn")
+        );
+        let summary = crate::tui::ui::tools_ui::get_tool_summary(&tool);
+        assert!(
+            summary.contains("spawn"),
+            "summary should surface the swarm action: {summary:?}"
+        );
+        assert!(
+            summary.contains("Fix the parser bug"),
+            "summary should keep the spawn prompt: {summary:?}"
+        );
+    }
+
+    #[test]
+    fn compaction_keeps_swarm_dm_target_for_transcript_summary() {
+        let mut message = tool_message(
+            "swarm",
+            serde_json::json!({
+                "action": "dm",
+                "to_session": "worker-1",
+                "message": "status update please",
+                "delivery": "notify"
+            }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        let summary = crate::tui::ui::tools_ui::get_tool_summary(&tool);
+        assert!(
+            summary.contains("dm") && summary.contains("worker-1"),
+            "summary should keep the dm target: {summary:?}"
+        );
     }
 }

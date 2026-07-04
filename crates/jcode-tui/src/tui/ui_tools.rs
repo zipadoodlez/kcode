@@ -807,6 +807,26 @@ pub(crate) fn get_tool_summary(tool: &ToolCall) -> String {
     get_tool_summary_with_budget(tool, 50, None)
 }
 
+/// Detail text for the live activity line while a tool is running. Prefers the
+/// model-provided `intent` (display-only description of why the call is being
+/// made) and appends the technical summary when it adds information.
+pub(crate) fn get_tool_activity_detail(tool: &ToolCall) -> String {
+    let summary = get_tool_summary(tool);
+    let intent = tool
+        .intent
+        .as_deref()
+        .or_else(|| tool.input.get("intent").and_then(|value| value.as_str()))
+        .map(str::trim)
+        .filter(|intent| !intent.is_empty());
+    match intent {
+        Some(intent) if !summary.is_empty() && summary != intent => {
+            format!("{} · {}", intent, summary)
+        }
+        Some(intent) => intent.to_string(),
+        None => summary,
+    }
+}
+
 pub(super) fn get_tool_summary_with_budget(
     tool: &ToolCall,
     bash_max_chars: usize,

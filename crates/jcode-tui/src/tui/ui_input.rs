@@ -1,5 +1,5 @@
 use super::inline_interactive_ui::format_elapsed;
-use super::tools_ui::{get_tool_summary, summarize_batch_running_tools_compact};
+use super::tools_ui::{get_tool_activity_detail, summarize_batch_running_tools_compact};
 use super::visual_debug::{self, FrameCaptureBuilder};
 use super::{
     ProcessingStatus, TuiState, accent_color, ai_color, animated_tool_color, asap_color, dim_color,
@@ -829,7 +829,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 } else {
                     app.streaming_tool_calls()
                         .last()
-                        .map(get_tool_summary)
+                        .map(get_tool_activity_detail)
                         .filter(|s| !s.is_empty())
                 };
                 let experimental_notice = app.active_experimental_feature_notice();
