@@ -232,6 +232,310 @@ mod runtime_identity_tests {
     }
 }
 
+/// Fingerprint of the last fully-applied History payload for one client
+/// instance, so byte-identical bootstrap redeliveries can be dropped without
+/// rebuilding the display transcript.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AppliedHistoryFingerprint {
+    session_id: String,
+    fingerprint: u64,
+}
+
+/// Last fully-applied History payload fingerprint, keyed by
+/// `App::remote_client_instance_id`.
+///
+/// This is deliberately NOT stored on `RemoteConnection`: a reconnect builds a
+/// fresh connection (resetting `has_loaded_history`), and that reconnect
+/// re-bootstrap is exactly the duplicate full-payload delivery this state must
+/// survive to dedup. Keeping it module-local also keeps the dedup concern
+/// entirely inside the History handler. Entries are tiny (session id + u64);
+/// the map is bounded because many short-lived `App`s only exist in tests.
+static LAST_APPLIED_HISTORY: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, AppliedHistoryFingerprint>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn last_applied_history_fingerprint(instance_id: &str) -> Option<AppliedHistoryFingerprint> {
+    LAST_APPLIED_HISTORY
+        .lock()
+        .ok()
+        .and_then(|map| map.get(instance_id).cloned())
+}
+
+fn record_applied_history_fingerprint(instance_id: &str, session_id: &str, fingerprint: u64) {
+    if let Ok(mut map) = LAST_APPLIED_HISTORY.lock() {
+        // Bound growth from short-lived test/replay Apps; one entry per live
+        // client is the steady state, so clearing is harmless (worst case one
+        // extra full re-apply per client).
+        if !map.contains_key(instance_id) && map.len() >= 64 {
+            map.clear();
+        }
+        map.insert(
+            instance_id.to_string(),
+            AppliedHistoryFingerprint {
+                session_id: session_id.to_string(),
+                fingerprint,
+            },
+        );
+    }
+}
+
+/// Hash a JSON value structurally without serializing it to a string, so large
+/// tool inputs contribute to the fingerprint in one allocation-free pass.
+fn hash_json_value(value: &serde_json::Value, hasher: &mut impl std::hash::Hasher) {
+    use std::hash::Hash;
+    match value {
+        serde_json::Value::Null => 0u8.hash(hasher),
+        serde_json::Value::Bool(b) => {
+            1u8.hash(hasher);
+            b.hash(hasher);
+        }
+        serde_json::Value::Number(n) => {
+            2u8.hash(hasher);
+            n.to_string().hash(hasher);
+        }
+        serde_json::Value::String(s) => {
+            3u8.hash(hasher);
+            s.hash(hasher);
+        }
+        serde_json::Value::Array(items) => {
+            4u8.hash(hasher);
+            items.len().hash(hasher);
+            for item in items {
+                hash_json_value(item, hasher);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            5u8.hash(hasher);
+            map.len().hash(hasher);
+            for (key, item) in map {
+                key.hash(hasher);
+                hash_json_value(item, hasher);
+            }
+        }
+    }
+}
+
+/// Cheap structural fingerprint of a full History payload.
+///
+/// Reconnects, session-switch storms, and the history-recovery watchdog can
+/// redeliver the same multi-megabyte bootstrap payload within seconds.
+/// Re-applying it rebuilds the whole display transcript (~3-4x the wire size
+/// in transient arenas) for zero visible change. One pass over message bytes,
+/// no allocations proportional to payload size.
+fn history_payload_fingerprint(messages: &[crate::protocol::HistoryMessage]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    messages.len().hash(&mut hasher);
+    for message in messages {
+        message.role.hash(&mut hasher);
+        message.content.hash(&mut hasher);
+        match &message.tool_calls {
+            Some(calls) => {
+                calls.len().hash(&mut hasher);
+                for call in calls {
+                    call.hash(&mut hasher);
+                }
+            }
+            None => usize::MAX.hash(&mut hasher),
+        }
+        match &message.tool_data {
+            Some(tool) => {
+                1u8.hash(&mut hasher);
+                tool.id.hash(&mut hasher);
+                tool.name.hash(&mut hasher);
+                tool.intent.hash(&mut hasher);
+                tool.thought_signature.hash(&mut hasher);
+                hash_json_value(&tool.input, &mut hasher);
+            }
+            None => 0u8.hash(&mut hasher),
+        }
+    }
+    hasher.finish()
+}
+
+/// Pure skip decision for a full History payload: skip only when the session
+/// did not change, the display still has content to preserve, and the payload
+/// fingerprints identical to the one most recently applied for this session.
+/// Session switches and rewinds always re-apply (a rewind's truncated payload
+/// fingerprints differently, and a session switch flips `session_changed`).
+fn should_skip_identical_history_payload(
+    session_changed: bool,
+    display_is_empty: bool,
+    last_applied: Option<&AppliedHistoryFingerprint>,
+    session_id: &str,
+    fingerprint: u64,
+) -> bool {
+    !session_changed
+        && !display_is_empty
+        && last_applied
+            .is_some_and(|entry| entry.session_id == session_id && entry.fingerprint == fingerprint)
+}
+
+/// True when the incoming rendered-image set is (cheaply) identical to the
+/// already-retained set: same count and, per image, same data length plus
+/// equal cheap metadata. Image data is compared by length only so duplicate
+/// multi-megabyte base64 payloads are never traversed byte-by-byte.
+fn history_images_match_retained(
+    incoming: &[crate::session::RenderedImage],
+    retained: &[crate::session::RenderedImage],
+) -> bool {
+    incoming.len() == retained.len()
+        && incoming.iter().zip(retained.iter()).all(|(a, b)| {
+            a.data.len() == b.data.len()
+                && a.media_type == b.media_type
+                && a.label == b.label
+                && a.source == b.source
+                && a.anchor == b.anchor
+        })
+}
+
+#[cfg(test)]
+mod history_dedup_tests {
+    use super::{
+        AppliedHistoryFingerprint, history_images_match_retained, history_payload_fingerprint,
+        should_skip_identical_history_payload,
+    };
+    use crate::protocol::HistoryMessage;
+    use crate::session::{RenderedImage, RenderedImageSource};
+
+    fn message(role: &str, content: &str) -> HistoryMessage {
+        HistoryMessage {
+            role: role.to_string(),
+            content: content.to_string(),
+            tool_calls: None,
+            tool_data: None,
+        }
+    }
+
+    fn image(data: &str) -> RenderedImage {
+        RenderedImage {
+            media_type: "image/png".to_string(),
+            data: data.to_string(),
+            label: None,
+            source: RenderedImageSource::UserInput,
+            anchor: None,
+        }
+    }
+
+    #[test]
+    fn identical_payloads_fingerprint_equal() {
+        let a = vec![message("user", "hi"), message("assistant", "hello")];
+        let b = vec![message("user", "hi"), message("assistant", "hello")];
+        assert_eq!(
+            history_payload_fingerprint(&a),
+            history_payload_fingerprint(&b)
+        );
+    }
+
+    #[test]
+    fn fingerprint_changes_on_content_role_count_and_tool_data() {
+        let base = vec![message("user", "hi"), message("assistant", "hello")];
+        let fp = history_payload_fingerprint(&base);
+
+        let content = vec![message("user", "hi"), message("assistant", "hello!")];
+        assert_ne!(fp, history_payload_fingerprint(&content));
+
+        let role = vec![message("user", "hi"), message("system", "hello")];
+        assert_ne!(fp, history_payload_fingerprint(&role));
+
+        let count = vec![message("user", "hi")];
+        assert_ne!(fp, history_payload_fingerprint(&count));
+
+        let mut tool = base.clone();
+        tool[1].tool_data = Some(super::ToolCall {
+            id: "t1".to_string(),
+            name: "bash".to_string(),
+            input: serde_json::json!({"command": "ls"}),
+            intent: None,
+            thought_signature: None,
+        });
+        assert_ne!(fp, history_payload_fingerprint(&tool));
+
+        // Same tool call with different input must differ too.
+        let mut tool_other = tool.clone();
+        tool_other[1].tool_data.as_mut().unwrap().input = serde_json::json!({"command": "pwd"});
+        assert_ne!(
+            history_payload_fingerprint(&tool),
+            history_payload_fingerprint(&tool_other)
+        );
+    }
+
+    #[test]
+    fn skip_decision_requires_same_session_same_fingerprint_and_intact_display() {
+        let entry = AppliedHistoryFingerprint {
+            session_id: "ses_a".to_string(),
+            fingerprint: 42,
+        };
+
+        // Exact match with intact display and unchanged session -> skip.
+        assert!(should_skip_identical_history_payload(
+            false,
+            false,
+            Some(&entry),
+            "ses_a",
+            42
+        ));
+        // Session switch must always re-apply.
+        assert!(!should_skip_identical_history_payload(
+            true,
+            false,
+            Some(&entry),
+            "ses_a",
+            42
+        ));
+        // A cleared display must be repopulated even for an identical payload.
+        assert!(!should_skip_identical_history_payload(
+            false,
+            true,
+            Some(&entry),
+            "ses_a",
+            42
+        ));
+        // Different session id -> re-apply.
+        assert!(!should_skip_identical_history_payload(
+            false,
+            false,
+            Some(&entry),
+            "ses_b",
+            42
+        ));
+        // Different payload (e.g. rewind truncation) -> re-apply.
+        assert!(!should_skip_identical_history_payload(
+            false,
+            false,
+            Some(&entry),
+            "ses_a",
+            43
+        ));
+        // Nothing applied yet -> re-apply.
+        assert!(!should_skip_identical_history_payload(
+            false, false, None, "ses_a", 42
+        ));
+    }
+
+    #[test]
+    fn images_match_retained_compares_count_and_lengths() {
+        let retained = vec![image("aaaa"), image("bbbbbb")];
+        let same = vec![image("aaaa"), image("bbbbbb")];
+        assert!(history_images_match_retained(&same, &retained));
+        // Length-only comparison: equal lengths count as identical.
+        let same_len = vec![image("cccc"), image("dddddd")];
+        assert!(history_images_match_retained(&same_len, &retained));
+
+        assert!(!history_images_match_retained(&[], &retained));
+        let fewer = vec![image("aaaa")];
+        assert!(!history_images_match_retained(&fewer, &retained));
+        let diff_len = vec![image("aaaa"), image("bbbbb")];
+        assert!(!history_images_match_retained(&diff_len, &retained));
+        let mut diff_meta = vec![image("aaaa"), image("bbbbbb")];
+        diff_meta[0].media_type = "image/jpeg".to_string();
+        assert!(!history_images_match_retained(&diff_meta, &retained));
+        assert!(history_images_match_retained(&[], &[]));
+    }
+}
+
 pub(in crate::tui::app) fn handle_server_event(
     app: &mut App,
     event: ServerEvent,
@@ -1348,7 +1652,20 @@ pub(in crate::tui::app) fn handle_server_event(
             app.remote_service_tier = service_tier;
             app.remote_compaction_mode = Some(compaction_mode);
             app.set_side_panel_snapshot(side_panel);
-            app.remote_side_pane_images = images;
+            if history_images_match_retained(&images, &app.remote_side_pane_images) {
+                // The already-retained image set is identical (count + per-image
+                // byte length + metadata). Drop the incoming copy immediately so
+                // two full base64 payloads are never alive side by side.
+                if !images.is_empty() {
+                    crate::logging::info(&format!(
+                        "History images identical to retained set ({} images); dropping incoming copy",
+                        images.len()
+                    ));
+                }
+                drop(images);
+            } else {
+                app.remote_side_pane_images = images;
+            }
             app.persist_remote_model_catalog_cache();
             app.remote_skills = skills;
             app.invalidate_command_candidates_cache();
@@ -1461,18 +1778,45 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Preserving locally restored display history for metadata-only History bootstrap",
                     );
                 } else {
-                    let restored_messages = messages
-                        .into_iter()
-                        .map(|msg| DisplayMessage {
-                            role: msg.role,
-                            content: msg.content,
-                            tool_calls: msg.tool_calls.unwrap_or_default(),
-                            duration_secs: None,
-                            title: None,
-                            tool_data: msg.tool_data,
-                        })
-                        .collect();
-                    app.replace_display_messages(restored_messages);
+                    let fingerprint = history_payload_fingerprint(&messages);
+                    let last_applied =
+                        last_applied_history_fingerprint(&app.remote_client_instance_id);
+                    if should_skip_identical_history_payload(
+                        session_changed,
+                        app.display_messages().is_empty(),
+                        last_applied.as_ref(),
+                        &session_id,
+                        fingerprint,
+                    ) {
+                        // Watchdog re-requests and reconnect re-bootstraps can
+                        // redeliver a byte-identical full payload seconds apart.
+                        // Rebuilding the transcript would stack multi-megabyte
+                        // transient arenas for zero visible change, so drop the
+                        // payload here instead of re-applying it.
+                        crate::logging::info(&format!(
+                            "Skipping re-apply of identical History payload (session={}, messages={}, fingerprint={:x})",
+                            session_id, history_message_count, fingerprint
+                        ));
+                        drop(messages);
+                    } else {
+                        let restored_messages = messages
+                            .into_iter()
+                            .map(|msg| DisplayMessage {
+                                role: msg.role,
+                                content: msg.content,
+                                tool_calls: msg.tool_calls.unwrap_or_default(),
+                                duration_secs: None,
+                                title: None,
+                                tool_data: msg.tool_data,
+                            })
+                            .collect();
+                        app.replace_display_messages(restored_messages);
+                        record_applied_history_fingerprint(
+                            &app.remote_client_instance_id,
+                            &session_id,
+                            fingerprint,
+                        );
+                    }
                 }
 
                 if history_matches_pending_startup_prompt(app) {
