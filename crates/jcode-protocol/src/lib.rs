@@ -18,6 +18,7 @@ pub use notifications::{FeatureToggle, NotificationType};
 use jcode_batch_types::BatchProgress;
 use jcode_message_types::{InputShellResult, ToolCall};
 use jcode_plan::{PlanItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
+use std::collections::BTreeMap;
 use jcode_side_panel_types::{SidePanelSnapshot, snapshot_is_empty};
 
 #[path = "protocol_memory.rs"]
@@ -325,6 +326,13 @@ pub struct PlanGraphStatus {
     /// terminal state as success.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed_ids: Vec<String>,
+    /// Recorded failure reason per failed item id (from the durable task
+    /// progress checkpoint, e.g. "task failed: Anthropic API error (401
+    /// Unauthorized)"). Lets `plan_status` and schedulers explain *why* a node
+    /// failed (and classify waves of credential failures) instead of only
+    /// listing failed ids. Only failed items with a recorded reason appear.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub failed_reasons: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cycle_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -370,6 +378,7 @@ impl PlanGraphStatus {
             active_ids: Vec::new(),
             completed_ids: Vec::new(),
             failed_ids: Vec::new(),
+            failed_reasons: BTreeMap::new(),
             cycle_ids: Vec::new(),
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: Vec::new(),
@@ -389,6 +398,16 @@ impl PlanGraphStatus {
     ) -> Self {
         let graph = summarize_plan_graph(&plan.items);
         let growth = jcode_plan::bridge::growth_stats(plan);
+        let failed_reasons: BTreeMap<String, String> = graph
+            .failed_ids
+            .iter()
+            .filter_map(|id| {
+                plan.task_progress
+                    .get(id)
+                    .and_then(|progress| progress.checkpoint_summary.clone())
+                    .map(|reason| (id.clone(), reason))
+            })
+            .collect();
         Self {
             swarm_id: Some(swarm_id.into()),
             version: plan.version,
@@ -398,6 +417,7 @@ impl PlanGraphStatus {
             active_ids: graph.active_ids,
             completed_ids: graph.completed_ids,
             failed_ids: graph.failed_ids,
+            failed_reasons,
             cycle_ids: graph.cycle_ids,
             unresolved_dependency_ids: graph.unresolved_dependency_ids,
             next_ready_ids: next_runnable_item_ids(&plan.items, next_ready_limit),

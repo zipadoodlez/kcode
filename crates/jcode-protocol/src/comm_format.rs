@@ -465,6 +465,14 @@ pub fn format_comm_plan_status(summary: &PlanGraphStatus) -> String {
             "  Failed (terminal without completing): {}\n",
             summary.failed_ids.join(", ")
         ));
+        // Recorded failure reasons (from the durable task progress): a run
+        // that burned nodes on e.g. a 401 credential wave must explain itself
+        // here instead of only listing ids.
+        for id in &summary.failed_ids {
+            if let Some(reason) = summary.failed_reasons.get(id) {
+                output.push_str(&format!("    {}: {}\n", id, reason));
+            }
+        }
     }
     if !summary.low_confidence_ids.is_empty() {
         output.push_str(&format!(

@@ -120,6 +120,7 @@ mod tests {
             active_ids: Vec::new(),
             completed_ids: vec!["task-1".to_string()],
             failed_ids: Vec::new(),
+            failed_reasons: Default::default(),
             cycle_ids: Vec::new(),
             unresolved_dependency_ids: Vec::new(),
             next_ready_ids: vec!["task-2".to_string()],

@@ -150,15 +150,25 @@ fn coordination_in_flight_count(
 /// happen to sit in a `queued` status. Awaiting those would hang `run_plan`
 /// forever even though every plan task is already terminal (they are never auto
 /// driven), which is exactly the stall this scoping prevents.
+///
+/// Pure over an already-fetched member list so the coordination loop can reuse
+/// one `CommList` snapshot for both in-flight scoping and failure-wave
+/// classification.
+fn in_flight_swarm_session_ids(members: &[AgentInfo], coordinator_session_id: &str) -> Vec<String> {
+    members
+        .iter()
+        .filter(|member| member.session_id != coordinator_session_id)
+        .filter(|member| swarm_member_is_in_flight(member))
+        .filter(|member| swarm_member_is_drivable_worker(member, coordinator_session_id))
+        .map(|member| member.session_id.clone())
+        .collect()
+}
+
+/// Fetch-and-filter convenience over [`in_flight_swarm_session_ids`] for call
+/// sites that do not otherwise need the member snapshot.
 async fn fetch_in_flight_swarm_sessions(session_id: &str) -> Result<Vec<String>> {
     let members = fetch_swarm_members(session_id).await?;
-    Ok(members
-        .into_iter()
-        .filter(|member| member.session_id != session_id)
-        .filter(swarm_member_is_in_flight)
-        .filter(|member| swarm_member_is_drivable_worker(member, session_id))
-        .map(|member| member.session_id)
-        .collect())
+    Ok(in_flight_swarm_session_ids(&members, session_id))
 }
 
 /// Whether `member` is a worker `run_plan` can rely on to autonomously execute an
@@ -574,6 +584,31 @@ impl RunPlanReporter {
             .await;
     }
 
+    /// Record an explicit checkpoint (a JCODE_CHECKPOINT-style milestone) on
+    /// the background task, so pause/alert moments surface as checkpoint events
+    /// in the UI instead of only trailing the output log. No-op inline.
+    async fn checkpoint(&self, message: &str) {
+        self.log(message).await;
+        let Some(task_id) = &self.task_id else {
+            return;
+        };
+        let progress = crate::bus::BackgroundTaskProgress {
+            kind: crate::bus::BackgroundTaskProgressKind::Indeterminate,
+            percent: None,
+            message: Some(message.to_string()),
+            current: None,
+            total: None,
+            unit: None,
+            eta_seconds: None,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            source: crate::bus::BackgroundTaskProgressSource::Reported,
+        }
+        .normalize();
+        let _ = crate::background::global()
+            .update_checkpoint(task_id, progress)
+            .await;
+    }
+
     /// Rewrite the output file so `summary` leads and the progressive log
     /// trails it. Background completion previews take the first ~500 chars of
     /// the output file, so the terminal summary must come first for the
@@ -941,8 +976,155 @@ fn format_run_plan_terminal_summary(
             "\nFailed nodes: {}. This run did NOT finish cleanly; inspect them with `swarm plan_status` and retry or salvage before trusting the result.",
             summary.failed_ids.join(", ")
         ));
+        // Recorded failure reasons make the summary self-explanatory: a wave
+        // of "task failed: ... 401 Unauthorized" lines names the root cause
+        // without another plan_status round-trip.
+        for id in &summary.failed_ids {
+            if let Some(reason) = summary.failed_reasons.get(id) {
+                output.push_str(&format!("\n  {}: {}", id, reason));
+            }
+        }
     }
     output
+}
+
+/// Minimum number of credential-failed workers that count as a wave rather
+/// than an isolated bad worker.
+const CREDENTIAL_FAILURE_WAVE_MIN_WORKERS: usize = 2;
+
+/// How recent a worker's credential failure must be (via `status_age_secs`) to
+/// count toward a wave. Old failed workers from a previous, already-diagnosed
+/// wave must not re-trip the breaker after the user fixes auth and retries.
+const CREDENTIAL_FAILURE_WAVE_WINDOW_SECS: u64 = 60;
+
+/// A wave of worker failures that share one credential-shaped root cause.
+///
+/// When dispatched workers die within seconds of assignment with 401 /
+/// `invalid_grant` / `authentication_error`-style errors, the credential is
+/// broken for every worker on that route: assigning more nodes only fails more
+/// of the plan. Detecting the wave lets `run_plan` pause dispatching and
+/// surface the one real fix instead of silently burning the graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CredentialFailureWave {
+    /// Failed worker sessions in the wave.
+    session_ids: Vec<String>,
+    /// Representative failure detail (first observed).
+    sample_detail: String,
+    /// Provider named by the failing workers, when known (e.g. "anthropic").
+    provider: Option<String>,
+}
+
+/// Detect a credential-failure wave in a swarm member snapshot.
+///
+/// A wave exists when, with **zero completed plan nodes**, at least
+/// [`CREDENTIAL_FAILURE_WAVE_MIN_WORKERS`] drivable workers sit in `failed`
+/// status whose detail classifies as a credential failure (via the shared
+/// [`crate::provider::error_looks_like_credential_failure`] classifier) and
+/// whose failure is recent (`status_age_secs <= window_secs`). Pure over its
+/// inputs so the breaker contract is unit-testable without a live swarm.
+fn detect_credential_failure_wave(
+    members: &[AgentInfo],
+    coordinator_session_id: &str,
+    completed_node_count: usize,
+    window_secs: u64,
+) -> Option<CredentialFailureWave> {
+    if completed_node_count > 0 {
+        return None;
+    }
+    let mut session_ids = Vec::new();
+    let mut sample_detail: Option<String> = None;
+    let mut provider: Option<String> = None;
+    for member in members {
+        if member.session_id == coordinator_session_id {
+            continue;
+        }
+        if !swarm_member_is_drivable_worker(member, coordinator_session_id) {
+            continue;
+        }
+        if member.status.as_deref() != Some("failed") {
+            continue;
+        }
+        let Some(detail) = member.detail.as_deref() else {
+            continue;
+        };
+        if !crate::provider::error_looks_like_credential_failure(detail) {
+            continue;
+        }
+        // Require a known, recent failure age: stale failed workers (or ones
+        // whose age did not propagate) must not re-trip the breaker.
+        if !matches!(member.status_age_secs, Some(age) if age <= window_secs) {
+            continue;
+        }
+        session_ids.push(member.session_id.clone());
+        if sample_detail.is_none() {
+            sample_detail = Some(detail.to_string());
+        }
+        if provider.is_none() {
+            provider = member.provider_name.clone();
+        }
+    }
+    if session_ids.len() < CREDENTIAL_FAILURE_WAVE_MIN_WORKERS {
+        return None;
+    }
+    Some(CredentialFailureWave {
+        session_ids,
+        sample_detail: sample_detail.unwrap_or_default(),
+        provider,
+    })
+}
+
+/// The `jcode login` invocation most likely to fix a credential wave for
+/// `provider`, mapping provider names to their login provider keys.
+fn credential_login_fix_hint(provider: Option<&str>) -> String {
+    let lowered = provider.map(str::to_ascii_lowercase);
+    let target = match lowered.as_deref() {
+        Some("anthropic" | "claude") => "claude",
+        Some("openai" | "codex") => "openai",
+        Some("google" | "gemini") => "gemini",
+        Some(other) if !other.trim().is_empty() => other,
+        _ => "<provider>",
+    };
+    format!("`jcode login --provider {target}`")
+}
+
+/// Actionable pause message for a credential-failure wave: names the failed
+/// workers, the credential-shaped root cause, and the fix. Pure for unit
+/// testing; used both as the run error and as the swarm broadcast body.
+fn format_credential_failure_wave_error(wave: &CredentialFailureWave, window_secs: u64) -> String {
+    format!(
+        "run_plan paused dispatching: {count} worker(s) failed within {window_secs}s with \
+         credential/auth failures and no plan node has completed (e.g. {first}: \"{sample}\"). \
+         A broken credential (expired OAuth session, revoked refresh token, or invalid API key) \
+         fails every worker on that route, so assigning more nodes would only fail more of the \
+         plan. Fix auth first: run {login_hint} (or pin a working API-key route), then requeue \
+         the failed nodes (`swarm retry`) and run `swarm run_plan` again.",
+        count = wave.session_ids.len(),
+        first = wave
+            .session_ids
+            .first()
+            .map(String::as_str)
+            .unwrap_or("worker"),
+        sample = wave.sample_detail,
+        login_hint = credential_login_fix_hint(wave.provider.as_deref()),
+    )
+}
+
+/// Best-effort broadcast of a plan-level alert to the whole swarm, so live
+/// members and attached UIs see why dispatch stopped.
+async fn broadcast_plan_alert(ctx: &ToolContext, message: &str) -> Result<()> {
+    let request = Request::CommMessage {
+        id: REQUEST_ID,
+        from_session: ctx.session_id.clone(),
+        message: message.to_string(),
+        to_session: None,
+        channel: None,
+        wake: None,
+        delivery: None,
+    };
+    match send_request(request).await {
+        Ok(response) => ensure_success(&response),
+        Err(e) => Err(anyhow::anyhow!("Failed to broadcast plan alert: {}", e)),
+    }
 }
 
 async fn run_swarm_plan_to_terminal(
@@ -1009,7 +1191,33 @@ async fn run_swarm_plan_loop(
             return Ok(ToolOutput::new("No swarm plan items to run."));
         }
 
-        let in_flight_sessions = fetch_in_flight_swarm_sessions(&ctx.session_id).await?;
+        let members = fetch_swarm_members(&ctx.session_id).await?;
+        let in_flight_sessions = in_flight_swarm_session_ids(&members, &ctx.session_id);
+
+        // Credential-failure circuit breaker: when a wave of workers dies with
+        // 401/invalid_grant-style auth errors and nothing has completed, the
+        // credential is broken for every worker on that route. Pausing here
+        // (before the terminal check) means even a fully-burned first wave
+        // surfaces the root cause and the fix instead of a bare
+        // "failed=N" terminal summary with no explanation.
+        if let Some(wave) = detect_credential_failure_wave(
+            &members,
+            &ctx.session_id,
+            summary.completed_ids.len(),
+            CREDENTIAL_FAILURE_WAVE_WINDOW_SECS,
+        ) {
+            let message =
+                format_credential_failure_wave_error(&wave, CREDENTIAL_FAILURE_WAVE_WINDOW_SECS);
+            reporter.checkpoint(&message).await;
+            if let Err(error) = broadcast_plan_alert(ctx, &message).await {
+                reporter
+                    .log(&format!(
+                        "failed to broadcast credential-failure alert to the swarm: {error}"
+                    ))
+                    .await;
+            }
+            return Err(anyhow::anyhow!(message));
+        }
 
         let terminal_count = plan_terminal_node_count(&summary);
         let (progress_completed, progress_total, progress_message) =

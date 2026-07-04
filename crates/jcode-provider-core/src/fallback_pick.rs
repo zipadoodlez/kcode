@@ -57,12 +57,13 @@ pub fn error_looks_like_credential_failure(error: &str) -> bool {
         "re-authenticate",
         "session has ended",
         "authentication_error",
+        "invalid_grant",
         "invalid x-api-key",
         "invalid api key",
         "incorrect api key",
         "api key not valid",
         "token expired",
-        "401 unauthorized",
+        "unauthorized",
         "oauth token expired",
         "no refresh token",
         "credentials have been revoked",
@@ -339,6 +340,17 @@ mod tests {
         ));
         assert!(error_looks_like_credential_failure(
             "Anthropic API error (401 Unauthorized): authentication_error invalid x-api-key"
+        ));
+        // Observed auth-failure wave: expired OAuth + revoked refresh token.
+        // The wave detector depends on these exact shapes classifying true.
+        assert!(error_looks_like_credential_failure(
+            "task failed: Anthropic API error (401 Unauthorized)"
+        ));
+        assert!(error_looks_like_credential_failure(
+            "invalid_grant: refresh token invalid"
+        ));
+        assert!(error_looks_like_credential_failure(
+            "provider returned Unauthorized"
         ));
         assert!(!error_looks_like_credential_failure(
             "429 rate limit exceeded, retry after 30s"
