@@ -1,0 +1,11 @@
+{
+  "version": "0.35.1",
+  "date": "2026-07-04",
+  "title": "Complete the 0.35.0 release for macOS and FreeBSD",
+  "highlights": [
+    "Restores macOS and FreeBSD release binaries, which were missing from 0.35.0 due to a platform-specific build error"
+  ],
+  "improvements": [
+    "All 0.35.0 changes apply: inline mermaid diagrams, swarm deep-mode task graphs, and one-keypress model reroute after refusals"
+  ]
+}
