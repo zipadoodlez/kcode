@@ -838,6 +838,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 remote.clear_pending();
                 remote.reset_call_output_tokens_seen();
                 app.note_runtime_memory_event_force("turn_completed", "remote_turn_finished");
+                crate::process_memory::release_retained_heap_debounced(
+                    "client_turn_completed",
+                    std::time::Duration::from_secs(30),
+                );
                 auto_poked = app.schedule_auto_poke_followup_if_needed()
                     || app.schedule_overnight_poke_followup_if_needed();
                 if !auto_poked {
@@ -1482,6 +1486,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.set_status_notice("Reload complete - prompt preserved");
                 }
                 app.note_runtime_memory_event_force("history_loaded", "remote_history_applied");
+                crate::process_memory::release_retained_heap("client_history_loaded");
                 if let Some(notice) = app.pending_remote_rewind_notice.take() {
                     let content = if notice.undo {
                         "✓ Undid rewind. Restored the messages removed by the last rewind."

@@ -348,6 +348,70 @@ pub fn estimate_json_bytes<T: Serialize>(value: &T) -> usize {
         .unwrap_or(0)
 }
 
+/// Return freed-but-retained heap pages to the OS.
+///
+/// glibc malloc keeps pages freed by large transient allocations (history
+/// loads, provider payloads, render caches) inside its arenas, which shows up
+/// as unattributed RSS that never shrinks. On jemalloc builds this purges all
+/// arenas; on Linux system-allocator builds it calls `malloc_trim(0)`; on
+/// other platforms it is a no-op.
+pub fn release_retained_heap(reason: &str) {
+    #[cfg(feature = "jemalloc")]
+    {
+        if let Err(err) = purge_allocator() {
+            logging::info(&format!("jemalloc purge ({reason}) failed: {err}"));
+        } else {
+            logging::debug(&format!("jemalloc purge ({reason}) completed"));
+        }
+    }
+
+    #[cfg(all(target_os = "linux", not(feature = "jemalloc")))]
+    {
+        unsafe extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        let trimmed = unsafe { malloc_trim(0) };
+        logging::debug(&format!(
+            "malloc_trim ({reason}): {}",
+            if trimmed == 1 {
+                "released pages"
+            } else {
+                "no pages to release"
+            }
+        ));
+    }
+
+    #[cfg(all(not(target_os = "linux"), not(feature = "jemalloc")))]
+    {
+        let _ = reason;
+    }
+}
+
+static LAST_HEAP_RELEASE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Debounced [`release_retained_heap`]: skips the release when one already ran
+/// within `min_interval`. Returns true when a release was performed.
+pub fn release_retained_heap_debounced(reason: &str, min_interval: std::time::Duration) -> bool {
+    use std::sync::atomic::Ordering;
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+    let last_ms = LAST_HEAP_RELEASE_MS.load(Ordering::Relaxed);
+    if now_ms.saturating_sub(last_ms) < min_interval.as_millis() as u64 {
+        return false;
+    }
+    if LAST_HEAP_RELEASE_MS
+        .compare_exchange(last_ms, now_ms, Ordering::Relaxed, Ordering::Relaxed)
+        .is_err()
+    {
+        return false;
+    }
+    release_retained_heap(reason);
+    true
+}
+
 fn record_snapshot(source: String, snapshot: ProcessMemorySnapshot) {
     let Ok(mut history) = memory_history().lock() else {
         logging::error("process memory history lock poisoned; dropping snapshot");
@@ -585,6 +649,30 @@ fn parse_proc_value_bytes(status: &str, key: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_retained_heap_is_safe_to_call() {
+        // Allocate and drop a large transient buffer, then release. This must
+        // not crash on any allocator configuration.
+        let buffer = vec![0u8; 8 * 1024 * 1024];
+        drop(buffer);
+        release_retained_heap("unit_test");
+    }
+
+    #[test]
+    fn release_retained_heap_debounced_skips_within_interval() {
+        // First call resets the shared debounce clock; the immediate second
+        // call within a long interval must be skipped.
+        release_retained_heap_debounced("unit_test_first", std::time::Duration::ZERO);
+        let ran = release_retained_heap_debounced(
+            "unit_test_second",
+            std::time::Duration::from_secs(3600),
+        );
+        assert!(
+            !ran,
+            "second call within debounce interval should be skipped"
+        );
+    }
 
     #[test]
     fn allocator_info_matches_enabled_allocator_features() {

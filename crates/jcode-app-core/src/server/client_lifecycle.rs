@@ -3013,6 +3013,10 @@ pub(super) async fn process_message_streaming_mpsc(
             .with_session_id(session_id)
             .force_attribution(),
         );
+        crate::process_memory::release_retained_heap_debounced(
+            "server_turn_completed",
+            std::time::Duration::from_secs(30),
+        );
     }
     result
 }
