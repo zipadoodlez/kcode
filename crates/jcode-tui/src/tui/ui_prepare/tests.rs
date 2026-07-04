@@ -52,3 +52,57 @@ fn prepare_body_preserves_multiline_user_prompt_lines() {
     assert_eq!(user_line_indices, vec![0]);
     assert_eq!(line_copy_offsets, vec![3, 3, 3, 3]);
 }
+
+/// Regression coverage for issue #344: loading older compacted history above
+/// an unchanged tail must be detected as a suffix match so scrolling to the
+/// start of a long session reuses the prepared tail instead of re-rendering
+/// the whole transcript per chunk.
+#[test]
+fn matching_suffix_len_detects_prepended_history() {
+    use jcode_tui_messages::MessageBoundary;
+
+    let old: Vec<DisplayMessage> = (0..4)
+        .map(|i| DisplayMessage::system(format!("msg {i}")))
+        .collect();
+
+    // Base prepared from the old transcript: boundaries in transcript order.
+    let base = PreparedMessages {
+        wrapped_lines: Vec::new(),
+        wrapped_plain_lines: Arc::new(Vec::new()),
+        wrapped_copy_offsets: Arc::new(Vec::new()),
+        raw_plain_lines: Arc::new(Vec::new()),
+        wrapped_line_map: Arc::new(Vec::new()),
+        wrapped_user_indices: Vec::new(),
+        wrapped_user_prompt_starts: Vec::new(),
+        wrapped_user_prompt_ends: Vec::new(),
+        user_prompt_texts: Vec::new(),
+        image_regions: Vec::new(),
+        edit_tool_ranges: Vec::new(),
+        copy_targets: Vec::new(),
+        message_boundaries: old
+            .iter()
+            .map(|m| MessageBoundary {
+                msg_hash: m.stable_cache_hash(),
+                wrapped_len: 0,
+                raw_len: 0,
+                user_prompt_len: 0,
+            })
+            .collect(),
+    };
+
+    // New transcript: two older-history messages prepended, tail unchanged.
+    let mut new_msgs: Vec<DisplayMessage> = vec![
+        DisplayMessage::system("older history a"),
+        DisplayMessage::system("older history b"),
+    ];
+    new_msgs.extend(old.iter().cloned());
+    assert_eq!(matching_suffix_len(&base, &new_msgs), 4);
+
+    // Changed tail: no suffix reuse.
+    let mut changed = new_msgs.clone();
+    changed.last_mut().unwrap().content = "edited".to_string();
+    assert_eq!(matching_suffix_len(&base, &changed), 0);
+
+    // Identical transcript: full suffix match.
+    assert_eq!(matching_suffix_len(&base, &old), 4);
+}

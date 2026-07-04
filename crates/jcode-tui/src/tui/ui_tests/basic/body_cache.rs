@@ -48,8 +48,8 @@ fn test_body_cache_state_keeps_multiple_width_entries() {
     });
 
     let mut cache = BodyCacheState::default();
-    cache.insert(key_a.clone(), prepared_a.clone(), 3);
-    cache.insert(key_b.clone(), prepared_b.clone(), 3);
+    cache.insert(key_a.clone(), prepared_a.clone(), 3, 0);
+    cache.insert(key_b.clone(), prepared_b.clone(), 3, 0);
 
     let hit_a = cache
         .get_exact(&key_a)
@@ -94,7 +94,7 @@ fn test_body_cache_state_evicts_oldest_entries() {
             copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
         });
-        cache.insert(key, prepared, idx);
+        cache.insert(key, prepared, idx, 0);
     }
 
     assert_eq!(cache.entries.len(), BODY_CACHE_MAX_ENTRIES);
@@ -123,7 +123,7 @@ fn test_body_cache_state_accepts_large_single_entry_within_total_budget() {
     assert!(estimate_prepared_messages_bytes(&prepared) < BODY_CACHE_MAX_BYTES);
 
     let mut cache = BodyCacheState::default();
-    cache.insert(key.clone(), prepared.clone(), 60);
+    cache.insert(key.clone(), prepared.clone(), 60, 0);
 
     let hit = cache
         .get_exact(&key)
@@ -149,7 +149,7 @@ fn test_body_cache_state_retains_oversized_hot_entry() {
     assert!(estimate_prepared_messages_bytes(&prepared) > BODY_CACHE_MAX_BYTES);
 
     let mut cache = BodyCacheState::default();
-    cache.insert(key.clone(), prepared.clone(), 120);
+    cache.insert(key.clone(), prepared.clone(), 120, 0);
 
     let hit = cache
         .get_exact(&key)
@@ -180,8 +180,8 @@ fn test_body_cache_state_keeps_two_oversized_width_entries_hot() {
     let prepared_b = make_oversized_prepared_messages("body-oversized-b-");
 
     let mut cache = BodyCacheState::default();
-    cache.insert(key_a.clone(), prepared_a.clone(), 120);
-    cache.insert(key_b.clone(), prepared_b.clone(), 120);
+    cache.insert(key_a.clone(), prepared_a.clone(), 120, 0);
+    cache.insert(key_b.clone(), prepared_b.clone(), 120, 0);
 
     let hit_a = cache
         .get_exact(&key_a)
@@ -212,7 +212,7 @@ fn test_body_cache_state_uses_oversized_hot_entry_as_incremental_base() {
     assert!(estimate_prepared_messages_bytes(&prepared) > BODY_CACHE_MAX_BYTES);
 
     let mut cache = BodyCacheState::default();
-    cache.insert(key.clone(), prepared.clone(), 120);
+    cache.insert(key.clone(), prepared.clone(), 120, 0);
 
     let base = cache
         .best_incremental_base(
