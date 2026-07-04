@@ -68,6 +68,9 @@ impl App {
             crate::tui::CopySelectionPane::SidePane => {
                 crate::tui::ui::side_pane_line_text(abs_line)
             }
+            crate::tui::CopySelectionPane::Input => {
+                crate::tui::ui::input_pane_line_text(abs_line)
+            }
         }
     }
 
@@ -79,6 +82,7 @@ impl App {
         match pane {
             crate::tui::CopySelectionPane::Chat => crate::tui::ui::copy_viewport_line_count(),
             crate::tui::CopySelectionPane::SidePane => crate::tui::ui::side_pane_line_count(),
+            crate::tui::CopySelectionPane::Input => crate::tui::ui::input_pane_line_count(),
         }
     }
 
@@ -128,6 +132,9 @@ impl App {
             crate::tui::CopySelectionPane::SidePane => {
                 self.diff_pane_auto_scroll = false;
             }
+            // The composer has no auto-scroll to pause; selecting the text
+            // being typed must not disturb the transcript view.
+            crate::tui::CopySelectionPane::Input => {}
         }
     }
 
@@ -463,6 +470,8 @@ impl App {
                     if upward { -1 } else { 1 },
                 );
             }
+            // The composer scrolls with the caret, not the mouse wheel.
+            crate::tui::CopySelectionPane::Input => return false,
         }
         true
     }
@@ -591,7 +600,10 @@ impl App {
                 {
                     return None;
                 }
+                // The composer is not wheel-scrollable: let wheel events over it
+                // fall through to the normal chat scroll handling.
                 point
+                    .filter(|point| point.pane != crate::tui::CopySelectionPane::Input)
                     .map(|point| self.scroll_copy_selection_pane(point.pane, true))
                     .or_else(|| {
                         self.copy_selection_dragging
@@ -608,6 +620,7 @@ impl App {
                     return None;
                 }
                 point
+                    .filter(|point| point.pane != crate::tui::CopySelectionPane::Input)
                     .map(|point| self.scroll_copy_selection_pane(point.pane, false))
                     .or_else(|| {
                         self.copy_selection_dragging

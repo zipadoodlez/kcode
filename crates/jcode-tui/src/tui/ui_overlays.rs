@@ -1,5 +1,5 @@
 use super::{
-    accent_color, ai_color, ai_text, asap_color, blend_color, clear_area, dim_color,
+    accent_color, ai_color, ai_text, asap_color, clear_area, dim_color,
     get_grouped_changelog, header_icon_color, header_name_color, header_session_color,
     pending_color, queued_color, record_chat_overlay_copy_snapshot, rgb, tool_color, user_bg,
     user_color, user_text,
@@ -11,79 +11,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-fn selection_bg_for(base_bg: Option<Color>) -> Color {
-    let fallback = rgb(32, 38, 48);
-    blend_color(base_bg.unwrap_or(fallback), accent_color(), 0.34)
-}
-
-fn selection_fg_for(base_fg: Option<Color>) -> Option<Color> {
-    base_fg.map(|fg| blend_color(fg, Color::White, 0.15))
-}
-
-/// Apply a copy-selection highlight to a single display line between
-/// `[start_col, end_col)` (display columns). Mirrors the chat/side-pane
-/// selection rendering so the overlay matches the rest of the UI.
-fn highlight_line_selection(
-    line: &Line<'static>,
-    start_col: usize,
-    end_col: usize,
-) -> Line<'static> {
-    if end_col <= start_col {
-        return line.clone();
-    }
-
-    let mut rebuilt: Vec<Span<'static>> = Vec::new();
-    let mut current_text = String::new();
-    let mut current_style: Option<Style> = None;
-    let mut col = 0usize;
-
-    let flush = |rebuilt: &mut Vec<Span<'static>>, text: &mut String, style: &mut Option<Style>| {
-        if !text.is_empty() {
-            let span = match style.take() {
-                Some(style) => Span::styled(std::mem::take(text), style),
-                None => Span::raw(std::mem::take(text)),
-            };
-            rebuilt.push(span);
-        }
-    };
-
-    for span in &line.spans {
-        for ch in span.content.chars() {
-            let width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-            let selected = if width == 0 {
-                col > start_col && col <= end_col
-            } else {
-                col < end_col && col.saturating_add(width) > start_col
-            };
-
-            let mut style = span.style;
-            if selected {
-                style = style.bg(selection_bg_for(style.bg));
-                if let Some(fg) = selection_fg_for(style.fg) {
-                    style = style.fg(fg);
-                }
-            }
-
-            if current_style == Some(style) {
-                current_text.push(ch);
-            } else {
-                flush(&mut rebuilt, &mut current_text, &mut current_style);
-                current_text.push(ch);
-                current_style = Some(style);
-            }
-
-            col = col.saturating_add(width);
-        }
-    }
-
-    flush(&mut rebuilt, &mut current_text, &mut current_style);
-
-    Line {
-        spans: rebuilt,
-        style: line.style,
-        alignment: line.alignment,
-    }
-}
+use super::selection_highlight::highlight_line_selection;
 
 pub(super) fn draw_changelog_overlay(
     frame: &mut Frame,

@@ -1336,10 +1336,10 @@ impl App {
             self.set_diff_pane_focus(false);
         }
 
-        if let Some(scroll_only) = self.handle_copy_selection_mouse(mouse) {
-            finish_mouse_event!(scroll_only, "copy_selection");
-        }
-
+        // A left press in the composer moves the caret first (native text-field
+        // behavior), then falls through so the shared copy-selection machinery
+        // can arm a drag anchor: click repositions the cursor, drag selects the
+        // text being typed (issue #430).
         let clicked_input_cursor = if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
         {
             input_area.and_then(|area| {
@@ -1357,6 +1357,13 @@ impl App {
         if let Some(cursor_pos) = clicked_input_cursor {
             self.cursor_pos = cursor_pos.min(self.input.len());
             self.reset_tab_completion();
+        }
+
+        if let Some(scroll_only) = self.handle_copy_selection_mouse(mouse) {
+            finish_mouse_event!(scroll_only, "copy_selection");
+        }
+
+        if clicked_input_cursor.is_some() {
             finish_mouse_event!(false, "input_cursor_click");
         }
 

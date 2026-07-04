@@ -1464,12 +1464,15 @@ impl CopyViewportSnapshot {
 struct CopyViewportSnapshots {
     chat: Option<CopyViewportSnapshot>,
     side: Option<CopyViewportSnapshot>,
+    input: Option<CopyViewportSnapshot>,
 }
 
 #[cfg(not(test))]
 static LAST_COPY_VIEWPORT: OnceLock<Mutex<CopyViewportSnapshots>> = OnceLock::new();
 #[path = "ui/copy_selection.rs"]
 mod copy_selection;
+#[path = "ui/selection_highlight.rs"]
+pub(crate) mod selection_highlight;
 #[path = "ui/display_width.rs"]
 mod display_width;
 #[path = "ui/draw_recovery.rs"]
@@ -1497,6 +1500,7 @@ fn copy_snapshot_slot_mut(
     match pane {
         crate::tui::CopySelectionPane::Chat => &mut snapshots.chat,
         crate::tui::CopySelectionPane::SidePane => &mut snapshots.side,
+        crate::tui::CopySelectionPane::Input => &mut snapshots.input,
     }
 }
 
@@ -1508,6 +1512,7 @@ fn copy_snapshot_for_pane(pane: crate::tui::CopySelectionPane) -> Option<CopyVie
             match pane {
                 crate::tui::CopySelectionPane::Chat => snapshots.chat,
                 crate::tui::CopySelectionPane::SidePane => snapshots.side,
+                crate::tui::CopySelectionPane::Input => snapshots.input,
             }
         })
     }
@@ -1517,6 +1522,7 @@ fn copy_snapshot_for_pane(pane: crate::tui::CopySelectionPane) -> Option<CopyVie
         match pane {
             crate::tui::CopySelectionPane::Chat => snapshots.chat,
             crate::tui::CopySelectionPane::SidePane => snapshots.side,
+            crate::tui::CopySelectionPane::Input => snapshots.input,
         }
     }
 }
@@ -1743,6 +1749,34 @@ pub(crate) fn record_chat_overlay_copy_snapshot(
     );
 }
 
+/// Record a copy-selection snapshot for the prompt composer (input box).
+/// Called from `draw_input` each frame with the composer's wrapped rows so a
+/// mouse drag over the text being typed selects and copies it, exactly like
+/// the chat transcript (issue #430). Raw lines are the logical `\n`-separated
+/// input lines, so selections spanning soft wraps copy the original text.
+pub(crate) fn record_input_copy_snapshot(
+    wrapped_plain_lines: Vec<String>,
+    raw_plain_lines: Vec<String>,
+    wrapped_line_map: Vec<WrappedLineMap>,
+    scroll: usize,
+    visible_end: usize,
+    content_area: Rect,
+    left_margins: &[u16],
+) {
+    let wrapped_copy_offsets = vec![0usize; wrapped_plain_lines.len()];
+    record_copy_pane_snapshot(
+        crate::tui::CopySelectionPane::Input,
+        Arc::new(wrapped_plain_lines),
+        Arc::new(wrapped_copy_offsets),
+        Arc::new(raw_plain_lines),
+        Arc::new(wrapped_line_map),
+        scroll,
+        visible_end,
+        content_area,
+        left_margins,
+    );
+}
+
 fn record_pane_snapshot_from_lines(
     pane: crate::tui::CopySelectionPane,
     wrapped_lines: &[Line<'static>],
@@ -1795,6 +1829,12 @@ pub(crate) fn copy_point_from_screen(
                         .as_ref()
                         .and_then(|snapshot| copy_point_from_snapshot(snapshot, column, row))
                 })
+                .or_else(|| {
+                    snapshots
+                        .input
+                        .as_ref()
+                        .and_then(|snapshot| copy_point_from_snapshot(snapshot, column, row))
+                })
         })
     }
     #[cfg(not(test))]
@@ -1807,6 +1847,12 @@ pub(crate) fn copy_point_from_screen(
             .or_else(|| {
                 snapshots
                     .side
+                    .as_ref()
+                    .and_then(|snapshot| copy_point_from_snapshot(snapshot, column, row))
+            })
+            .or_else(|| {
+                snapshots
+                    .input
                     .as_ref()
                     .and_then(|snapshot| copy_point_from_snapshot(snapshot, column, row))
             })
@@ -1850,6 +1896,11 @@ pub(crate) fn copy_pane_vertical_edge_point(
     column: u16,
     row: u16,
 ) -> Option<(crate::tui::CopySelectionPoint, bool)> {
+    // The prompt composer cannot be wheel-scrolled, so it has no browser-style
+    // edge auto-scroll. Drags past its edge clamp via `copy_pane_drag_point`.
+    if pane == crate::tui::CopySelectionPane::Input {
+        return None;
+    }
     let snapshot = copy_snapshot_for_pane(pane)?;
     let area = snapshot.content_area;
     if area.width == 0 || area.height == 0 {
@@ -2012,6 +2063,10 @@ pub(crate) fn side_pane_line_text(abs_line: usize) -> Option<String> {
     copy_pane_line_text(crate::tui::CopySelectionPane::SidePane, abs_line)
 }
 
+pub(crate) fn input_pane_line_text(abs_line: usize) -> Option<String> {
+    copy_pane_line_text(crate::tui::CopySelectionPane::Input, abs_line)
+}
+
 fn copy_pane_line_count(pane: crate::tui::CopySelectionPane) -> Option<usize> {
     Some(copy_snapshot_for_pane(pane)?.wrapped_plain_line_count())
 }
@@ -2022,6 +2077,10 @@ pub(crate) fn copy_viewport_line_count() -> Option<usize> {
 
 pub(crate) fn side_pane_line_count() -> Option<usize> {
     copy_pane_line_count(crate::tui::CopySelectionPane::SidePane)
+}
+
+pub(crate) fn input_pane_line_count() -> Option<usize> {
+    copy_pane_line_count(crate::tui::CopySelectionPane::Input)
 }
 
 pub(crate) fn copy_viewport_visible_range() -> Option<(usize, usize)> {
@@ -2188,6 +2247,11 @@ pub(crate) fn copy_selection_metrics(
 
 pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
     let point = copy_point_from_screen(column, row)?;
+    // Clicking a URL you are still composing should reposition the caret, not
+    // open the link; only transcript/side-pane links are click-to-open.
+    if point.pane == crate::tui::CopySelectionPane::Input {
+        return None;
+    }
     let snapshot = copy_snapshot_for_pane(point.pane)?;
     link_target_from_snapshot(&snapshot, point)
 }
