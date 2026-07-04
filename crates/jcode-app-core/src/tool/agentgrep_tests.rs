@@ -63,7 +63,7 @@ fn render_compacts_huge_grep_match_lines() {
         "b".repeat(800)
     );
 
-    let compact = render::compact_rendered_match_line(&line, &args);
+    let compact = ::agentgrep::render::compact_rendered_match_line(&line, &args);
 
     assert!(compact.contains("set_status_notice"));
     assert!(compact.contains("[truncated:"), "{compact}");
@@ -78,7 +78,7 @@ fn render_compacts_huge_grep_match_lines() {
 fn render_compacts_huge_trace_region_body_lines() {
     let line = format!("function handleAuth(){{{}}}", "var x=1;".repeat(2000));
 
-    let compact = render::compact_region_body_line(&line);
+    let compact = ::agentgrep::render::compact_region_body_line(&line);
 
     assert!(compact.contains("[truncated:"), "{compact}");
     assert!(
@@ -88,7 +88,7 @@ fn render_compacts_huge_trace_region_body_lines() {
     );
 
     let short = "fn small() {}";
-    assert_eq!(render::compact_region_body_line(short), short);
+    assert_eq!(::agentgrep::render::compact_region_body_line(short), short);
 }
 
 #[test]

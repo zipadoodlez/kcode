@@ -21,7 +21,6 @@ use std::sync::OnceLock;
 
 mod args;
 mod context;
-mod render;
 
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
@@ -34,7 +33,7 @@ use self::context::maybe_write_context_json;
 use self::context::{
     collect_bash_exposure, collect_trace_exposure, tune_known_file, tune_known_region,
 };
-use self::render::{
+use ::agentgrep::render::{
     render_find_output, render_grep_output, render_outline_output, render_smart_output,
 };
 
