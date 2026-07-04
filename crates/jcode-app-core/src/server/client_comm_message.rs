@@ -227,6 +227,27 @@ pub(super) async fn handle_comm_message(
             members.keys().cloned().collect()
         };
 
+        // Broadcast-style sends are subtree-scoped: a sender reaches only the
+        // agents it (transitively) spawned, via the report-back ancestry chain.
+        // The swarm coordinator keeps whole-swarm reach as an escape hatch.
+        // This prevents one agent from producing a member-cap-sized
+        // notification storm (see docs/SWARM_TASK_GRAPH.md section 8a).
+        let subtree_broadcast_targets: Vec<String> = {
+            let members = swarm_members.read().await;
+            let sender_is_coordinator = members
+                .get(&from_session)
+                .is_some_and(|member| member.role == "coordinator");
+            swarm_session_ids
+                .iter()
+                .filter(|session_id| *session_id != &from_session)
+                .filter(|session_id| {
+                    sender_is_coordinator
+                        || super::swarm_is_self_or_ancestor(&members, &from_session, session_id)
+                })
+                .cloned()
+                .collect()
+        };
+
         let target_sessions: Vec<String> = if let Some(target) = resolved_to_session {
             vec![target]
         } else if let Some(ref channel_name) = channel {
@@ -237,11 +258,9 @@ pub(super) async fn handle_comm_message(
             };
             let channel_members = index.members(&swarm_id, channel_name);
             if channel_members.is_empty() {
-                swarm_session_ids
-                    .iter()
-                    .filter(|session_id| *session_id != &from_session)
-                    .cloned()
-                    .collect()
+                // No subscribers: fall back to the subtree scope rather than
+                // blasting the whole swarm.
+                subtree_broadcast_targets.clone()
             } else {
                 channel_members
                     .into_iter()
@@ -249,11 +268,7 @@ pub(super) async fn handle_comm_message(
                     .collect()
             }
         } else {
-            swarm_session_ids
-                .iter()
-                .filter(|session_id| *session_id != &from_session)
-                .cloned()
-                .collect()
+            subtree_broadcast_targets
         };
 
         let mut delivered_targets = 0usize;

@@ -1695,7 +1695,7 @@ pub struct CommunicateTool {
 
 impl CommunicateTool {
     pub fn new() -> Self {
-        const BASE_DESCRIPTION: &str = "Coordinate agents. Any agent can spawn child agents, and those children can spawn their own, forming a recursive spawn tree with no depth limit (growth is bounded only by the total swarm member cap). For spawn, prefer providing a prompt so the new agent starts with a concrete task instead of idling. Spawned/assigned agents automatically report their final response back to the agent that spawned them; you can stop any agent in the subtree you spawned.";
+        const BASE_DESCRIPTION: &str = "Coordinate agents. Any agent can spawn child agents, and those children can spawn their own, forming a recursive spawn tree with no depth limit (growth is bounded only by the total swarm member cap). For spawn, prefer providing a prompt so the new agent starts with a concrete task instead of idling. Spawned/assigned agents automatically report their final response back to the agent that spawned them; you can stop any agent in the subtree you spawned.\n\nCommunication: prefer structural dataflow (task-graph artifacts via complete_node) over chat, and DMs for point-to-point coordination. broadcast reaches only your spawned subtree (whole swarm for the coordinator) and should be rare; channels and shared-context are discouraged legacy primitives.";
         let swarm_prompt = crate::prompt::load_swarm_prompt(None);
         let description = if swarm_prompt.is_empty() {
             BASE_DESCRIPTION.to_string()
@@ -1851,14 +1851,15 @@ impl Tool for CommunicateTool {
                     "description": "Action. For spawn, prefer including prompt with the initial task so the new agent starts useful work immediately. Use list_models to see which models/routes are available for per-spawn model selection."
                 },
                 "key": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Shared-context key for share/share_append/read. Discouraged: prefer the repo and typed node artifacts as the shared medium; use shared context only for small non-repo state."
                 },
                 "value": {
                     "type": "string"
                 },
                 "message": {
                     "type": "string",
-                    "description": "Message body. For action=message, routes by fields provided: with to_session it is a DM, with channel it posts to that channel, with neither it broadcasts to the whole swarm. For action=broadcast it always goes to the whole swarm. For action=report, this is the completion report body."
+                    "description": "Message body. For action=message, routes by fields provided: with to_session it is a DM, with channel it posts to that channel, with neither it broadcasts to your spawned subtree. For action=report, this is the completion report body."
                 },
                 "tldr": {
                     "type": "string",
@@ -1882,7 +1883,7 @@ impl Tool for CommunicateTool {
                 },
                 "channel": {
                     "type": "string",
-                    "description": "Channel name. For action=channel (or action=message with a channel) the message goes to subscribers of this channel. Also used by subscribe_channel/unsubscribe_channel/channel_members."
+                    "description": "Channel name. For action=channel (or action=message with a channel) the message goes to subscribers of this channel. Also used by subscribe_channel/unsubscribe_channel/channel_members. Discouraged: prefer DMs and task-graph artifacts over ad hoc channels."
                 },
                 "proposer_session": { "type": "string" },
                 "reason": { "type": "string" },
@@ -2110,7 +2111,7 @@ impl Tool for CommunicateTool {
                 // `message` is the general-purpose send: it routes by the fields
                 // provided. With `to_session` it acts as a DM, with `channel` it
                 // posts to that channel, and with neither it broadcasts to the
-                // whole swarm. `broadcast` is the explicit group-only send.
+                // sender's spawned subtree (whole swarm only for the coordinator).
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for message action"))?;
@@ -2141,7 +2142,7 @@ impl Tool for CommunicateTool {
                                 format!("Channel message sent to #{}: {}", channel, message)
                             }
                             (None, None) => {
-                                format!("Broadcast sent to all agents: {}", message)
+                                format!("Broadcast sent to your spawned subtree: {}", message)
                             }
                         };
                         Ok(ToolOutput::new(confirmation))
@@ -2151,9 +2152,12 @@ impl Tool for CommunicateTool {
             }
 
             "broadcast" => {
-                // `broadcast` always targets the whole swarm. Any `to_session`/
+                // `broadcast` targets the sender's spawned subtree (the swarm
+                // coordinator reaches the whole swarm). Any `to_session`/
                 // `channel` is intentionally ignored so the action stays an
                 // unambiguous group send; use `message`/`dm`/`channel` to target.
+                // Prefer DMs or task-graph artifacts; group sends are for rare
+                // coordination moments, not routine status updates.
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for broadcast action"))?;
@@ -2175,7 +2179,7 @@ impl Tool for CommunicateTool {
                     Ok(response) => {
                         ensure_success(&response)?;
                         Ok(ToolOutput::new(format!(
-                            "Broadcast sent to all agents: {}",
+                            "Broadcast sent to your spawned subtree: {}",
                             message
                         )))
                     }

@@ -90,8 +90,30 @@ pub(super) async fn handle_comm_share(
                 .unwrap_or_default()
         };
 
-        for sid in &swarm_session_ids {
-            if sid != &req_session_id {
+        // Shared-context updates are subtree-scoped like broadcasts: notify only
+        // the sessions the writer (transitively) spawned, so a share cannot
+        // become a member-cap-sized notification storm. The coordinator keeps
+        // whole-swarm reach. Everyone can still `read` the key on demand.
+        //
+        // Compute the target set up front and drop the read guard before the
+        // fanout loop: `fanout_session_event` takes a write lock on members.
+        let notify_targets: Vec<String> = {
+            let members = swarm_members.read().await;
+            let sender_is_coordinator = members
+                .get(&req_session_id)
+                .is_some_and(|member| member.role == "coordinator");
+            swarm_session_ids
+                .iter()
+                .filter(|sid| *sid != &req_session_id)
+                .filter(|sid| {
+                    sender_is_coordinator
+                        || super::swarm_is_self_or_ancestor(&members, &req_session_id, sid)
+                })
+                .cloned()
+                .collect()
+        };
+        for sid in &notify_targets {
+            {
                 let _ = fanout_session_event(
                     swarm_members,
                     sid,
