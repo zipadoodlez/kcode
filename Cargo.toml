@@ -57,6 +57,7 @@ members = [
     "crates/jcode-provider-claude-cli-runtime",
     "crates/jcode-provider-anthropic-runtime",
     "crates/jcode-provider-openai-runtime",
+    "crates/jcode-provider-openrouter-runtime",
     "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
@@ -188,6 +189,7 @@ jcode-provider-copilot-runtime = { path = "crates/jcode-provider-copilot-runtime
 jcode-provider-claude-cli-runtime = { path = "crates/jcode-provider-claude-cli-runtime" }
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
+jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-runtime" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)
@@ -406,6 +408,38 @@ opt-level = 3
 [profile.selfdev.package.memchr]
 opt-level = 3
 [profile.test.package.memchr]
+opt-level = 3
+
+# The embedding stack (tract ONNX inference + HF tokenizer) runs the MiniLM
+# model for memory recall/maintenance on the shared server. At opt-level 0 a
+# single embed measured ~666 ms (matmul inner loops unoptimized), which keeps
+# the model "busy" long enough that the idle unloader rarely fires and burns
+# CPU on every memory-maintenance pass. These crates are pure compute and
+# change only when the dependency is bumped, so the optimized objects are
+# compiled once and cached across dev/selfdev iterations.
+[profile.dev.package.tract-core]
+opt-level = 3
+[profile.selfdev.package.tract-core]
+opt-level = 3
+[profile.test.package.tract-core]
+opt-level = 3
+[profile.dev.package.tract-linalg]
+opt-level = 3
+[profile.selfdev.package.tract-linalg]
+opt-level = 3
+[profile.test.package.tract-linalg]
+opt-level = 3
+[profile.dev.package.tract-data]
+opt-level = 3
+[profile.selfdev.package.tract-data]
+opt-level = 3
+[profile.test.package.tract-data]
+opt-level = 3
+[profile.dev.package.tokenizers]
+opt-level = 3
+[profile.selfdev.package.tokenizers]
+opt-level = 3
+[profile.test.package.tokenizers]
 opt-level = 3
 
 [profile.test]

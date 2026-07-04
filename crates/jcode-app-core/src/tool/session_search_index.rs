@@ -2,11 +2,20 @@
 //! candidate files before any expensive parsing.
 //!
 //! One index is kept per session store (jcode, codex, claude, ...). Each entry
-//! records the file's identity (key, mtime, size) plus the set of FNV-1a
-//! hashes of its search tokens. On rebuild, entries whose identity is
+//! records the file's identity (key, mtime, size) plus a Bloom filter over the
+//! FNV-1a hashes of its search tokens. On rebuild, entries whose identity is
 //! unchanged are reused as-is, so only new or modified files are re-read and
-//! re-tokenized. Hash collisions can only produce false-positive candidates,
-//! which downstream scoring re-verifies against the real file contents.
+//! re-tokenized.
+//!
+//! The index is a *candidate pre-filter*: downstream scoring re-verifies every
+//! candidate against the real file contents, so false positives only cost a
+//! little extra verification work and can never change results. That makes a
+//! Bloom filter the structurally right representation. The previous format
+//! stored every token hash exactly (`Arc<[u32]>`, 4 bytes/token), which
+//! resident-heap profiling measured at ~32 MB on a real store; at
+//! [`BLOOM_BITS_PER_TOKEN`] bits/token the same recall costs ~4x less memory
+//! with a ~2-3% false-positive rate, and membership probes are O(k) instead
+//! of O(log n).
 
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
@@ -21,8 +30,20 @@ pub const MAX_INDEX_TOKEN_LEN: usize = 32;
 /// treated as candidates.
 pub const MAX_TOKENS_PER_FILE: usize = 200_000;
 const MAGIC: &[u8; 4] = b"JSIX";
-const VERSION: u32 = 1;
+/// Version 2 switched per-entry token storage from exact sorted hash sets to
+/// Bloom filters. Version-1 files fail to load and are rebuilt from scratch,
+/// which is the standard refresh path for this index.
+const VERSION: u32 = 2;
 const INDEX_THREADS: usize = 8;
+
+/// Bloom sizing: bits per distinct token. 8 bits/token with [`BLOOM_HASHES`]
+/// probes gives a ~2-3% per-term false-positive rate, which is negligible for
+/// a verified pre-filter while shrinking resident size 4x vs exact u32 sets.
+const BLOOM_BITS_PER_TOKEN: usize = 8;
+/// Number of Bloom probe positions per token (k). k=4 is near-optimal for
+/// 8 bits/token (k* = ln2 * bits/token ≈ 5.5; 4 keeps probes cheap and the
+/// difference is <1% FPR).
+const BLOOM_HASHES: u32 = 4;
 
 static INDEX_CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<TokenHashIndex>>>> = OnceLock::new();
 
@@ -41,8 +62,73 @@ struct IndexEntry {
     mtime_ms: u64,
     size: u64,
     overflow: bool,
-    /// Sorted, deduplicated token hashes.
-    tokens: Arc<[u32]>,
+    /// Bloom filter over the entry's token hashes; see [`TokenBloom`].
+    tokens: TokenBloom,
+}
+
+/// Compact token-membership filter for one indexed file.
+///
+/// Sized from the distinct-token count at [`BLOOM_BITS_PER_TOKEN`] bits/token
+/// (rounded up to a power-of-two word count so probe positions reduce with a
+/// mask instead of a modulo). Shared via `Arc` so incremental rebuilds reuse
+/// unchanged entries without copying filter bits.
+#[derive(Debug, Clone, Default)]
+struct TokenBloom {
+    /// Number of distinct tokens inserted, kept for size accounting/tests.
+    token_count: u32,
+    bits: Arc<[u64]>,
+}
+
+impl TokenBloom {
+    /// Build a filter from deduplicated token hashes.
+    fn from_hashes(hashes: &[u32]) -> Self {
+        if hashes.is_empty() {
+            return Self::default();
+        }
+        let min_bits = hashes.len().saturating_mul(BLOOM_BITS_PER_TOKEN).max(64);
+        let words = (min_bits / 64).next_power_of_two();
+        let mut bits = vec![0u64; words];
+        let mask = (words as u64 * 64) - 1;
+        for &hash in hashes {
+            for probe in Self::probe_positions(hash) {
+                let bit = probe & mask;
+                bits[(bit / 64) as usize] |= 1u64 << (bit % 64);
+            }
+        }
+        Self {
+            token_count: hashes.len() as u32,
+            bits: bits.into(),
+        }
+    }
+
+    /// Might `hash` have been inserted? False positives possible, false
+    /// negatives are not.
+    fn contains(&self, hash: u32) -> bool {
+        if self.bits.is_empty() {
+            return false;
+        }
+        let mask = (self.bits.len() as u64 * 64) - 1;
+        Self::probe_positions(hash).into_iter().all(|probe| {
+            let bit = probe & mask;
+            self.bits[(bit / 64) as usize] & (1u64 << (bit % 64)) != 0
+        })
+    }
+
+    /// Derive [`BLOOM_HASHES`] probe positions from one 32-bit token hash via
+    /// splitmix64-style mixing (double hashing: g_i = h1 + i*h2).
+    fn probe_positions(hash: u32) -> [u64; BLOOM_HASHES as usize] {
+        let mut x = (hash as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+        x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        x ^= x >> 31;
+        let h1 = x;
+        let h2 = (x >> 32) | 1; // odd so strides cover the space
+        let mut probes = [0u64; BLOOM_HASHES as usize];
+        for (i, probe) in probes.iter_mut().enumerate() {
+            *probe = h1.wrapping_add(h2.wrapping_mul(i as u64));
+        }
+        probes
+    }
 }
 
 #[derive(Debug, Default)]
@@ -100,7 +186,7 @@ impl TokenHashIndex {
                     .filter(|hash| match hash {
                         // Query term too long to be indexed: assume present.
                         None => true,
-                        Some(hash) => entry.tokens.binary_search(hash).is_ok(),
+                        Some(hash) => entry.tokens.contains(*hash),
                     })
                     .count();
                 matched >= min_term_matches.max(1)
@@ -117,6 +203,20 @@ impl TokenHashIndex {
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Approximate resident bytes of this index (entries + filter bits +
+    /// keys). Used by memory attribution so `server:memory` can explain the
+    /// session-search cache instead of leaving it as unattributed heap.
+    pub fn approx_resident_bytes(&self) -> usize {
+        self.entries
+            .iter()
+            .map(|entry| {
+                std::mem::size_of::<IndexEntry>()
+                    + entry.key.len()
+                    + entry.tokens.bits.len() * 8
+            })
+            .sum()
     }
 
     fn matches_specs(&self, specs: &[IndexFileSpec]) -> bool {
@@ -141,11 +241,12 @@ impl TokenHashIndex {
             buf.extend_from_slice(&entry.mtime_ms.to_le_bytes());
             buf.extend_from_slice(&entry.size.to_le_bytes());
             buf.push(u8::from(entry.overflow));
-            buf.extend_from_slice(&(entry.tokens.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&entry.tokens.token_count.to_le_bytes());
+            buf.extend_from_slice(&(entry.tokens.bits.len() as u32).to_le_bytes());
         }
         for entry in &self.entries {
-            for hash in entry.tokens.iter() {
-                buf.extend_from_slice(&hash.to_le_bytes());
+            for word in entry.tokens.bits.iter() {
+                buf.extend_from_slice(&word.to_le_bytes());
             }
         }
         let tmp = path.with_extension("bin.tmp");
@@ -174,21 +275,30 @@ impl TokenHashIndex {
             let size = cursor.read_u64()?;
             let overflow = cursor.take(1)?[0] != 0;
             let token_count = cursor.read_u32()? as usize;
-            metas.push((key, mtime_ms, size, overflow, token_count));
+            let word_count = cursor.read_u32()? as usize;
+            metas.push((key, mtime_ms, size, overflow, token_count, word_count));
         }
         let mut entries = Vec::with_capacity(entry_count);
-        for (key, mtime_ms, size, overflow, token_count) in metas {
-            let bytes = cursor.take(token_count * 4)?;
-            let tokens: Vec<u32> = bytes
-                .chunks_exact(4)
-                .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        for (key, mtime_ms, size, overflow, token_count, word_count) in metas {
+            let bytes = cursor.take(word_count * 8)?;
+            let bits: Vec<u64> = bytes
+                .chunks_exact(8)
+                .map(|chunk| {
+                    u64::from_le_bytes([
+                        chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6],
+                        chunk[7],
+                    ])
+                })
                 .collect();
             entries.push(IndexEntry {
                 key,
                 mtime_ms,
                 size,
                 overflow,
-                tokens: tokens.into(),
+                tokens: TokenBloom {
+                    token_count: token_count as u32,
+                    bits: bits.into(),
+                },
             });
         }
         Ok(Self { entries })
@@ -329,7 +439,7 @@ fn tokenize_slots_parallel(
                             mtime_ms: spec.mtime_ms,
                             size: spec.size,
                             overflow,
-                            tokens: tokens.into(),
+                            tokens: TokenBloom::from_hashes(&tokens),
                         }
                     })
                     .collect()
@@ -445,5 +555,81 @@ mod tests {
             index.candidate_slots(&vec!["anything".to_string()], 1),
             vec![0]
         );
+    }
+
+    /// Bloom filters must never produce false negatives: every inserted token
+    /// must be reported present, across a range of set sizes.
+    #[test]
+    fn bloom_has_no_false_negatives() {
+        for count in [1usize, 3, 64, 1000, 20_000] {
+            let hashes: Vec<u32> = (0..count as u32).map(|i| hash_token(&format!("token-{i}"))).collect();
+            let bloom = TokenBloom::from_hashes(&hashes);
+            for hash in &hashes {
+                assert!(bloom.contains(*hash), "false negative at set size {count}");
+            }
+        }
+    }
+
+    /// The false-positive rate at the configured sizing must stay near the
+    /// design point (~2-3%), well under 10% even with collision noise.
+    #[test]
+    fn bloom_false_positive_rate_is_bounded() {
+        let hashes: Vec<u32> = (0..10_000u32).map(|i| hash_token(&format!("present-{i}"))).collect();
+        let bloom = TokenBloom::from_hashes(&hashes);
+        let mut false_positives = 0usize;
+        const PROBES: usize = 20_000;
+        for i in 0..PROBES {
+            if bloom.contains(hash_token(&format!("absent-{i}"))) {
+                false_positives += 1;
+            }
+        }
+        let rate = false_positives as f64 / PROBES as f64;
+        assert!(
+            rate < 0.10,
+            "bloom false-positive rate {rate:.3} exceeds bound (sizing regression?)"
+        );
+    }
+
+    /// The Bloom representation must be materially smaller than the exact
+    /// 4-bytes/token encoding it replaced. This is the memory win this change
+    /// exists for; fail if sizing regresses past half the old cost.
+    #[test]
+    fn bloom_is_smaller_than_exact_token_sets() {
+        let token_count = 50_000usize;
+        let hashes: Vec<u32> = (0..token_count as u32)
+            .map(|i| hash_token(&format!("tok-{i}")))
+            .collect();
+        let bloom = TokenBloom::from_hashes(&hashes);
+        let bloom_bytes = bloom.bits.len() * 8;
+        let exact_bytes = hashes.len() * 4;
+        assert!(
+            bloom_bytes * 2 <= exact_bytes,
+            "bloom {bloom_bytes}B should be at most half of exact {exact_bytes}B"
+        );
+    }
+
+    /// approx_resident_bytes must reflect the dominant cost (filter bits).
+    #[test]
+    fn approx_resident_bytes_tracks_filter_size() {
+        let texts = ["alpha beta gamma delta", "tiny"];
+        let specs: Vec<IndexFileSpec> = texts
+            .iter()
+            .enumerate()
+            .map(|(i, text)| spec(&format!("f{i}"), 1, text.len() as u64))
+            .collect();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let index = build_or_update(
+            &temp.path().join("index.bin"),
+            &specs,
+            &|slot| Some(texts[slot].to_string()),
+        )
+        .expect("build");
+        let bytes = index.approx_resident_bytes();
+        let min_expected: usize = index
+            .entries
+            .iter()
+            .map(|entry| entry.tokens.bits.len() * 8)
+            .sum();
+        assert!(bytes >= min_expected, "{bytes} < filter bits {min_expected}");
     }
 }
