@@ -614,7 +614,9 @@ fn test_openrouter_and_compatible_profile_transition_invariants() {
             .expect("NVIDIA NIM model should be selectable");
         assert_eq!(provider.model(), "nvidia/llama-3.1-nemotron-ultra-253b-v1");
         assert!(Arc::ptr_eq(
-            &provider.openrouter_provider().expect("real OpenRouter remains"),
+            &provider
+                .openrouter_provider()
+                .expect("real OpenRouter remains"),
             &openrouter
         ));
         assert_eq!(
@@ -714,7 +716,9 @@ fn test_forced_openrouter_treats_claude_like_model_as_provider_local() {
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
-                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            openai_compatible_profiles: RwLock::new(
+                                std::collections::HashMap::new(),
+                            ),
                             active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
@@ -759,7 +763,9 @@ fn test_forced_openrouter_preserves_custom_at_sign_model_ids() {
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
-                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            openai_compatible_profiles: RwLock::new(
+                                std::collections::HashMap::new(),
+                            ),
                             active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
@@ -807,7 +813,9 @@ fn test_config_default_provider_openai_compatible_keeps_gpt_model_provider_local
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
-                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            openai_compatible_profiles: RwLock::new(
+                                std::collections::HashMap::new(),
+                            ),
                             active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
@@ -858,7 +866,9 @@ fn test_custom_compatible_model_routes_do_not_request_openrouter_rewrite() {
                             cursor: RwLock::new(None),
                             bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
-                            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                            openai_compatible_profiles: RwLock::new(
+                                std::collections::HashMap::new(),
+                            ),
                             active_openai_compatible_profile: RwLock::new(None),
                             active: RwLock::new(ActiveProvider::OpenRouter),
                             use_claude_cli: false,
@@ -1486,7 +1496,15 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
 
             assert_eq!(
                 provider.available_efforts(),
-                vec!["none", "low", "medium", "high", "max", "swarm", "swarm-deep"]
+                vec![
+                    "none",
+                    "low",
+                    "medium",
+                    "high",
+                    "max",
+                    "swarm",
+                    "swarm-deep"
+                ]
             );
             provider
                 .set_reasoning_effort("max")
@@ -1545,7 +1563,7 @@ fn test_provider_specific_model_prefix_cannot_bypass_provider_lock() {
                 copilot_api: RwLock::new(None),
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
-                cursor: RwLock::new(Some(Arc::new(cursor::CursorCliProvider::new()))),
+                cursor: RwLock::new(Some(test_cursor_runtime())),
                 bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),

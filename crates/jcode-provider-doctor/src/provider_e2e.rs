@@ -1454,7 +1454,7 @@ impl NativeProviderKind {
                 std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
             }
             Self::Cursor => {
-                std::sync::Arc::new(jcode_base::provider::cursor::CursorCliProvider::new())
+                std::sync::Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
             }
             Self::Copilot => {
                 // `new()` requires a loadable GitHub token; fall back to an empty

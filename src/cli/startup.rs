@@ -125,6 +125,10 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::GEMINI_RUNTIME,
         || std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new()),
     );
+    crate::provider::external::register_external_provider(
+        crate::provider::external::CURSOR_RUNTIME,
+        || std::sync::Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new()),
+    );
 }
 
 fn parse_and_prepare_args() -> Result<Args> {
@@ -289,16 +293,20 @@ mod tests {
         assert!(should_auto_install_update(&args));
     }
     #[test]
-    fn external_gemini_runtime_registers_and_instantiates() {
+    fn external_provider_runtimes_register_and_instantiate() {
         register_external_provider_runtimes();
-        assert!(crate::provider::external::external_provider_registered(
-            crate::provider::external::GEMINI_RUNTIME
-        ));
-        let provider = crate::provider::external::instantiate_external_provider(
-            crate::provider::external::GEMINI_RUNTIME,
-        )
-        .expect("gemini runtime factory should instantiate");
-        assert_eq!(provider.name(), "gemini");
-        assert!(!provider.model().is_empty());
+        for (key, expected_name) in [
+            (crate::provider::external::GEMINI_RUNTIME, "gemini"),
+            (crate::provider::external::CURSOR_RUNTIME, "cursor"),
+        ] {
+            assert!(
+                crate::provider::external::external_provider_registered(key),
+                "{key} runtime should be registered"
+            );
+            let provider = crate::provider::external::instantiate_external_provider(key)
+                .unwrap_or_else(|| panic!("{key} runtime factory should instantiate"));
+            assert_eq!(provider.name(), expected_name);
+            assert!(!provider.model().is_empty());
+        }
     }
 }

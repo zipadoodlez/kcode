@@ -43,7 +43,7 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn cursor_provider(&self) -> Option<Arc<cursor::CursorCliProvider>> {
+    pub(super) fn cursor_provider(&self) -> Option<Arc<dyn Provider>> {
         self.cursor
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

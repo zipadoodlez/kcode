@@ -21,6 +21,9 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// Registry key for the Gemini provider runtime.
 pub const GEMINI_RUNTIME: &str = "gemini";
 
+/// Registry key for the Cursor provider runtime.
+pub const CURSOR_RUNTIME: &str = "cursor";
+
 type Factory = Arc<dyn Fn() -> Arc<dyn Provider> + Send + Sync>;
 
 fn registry() -> &'static RwLock<HashMap<&'static str, Factory>> {

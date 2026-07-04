@@ -3288,6 +3288,7 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
+ "jcode-provider-cursor-runtime",
  "jcode-provider-doctor",
  "jcode-provider-gemini-runtime",
  "jcode-selfdev-types",
@@ -3769,12 +3770,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-provider-cursor-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "flate2",
+ "jcode-base",
+ "jcode-message-types",
+ "jcode-provider-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+]
+
+[[package]]
 name = "jcode-provider-doctor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures",
  "jcode-base",
+ "jcode-provider-cursor-runtime",
  "jcode-provider-gemini-runtime",
  "jcode-provider-metadata",
  "reqwest 0.12.28",

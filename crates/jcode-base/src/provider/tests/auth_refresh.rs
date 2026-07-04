@@ -658,6 +658,13 @@ fn test_on_auth_changed_hot_initializes_cursor_and_marks_routes_available() {
             let runtime = enter_test_runtime();
             let _enter = runtime.enter();
 
+            // The concrete Cursor runtime lives downstream in
+            // jcode-provider-cursor-runtime; register the shared test stub
+            // through the same composition-root registry the binary uses.
+            external::register_external_provider(external::CURSOR_RUNTIME, || {
+                test_cursor_runtime()
+            });
+
             let provider = MultiProvider {
                 claude: RwLock::new(None),
                 anthropic: RwLock::new(None),

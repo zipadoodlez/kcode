@@ -756,6 +756,87 @@ fn standard_openrouter_catalog_refresh_fires_when_named_profile_owns_slot() {
     });
 }
 
+/// Test stand-in for the Cursor runtime, which lives downstream in
+/// `jcode-provider-cursor-runtime` and therefore cannot be constructed from
+/// base tests. Mirrors the runtime's catalog surface (static `AVAILABLE_MODELS`
+/// plus Cursor `ModelRoute`s) so routing/fallback tests stay meaningful.
+struct StubCursorRuntime {
+    model: std::sync::RwLock<String>,
+}
+
+impl StubCursorRuntime {
+    fn new() -> Self {
+        Self {
+            model: std::sync::RwLock::new(cursor::DEFAULT_MODEL.to_string()),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Provider for StubCursorRuntime {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> anyhow::Result<EventStream> {
+        anyhow::bail!("stub cursor runtime does not stream")
+    }
+    fn name(&self) -> &'static str {
+        "cursor"
+    }
+    fn model(&self) -> String {
+        self.model
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+    fn set_model(&self, model: &str) -> anyhow::Result<()> {
+        let trimmed = model.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("Cursor model cannot be empty");
+        }
+        *self
+            .model
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = trimmed.to_string();
+        Ok(())
+    }
+    fn available_models(&self) -> Vec<&'static str> {
+        cursor::AVAILABLE_MODELS.to_vec()
+    }
+    fn available_models_display(&self) -> Vec<String> {
+        cursor::AVAILABLE_MODELS
+            .iter()
+            .map(|model| model.to_string())
+            .collect()
+    }
+    fn available_models_for_switching(&self) -> Vec<String> {
+        self.available_models_display()
+    }
+    fn model_routes(&self) -> Vec<ModelRoute> {
+        self.available_models_display()
+            .into_iter()
+            .map(|model| ModelRoute {
+                model,
+                provider: "Cursor".to_string(),
+                api_method: "cursor".to_string(),
+                available: true,
+                detail: String::new(),
+                cheapness: None,
+            })
+            .collect()
+    }
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(StubCursorRuntime::new())
+    }
+}
+
+fn test_cursor_runtime() -> Arc<dyn Provider> {
+    Arc::new(StubCursorRuntime::new())
+}
+
 fn test_multi_provider_with_cursor() -> MultiProvider {
     MultiProvider {
         claude: RwLock::new(None),
@@ -764,7 +845,7 @@ fn test_multi_provider_with_cursor() -> MultiProvider {
         copilot_api: RwLock::new(None),
         antigravity: RwLock::new(None),
         gemini: RwLock::new(None),
-        cursor: RwLock::new(Some(Arc::new(cursor::CursorCliProvider::new()))),
+        cursor: RwLock::new(Some(test_cursor_runtime())),
         bedrock: RwLock::new(None),
         openrouter: RwLock::new(None),
         openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),

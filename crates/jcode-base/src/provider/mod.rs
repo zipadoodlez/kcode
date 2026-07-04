@@ -331,8 +331,11 @@ pub struct MultiProvider {
     /// the concrete runtime lives downstream in `jcode-provider-gemini-runtime`
     /// and is instantiated through `external::instantiate_external_provider`.
     gemini: RwLock<Option<Arc<dyn Provider>>>,
-    /// Cursor provider (native/direct API, hot-swappable after login)
-    cursor: RwLock<Option<Arc<cursor::CursorCliProvider>>>,
+    /// Cursor provider (native/direct API, hot-swappable after login). Held as
+    /// `dyn Provider`: the concrete runtime lives downstream in
+    /// `jcode-provider-cursor-runtime` and is instantiated through
+    /// `external::instantiate_external_provider`.
+    cursor: RwLock<Option<Arc<dyn Provider>>>,
     /// AWS Bedrock provider (native Converse/ConverseStream, IAM/SigV4)
     bedrock: RwLock<Option<Arc<bedrock::BedrockProvider>>>,
     /// OpenRouter API provider
@@ -1244,13 +1247,14 @@ impl MultiProvider {
             && crate::auth::AuthStatus::check_fast()
                 .assessment_for_provider(crate::provider_catalog::CURSOR_LOGIN_PROVIDER)
                 .is_available()
+            && let Some(cursor) =
+                external::instantiate_expected_external_provider(external::CURSOR_RUNTIME)
         {
             crate::logging::info("Hot-initialized Cursor provider after login");
             *self
                 .cursor
                 .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                Some(Arc::new(cursor::CursorCliProvider::new()));
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(cursor);
         }
 
         let already_has_bedrock = self.bedrock_provider().is_some();
@@ -2473,7 +2477,7 @@ impl Provider for MultiProvider {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .is_some()
         {
-            Some(Arc::new(cursor::CursorCliProvider::new()))
+            external::instantiate_expected_external_provider(external::CURSOR_RUNTIME)
         } else {
             None
         };

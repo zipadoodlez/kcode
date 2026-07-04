@@ -184,7 +184,7 @@ impl MultiProvider {
         };
 
         let cursor_provider = if has_cursor_creds {
-            Some(Arc::new(cursor::CursorCliProvider::new()))
+            external::instantiate_expected_external_provider(external::CURSOR_RUNTIME)
         } else {
             None
         };

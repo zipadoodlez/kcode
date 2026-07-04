@@ -1278,7 +1278,7 @@ pub async fn login_and_bootstrap_provider(
             disable_subscription_runtime_mode();
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
-            Arc::new(provider::cursor::CursorCliProvider::new())
+            Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
         LoginProviderTarget::Copilot => {
             disable_subscription_runtime_mode();
@@ -1423,7 +1423,7 @@ async fn init_provider_with_options(
             init_notice("Using Cursor native HTTPS provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
-            Arc::new(provider::cursor::CursorCliProvider::new())
+            Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
         ProviderChoice::Copilot => {
             disable_subscription_runtime_mode();
