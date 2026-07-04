@@ -1441,6 +1441,8 @@ async fn spawn_assignment_session(ctx: &ToolContext, params: &CommunicateInput) 
         initial_message: None,
         request_nonce: Some(fresh_spawn_request_nonce(ctx)),
         spawn_mode: params.spawn_mode.clone(),
+        model: params.model.clone(),
+        effort: params.effort.clone(),
     };
 
     match send_request(spawn_request).await {
@@ -1632,11 +1634,67 @@ fn format_channels(channels: &[SwarmChannelInfo]) -> ToolOutput {
     ToolOutput::new(format_comm_channels(channels))
 }
 
-pub struct CommunicateTool;
+/// Render the swarm model catalog for the `list_models` action: the current
+/// (spawn-default) model, any config pin, and one line per route with
+/// availability, auth method, and a relative cost estimate.
+fn format_swarm_model_list(
+    current_model: Option<&str>,
+    configured_swarm_model: Option<&str>,
+    model_routes: &[jcode_provider_core::ModelRoute],
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Current model (spawn default when no override): {}\n",
+        current_model.unwrap_or("unknown")
+    ));
+    match configured_swarm_model {
+        Some(pin) if !pin.trim().is_empty() => {
+            out.push_str(&format!("Configured agents.swarm_model pin: {pin}\n"));
+        }
+        _ => out.push_str("No agents.swarm_model pin configured (workers inherit the coordinator's model unless a per-spawn model is passed).\n"),
+    }
+    if model_routes.is_empty() {
+        out.push_str("\nNo model routes reported. Spawn with a bare model name or omit model to inherit.");
+        return out;
+    }
+    out.push_str("\nAvailable model routes (pass as spawn model, e.g. 'gpt-5.5' or route-pinned 'openai-api:gpt-5.5'):\n");
+    for route in model_routes {
+        let availability = if route.available { "" } else { " [unavailable]" };
+        let cost = route
+            .estimated_reference_cost_micros()
+            .map(|micros| format!(" ~${:.2}/ref-task", micros as f64 / 1_000_000.0))
+            .unwrap_or_default();
+        let detail = if route.detail.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", route.detail)
+        };
+        out.push_str(&format!(
+            "- {} via {} [{}]{}{}{}\n",
+            route.model, route.provider, route.api_method, availability, cost, detail
+        ));
+    }
+    out.push_str("\nAlso pass effort (none|low|medium|high|xhigh|max) to set the spawned agent's reasoning effort.");
+    out
+}
+
+pub struct CommunicateTool {
+    /// Full tool description including the user-tunable swarm prompt
+    /// (model-routing guidance loaded from `swarm-prompt.md`). Computed once at
+    /// registry construction so `description()` can hand out a borrowed str.
+    description: String,
+}
 
 impl CommunicateTool {
     pub fn new() -> Self {
-        Self
+        const BASE_DESCRIPTION: &str = "Coordinate agents. Any agent can spawn child agents, and those children can spawn their own, forming a recursive spawn tree capped at depth 5. For spawn, prefer providing a prompt so the new agent starts with a concrete task instead of idling. Spawned/assigned agents automatically report their final response back to the agent that spawned them; you can stop any agent in the subtree you spawned.";
+        let swarm_prompt = crate::prompt::load_swarm_prompt(None);
+        let description = if swarm_prompt.is_empty() {
+            BASE_DESCRIPTION.to_string()
+        } else {
+            format!("{BASE_DESCRIPTION}\n\nSwarm prompt (user-tunable via ~/.jcode/swarm-prompt.md):\n{swarm_prompt}")
+        };
+        Self { description }
     }
 }
 
@@ -1717,6 +1775,13 @@ struct CommunicateInput {
     follow_up: Option<String>,
     #[serde(default)]
     spawn_mode: Option<String>,
+    /// Per-spawn model override for spawn/assign_task/assign_next/run_plan
+    /// spawns. Takes precedence over agents.swarm_model config.
+    #[serde(default)]
+    model: Option<String>,
+    /// Reasoning effort for spawned agents (none|low|medium|high|xhigh|max).
+    #[serde(default)]
+    effort: Option<String>,
 }
 
 impl CommunicateInput {
@@ -1736,6 +1801,7 @@ fn canonical_swarm_action(action: &str) -> &str {
         "dm_session" | "direct_message" | "whisper" => "dm",
         "broadcast_all" | "announce" => "broadcast",
         "agents" | "members" | "list_agents" | "list_members" | "roster" => "list",
+        "models" | "model_list" | "list_model" | "list_providers" | "list_routes" => "list_models",
         "plan" | "status_plan" => "plan_status",
         "assign" => "assign_task",
         "kill" | "terminate" => "stop",
@@ -1750,7 +1816,7 @@ impl Tool for CommunicateTool {
     }
 
     fn description(&self) -> &str {
-        "Coordinate agents. Any agent can spawn child agents, and those children can spawn their own, forming a recursive spawn tree capped at depth 5. For spawn, prefer providing a prompt so the new agent starts with a concrete task instead of idling. Spawned/assigned agents automatically report their final response back to the agent that spawned them; you can stop any agent in the subtree you spawned."
+        &self.description
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1766,8 +1832,8 @@ impl Tool for CommunicateTool {
                              "status", "report", "plan_status", "summary", "read_context", "resync_plan", "assign_task", "assign_next", "fill_slots", "run_plan", "cleanup",
                              "task_graph", "expand_node", "complete_node", "inject_gap",
                              "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
-                             "subscribe_channel", "unsubscribe_channel", "await_members"],
-                    "description": "Action. For spawn, prefer including prompt with the initial task so the new agent starts useful work immediately."
+                             "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
+                    "description": "Action. For spawn, prefer including prompt with the initial task so the new agent starts useful work immediately. Use list_models to see which models/routes are available for per-spawn model selection."
                 },
                 "key": {
                     "type": "string"
@@ -1842,6 +1908,15 @@ impl Tool for CommunicateTool {
                     "type": "string",
                     "enum": ["visible", "headless", "inline", "auto"],
                     "description": "Per-call spawn mode for swarm-created agents. Overrides agents.swarm_spawn_mode config when set. 'visible' opens a terminal window, 'headless' runs in-process with no UI, 'inline' runs in-process and renders a live gallery viewport in the coordinator, 'auto' tries visible then falls back to headless. Defaults to inline."
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Optional model for the spawned agent (spawn, and spawns triggered by assign_task/assign_next/run_plan). Overrides the agents.swarm_model config pin for this call. Accepts a bare model name (e.g. 'gpt-5.5') or an auth-route-prefixed form (e.g. 'openai-api:gpt-5.5', 'claude-api:claude-fable-5'). Use 'inherit' to force coordinator inheritance. Omit to use the configured/coordinator default. Run action=list_models to see available models and routes."
+                },
+                "effort": {
+                    "type": "string",
+                    "enum": ["none", "low", "medium", "high", "xhigh", "max"],
+                    "description": "Optional reasoning effort for the spawned agent. Omit for the model's default. Only meaningful with spawn-creating actions."
                 },
                 "session_ids": {
                     "type": "array",
@@ -2418,6 +2493,8 @@ impl Tool for CommunicateTool {
                     initial_message: params.spawn_initial_message(),
                     request_nonce: None,
                     spawn_mode: params.spawn_mode.clone(),
+                    model: params.model.clone(),
+                    effort: params.effort.clone(),
                 };
 
                 match send_request(request).await {
@@ -2436,6 +2513,30 @@ impl Tool for CommunicateTool {
                         ))
                     }
                     Err(e) => Err(anyhow::anyhow!("Failed to spawn agent: {}", e)),
+                }
+            }
+
+            "list_models" => {
+                let request = Request::CommListModels {
+                    id: REQUEST_ID,
+                    session_id: ctx.session_id.clone(),
+                };
+                match send_request(request).await {
+                    Ok(ServerEvent::CommListModelsResponse {
+                        current_model,
+                        configured_swarm_model,
+                        model_routes,
+                        ..
+                    }) => Ok(ToolOutput::new(format_swarm_model_list(
+                        current_model.as_deref(),
+                        configured_swarm_model.as_deref(),
+                        &model_routes,
+                    ))),
+                    Ok(response) => {
+                        ensure_success(&response)?;
+                        Ok(ToolOutput::new("No model catalog returned."))
+                    }
+                    Err(e) => Err(anyhow::anyhow!("Failed to list models: {}", e)),
                 }
             }
 

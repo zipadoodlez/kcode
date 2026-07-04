@@ -6,6 +6,34 @@ use std::process::Command;
 /// Default system prompt for jcode (embedded at compile time)
 pub const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompt/system_prompt.md");
 
+/// Built-in default swarm prompt: model-routing guidance for spawned swarm
+/// agents (which model/effort to pick per task kind). Users can override it by
+/// creating `~/.jcode/swarm-prompt.md` (global) or `./.jcode/swarm-prompt.md`
+/// (project). See [`load_swarm_prompt`].
+pub const DEFAULT_SWARM_PROMPT: &str = include_str!("prompt/swarm_prompt.md");
+
+/// Load the swarm prompt used to steer swarm model routing. Precedence:
+/// project `./.jcode/swarm-prompt.md`, then global `~/.jcode/swarm-prompt.md`,
+/// then the built-in [`DEFAULT_SWARM_PROMPT`].
+pub fn load_swarm_prompt(working_dir: Option<&Path>) -> String {
+    let project_dir = working_dir.unwrap_or(Path::new("."));
+    let candidates = [
+        Some(project_dir.join(".jcode").join("swarm-prompt.md")),
+        crate::storage::jcode_dir()
+            .ok()
+            .map(|dir| dir.join("swarm-prompt.md")),
+    ];
+    for path in candidates.into_iter().flatten() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    DEFAULT_SWARM_PROMPT.trim().to_string()
+}
+
 /// Reasoning-effort sentinel that means "use the strongest reasoning the model
 /// supports, AND actively orchestrate the work with the swarm tool". Providers
 /// translate this to their strongest real effort when building API requests,
@@ -635,7 +663,9 @@ fn hardware_context() -> Option<String> {
     // rebuilt for every session create/attach, forking `lspci` each time. On a
     // busy shared server that meant one subprocess per client connection.
     static HARDWARE_CONTEXT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    HARDWARE_CONTEXT.get_or_init(hardware_context_uncached).clone()
+    HARDWARE_CONTEXT
+        .get_or_init(hardware_context_uncached)
+        .clone()
 }
 
 fn hardware_context_uncached() -> Option<String> {

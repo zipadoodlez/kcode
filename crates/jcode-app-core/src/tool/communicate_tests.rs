@@ -2,8 +2,9 @@ use super::{
     CommunicateInput, CommunicateTool, canonical_swarm_action, cleanup_candidate_session_ids,
     coordination_in_flight_count, default_await_target_statuses, default_cleanup_target_statuses,
     format_awaited_members, format_awaited_members_with_reports, format_members,
-    format_plan_status, latest_assistant_report, resolve_optional_target_session,
-    resolve_run_plan_concurrency, swarm_member_is_drivable_worker, swarm_member_is_in_flight,
+    format_plan_status, format_swarm_model_list, latest_assistant_report,
+    resolve_optional_target_session, resolve_run_plan_concurrency,
+    swarm_member_is_drivable_worker, swarm_member_is_in_flight,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::{
@@ -895,6 +896,80 @@ fn resolve_optional_target_session_defaults_to_current() {
 fn schema_still_requires_action() {
     let schema = CommunicateTool::new().parameters_schema();
     assert_eq!(schema["required"], json!(["action"]));
+}
+
+#[test]
+fn schema_advertises_model_and_effort_spawn_overrides() {
+    let schema = CommunicateTool::new().parameters_schema();
+    let props = schema["properties"]
+        .as_object()
+        .expect("swarm schema should have properties");
+
+    assert!(props.contains_key("model"));
+    assert!(
+        props["model"]["description"]
+            .as_str()
+            .expect("model description")
+            .contains("list_models"),
+        "model param should point at the list_models action"
+    );
+    assert!(props.contains_key("effort"));
+    assert_eq!(
+        props["effort"]["enum"],
+        json!(["none", "low", "medium", "high", "xhigh", "max"])
+    );
+    assert!(
+        schema["properties"]["action"]["enum"]
+            .as_array()
+            .expect("action enum")
+            .contains(&json!("list_models"))
+    );
+}
+
+#[test]
+fn description_includes_swarm_prompt_guidance() {
+    let tool = CommunicateTool::new();
+    let description = tool.description();
+    assert!(
+        description.contains("Swarm prompt"),
+        "description should embed the swarm prompt section"
+    );
+}
+
+#[test]
+fn format_swarm_model_list_renders_routes_and_pin() {
+    let routes = vec![
+        jcode_provider_core::ModelRoute {
+            model: "gpt-5.5".to_string(),
+            provider: "OpenAI".to_string(),
+            api_method: "openai-api-key".to_string(),
+            available: true,
+            detail: "API key".to_string(),
+            cheapness: None,
+        },
+        jcode_provider_core::ModelRoute {
+            model: "claude-fable-5".to_string(),
+            provider: "Anthropic".to_string(),
+            api_method: "anthropic-api-key".to_string(),
+            available: false,
+            detail: String::new(),
+            cheapness: None,
+        },
+    ];
+    let output = format_swarm_model_list(Some("claude-fable-5"), Some("openai-api:gpt-5.5"), &routes);
+    assert!(output.contains("Current model (spawn default when no override): claude-fable-5"));
+    assert!(output.contains("Configured agents.swarm_model pin: openai-api:gpt-5.5"));
+    assert!(output.contains("gpt-5.5 via OpenAI [openai-api-key] (API key)"));
+    assert!(output.contains("claude-fable-5 via Anthropic [anthropic-api-key] [unavailable]"));
+    assert!(output.contains("effort"));
+}
+
+#[test]
+fn format_swarm_model_list_handles_empty_catalog() {
+    let output = format_swarm_model_list(None, None, &[]);
+    assert!(output.contains("Current model (spawn default when no override): unknown"));
+    assert!(output.contains("No agents.swarm_model pin configured"));
+    assert!(output.contains("No model routes reported"));
 }
 
 #[test]

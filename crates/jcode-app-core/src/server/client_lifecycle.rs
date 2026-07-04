@@ -2184,6 +2184,8 @@ pub(super) async fn handle_client(
                 initial_message,
                 request_nonce,
                 spawn_mode,
+                model,
+                effort,
             } => {
                 let spawn_mode = match parse_swarm_spawn_mode(id, spawn_mode, &client_event_tx) {
                     Some(spawn_mode) => spawn_mode,
@@ -2196,6 +2198,8 @@ pub(super) async fn handle_client(
                     initial_message,
                     request_nonce,
                     spawn_mode,
+                    model,
+                    effort,
                     &client_event_tx,
                     &sessions,
                     &global_session_id,
@@ -2213,6 +2217,22 @@ pub(super) async fn handle_client(
                     &soft_interrupt_queues,
                     &swarm_mutation_runtime,
                     &client_connections,
+                )
+                .await;
+            }
+
+            Request::CommListModels {
+                id,
+                session_id: req_session_id,
+            } => {
+                super::comm_session::handle_comm_list_models(
+                    id,
+                    &req_session_id,
+                    &sessions,
+                    &provider_template,
+                    |event| {
+                        let _ = client_event_tx.send(event);
+                    },
                 )
                 .await;
             }

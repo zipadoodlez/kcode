@@ -12,7 +12,7 @@ use super::comm_control::{
 use super::comm_plan::{
     handle_comm_approve_plan, handle_comm_propose_plan, handle_comm_reject_plan,
 };
-use super::comm_session::{handle_comm_spawn, handle_comm_stop};
+use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
 use super::comm_sync::{
     CommResyncPlanContext, handle_comm_plan_status, handle_comm_read_context,
     handle_comm_resync_plan, handle_comm_status, handle_comm_summary,
@@ -406,6 +406,8 @@ pub(super) async fn handle_lightweight_control_request(
             initial_message,
             request_nonce,
             spawn_mode,
+            model,
+            effort,
         } => {
             let spawn_mode = match parse_swarm_spawn_mode(id, spawn_mode, &client_event_tx) {
                 Some(spawn_mode) => spawn_mode,
@@ -418,6 +420,8 @@ pub(super) async fn handle_lightweight_control_request(
                 initial_message,
                 request_nonce,
                 spawn_mode,
+                model,
+                effort,
                 &client_event_tx,
                 sessions,
                 global_session_id,
@@ -436,6 +440,15 @@ pub(super) async fn handle_lightweight_control_request(
                 swarm_mutation_runtime,
                 client_connections,
             )
+            .await;
+        }
+        Request::CommListModels {
+            id,
+            session_id: req_session_id,
+        } => {
+            handle_comm_list_models(id, &req_session_id, sessions, provider_template, |event| {
+                let _ = client_event_tx.send(event);
+            })
             .await;
         }
         Request::CommStop {

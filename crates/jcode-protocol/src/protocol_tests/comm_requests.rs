@@ -446,11 +446,15 @@ fn test_comm_spawn_roundtrip_with_optional_nonce() -> Result<()> {
         initial_message: Some("Start here".to_string()),
         request_nonce: Some("planner-fresh-123".to_string()),
         spawn_mode: Some("headless".to_string()),
+        model: Some("openai-api:gpt-5.5".to_string()),
+        effort: Some("low".to_string()),
     };
     let json = serde_json::to_string(&req)?;
     assert!(json.contains("\"type\":\"comm_spawn\""));
     assert!(json.contains("\"request_nonce\":\"planner-fresh-123\""));
     assert!(json.contains("\"spawn_mode\":\"headless\""));
+    assert!(json.contains("\"model\":\"openai-api:gpt-5.5\""));
+    assert!(json.contains("\"effort\":\"low\""));
     let decoded = parse_request_json(&json)?;
     assert_eq!(decoded.id(), 59);
     let Request::CommSpawn {
@@ -459,6 +463,8 @@ fn test_comm_spawn_roundtrip_with_optional_nonce() -> Result<()> {
         initial_message,
         request_nonce,
         spawn_mode,
+        model,
+        effort,
         ..
     } = decoded
     else {
@@ -469,6 +475,39 @@ fn test_comm_spawn_roundtrip_with_optional_nonce() -> Result<()> {
     assert_eq!(initial_message.as_deref(), Some("Start here"));
     assert_eq!(request_nonce.as_deref(), Some("planner-fresh-123"));
     assert_eq!(spawn_mode.as_deref(), Some("headless"));
+    assert_eq!(model.as_deref(), Some("openai-api:gpt-5.5"));
+    assert_eq!(effort.as_deref(), Some("low"));
+    Ok(())
+}
+
+#[test]
+fn test_comm_spawn_decodes_without_model_or_effort() -> Result<()> {
+    // Older clients omit the model/effort fields entirely.
+    let json = r#"{"type":"comm_spawn","id":60,"session_id":"sess_coord"}"#;
+    let decoded = parse_request_json(json)?;
+    let Request::CommSpawn { model, effort, .. } = decoded else {
+        return Err(anyhow!("expected CommSpawn"));
+    };
+    assert_eq!(model, None);
+    assert_eq!(effort, None);
+    Ok(())
+}
+
+#[test]
+fn test_comm_list_models_roundtrip() -> Result<()> {
+    let req = Request::CommListModels {
+        id: 61,
+        session_id: "sess_coord".to_string(),
+    };
+    let json = serde_json::to_string(&req)?;
+    assert!(json.contains("\"type\":\"comm_list_models\""));
+    let decoded = parse_request_json(&json)?;
+    assert_eq!(decoded.id(), 61);
+    assert!(decoded.is_lightweight_control_request());
+    let Request::CommListModels { session_id, .. } = decoded else {
+        return Err(anyhow!("expected CommListModels"));
+    };
+    assert_eq!(session_id, "sess_coord");
     Ok(())
 }
 

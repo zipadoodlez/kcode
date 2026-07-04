@@ -201,6 +201,54 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
 }
 
 #[test]
+fn test_swarm_prompt_prefers_project_then_global_then_default() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("JCODE_HOME");
+    let temp = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("JCODE_HOME", temp.path());
+    std::fs::create_dir_all(temp.path()).unwrap();
+
+    let project_dir = tempfile::TempDir::new().unwrap();
+
+    // No override files: built-in default.
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, DEFAULT_SWARM_PROMPT.trim());
+
+    // Global override wins over the default.
+    std::fs::write(temp.path().join("swarm-prompt.md"), "global swarm routing").unwrap();
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, "global swarm routing");
+
+    // Project override wins over global.
+    std::fs::create_dir_all(project_dir.path().join(".jcode")).unwrap();
+    std::fs::write(
+        project_dir.path().join(".jcode/swarm-prompt.md"),
+        "project swarm routing",
+    )
+    .unwrap();
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, "project swarm routing");
+
+    // A blank project file falls through to global instead of going empty.
+    std::fs::write(project_dir.path().join(".jcode/swarm-prompt.md"), "   \n").unwrap();
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, "global swarm routing");
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn test_default_swarm_prompt_mentions_model_and_list_models() {
+    assert!(DEFAULT_SWARM_PROMPT.contains("list_models"));
+    assert!(DEFAULT_SWARM_PROMPT.contains("model"));
+    assert!(DEFAULT_SWARM_PROMPT.contains("effort"));
+}
+
+#[test]
 fn test_non_selfdev_prompt_includes_lightweight_selfdev_hint() {
     let prompt = build_system_prompt(None, &[]);
     assert!(prompt.contains("Self-Development Access"));

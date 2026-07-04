@@ -50,6 +50,7 @@ fn create_visible_spawn_session(
     model_override: Option<&str>,
     provider_key_override: Option<&str>,
     route_api_method_override: Option<&str>,
+    effort_override: Option<&str>,
     selfdev_requested: bool,
 ) -> anyhow::Result<(String, PathBuf)> {
     let cwd = working_dir
@@ -69,6 +70,12 @@ fn create_visible_spawn_session(
         .filter(|route| !route.is_empty())
     {
         session.route_api_method = Some(route_api_method.to_string());
+    }
+    if let Some(effort) = effort_override.map(str::trim).filter(|e| !e.is_empty()) {
+        // Persisted effort is restored (and validated against the resolved
+        // provider/model) by `restore_reasoning_effort_from_session` when the
+        // headed client attaches to this session.
+        session.reasoning_effort = Some(effort.to_string());
     }
     if selfdev_requested {
         session.set_canary("self-dev");
@@ -284,60 +291,89 @@ fn explicit_route_for_configured_model(model: &str) -> Option<SwarmSpawnSelectio
     })
 }
 
+/// True when a model string is one of the "inherit the coordinator" sentinels.
+fn is_inherit_sentinel(model: &str) -> bool {
+    let trimmed = model.trim();
+    trimmed.eq_ignore_ascii_case("inherit") || trimmed.eq_ignore_ascii_case("coordinator")
+}
+
+/// Selection that inherits the coordinator's model, provider key, and route.
+fn inherit_coordinator_selection(coordinator: &CoordinatorSpawnIdentity) -> SwarmSpawnSelection {
+    SwarmSpawnSelection {
+        model: coordinator.model.clone(),
+        provider_key: coordinator
+            .provider_key
+            .clone()
+            .or_else(|| provider_key_for_spawn_model(coordinator.model.as_deref(), None)),
+        route_api_method: coordinator.route_api_method.clone(),
+    }
+}
+
+/// Selection for a concrete model string (optionally route-prefixed like
+/// `openai-api:gpt-5.5`), reconciled against the coordinator's identity.
+fn selection_for_concrete_model(
+    model: String,
+    coordinator: &CoordinatorSpawnIdentity,
+) -> SwarmSpawnSelection {
+    // A model may pin an explicit provider + auth route via a prefix
+    // (e.g. "openai-api:gpt-5.5"). Honor it directly so spawned agents do
+    // NOT inherit the coordinator's model/auth and instead use the
+    // requested model on the requested API route.
+    if let Some(selection) = explicit_route_for_configured_model(&model) {
+        return selection;
+    }
+
+    // A concrete model only inherits the coordinator's provider_key/route
+    // when it targets the same model; otherwise the route would point at
+    // the wrong provider/auth mode.
+    if coordinator.model.as_deref() == Some(model.as_str()) {
+        SwarmSpawnSelection {
+            model: Some(model.clone()),
+            provider_key: coordinator
+                .provider_key
+                .clone()
+                .or_else(|| provider_key_for_spawn_model(Some(&model), None)),
+            route_api_method: coordinator.route_api_method.clone(),
+        }
+    } else {
+        SwarmSpawnSelection {
+            provider_key: provider_key_for_spawn_model(Some(&model), None),
+            model: Some(model),
+            route_api_method: None,
+        }
+    }
+}
+
 fn resolve_swarm_spawn_selection(
+    requested_model: Option<String>,
     configured_swarm_model: Option<String>,
     coordinator: &CoordinatorSpawnIdentity,
 ) -> SwarmSpawnSelection {
+    // A per-spawn requested model (the `model` param on `swarm spawn`) takes
+    // precedence over the `agents.swarm_model` config pin. An explicit
+    // `inherit`/`coordinator` request forces coordinator inheritance even when
+    // the config pins a different model.
+    let requested_model = requested_model
+        .map(|model| model.trim().to_string())
+        .filter(|model| !model.is_empty());
+    if let Some(requested) = requested_model {
+        if is_inherit_sentinel(&requested) {
+            return inherit_coordinator_selection(coordinator);
+        }
+        return selection_for_concrete_model(requested, coordinator);
+    }
+
     // Treat empty strings and the explicit "inherit"/"coordinator" sentinels as
     // "no override": spawned swarm agents should inherit the coordinator's model
     // unless `agents.swarm_model` is deliberately set to a concrete model. This
     // avoids the surprising case where a stale `swarm_model` config pins every
     // spawned agent to an unrelated model/provider.
-    let configured_swarm_model = configured_swarm_model.filter(|model| {
-        let trimmed = model.trim();
-        !trimmed.is_empty()
-            && !trimmed.eq_ignore_ascii_case("inherit")
-            && !trimmed.eq_ignore_ascii_case("coordinator")
-    });
+    let configured_swarm_model = configured_swarm_model
+        .filter(|model| !model.trim().is_empty() && !is_inherit_sentinel(model));
 
     match configured_swarm_model {
-        Some(model) => {
-            // A configured model may pin an explicit provider + auth route via a
-            // prefix (e.g. "openai-api:gpt-5.5"). Honor it directly so spawned
-            // agents do NOT inherit the coordinator's model/auth and instead use
-            // the requested model on the requested API route.
-            if let Some(selection) = explicit_route_for_configured_model(&model) {
-                return selection;
-            }
-
-            // A concrete configured model only inherits the coordinator's
-            // provider_key/route when it targets the same model; otherwise the
-            // route would point at the wrong provider/auth mode.
-            if coordinator.model.as_deref() == Some(model.as_str()) {
-                SwarmSpawnSelection {
-                    model: Some(model.clone()),
-                    provider_key: coordinator
-                        .provider_key
-                        .clone()
-                        .or_else(|| provider_key_for_spawn_model(Some(&model), None)),
-                    route_api_method: coordinator.route_api_method.clone(),
-                }
-            } else {
-                SwarmSpawnSelection {
-                    provider_key: provider_key_for_spawn_model(Some(&model), None),
-                    model: Some(model),
-                    route_api_method: None,
-                }
-            }
-        }
-        None => SwarmSpawnSelection {
-            model: coordinator.model.clone(),
-            provider_key: coordinator
-                .provider_key
-                .clone()
-                .or_else(|| provider_key_for_spawn_model(coordinator.model.as_deref(), None)),
-            route_api_method: coordinator.route_api_method.clone(),
-        },
+        Some(model) => selection_for_concrete_model(model, coordinator),
+        None => inherit_coordinator_selection(coordinator),
     }
 }
 
@@ -375,6 +411,7 @@ fn prepare_visible_spawn_session<F>(
     model_override: Option<&str>,
     provider_key_override: Option<&str>,
     route_api_method_override: Option<&str>,
+    effort_override: Option<&str>,
     selfdev_requested: bool,
     startup_message: Option<&str>,
     launch_visible: F,
@@ -388,6 +425,7 @@ where
         model_override,
         provider_key.as_deref(),
         route_api_method_override,
+        effort_override,
         selfdev_requested,
     )?;
 
@@ -500,6 +538,8 @@ pub(super) async fn spawn_swarm_agent(
     working_dir: Option<String>,
     initial_message: Option<String>,
     spawn_mode: Option<SwarmSpawnMode>,
+    requested_model: Option<String>,
+    requested_effort: Option<String>,
     sessions: &SessionAgents,
     global_session_id: &Arc<RwLock<String>>,
     provider_template: &Arc<dyn Provider>,
@@ -526,12 +566,23 @@ pub(super) async fn spawn_swarm_agent(
     let agents_config = &crate::config::config().agents;
     let configured_swarm_model = agents_config.swarm_model.clone();
     let resolved_spawn_mode = spawn_mode.unwrap_or(agents_config.swarm_spawn_mode);
-    let selection = resolve_swarm_spawn_selection(configured_swarm_model.clone(), &coordinator);
+    let selection = resolve_swarm_spawn_selection(
+        requested_model.clone(),
+        configured_swarm_model.clone(),
+        &coordinator,
+    );
     let spawn_model = selection.model.clone();
     let spawn_provider_key = selection.provider_key.clone();
     let spawn_route_api_method = selection.route_api_method.clone();
+    let spawn_effort = requested_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|effort| !effort.is_empty())
+        .map(str::to_string);
     crate::logging::info(&format!(
-        "Swarm spawn model resolution: configured_swarm_model={:?} coordinator_model={:?} coordinator_provider_key={:?} coordinator_route={:?} -> spawn_model={:?} spawn_provider_key={:?} spawn_route={:?}",
+        "Swarm spawn model resolution: requested_model={:?} requested_effort={:?} configured_swarm_model={:?} coordinator_model={:?} coordinator_provider_key={:?} coordinator_route={:?} -> spawn_model={:?} spawn_provider_key={:?} spawn_route={:?}",
+        requested_model,
+        spawn_effort,
         configured_swarm_model,
         coordinator.model,
         coordinator.provider_key,
@@ -556,6 +607,7 @@ pub(super) async fn spawn_swarm_agent(
             spawn_model.as_deref(),
             spawn_provider_key.as_deref(),
             spawn_route_api_method.as_deref(),
+            spawn_effort.as_deref(),
             coordinator_is_canary,
             startup_message.as_deref(),
             |session_id, cwd, selfdev_requested, provider_key| {
@@ -598,6 +650,7 @@ pub(super) async fn spawn_swarm_agent(
                 spawn_model.clone(),
                 spawn_provider_key.clone(),
                 spawn_route_api_method.clone(),
+                spawn_effort.clone(),
                 Some(Arc::clone(mcp_pool)),
                 Some(req_session_id.to_string()),
             )
@@ -750,6 +803,8 @@ pub(super) async fn handle_comm_spawn(
     initial_message: Option<String>,
     request_nonce: Option<String>,
     spawn_mode: Option<SwarmSpawnMode>,
+    model: Option<String>,
+    effort: Option<String>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     global_session_id: &Arc<RwLock<String>>,
@@ -795,6 +850,8 @@ pub(super) async fn handle_comm_spawn(
             spawn_mode
                 .map(|mode| format!("{mode:?}"))
                 .unwrap_or_default(),
+            model.clone().unwrap_or_default(),
+            effort.clone().unwrap_or_default(),
         ],
     );
     let Some(mutation_state) = begin_or_replay(
@@ -816,6 +873,8 @@ pub(super) async fn handle_comm_spawn(
         working_dir,
         initial_message,
         spawn_mode,
+        model,
+        effort,
         sessions,
         global_session_id,
         provider_template,
@@ -840,6 +899,39 @@ pub(super) async fn handle_comm_spawn(
     };
 
     finish_request(swarm_mutation_runtime, &mutation_state, response).await;
+}
+
+/// Handle `comm_list_models`: report the model routes available for spawning
+/// swarm agents, plus the requester's current model (the spawn default) and
+/// any `agents.swarm_model` config pin. Read-only, so it needs no coordinator
+/// check or mutation dedup. Uses the requester's live agent catalog when its
+/// lock is free, otherwise falls back to the provider template's catalog.
+pub(super) async fn handle_comm_list_models(
+    id: u64,
+    req_session_id: &str,
+    sessions: &SessionAgents,
+    provider_template: &Arc<dyn Provider>,
+    send_event: impl FnOnce(ServerEvent),
+) {
+    let coordinator = resolve_coordinator_spawn_identity(req_session_id, sessions).await;
+
+    let agent = {
+        let agent_sessions = sessions.read().await;
+        agent_sessions.get(req_session_id).cloned()
+    };
+    let model_routes = match agent.as_ref().and_then(|agent| agent.try_lock().ok()) {
+        Some(agent_guard) => agent_guard.model_routes(),
+        // Agent busy (mid-turn, the common case for tool calls) or not
+        // resident: the provider template exposes the same route catalog.
+        None => provider_template.model_routes(),
+    };
+
+    send_event(ServerEvent::CommListModelsResponse {
+        id,
+        current_model: coordinator.model,
+        configured_swarm_model: crate::config::config().agents.swarm_model.clone(),
+        model_routes,
+    });
 }
 
 #[allow(clippy::too_many_arguments)]

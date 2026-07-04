@@ -562,6 +562,7 @@ impl Request {
             Request::CommCompleteNode { id, .. } => *id,
             Request::CommInjectGap { id, .. } => *id,
             Request::CommSpawn { id, .. } => *id,
+            Request::CommListModels { id, .. } => *id,
             Request::CommStop { id, .. } => *id,
             Request::CommAssignRole { id, .. } => *id,
             Request::CommSummary { id, .. } => *id,
@@ -597,6 +598,7 @@ impl Request {
                 | Request::CommCompleteNode { .. }
                 | Request::CommInjectGap { .. }
                 | Request::CommSpawn { .. }
+                | Request::CommListModels { .. }
                 | Request::CommStop { .. }
                 | Request::CommAssignRole { .. }
                 | Request::CommSummary { .. }

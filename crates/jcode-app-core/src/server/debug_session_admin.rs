@@ -86,6 +86,7 @@ pub(super) async fn maybe_handle_session_admin_command(
             None,
             None,
             None,
+            None,
             mcp_pool,
             None,
         )

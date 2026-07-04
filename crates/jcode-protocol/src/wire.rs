@@ -508,7 +508,21 @@ pub enum Request {
         request_nonce: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         spawn_mode: Option<String>,
+        /// Optional per-spawn model override. Takes precedence over
+        /// `agents.swarm_model` config. Supports explicit auth-route prefixes
+        /// (e.g. `openai-api:gpt-5.5`) and the `inherit`/`coordinator`
+        /// sentinels to force coordinator inheritance past a config pin.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        /// Optional reasoning effort for the spawned agent (e.g. `none`,
+        /// `low`, `medium`, `high`, `xhigh`, `max`). Unset = provider default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<String>,
     },
+
+    /// List models/routes available for spawning swarm agents
+    #[serde(rename = "comm_list_models")]
+    CommListModels { id: u64, session_id: String },
 
     /// Stop/destroy an agent session (coordinator only)
     #[serde(rename = "comm_stop")]
@@ -1311,6 +1325,23 @@ pub enum ServerEvent {
         id: u64,
         session_id: String,
         new_session_id: String,
+    },
+
+    /// Response to comm_list_models request
+    #[serde(rename = "comm_list_models_response")]
+    CommListModelsResponse {
+        id: u64,
+        /// The coordinator's currently active model (spawn default when no
+        /// override is configured or requested).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        current_model: Option<String>,
+        /// The configured `agents.swarm_model` pin, if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        configured_swarm_model: Option<String>,
+        /// All model routes known to the server (model + provider + auth
+        /// method + availability + rough cost estimate).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        model_routes: Vec<jcode_provider_core::ModelRoute>,
     },
 
     /// Response to comm_await_members request
