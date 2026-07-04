@@ -22,6 +22,9 @@ fn oauth_beta_headers(model: &str) -> &'static str {
     jcode_provider_core::anthropic_oauth_beta_headers(model)
 }
 
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use futures::StreamExt;
 use jcode_base::provider::anthropic::{
     AVAILABLE_MODELS, AnthropicCredentialMode, CLAUDE_CLI_USER_AGENT,
     apply_oauth_attribution_headers, is_cache_ttl_1h, load_anthropic_api_key,
@@ -33,9 +36,6 @@ use jcode_base::provider::anthropic::{
 #[cfg(test)]
 use jcode_message_types::{ContentBlock, Role};
 use jcode_message_types::{Message, StreamEvent, ToolDefinition};
-use anyhow::{Context, Result};
-use async_trait::async_trait;
-use futures::StreamExt;
 #[cfg(test)]
 use jcode_provider_anthropic::{ApiContentBlock, ToolResultContent, ToolResultContentBlock};
 use jcode_provider_anthropic::{
@@ -55,7 +55,6 @@ use tokio::sync::{RwLock, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-
 /// Anthropic Messages API endpoint
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 
@@ -64,7 +63,6 @@ const API_URL_OAUTH: &str = "https://api.anthropic.com/v1/messages?beta=true";
 
 #[cfg(test)]
 pub(crate) const OAUTH_BETA_HEADERS_1M: &str = jcode_provider_core::ANTHROPIC_OAUTH_BETA_HEADERS_1M;
-
 
 #[derive(Debug, Clone, Default)]
 struct OAuthClientMetadata {
@@ -233,7 +231,9 @@ async fn ensure_oauth_preflight(
 
     let official = load_official_claude_client_metadata();
     let Some(device_id) = official.device_id else {
-        jcode_base::logging::warn("Skipping Claude OAuth preflight: missing userID in ~/.claude.json");
+        jcode_base::logging::warn(
+            "Skipping Claude OAuth preflight: missing userID in ~/.claude.json",
+        );
         return Ok(());
     };
     let Some(account_uuid) = official.account_uuid else {
@@ -363,7 +363,6 @@ const RETRY_BASE_DELAY_MS: u64 = 1000;
 /// Override with JCODE_ANTHROPIC_MAX_TOKENS env var.
 const DEFAULT_MAX_TOKENS: u32 = 32_768;
 
-
 /// Cached OAuth credentials
 #[derive(Clone)]
 struct CachedCredentials {
@@ -371,8 +370,6 @@ struct CachedCredentials {
     refresh_token: String,
     expires_at: i64,
 }
-
-
 
 /// Direct Anthropic API provider
 pub struct AnthropicProvider {
@@ -617,15 +614,21 @@ impl AnthropicProvider {
     /// `high` on older Opus. Deliberately NOT `max`: Anthropic recommends
     /// `xhigh` as the starting point for coding/agentic work and reserves
     /// `max` for frontier problems (it costs much more and can overthink).
-    /// Every other model keeps the model's own default (no forced effort) so
-    /// cheaper models stay cheap.
+    /// Claude Fable 5 defaults to `low`: it is strong at low reasoning and
+    /// this keeps everyday turns fast and cheap. Every other model keeps the
+    /// model's own default (no forced effort) so cheaper models stay cheap.
     fn default_reasoning_effort_for_model(model: &str) -> Option<String> {
-        if Self::normalized_model_key(model).contains("claude-opus") {
+        let key = Self::normalized_model_key(model);
+        if key.contains("claude-opus") {
             Some(if Self::model_supports_xhigh_effort(model) {
                 "xhigh".to_string()
             } else {
                 "high".to_string()
             })
+        } else if key.contains("claude-fable-5") {
+            // Fable 5 is fast and capable at low reasoning; default to `low`
+            // so day-to-day turns stay snappy. Users can still cycle up.
+            Some("low".to_string())
         } else {
             None
         }
@@ -820,7 +823,9 @@ impl AnthropicProvider {
 
         // Check if token needs refresh (expired or expiring within 5 minutes)
         if fresh_creds.expires_at < now + 300_000 && !fresh_creds.refresh_token.is_empty() {
-            jcode_base::logging::info("OAuth token expired or expiring soon, attempting refresh...");
+            jcode_base::logging::info(
+                "OAuth token expired or expiring soon, attempting refresh...",
+            );
 
             let active_label = auth::claude::active_account_label()
                 .unwrap_or_else(auth::claude::primary_account_label);
@@ -1247,7 +1252,8 @@ impl Provider for AnthropicProvider {
                     );
                     let refreshed_token =
                         force_refresh_oauth_token(Arc::clone(&self.credentials)).await?;
-                    jcode_base::provider::fetch_anthropic_model_catalog_oauth(&refreshed_token).await
+                    jcode_base::provider::fetch_anthropic_model_catalog_oauth(&refreshed_token)
+                        .await
                 }
                 Err(err) => Err(err),
             }
@@ -1440,7 +1446,10 @@ async fn run_stream_with_retries(
     for attempt in 0..MAX_RETRIES {
         if attempt > 0 {
             // Exponential backoff with jitter: ~1s, ~2s, ~4s
-            let delay = jcode_provider_core::attempt_tracker::retry_backoff_delay(attempt, RETRY_BASE_DELAY_MS);
+            let delay = jcode_provider_core::attempt_tracker::retry_backoff_delay(
+                attempt,
+                RETRY_BASE_DELAY_MS,
+            );
             let _ = tx
                 .send(Ok(StreamEvent::ConnectionPhase {
                     phase: jcode_message_types::ConnectionPhase::Retrying {
@@ -1460,7 +1469,8 @@ async fn run_stream_with_retries(
         // Track whether this attempt streams replay-visible output so a
         // mid-stream transport fault can roll the partial output back on the
         // consumer before the retry replays the response from the top.
-        let (attempt_tx, attempt_guard) = jcode_provider_core::attempt_tracker::track_attempt_output(tx.clone());
+        let (attempt_tx, attempt_guard) =
+            jcode_provider_core::attempt_tracker::track_attempt_output(tx.clone());
 
         // Retries use a fresh unpooled client: the fault that broke attempt N
         // (e.g. TLS BadRecordMac from a corrupting middlebox) may also have
@@ -2167,7 +2177,10 @@ fn process_sse_event(
                     state.cache_creation_input_tokens =
                         usage.cache_creation_input_tokens.map(|t| t as u64);
                     if let Some(tier) = usage.service_tier.as_deref() {
-                        jcode_base::logging::info(&format!("Anthropic granted service_tier={}", tier));
+                        jcode_base::logging::info(&format!(
+                            "Anthropic granted service_tier={}",
+                            tier
+                        ));
                         if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
                             eprintln!("[anthropic] granted service_tier={tier}");
                         }

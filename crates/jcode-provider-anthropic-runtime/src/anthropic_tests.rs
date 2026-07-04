@@ -244,6 +244,52 @@ fn test_anthropic_explicit_none_effort_disables_thinking_even_with_show_thinking
 }
 
 #[test]
+fn test_anthropic_fable_defaults_to_low_effort() {
+    // Fable 5 is strong at low reasoning, so with no explicit user effort it
+    // defaults to `low` (fast, cheap). An explicit override still wins.
+    let provider = AnthropicProvider::new();
+    *provider.reasoning_effort.write().unwrap() = None;
+
+    assert_eq!(
+        AnthropicProvider::default_reasoning_effort_for_model("claude-fable-5").as_deref(),
+        Some("low"),
+    );
+
+    // The default drives the request: output_config low + adaptive thinking.
+    let (thinking, output_config, _temp) =
+        provider.build_reasoning_request_parts_inner("claude-fable-5", true, false);
+    assert_eq!(
+        output_config
+            .expect("Fable should default to a forced output effort")
+            .effort,
+        "low",
+    );
+    match thinking.expect("Fable default effort should enable adaptive thinking") {
+        ApiThinking::Adaptive { display } => assert_eq!(display, Some("summarized")),
+        ApiThinking::Enabled { .. } => panic!("Fable 5 should use adaptive thinking"),
+    }
+
+    // The surfaced status mirrors the effective default for the active model.
+    *provider
+        .model
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = "claude-fable-5".to_string();
+    assert_eq!(provider.reasoning_effort().as_deref(), Some("low"));
+
+    // An explicit user override still wins over the Fable default.
+    provider.set_reasoning_effort("high").unwrap();
+    assert_eq!(provider.reasoning_effort().as_deref(), Some("high"));
+    provider.set_reasoning_effort("none").unwrap();
+    let (thinking, output_config, _temp) =
+        provider.build_reasoning_request_parts_inner("claude-fable-5", true, true);
+    assert!(
+        thinking.is_none(),
+        "explicit none must beat the low default and show_thinking"
+    );
+    assert!(output_config.is_none());
+}
+
+#[test]
 fn test_anthropic_opus_defaults_to_xhigh_effort() {
     // Opus is a reasoning-heavy flagship, so when the user has *not* configured
     // an explicit effort it should default to its strongest supported level
