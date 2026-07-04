@@ -1080,10 +1080,17 @@ pub(super) async fn handle_resume_session(
         let _ = client_event_tx.send(ServerEvent::Done { id });
         // Resolve project-local MCP config against the resumed session's
         // working dir, not the server process cwd (issue #420).
-        let mcp_working_dir = {
-            let agent_guard = live_target_agent.lock().await;
-            agent_guard.working_dir().map(PathBuf::from)
-        };
+        // Do not block on the agent lock here: the target agent may be busy
+        // mid-turn (lock held), and awaiting it would deadlock the resume.
+        let mcp_working_dir = live_target_agent
+            .try_lock()
+            .ok()
+            .and_then(|agent_guard| agent_guard.working_dir().map(PathBuf::from))
+            .or_else(|| {
+                crate::session::Session::load_startup_stub(&session_id)
+                    .ok()
+                    .and_then(|session| session.working_dir.map(PathBuf::from))
+            });
         registry
             .register_mcp_tools_for_dir(
                 Some(client_event_tx.clone()),
