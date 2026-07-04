@@ -400,6 +400,71 @@ fn gate_debt_and_artifact_hydration_survive_reload() {
 }
 
 #[test]
+fn load_migrates_legacy_runtime_dir_state() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let legacy = serde_json::json!({
+        "swarm_id": "swarm-migrate",
+        "coordinator_session_id": "coord-legacy",
+        "updated_at_unix_ms": 1u64
+    });
+    std::fs::create_dir_all(legacy_state_dir()).expect("legacy state dir");
+    std::fs::write(
+        legacy_state_dir().join("swarm-migrate.json"),
+        serde_json::to_vec(&legacy).unwrap(),
+    )
+    .expect("write legacy snapshot");
+
+    let loaded = load_runtime_state();
+    assert_eq!(
+        loaded.coordinators.get("swarm-migrate"),
+        Some(&"coord-legacy".to_string())
+    );
+    // Migrated copy lives in the durable dir now.
+    assert!(state_path("swarm-migrate").exists());
+}
+
+#[test]
+fn migration_does_not_clobber_existing_durable_state() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    // Durable dir already has state for this swarm.
+    persist_swarm_state("swarm-both", None, Some("coord-new"), &[]);
+
+    // Legacy dir has a stale snapshot for the same swarm.
+    let legacy = serde_json::json!({
+        "swarm_id": "swarm-both",
+        "coordinator_session_id": "coord-old",
+        "updated_at_unix_ms": 1u64
+    });
+    std::fs::create_dir_all(legacy_state_dir()).expect("legacy state dir");
+    std::fs::write(
+        legacy_state_dir().join("swarm-both.json"),
+        serde_json::to_vec(&legacy).unwrap(),
+    )
+    .expect("write legacy snapshot");
+
+    let loaded = load_runtime_state();
+    assert_eq!(
+        loaded.coordinators.get("swarm-both"),
+        Some(&"coord-new".to_string())
+    );
+}
+
+#[test]
+fn state_dir_is_durable_not_runtime() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    // With JCODE_RUNTIME_DIR pinned, the state dir stays sandboxed but must
+    // not be the legacy runtime-dir location.
+    assert_ne!(state_dir(), legacy_state_dir());
+    assert!(state_dir().starts_with(dir.path()));
+}
+
+#[test]
 fn legacy_snapshot_without_mode_defaults_to_light() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);

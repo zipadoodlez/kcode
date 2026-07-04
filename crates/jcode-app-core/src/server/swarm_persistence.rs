@@ -6,7 +6,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
-const SWARM_STATE_DIR: &str = "jcode-swarm-state";
+/// Directory name under the durable state dir (`~/.jcode/state`).
+const SWARM_STATE_DIR: &str = "swarm";
+/// Pre-0.36 location under the runtime dir (tmpfs on Linux, wiped on reboot).
+const LEGACY_SWARM_STATE_DIR: &str = "jcode-swarm-state";
 
 pub(super) struct LoadedSwarmRuntimeState {
     pub plans: HashMap<String, VersionedPlan>,
@@ -62,7 +65,57 @@ fn now_unix_ms() -> u64 {
 }
 
 fn state_dir() -> PathBuf {
-    storage::runtime_dir().join(SWARM_STATE_DIR)
+    storage::durable_state_dir().join(SWARM_STATE_DIR)
+}
+
+fn legacy_state_dir() -> PathBuf {
+    storage::runtime_dir().join(LEGACY_SWARM_STATE_DIR)
+}
+
+/// One-time migration from the legacy runtime-dir location (tmpfs, wiped on
+/// reboot) to the durable state dir. Copies legacy snapshots only when the
+/// new dir has none, so an already-migrated dir is never clobbered.
+fn migrate_legacy_state() {
+    let new_dir = state_dir();
+    let has_new_state = std::fs::read_dir(&new_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        })
+        .unwrap_or(false);
+    if has_new_state {
+        return;
+    }
+
+    let legacy_dir = legacy_state_dir();
+    let Ok(entries) = std::fs::read_dir(&legacy_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || path.extension().is_none_or(|ext| ext != "json") {
+            continue;
+        }
+        let Some(file_name) = path.file_name() else {
+            continue;
+        };
+        if let Err(err) = storage::ensure_dir(&new_dir) {
+            crate::logging::warn(&format!(
+                "Failed to create swarm state dir {}: {}",
+                new_dir.display(),
+                err
+            ));
+            return;
+        }
+        if let Err(err) = std::fs::copy(&path, new_dir.join(file_name)) {
+            crate::logging::warn(&format!(
+                "Failed to migrate legacy swarm state {}: {}",
+                path.display(),
+                err
+            ));
+        }
+    }
 }
 
 fn state_path(swarm_id: &str) -> PathBuf {
@@ -175,6 +228,7 @@ fn from_persisted_member(member: PersistedSwarmMember) -> SwarmMember {
 }
 
 pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
+    migrate_legacy_state();
     let dir = state_dir();
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return LoadedSwarmRuntimeState {
