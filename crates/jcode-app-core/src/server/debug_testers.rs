@@ -212,10 +212,14 @@ struct TesterPty {
 /// terminal init requires stdin/stdout to be a TTY, so testers get the slave
 /// end as their stdio while the server drains the master end.
 #[cfg(unix)]
+#[allow(
+    clippy::unnecessary_mut_passed,
+    reason = "libc::openpty takes mutable termios/winsize pointers on Apple/BSD targets"
+)]
 fn allocate_pty(cols: u16, rows: u16) -> std::io::Result<TesterPty> {
     use std::os::fd::{FromRawFd, OwnedFd};
 
-    let winsize = libc::winsize {
+    let mut winsize = libc::winsize {
         ws_row: rows,
         ws_col: cols,
         ws_xpixel: 0,
@@ -229,8 +233,8 @@ fn allocate_pty(cols: u16, rows: u16) -> std::io::Result<TesterPty> {
             &mut master_fd,
             &mut slave_fd,
             std::ptr::null_mut(),
-            std::ptr::null(),
-            &winsize,
+            std::ptr::null_mut(),
+            &mut winsize,
         )
     };
     if rc != 0 {
