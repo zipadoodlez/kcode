@@ -424,6 +424,12 @@ fn test_startup_initializes_antigravity_when_cached_tokens_are_expired() {
         let runtime = enter_test_runtime();
         let _enter = runtime.enter();
 
+        // The concrete Antigravity runtime lives downstream; register the
+        // shared test stub through the composition-root registry.
+        external::register_external_provider(external::ANTIGRAVITY_RUNTIME, || {
+            test_antigravity_runtime()
+        });
+
         crate::auth::antigravity::save_tokens(&crate::auth::antigravity::AntigravityTokens {
             access_token: "expired-access-token".to_string(),
             refresh_token: "refresh-token".to_string(),
@@ -448,6 +454,12 @@ fn test_on_auth_changed_hot_initializes_antigravity_when_tokens_exist_but_are_ex
     with_clean_provider_test_env(|| {
         let runtime = enter_test_runtime();
         let _enter = runtime.enter();
+
+        // The concrete Antigravity runtime lives downstream; register the
+        // shared test stub through the composition-root registry.
+        external::register_external_provider(external::ANTIGRAVITY_RUNTIME, || {
+            test_antigravity_runtime()
+        });
 
         crate::auth::antigravity::save_tokens(&crate::auth::antigravity::AntigravityTokens {
             access_token: "expired-access-token".to_string(),
@@ -493,7 +505,7 @@ fn test_multi_provider_antigravity_routes_do_not_include_legacy_duplicate_entrie
         anthropic: RwLock::new(None),
         openai: RwLock::new(None),
         copilot_api: RwLock::new(None),
-        antigravity: RwLock::new(Some(Arc::new(antigravity::AntigravityProvider::new()))),
+        antigravity: RwLock::new(Some(test_antigravity_runtime())),
         gemini: RwLock::new(None),
         cursor: RwLock::new(None),
         bedrock: RwLock::new(None),

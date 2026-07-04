@@ -386,9 +386,19 @@ pub(super) async fn fetch_antigravity_usage_report() -> Option<ProviderUsage> {
         return None;
     }
 
-    let provider = crate::provider::antigravity::AntigravityProvider::new();
-    let snapshot = match provider.fetch_catalog_snapshot_for_usage().await {
-        Ok(snapshot) => snapshot,
+    let client = crate::provider::shared_http_client();
+    let snapshot = match crate::provider::antigravity::fetch_catalog_snapshot(&client).await {
+        Ok(snapshot) if !snapshot.models.is_empty() => {
+            crate::provider::antigravity::persist_catalog(&snapshot);
+            snapshot
+        }
+        Ok(_) => {
+            return Some(ProviderUsage {
+                provider_name: "Antigravity".to_string(),
+                error: Some("Antigravity model catalog returned no models".to_string()),
+                ..Default::default()
+            });
+        }
         Err(e) => {
             return Some(ProviderUsage {
                 provider_name: "Antigravity".to_string(),

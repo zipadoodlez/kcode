@@ -24,6 +24,9 @@ pub const GEMINI_RUNTIME: &str = "gemini";
 /// Registry key for the Cursor provider runtime.
 pub const CURSOR_RUNTIME: &str = "cursor";
 
+/// Registry key for the Antigravity provider runtime.
+pub const ANTIGRAVITY_RUNTIME: &str = "antigravity";
+
 type Factory = Arc<dyn Fn() -> Arc<dyn Provider> + Send + Sync>;
 
 fn registry() -> &'static RwLock<HashMap<&'static str, Factory>> {

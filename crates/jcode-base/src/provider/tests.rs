@@ -756,24 +756,51 @@ fn standard_openrouter_catalog_refresh_fires_when_named_profile_owns_slot() {
     });
 }
 
-/// Test stand-in for the Cursor runtime, which lives downstream in
-/// `jcode-provider-cursor-runtime` and therefore cannot be constructed from
-/// base tests. Mirrors the runtime's catalog surface (static `AVAILABLE_MODELS`
-/// plus Cursor `ModelRoute`s) so routing/fallback tests stay meaningful.
-struct StubCursorRuntime {
+/// Parameterized test stand-in for provider runtimes that live downstream
+/// (jcode-provider-{gemini,cursor,antigravity}-runtime) and therefore cannot
+/// be constructed from base tests. Mirrors each runtime's catalog surface
+/// (static model list plus `ModelRoute`s) so routing/fallback tests stay
+/// meaningful.
+struct StubExternalRuntime {
+    name: &'static str,
+    provider_label: &'static str,
+    api_method: &'static str,
+    models: &'static [&'static str],
     model: std::sync::RwLock<String>,
 }
 
-impl StubCursorRuntime {
-    fn new() -> Self {
+impl StubExternalRuntime {
+    fn new(
+        name: &'static str,
+        provider_label: &'static str,
+        api_method: &'static str,
+        models: &'static [&'static str],
+    ) -> Self {
         Self {
-            model: std::sync::RwLock::new(cursor::DEFAULT_MODEL.to_string()),
+            name,
+            provider_label,
+            api_method,
+            models,
+            model: std::sync::RwLock::new(models[0].to_string()),
         }
+    }
+
+    fn cursor() -> Self {
+        Self::new("cursor", "Cursor", "cursor", cursor::AVAILABLE_MODELS)
+    }
+
+    fn antigravity() -> Self {
+        Self::new(
+            "antigravity",
+            "Antigravity",
+            "https",
+            antigravity::AVAILABLE_MODELS,
+        )
     }
 }
 
 #[async_trait::async_trait]
-impl Provider for StubCursorRuntime {
+impl Provider for StubExternalRuntime {
     async fn complete(
         &self,
         _messages: &[Message],
@@ -781,10 +808,10 @@ impl Provider for StubCursorRuntime {
         _system: &str,
         _resume_session_id: Option<&str>,
     ) -> anyhow::Result<EventStream> {
-        anyhow::bail!("stub cursor runtime does not stream")
+        anyhow::bail!("stub {} runtime does not stream", self.name)
     }
     fn name(&self) -> &'static str {
-        "cursor"
+        self.name
     }
     fn model(&self) -> String {
         self.model
@@ -795,7 +822,7 @@ impl Provider for StubCursorRuntime {
     fn set_model(&self, model: &str) -> anyhow::Result<()> {
         let trimmed = model.trim();
         if trimmed.is_empty() {
-            anyhow::bail!("Cursor model cannot be empty");
+            anyhow::bail!("{} model cannot be empty", self.provider_label);
         }
         *self
             .model
@@ -804,13 +831,10 @@ impl Provider for StubCursorRuntime {
         Ok(())
     }
     fn available_models(&self) -> Vec<&'static str> {
-        cursor::AVAILABLE_MODELS.to_vec()
+        self.models.to_vec()
     }
     fn available_models_display(&self) -> Vec<String> {
-        cursor::AVAILABLE_MODELS
-            .iter()
-            .map(|model| model.to_string())
-            .collect()
+        self.models.iter().map(|model| model.to_string()).collect()
     }
     fn available_models_for_switching(&self) -> Vec<String> {
         self.available_models_display()
@@ -820,8 +844,8 @@ impl Provider for StubCursorRuntime {
             .into_iter()
             .map(|model| ModelRoute {
                 model,
-                provider: "Cursor".to_string(),
-                api_method: "cursor".to_string(),
+                provider: self.provider_label.to_string(),
+                api_method: self.api_method.to_string(),
                 available: true,
                 detail: String::new(),
                 cheapness: None,
@@ -829,12 +853,21 @@ impl Provider for StubCursorRuntime {
             .collect()
     }
     fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(StubCursorRuntime::new())
+        Arc::new(StubExternalRuntime::new(
+            self.name,
+            self.provider_label,
+            self.api_method,
+            self.models,
+        ))
     }
 }
 
 fn test_cursor_runtime() -> Arc<dyn Provider> {
-    Arc::new(StubCursorRuntime::new())
+    Arc::new(StubExternalRuntime::cursor())
+}
+
+fn test_antigravity_runtime() -> Arc<dyn Provider> {
+    Arc::new(StubExternalRuntime::antigravity())
 }
 
 fn test_multi_provider_with_cursor() -> MultiProvider {

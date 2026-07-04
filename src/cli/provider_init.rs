@@ -1294,7 +1294,7 @@ pub async fn login_and_bootstrap_provider(
             disable_subscription_runtime_mode();
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
-            Arc::new(provider::antigravity::AntigravityProvider::new())
+            Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
         }
         LoginProviderTarget::Google => {
             anyhow::bail!("Google login cannot be used as a model provider bootstrap");
@@ -1555,7 +1555,7 @@ async fn init_provider_with_options(
             init_notice("Using Antigravity provider (experimental)");
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
-            Arc::new(provider::antigravity::AntigravityProvider::new())
+            Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
         }
         ProviderChoice::Google => {
             disable_subscription_runtime_mode();

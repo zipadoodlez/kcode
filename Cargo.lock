@@ -3288,6 +3288,7 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
+ "jcode-provider-antigravity-runtime",
  "jcode-provider-cursor-runtime",
  "jcode-provider-doctor",
  "jcode-provider-gemini-runtime",
@@ -3716,6 +3717,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-provider-antigravity-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "jcode-base",
+ "jcode-message-types",
+ "jcode-provider-antigravity",
+ "jcode-provider-core",
+ "jcode-provider-gemini",
+ "reqwest 0.12.28",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+]
+
+[[package]]
 name = "jcode-provider-bedrock"
 version = "0.1.0"
 dependencies = [
@@ -3796,6 +3817,7 @@ dependencies = [
  "anyhow",
  "futures",
  "jcode-base",
+ "jcode-provider-antigravity-runtime",
  "jcode-provider-cursor-runtime",
  "jcode-provider-gemini-runtime",
  "jcode-provider-metadata",

@@ -129,6 +129,10 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::CURSOR_RUNTIME,
         || std::sync::Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new()),
     );
+    crate::provider::external::register_external_provider(
+        crate::provider::external::ANTIGRAVITY_RUNTIME,
+        || std::sync::Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new()),
+    );
 }
 
 fn parse_and_prepare_args() -> Result<Args> {
@@ -298,6 +302,10 @@ mod tests {
         for (key, expected_name) in [
             (crate::provider::external::GEMINI_RUNTIME, "gemini"),
             (crate::provider::external::CURSOR_RUNTIME, "cursor"),
+            (
+                crate::provider::external::ANTIGRAVITY_RUNTIME,
+                "antigravity",
+            ),
         ] {
             assert!(
                 crate::provider::external::external_provider_registered(key),

@@ -325,8 +325,11 @@ pub struct MultiProvider {
     openai: RwLock<Option<Arc<openai::OpenAIProvider>>>,
     /// GitHub Copilot API provider (direct API, hot-swappable after login)
     copilot_api: RwLock<Option<Arc<copilot::CopilotApiProvider>>>,
-    /// Antigravity provider (direct HTTPS, hot-swappable after login)
-    antigravity: RwLock<Option<Arc<antigravity::AntigravityProvider>>>,
+    /// Antigravity provider (direct HTTPS, hot-swappable after login). Held as
+    /// `dyn Provider`: the concrete runtime lives downstream in
+    /// `jcode-provider-antigravity-runtime` and is instantiated through
+    /// `external::instantiate_external_provider`.
+    antigravity: RwLock<Option<Arc<dyn Provider>>>,
     /// Gemini provider (hot-swappable after login). Held as `dyn Provider`:
     /// the concrete runtime lives downstream in `jcode-provider-gemini-runtime`
     /// and is instantiated through `external::instantiate_external_provider`.
@@ -1220,13 +1223,16 @@ impl MultiProvider {
         }
 
         let already_has_antigravity = self.antigravity_provider().is_some();
-        if !already_has_antigravity && crate::auth::antigravity::load_tokens().is_ok() {
+        if !already_has_antigravity
+            && crate::auth::antigravity::load_tokens().is_ok()
+            && let Some(antigravity) =
+                external::instantiate_expected_external_provider(external::ANTIGRAVITY_RUNTIME)
+        {
             crate::logging::info("Hot-initialized Antigravity provider after login");
             *self
                 .antigravity
                 .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                Some(Arc::new(antigravity::AntigravityProvider::new()));
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(antigravity);
         }
 
         let already_has_gemini = self.gemini_provider().is_some();

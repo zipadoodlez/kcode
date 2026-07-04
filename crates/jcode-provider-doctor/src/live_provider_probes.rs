@@ -15,8 +15,8 @@ use serde::Deserialize;
 use jcode_base::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use jcode_base::provider::Provider;
 use jcode_base::provider::anthropic::AnthropicProvider;
-use jcode_base::provider::antigravity::AntigravityProvider;
 use jcode_base::provider_catalog::{OpenAiCompatibleProfile, ResolvedOpenAiCompatibleProfile};
+use jcode_provider_antigravity_runtime::AntigravityProvider;
 
 /// Resolve the per-request timeout for an OpenAI-compatible smoke probe.
 ///
@@ -178,7 +178,9 @@ pub async fn run_live_openai_compatible_smoke(
         ],
         "stream": false
     });
-    let request = jcode_base::provider::shared_http_client().post(&url).json(&body);
+    let request = jcode_base::provider::shared_http_client()
+        .post(&url)
+        .json(&body);
     let request = apply_provider_auth(request, &resolved, api_key);
     let response = tokio::time::timeout(smoke_timeout(30), request.send())
         .await
@@ -396,7 +398,9 @@ pub async fn run_live_openai_compatible_stream_smoke(
         "stream": true,
         "stream_options": {"include_usage": true}
     });
-    let request = jcode_base::provider::shared_http_client().post(&url).json(&body);
+    let request = jcode_base::provider::shared_http_client()
+        .post(&url)
+        .json(&body);
     let request = apply_provider_auth(request, &resolved, api_key);
     let response = tokio::time::timeout(smoke_timeout(45), request.send())
         .await
@@ -507,7 +511,9 @@ pub async fn run_live_openai_compatible_tool_smoke(
     if !resolved.api_base.contains("fptcloud.com") {
         body["tool_choice"] = serde_json::json!("auto");
     }
-    let request = jcode_base::provider::shared_http_client().post(&url).json(&body);
+    let request = jcode_base::provider::shared_http_client()
+        .post(&url)
+        .json(&body);
     let request = apply_provider_auth(request, &resolved, api_key);
     let response = tokio::time::timeout(smoke_timeout(45), request.send())
         .await

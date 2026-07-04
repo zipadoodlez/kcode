@@ -172,7 +172,7 @@ impl MultiProvider {
         };
 
         let antigravity_provider = if has_antigravity_creds {
-            Some(Arc::new(antigravity::AntigravityProvider::new()))
+            external::instantiate_expected_external_provider(external::ANTIGRAVITY_RUNTIME)
         } else {
             None
         };

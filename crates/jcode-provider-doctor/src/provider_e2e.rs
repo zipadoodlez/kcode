@@ -1004,7 +1004,7 @@ pub async fn run_antigravity_native_e2e(
     tier: DoctorTier,
 ) -> anyhow::Result<DoctorReport> {
     use jcode_base::provider::Provider;
-    use jcode_base::provider::antigravity::AntigravityProvider;
+    use jcode_provider_antigravity_runtime::AntigravityProvider;
 
     // The antigravity login provider has a single fixed id; accept any alias the
     // caller passed (e.g. "antigravity") and normalize to the canonical id.
