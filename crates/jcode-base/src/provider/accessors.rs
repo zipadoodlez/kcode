@@ -8,7 +8,7 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn anthropic_provider(&self) -> Option<Arc<anthropic::AnthropicProvider>> {
+    pub(super) fn anthropic_provider(&self) -> Option<Arc<dyn Provider>> {
         self.anthropic
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

@@ -137,6 +137,10 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::CLAUDE_CLI_RUNTIME,
         || std::sync::Arc::new(jcode_provider_claude_cli_runtime::ClaudeProvider::new()),
     );
+    crate::provider::external::register_external_provider(
+        crate::provider::external::ANTHROPIC_RUNTIME,
+        || std::sync::Arc::new(jcode_provider_anthropic_runtime::AnthropicProvider::new()),
+    );
     // Copilot's constructor is fallible (needs a GitHub token) and the runtime
     // wants tier detection scheduled right after construction, eagerly for
     // interactive sessions and deferred for non-interactive ones. That policy

@@ -3,6 +3,11 @@ use crate::provider::models::{ensure_model_allowed_for_subscription, filtered_di
 
 fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     let _guard = crate::storage::lock_test_env();
+    // Concrete provider runtimes live downstream (jcode-provider-*-runtime),
+    // so base tests register shared stubs through the same composition-root
+    // registry the binary uses. Registration is idempotent (last write wins),
+    // and per-test overrides can re-register a different stub.
+    register_test_external_runtimes();
     let temp = tempfile::tempdir().expect("tempdir");
     let prev_home = std::env::var_os("JCODE_HOME");
     let prev_subscription =
@@ -767,6 +772,7 @@ struct StubExternalRuntime {
     api_method: &'static str,
     models: &'static [&'static str],
     model: std::sync::RwLock<String>,
+    credential_mode: std::sync::RwLock<jcode_provider_core::CredentialMode>,
 }
 
 impl StubExternalRuntime {
@@ -782,6 +788,7 @@ impl StubExternalRuntime {
             api_method,
             models,
             model: std::sync::RwLock::new(models[0].to_string()),
+            credential_mode: std::sync::RwLock::new(jcode_provider_core::CredentialMode::Auto),
         }
     }
 
@@ -804,6 +811,15 @@ impl StubExternalRuntime {
             "GitHub Copilot",
             "copilot",
             copilot::FALLBACK_MODELS,
+        )
+    }
+
+    fn anthropic() -> Self {
+        Self::new(
+            "anthropic",
+            "Anthropic",
+            "https",
+            anthropic::AVAILABLE_MODELS,
         )
     }
 }
@@ -861,6 +877,19 @@ impl Provider for StubExternalRuntime {
             })
             .collect()
     }
+    fn credential_mode(&self) -> jcode_provider_core::CredentialMode {
+        *self
+            .credential_mode
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+    fn set_credential_mode(&self, mode: jcode_provider_core::CredentialMode) -> anyhow::Result<()> {
+        *self
+            .credential_mode
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = mode;
+        Ok(())
+    }
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(StubExternalRuntime::new(
             self.name,
@@ -881,6 +910,22 @@ fn test_antigravity_runtime() -> Arc<dyn Provider> {
 
 fn test_copilot_runtime() -> Arc<dyn Provider> {
     Arc::new(StubExternalRuntime::copilot())
+}
+
+fn test_anthropic_runtime() -> Arc<StubExternalRuntime> {
+    Arc::new(StubExternalRuntime::anthropic())
+}
+
+/// Register the shared external-runtime stubs for every downstream provider
+/// slot base can hot-initialize. Called by `with_clean_provider_test_env` so
+/// hot-init/startup tests find a runtime the way the real binary does.
+fn register_test_external_runtimes() {
+    external::register_external_provider(external::ANTHROPIC_RUNTIME, || {
+        test_anthropic_runtime() as Arc<dyn Provider>
+    });
+    external::register_external_provider(external::CURSOR_RUNTIME, test_cursor_runtime);
+    external::register_external_provider(external::ANTIGRAVITY_RUNTIME, test_antigravity_runtime);
+    external::register_external_provider(external::COPILOT_RUNTIME, test_copilot_runtime);
 }
 
 fn test_multi_provider_with_cursor() -> MultiProvider {

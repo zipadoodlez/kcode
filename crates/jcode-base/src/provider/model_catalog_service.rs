@@ -278,7 +278,7 @@ impl ModelCatalogService {
     /// are process-global statics, so without this a test that hydrates a
     /// scope (e.g. `api-key` -> fixture models) leaks that catalog into every
     /// later test in the same process, breaking model-validation assertions.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn reset_for_tests(&self) {
         if let Ok(mut models) = self.available_models.write() {
             models.clear();

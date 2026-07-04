@@ -321,7 +321,7 @@ pub struct MultiProvider {
     /// Claude Code CLI provider
     claude: RwLock<Option<Arc<dyn Provider>>>,
     /// Direct Anthropic API provider (no Python dependency)
-    anthropic: RwLock<Option<Arc<anthropic::AnthropicProvider>>>,
+    anthropic: RwLock<Option<Arc<dyn Provider>>>,
     openai: RwLock<Option<Arc<openai::OpenAIProvider>>>,
     /// GitHub Copilot API provider (direct API, hot-swappable after login).
     /// Held as `dyn Provider`: the concrete runtime lives downstream in
@@ -777,7 +777,7 @@ impl MultiProvider {
             ActiveProvider::Claude => {
                 let uses_api_key = self
                     .anthropic_provider()
-                    .map(|anthropic| match anthropic.credential_mode_snapshot() {
+                    .map(|anthropic| match anthropic.credential_mode() {
                         anthropic::AnthropicCredentialMode::ApiKey => true,
                         anthropic::AnthropicCredentialMode::OAuth => false,
                         anthropic::AnthropicCredentialMode::Auto => {
@@ -796,7 +796,7 @@ impl MultiProvider {
             ActiveProvider::OpenAI => {
                 let uses_api_key = self
                     .openai_provider()
-                    .map(|openai| match openai.credential_mode_snapshot() {
+                    .map(|openai| match openai.credential_mode() {
                         openai::OpenAICredentialMode::ApiKey => true,
                         openai::OpenAICredentialMode::OAuth => false,
                         openai::OpenAICredentialMode::Auto => {
@@ -1148,7 +1148,7 @@ impl MultiProvider {
                 .anthropic
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                Some(Arc::new(anthropic::AnthropicProvider::new()));
+                external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME);
         }
 
         if let Some(openai) = self.openai_provider() {
@@ -1384,7 +1384,7 @@ impl MultiProvider {
                     // OAuth/ApiKey emit their canonical model prefix; Auto keeps
                     // the bare provider key (route without pinning a credential).
                     anthropic
-                        .credential_mode_snapshot()
+                        .credential_mode()
                         .auth_route(jcode_provider_core::DualAuthProvider::Anthropic)
                         .map(|route| route.model_prefix())
                         .unwrap_or("claude")
@@ -1395,7 +1395,7 @@ impl MultiProvider {
             ActiveProvider::OpenAI => {
                 if let Some(openai) = self.openai_provider() {
                     openai
-                        .credential_mode_snapshot()
+                        .credential_mode()
                         .auth_route(jcode_provider_core::DualAuthProvider::OpenAI)
                         .map(|route| route.model_prefix())
                         .unwrap_or("openai")
@@ -1550,7 +1550,7 @@ impl Provider for MultiProvider {
         match self.active_provider() {
             ActiveProvider::Claude => {
                 let anthropic = self.anthropic_provider()?;
-                Some(match anthropic.credential_mode_snapshot() {
+                Some(match anthropic.credential_mode() {
                     anthropic::AnthropicCredentialMode::OAuth => ResolvedCredential::Oauth,
                     anthropic::AnthropicCredentialMode::ApiKey => ResolvedCredential::ApiKey,
                     // Auto prefers OAuth (Claude subscription) when available,
@@ -1566,7 +1566,7 @@ impl Provider for MultiProvider {
             }
             ActiveProvider::OpenAI => {
                 let openai = self.openai_provider()?;
-                Some(match openai.credential_mode_snapshot() {
+                Some(match openai.credential_mode() {
                     openai::OpenAICredentialMode::OAuth => ResolvedCredential::Oauth,
                     openai::OpenAICredentialMode::ApiKey => ResolvedCredential::ApiKey,
                     // Auto resolves to OAuth first when available, otherwise API key.
@@ -1590,12 +1590,12 @@ impl Provider for MultiProvider {
         // a disk read on every frame. This stays in lockstep with
         // `active_resolved_credential`'s explicit arms above.
         match self.active_provider() {
-            ActiveProvider::Claude => match self.anthropic_provider()?.credential_mode_snapshot() {
+            ActiveProvider::Claude => match self.anthropic_provider()?.credential_mode() {
                 anthropic::AnthropicCredentialMode::OAuth => Some(ResolvedCredential::Oauth),
                 anthropic::AnthropicCredentialMode::ApiKey => Some(ResolvedCredential::ApiKey),
                 anthropic::AnthropicCredentialMode::Auto => None,
             },
-            ActiveProvider::OpenAI => match self.openai_provider()?.credential_mode_snapshot() {
+            ActiveProvider::OpenAI => match self.openai_provider()?.credential_mode() {
                 openai::OpenAICredentialMode::OAuth => Some(ResolvedCredential::Oauth),
                 openai::OpenAICredentialMode::ApiKey => Some(ResolvedCredential::ApiKey),
                 openai::OpenAICredentialMode::Auto => None,
@@ -2445,7 +2445,7 @@ impl Provider for MultiProvider {
             None
         };
         let anthropic = if self.anthropic_provider().is_some() {
-            Some(Arc::new(anthropic::AnthropicProvider::new()))
+            external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME)
         } else {
             None
         };

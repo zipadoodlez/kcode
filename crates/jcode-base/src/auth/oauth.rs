@@ -67,7 +67,7 @@ fn parse_oauth_scopes(scope: Option<&str>) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn claude_scopes_have_inference(scopes: &[String]) -> bool {
+pub fn claude_scopes_have_inference(scopes: &[String]) -> bool {
     scopes.iter().any(|scope| {
         matches!(
             scope.as_str(),

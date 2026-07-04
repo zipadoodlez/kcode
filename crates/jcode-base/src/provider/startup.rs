@@ -126,7 +126,7 @@ impl MultiProvider {
         };
 
         let anthropic = if has_claude_creds && !use_claude_cli {
-            Some(Arc::new(anthropic::AnthropicProvider::new()))
+            external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME)
         } else {
             None
         };

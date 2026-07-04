@@ -1081,10 +1081,10 @@ fn test_anthropic_auth_mode_prefixed_model_switch_changes_credentials() {
         })
         .expect("save Claude OAuth account");
 
-        let anthropic = Arc::new(anthropic::AnthropicProvider::new());
+        let anthropic = test_anthropic_runtime();
         let provider = MultiProvider {
             claude: RwLock::new(None),
-            anthropic: RwLock::new(Some(Arc::clone(&anthropic))),
+            anthropic: RwLock::new(Some(Arc::clone(&anthropic) as Arc<dyn Provider>)),
             openai: RwLock::new(None),
             copilot_api: RwLock::new(None),
             antigravity: RwLock::new(None),
@@ -1103,31 +1103,29 @@ fn test_anthropic_auth_mode_prefixed_model_switch_changes_credentials() {
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
 
+        // Route pinning is MultiProvider's job; the concrete token resolution
+        // for each pin is covered by jcode-provider-anthropic-runtime's
+        // credential-mode tests.
         assert_eq!(
-            rt.block_on(anthropic.test_access_token_and_oauth_mode())
-                .expect("default token"),
-            ("oauth-access-token".to_string(), true),
-            "default (Auto) Anthropic credentials prefer OAuth/subscription when an \
-             OAuth account is available, matching the canonical OAuth-first Auto \
-             behavior shared with the OpenAI provider and resolve_dual_credential_auth"
+            anthropic.credential_mode(),
+            jcode_provider_core::CredentialMode::Auto,
+            "default (Auto) leaves the credential pin unset"
         );
 
         provider
             .set_model("claude-oauth:claude-opus-4-6")
             .expect("OAuth route should select Claude OAuth credentials");
         assert_eq!(
-            rt.block_on(anthropic.test_access_token_and_oauth_mode())
-                .expect("oauth token"),
-            ("oauth-access-token".to_string(), true)
+            anthropic.credential_mode(),
+            jcode_provider_core::CredentialMode::OAuth
         );
 
         provider
             .set_model("claude-api:claude-opus-4-6")
             .expect("API route should select Anthropic API-key credentials");
         assert_eq!(
-            rt.block_on(anthropic.test_access_token_and_oauth_mode())
-                .expect("api token"),
-            ("sk-ant-test-api-key".to_string(), false)
+            anthropic.credential_mode(),
+            jcode_provider_core::CredentialMode::ApiKey
         );
     });
 }
@@ -1158,10 +1156,10 @@ fn test_config_default_provider_anthropic_api_pins_api_credential() {
             })
             .expect("save Claude OAuth account");
 
-            let anthropic = Arc::new(anthropic::AnthropicProvider::new());
+            let anthropic = test_anthropic_runtime();
             let provider = MultiProvider {
                 claude: RwLock::new(None),
-                anthropic: RwLock::new(Some(Arc::clone(&anthropic))),
+                anthropic: RwLock::new(Some(Arc::clone(&anthropic) as Arc<dyn Provider>)),
                 openai: RwLock::new(None),
                 copilot_api: RwLock::new(None),
                 antigravity: RwLock::new(None),
@@ -1197,16 +1195,14 @@ fn test_config_default_provider_anthropic_api_pins_api_credential() {
                 "default_provider '{default_provider}' explicit-pin visibility",
             );
             assert_eq!(
-                rt.block_on(anthropic.test_access_token_and_oauth_mode())
-                    .expect("token"),
-                (
-                    if expect_oauth {
-                        "oauth-access-token".to_string()
-                    } else {
-                        "sk-ant-test-api-key".to_string()
-                    },
-                    expect_oauth,
-                ),
+                anthropic.credential_mode(),
+                if expect_oauth {
+                    // "claude"/"anthropic" leave Auto (OAuth-first) rather than
+                    // pinning OAuth explicitly.
+                    jcode_provider_core::CredentialMode::Auto
+                } else {
+                    jcode_provider_core::CredentialMode::ApiKey
+                },
                 "default_provider '{default_provider}' should resolve {expected:?}",
             );
         });
@@ -1238,10 +1234,10 @@ fn test_config_default_model_with_credential_prefix_applies_model_and_pin() {
             })
             .expect("save Claude OAuth account");
 
-            let anthropic = Arc::new(anthropic::AnthropicProvider::new());
+            let anthropic = test_anthropic_runtime();
             let provider = MultiProvider {
                 claude: RwLock::new(None),
-                anthropic: RwLock::new(Some(Arc::clone(&anthropic))),
+                anthropic: RwLock::new(Some(Arc::clone(&anthropic) as Arc<dyn Provider>)),
                 openai: RwLock::new(None),
                 copilot_api: RwLock::new(None),
                 antigravity: RwLock::new(None),
@@ -1274,24 +1270,25 @@ fn test_config_default_model_with_credential_prefix_applies_model_and_pin() {
                 "claude-opus-4-6",
                 "default_model '{spec}' should set the bare model id",
             );
-            assert_eq!(
-                rt.block_on(anthropic.test_access_token_and_oauth_mode())
-                    .expect("token"),
-                (
-                    if expect_oauth {
-                        "oauth-access-token".to_string()
-                    } else {
-                        "sk-ant-test-api-key".to_string()
-                    },
-                    expect_oauth,
-                ),
-                "default_model '{spec}' should resolve {:?}",
-                if expect_oauth {
-                    ResolvedCredential::Oauth
-                } else {
-                    ResolvedCredential::ApiKey
-                },
-            );
+            // `claude-api:` must pin the API key; `claude:`/`claude-oauth:`
+            // resolve OAuth-first (Auto or explicit OAuth respectively), so the
+            // pin must not be ApiKey. Concrete token resolution per pin is
+            // covered by jcode-provider-anthropic-runtime's tests.
+            if expect_oauth {
+                assert_ne!(
+                    anthropic.credential_mode(),
+                    jcode_provider_core::CredentialMode::ApiKey,
+                    "default_model '{spec}' must not pin the API key (expected {:?})",
+                    ResolvedCredential::Oauth,
+                );
+            } else {
+                assert_eq!(
+                    anthropic.credential_mode(),
+                    jcode_provider_core::CredentialMode::ApiKey,
+                    "default_model '{spec}' should resolve {:?}",
+                    ResolvedCredential::ApiKey,
+                );
+            }
         });
     }
 }
@@ -1362,7 +1359,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             scopes: vec!["user:inference".to_string()],
         })
         .expect("save Claude OAuth account");
-        let anthropic = Arc::new(anthropic::AnthropicProvider::new());
+        let anthropic = test_anthropic_runtime();
         let provider = MultiProvider {
             claude: RwLock::new(None),
             anthropic: RwLock::new(Some(anthropic)),
