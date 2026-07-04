@@ -64,3 +64,65 @@ fn test_local_bus_dictation_completion_applies_transcript() {
     assert_eq!(app.input, "draft dictated text");
     assert_eq!(app.status_notice(), Some("Transcript appended".to_string()));
 }
+
+/// SwarmStatus snapshots must surface member lifecycle transitions (an agent
+/// finishing) as a status notice, scoped to this session's spawn subtree so a
+/// shared swarm's unrelated agents stay silent.
+#[test]
+fn test_handle_server_event_swarm_status_announces_member_completion() {
+    let member = |id: &str, status: &str, parent: Option<&str>| crate::protocol::SwarmMemberStatus {
+        session_id: id.to_string(),
+        friendly_name: Some(id.to_string()),
+        status: status.to_string(),
+        detail: None,
+        role: None,
+        is_headless: Some(true),
+        live_attachments: None,
+        status_age_secs: Some(1),
+        output_tail: None,
+        report_back_to_session_id: parent.map(str::to_string),
+        todo_progress: None,
+        todo_items: Vec::new(),
+    };
+
+    let mut app = create_test_app();
+    app.swarm_enabled = true;
+    let self_id = app.session.id.clone();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    // First snapshot: two of our workers running plus an unrelated agent.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::SwarmStatus {
+            members: vec![
+                member("ant", "running", Some(&self_id)),
+                member("bat", "running", Some(&self_id)),
+                member("stranger", "running", None),
+            ],
+        },
+        &mut remote,
+    );
+    assert_eq!(
+        app.status_notice(),
+        None,
+        "first snapshot has no transitions to announce"
+    );
+
+    // One of our workers finishes; the unrelated agent also finishes but must
+    // not be announced (outside our spawn subtree).
+    app.handle_server_event(
+        crate::protocol::ServerEvent::SwarmStatus {
+            members: vec![
+                member("ant", "completed", Some(&self_id)),
+                member("bat", "running", Some(&self_id)),
+                member("stranger", "completed", None),
+            ],
+        },
+        &mut remote,
+    );
+    assert_eq!(
+        app.status_notice(),
+        Some("🐝 ant done · 1/2 active".to_string())
+    );
+}

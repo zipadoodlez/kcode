@@ -3,6 +3,7 @@ use crate::tool::selfdev::ReloadContext;
 use crate::tui::TuiState;
 use crate::tui::app as app_mod;
 use crate::tui::app::remote::swarm_plan_core::RemoteSwarmPlanSnapshot;
+use crate::tui::app::remote::swarm_status_core::swarm_status_transition_notice;
 
 fn allow_runtime_identity_mismatch() -> bool {
     std::env::var_os("JCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
@@ -1666,6 +1667,26 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::SwarmStatus { members } => {
             if app.swarm_enabled {
+                // Surface member lifecycle transitions (done/failed/blocked/
+                // stopped) as a status notice, the same way plan syncs are
+                // surfaced. Diff within the subtree this session manages (the
+                // same scoping the inline strip uses), so agents belonging to
+                // other sessions in a shared swarm stay silent.
+                let self_id = if app.is_remote {
+                    app.remote_session_id.clone()
+                } else {
+                    Some(app.session.id.clone())
+                };
+                if let Some(self_id) = self_id.as_deref() {
+                    let prev = app_mod::tui_state::filter_inline_swarm_subtree(
+                        &app.remote_swarm_members,
+                        self_id,
+                    );
+                    let next = app_mod::tui_state::filter_inline_swarm_subtree(&members, self_id);
+                    if let Some(notice) = swarm_status_transition_notice(&prev, &next) {
+                        app.set_status_notice(notice);
+                    }
+                }
                 app.remote_swarm_members = members;
                 persist_swarm_status_snapshot(app);
             } else {
