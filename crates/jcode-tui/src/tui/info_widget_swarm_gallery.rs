@@ -10,7 +10,7 @@
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
     GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery, render_swarm_dock,
-    render_swarm_panel, render_swarm_strip,
+    render_swarm_compact, render_swarm_panel, render_swarm_strip,
 };
 use ratatui::prelude::*;
 
@@ -164,9 +164,25 @@ pub(crate) fn render_swarm_strip_lines(
     )
 }
 
+/// Render the compact swarm widget body: at most two lines, an agents/nodes
+/// summary plus a green/yellow/empty plan progress bar. `plan` is the
+/// coordinator's task-graph progress as (done, running, total).
+pub(crate) fn render_swarm_compact_lines(
+    members: &[SwarmMemberStatus],
+    plan: Option<(u32, u32, u32)>,
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() {
+        return Vec::new();
+    }
+    render_swarm_compact(&members_to_gallery(members), plan, width, max_height)
+}
+
 /// Render the swarm dock widget body: a narrow vertical agent list for the
 /// info-widget margins. `plan` is the coordinator's swarm plan progress
 /// (completed, total), shown in the header when present.
+#[allow(dead_code)]
 pub(crate) fn render_swarm_dock_lines(
     members: &[SwarmMemberStatus],
     selected: usize,

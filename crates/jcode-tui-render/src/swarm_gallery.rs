@@ -737,6 +737,127 @@ pub fn render_swarm_dock(
     out
 }
 
+/// Render the compact swarm summary: at most two lines for the info-widget
+/// margins.
+///
+/// ```text
+/// 🐝 2/4 agents · nodes 5/12 · ⚠1
+/// █████████████░░░░░░░░░░░░░░░░░░░   (green done · yellow running · dim rest)
+/// ```
+///
+/// Line 1 tallies active/total agents, then (width permitting, dropped
+/// right-to-left) done/total task-graph nodes and an attention count. Line 2
+/// is the plan progress bar: green cells are done nodes, yellow cells are
+/// running nodes, dim cells are the remainder. The bar is omitted when there
+/// is no plan or `max_height` < 2.
+pub fn render_swarm_compact(
+    members: &[GalleryMember],
+    plan: Option<(u32, u32, u32)>,
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() || width < 8 || max_height == 0 {
+        return Vec::new();
+    }
+    let active = members
+        .iter()
+        .filter(|m| is_active_status(&m.status))
+        .count();
+    let attention = members
+        .iter()
+        .filter(|m| {
+            matches!(
+                m.status.as_str(),
+                "blocked" | "failed" | "crashed" | "waiting_network"
+            )
+        })
+        .count();
+
+    let sep_style = Style::default().fg(rgb(80, 80, 90));
+    let mut spans: Vec<Span<'static>> = vec![
+        Span::styled("🐝 ", Style::default().fg(rgb(255, 200, 100))),
+        Span::styled(
+            format!("{active}/{} agents", members.len()),
+            Style::default().fg(if active > 0 {
+                rgb(255, 200, 100)
+            } else {
+                rgb(120, 120, 130)
+            }),
+        ),
+    ];
+    let mut used: usize = spans.iter().map(|s| disp_w(&s.content)).sum();
+    if let Some((done, _running, total)) = plan {
+        let text = format!("nodes {done}/{total}");
+        if used + 3 + disp_w(&text) <= width {
+            used += 3 + disp_w(&text);
+            spans.push(Span::styled(" · ", sep_style));
+            spans.push(Span::styled(text, Style::default().fg(rgb(160, 160, 170))));
+        }
+    }
+    if attention > 0 {
+        let text = format!("⚠{attention}");
+        if used + 3 + disp_w(&text) <= width {
+            spans.push(Span::styled(" · ", sep_style));
+            spans.push(Span::styled(text, Style::default().fg(rgb(255, 170, 80))));
+        }
+    }
+    let mut out = vec![Line::from(spans)];
+
+    if let Some((done, running, total)) = plan
+        && total > 0
+        && max_height >= 2
+    {
+        out.push(plan_progress_bar(done, running, total, width));
+    }
+
+    out.truncate(max_height);
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
+    out
+}
+
+/// The compact widget's plan bar: green = done, yellow = running, dim = the
+/// rest. Non-empty classes always get at least one cell so tiny progress is
+/// visible, and the bar never exceeds `width` cells.
+fn plan_progress_bar(done: u32, running: u32, total: u32, width: usize) -> Line<'static> {
+    let cells = width.max(1);
+    let total = total.max(1) as usize;
+    let done = (done as usize).min(total);
+    let running = (running as usize).min(total - done);
+
+    let mut done_w = done * cells / total;
+    if done > 0 {
+        done_w = done_w.clamp(1, cells);
+    }
+    let mut running_w = ((done + running) * cells / total).saturating_sub(done_w);
+    if running > 0 {
+        running_w = running_w.clamp(1, cells - done_w);
+    }
+    let empty_w = cells - done_w - running_w;
+
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    if done_w > 0 {
+        spans.push(Span::styled(
+            "█".repeat(done_w),
+            Style::default().fg(rgb(100, 200, 100)),
+        ));
+    }
+    if running_w > 0 {
+        spans.push(Span::styled(
+            "█".repeat(running_w),
+            Style::default().fg(rgb(255, 200, 100)),
+        ));
+    }
+    if empty_w > 0 {
+        spans.push(Span::styled(
+            "░".repeat(empty_w),
+            Style::default().fg(rgb(70, 70, 80)),
+        ));
+    }
+    Line::from(spans)
+}
+
 /// Dock header: bee + active tally, then plan progress and attention count,
 /// dropped right-to-left when the width is too tight.
 fn dock_header(
@@ -1798,6 +1919,88 @@ mod tests {
     #[test]
     fn dock_empty_renders_nothing() {
         assert!(render_swarm_dock(&[], 0, false, None, 0, 30, 10).is_empty());
+    }
+
+    #[test]
+    fn compact_empty_renders_nothing() {
+        assert!(render_swarm_compact(&[], Some((1, 1, 3)), 30, 2).is_empty());
+    }
+
+    #[test]
+    fn compact_shows_agent_tally_node_counts_and_bar() {
+        let members = vec![
+            member("a", "running", Some("coordinator"), &[]),
+            member("b", "thinking", None, &[]),
+            member("c", "completed", None, &[]),
+            member("d", "blocked", None, &[]),
+        ];
+        let lines = render_swarm_compact(&members, Some((5, 3, 12)), 32, 2);
+        assert_eq!(lines.len(), 2, "expected summary + bar");
+        let header = plain_line(&lines[0]);
+        assert!(header.contains("2/4 agents"), "got: {header}");
+        assert!(header.contains("nodes 5/12"), "got: {header}");
+        assert!(header.contains("⚠1"), "got: {header}");
+
+        // Bar: green done, yellow running, dim remainder, exactly `width` cells.
+        let bar = &lines[1];
+        let bar_text = plain_line(bar);
+        assert_eq!(disp_w(&bar_text), 32, "bar fills the width: {bar_text:?}");
+        assert_eq!(bar.spans.len(), 3, "done + running + empty segments");
+        assert!(bar.spans[0].content.chars().all(|c| c == '█'));
+        assert!(bar.spans[1].content.chars().all(|c| c == '█'));
+        assert!(bar.spans[2].content.chars().all(|c| c == '░'));
+        assert_eq!(bar.spans[0].style.fg, Some(rgb(100, 200, 100)));
+        assert_eq!(bar.spans[1].style.fg, Some(rgb(255, 200, 100)));
+    }
+
+    #[test]
+    fn compact_without_plan_is_single_line() {
+        let members = vec![member("a", "running", None, &[])];
+        let lines = render_swarm_compact(&members, None, 30, 2);
+        assert_eq!(lines.len(), 1);
+        assert!(plain_line(&lines[0]).contains("1/1 agents"));
+    }
+
+    #[test]
+    fn compact_bar_gives_nonempty_classes_at_least_one_cell() {
+        let members = vec![member("a", "running", None, &[])];
+        // 1 done + 1 running out of 100: both must still be visible.
+        let lines = render_swarm_compact(&members, Some((1, 1, 100)), 20, 2);
+        let bar = &lines[1];
+        assert!(bar.spans.len() >= 3, "got {} spans", bar.spans.len());
+        assert!(!bar.spans[0].content.is_empty());
+        assert!(!bar.spans[1].content.is_empty());
+    }
+
+    #[test]
+    fn compact_is_width_and_height_bounded_at_all_sizes() {
+        use unicode_width::UnicodeWidthStr;
+        let members: Vec<GalleryMember> = (0..9)
+            .map(|i| member(&format!("agent-🐝-{i}"), "running", None, &[]))
+            .collect();
+        for width in 0..=60 {
+            for height in 0..=4 {
+                for plan in [
+                    None,
+                    Some((0, 0, 0)),
+                    Some((0, 1, 1)),
+                    Some((7, 3, 9)),
+                    Some((u32::MAX, u32::MAX, u32::MAX)),
+                ] {
+                    let lines = render_swarm_compact(&members, plan, width, height);
+                    assert!(
+                        lines.len() <= height.min(2),
+                        "w={width} h={height} plan={plan:?}: {} lines",
+                        lines.len()
+                    );
+                    for line in &lines {
+                        let text = plain_line(line);
+                        let w = text.as_str().width();
+                        assert!(w <= width, "w={width} overflow ({w}): {text:?}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

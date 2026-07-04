@@ -269,8 +269,8 @@ pub struct SwarmInfo {
     pub selected: usize,
     /// Whether the swarm panel/dock has keyboard focus.
     pub focused: bool,
-    /// Swarm plan progress (completed, total), when a plan is active.
-    pub plan_progress: Option<(u32, u32)>,
+    /// Swarm plan progress (completed, running, total), when a plan is active.
+    pub plan_progress: Option<(u32, u32, u32)>,
     /// Spinner frame for animating active agents' status glyphs.
     pub spinner_frame: usize,
 }
@@ -1120,12 +1120,9 @@ pub(crate) fn calculate_widget_height(
             if info.managed_members.is_empty() {
                 return 0;
             }
-            // Header + one row per agent + selected tail (2) + focus hints,
-            // capped by what the margin column can give us.
-            let rows = info.managed_members.len() as u16;
-            let tail = 2u16;
-            let hints = u16::from(info.focused);
-            (1 + rows + tail + hints).min(max_height.saturating_sub(border_height))
+            // Compact: agents/nodes summary line + optional plan bar.
+            let bar = u16::from(info.plan_progress.is_some());
+            (1 + bar).min(max_height.saturating_sub(border_height))
         }
         WidgetKind::BackgroundTasks => {
             if data

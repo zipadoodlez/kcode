@@ -8,14 +8,12 @@ pub(super) fn render_swarm_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         return Vec::new();
     };
 
-    // Dock mode: this session manages agents, render the live agent list.
+    // Dock mode: this session manages agents, render the compact two-line
+    // summary (agents tally + task-graph node bar).
     if !info.managed_members.is_empty() {
-        return crate::tui::info_widget::swarm_gallery::render_swarm_dock_lines(
+        return crate::tui::info_widget::swarm_gallery::render_swarm_compact_lines(
             &info.managed_members,
-            info.selected,
-            info.focused,
             info.plan_progress,
-            info.spinner_frame,
             inner.width as usize,
             inner.height as usize,
         );

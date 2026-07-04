@@ -3,7 +3,8 @@
 //! Run with: `cargo run --profile selfdev -p jcode-tui-render --example swarm_gallery_preview`
 
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, render_swarm_dock, render_swarm_panel, render_swarm_strip,
+    GalleryMember, SwarmStripHint, render_swarm_compact, render_swarm_dock, render_swarm_panel,
+    render_swarm_strip,
 };
 use jcode_tui_render::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 use ratatui::prelude::*;
@@ -230,5 +231,19 @@ fn main() {
     print_lines(
         "DOCK: narrow @ width 24 h 8",
         &render_swarm_dock(&panel_members, 2, false, None, 0, 24, 8),
+    );
+
+    // ---- Compact summary (two lines: tally + plan bar) ----
+    print_lines(
+        "COMPACT: 4 agents, nodes 5/12 (3 running) @ width 34",
+        &render_swarm_compact(&panel_members, Some((5, 3, 12)), 34, 2),
+    );
+    print_lines(
+        "COMPACT: no plan @ width 34",
+        &render_swarm_compact(&panel_members, None, 34, 2),
+    );
+    print_lines(
+        "COMPACT: narrow @ width 20",
+        &render_swarm_compact(&panel_members, Some((5, 3, 12)), 20, 2),
     );
 }

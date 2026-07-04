@@ -87,7 +87,7 @@ fn contended_data() -> InfoWidgetData {
                     todo_items: Vec::new(),
                 },
             ],
-            plan_progress: Some((3, 7)),
+            plan_progress: Some((3, 1, 7)),
             ..Default::default()
         }),
         background_info: Some(BackgroundInfo {

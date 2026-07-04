@@ -1103,9 +1103,9 @@ fn managed_member(id: &str, status: &str, role: Option<&str>) -> SwarmMemberStat
     }
 }
 
-/// With managed members present, the SwarmStatus widget switches to dock
-/// mode: agent rows + tally header + plan progress, and has_data_for admits
-/// the widget into layout.
+/// With managed members present, the SwarmStatus widget switches to compact
+/// mode: agents tally + node progress bar, and has_data_for admits the
+/// widget into layout.
 #[test]
 fn swarm_widget_dock_mode_lists_managed_agents() {
     let data = InfoWidgetData {
@@ -1114,7 +1114,7 @@ fn swarm_widget_dock_mode_lists_managed_agents() {
                 managed_member("researcher", "running", Some("coordinator")),
                 managed_member("reviewer", "completed", None),
             ],
-            plan_progress: Some((3, 7)),
+            plan_progress: Some((3, 2, 7)),
             selected: 0,
             ..Default::default()
         }),
@@ -1124,16 +1124,18 @@ fn swarm_widget_dock_mode_lists_managed_agents() {
     // Managing agents bumps the dock's effective priority near the top.
     assert!(data.effective_priority(WidgetKind::SwarmStatus) < WidgetKind::SwarmStatus.priority());
 
-    let text = lines_text(&super::render_swarm_widget(&data, Rect::new(0, 0, 34, 10)));
-    assert!(text.contains("1/2 active"), "got: {text}");
-    assert!(text.contains("plan 3/7"), "got: {text}");
-    assert!(text.contains("researcher"), "got: {text}");
-    assert!(text.contains("reviewer"), "got: {text}");
-    // Selected agent (coordinator sorts first) shows its live output tail.
-    assert!(text.contains("streaming some work"), "got: {text}");
-    // Height accounts for header + rows + tail.
+    let lines = super::render_swarm_widget(&data, Rect::new(0, 0, 34, 10));
+    let text = lines_text(&lines);
+    assert!(text.contains("1/2 agents"), "got: {text}");
+    assert!(text.contains("nodes 3/7"), "got: {text}");
+    // Second line is the plan progress bar (done + running + empty cells).
+    assert_eq!(lines.len(), 2, "compact widget is exactly two lines");
+    let bar: String = lines[1].spans.iter().map(|s| s.content.as_ref()).collect();
+    assert!(bar.contains('█'), "expected filled bar cells: {bar}");
+    assert!(bar.contains('░'), "expected empty bar cells: {bar}");
+    // Height: summary line + bar (+ borders).
     let h = calculate_widget_height(WidgetKind::SwarmStatus, &data, 34, 20);
-    assert!(h >= 5, "dock height too small: {h}");
+    assert_eq!(h, 4, "compact height should be 2 content + 2 border: {h}");
 }
 
 /// Without managed members the legacy session-list rendering is preserved and

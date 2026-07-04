@@ -354,9 +354,10 @@ fn swarm_strip_stands_down_through_dock_blinks() {
     );
 }
 
-/// The swarm dock widget renders managed agents at the cell level: place it
-/// through the real `calculate_placements` + `render_all` path into a
-/// TestBackend and assert the agent rows landed inside the placement rect.
+/// The swarm dock widget renders the compact summary at the cell level:
+/// place it through the real `calculate_placements` + `render_all` path into
+/// a TestBackend and assert the summary + progress bar landed inside the
+/// placement rect.
 #[test]
 fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
     let _lock = viewport_snapshot_test_lock();
@@ -366,7 +367,7 @@ fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
     let data = crate::tui::info_widget::InfoWidgetData {
         swarm_info: Some(crate::tui::info_widget::SwarmInfo {
             managed_members: vec![coordinator, strip_member("s1", "reviewer", "completed")],
-            plan_progress: Some((3, 7)),
+            plan_progress: Some((3, 2, 7)),
             ..Default::default()
         }),
         ..Default::default()
@@ -407,20 +408,16 @@ fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        dock_text.contains("researcher"),
-        "expected agent row inside dock rect, got:\n{dock_text}"
+        dock_text.contains("1/2 agents"),
+        "expected agents tally inside dock rect, got:\n{dock_text}"
     );
     assert!(
-        dock_text.contains("reviewer"),
-        "expected second agent row inside dock rect, got:\n{dock_text}"
+        dock_text.contains("nodes 3/7"),
+        "expected node progress in dock header, got:\n{dock_text}"
     );
     assert!(
-        dock_text.contains("1/2 active"),
-        "expected active tally header inside dock rect, got:\n{dock_text}"
-    );
-    assert!(
-        dock_text.contains("plan 3/7"),
-        "expected plan progress in dock header, got:\n{dock_text}"
+        dock_text.contains('█') && dock_text.contains('░'),
+        "expected plan progress bar inside dock rect, got:\n{dock_text}"
     );
     // Nothing from the dock leaked left of its rect.
     for row in &rows[rect.y as usize..(rect.y + rect.height) as usize] {

@@ -1359,7 +1359,14 @@ impl crate::tui::TuiState for App {
                         .iter()
                         .filter(|item| matches!(item.status.as_str(), "completed" | "done"))
                         .count() as u32;
-                    Some((done, total))
+                    let running = self
+                        .swarm_plan_items
+                        .iter()
+                        .filter(|item| {
+                            matches!(item.status.as_str(), "running" | "running_stale")
+                        })
+                        .count() as u32;
+                    Some((done, running, total))
                 };
                 Some(crate::tui::info_widget::SwarmInfo {
                     session_count,
