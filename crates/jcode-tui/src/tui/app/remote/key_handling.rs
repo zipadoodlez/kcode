@@ -318,6 +318,15 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
+    // While the runtime model picker preview is visible, route its
+    // favorite/default hotkeys (Ctrl+O set default, Ctrl+N toggle favorite) to
+    // the focused picker handler before the remote global Ctrl-key handling
+    // can claim them. This mirrors the local path in `input.rs`
+    // `handle_key_core`.
+    if app.model_picker_preview_hotkey(code, modifiers)? {
+        return Ok(());
+    }
+
     // Inline hotkey feedback: when a known-but-rarely-used chord is pressed,
     // show "you just pressed X → does Y". Placed after the overlay handlers so
     // overlay-local keys stay silent. Unknown chords are reported at the
