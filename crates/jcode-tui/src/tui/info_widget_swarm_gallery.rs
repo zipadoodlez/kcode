@@ -279,16 +279,17 @@ mod tests {
             "pop-out order must match rendered tile order"
         );
 
-        // Sanity: coordinator first, worktree manager second, rest by id.
+        // Sanity: coordinator first, worktree manager second, then the rest
+        // active-first (thinking/running), then failed, then idle, ties by id.
         assert_eq!(order[0], "coord-session");
         assert_eq!(order[1], "wt-session");
         assert_eq!(
             &order[2..],
             &[
-                "alpha-session".to_string(),
-                "beta-session-long-id".to_string(),
                 "mystery-session".to_string(),
                 "zeta-session".to_string(),
+                "alpha-session".to_string(),
+                "beta-session-long-id".to_string(),
             ]
         );
     }

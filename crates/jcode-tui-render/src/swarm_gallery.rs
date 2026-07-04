@@ -86,6 +86,20 @@ fn role_rank(role: Option<&str>) -> u8 {
     }
 }
 
+/// Sort rank for lifecycle status within a role bucket: still-working agents
+/// first, then agents needing attention, then idle ones, then finished ones.
+/// This keeps active agents visible on the strip instead of letting them
+/// collapse into the "+N" overflow behind completed agents.
+fn status_rank(status: &str) -> u8 {
+    match status {
+        s if is_active_status(s) => 0,
+        "blocked" | "waiting_network" | "failed" | "crashed" => 1,
+        "completed" | "done" | "stopped" => 3,
+        // ready/spawned/unknown: idle but not finished.
+        _ => 2,
+    }
+}
+
 /// The header line shown above the gallery grid.
 pub fn gallery_header(total: usize, active: usize) -> Line<'static> {
     Line::from(vec![
@@ -994,17 +1008,21 @@ fn panel_header(total: usize, active: usize, focused: bool) -> Line<'static> {
 }
 
 /// Indices of `members` in display order: coordinator first, then worktree
-/// manager, then everything else, ties broken by `sort_key` (stable for full
-/// ties). This is the single source of truth for how the gallery, panel, and
-/// strip order members; callers that need to map a displayed row back to an
-/// input member (e.g. pop-out selection) must use this rather than
-/// re-implementing the sort.
+/// manager, then everything else. Within a role bucket, still-working agents
+/// sort before blocked/failed ones, which sort before idle and then finished
+/// ones, so active agents never hide behind completed ones in the "+N"
+/// overflow. Remaining ties break by `sort_key` (stable for full ties). This
+/// is the single source of truth for how the gallery, panel, and strip order
+/// members; callers that need to map a displayed row back to an input member
+/// (e.g. pop-out selection) must use this rather than re-implementing the
+/// sort.
 pub fn display_order(members: &[GalleryMember]) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..members.len()).collect();
     idx.sort_by(|&a, &b| {
         let (a, b) = (&members[a], &members[b]);
         role_rank(a.role.as_deref())
             .cmp(&role_rank(b.role.as_deref()))
+            .then_with(|| status_rank(&a.status).cmp(&status_rank(&b.status)))
             .then_with(|| a.sort_key.cmp(&b.sort_key))
     });
     idx
@@ -1189,12 +1207,37 @@ mod tests {
             .collect();
         assert_eq!(ordered_labels, tile_titles);
         let ordered_labels: Vec<&str> = ordered_labels.iter().map(String::as_str).collect();
-        // Role buckets come first, then sort_key order within the bucket.
+        // Role buckets come first, then active-before-finished status order,
+        // then sort_key within the same status rank.
         assert_eq!(ordered_labels[0], "boss");
         assert_eq!(ordered_labels[1], "mid");
         assert_eq!(
             &ordered_labels[2..],
-            &["alpha", "beta", "beta-label-2", "zeta"]
+            &["alpha", "zeta", "beta", "beta-label-2"]
+        );
+    }
+
+    /// Active agents must sort ahead of finished ones within a role bucket, so
+    /// they stay visible on the strip instead of hiding in the "+N" overflow.
+    #[test]
+    fn display_order_puts_active_agents_before_finished_ones() {
+        let members = vec![
+            member("ant", "completed", None, &[]),
+            member("bat", "done", None, &[]),
+            member("crab", "running", None, &[]),
+            member("dove", "failed", None, &[]),
+            member("elk", "ready", None, &[]),
+            member("fox", "thinking", None, &[]),
+            member("gnu", "stopped", None, &[]),
+            member("hen", "blocked", None, &[]),
+        ];
+        let order = display_order(&members);
+        let labels: Vec<&str> = order.iter().map(|&i| members[i].label.as_str()).collect();
+        assert_eq!(
+            labels,
+            // active (crab, fox) < attention (dove, hen) < idle (elk)
+            // < finished (ant, bat, gnu), each bucket sorted by sort_key.
+            ["crab", "fox", "dove", "hen", "elk", "ant", "bat", "gnu"]
         );
     }
 
