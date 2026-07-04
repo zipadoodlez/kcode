@@ -2065,22 +2065,21 @@ pub(in crate::tui::app) fn handle_server_event(
             app.swarm_plan_swarm_id = Some(snapshot.swarm_id.clone());
             app.swarm_plan_version = Some(snapshot.version);
             app.swarm_plan_items = snapshot.items.clone();
-            // Render the plan's task DAG as a mermaid diagram so the pinned
-            // pane / margin widget shows the swarm graph. Deferred render:
-            // enqueues in the background and registers the diagram on
-            // completion, so plan updates never block the event loop. Gated
-            // like transcript mermaid: a diagram surface must be enabled and
-            // mermaid rendering must not be opted out (enabled by default,
-            // JCODE_ENABLE_MERMAID=0 disables), matching the markdown
-            // pipeline's mermaid_rendering_enabled semantics.
-            if app.diagram_mode != crate::config::DiagramDisplayMode::None
-                && !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
+            // Render the plan's task DAG as an inline chat diagram: the graph
+            // is pushed as a normal swarm message containing a mermaid fence,
+            // so it renders through the standard markdown/mermaid pipeline and
+            // scrolls by like any other transcript image. Rapid version bumps
+            // coalesce (see upsert_trailing_swarm_plan_graph_message) instead
+            // of stacking one diagram per assignment churn. Skipped only when
+            // mermaid rendering is opted out (JCODE_ENABLE_MERMAID=0), since a
+            // raw mermaid source block would just be noise.
+            if !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
                 && let Some(graph) =
                     crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
             {
-                let _ = crate::tui::mermaid::render_mermaid_deferred_with_registration(
-                    &graph, None, true,
-                );
+                let title = format!("Plan graph · v{}", snapshot.version);
+                let content = format!("```mermaid\n{}\n```", graph.trim_end());
+                app.upsert_trailing_swarm_plan_graph_message(title, content);
             }
             persist_swarm_plan_snapshot(
                 app,
@@ -2458,6 +2457,24 @@ pub(in crate::tui::app) fn handle_server_event(
                 &message,
                 crate::config::config().display.compact_notifications,
             );
+            // Plan bookkeeping churn (assignments, version bumps, approvals)
+            // arrives constantly while a plan runs. It only needs to pass by
+            // on the status line; the inline plan graph message already shows
+            // the resulting DAG state in the transcript.
+            let plan_scope = matches!(
+                &notification_type,
+                crate::protocol::NotificationType::Message {
+                    scope: Some(scope),
+                    ..
+                } if scope == "plan"
+            );
+            if plan_scope {
+                app.set_status_notice(format!(
+                    "{} · {}",
+                    presentation.title, presentation.message
+                ));
+                return false;
+            }
             app.push_display_message(DisplayMessage::swarm(
                 presentation.title.clone(),
                 presentation.message.clone(),

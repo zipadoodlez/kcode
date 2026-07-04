@@ -148,6 +148,38 @@ impl App {
         self.replace_display_message_title_and_content(idx, title, content)
     }
 
+    /// Push or update the swarm plan graph as an inline chat message.
+    ///
+    /// Plan updates arrive in rapid bursts (one broadcast per assignment or
+    /// status flip), so if the most recent plan-graph message is still the
+    /// last "swarm" message in the transcript, update it in place instead of
+    /// appending a new diagram per version. Once other messages have arrived
+    /// after it, the next update appends a fresh message so the transcript
+    /// keeps its chronological flow.
+    pub(super) fn upsert_trailing_swarm_plan_graph_message(
+        &mut self,
+        title: String,
+        content: String,
+    ) {
+        const PLAN_GRAPH_TITLE_PREFIX: &str = "Plan graph · ";
+        let trailing_plan_graph_idx = self
+            .display_messages
+            .iter()
+            .rposition(|message| message.role == "swarm")
+            .filter(|&idx| {
+                self.display_messages[idx]
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| title.starts_with(PLAN_GRAPH_TITLE_PREFIX))
+            });
+
+        if let Some(idx) = trailing_plan_graph_idx {
+            self.replace_display_message_title_and_content(idx, Some(title), content);
+        } else {
+            self.push_display_message(DisplayMessage::swarm(title, content));
+        }
+    }
+
     pub(super) fn upsert_background_task_progress_message(&mut self, content: String) {
         let Some(progress) =
             crate::message::parse_background_task_progress_notification_markdown(&content)

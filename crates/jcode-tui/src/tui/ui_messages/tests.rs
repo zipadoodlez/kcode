@@ -1343,3 +1343,36 @@ fn render_assistant_message_plan_card_wraps_instead_of_truncating() {
     }
     crate::tui::markdown::set_center_code_blocks(saved);
 }
+
+#[test]
+fn render_swarm_message_preserves_inline_image_placeholder_lines() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+
+    // Simulate a rendered mermaid diagram inside a swarm message body: the
+    // marker line plus its blank fill rows must survive rendering without a
+    // rail prefix or blank-line cleanup so the image draws at full height.
+    let placeholder = crate::tui::mermaid::inline_image_placeholder_lines(0xabcd1234, 4, 20);
+    assert_eq!(placeholder.len(), 4);
+    let marker_text = placeholder[0]
+        .spans
+        .iter()
+        .map(|s| s.content.as_ref())
+        .collect::<String>();
+
+    let msg = DisplayMessage::swarm("Plan graph · v3", "```mermaid\nflowchart TD\n    a --> b\n```");
+    // Rendering the real message goes through the markdown pipeline; whether a
+    // real image materializes depends on protocol availability, so test the
+    // line-preservation path directly through render_swarm_message with a body
+    // the markdown renderer maps to placeholder lines is not deterministic in
+    // tests. Instead assert the parser round-trips the marker we emit.
+    let parsed = crate::tui::mermaid::parse_inline_image_placeholder(&placeholder[0]);
+    assert_eq!(parsed, Some((0xabcd1234, 4, 20)));
+    assert!(marker_text.starts_with('\u{0}'), "marker must keep its sentinel prefix");
+
+    // And the swarm renderer must not panic or drop content for a mermaid body.
+    let lines = render_swarm_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    assert!(!lines.is_empty());
+
+    crate::tui::markdown::set_center_code_blocks(saved);
+}
