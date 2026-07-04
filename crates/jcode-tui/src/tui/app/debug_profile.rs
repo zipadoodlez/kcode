@@ -678,11 +678,36 @@ fn build_debug_summary(payload: &serde_json::Value) -> serde_json::Value {
         total_app_owned_estimate_bytes as f64 / process_pss_bytes as f64
     };
 
+    // Explain the unattributed remainder with allocator-level stats: split it
+    // into heap the app still holds (unlabeled live) vs freed-but-retained
+    // allocator slack. This does not attribute per-structure, but it tells you
+    // whether growth is an app leak or allocator retention.
+    let allocator_live_bytes = nested_usize(
+        payload,
+        &["process", "allocator", "stats", "allocated_bytes"],
+    );
+    let allocator_retained_bytes = nested_usize(
+        payload,
+        &["process", "allocator", "stats", "retained_bytes"],
+    );
+    let allocator_breakdown = if allocator_live_bytes > 0 || allocator_retained_bytes > 0 {
+        let unlabeled_live_heap_bytes =
+            allocator_live_bytes.saturating_sub(total_app_owned_estimate_bytes);
+        serde_json::json!({
+            "heap_live_bytes": allocator_live_bytes,
+            "heap_retained_bytes": allocator_retained_bytes,
+            "unlabeled_live_heap_bytes": unlabeled_live_heap_bytes,
+        })
+    } else {
+        serde_json::Value::Null
+    };
+
     serde_json::json!({
         "process_pss_bytes": process_pss_bytes,
         "total_app_owned_estimate_bytes": total_app_owned_estimate_bytes,
         "unattributed_process_pss_bytes": unattributed_process_pss_bytes,
         "coverage_ratio": coverage_ratio,
+        "allocator_breakdown": allocator_breakdown,
         "top_buckets": buckets
             .into_iter()
             .take(16)

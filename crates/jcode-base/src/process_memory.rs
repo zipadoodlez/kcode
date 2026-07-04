@@ -187,14 +187,47 @@ pub fn allocator_info() -> AllocatorInfo {
 
     #[cfg(not(feature = "jemalloc"))]
     {
+        let stats = glibc_malloc_stats();
         AllocatorInfo {
             name: "system",
-            stats_available: false,
-            stats: None,
+            stats_available: stats.is_some(),
+            stats,
             tuning: None,
             profiling: None,
         }
     }
+}
+
+/// Read glibc malloc statistics via `mallinfo2` (glibc >= 2.33).
+///
+/// This does not attribute memory to app structures, but it splits process
+/// heap into "live" (bytes the app currently holds) and "retained" (bytes
+/// freed by the app but kept by the allocator), which is the distinction that
+/// matters when diagnosing unattributed RSS.
+#[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+fn glibc_malloc_stats() -> Option<AllocatorStats> {
+    // Totals are summed across all arenas by modern glibc.
+    // uordblks: in-use arena bytes; fordblks: freed-but-retained arena bytes;
+    // hblkhd: mmap-backed allocation bytes; arena: total sbrk/mmap arena size.
+    let info = unsafe { libc::mallinfo2() };
+    let live = (info.uordblks as u64).saturating_add(info.hblkhd as u64);
+    let mapped = (info.arena as u64).saturating_add(info.hblkhd as u64);
+    Some(AllocatorStats {
+        allocated_bytes: Some(live),
+        active_bytes: Some(info.uordblks as u64),
+        metadata_bytes: None,
+        resident_bytes: None,
+        mapped_bytes: Some(mapped),
+        retained_bytes: Some(info.fordblks as u64),
+    })
+}
+
+#[cfg(all(
+    not(all(target_os = "linux", target_env = "gnu")),
+    not(feature = "jemalloc")
+))]
+fn glibc_malloc_stats() -> Option<AllocatorStats> {
+    None
 }
 
 pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
@@ -683,10 +716,28 @@ mod tests {
             assert!(info.profiling.is_some());
         } else {
             assert_eq!(info.name, "system");
-            assert!(!info.stats_available);
-            assert!(info.stats.is_none());
+            assert_eq!(info.stats_available, info.stats.is_some());
             assert!(info.profiling.is_none());
         }
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+    #[test]
+    fn glibc_malloc_stats_report_live_and_retained_bytes() {
+        // Hold a live allocation so uordblks cannot be zero, then check the
+        // mallinfo2-backed stats are populated and internally consistent.
+        let held = vec![0u8; 1024 * 1024];
+        let stats = glibc_malloc_stats().expect("mallinfo2 stats on glibc");
+        assert!(
+            stats.allocated_bytes.unwrap() > 0,
+            "live bytes should be nonzero"
+        );
+        assert!(stats.retained_bytes.is_some());
+        assert!(
+            stats.mapped_bytes.unwrap() >= stats.active_bytes.unwrap(),
+            "arena total should cover in-use arena bytes"
+        );
+        drop(held);
     }
 
     #[cfg(target_os = "linux")]
