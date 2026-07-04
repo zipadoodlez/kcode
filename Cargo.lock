@@ -35,8 +35,8 @@ dependencies = [
 
 [[package]]
 name = "agentgrep"
-version = "0.1.4"
-source = "git+https://github.com/1jehuang/agentgrep.git?tag=v0.1.4#deaf89fcc8d8b092f55d0ffc8ec5306ab7371b82"
+version = "0.1.5"
+source = "git+https://github.com/1jehuang/agentgrep.git?tag=v0.1.5#43438393670bef75f13f6d38a2b3c15be70d3211"
 dependencies = [
  "clap",
  "globset",
