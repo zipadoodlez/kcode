@@ -293,10 +293,16 @@ async fn cleanup_finished_workers_for_capacity(
     outcome.stopped.len()
 }
 
+/// How often the background progress card is refreshed from live plan state
+/// while the driver is blocked awaiting workers.
+const RUN_PLAN_PROGRESS_REFRESH_SECS: u64 = 15;
+
 async fn await_swarm_progress(
     ctx: &ToolContext,
     session_ids: Vec<String>,
     timeout_minutes: u64,
+    reporter: &RunPlanReporter,
+    assignment_count: usize,
 ) -> Result<()> {
     let request = Request::CommAwaitMembers {
         id: REQUEST_ID,
@@ -312,7 +318,45 @@ async fn await_swarm_progress(
         wake: false,
     };
     let socket_timeout = std::time::Duration::from_secs(timeout_minutes.max(1) * 60 + 30);
-    match send_request_with_timeout(request, Some(socket_timeout)).await {
+    let await_members = send_request_with_timeout(request, Some(socket_timeout));
+    tokio::pin!(await_members);
+
+    // While blocked on the await (potentially many minutes), periodically
+    // re-read live plan + member state and push it to the progress card.
+    // Without this, worker completions and externally-assigned work (manual
+    // `assign_task`) only surface at the driver's own wave boundaries, so the
+    // card goes stale for the whole await. Refresh failures are ignored: the
+    // card is best-effort and the await result is what drives the loop.
+    let refresh_period = std::time::Duration::from_secs(RUN_PLAN_PROGRESS_REFRESH_SECS);
+    let mut refresh = tokio::time::interval_at(
+        tokio::time::Instant::now() + refresh_period,
+        refresh_period,
+    );
+    refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    let response = loop {
+        tokio::select! {
+            result = &mut await_members => break result,
+            _ = refresh.tick() => {
+                if !reporter.is_background() {
+                    continue;
+                }
+                let summary = match fetch_plan_status(&ctx.session_id).await {
+                    Ok(summary) => summary,
+                    Err(_) => continue,
+                };
+                let live_active = fetch_in_flight_swarm_sessions(&ctx.session_id)
+                    .await
+                    .map(|sessions| sessions.len())
+                    .unwrap_or(0);
+                let (completed, total, message) =
+                    run_plan_progress_snapshot(&summary, live_active, assignment_count);
+                reporter.progress(completed, total, message).await;
+            }
+        }
+    };
+
+    match response {
         Ok(ServerEvent::CommAwaitMembersResponse {
             completed, summary, ..
         }) => {
@@ -450,6 +494,12 @@ impl RunPlanReporter {
             task_id: task_id_from_output_path(output_path).map(str::to_string),
             output_path: Some(output_path.to_path_buf()),
         }
+    }
+
+    /// Whether this reporter feeds a live background progress card (inline
+    /// reporters are no-ops, so refresh polling would be wasted requests).
+    fn is_background(&self) -> bool {
+        self.task_id.is_some()
     }
 
     async fn log(&self, line: &str) {
@@ -799,6 +849,34 @@ fn plan_terminal_node_count(summary: &PlanGraphStatus) -> usize {
         .len()
 }
 
+/// Numbers for the `run_plan` background progress card. Pure for unit testing.
+///
+/// The percent-driving pair is `(completed, total)`: only *completed* nodes
+/// count toward 100%, so a run where most nodes failed reads as mostly
+/// unfinished instead of "98% complete" (failed/blocked counts are surfaced in
+/// the message instead). `live_active` is the count of in-flight worker
+/// sessions observed from member state; the card shows whichever of plan
+/// execution state (`active_ids`) or live member state is larger, so nodes
+/// assigned outside this driver (e.g. manual `assign_task`) still show as
+/// active.
+fn run_plan_progress_snapshot(
+    summary: &PlanGraphStatus,
+    live_active: usize,
+    assignment_count: usize,
+) -> (usize, usize, String) {
+    let completed = summary.completed_ids.len();
+    let active = summary.active_ids.len().max(live_active);
+    let message = format!(
+        "completed {} · failed {} · blocked {} · active {} · assignments {}",
+        completed,
+        summary.failed_ids.len(),
+        summary.blocked_ids.len(),
+        active,
+        assignment_count
+    );
+    (completed, summary.item_count, message)
+}
+
 /// Terminal-state summary line for `run_plan`, including failed nodes so a run
 /// with failures never reads like a clean finish. Pure for unit testing.
 fn format_run_plan_terminal_summary(
@@ -898,19 +976,10 @@ async fn run_swarm_plan_loop(
         let in_flight_sessions = fetch_in_flight_swarm_sessions(&ctx.session_id).await?;
 
         let terminal_count = plan_terminal_node_count(&summary);
+        let (progress_completed, progress_total, progress_message) =
+            run_plan_progress_snapshot(&summary, in_flight_sessions.len(), assignment_count);
         reporter
-            .progress(
-                terminal_count,
-                summary.item_count,
-                format!(
-                    "completed {} · failed {} · blocked {} · active {} · assignments {}",
-                    summary.completed_ids.len(),
-                    summary.failed_ids.len(),
-                    summary.blocked_ids.len(),
-                    summary.active_ids.len(),
-                    assignment_count
-                ),
-            )
+            .progress(progress_completed, progress_total, progress_message)
             .await;
         let no_more_runnable = summary.active_ids.is_empty()
             && summary.next_ready_ids.is_empty()
@@ -1099,7 +1168,8 @@ async fn run_swarm_plan_loop(
                 detail
             ));
         }
-        await_swarm_progress(ctx, await_sessions, timeout_minutes).await?;
+        await_swarm_progress(ctx, await_sessions, timeout_minutes, reporter, assignment_count)
+            .await?;
         // Real progress (an await completed); clear the transient-stall backoff so
         // a later genuine stall starts counting fresh.
         transient_stall_loops = 0;

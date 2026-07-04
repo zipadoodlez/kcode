@@ -296,6 +296,94 @@ fn run_plan_utilization_handles_unbounded_budget() {
 }
 
 #[test]
+fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active() {
+    // Regression: a plan with 33 completed / 116 failed of 152 used to report
+    // terminal/total = 149/152 (~98%) with active 0 while four externally
+    // assigned workers were still running.
+    let summary = crate::protocol::PlanGraphStatus {
+        swarm_id: Some("swarm-a".to_string()),
+        version: 9,
+        item_count: 152,
+        ready_ids: Vec::new(),
+        blocked_ids: Vec::new(),
+        active_ids: Vec::new(),
+        completed_ids: (0..33).map(|i| format!("c{i}")).collect(),
+        failed_ids: (0..116).map(|i| format!("f{i}")).collect(),
+        cycle_ids: Vec::new(),
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
+        mode: "deep".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
+    };
+
+    let (completed, total, message) = super::run_plan_progress_snapshot(&summary, 4, 137);
+    // Percent driver is completed/total: 33/152 (~22%), never ~98%.
+    assert_eq!(completed, 33);
+    assert_eq!(total, 152);
+    // Failed nodes are surfaced separately, and live in-flight workers show as
+    // active even when the plan's own active_ids is empty (external
+    // assign_task dispatches).
+    assert_eq!(
+        message,
+        "completed 33 · failed 116 · blocked 0 · active 4 · assignments 137"
+    );
+
+    // The normalized background progress percent derived from (current,total)
+    // must match completed/total, not terminal/total.
+    let progress = crate::bus::BackgroundTaskProgress {
+        kind: crate::bus::BackgroundTaskProgressKind::Determinate,
+        percent: None,
+        message: Some(message),
+        current: Some(completed as u64),
+        total: Some(total as u64),
+        unit: Some("nodes".to_string()),
+        eta_seconds: None,
+        updated_at: chrono::Utc::now().to_rfc3339(),
+        source: crate::bus::BackgroundTaskProgressSource::Reported,
+    }
+    .normalize();
+    let percent = progress.percent.expect("determinate percent");
+    assert!(
+        (percent - 21.71).abs() < 0.1,
+        "33/152 must normalize to ~21.7%, got {percent}"
+    );
+}
+
+#[test]
+fn run_plan_progress_active_prefers_plan_execution_state_when_larger() {
+    let summary = crate::protocol::PlanGraphStatus {
+        swarm_id: None,
+        version: 1,
+        item_count: 10,
+        ready_ids: Vec::new(),
+        blocked_ids: vec!["b1".to_string()],
+        active_ids: vec!["a1".to_string(), "a2".to_string(), "a3".to_string()],
+        completed_ids: vec!["c1".to_string(), "c2".to_string()],
+        failed_ids: vec!["f1".to_string()],
+        cycle_ids: Vec::new(),
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
+        mode: "light".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
+    };
+
+    // Plan says 3 active but only 1 live member is observable (e.g. status
+    // propagation lag): keep the larger plan-state number.
+    let (completed, total, message) = super::run_plan_progress_snapshot(&summary, 1, 5);
+    assert_eq!((completed, total), (2, 10));
+    assert_eq!(
+        message,
+        "completed 2 · failed 1 · blocked 1 · active 3 · assignments 5"
+    );
+}
+
+#[test]
 fn plan_status_budget_line_is_deep_only_and_nudges_serialized_graphs() {
     let base = crate::protocol::PlanGraphStatus {
         swarm_id: Some("swarm-a".to_string()),
