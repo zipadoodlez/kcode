@@ -1072,21 +1072,35 @@ impl App {
         };
 
         let render_start = Instant::now();
-        let (rendered_messages, rendered_images) =
-            crate::session::render_messages_and_images(&session);
-        let display_messages =
-            jcode_tui_messages::display_messages_from_rendered_messages(rendered_messages);
-        self.replace_display_messages(display_messages);
+        // Narrow scope so render intermediates (rendered messages, display
+        // message buffers) drop before we strip and retain the session.
+        {
+            let (rendered_messages, rendered_images) =
+                crate::session::render_messages_and_images(&session);
+            let display_messages =
+                jcode_tui_messages::display_messages_from_rendered_messages(rendered_messages);
+            self.replace_display_messages(display_messages);
+            self.remote_side_pane_images = rendered_images;
+        }
         let render_ms = render_start.elapsed().as_millis();
 
-        self.remote_side_pane_images = rendered_images;
         let image_ms = 0;
         self.set_side_panel_snapshot(
             crate::side_panel::snapshot_for_session(session_id).unwrap_or_default(),
         );
         self.remote_session_id = Some(session_id.to_string());
         session.strip_transcript_for_remote_client();
+        // The strip above clears the large transcript vectors but keeps their
+        // capacity; free the backing buffers before retaining the session.
+        session.messages.shrink_to_fit();
+        session.env_snapshots.shrink_to_fit();
+        session.memory_injections.shrink_to_fit();
+        session.replay_events.shrink_to_fit();
         self.session = session;
+        // The full deserialized transcript (raw file + Session structs) was a
+        // large transient; return the freed arena pages to the OS now instead
+        // of waiting for the post-connect client_history_loaded release.
+        crate::process_memory::release_retained_heap("remote_startup_history_stripped");
         self.autoreview_enabled = self
             .session
             .autoreview_enabled
