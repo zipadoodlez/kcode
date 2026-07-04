@@ -841,6 +841,16 @@ pub(super) async fn remove_session_from_swarm(
             ("swarm_id", swarm_id.to_string()),
         ],
     );
+    // Capture the departing member's own spawner before any teardown. Some
+    // callers remove the member from the map before calling us, so this is
+    // best-effort: when unavailable the orphan-reparenting below falls back to
+    // the swarm coordinator.
+    let departing_parent: Option<String> = {
+        let members = swarm_members.read().await;
+        members
+            .get(session_id)
+            .and_then(|member| member.report_back_to_session_id.clone())
+    };
     // A leaving member can no longer drive its plan assignments (crash, stop,
     // disconnect, feature-off all funnel through here). Salvage before any
     // membership state is torn down so the coordinator notification can still
@@ -933,6 +943,65 @@ pub(super) async fn remove_session_from_swarm(
         if let Some(member) = members.get_mut(session_id) {
             member.role = "agent".to_string();
         }
+    }
+
+    // Reparent the departing member's direct children so the spawn tree never
+    // holds dangling report-back edges. Orphaned subtrees would otherwise
+    // silently change ownership semantics: stop permissions, subtree broadcast
+    // scope, and completion report-back all walk this chain. Children are
+    // attached to their grandparent when it is still a live member of this
+    // swarm, otherwise to the current coordinator, otherwise they become
+    // roots (report_back_to_session_id = None).
+    let fallback_parent: Option<String> = {
+        let grandparent_is_live = if let Some(ref parent) = departing_parent {
+            parent != session_id && {
+                let members = swarm_members.read().await;
+                members
+                    .get(parent)
+                    .is_some_and(|member| member.swarm_id.as_deref() == Some(swarm_id))
+            }
+        } else {
+            false
+        };
+        if grandparent_is_live {
+            departing_parent.clone()
+        } else {
+            let coordinators = swarm_coordinators.read().await;
+            coordinators
+                .get(swarm_id)
+                .filter(|coordinator| coordinator.as_str() != session_id)
+                .cloned()
+        }
+    };
+    let mut reparented: Vec<String> = Vec::new();
+    {
+        let mut members = swarm_members.write().await;
+        for member in members.values_mut() {
+            if member.swarm_id.as_deref() == Some(swarm_id)
+                && member.report_back_to_session_id.as_deref() == Some(session_id)
+            {
+                member.report_back_to_session_id = fallback_parent
+                    .clone()
+                    .filter(|parent| parent != &member.session_id);
+                reparented.push(member.session_id.clone());
+            }
+        }
+    }
+    if !reparented.is_empty() {
+        log_swarm_lifecycle(
+            "member_remove_reparent",
+            vec![
+                ("session_id", session_id.to_string()),
+                ("swarm_id", swarm_id.to_string()),
+                (
+                    "new_parent",
+                    fallback_parent
+                        .clone()
+                        .unwrap_or_else(|| "none (promoted to root)".to_string()),
+                ),
+                ("reparented_children", reparented.join(",")),
+            ],
+        );
     }
 
     if swarm_plans.read().await.contains_key(swarm_id) {
@@ -1811,6 +1880,106 @@ mod tests {
                 } if message == "You are now the coordinator for this swarm."
             )
         }));
+    }
+
+    #[tokio::test]
+    async fn remove_session_reparents_children_to_live_grandparent() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from([
+                "root".to_string(),
+                "mid".to_string(),
+                "leaf".to_string(),
+            ]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            "root".to_string(),
+        )])));
+        let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
+
+        let (root, _root_rx) = swarm_member("root", "coordinator", false);
+        let (mut mid, _mid_rx) = swarm_member("mid", "agent", true);
+        mid.report_back_to_session_id = Some("root".to_string());
+        let (mut leaf, _leaf_rx) = swarm_member("leaf", "agent", true);
+        leaf.report_back_to_session_id = Some("mid".to_string());
+        {
+            let mut members = swarm_members.write().await;
+            members.insert("root".to_string(), root);
+            members.insert("mid".to_string(), mid);
+            members.insert("leaf".to_string(), leaf);
+        }
+
+        remove_session_from_swarm(
+            "mid",
+            "swarm-1",
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_coordinators,
+            &swarm_plans,
+        )
+        .await;
+
+        // Leaf follows the report-back chain up to its grandparent instead of
+        // dangling on the removed session.
+        let members = swarm_members.read().await;
+        assert_eq!(
+            members
+                .get("leaf")
+                .and_then(|member| member.report_back_to_session_id.as_deref()),
+            Some("root")
+        );
+        assert!(swarm_is_self_or_ancestor(&members, "root", "leaf"));
+    }
+
+    #[tokio::test]
+    async fn remove_session_reparents_children_to_coordinator_when_no_grandparent() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from([
+                "coord".to_string(),
+                "peer_root".to_string(),
+                "child".to_string(),
+            ]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            "coord".to_string(),
+        )])));
+        let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
+
+        // peer_root is itself a root (no parent), so its children have no
+        // grandparent to inherit; they should fall back to the coordinator.
+        let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
+        let (peer_root, _peer_rx) = swarm_member("peer_root", "agent", false);
+        let (mut child, _child_rx) = swarm_member("child", "agent", true);
+        child.report_back_to_session_id = Some("peer_root".to_string());
+        {
+            let mut members = swarm_members.write().await;
+            members.insert("coord".to_string(), coord);
+            members.insert("peer_root".to_string(), peer_root);
+            members.insert("child".to_string(), child);
+        }
+
+        remove_session_from_swarm(
+            "peer_root",
+            "swarm-1",
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_coordinators,
+            &swarm_plans,
+        )
+        .await;
+
+        let members = swarm_members.read().await;
+        assert_eq!(
+            members
+                .get("child")
+                .and_then(|member| member.report_back_to_session_id.as_deref()),
+            Some("coord")
+        );
     }
 
     #[tokio::test]

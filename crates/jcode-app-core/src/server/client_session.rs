@@ -345,6 +345,7 @@ async fn ensure_client_swarm_member(
                     swarm_enabled,
                     status: "ready".to_string(),
                     detail: None,
+                    task_label: None,
                     friendly_name: member_name.clone(),
                     report_back_to_session_id: None,
                     latest_completion_report: None,
@@ -1304,6 +1305,15 @@ pub(super) async fn handle_resume_session(
                     member.status = "ready".to_string();
                     member.detail = None;
                     members.insert(session_id.clone(), member);
+                }
+                // Keep the spawn tree intact across the rename: children that
+                // reported back to the old session id must follow it, otherwise
+                // ownership (stop permissions, subtree broadcast, report-back)
+                // silently dangles on a dead id.
+                for member in members.values_mut() {
+                    if member.report_back_to_session_id.as_deref() == Some(&old_session_id) {
+                        member.report_back_to_session_id = Some(session_id.clone());
+                    }
                 }
             }
             remove_session_channel_subscriptions(
