@@ -483,18 +483,26 @@ async fn send_history_from_persisted_session(
         .or_else(|_| crate::session::Session::load_startup_stub(session_id))?;
     let token_usage_totals = session.token_usage_totals();
     let (rendered_messages, images) = crate::session::render_messages_and_images(&session);
+    // Extract the small metadata fields we need, then drop the full Session
+    // (including its message transcript) before building and serializing the
+    // large History event, so we do not hold Session + rendered payload +
+    // serialized wire bytes simultaneously.
+    let provider_name = history_provider_name_from_session(&session)
+        .or_else(|| Some(provider.name().to_string()));
+    let provider_model = session.model.clone().or_else(|| Some(provider.model()));
+    let subagent_model = session.subagent_model.clone();
+    let autoreview_enabled = session.autoreview_enabled;
+    let autojudge_enabled = session.autojudge_enabled;
+    let is_canary = session.is_canary;
+    let reasoning_effort = session
+        .reasoning_effort
+        .clone()
+        .or_else(|| provider.reasoning_effort());
+    drop(session);
+
     let messages = rendered_messages
         .into_iter()
-        .map(|msg| crate::protocol::HistoryMessage {
-            role: msg.role,
-            content: msg.content,
-            tool_calls: if msg.tool_calls.is_empty() {
-                None
-            } else {
-                Some(msg.tool_calls)
-            },
-            tool_data: msg.tool_data,
-        })
+        .map(rendered_to_history_message)
         .collect();
     let side_panel = crate::side_panel::snapshot_for_session(session_id).unwrap_or_default();
 
@@ -511,12 +519,11 @@ async fn send_history_from_persisted_session(
         session_id: session_id.to_string(),
         messages,
         images,
-        provider_name: history_provider_name_from_session(&session)
-            .or_else(|| Some(provider.name().to_string())),
-        provider_model: session.model.clone().or_else(|| Some(provider.model())),
-        subagent_model: session.subagent_model.clone(),
-        autoreview_enabled: session.autoreview_enabled,
-        autojudge_enabled: session.autojudge_enabled,
+        provider_name,
+        provider_model,
+        subagent_model,
+        autoreview_enabled,
+        autojudge_enabled,
         available_models: Vec::new(),
         available_model_routes: Vec::new(),
         mcp_servers: Vec::new(),
@@ -525,7 +532,7 @@ async fn send_history_from_persisted_session(
         token_usage_totals: optional_token_usage_totals(token_usage_totals),
         all_sessions,
         client_count: Some(current_client_count),
-        is_canary: Some(session.is_canary),
+        is_canary: Some(is_canary),
         server_version: Some(jcode_build_meta::VERSION.to_string()),
         server_name: Some(server_name.to_string()),
         server_icon: Some(server_icon.to_string()),
@@ -536,10 +543,7 @@ async fn send_history_from_persisted_session(
         status_detail: None,
         upstream_provider: None,
         resolved_credential: provider.active_resolved_credential(),
-        reasoning_effort: session
-            .reasoning_effort
-            .clone()
-            .or_else(|| provider.reasoning_effort()),
+        reasoning_effort,
         service_tier: None,
         compaction_mode: crate::config::config().compaction.mode.clone(),
         activity,
@@ -760,18 +764,26 @@ pub(super) async fn send_history(
     };
     let encode_start = Instant::now();
     let json = encode_event(&history_event);
+    // Free the structured event as soon as the wire bytes exist so only ~1x
+    // the payload stays resident across the awaited socket write.
+    drop(history_event);
+    let json_len = json.len();
     let encode_ms = encode_start.elapsed().as_millis();
     let writer_lock_start = Instant::now();
     let mut writer_guard = writer.lock().await;
     let writer_lock_ms = writer_lock_start.elapsed().as_millis();
     let write_start = Instant::now();
     let result = writer_guard.write_all(json.as_bytes()).await;
+    drop(writer_guard);
+    // Release the serialized payload before any further work (logging below
+    // only needs the captured length).
+    drop(json);
     let write_ms = write_start.elapsed().as_millis();
 
     crate::logging::info(&format!(
         "[TIMING] send_history write: session={}, bytes={}, encode={}ms, writer_lock={}ms, write={}ms, total={}ms",
         session_id,
-        json.len(),
+        json_len,
         encode_ms,
         writer_lock_ms,
         write_ms,
@@ -823,9 +835,15 @@ pub(super) async fn session_activity_snapshot(
 }
 
 async fn write_event(writer: &Arc<Mutex<WriteHalf>>, event: &ServerEvent) -> Result<()> {
-    let json = encode_event(event);
+    // Serialize straight to bytes with the same framing as encode_event
+    // (JSON body, "{}" on serialize failure, trailing newline) and drop the
+    // buffer as soon as the bytes are written so the serialized copy does not
+    // outlive the socket write.
+    let mut buf = serde_json::to_vec(event).unwrap_or_else(|_| b"{}".to_vec());
+    buf.push(b'\n');
     let mut writer = writer.lock().await;
-    writer.write_all(json.as_bytes()).await?;
+    writer.write_all(&buf).await?;
+    drop(buf);
     Ok(())
 }
 
