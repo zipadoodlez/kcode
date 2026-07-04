@@ -61,6 +61,30 @@ class Sample:
         )
         return int(value) if isinstance(value, int | float) else None
 
+    @property
+    def os_info(self) -> dict[str, Any]:
+        value = (self.raw.get("process") or {}).get("os")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def process_info(self) -> dict[str, Any]:
+        value = self.raw.get("process")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def process_diagnostics(self) -> dict[str, Any]:
+        value = self.raw.get("process_diagnostics")
+        return value if isinstance(value, dict) else {}
+
+
+def first_int(mapping: dict[str, Any], *keys: str) -> int | None:
+    """Return the first present integer value among candidate key names."""
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, int | float):
+            return int(value)
+    return None
+
 
 @dataclass
 class Spike:
@@ -370,6 +394,100 @@ def last_attribution_sample(samples: list[Sample]) -> Sample | None:
     return None
 
 
+def build_coverage_report(sample: Sample) -> dict[str, Any]:
+    """Decompose PSS into attributed live, unattributed live heap, allocator
+    retention, file-backed, and stack buckets.
+
+    Uses allocator stats (mallinfo2/jemalloc) plus the newer smaps_rollup and
+    process_diagnostics fields when present; older logs degrade gracefully to
+    whatever fields exist. The key outputs are two coverage ratios:
+    - coverage_ratio_pss: attributed / PSS (the historical, misleading one; the
+      denominator includes allocator retention and file maps).
+    - coverage_ratio_live_heap: attributed / allocator live bytes (estimator
+      quality against the memory the app actually holds).
+
+    Explained PSS follows the in-binary summary definition:
+    total_attributed + allocator_retained_resident_estimate + pss_file +
+    thread_stack_estimate.
+    """
+    pss = sample.pss_bytes
+    attributed = attributed_total_bytes(sample)
+    allocator_live = sample.allocator_allocated_bytes
+    allocator_retained = sample.allocator_retained_bytes
+
+    process_info = sample.process_info
+    os_info = sample.os_info
+    pss_file = first_int(os_info, "pss_file_bytes")
+    pss_anon = first_int(os_info, "pss_anon_bytes")
+    pss_shmem = first_int(os_info, "pss_shmem_bytes")
+    anon_huge_pages = first_int(os_info, "anon_huge_pages_bytes")
+    rss_file = first_int(os_info, "rss_file_bytes")
+    stack_bytes = first_int(process_info, "main_stack_bytes") or first_int(
+        os_info, "main_stack_bytes", "stack_bytes", "vm_stk_bytes"
+    )
+    thread_count = first_int(process_info, "thread_count") or first_int(
+        os_info, "thread_count", "threads"
+    )
+
+    diagnostics = sample.process_diagnostics
+    retained_resident = first_int(
+        diagnostics,
+        "allocator_retained_resident_estimate_bytes",
+        "allocator_retained_bytes",
+    )
+    if retained_resident is None:
+        retained_resident = allocator_retained
+    thread_stack_estimate = first_int(diagnostics, "thread_stack_estimate_bytes")
+    if thread_stack_estimate is None:
+        thread_stack_estimate = stack_bytes
+
+    report: dict[str, Any] = {
+        "timestamp_ms": sample.timestamp_ms,
+        "pss_bytes": pss,
+        "pss_anon_bytes": pss_anon,
+        "pss_file_bytes": pss_file,
+        "pss_shmem_bytes": pss_shmem,
+        "anon_huge_pages_bytes": anon_huge_pages,
+        "rss_file_bytes": rss_file,
+        "main_stack_bytes": stack_bytes,
+        "thread_stack_estimate_bytes": thread_stack_estimate,
+        "thread_count": thread_count,
+        "attributed_live_bytes": attributed,
+        "allocator_live_bytes": allocator_live,
+        "allocator_retained_bytes": allocator_retained,
+        "allocator_retained_resident_estimate_bytes": retained_resident,
+    }
+
+    if attributed is not None and allocator_live is not None:
+        report["unattributed_live_heap_bytes"] = max(0, allocator_live - attributed)
+    if pss is not None and attributed is not None:
+        report["coverage_ratio_pss"] = round(attributed / pss, 4) if pss else 0.0
+    if allocator_live is not None and attributed is not None:
+        report["coverage_ratio_live_heap"] = (
+            round(attributed / allocator_live, 4) if allocator_live else 0.0
+        )
+
+    # Explained PSS matches the in-binary summary: attributed live + allocator
+    # retention (resident estimate) + file-backed PSS + thread stacks. The
+    # remainder is what the buckets still miss (unattributed live heap, shared
+    # anon, allocator metadata).
+    if pss is not None:
+        explained = 0
+        for key in (
+            "attributed_live_bytes",
+            "allocator_retained_resident_estimate_bytes",
+            "pss_file_bytes",
+            "thread_stack_estimate_bytes",
+        ):
+            value = report.get(key)
+            if isinstance(value, int):
+                explained += value
+        report["explained_pss_bytes"] = explained
+        report["unexplained_pss_bytes"] = max(0, pss - explained)
+        report["explained_ratio"] = round(explained / pss, 4) if pss else 0.0
+    return report
+
+
 def count_event_categories(samples: list[Sample]) -> Counter[str]:
     counter: Counter[str] = Counter()
     for sample in samples:
@@ -525,6 +643,25 @@ def build_client_hints(samples: list[Sample], client_peaks: list[dict[str, Any]]
             f"Remote session metadata is non-trivial ({remote_state / total:.0%} of attributed client memory). Review retained model/session lists and remote bootstrap state."
         )
 
+    coverage = build_coverage_report(last_attr)
+    pss = coverage.get("pss_bytes")
+    retained = coverage.get("allocator_retained_resident_estimate_bytes")
+    if isinstance(pss, int) and isinstance(retained, int) and pss > 0 and retained / pss >= 0.30:
+        hints.append(
+            f"Allocator retention dominates PSS ({retained / pss:.0%}, {fmt_mb(retained)}). This is freed-but-held heap, not live app state; malloc_trim/purge cadence matters more than estimator coverage here."
+        )
+    unattributed_live = coverage.get("unattributed_live_heap_bytes")
+    live = coverage.get("allocator_live_bytes")
+    if (
+        isinstance(unattributed_live, int)
+        and isinstance(live, int)
+        and live > 0
+        and unattributed_live / live >= 0.40
+    ):
+        hints.append(
+            f"Estimators miss {unattributed_live / live:.0%} of live heap ({fmt_mb(unattributed_live)}). The real estimator gap is tokio/render/runtime structures, not allocator slack."
+        )
+
     if client_peaks:
         heaviest = client_peaks[0]
         hints.append(
@@ -545,6 +682,7 @@ def summarize_target(samples: list[Sample], top_n: int, min_spike_bytes: int) ->
     event_counts = count_event_categories(samples)
     proc = process_summary(samples)
     last_attr = last_attribution_sample(samples)
+    coverage = build_coverage_report(last_attr) if last_attr else None
     summary = {
         "target": target,
         "sample_count": len(samples),
@@ -552,6 +690,7 @@ def summarize_target(samples: list[Sample], top_n: int, min_spike_bytes: int) ->
         "last_timestamp_ms": samples[-1].timestamp_ms if samples else None,
         "kinds": Counter(sample.kind for sample in samples),
         "process": proc,
+        "coverage": coverage,
         "last_attribution": {
             "timestamp_ms": last_attr.timestamp_ms,
             "sessions": last_attr.sessions,
@@ -658,6 +797,42 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
         print(
             f"allocator: allocated {fmt_mb(proc.get('allocator_allocated_bytes'))} | resident {fmt_mb(proc.get('allocator_resident_bytes'))} | retained {fmt_mb(proc.get('allocator_retained_bytes'))}"
         )
+
+    coverage = summary.get("coverage") or {}
+    if coverage:
+        print("\nAttribution coverage (last attribution sample)")
+        print("----------------------------------------------")
+        print(f"PSS:                {fmt_mb(coverage.get('pss_bytes'))}")
+        if coverage.get("pss_anon_bytes") is not None or coverage.get("pss_file_bytes") is not None:
+            print(
+                f"PSS split:          anon {fmt_mb(coverage.get('pss_anon_bytes'))} | file {fmt_mb(coverage.get('pss_file_bytes'))} | shmem {fmt_mb(coverage.get('pss_shmem_bytes'))}"
+            )
+        print(f"attributed live:    {fmt_mb(coverage.get('attributed_live_bytes'))}")
+        print(f"allocator live:     {fmt_mb(coverage.get('allocator_live_bytes'))}")
+        if coverage.get("unattributed_live_heap_bytes") is not None:
+            print(f"unattributed live:  {fmt_mb(coverage.get('unattributed_live_heap_bytes'))}")
+        print(
+            f"allocator retained: {fmt_mb(coverage.get('allocator_retained_resident_estimate_bytes'))}"
+        )
+        if coverage.get("main_stack_bytes") is not None or coverage.get("thread_count") is not None:
+            threads = coverage.get("thread_count")
+            print(
+                f"stacks/threads:     main stack {fmt_mb(coverage.get('main_stack_bytes'))} | stack estimate {fmt_mb(coverage.get('thread_stack_estimate_bytes'))} | threads {threads if threads is not None else 'n/a'}"
+            )
+        ratio_pss = coverage.get("coverage_ratio_pss")
+        ratio_live = coverage.get("coverage_ratio_live_heap")
+        if ratio_pss is not None or ratio_live is not None:
+            pss_text = f"{ratio_pss:.1%}" if isinstance(ratio_pss, int | float) else "n/a"
+            live_text = f"{ratio_live:.1%}" if isinstance(ratio_live, int | float) else "n/a"
+            print(f"coverage:           vs PSS {pss_text} | vs live heap {live_text}")
+        if coverage.get("explained_pss_bytes") is not None:
+            explained_ratio = coverage.get("explained_ratio")
+            ratio_text = (
+                f"{explained_ratio:.1%}" if isinstance(explained_ratio, int | float) else "n/a"
+            )
+            print(
+                f"explained PSS:      {fmt_mb(coverage.get('explained_pss_bytes'))} ({ratio_text}) | unexplained {fmt_mb(coverage.get('unexplained_pss_bytes'))}"
+            )
 
     print("\nEvent counts")
     print("------------")
