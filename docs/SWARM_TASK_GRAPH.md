@@ -1,6 +1,9 @@
 # Swarm as a Task DAG (Design)
 
-Status: Proposed (supersedes the agent-first framing in `SWARM_ARCHITECTURE.md`)
+Status: Being implemented (supersedes the agent-first framing in
+`SWARM_ARCHITECTURE.md`). The DAG engine, deep/light modes, gates, growth
+mechanics, and comm migration steps 1-2 (artifact dataflow, subtree-scoped
+broadcast) are live; channel/shared-context deprecation (steps 3-4) is pending.
 
 This document captures the planned reframe of the swarm module from an
 agent-centric model into a **task DAG (directed acyclic graph)**. The DAG becomes
@@ -281,7 +284,9 @@ The pressures above are implemented as hard engine rules in `jcode-plan`'s
 - **Enumerated gate coverage.** A passing deep gate artifact must address
   EVERY done node in its audit scope by id (scope = the gate's non-gate
   `depends_on`, one rule for composite and root gates), up to an enumeration
-  cap of 20, after which only the low-confidence debt rule binds. "All good,
+  cap of 20. Above the cap, enumeration relaxes only for HIGH-confidence
+  nodes; every medium/low/unparseable-confidence node must still be addressed
+  by id. "All good,
   no gaps" is structurally rejected (`UncoveredSiblings`). A stale-scope rule
   (`StaleGateScope`) rejects a pass when nodes entered the scope after the
   gate was dispatched.
@@ -417,10 +422,11 @@ much and the wrong shape. The rework is **by subtraction, not addition**.
    already auto-routes among three of them. The codebase already carries an
    action-synonym normalization layer because models keep inventing verbs; that is
    a smell that the surface is too large. More actions means more model error.
-3. **Broadcasts do not scale to the member cap.** `handle_comm_share` and
-   broadcast fan out to *every* session in the swarm. At the 1000-member cap
-   (section 10), one broadcast is a 1000-way notification storm. The human-chat
-   model assumes a small room; the DAG model assumes a large pool.
+3. **Broadcasts must not scale to the member cap.** Whole-swarm fanout at the
+   1000-member cap (section 10) would be a 1000-way notification storm per send.
+   This is why broadcast-style sends are subtree-scoped (migration step 2,
+   implemented in `handle_comm_message`/`handle_comm_share`): a sender reaches
+   only its spawned subtree, and only the coordinator retains whole-swarm reach.
 
 ### The two-tier target model
 Keep two tiers and drop the middle:
@@ -456,11 +462,13 @@ member cap, and shrinks the error-prone tool surface.
 ### Staged migration (do not rip out up front)
 Cutting channels/shared-context is a real behavior change for existing swarm flows.
 Stage it:
-1. Add artifact dataflow first (additive, low risk): completion artifacts flow to
-   dependents and hydrate their input.
-2. Scope broadcast to the subtree; keep whole-swarm broadcast only as a
-   coordinator escape hatch.
-3. Migrate existing flows off channels/shared-context.
+1. **Done.** Artifact dataflow: completion artifacts flow to dependents and
+   hydrate their input.
+2. **Done.** Broadcast scoped to the sender's spawned subtree (including the
+   no-subscriber channel fallback and shared-context notifications); whole-swarm
+   broadcast remains only as a coordinator escape hatch.
+3. Migrate existing flows off channels/shared-context (tool schema now
+   discourages them).
 4. Deprecate, then remove, the redundant chat primitives once flows have migrated.
 
 ---
