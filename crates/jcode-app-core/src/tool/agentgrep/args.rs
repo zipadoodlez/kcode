@@ -89,6 +89,24 @@ pub(super) fn build_outline_args(
     ctx: &ToolContext,
     context_json_path: Option<&Path>,
 ) -> Result<OutlineArgs> {
+    // Agents sometimes point `path` at the file itself instead of using
+    // `file`. Treat a file-valued `path` as the outline target so the legacy
+    // query fallback does not get joined onto it (e.g. ".../background.rs/fn").
+    if params.file.is_none()
+        && let Some(path) = params.path.as_deref()
+    {
+        let resolved = resolve_path_arg(ctx, path);
+        if resolved.is_file() {
+            return Ok(OutlineArgs {
+                file: resolved.display().to_string(),
+                json: false,
+                max_items: None,
+                path: None,
+                context_json: context_json_path.map(|path| path.display().to_string()),
+            });
+        }
+    }
+
     let file = outline_file_arg(params)?;
     Ok(OutlineArgs {
         file,

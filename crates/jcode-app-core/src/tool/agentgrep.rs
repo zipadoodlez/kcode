@@ -45,7 +45,8 @@ struct AgentGrepInput {
     // `pattern` accepted for legacy grep-tool calls aliased to agentgrep.
     #[serde(default, alias = "pattern")]
     query: Option<String>,
-    #[serde(default)]
+    // `file_path` accepted because agents frequently pass it instead of `file`.
+    #[serde(default, alias = "file_path")]
     file: Option<String>,
     #[serde(default)]
     terms: Option<Vec<String>>,

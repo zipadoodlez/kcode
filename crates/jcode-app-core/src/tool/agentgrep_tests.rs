@@ -467,6 +467,51 @@ fn build_outline_args_accepts_file_field() {
     assert_eq!(args.path.as_deref(), Some("/workspace/repo"));
 }
 
+#[test]
+fn input_accepts_file_path_alias_for_file() {
+    let params: AgentGrepInput = serde_json::from_value(json!({
+        "mode": "outline",
+        "file_path": "src/app.rs"
+    }))
+    .expect("agentgrep input with file_path should deserialize");
+
+    assert_eq!(params.file.as_deref(), Some("src/app.rs"));
+}
+
+#[test]
+fn build_outline_args_treats_file_valued_path_as_outline_target() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    fs::write(temp.path().join("app.rs"), "fn main() {}\n").expect("write file");
+    let ctx = test_ctx(temp.path());
+
+    let params = AgentGrepInput {
+        mode: "outline".to_string(),
+        query: Some("fn".to_string()),
+        file: None,
+        terms: None,
+        regex: None,
+        path: Some("app.rs".to_string()),
+        glob: None,
+        file_type: None,
+        hidden: None,
+        no_ignore: None,
+        max_files: None,
+        max_regions: None,
+        full_region: None,
+        debug_plan: None,
+        debug_score: None,
+        paths_only: None,
+    };
+
+    let args = build_outline_args(&params, &ctx, None).unwrap();
+    assert_eq!(
+        args.file,
+        temp.path().join("app.rs").display().to_string(),
+        "file-valued path should become the outline target instead of joining query onto it"
+    );
+    assert_eq!(args.path, None);
+}
+
 #[tokio::test]
 async fn execute_runs_linked_grep() {
     let temp = tempfile::tempdir().expect("tempdir");
