@@ -75,6 +75,23 @@ fn render_compacts_huge_grep_match_lines() {
 }
 
 #[test]
+fn render_compacts_huge_trace_region_body_lines() {
+    let line = format!("function handleAuth(){{{}}}", "var x=1;".repeat(2000));
+
+    let compact = render::compact_region_body_line(&line);
+
+    assert!(compact.contains("[truncated:"), "{compact}");
+    assert!(
+        compact.chars().count() < 340,
+        "compact region body line should be bounded, got {} chars",
+        compact.chars().count()
+    );
+
+    let short = "fn small() {}";
+    assert_eq!(render::compact_region_body_line(short), short);
+}
+
+#[test]
 fn grep_max_regions_limits_rendered_match_excerpts() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::write(
