@@ -3288,6 +3288,7 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
+ "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
  "jcode-provider-claude-cli-runtime",
  "jcode-provider-copilot-runtime",
@@ -3709,6 +3710,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-provider-anthropic-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures",
+ "jcode-base",
+ "jcode-message-types",
+ "jcode-provider-anthropic",
+ "jcode-provider-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+]
+
+[[package]]
 name = "jcode-provider-antigravity"
 version = "0.1.0"
 dependencies = [
@@ -3860,6 +3882,7 @@ dependencies = [
  "anyhow",
  "futures",
  "jcode-base",
+ "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
  "jcode-provider-copilot-runtime",
  "jcode-provider-cursor-runtime",

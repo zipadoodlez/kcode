@@ -604,7 +604,7 @@ pub async fn run_claude_native_e2e(
     tier: DoctorTier,
 ) -> anyhow::Result<DoctorReport> {
     use jcode_base::provider::Provider;
-    use jcode_base::provider::anthropic::AnthropicProvider;
+    use jcode_provider_anthropic_runtime::AnthropicProvider;
 
     let normalized = jcode_base::auth::lifecycle::normalized_auth_provider_id(Some(provider_id))
         .unwrap_or("claude");
