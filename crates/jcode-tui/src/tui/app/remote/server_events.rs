@@ -716,6 +716,9 @@ pub(in crate::tui::app) fn handle_server_event(
             if let Some(key) = App::experimental_feature_key_for_tool(&tool_call) {
                 app.note_experimental_feature_use(key);
             }
+            if tool_call.name == "swarm" {
+                app.maybe_surface_swarm_config_hint();
+            }
             if let Some(tc) = app.streaming_tool_calls.iter_mut().find(|tc| tc.id == id) {
                 tc.input = parsed_input;
                 tc.refresh_intent_from_input();
@@ -1093,6 +1096,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 }
                 completed_current_message = true;
                 app.clear_pending_remote_retry();
+                app.reset_credential_failure_breaker();
                 let ops = app.stream_buffer.flush();
                 app.apply_stream_ops(ops);
                 // The turn can finish with a reasoning region still open (the
@@ -1286,6 +1290,19 @@ pub(in crate::tui::app) fn handle_server_event(
             if is_connectivity_error
                 && app.schedule_pending_remote_network_wait_with_force(&message, true)
             {
+                return false;
+            }
+            // Credential-failure circuit breaker: repeated auth failures mean
+            // the login/API key is dead. Resending the identical request can
+            // never succeed and (before this breaker) produced runaway retry
+            // loops logging thousands of 401s per session. Stop every
+            // automatic resend path and tell the user to /login or /model.
+            if !is_connectivity_error && app.note_error_for_credential_breaker(&message) {
+                app.trip_credential_failure_breaker(&message);
+                app.offer_fallback_after_error_with_payload(
+                    &message,
+                    failed_fallback_payload.clone(),
+                );
                 return false;
             }
             // Deterministic model/endpoint-capability failures (e.g. Volcengine

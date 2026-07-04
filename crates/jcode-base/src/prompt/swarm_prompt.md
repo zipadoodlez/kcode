@@ -1,3 +1,10 @@
+<!--
+This file IS the swarm config. Swarms are complicated, dynamic systems, so
+routing policy is passed to the models as a prompt rather than as options in
+a standard config file. Edit freely: override globally at
+~/.jcode/swarm-prompt.md or per-project at ./.jcode/swarm-prompt.md.
+-->
+
 Model routing guidance for spawned swarm agents. Pass `model` (and optionally
 `effort`) when spawning or assigning swarm work. Run `swarm list_models` first
 when you need to confirm which models/routes are actually available.

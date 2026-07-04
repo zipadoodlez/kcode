@@ -85,6 +85,7 @@ mod replay;
 pub(crate) mod run_shell;
 mod runtime_memory;
 mod shortcut_hints;
+mod swarm_hint;
 mod split_view;
 mod state_ui;
 mod state_ui_input_helpers;
@@ -1283,6 +1284,8 @@ pub struct App {
     learn_hint: Option<(String, Instant)>,
     // Whether a learned-keybinding nudge has already been surfaced this session.
     learn_hint_shown_this_session: bool,
+    // Whether the swarm-config-is-a-prompt hint has been surfaced this session.
+    swarm_hint_shown_this_session: bool,
     // Inline hotkey feedback: "you just pressed X → does Y" for rarely-used
     // known chords, or "X isn't bound · nearest: ..." for unknown chords.
     // Rendered in the same pop-out slot as learn_hint.
@@ -1363,6 +1366,11 @@ pub struct App {
     rate_limit_reset: Option<Instant>,
     // Message being sent when rate limit hit (to auto-retry in remote mode)
     rate_limit_pending_message: Option<PendingRemoteMessage>,
+    // Consecutive turn errors that classify as credential/auth failures.
+    // Reset on turn success or auth change; drives the credential-failure
+    // circuit breaker that halts automatic resends (see
+    // CREDENTIAL_FAILURE_BREAKER_THRESHOLD).
+    consecutive_credential_failures: u32,
     // Last turn-level stream error (used by /fix to choose recovery actions)
     last_stream_error: Option<String>,
     // Raw text of the most recent user prompt that started a turn. Restored to the
@@ -1484,6 +1492,14 @@ impl Provider for InertRuntimeProvider {
 impl App {
     const AUTO_RETRY_BASE_DELAY_SECS: u64 = 2;
     const AUTO_RETRY_MAX_ATTEMPTS: u8 = 3;
+    /// Circuit breaker for credential failures: once this many consecutive
+    /// turn errors classify as credential/auth failures, every automatic
+    /// resend path (auto-retry, auto-poke, overnight poke, queued follow-ups)
+    /// is stopped until auth changes or a turn succeeds. Telemetry showed
+    /// runaway sessions logging thousands of 401s at one failed turn per
+    /// retry (18k in one session) because retry loops kept resending against
+    /// a dead credential.
+    const CREDENTIAL_FAILURE_BREAKER_THRESHOLD: u32 = 3;
     const INPUT_UNDO_LIMIT: usize = 128;
     const CLIENT_FOCUS_RECORD_DEBOUNCE: Duration = Duration::from_secs(2);
     const KV_CACHE_OPTIMAL_OK_PCT: u8 = 85;

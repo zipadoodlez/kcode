@@ -557,6 +557,9 @@ impl App {
                                             if let Some(key) = Self::experimental_feature_key_for_tool(&tool) {
                                                 self.note_experimental_feature_use(key);
                                             }
+                                            if tool.name == "swarm" {
+                                                self.maybe_surface_swarm_config_hint();
+                                            }
                                             if let Some(streaming_tool) = self
                                                 .streaming_tool_calls
                                                 .iter_mut()
