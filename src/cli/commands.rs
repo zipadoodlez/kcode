@@ -2574,7 +2574,7 @@ fn run_command_auto_poke_limit_reached(turns_completed: usize, max_turns: Option
 }
 
 const RUN_TODO_CONFIDENCE_THRESHOLD: u8 = 90;
-const RUN_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
+const RUN_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX;
 
 enum RunAutoPokeFollowUp {
     Incomplete { count: usize, message: String },
@@ -2610,11 +2610,7 @@ fn build_run_auto_poke_follow_up_from_todos(
 }
 
 fn build_run_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
-    format!(
-        "You have {} incomplete todo{}. Continue working, or update the todo tool.",
-        incomplete.len(),
-        if incomplete.len() == 1 { "" } else { "s" },
-    )
+    crate::todo::build_auto_poke_message(incomplete.len())
 }
 
 fn run_todo_confidence_weight(priority: &str) -> u32 {

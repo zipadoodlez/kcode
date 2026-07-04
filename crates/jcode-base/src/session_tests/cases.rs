@@ -1070,6 +1070,82 @@ fn test_render_messages_honors_system_display_role_override() {
 }
 
 #[test]
+fn test_render_messages_shows_auto_poke_continuations_as_system_not_user() {
+    // Regression: auto-poke continuations ("You have N incomplete todos...",
+    // "All todos are done. Todo confidence summary:...") are persisted as
+    // Role::User so the model continues the turn, but the live UI hides them.
+    // On reload/resume/remote attach the renderer must not resurrect them as
+    // the user's last prompt.
+    let mut session = Session::create_with_id(
+        "session_render_auto_poke_test".to_string(),
+        None,
+        Some("auto poke render test".to_string()),
+    );
+
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "please fix the login bug".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::Text {
+            text: "Working on it.".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: crate::todo::build_auto_poke_message(2),
+            cache_control: None,
+        }],
+    );
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: format!(
+                "{} core work 95%",
+                crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX
+            ),
+            cache_control: None,
+        }],
+    );
+
+    let rendered = render_messages(&session);
+    let user_messages: Vec<_> = rendered
+        .iter()
+        .filter(|message| message.role == "user")
+        .collect();
+    assert_eq!(
+        user_messages.len(),
+        1,
+        "only the real prompt should render as a user message: {rendered:?}"
+    );
+    assert_eq!(user_messages[0].content, "please fix the login bug");
+
+    let system_contents: Vec<_> = rendered
+        .iter()
+        .filter(|message| message.role == "system")
+        .map(|message| message.content.as_str())
+        .collect();
+    assert!(
+        system_contents
+            .iter()
+            .any(|content| content.contains("incomplete todo")),
+        "auto-poke continuation should render as system: {rendered:?}"
+    );
+    assert!(
+        system_contents
+            .iter()
+            .any(|content| content.contains("Todo confidence summary")),
+        "confidence summary should render as system: {rendered:?}"
+    );
+}
+
+#[test]
 fn test_render_messages_renders_reasoning_before_answer_in_stored_order() {
     // Regression: providers persist the assistant turn as `[Text, ReasoningTrace,
     // ToolUse]` (see agent/turn_loops.rs push order). On resume/re-render the

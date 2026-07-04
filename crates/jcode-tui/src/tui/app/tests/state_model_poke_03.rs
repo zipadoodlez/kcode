@@ -2251,11 +2251,18 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
         assert!(!summary.contains("Finish risky provider path"));
         assert!(!summary.contains("Confidence meets the threshold"));
         assert!(summary.contains("1 completed todo is below the 90% confidence threshold"));
-        assert!(summary.contains("\n- Suggested action: validate or test before finalizing."));
+        // Reference the shared prompt constant so this test cannot drift when
+        // the guidance wording changes.
+        assert!(summary.contains(&format!(
+            "\n- {}",
+            crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
+        )));
         assert!(
             app.display_messages()
                 .iter()
-                .any(|msg| msg.content.contains("queued hidden confidence reminder"))
+                .any(|msg| msg
+                    .content
+                    .contains("Todos complete. Auto-poke finished. Cumulative confidence: 86%."))
         );
     });
 }

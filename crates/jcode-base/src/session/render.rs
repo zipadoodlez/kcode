@@ -57,6 +57,26 @@ fn is_internal_system_reminder(msg: &super::StoredMessage) -> bool {
         .is_some_and(|text| text.starts_with("<system-reminder>"))
 }
 
+/// True when a stored user message is a synthetic auto-poke continuation
+/// (incomplete-todos poke or todo confidence summary). These are persisted as
+/// `Role::User` so the model treats them as a normal continuation turn, but
+/// the live UI never shows them as user prompts (it shows an "Auto-poking..."
+/// notice instead). Re-rendered history must not resurrect them as the user's
+/// "last prompt" after a reload/resume/remote attach, so they render with the
+/// system role.
+fn is_auto_poke_user_message(msg: &super::StoredMessage) -> bool {
+    matches!(msg.role, Role::User)
+        && msg.display_role.is_none()
+        && msg
+            .content
+            .iter()
+            .find_map(|block| match block {
+                ContentBlock::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .is_some_and(crate::todo::is_auto_poke_message)
+}
+
 fn stored_message_renders_visible_message(msg: &super::StoredMessage) -> bool {
     if is_internal_system_reminder(msg) {
         return false;
@@ -82,6 +102,7 @@ const COMPACTED_HISTORY_MIN_TURNS_TO_TRUNCATE: usize = 5;
 fn stored_message_is_user_turn(msg: &super::StoredMessage) -> bool {
     matches!(msg.role, Role::User)
         && msg.display_role.is_none()
+        && !is_auto_poke_user_message(msg)
         && stored_message_renders_visible_message(msg)
 }
 
@@ -367,12 +388,7 @@ pub fn render_messages_and_images_with_compacted_history(
         });
     }
 
-    for (stored_index, msg) in session
-        .messages
-        .iter()
-        .enumerate()
-        .skip(render_start_idx)
-    {
+    for (stored_index, msg) in session.messages.iter().enumerate().skip(render_start_idx) {
         if is_internal_system_reminder(msg) {
             continue;
         }
@@ -380,6 +396,7 @@ pub fn render_messages_and_images_with_compacted_history(
         let role = match msg.display_role {
             Some(StoredDisplayRole::System) => "system",
             Some(StoredDisplayRole::BackgroundTask) => "background_task",
+            None if is_auto_poke_user_message(msg) => "system",
             None => match msg.role {
                 Role::User => "user",
                 Role::Assistant => "assistant",
