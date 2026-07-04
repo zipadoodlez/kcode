@@ -1422,7 +1422,7 @@ async fn wait_for_member_presence(
 fn default_await_members_targets_include_ready() {
     assert_eq!(
         default_await_target_statuses(),
-        vec!["ready", "completed", "stopped", "failed"]
+        vec!["ready", "completed", "stopped", "failed", "crashed"]
     );
 }
 

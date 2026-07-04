@@ -459,6 +459,7 @@ fn completion_status_intro(name: &str, status: &str) -> String {
         "ready" => format!("Agent {} finished their work and is ready for more.", name),
         "failed" => format!("Agent {} finished with status failed.", name),
         "stopped" => format!("Agent {} stopped.", name),
+        "crashed" => format!("Agent {} crashed while working.", name),
         _ => format!("Agent {} completed their work.", name),
     }
 }
@@ -478,6 +479,10 @@ fn completion_followup(status: &str, has_report: bool) -> &'static str {
             "Use summary/read_context to inspect results, assign_task to retry with guidance, or stop to remove them."
         }
         ("stopped", _) => "Use summary/read_context to inspect results or stop to remove them.",
+        ("crashed", _) => {
+            "Any swarm task assignments they held are requeued automatically where possible. \
+             Check plan_status, and spawn a replacement or use retry/assign_task if work remains."
+        }
         (_, true) => {
             "Use assign_task to give them new work, stop to remove them, or summary/read_context for full context."
         }

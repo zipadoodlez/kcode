@@ -26,6 +26,7 @@ pub fn default_comm_cleanup_target_statuses() -> Vec<String> {
         "completed".to_string(),
         "failed".to_string(),
         "stopped".to_string(),
+        "crashed".to_string(),
     ]
 }
 
@@ -35,6 +36,7 @@ pub fn default_comm_run_await_statuses() -> Vec<String> {
         "completed".to_string(),
         "failed".to_string(),
         "stopped".to_string(),
+        "crashed".to_string(),
     ]
 }
 
@@ -44,6 +46,7 @@ pub fn default_comm_await_target_statuses() -> Vec<String> {
         "completed".to_string(),
         "stopped".to_string(),
         "failed".to_string(),
+        "crashed".to_string(),
     ]
 }
 

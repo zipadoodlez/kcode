@@ -176,6 +176,204 @@ pub(super) fn swarm_task_sweep_interval() -> Duration {
     ))
 }
 
+/// Lifecycle statuses that mean a member can no longer drive an assignment:
+/// the session's agent loop is gone, so no heartbeat or turn end will ever
+/// arrive for tasks it holds.
+pub(super) fn member_status_is_dead(status: &str) -> bool {
+    matches!(status, "failed" | "stopped" | "crashed")
+}
+
+/// Outcome of salvaging one dead member's plan assignments.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(super) struct DeadMemberSalvage {
+    /// Tasks released back to `queued` for automatic re-dispatch.
+    pub requeued_task_ids: Vec<String>,
+    /// Tasks marked `failed` because the automatic reclaim cap was reached.
+    pub failed_task_ids: Vec<String>,
+}
+
+impl DeadMemberSalvage {
+    pub(super) fn is_empty(&self) -> bool {
+        self.requeued_task_ids.is_empty() && self.failed_task_ids.is_empty()
+    }
+
+    /// Human-readable notification body for the coordinator/owner.
+    fn describe(&self, worker_label: &str) -> String {
+        let mut parts = vec![format!(
+            "⚠ Worker {} died while holding swarm task assignment(s).",
+            worker_label
+        )];
+        if !self.requeued_task_ids.is_empty() {
+            parts.push(format!(
+                "Requeued for automatic re-dispatch: {}.",
+                self.requeued_task_ids.join(", ")
+            ));
+        }
+        if !self.failed_task_ids.is_empty() {
+            parts.push(format!(
+                "Marked failed (automatic reclaim cap reached): {}. Use retry or assign_task to redispatch explicitly.",
+                self.failed_task_ids.join(", ")
+            ));
+        }
+        parts.push(
+            "Queued tasks will be picked up by assign_next/run_plan; check plan_status for details."
+                .to_string(),
+        );
+        parts.join(" ")
+    }
+}
+
+/// Requeue (or, past [`crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS`], fail) every
+/// non-terminal plan item assigned to `session_id`.
+///
+/// This is the eager counterpart to the assign-time stranded-task reclaim: a
+/// worker that crashes, stops, or leaves the swarm mid-task leaves its items
+/// `running`/`queued` and assigned to a corpse, where the scheduler cannot see
+/// them and a driving `run_plan` stalls into its transient-stall error.
+/// Salvaging at the moment the member dies converts that silent strand into
+/// normal queued work. Uses the same per-node reclaim counter and cap as the
+/// assign-time path so repeatedly lethal nodes fail loudly instead of cycling
+/// workers forever.
+fn salvage_plan_assignments_of(plan: &mut VersionedPlan, session_id: &str) -> DeadMemberSalvage {
+    let now_ms = now_unix_ms();
+    let mut outcome = DeadMemberSalvage::default();
+    let assigned_ids: Vec<String> = plan
+        .items
+        .iter()
+        .filter(|item| {
+            item.assigned_to.as_deref() == Some(session_id)
+                && !crate::plan::is_terminal_status(&item.status)
+        })
+        .map(|item| item.id.clone())
+        .collect();
+    for task_id in assigned_ids {
+        let reclaims = plan
+            .task_progress
+            .get(&task_id)
+            .and_then(|progress| progress.dead_assignee_reclaims)
+            .unwrap_or(0);
+        if reclaims >= crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS {
+            if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
+                item.status = "failed".to_string();
+                item.assigned_to = None;
+            }
+            let progress = plan.task_progress.entry(task_id.clone()).or_default();
+            progress.assigned_session_id = None;
+            progress.completed_at_unix_ms = Some(now_ms);
+            progress.stale_since_unix_ms = None;
+            progress.checkpoint_summary = Some(truncate_detail(
+                &format!(
+                    "failed: assigned worker {} died and the automatic reclaim cap was reached",
+                    session_id
+                ),
+                120,
+            ));
+            plan.version += 1;
+            outcome.failed_task_ids.push(task_id);
+        } else if crate::plan::reclaim_stranded_assignment(plan, &task_id) {
+            if let Some(item) = plan.items.iter_mut().find(|item| item.id == task_id) {
+                item.status = "queued".to_string();
+            }
+            let progress = plan.task_progress.entry(task_id.clone()).or_default();
+            progress.stale_since_unix_ms = None;
+            outcome.requeued_task_ids.push(task_id);
+        }
+    }
+    outcome
+}
+
+/// Salvage `session_id`'s plan assignments in `swarm_id`, then persist,
+/// broadcast the plan change, and notify the swarm coordinator so the death is
+/// visible instead of silent. No-ops (and skips all I/O) when the member held
+/// no non-terminal assignments.
+pub(super) async fn salvage_assignments_of_dead_member(
+    session_id: &str,
+    swarm_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
+) -> DeadMemberSalvage {
+    let outcome = {
+        let mut plans = swarm_plans.write().await;
+        match plans.get_mut(swarm_id) {
+            Some(plan) => salvage_plan_assignments_of(plan, session_id),
+            None => DeadMemberSalvage::default(),
+        }
+    };
+    if outcome.is_empty() {
+        return outcome;
+    }
+
+    log_swarm_lifecycle(
+        "dead_member_tasks_salvaged",
+        vec![
+            ("session_id", session_id.to_string()),
+            ("swarm_id", swarm_id.to_string()),
+            ("requeued_task_ids", outcome.requeued_task_ids.join(",")),
+            ("failed_task_ids", outcome.failed_task_ids.join(",")),
+        ],
+    );
+
+    let swarm_state = SwarmState {
+        members: Arc::clone(swarm_members),
+        swarms_by_id: Arc::clone(swarms_by_id),
+        plans: Arc::clone(swarm_plans),
+        coordinators: Arc::clone(swarm_coordinators),
+    };
+    persist_swarm_state_for(swarm_id, &swarm_state).await;
+    broadcast_swarm_plan(
+        swarm_id,
+        Some("task_salvaged_dead_worker".to_string()),
+        swarm_plans,
+        swarm_members,
+        swarms_by_id,
+    )
+    .await;
+    notify_coordinator_of_salvage(session_id, swarm_id, &outcome, swarm_members, swarm_coordinators)
+        .await;
+    outcome
+}
+
+/// Deliver a salvage notification to the swarm's current coordinator (when it
+/// is not the dead session itself).
+async fn notify_coordinator_of_salvage(
+    session_id: &str,
+    swarm_id: &str,
+    outcome: &DeadMemberSalvage,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
+) {
+    let coordinator_id = {
+        let coordinators = swarm_coordinators.read().await;
+        coordinators.get(swarm_id).cloned()
+    };
+    let Some(coordinator_id) = coordinator_id.filter(|id| id != session_id) else {
+        return;
+    };
+    let label = {
+        let members = swarm_members.read().await;
+        members
+            .get(session_id)
+            .and_then(|member| member.friendly_name.clone())
+    }
+    .unwrap_or_else(|| session_id[..8.min(session_id.len())].to_string());
+    let _ = fanout_session_event(
+        swarm_members,
+        &coordinator_id,
+        ServerEvent::Notification {
+            from_session: session_id.to_string(),
+            from_name: Some(label.clone()),
+            notification_type: NotificationType::Message {
+                scope: Some("swarm".to_string()),
+                channel: None,
+            },
+            message: outcome.describe(&label),
+        },
+    )
+    .await;
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "task progress touch updates durable progress plus swarm persistence and coordinator-facing state in one helper"
@@ -301,6 +499,61 @@ pub(super) async fn refresh_swarm_task_staleness(
             swarm_plans,
             swarm_members,
             swarms_by_id,
+        )
+        .await;
+    }
+
+    // Second phase: salvage in-flight items whose assignee is dead. Staleness
+    // marking above only reflects missing heartbeats; when the assigned member
+    // is gone from the swarm or sits in a terminal lifecycle status, no
+    // heartbeat or turn-end will ever arrive, so the item must be requeued
+    // (or failed at the reclaim cap) instead of pulsing running_stale forever.
+    // A terminal-status member gets a grace period before salvage: reload
+    // recovery briefly marks resumable members `crashed` before restoring
+    // them, and salvaging inside that window would double-assign their work.
+    let salvage_grace = swarm_task_stale_after();
+    let salvage_candidates: Vec<(String, String)> = {
+        let plans = swarm_plans.read().await;
+        let members = swarm_members.read().await;
+        let mut pairs = std::collections::BTreeSet::new();
+        for (swarm_id, plan) in plans.iter() {
+            for item in &plan.items {
+                if !matches!(
+                    item.status.as_str(),
+                    "running" | "running_stale" | "queued"
+                ) {
+                    continue;
+                }
+                let assignee = item.assigned_to.as_deref().or_else(|| {
+                    plan.task_progress
+                        .get(&item.id)
+                        .and_then(|progress| progress.assigned_session_id.as_deref())
+                });
+                let Some(assignee) = assignee else {
+                    continue;
+                };
+                let assignee_is_dead = match members.get(assignee) {
+                    None => true,
+                    Some(member) => {
+                        member_status_is_dead(&member.status)
+                            && member.last_status_change.elapsed() >= salvage_grace
+                    }
+                };
+                if assignee_is_dead {
+                    pairs.insert((swarm_id.clone(), assignee.to_string()));
+                }
+            }
+        }
+        pairs.into_iter().collect()
+    };
+    for (swarm_id, session_id) in salvage_candidates {
+        salvage_assignments_of_dead_member(
+            &session_id,
+            &swarm_id,
+            swarm_members,
+            swarms_by_id,
+            swarm_plans,
+            swarm_coordinators,
         )
         .await;
     }
@@ -584,6 +837,19 @@ pub(super) async fn remove_session_from_swarm(
             ("swarm_id", swarm_id.to_string()),
         ],
     );
+    // A leaving member can no longer drive its plan assignments (crash, stop,
+    // disconnect, feature-off all funnel through here). Salvage before any
+    // membership state is torn down so the coordinator notification can still
+    // resolve names and fan out.
+    salvage_assignments_of_dead_member(
+        session_id,
+        swarm_id,
+        swarm_members,
+        swarms_by_id,
+        swarm_plans,
+        swarm_coordinators,
+    )
+    .await;
     remove_plan_participant(swarm_id, session_id, swarm_plans).await;
 
     {
@@ -906,7 +1172,16 @@ pub(super) async fn update_member_status_with_report(
             && ((status == "completed")
                 || (report_back_to_session_id.is_some()
                     && old_status == "running"
-                    && matches!(status, "ready" | "failed" | "stopped")));
+                    && matches!(status, "ready" | "failed" | "stopped"))
+                // A crash is never routine: notify whoever is responsible
+                // (owner, else coordinator) whenever a member dies while it
+                // was doing or holding work, so worker deaths cannot pass
+                // silently.
+                || (status == "crashed"
+                    && matches!(
+                        old_status.as_str(),
+                        "running" | "running_stale" | "queued"
+                    )));
         if should_notify_coordinator {
             let fallback_coordinator_id =
                 if report_back_to_session_id.as_deref() == Some(session_id) {
@@ -1152,10 +1427,11 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 #[cfg(test)]
 mod tests {
     use super::{
-        broadcast_swarm_plan_with_previous, now_unix_ms, parse_swarm_tasks,
-        refresh_swarm_task_staleness, remove_session_from_swarm, swarm_ancestors,
-        swarm_is_self_or_ancestor, swarm_spawn_depth, touch_swarm_task_progress,
-        update_member_status, update_member_status_with_report,
+        broadcast_swarm_plan_with_previous, member_status_is_dead, now_unix_ms, parse_swarm_tasks,
+        refresh_swarm_task_staleness, remove_session_from_swarm,
+        salvage_assignments_of_dead_member, swarm_ancestors, swarm_is_self_or_ancestor,
+        swarm_spawn_depth, touch_swarm_task_progress, update_member_status,
+        update_member_status_with_report,
     };
     use crate::plan::PlanItem;
     use crate::protocol::{NotificationType, ServerEvent};
@@ -1786,5 +2062,293 @@ mod tests {
             Some("checkpoint saved")
         );
         assert!(progress.stale_since_unix_ms.is_none());
+    }
+
+    #[test]
+    fn member_status_is_dead_matches_terminal_non_success_states() {
+        for status in ["failed", "stopped", "crashed"] {
+            assert!(member_status_is_dead(status), "{status} should be dead");
+        }
+        for status in ["ready", "running", "running_stale", "queued", "completed"] {
+            assert!(!member_status_is_dead(status), "{status} should be alive");
+        }
+    }
+
+    fn running_plan_assigned_to(
+        assignee: &str,
+        reclaims: Option<u32>,
+    ) -> Arc<RwLock<HashMap<String, VersionedPlan>>> {
+        Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            VersionedPlan {
+                items: vec![PlanItem {
+                    content: "task".to_string(),
+                    status: "running".to_string(),
+                    priority: "medium".to_string(),
+                    id: "task-1".to_string(),
+                    subsystem: None,
+                    file_scope: Vec::new(),
+                    blocked_by: Vec::new(),
+                    assigned_to: Some(assignee.to_string()),
+                }],
+                version: 1,
+                participants: HashSet::from([assignee.to_string()]),
+                task_progress: HashMap::from([(
+                    "task-1".to_string(),
+                    crate::server::SwarmTaskProgress {
+                        assigned_session_id: Some(assignee.to_string()),
+                        dead_assignee_reclaims: reclaims,
+                        ..Default::default()
+                    },
+                )]),
+                mode: "light".to_string(),
+                node_meta: HashMap::new(),
+            },
+        )])))
+    }
+
+    #[tokio::test]
+    async fn salvage_requeues_dead_members_tasks_and_notifies_coordinator() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["coord".to_string(), "worker".to_string()]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            "coord".to_string(),
+        )])));
+        let swarm_plans = running_plan_assigned_to("worker", None);
+        let (coord, mut coord_rx) = swarm_member("coord", "coordinator", false);
+        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        {
+            let mut members = swarm_members.write().await;
+            members.insert("coord".to_string(), coord);
+            members.insert("worker".to_string(), worker);
+        }
+
+        let outcome = salvage_assignments_of_dead_member(
+            "worker",
+            "swarm-1",
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_plans,
+            &swarm_coordinators,
+        )
+        .await;
+
+        assert_eq!(outcome.requeued_task_ids, vec!["task-1".to_string()]);
+        assert!(outcome.failed_task_ids.is_empty());
+        {
+            let plans = swarm_plans.read().await;
+            let plan = plans.get("swarm-1").expect("plan");
+            assert_eq!(plan.items[0].status, "queued");
+            assert_eq!(plan.items[0].assigned_to, None);
+            let progress = plan.task_progress.get("task-1").expect("progress");
+            assert_eq!(progress.assigned_session_id, None);
+            assert_eq!(progress.dead_assignee_reclaims, Some(1));
+        }
+
+        let coord_events: Vec<_> = std::iter::from_fn(|| coord_rx.try_recv().ok()).collect();
+        assert!(
+            coord_events.iter().any(|event| matches!(
+                event,
+                ServerEvent::Notification { message, .. }
+                    if message.contains("died") && message.contains("task-1")
+            )),
+            "coordinator should be told about the salvage, got {coord_events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn salvage_fails_task_once_reclaim_cap_is_reached() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["worker".to_string()]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_plans =
+            running_plan_assigned_to("worker", Some(crate::plan::MAX_DEAD_ASSIGNEE_RECLAIMS));
+        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        swarm_members
+            .write()
+            .await
+            .insert("worker".to_string(), worker);
+
+        let outcome = salvage_assignments_of_dead_member(
+            "worker",
+            "swarm-1",
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_plans,
+            &swarm_coordinators,
+        )
+        .await;
+
+        assert!(outcome.requeued_task_ids.is_empty());
+        assert_eq!(outcome.failed_task_ids, vec!["task-1".to_string()]);
+        let plans = swarm_plans.read().await;
+        let plan = plans.get("swarm-1").expect("plan");
+        assert_eq!(plan.items[0].status, "failed");
+        assert_eq!(plan.items[0].assigned_to, None);
+    }
+
+    #[tokio::test]
+    async fn remove_session_from_swarm_salvages_running_assignments() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["coord".to_string(), "worker".to_string()]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            "coord".to_string(),
+        )])));
+        let swarm_plans = running_plan_assigned_to("worker", None);
+        let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
+        let (worker, _worker_rx) = swarm_member("worker", "agent", true);
+        {
+            let mut members = swarm_members.write().await;
+            members.insert("coord".to_string(), coord);
+            members.insert("worker".to_string(), worker);
+        }
+
+        remove_session_from_swarm(
+            "worker",
+            "swarm-1",
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_coordinators,
+            &swarm_plans,
+        )
+        .await;
+
+        let plans = swarm_plans.read().await;
+        let plan = plans.get("swarm-1").expect("plan");
+        assert_eq!(plan.items[0].status, "queued");
+        assert_eq!(plan.items[0].assigned_to, None);
+    }
+
+    #[tokio::test]
+    async fn staleness_sweep_salvages_tasks_of_vanished_assignee() {
+        // The assignee is not a swarm member at all (zombie left over from a
+        // previous process): no grace period applies and the sweep must
+        // requeue its running task.
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["coord".to_string()]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            "coord".to_string(),
+        )])));
+        let swarm_plans = running_plan_assigned_to("ghost", None);
+        // Give the task a fresh heartbeat so the first sweep phase does not
+        // interfere; the salvage phase must still fire on the dead assignee.
+        {
+            let mut plans = swarm_plans.write().await;
+            let plan = plans.get_mut("swarm-1").expect("plan");
+            let progress = plan.task_progress.get_mut("task-1").expect("progress");
+            progress.last_heartbeat_unix_ms = Some(now_unix_ms());
+        }
+        let (coord, _coord_rx) = swarm_member("coord", "coordinator", false);
+        swarm_members
+            .write()
+            .await
+            .insert("coord".to_string(), coord);
+
+        refresh_swarm_task_staleness(
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_plans,
+            &swarm_coordinators,
+        )
+        .await;
+
+        let plans = swarm_plans.read().await;
+        let plan = plans.get("swarm-1").expect("plan");
+        assert_eq!(plan.items[0].status, "queued");
+        assert_eq!(plan.items[0].assigned_to, None);
+    }
+
+    #[tokio::test]
+    async fn staleness_sweep_grants_grace_to_recently_crashed_member() {
+        // A member marked crashed moments ago may be mid reload-recovery; the
+        // sweep must not reclaim its work inside the grace window.
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["worker".to_string()]),
+        )])));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_plans = running_plan_assigned_to("worker", None);
+        {
+            let mut plans = swarm_plans.write().await;
+            let plan = plans.get_mut("swarm-1").expect("plan");
+            let progress = plan.task_progress.get_mut("task-1").expect("progress");
+            progress.last_heartbeat_unix_ms = Some(now_unix_ms());
+        }
+        let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
+        worker.status = "crashed".to_string();
+        worker.last_status_change = Instant::now();
+        swarm_members
+            .write()
+            .await
+            .insert("worker".to_string(), worker);
+
+        refresh_swarm_task_staleness(
+            &swarm_members,
+            &swarms_by_id,
+            &swarm_plans,
+            &swarm_coordinators,
+        )
+        .await;
+
+        let plans = swarm_plans.read().await;
+        let plan = plans.get("swarm-1").expect("plan");
+        assert_eq!(plan.items[0].status, "running");
+        assert_eq!(plan.items[0].assigned_to.as_deref(), Some("worker"));
+    }
+
+    #[tokio::test]
+    async fn update_member_status_notifies_owner_when_worker_crashes_mid_task() {
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["owner".to_string(), "worker".to_string()]),
+        )])));
+        let (owner, mut owner_rx) = swarm_member("owner", "coordinator", false);
+        let (mut worker, _worker_rx) = swarm_member("worker", "agent", true);
+        worker.status = "running".to_string();
+        worker.report_back_to_session_id = Some("owner".to_string());
+        {
+            let mut members = swarm_members.write().await;
+            members.insert("owner".to_string(), owner);
+            members.insert("worker".to_string(), worker);
+        }
+
+        update_member_status(
+            "worker",
+            "crashed",
+            Some("client disconnected while processing".to_string()),
+            &swarm_members,
+            &swarms_by_id,
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        let owner_events: Vec<_> = std::iter::from_fn(|| owner_rx.try_recv().ok()).collect();
+        assert!(
+            owner_events.iter().any(|event| matches!(
+                event,
+                ServerEvent::Notification { message, .. }
+                    if message.contains("crashed while working")
+            )),
+            "owner should be notified of the crash, got {owner_events:?}"
+        );
     }
 }
