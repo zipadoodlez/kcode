@@ -1,6 +1,7 @@
 mod cache;
 mod message;
 mod prepared;
+mod swarm_collapse;
 mod wrapped_line_map;
 
 pub use cache::{
@@ -15,5 +16,9 @@ pub use message::{
 pub use prepared::{
     CopyTarget, EditToolRange, ImageRegion, ImageRegionRender, MessageBoundary, PreparedChatFrame,
     PreparedMessages, PreparedSection, PreparedSectionKind,
+};
+pub use swarm_collapse::{
+    CollapsibleSwarmContent, encode_collapsible_swarm_content, parse_collapsible_swarm_content,
+    toggle_collapsible_swarm_content,
 };
 pub use wrapped_line_map::WrappedLineMap;

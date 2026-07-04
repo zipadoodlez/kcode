@@ -681,6 +681,7 @@ fn send_catalog_activity(client_event_tx: &mpsc::UnboundedSender<ServerEvent>, m
         notification_type: NotificationType::Message {
             scope: Some("catalog_activity".to_string()),
             channel: None,
+            tldr: None,
         },
         message: message.to_string(),
     });

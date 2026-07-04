@@ -408,6 +408,10 @@ pub enum Request {
         delivery: Option<CommDeliveryMode>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wake: Option<bool>,
+        /// Sender-provided one-line summary. Receiving UIs render long
+        /// message bodies collapsed to this with an expand control.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tldr: Option<String>,
     },
 
     /// List agents and their activity
@@ -577,6 +581,10 @@ pub enum Request {
         /// Optional blockers/follow-up summary.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         follow_up: Option<String>,
+        /// Reporter-provided one-line summary. Receiving UIs render long
+        /// report bodies collapsed to this with an expand control.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tldr: Option<String>,
     },
 
     /// Read another agent's full conversation context

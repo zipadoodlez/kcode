@@ -736,6 +736,7 @@ fn test_handle_server_event_notification_background_task_scope_uses_card_renderi
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("background_task".to_string()),
                 channel: None,
+                tldr: None,
             },
             message: "**Background task** `abc123` · `bash` · ✗ failed · 7.1s · exit 1\n\n```text\n[stderr] line one\n[stderr] line two\n```\n\n_Full output:_ `bg action=\"output\" task_id=\"abc123\"`".to_string(),
         },

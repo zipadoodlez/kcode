@@ -163,9 +163,33 @@ pub(super) fn present_swarm_notification(
     message: &str,
     compact: bool,
 ) -> SwarmNotificationPresentation {
+    let mut presentation =
+        present_swarm_notification_inner(sender, notification_type, message, compact);
+    // Sender-provided tldr: store the full body but render it collapsed to the
+    // tldr line with an expand control. The status line shows the tldr too.
+    if let NotificationType::Message {
+        tldr: Some(tldr), ..
+    } = notification_type
+    {
+        let tldr = tldr.trim();
+        if !tldr.is_empty() && !presentation.message.trim().is_empty() {
+            presentation.status_notice = format!("{} · {}", presentation.status_notice, tldr);
+            presentation.message =
+                jcode_tui_messages::encode_collapsible_swarm_content(tldr, &presentation.message);
+        }
+    }
+    presentation
+}
+
+fn present_swarm_notification_inner(
+    sender: &str,
+    notification_type: &NotificationType,
+    message: &str,
+    compact: bool,
+) -> SwarmNotificationPresentation {
     let trimmed = message.trim();
     match notification_type {
-        NotificationType::Message { scope, channel } => match scope.as_deref() {
+        NotificationType::Message { scope, channel, .. } => match scope.as_deref() {
             Some("dm") => {
                 if let Some(task_body) =
                     strip_message_prefix(trimmed, "Task assigned to you by coordinator: ")
@@ -299,12 +323,56 @@ mod tests {
     }
 
     #[test]
+    fn present_swarm_notification_with_tldr_encodes_collapsed_content() {
+        let presentation = present_swarm_notification(
+            "sheep",
+            &NotificationType::Message {
+                scope: Some("dm".to_string()),
+                channel: None,
+                tldr: Some("fixed the flaky test".to_string()),
+            },
+            "DM from sheep: The flaky test was caused by a race in the setup helper. I rewrote it to use a barrier and verified 200 consecutive runs pass.",
+            false,
+        );
+
+        let parsed = jcode_tui_messages::parse_collapsible_swarm_content(&presentation.message)
+            .expect("tldr message should encode collapsible content");
+        assert!(!parsed.expanded);
+        assert_eq!(parsed.tldr, "fixed the flaky test");
+        assert!(parsed.body.contains("race in the setup helper"));
+        assert!(
+            presentation.status_notice.contains("fixed the flaky test"),
+            "{}",
+            presentation.status_notice
+        );
+    }
+
+    #[test]
+    fn present_swarm_notification_without_tldr_keeps_plain_content() {
+        let presentation = present_swarm_notification(
+            "sheep",
+            &NotificationType::Message {
+                scope: Some("dm".to_string()),
+                channel: None,
+                tldr: None,
+            },
+            "DM from sheep: short note",
+            false,
+        );
+        assert!(
+            jcode_tui_messages::parse_collapsible_swarm_content(&presentation.message).is_none()
+        );
+        assert_eq!(presentation.message, "short note");
+    }
+
+    #[test]
     fn present_swarm_notification_formats_task_assignments_as_tasks() {
         let presentation = present_swarm_notification(
             "sheep",
             &NotificationType::Message {
                 scope: Some("dm".to_string()),
                 channel: None,
+                tldr: None,
             },
             "Task assigned to you by coordinator: Implement compaction asymptotic fixes - You own the compaction task.",
             false,
@@ -325,6 +393,7 @@ mod tests {
             &NotificationType::Message {
                 scope: Some("swarm_await".to_string()),
                 channel: None,
+                tldr: None,
             },
             "🐝 **Swarm await finished**\n\nAll members done. All 2 members are done: fox, wolf",
             false,
@@ -345,6 +414,7 @@ mod tests {
             &NotificationType::Message {
                 scope: Some("background_task".to_string()),
                 channel: None,
+                tldr: None,
             },
             "Background task failed · selfdev-build · exit 101",
             false,
@@ -365,6 +435,7 @@ mod tests {
             &NotificationType::Message {
                 scope: Some("background_task".to_string()),
                 channel: None,
+                tldr: None,
             },
             "**Background task progress** `bg123` · `bash`\n\n[#####-------] 42% · Running tests (reported)",
             false,
@@ -384,6 +455,7 @@ mod tests {
             &NotificationType::Message {
                 scope: Some("dm".to_string()),
                 channel: None,
+                tldr: None,
             },
             "DM from sheep: I can see your worktree diff.",
             false,
@@ -401,6 +473,7 @@ mod tests {
             &NotificationType::Message {
                 scope: Some("plan".to_string()),
                 channel: None,
+                tldr: None,
             },
             "Plan updated by sheep (4 items, v1)",
             false,

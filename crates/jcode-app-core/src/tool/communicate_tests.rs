@@ -3,8 +3,8 @@ use super::{
     coordination_in_flight_count, default_await_target_statuses, default_cleanup_target_statuses,
     format_awaited_members, format_awaited_members_with_reports, format_members,
     format_plan_status, format_swarm_model_list, latest_assistant_report,
-    resolve_optional_target_session, resolve_run_plan_concurrency,
-    swarm_member_is_drivable_worker, swarm_member_is_in_flight,
+    resolve_optional_target_session, resolve_run_plan_concurrency, swarm_member_is_drivable_worker,
+    swarm_member_is_in_flight,
 };
 use crate::message::{Message, StreamEvent, ToolDefinition};
 use crate::protocol::{
@@ -956,7 +956,8 @@ fn format_swarm_model_list_renders_routes_and_pin() {
             cheapness: None,
         },
     ];
-    let output = format_swarm_model_list(Some("claude-fable-5"), Some("openai-api:gpt-5.5"), &routes);
+    let output =
+        format_swarm_model_list(Some("claude-fable-5"), Some("openai-api:gpt-5.5"), &routes);
     assert!(output.contains("Current model (spawn default when no override): claude-fable-5"));
     assert!(output.contains("Configured agents.swarm_model pin: openai-api:gpt-5.5"));
     assert!(output.contains("gpt-5.5 via OpenAI [openai-api-key] (API key)"));
@@ -1597,7 +1598,6 @@ fn run_plan_terminal_summary_includes_recorded_failure_reasons() {
         "plan_status must display the recorded failure reason:\n{plan_status}"
     );
 }
-
 
 include!("communicate_tests/input_format.rs");
 include!("communicate_tests/end_to_end.rs");

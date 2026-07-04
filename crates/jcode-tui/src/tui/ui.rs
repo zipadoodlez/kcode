@@ -1484,14 +1484,14 @@ struct CopyViewportSnapshots {
 static LAST_COPY_VIEWPORT: OnceLock<Mutex<CopyViewportSnapshots>> = OnceLock::new();
 #[path = "ui/copy_selection.rs"]
 mod copy_selection;
-#[path = "ui/selection_highlight.rs"]
-pub(crate) mod selection_highlight;
 #[path = "ui/display_width.rs"]
 mod display_width;
 #[path = "ui/draw_recovery.rs"]
 mod draw_recovery;
 #[path = "ui/profile.rs"]
 mod profile;
+#[path = "ui/selection_highlight.rs"]
+pub(crate) mod selection_highlight;
 #[path = "ui/url.rs"]
 mod url_regex_support;
 use self::copy_selection::{
@@ -2365,6 +2365,34 @@ pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> O
     } else {
         None
     }
+}
+
+/// If a screen click landed on a collapsed/expanded swarm notification's
+/// `▸ expand` / `▾ collapse` badge, return the transcript message index so the
+/// caller can toggle that notification. Only clicks on the trailing badge
+/// token count, so the tldr text itself stays selectable.
+pub(crate) fn swarm_expand_target_from_screen(column: u16, row: u16) -> Option<usize> {
+    let point = copy_point_from_screen(column, row)?;
+    if point.pane != crate::tui::CopySelectionPane::Chat {
+        return None;
+    }
+    let snapshot = copy_snapshot_for_pane(point.pane)?;
+    let prepared = match &snapshot.data {
+        CopyViewportData::ChatFrame { prepared } => prepared.clone(),
+        CopyViewportData::Dense { .. } => return None,
+    };
+    let text = snapshot.wrapped_plain_line(point.abs_line)?;
+    let trimmed = text.trim_end();
+    let badge_start = [messages::SWARM_EXPAND_BADGE, messages::SWARM_COLLAPSE_BADGE]
+        .iter()
+        .find_map(|badge| {
+            let prefix = trimmed.strip_suffix(badge)?;
+            Some(line_display_width(prefix))
+        })?;
+    if point.column < badge_start {
+        return None;
+    }
+    prepared.message_index_at_line(point.abs_line)
 }
 
 /// If a screen click landed on the rendered body of an inline image (its

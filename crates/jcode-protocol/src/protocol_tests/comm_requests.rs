@@ -187,6 +187,7 @@ fn test_comm_report_roundtrip() -> Result<()> {
         message: "Implemented report action.".to_string(),
         validation: Some("Focused tests passed.".to_string()),
         follow_up: Some("None.".to_string()),
+        tldr: None,
     };
     let json = serde_json::to_string(&req)?;
     assert!(json.contains("\"type\":\"comm_report\""));

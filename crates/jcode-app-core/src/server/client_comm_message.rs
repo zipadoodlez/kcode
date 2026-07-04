@@ -108,6 +108,7 @@ pub(super) async fn handle_comm_message(
     channel: Option<String>,
     delivery: Option<CommDeliveryMode>,
     wake: Option<bool>,
+    tldr: Option<String>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
@@ -142,6 +143,13 @@ pub(super) async fn handle_comm_message(
             ),
             ("wake", wake.unwrap_or(false).to_string()),
             ("message_chars", message.chars().count().to_string()),
+            (
+                "tldr_chars",
+                tldr.as_deref()
+                    .map(|t| t.chars().count())
+                    .unwrap_or(0)
+                    .to_string(),
+            ),
         ],
     );
     let swarm_id = swarm_id_for_session(&from_session, swarm_members).await;
@@ -273,6 +281,7 @@ pub(super) async fn handle_comm_message(
                         notification_type: NotificationType::Message {
                             scope: Some(scope.to_string()),
                             channel: channel.clone(),
+                            tldr: tldr.clone(),
                         },
                         message: notification_msg.clone(),
                     },

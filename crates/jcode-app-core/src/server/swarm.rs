@@ -330,8 +330,14 @@ pub(super) async fn salvage_assignments_of_dead_member(
         swarms_by_id,
     )
     .await;
-    notify_coordinator_of_salvage(session_id, swarm_id, &outcome, swarm_members, swarm_coordinators)
-        .await;
+    notify_coordinator_of_salvage(
+        session_id,
+        swarm_id,
+        &outcome,
+        swarm_members,
+        swarm_coordinators,
+    )
+    .await;
     outcome
 }
 
@@ -367,6 +373,7 @@ async fn notify_coordinator_of_salvage(
             notification_type: NotificationType::Message {
                 scope: Some("swarm".to_string()),
                 channel: None,
+                tldr: None,
             },
             message: outcome.describe(&label),
         },
@@ -518,10 +525,7 @@ pub(super) async fn refresh_swarm_task_staleness(
         let mut pairs = std::collections::BTreeSet::new();
         for (swarm_id, plan) in plans.iter() {
             for item in &plan.items {
-                if !matches!(
-                    item.status.as_str(),
-                    "running" | "running_stale" | "queued"
-                ) {
+                if !matches!(item.status.as_str(), "running" | "running_stale" | "queued") {
                     continue;
                 }
                 let assignee = item.assigned_to.as_deref().or_else(|| {
@@ -916,6 +920,7 @@ pub(super) async fn remove_session_from_swarm(
                     notification_type: NotificationType::Message {
                         scope: Some("swarm".to_string()),
                         channel: None,
+                        tldr: None,
                     },
                     message: "You are now the coordinator for this swarm.".to_string(),
                 });
@@ -1062,6 +1067,37 @@ pub(super) async fn update_member_status_with_report(
     status: &str,
     detail: Option<String>,
     completion_report: Option<String>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    event_history: Option<&Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>>,
+    event_counter: Option<&Arc<std::sync::atomic::AtomicU64>>,
+    swarm_event_tx: Option<&broadcast::Sender<SwarmEvent>>,
+) {
+    update_member_status_with_report_tldr(
+        session_id,
+        status,
+        detail,
+        completion_report,
+        None,
+        swarm_members,
+        swarms_by_id,
+        event_history,
+        event_counter,
+        swarm_event_tx,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "member status updates need swarm membership, broadcast state, optional report text, and event history sinks"
+)]
+pub(super) async fn update_member_status_with_report_tldr(
+    session_id: &str,
+    status: &str,
+    detail: Option<String>,
+    completion_report: Option<String>,
+    report_tldr: Option<String>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     event_history: Option<&Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>>,
@@ -1216,6 +1252,7 @@ pub(super) async fn update_member_status_with_report(
                         notification_type: NotificationType::Message {
                             scope: Some("swarm".to_string()),
                             channel: None,
+                            tldr: report_tldr.clone(),
                         },
                         message: msg,
                     },

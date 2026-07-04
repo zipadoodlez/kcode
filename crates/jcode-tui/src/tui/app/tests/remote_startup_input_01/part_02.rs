@@ -189,6 +189,7 @@ fn test_remote_runtime_activity_notification_renders_as_system_message() {
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("auth_activity".to_string()),
                 channel: None,
+                tldr: None,
             },
             message: "**Auth Change Received**\n\nThe server is refreshing provider credentials."
                 .to_string(),
@@ -222,6 +223,7 @@ fn test_remote_auth_activity_notification_is_status_only_during_onboarding() {
             notification_type: crate::protocol::NotificationType::Message {
                 scope: Some("auth_activity".to_string()),
                 channel: None,
+                tldr: None,
             },
             message: "**Auth Change Received**\n\nThe server is refreshing provider credentials."
                 .to_string(),
@@ -263,6 +265,7 @@ fn test_remote_catalog_activity_notification_upserts_progress_card() {
                 notification_type: crate::protocol::NotificationType::Message {
                     scope: Some("catalog_activity".to_string()),
                     channel: None,
+                    tldr: None,
                 },
                 message,
             },

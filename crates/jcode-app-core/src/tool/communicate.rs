@@ -15,6 +15,7 @@ use crate::protocol::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use jcode_swarm_core::validate_swarm_tldr;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -362,10 +363,8 @@ async fn await_swarm_progress(
     // card goes stale for the whole await. Refresh failures are ignored: the
     // card is best-effort and the await result is what drives the loop.
     let refresh_period = std::time::Duration::from_secs(RUN_PLAN_PROGRESS_REFRESH_SECS);
-    let mut refresh = tokio::time::interval_at(
-        tokio::time::Instant::now() + refresh_period,
-        refresh_period,
-    );
+    let mut refresh =
+        tokio::time::interval_at(tokio::time::Instant::now() + refresh_period, refresh_period);
     refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let response = loop {
@@ -1120,6 +1119,7 @@ async fn broadcast_plan_alert(ctx: &ToolContext, message: &str) -> Result<()> {
         channel: None,
         wake: None,
         delivery: None,
+        tldr: Some("run_plan paused: credential failure wave; fix auth then retry".to_string()),
     };
     match send_request(request).await {
         Ok(response) => ensure_success(&response),
@@ -1656,12 +1656,18 @@ fn format_swarm_model_list(
         _ => out.push_str("No agents.swarm_model pin configured (workers inherit the coordinator's model unless a per-spawn model is passed).\n"),
     }
     if model_routes.is_empty() {
-        out.push_str("\nNo model routes reported. Spawn with a bare model name or omit model to inherit.");
+        out.push_str(
+            "\nNo model routes reported. Spawn with a bare model name or omit model to inherit.",
+        );
         return out;
     }
     out.push_str("\nAvailable model routes (pass as spawn model, e.g. 'gpt-5.5' or route-pinned 'openai-api:gpt-5.5'):\n");
     for route in model_routes {
-        let availability = if route.available { "" } else { " [unavailable]" };
+        let availability = if route.available {
+            ""
+        } else {
+            " [unavailable]"
+        };
         let cost = route
             .estimated_reference_cost_micros()
             .map(|micros| format!(" ~${:.2}/ref-task", micros as f64 / 1_000_000.0))
@@ -1694,7 +1700,9 @@ impl CommunicateTool {
         let description = if swarm_prompt.is_empty() {
             BASE_DESCRIPTION.to_string()
         } else {
-            format!("{BASE_DESCRIPTION}\n\nSwarm prompt (user-tunable via ~/.jcode/swarm-prompt.md):\n{swarm_prompt}")
+            format!(
+                "{BASE_DESCRIPTION}\n\nSwarm prompt (user-tunable via ~/.jcode/swarm-prompt.md):\n{swarm_prompt}"
+            )
         };
         Self { description }
     }
@@ -1777,6 +1785,11 @@ struct CommunicateInput {
     follow_up: Option<String>,
     #[serde(default)]
     spawn_mode: Option<String>,
+    /// One-line summary shown collapsed in the recipient's UI for long
+    /// message/report bodies. Required when the body exceeds the collapse
+    /// threshold.
+    #[serde(default)]
+    tldr: Option<String>,
     /// Per-spawn model override for spawn/assign_task/assign_next/run_plan
     /// spawns. Takes precedence over agents.swarm_model config.
     #[serde(default)]
@@ -1846,6 +1859,10 @@ impl Tool for CommunicateTool {
                 "message": {
                     "type": "string",
                     "description": "Message body. For action=message, routes by fields provided: with to_session it is a DM, with channel it posts to that channel, with neither it broadcasts to the whole swarm. For action=broadcast it always goes to the whole swarm. For action=report, this is the completion report body."
+                },
+                "tldr": {
+                    "type": "string",
+                    "description": "One-line summary (aim for under 120 chars) of the message/report. Required for message/broadcast/dm/channel/report when the body is longer than 240 chars. The recipient's UI shows this collapsed with an expand control instead of the full body."
                 },
                 "status": {
                     "type": "string",
@@ -2097,6 +2114,8 @@ impl Tool for CommunicateTool {
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for message action"))?;
+                let tldr = validate_swarm_tldr(params.tldr.as_deref(), &message, "this message")
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 let to_session = params.to_session.clone();
                 let channel = params.channel.clone();
 
@@ -2108,6 +2127,7 @@ impl Tool for CommunicateTool {
                     channel: channel.clone(),
                     wake: params.wake,
                     delivery: params.delivery,
+                    tldr,
                 };
 
                 match send_request(request).await {
@@ -2137,6 +2157,8 @@ impl Tool for CommunicateTool {
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for broadcast action"))?;
+                let tldr = validate_swarm_tldr(params.tldr.as_deref(), &message, "this broadcast")
+                    .map_err(|e| anyhow::anyhow!(e))?;
 
                 let request = Request::CommMessage {
                     id: REQUEST_ID,
@@ -2146,6 +2168,7 @@ impl Tool for CommunicateTool {
                     channel: None,
                     wake: params.wake,
                     delivery: params.delivery,
+                    tldr,
                 };
 
                 match send_request(request).await {
@@ -2164,6 +2187,8 @@ impl Tool for CommunicateTool {
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for dm action"))?;
+                let tldr = validate_swarm_tldr(params.tldr.as_deref(), &message, "this DM")
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 let to_session = params.to_session.ok_or_else(|| {
                     anyhow::anyhow!("'to_session' (or 'target_session') is required for dm action")
                 })?;
@@ -2176,6 +2201,7 @@ impl Tool for CommunicateTool {
                     channel: None,
                     delivery: params.delivery,
                     wake: params.wake,
+                    tldr,
                 };
 
                 match send_request(request).await {
@@ -2194,6 +2220,9 @@ impl Tool for CommunicateTool {
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for channel action"))?;
+                let tldr =
+                    validate_swarm_tldr(params.tldr.as_deref(), &message, "this channel message")
+                        .map_err(|e| anyhow::anyhow!(e))?;
                 let channel = params
                     .channel
                     .ok_or_else(|| anyhow::anyhow!("'channel' is required for channel action"))?;
@@ -2206,6 +2235,7 @@ impl Tool for CommunicateTool {
                     channel: Some(channel.clone()),
                     delivery: params.delivery,
                     wake: params.wake,
+                    tldr,
                 };
 
                 match send_request(request).await {
@@ -2627,6 +2657,8 @@ impl Tool for CommunicateTool {
                 let message = params
                     .message
                     .ok_or_else(|| anyhow::anyhow!("'message' is required for report action"))?;
+                let tldr = validate_swarm_tldr(params.tldr.as_deref(), &message, "this report")
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 let request = Request::CommReport {
                     id: REQUEST_ID,
                     session_id: ctx.session_id.clone(),
@@ -2634,6 +2666,7 @@ impl Tool for CommunicateTool {
                     message,
                     validation: params.validation,
                     follow_up: params.follow_up,
+                    tldr,
                 };
                 match send_request(request).await {
                     Ok(ServerEvent::CommReportResponse {

@@ -98,6 +98,7 @@ pub(super) async fn maybe_handle_swarm_write_command(
                             notification_type: NotificationType::Message {
                                 scope: Some("broadcast".to_string()),
                                 channel: None,
+                                tldr: None,
                             },
                             message: message.clone(),
                         };
@@ -147,6 +148,7 @@ pub(super) async fn maybe_handle_swarm_write_command(
                     notification_type: NotificationType::Message {
                         scope: Some("dm".to_string()),
                         channel: None,
+                        tldr: None,
                     },
                     message: message.to_string(),
                 };

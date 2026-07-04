@@ -1772,6 +1772,7 @@ async fn handle_comm_assign_task_with_mode(
             notification_type: NotificationType::Message {
                 scope: Some("dm".to_string()),
                 channel: None,
+                tldr: None,
             },
             message: notification,
         });
@@ -1826,6 +1827,7 @@ async fn handle_comm_assign_task_with_mode(
                 notification_type: NotificationType::Message {
                     scope: Some("plan".to_string()),
                     channel: None,
+                    tldr: None,
                 },
                 message: plan_msg.clone(),
             });
@@ -2489,9 +2491,7 @@ pub(super) async fn handle_comm_task_control(
                 let swarm_plans = swarm_plans.read().await;
                 swarm_plans
                     .get(&swarm_id)
-                    .and_then(|plan| {
-                        plan.items.iter().find(|item| item.id == displaced_task_id)
-                    })
+                    .and_then(|plan| plan.items.iter().find(|item| item.id == displaced_task_id))
                     .is_some_and(|item| {
                         item.assigned_to.as_deref() == Some(displaced_new_target.as_str())
                     })
@@ -2522,6 +2522,7 @@ pub(super) async fn handle_comm_task_control(
                         notification_type: NotificationType::Message {
                             scope: Some("dm".to_string()),
                             channel: None,
+                            tldr: None,
                         },
                         message: stand_down,
                     });

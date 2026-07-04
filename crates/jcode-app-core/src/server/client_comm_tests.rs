@@ -150,6 +150,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
         Some("religion-debate".to_string()),
         None,
         None,
+        None,
         &client_event_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -173,7 +174,7 @@ async fn comm_message_default_does_not_queue_soft_interrupt_for_connected_sessio
             assert_eq!(from_session, sender_id);
             assert_eq!(from_name.as_deref(), Some("falcon"));
             match notification_type {
-                NotificationType::Message { scope, channel } => {
+                NotificationType::Message { scope, channel, .. } => {
                     assert_eq!(scope.as_deref(), Some("channel"));
                     assert_eq!(channel.as_deref(), Some("religion-debate"));
                 }
@@ -307,6 +308,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
             None,
             Some(CommDeliveryMode::Wake),
             None,
+            None,
             &client_event_tx,
             &sessions,
             &soft_interrupt_queues,
@@ -332,7 +334,7 @@ async fn comm_message_with_wake_queues_soft_interrupt_for_busy_connected_session
             assert_eq!(from_session, sender_id);
             assert_eq!(from_name.as_deref(), Some("falcon"));
             match notification_type {
-                NotificationType::Message { scope, channel } => {
+                NotificationType::Message { scope, channel, .. } => {
                     assert_eq!(scope.as_deref(), Some("dm"));
                     assert_eq!(channel, None);
                 }
@@ -541,6 +543,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
         None,
         Some(CommDeliveryMode::Notify),
         None,
+        None,
         &client_event_tx,
         &sessions,
         &soft_interrupt_queues,
@@ -564,7 +567,7 @@ async fn comm_message_accepts_friendly_name_dm_target() {
             assert_eq!(from_session, sender_id);
             assert_eq!(from_name.as_deref(), Some("falcon"));
             match notification_type {
-                NotificationType::Message { scope, channel } => {
+                NotificationType::Message { scope, channel, .. } => {
                     assert_eq!(scope.as_deref(), Some("dm"));
                     assert_eq!(channel, None);
                 }
@@ -695,6 +698,7 @@ async fn comm_message_rejects_ambiguous_friendly_name_dm_target() {
         sender_id,
         "hello bears".to_string(),
         Some("bear".to_string()),
+        None,
         None,
         None,
         None,

@@ -1313,6 +1313,7 @@ async fn ensure_spawn_coordinator_swarm(
                     notification_type: NotificationType::Message {
                         scope: Some("swarm".to_string()),
                         channel: None,
+                        tldr: None,
                     },
                     message: "You are the coordinator for this swarm.".to_string(),
                 });

@@ -29,6 +29,11 @@ pub enum NotificationType {
         /// Channel name for channel messages (e.g. "parser")
         #[serde(skip_serializing_if = "Option::is_none")]
         channel: Option<String>,
+        /// Sender-provided one-line summary of the message. Receiving UIs
+        /// render this collapsed with an expand control instead of the full
+        /// body. Populated from the `tldr` field of swarm sends/reports.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tldr: Option<String>,
     },
 }
 

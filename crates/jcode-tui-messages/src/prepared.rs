@@ -302,6 +302,23 @@ impl PreparedChatFrame {
         })
     }
 
+    /// Transcript message index whose rendered lines contain `abs_line`, when
+    /// the line falls inside a Body section with message-boundary tracking.
+    /// Boundaries record the cumulative wrapped length after each message, so
+    /// the owning message is the first boundary strictly beyond the line.
+    pub fn message_index_at_line(&self, abs_line: usize) -> Option<usize> {
+        let (section, local) = self.line_section(abs_line)?;
+        if section.kind != PreparedSectionKind::Body {
+            return None;
+        }
+        let boundaries = &section.prepared.message_boundaries;
+        if boundaries.is_empty() {
+            return None;
+        }
+        let idx = boundaries.partition_point(|boundary| boundary.wrapped_len <= local);
+        (idx < boundaries.len()).then_some(idx)
+    }
+
     pub fn materialize_line_slice(&self, start: usize, end: usize) -> Vec<Line<'static>> {
         let end = end.min(self.total_wrapped_lines);
         if start >= end {

@@ -794,6 +794,57 @@ fn render_swarm_message_centered_mode_caps_wrap_width_for_long_notifications() {
 }
 
 #[test]
+fn render_swarm_message_collapsed_shows_tldr_and_expand_badge_only() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+    let content = jcode_tui_messages::encode_collapsible_swarm_content(
+        "fixed the flaky test",
+        "The flaky test was caused by a race in the setup helper.\n\nI rewrote it to use a barrier.",
+    );
+    let msg = DisplayMessage::swarm("DM from sheep", content);
+
+    let lines = render_swarm_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("fixed the flaky test"), "{plain}");
+    assert!(plain.contains(super::SWARM_EXPAND_BADGE), "{plain}");
+    assert!(
+        !plain.contains("race in the setup helper"),
+        "collapsed card must hide the full body: {plain}"
+    );
+    crate::tui::markdown::set_center_code_blocks(saved);
+}
+
+#[test]
+fn render_swarm_message_expanded_shows_body_and_collapse_badge() {
+    let saved = crate::tui::markdown::center_code_blocks();
+    crate::tui::markdown::set_center_code_blocks(false);
+    let collapsed = jcode_tui_messages::encode_collapsible_swarm_content(
+        "fixed the flaky test",
+        "The flaky test was caused by a race in the setup helper.",
+    );
+    let expanded =
+        jcode_tui_messages::toggle_collapsible_swarm_content(&collapsed).expect("toggle");
+    let msg = DisplayMessage::swarm("DM from sheep", expanded);
+
+    let lines = render_swarm_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("fixed the flaky test"), "{plain}");
+    assert!(plain.contains(super::SWARM_COLLAPSE_BADGE), "{plain}");
+    assert!(plain.contains("race in the setup helper"), "{plain}");
+    crate::tui::markdown::set_center_code_blocks(saved);
+}
+
+#[test]
 fn render_tool_message_prefers_subagent_title_with_model() {
     let msg = DisplayMessage {
         role: "tool".to_string(),

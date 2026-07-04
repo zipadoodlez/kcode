@@ -562,6 +562,7 @@ pub(super) async fn handle_subscribe(
                             notification_type: NotificationType::Message {
                                 scope: Some("swarm".to_string()),
                                 channel: None,
+                                tldr: None,
                             },
                             message: "You are now the coordinator for this swarm.".to_string(),
                         });

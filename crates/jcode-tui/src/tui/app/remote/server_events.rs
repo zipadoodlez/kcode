@@ -765,7 +765,11 @@ pub(in crate::tui::app) fn handle_server_event(
             // Per-call replace semantics for input/cache counters: a stale
             // cache-read figure from a previous call must not leak into this
             // call's context accounting (issue #441).
-            app.apply_stream_usage_input_report(Some(input), cache_read_input, cache_creation_input);
+            app.apply_stream_usage_input_report(
+                Some(input),
+                cache_read_input,
+                cache_creation_input,
+            );
             app.streaming.streaming_output_tokens = output;
             if app.record_completed_stream_cache_usage() {
                 app.token_accounting.total_input_tokens = app

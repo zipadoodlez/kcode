@@ -1725,6 +1725,11 @@ fn swarm_notification_style(title: Option<&str>) -> (&'static str, Color, Color)
     }
 }
 
+/// Trailing badge text appended to a collapsed swarm tldr line. Kept as
+/// constants so click hit-testing and rendering stay in sync.
+pub(crate) const SWARM_EXPAND_BADGE: &str = "▸ expand";
+pub(crate) const SWARM_COLLAPSE_BADGE: &str = "▾ collapse";
+
 pub(crate) fn render_swarm_message(
     msg: &DisplayMessage,
     width: u16,
@@ -1732,7 +1737,16 @@ pub(crate) fn render_swarm_message(
 ) -> Vec<Line<'static>> {
     let centered = markdown::center_code_blocks();
     let title = msg.title.as_deref().unwrap_or("Swarm").trim();
-    let content = msg.content.trim();
+    let collapsible = jcode_tui_messages::parse_collapsible_swarm_content(&msg.content);
+    let (content, tldr_line): (String, Option<(String, bool)>) = match collapsible {
+        Some(parsed) if !parsed.expanded => (String::new(), Some((parsed.tldr.to_string(), false))),
+        Some(parsed) => (
+            parsed.body.trim().to_string(),
+            Some((parsed.tldr.to_string(), true)),
+        ),
+        None => (msg.content.trim().to_string(), None),
+    };
+    let content = content.as_str();
     let (icon, rail_color, text_color) = swarm_notification_style(msg.title.as_deref());
     let rail_style = Style::default().fg(rail_color);
     let header_style = Style::default().fg(rail_color).bold();
@@ -1757,8 +1771,31 @@ pub(crate) fn render_swarm_message(
         Span::styled(format!("{} {}", icon, title), header_style),
     ]));
 
+    // Collapsed/expanded tldr line with its toggle badge. The badge is a
+    // click target (see `swarm_expand_target_from_screen`) and must stay the
+    // trailing token of this line.
+    if let Some((tldr, expanded)) = &tldr_line {
+        let badge = if *expanded {
+            SWARM_COLLAPSE_BADGE
+        } else {
+            SWARM_EXPAND_BADGE
+        };
+        lines.push(Line::from(vec![
+            Span::styled("│ ", rail_style),
+            Span::styled(tldr.clone(), body_style),
+            Span::styled(
+                format!("  {}", badge),
+                Style::default().fg(rail_color).dim(),
+            ),
+        ]));
+    }
+
     let mut body_lines = if content.is_empty() {
-        vec![Line::from(Span::styled(String::new(), body_style))]
+        if tldr_line.is_some() {
+            Vec::new()
+        } else {
+            vec![Line::from(Span::styled(String::new(), body_style))]
+        }
     } else {
         markdown::render_markdown_with_width(content, Some(content_width))
     };

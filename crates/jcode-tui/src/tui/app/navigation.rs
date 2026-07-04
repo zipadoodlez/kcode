@@ -194,6 +194,44 @@ impl App {
         true
     }
 
+    /// If a left-click landed on a swarm notification's `▸ expand` /
+    /// `▾ collapse` badge, toggle that notification between its tldr line and
+    /// its full body. Returns `false` when the click was elsewhere.
+    pub(super) fn try_toggle_swarm_expand_at(&mut self, column: u16, row: u16) -> bool {
+        let Some(msg_idx) = super::super::ui::swarm_expand_target_from_screen(column, row) else {
+            return false;
+        };
+        self.toggle_swarm_message_expand(msg_idx)
+    }
+
+    /// Toggle the collapsed/expanded state of the swarm notification at
+    /// transcript index `msg_idx`. Returns `true` when the message was a
+    /// collapsible swarm card and its state changed.
+    pub(super) fn toggle_swarm_message_expand(&mut self, msg_idx: usize) -> bool {
+        let Some(message) = self.display_messages.get(msg_idx) else {
+            return false;
+        };
+        if message.role != "swarm" {
+            return false;
+        }
+        let Some(toggled) = jcode_tui_messages::toggle_collapsible_swarm_content(&message.content)
+        else {
+            return false;
+        };
+        let expanded = jcode_tui_messages::parse_collapsible_swarm_content(&toggled)
+            .map(|parsed| parsed.expanded)
+            .unwrap_or(false);
+        if !self.replace_display_message_content(msg_idx, toggled) {
+            return false;
+        }
+        self.set_status_notice(if expanded {
+            "Swarm message expanded"
+        } else {
+            "Swarm message collapsed"
+        });
+        true
+    }
+
     pub(super) fn try_open_link_at(&mut self, column: u16, row: u16) -> bool {
         self.try_open_link_at_with(column, row, |url| {
             super::helpers::open_path_or_url_detached(url)
@@ -1492,6 +1530,12 @@ impl App {
             && self.try_cycle_image_expand_at(mouse.column, mouse.row)
         {
             finish_mouse_event!(false, "cycle_image_expand");
+        }
+
+        if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))
+            && self.try_toggle_swarm_expand_at(mouse.column, mouse.row)
+        {
+            finish_mouse_event!(false, "toggle_swarm_expand");
         }
 
         if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))

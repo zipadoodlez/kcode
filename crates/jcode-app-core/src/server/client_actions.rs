@@ -138,6 +138,7 @@ pub(super) async fn handle_notify_session(
                     notification_type: NotificationType::Message {
                         scope: Some("scheduled".to_string()),
                         channel: None,
+                        tldr: None,
                     },
                     message: message.clone(),
                 },
