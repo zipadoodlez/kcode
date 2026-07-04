@@ -322,7 +322,7 @@ pub struct MultiProvider {
     claude: RwLock<Option<Arc<dyn Provider>>>,
     /// Direct Anthropic API provider (no Python dependency)
     anthropic: RwLock<Option<Arc<dyn Provider>>>,
-    openai: RwLock<Option<Arc<openai::OpenAIProvider>>>,
+    openai: RwLock<Option<Arc<dyn Provider>>>,
     /// GitHub Copilot API provider (direct API, hot-swappable after login).
     /// Held as `dyn Provider`: the concrete runtime lives downstream in
     /// `jcode-provider-copilot-runtime` and is instantiated through
@@ -1152,14 +1152,16 @@ impl MultiProvider {
         }
 
         if let Some(openai) = self.openai_provider() {
-            openai.reload_credentials_now();
-        } else if let Ok(credentials) = crate::auth::codex::load_credentials() {
+            openai.reload_credentials();
+        } else if crate::auth::codex::load_credentials().is_ok()
+            && let Some(openai) =
+                external::instantiate_expected_external_provider(external::OPENAI_RUNTIME)
+        {
             crate::logging::info("Hot-initialized OpenAI provider after auth change");
             *self
                 .openai
                 .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                Some(Arc::new(openai::OpenAIProvider::new(credentials)));
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(openai);
         }
 
         if openrouter::OpenRouterProvider::has_credentials() {
@@ -2450,10 +2452,7 @@ impl Provider for MultiProvider {
             None
         };
         let openai = if self.openai_provider().is_some() {
-            auth::codex::load_credentials()
-                .ok()
-                .map(openai::OpenAIProvider::new)
-                .map(Arc::new)
+            external::instantiate_expected_external_provider(external::OPENAI_RUNTIME)
         } else {
             None
         };
@@ -2580,7 +2579,7 @@ pub fn cache_ttl_for_provider_model(provider: &str, model: Option<&str>) -> Opti
         }),
         "openai" => {
             if model
-                .map(openai::OpenAIProvider::supports_extended_prompt_cache_retention)
+                .map(openai::supports_extended_prompt_cache_retention)
                 .unwrap_or(false)
             {
                 Some(24 * 60 * 60)

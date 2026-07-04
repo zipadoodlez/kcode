@@ -132,10 +132,7 @@ impl MultiProvider {
         };
 
         let openai = if has_openai_creds {
-            auth::codex::load_credentials()
-                .ok()
-                .map(openai::OpenAIProvider::new)
-                .map(Arc::new)
+            external::instantiate_expected_external_provider(external::OPENAI_RUNTIME)
         } else {
             None
         };

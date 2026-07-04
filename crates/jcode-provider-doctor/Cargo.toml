@@ -29,6 +29,7 @@ tokio = { version = "1", features = ["time"] }
 jcode-base = { path = "../jcode-base", default-features = false }
 jcode-provider-gemini-runtime = { path = "../jcode-provider-gemini-runtime" }
 jcode-provider-anthropic-runtime = { path = "../jcode-provider-anthropic-runtime" }
+jcode-provider-openai-runtime = { path = "../jcode-provider-openai-runtime" }
 jcode-provider-cursor-runtime = { path = "../jcode-provider-cursor-runtime" }
 jcode-provider-antigravity-runtime = { path = "../jcode-provider-antigravity-runtime" }
 jcode-provider-copilot-runtime = { path = "../jcode-provider-copilot-runtime" }

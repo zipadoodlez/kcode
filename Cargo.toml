@@ -56,6 +56,7 @@ members = [
     "crates/jcode-provider-copilot-runtime",
     "crates/jcode-provider-claude-cli-runtime",
     "crates/jcode-provider-anthropic-runtime",
+    "crates/jcode-provider-openai-runtime",
     "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
@@ -186,6 +187,7 @@ jcode-provider-antigravity-runtime = { path = "crates/jcode-provider-antigravity
 jcode-provider-copilot-runtime = { path = "crates/jcode-provider-copilot-runtime" }
 jcode-provider-claude-cli-runtime = { path = "crates/jcode-provider-claude-cli-runtime" }
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
+jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)

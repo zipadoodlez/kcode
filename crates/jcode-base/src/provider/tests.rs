@@ -188,11 +188,10 @@ fn save_test_openai_oauth_credentials() {
 fn test_multi_provider_with_openai() -> MultiProvider {
     save_test_openai_oauth_credentials();
     crate::env::set_var("OPENAI_API_KEY", "sk-test-openai-api-key");
-    let credentials = crate::auth::codex::load_credentials().expect("OpenAI credentials");
     MultiProvider {
         claude: RwLock::new(None),
         anthropic: RwLock::new(None),
-        openai: RwLock::new(Some(Arc::new(openai::OpenAIProvider::new(credentials)))),
+        openai: RwLock::new(Some(test_openai_runtime() as Arc<dyn Provider>)),
         copilot_api: RwLock::new(None),
         antigravity: RwLock::new(None),
         gemini: RwLock::new(None),
@@ -266,7 +265,7 @@ fn openai_model_switch_prefixes_preserve_oauth_vs_api_state_space() {
                     provider
                         .openai_provider()
                         .expect("OpenAI provider")
-                        .credential_mode_snapshot(),
+                        .credential_mode(),
                     expected_mode,
                     "{request}"
                 );
@@ -347,7 +346,7 @@ fn openai_model_route_roundtrip_preserves_auth_method_for_model_switches() {
                 provider
                     .openai_provider()
                     .expect("OpenAI provider")
-                    .credential_mode_snapshot(),
+                    .credential_mode(),
                 expected_mode,
                 "{request}"
             );
@@ -822,6 +821,10 @@ impl StubExternalRuntime {
             anthropic::AVAILABLE_MODELS,
         )
     }
+
+    fn openai() -> Self {
+        Self::new("openai", "OpenAI", "https", ALL_OPENAI_MODELS)
+    }
 }
 
 #[async_trait::async_trait]
@@ -848,6 +851,17 @@ impl Provider for StubExternalRuntime {
         let trimmed = model.trim();
         if trimmed.is_empty() {
             anyhow::bail!("{} model cannot be empty", self.provider_label);
+        }
+        // Mirror the real runtimes' family validation: the registry is
+        // process-global, so hot-init can hand this stub to tests that expect
+        // cross-provider models to be rejected (e.g. a Claude model under a
+        // forced-OpenAI selection).
+        if !self.models.contains(&trimmed) {
+            anyhow::bail!(
+                "Unsupported {} model '{}'. Use /model to choose from the models available to your account.",
+                self.provider_label,
+                trimmed,
+            );
         }
         *self
             .model
@@ -916,12 +930,19 @@ fn test_anthropic_runtime() -> Arc<StubExternalRuntime> {
     Arc::new(StubExternalRuntime::anthropic())
 }
 
+fn test_openai_runtime() -> Arc<StubExternalRuntime> {
+    Arc::new(StubExternalRuntime::openai())
+}
+
 /// Register the shared external-runtime stubs for every downstream provider
 /// slot base can hot-initialize. Called by `with_clean_provider_test_env` so
 /// hot-init/startup tests find a runtime the way the real binary does.
 fn register_test_external_runtimes() {
     external::register_external_provider(external::ANTHROPIC_RUNTIME, || {
         test_anthropic_runtime() as Arc<dyn Provider>
+    });
+    external::register_external_provider(external::OPENAI_RUNTIME, || {
+        test_openai_runtime() as Arc<dyn Provider>
     });
     external::register_external_provider(external::CURSOR_RUNTIME, test_cursor_runtime);
     external::register_external_provider(external::ANTIGRAVITY_RUNTIME, test_antigravity_runtime);

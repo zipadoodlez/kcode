@@ -126,9 +126,11 @@ fn test_on_auth_changed_refreshes_existing_openai_provider_credentials() {
         )
         .expect("save stale test OpenAI auth");
 
-        let existing = Arc::new(openai::OpenAIProvider::new(
-            crate::auth::codex::load_credentials().expect("load stale openai credentials"),
-        ));
+        // The concrete OpenAI runtime lives downstream; token refresh itself is
+        // covered by jcode-provider-openai-runtime's tests. Here we assert the
+        // MultiProvider wiring: on_auth_changed must call reload_credentials()
+        // on an existing OpenAI runtime instead of replacing it.
+        let existing = test_openai_runtime();
 
         crate::auth::codex::upsert_account_from_tokens(
             "openai-1",
@@ -142,7 +144,7 @@ fn test_on_auth_changed_refreshes_existing_openai_provider_credentials() {
         let provider = MultiProvider {
             claude: RwLock::new(None),
             anthropic: RwLock::new(None),
-            openai: RwLock::new(Some(existing.clone())),
+            openai: RwLock::new(Some(Arc::clone(&existing) as Arc<dyn Provider>)),
             copilot_api: RwLock::new(None),
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
@@ -163,8 +165,10 @@ fn test_on_auth_changed_refreshes_existing_openai_provider_credentials() {
         let openai = provider
             .openai_provider()
             .expect("existing openai provider");
-        let loaded = runtime.block_on(async { openai.test_access_token().await });
-        assert_eq!(loaded, "fresh-access-token");
+        assert!(
+            Arc::ptr_eq(&openai, &(existing as Arc<dyn Provider>)),
+            "on_auth_changed must reload credentials in place, not replace the runtime"
+        );
     });
 }
 

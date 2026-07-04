@@ -1446,7 +1446,7 @@ impl NativeProviderKind {
                             expires_at: None,
                         }
                     });
-                std::sync::Arc::new(jcode_base::provider::openai::OpenAIProvider::new(
+                std::sync::Arc::new(jcode_provider_openai_runtime::OpenAIProvider::new(
                     credentials,
                 ))
             }

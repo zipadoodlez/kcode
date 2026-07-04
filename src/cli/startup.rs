@@ -141,6 +141,19 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::ANTHROPIC_RUNTIME,
         || std::sync::Arc::new(jcode_provider_anthropic_runtime::AnthropicProvider::new()),
     );
+    // OpenAI's constructor needs Codex credentials on hand; absence means the
+    // provider is simply unavailable.
+    crate::provider::external::register_external_provider_fallible(
+        crate::provider::external::OPENAI_RUNTIME,
+        || {
+            let credentials = crate::auth::codex::load_credentials().ok()?;
+            Some(
+                std::sync::Arc::new(jcode_provider_openai_runtime::OpenAIProvider::new(
+                    credentials,
+                )) as std::sync::Arc<dyn crate::provider::Provider>,
+            )
+        },
+    );
     // Copilot's constructor is fallible (needs a GitHub token) and the runtime
     // wants tier detection scheduled right after construction, eagerly for
     // interactive sessions and deferred for non-interactive ones. That policy

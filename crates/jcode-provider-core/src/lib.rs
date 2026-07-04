@@ -332,6 +332,11 @@ pub trait Provider: Send + Sync {
         Ok(())
     }
 
+    /// Re-read credentials from disk immediately (e.g. after an OAuth refresh
+    /// by another process). Providers with in-memory credential caches override
+    /// this; the default is a no-op.
+    fn reload_credentials(&self) {}
+
     /// Human-readable freshness note for this provider's model catalog, shown
     /// as route detail in the model picker (e.g. "cached live catalog" or
     /// "catalog still loading"). Empty when the catalog is live/authoritative.

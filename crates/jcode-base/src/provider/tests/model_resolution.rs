@@ -1012,13 +1012,11 @@ fn test_openai_auth_mode_prefixed_model_switch_changes_credentials() {
         )
         .expect("save OAuth account");
 
-        let openai = Arc::new(openai::OpenAIProvider::new(
-            crate::auth::codex::load_credentials().expect("load OpenAI credentials"),
-        ));
+        let openai = test_openai_runtime();
         let provider = MultiProvider {
             claude: RwLock::new(None),
             anthropic: RwLock::new(None),
-            openai: RwLock::new(Some(Arc::clone(&openai))),
+            openai: RwLock::new(Some(Arc::clone(&openai) as Arc<dyn Provider>)),
             copilot_api: RwLock::new(None),
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
@@ -1036,26 +1034,28 @@ fn test_openai_auth_mode_prefixed_model_switch_changes_credentials() {
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
 
+        // Route pinning is MultiProvider's job; per-pin token resolution is
+        // covered by jcode-provider-openai-runtime's tests.
         assert_eq!(
-            rt.block_on(openai.test_access_token()),
-            "oauth-access-token",
-            "default OpenAI credentials should still prefer OAuth for backwards compatibility"
+            openai.credential_mode(),
+            jcode_provider_core::CredentialMode::Auto,
+            "default OpenAI credentials stay on the OAuth-first Auto pin"
         );
 
         provider
             .set_model("openai-api:gpt-5.5")
             .expect("API-key route should select the OpenAI API credentials");
         assert_eq!(
-            rt.block_on(openai.test_access_token()),
-            "sk-test-openai-api-key"
+            openai.credential_mode(),
+            jcode_provider_core::CredentialMode::ApiKey
         );
 
         provider
             .set_model("openai-oauth:gpt-5.5")
             .expect("OAuth route should switch back to Codex OAuth credentials");
         assert_eq!(
-            rt.block_on(openai.test_access_token()),
-            "oauth-access-token"
+            openai.credential_mode(),
+            jcode_provider_core::CredentialMode::OAuth
         );
 
         if let Some(prev_runtime) = prev_runtime {
@@ -1307,9 +1307,7 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             None,
         )
         .expect("save OpenAI OAuth account");
-        let openai = Arc::new(openai::OpenAIProvider::new(
-            crate::auth::codex::load_credentials().expect("load OpenAI credentials"),
-        ));
+        let openai = test_openai_runtime();
         let provider = MultiProvider {
             claude: RwLock::new(None),
             anthropic: RwLock::new(None),

@@ -8,7 +8,7 @@ use crate::message::Message as ChatMessage;
 use jcode_provider_openai::OpenAiRequestLogLevel;
 use serde_json::Value;
 
-pub(crate) fn build_responses_input(messages: &[ChatMessage]) -> Vec<Value> {
+pub fn build_responses_input(messages: &[ChatMessage]) -> Vec<Value> {
     jcode_provider_openai::build_responses_input_with_logger(messages, |level, message| match level
     {
         OpenAiRequestLogLevel::Info => crate::logging::info(message),

@@ -15,7 +15,7 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn openai_provider(&self) -> Option<Arc<openai::OpenAIProvider>> {
+    pub(super) fn openai_provider(&self) -> Option<Arc<dyn Provider>> {
         self.openai
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

@@ -36,6 +36,9 @@ pub const CLAUDE_CLI_RUNTIME: &str = "claude-cli";
 /// Registry key for the direct Anthropic API provider runtime.
 pub const ANTHROPIC_RUNTIME: &str = "anthropic";
 
+/// Registry key for the OpenAI (Codex) provider runtime.
+pub const OPENAI_RUNTIME: &str = "openai";
+
 /// Factories are fallible: a runtime whose constructor needs credentials
 /// (e.g. Copilot's GitHub token load) returns `None` when they are absent
 /// or invalid, and callers treat that like an unavailable provider.

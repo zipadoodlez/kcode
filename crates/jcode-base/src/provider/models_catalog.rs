@@ -240,7 +240,7 @@ pub async fn fetch_openai_api_key_model_catalog(api_key: &str) -> Result<OpenAIM
     // api.openai.com (issue #343).
     let models_url = format!(
         "{}/models",
-        crate::provider::openai::OpenAIProvider::resolve_api_base().trim_end_matches('/')
+        crate::provider::openai::resolve_api_base().trim_end_matches('/')
     );
     let resp = client
         .get(&models_url)

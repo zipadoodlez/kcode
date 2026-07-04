@@ -1,1151 +1,142 @@
-use super::openai_request::{build_responses_input, build_tools};
-use super::{EventStream, Provider};
-use crate::auth::codex::CodexCredentials;
-use crate::auth::oauth;
-#[cfg(test)]
-use crate::message::TOOL_OUTPUT_MISSING_TEXT;
-use crate::message::{Message as ChatMessage, StreamEvent, ToolDefinition};
-use anyhow::{Context, Result};
-use async_trait::async_trait;
-use futures::{FutureExt, SinkExt, StreamExt as FuturesStreamExt};
-use reqwest::header::HeaderValue;
-use reqwest::{Client, StatusCode};
-use serde_json::Value;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::panic::AssertUnwindSafe;
-use std::sync::{Arc, LazyLock, RwLock as StdRwLock};
-use std::time::{Duration, Instant};
-use tokio::net::TcpStream;
-use tokio::sync::{Mutex, RwLock, mpsc};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite::Error as WsError;
-use tokio_tungstenite::tungstenite::Message as WsMessage;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+//! OpenAI provider shared helpers (compatibility shim).
+//!
+//! The OpenAI provider *runtime* (`OpenAIProvider`: Codex OAuth + API key,
+//! Responses API over SSE and persistent WebSocket) now lives in the
+//! downstream `jcode-provider-openai-runtime` crate so provider edits do not
+//! rebuild the base -> app-core -> tui spine. The binary's composition root
+//! registers it via [`crate::provider::external`].
+//!
+//! Base keeps the pieces its own catalog/routing code shares with the runtime:
+//! - the API base-URL resolution used by catalog fetches, and
+//! - the extended prompt-cache-retention model predicate used by
+//!   cache-TTL routing.
+
+pub use jcode_provider_core::CredentialMode as OpenAICredentialMode;
 
 const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
-const CHATGPT_API_BASE: &str = "https://chatgpt.com/backend-api/codex";
-const RESPONSES_PATH: &str = "responses";
-const DEFAULT_MODEL: &str = "gpt-5.5";
-const ORIGINATOR: &str = "codex_cli_rs";
 
-/// Whether the hosted `image_generation` tool can be attached for `model_id`.
+/// Resolve the OpenAI Responses API base URL for **API-key** mode.
 ///
-/// The Responses backend only exposes `image_generation` to general
-/// ChatGPT/GPT models. Codex models (ids containing `codex`) reject unknown
-/// hosted tools, so they must not receive it. See issue #369.
-fn model_supports_image_generation(model_id: &str) -> bool {
-    !model_id.to_ascii_lowercase().contains("codex")
-}
-
-/// Maximum number of retries for transient errors
-const MAX_RETRIES: u32 = 3;
-
-/// Base delay for exponential backoff (in milliseconds)
-const RETRY_BASE_DELAY_MS: u64 = 1000;
-const WEBSOCKET_UPGRADE_REQUIRED_ERROR: StatusCode = StatusCode::UPGRADE_REQUIRED;
-const WEBSOCKET_CONNECT_TIMEOUT_SECS: u64 = 8;
-/// Maximum age of a persistent WebSocket connection before forcing reconnect
-const WEBSOCKET_PERSISTENT_MAX_AGE_SECS: u64 = 3000; // 50 min (server limit is 60 min)
-/// Default idle window after which we reconnect instead of reusing the socket.
+/// Defaults to `https://api.openai.com/v1`, but honors a user override so
+/// the native `openai-api` provider can target a local/proxied Responses
+/// API endpoint (issue #343). Checked in order:
+/// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
 ///
-/// Raised from the original 90s. Tearing the socket down loses the server-side
-/// `previous_response_id` chain, so the next turn must re-send the full
-/// conversation and relies on OpenAI prefix-hash routing, which frequently
-/// lands on a cold machine (observed zero cache reads). The lightweight
-/// healthcheck ping below (1.5s timeout) is the real liveness probe, so for
-/// typical interactive pauses we prefer to confirm-and-reuse the live socket
-/// and keep the warm cache. Dead/half-closed sockets are still detected by the
-/// ping and reconnect gracefully, and `WEBSOCKET_PERSISTENT_MAX_AGE_SECS` still
-/// caps total connection lifetime. Tunable via
-/// `JCODE_OPENAI_WS_IDLE_RECONNECT_SECS` (0 disables the idle reconnect entirely,
-/// relying solely on the healthcheck + max-age cap).
-const WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT: u64 = 600; // 10 min
-/// If a persistent socket has been idle for a while, send a lightweight ping
-/// before reuse so we can proactively detect half-closed connections.
-const WEBSOCKET_PERSISTENT_HEALTHCHECK_IDLE_SECS: u64 = 15;
-
-/// Resolved idle-reconnect threshold (seconds), read once from the environment.
-/// `Some(secs)` means reconnect after that idle duration; `None` means never
-/// force a reconnect on idle alone (healthcheck + max-age still apply).
-static WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS: LazyLock<Option<u64>> = LazyLock::new(|| {
-    match std::env::var("JCODE_OPENAI_WS_IDLE_RECONNECT_SECS") {
-        Ok(raw) => match raw.trim().parse::<u64>() {
-            Ok(0) => {
-                crate::logging::info(
-                    "OpenAI persistent WS idle reconnect disabled (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS=0); relying on healthcheck + max-age",
-                );
-                None
-            }
-            Ok(secs) => {
-                crate::logging::info(&format!(
-                    "OpenAI persistent WS idle reconnect threshold set to {}s (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS)",
-                    secs
-                ));
-                Some(secs)
-            }
-            Err(_) => {
-                crate::logging::info(&format!(
-                    "Warning: invalid JCODE_OPENAI_WS_IDLE_RECONNECT_SECS '{}'; using default {}s",
-                    raw, WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT
-                ));
-                Some(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT)
-            }
-        },
-        Err(_) => Some(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT),
-    }
-});
-const WEBSOCKET_PERSISTENT_HEALTHCHECK_TIMEOUT_MS: u64 = 1500;
-const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 32_768;
-static WEBSOCKET_COOLDOWNS: LazyLock<Arc<RwLock<HashMap<String, Instant>>>> =
-    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
-static WEBSOCKET_FAILURE_STREAKS: LazyLock<Arc<RwLock<HashMap<String, u32>>>> =
-    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
-
-#[expect(
-    clippy::upper_case_acronyms,
-    reason = "transport names mirror user-facing configuration values like https and websocket"
-)]
-#[derive(Clone, Copy)]
-enum OpenAITransportMode {
-    Auto,
-    WebSocket,
-    HTTPS,
-}
-
-impl OpenAITransportMode {
-    fn from_config(raw: Option<&str>) -> Self {
-        let Some(raw) = raw else {
-            return Self::Auto;
-        };
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "auto" | "" => Self::Auto,
-            "websocket" | "ws" | "wss" => Self::WebSocket,
-            "https" | "http" | "sse" => Self::HTTPS,
-            other => {
-                crate::logging::warn(&format!(
-                    "Unknown JCODE_OPENAI_TRANSPORT '{}'; using auto. Use: auto, websocket, or https.",
-                    other
-                ));
-                Self::Auto
-            }
-        }
-    }
-
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::WebSocket => "websocket",
-            Self::HTTPS => "https",
-        }
-    }
-}
-
-#[derive(Debug)]
-enum OpenAIStreamFailure {
-    FallbackToHttps(anyhow::Error),
-    Other(anyhow::Error),
-}
-
-impl From<anyhow::Error> for OpenAIStreamFailure {
-    fn from(err: anyhow::Error) -> Self {
-        Self::Other(err)
-    }
-}
-
-#[expect(
-    clippy::upper_case_acronyms,
-    reason = "transport names mirror user-facing configuration values like https and websocket"
-)]
-#[derive(Clone, Copy)]
-enum OpenAITransport {
-    WebSocket,
-    HTTPS,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OpenAINativeCompactionMode {
-    Auto,
-    Explicit,
-    Off,
-}
-
-/// Shared dual-auth credential pin (see `jcode_provider_core::CredentialMode`).
-/// The OpenAI-specific alias is kept so existing call sites read naturally.
-pub(crate) use jcode_provider_core::CredentialMode as OpenAICredentialMode;
-
-/// Load Codex credentials for the given credential pin.
-pub(crate) fn load_credentials_for_mode(mode: OpenAICredentialMode) -> Result<CodexCredentials> {
-    match mode {
-        OpenAICredentialMode::Auto => crate::auth::codex::load_credentials(),
-        OpenAICredentialMode::OAuth => crate::auth::codex::load_oauth_credentials(),
-        OpenAICredentialMode::ApiKey => crate::auth::codex::load_api_key_credentials(),
-    }
-}
-
-impl OpenAINativeCompactionMode {
-    fn from_config(raw: &str) -> Self {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "auto" | "" => Self::Auto,
-            "explicit" | "manual" => Self::Explicit,
-            "off" | "disabled" | "none" => Self::Off,
-            other => {
-                crate::logging::warn(&format!(
-                    "Unknown OpenAI native compaction mode '{}'; using auto. Use: auto, explicit, or off.",
-                    other
-                ));
-                Self::Auto
-            }
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Explicit => "explicit",
-            Self::Off => "off",
-        }
-    }
-}
-
-impl OpenAITransport {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::WebSocket => "websocket",
-            Self::HTTPS => "https",
-        }
-    }
-}
-
-fn log_openai_stream_lifecycle(
-    level: crate::logging::LogLevel,
-    phase: &str,
-    fields: Vec<(&str, String)>,
-) {
-    let mut owned = vec![
-        ("phase".to_string(), phase.to_string()),
-        ("provider".to_string(), "openai".to_string()),
+/// The override must be an absolute `http(s)://` URL; anything else is
+/// logged and ignored so a malformed value never silently breaks requests.
+/// A `/responses` suffix is not expected here (it is appended by callers),
+/// so a trailing `/responses` is trimmed to avoid `.../responses/responses`.
+pub fn resolve_api_base() -> String {
+    const OVERRIDE_VARS: [&str; 3] = [
+        "JCODE_OPENAI_API_BASE",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
     ];
-    owned.extend(
-        fields
-            .into_iter()
-            .map(|(key, value)| (key.to_string(), value)),
-    );
-    crate::logging::event(level, "PROVIDER_STREAM_LIFECYCLE", owned);
-}
-
-fn openai_request_model(request: &Value) -> String {
-    request
-        .get("model")
-        .and_then(|model| model.as_str())
-        .unwrap_or("unknown")
-        .to_string()
-}
-
-/// Persistent WebSocket connection state for incremental continuation.
-/// Keeps the connection alive across turns so we can use `previous_response_id`
-/// to send only new items instead of the full conversation each turn.
-struct PersistentWsState {
-    ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    last_response_id: String,
-    connected_at: Instant,
-    last_activity_at: Instant,
-    /// Number of messages sent in this conversation chain
-    message_count: usize,
-    /// Number of items we sent in the last full request (for detecting conversation changes)
-    last_input_item_count: usize,
-}
-
-#[derive(Debug, Clone)]
-struct PersistentWsDiagSnapshot {
-    present: bool,
-    connected_age_ms: Option<u128>,
-    idle_age_ms: Option<u128>,
-    message_count: Option<usize>,
-    last_input_item_count: Option<usize>,
-    previous_response_id_present: Option<bool>,
-}
-
-impl PersistentWsDiagSnapshot {
-    fn absent() -> Self {
-        Self {
-            present: false,
-            connected_age_ms: None,
-            idle_age_ms: None,
-            message_count: None,
-            last_input_item_count: None,
-            previous_response_id_present: None,
-        }
-    }
-
-    fn log_fields(&self) -> String {
-        if !self.present {
-            return "persistent_ws=absent".to_string();
-        }
-
-        format!(
-            "persistent_ws=present connected_age_ms={} idle_age_ms={} message_count={} last_input_items={} previous_response_id_present={}",
-            self.connected_age_ms
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            self.idle_age_ms
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            self.message_count
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            self.last_input_item_count
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-            self.previous_response_id_present
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string()),
-        )
-    }
-}
-
-impl PersistentWsState {
-    fn diag_snapshot(&self) -> PersistentWsDiagSnapshot {
-        PersistentWsDiagSnapshot {
-            present: true,
-            connected_age_ms: Some(self.connected_at.elapsed().as_millis()),
-            idle_age_ms: Some(self.last_activity_at.elapsed().as_millis()),
-            message_count: Some(self.message_count),
-            last_input_item_count: Some(self.last_input_item_count),
-            previous_response_id_present: Some(!self.last_response_id.is_empty()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct WsInputStats {
-    total_items: usize,
-    message_items: usize,
-    function_call_items: usize,
-    function_call_output_items: usize,
-    other_items: usize,
-}
-
-impl WsInputStats {
-    fn tool_callback_count(self) -> usize {
-        self.function_call_output_items
-    }
-
-    fn log_fields(self) -> String {
-        format!(
-            "items={} messages={} function_calls={} tool_outputs={} other={}",
-            self.total_items,
-            self.message_items,
-            self.function_call_items,
-            self.function_call_output_items,
-            self.other_items
-        )
-    }
-}
-
-fn summarize_ws_input(items: &[Value]) -> WsInputStats {
-    let mut stats = WsInputStats::default();
-    for item in items {
-        stats.total_items += 1;
-        match item.get("type").and_then(|value| value.as_str()) {
-            Some("message") => stats.message_items += 1,
-            Some("function_call") => stats.function_call_items += 1,
-            Some("function_call_output") => stats.function_call_output_items += 1,
-            _ => stats.other_items += 1,
-        }
-    }
-    stats
-}
-
-fn persistent_ws_incremental_items(input: &[Value], start_index: usize) -> (Vec<Value>, usize) {
-    let mut skipped_reasoning_items = 0usize;
-    let incremental_items = input[start_index..]
-        .iter()
-        .filter_map(|item| {
-            if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
-                skipped_reasoning_items += 1;
-                None
-            } else {
-                Some(item.clone())
-            }
-        })
-        .collect();
-    (incremental_items, skipped_reasoning_items)
-}
-
-fn persistent_ws_idle_needs_healthcheck(idle_for: Duration) -> bool {
-    idle_for >= Duration::from_secs(WEBSOCKET_PERSISTENT_HEALTHCHECK_IDLE_SECS)
-}
-
-fn idle_requires_reconnect_with(threshold_secs: Option<u64>, idle_for: Duration) -> bool {
-    match threshold_secs {
-        Some(secs) => idle_for >= Duration::from_secs(secs),
-        None => false,
-    }
-}
-
-fn persistent_ws_idle_requires_reconnect(idle_for: Duration) -> bool {
-    idle_requires_reconnect_with(*WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS, idle_for)
-}
-
-async fn emit_connection_phase(
-    tx: &mpsc::Sender<Result<StreamEvent>>,
-    phase: crate::message::ConnectionPhase,
-) {
-    let _ = tx.send(Ok(StreamEvent::ConnectionPhase { phase })).await;
-}
-
-async fn emit_status_detail(tx: &mpsc::Sender<Result<StreamEvent>>, detail: impl Into<String>) {
-    let _ = tx
-        .send(Ok(StreamEvent::StatusDetail {
-            detail: detail.into(),
-        }))
-        .await;
-}
-
-fn format_status_duration(duration: Duration) -> String {
-    let secs = duration.as_secs();
-    if secs >= 3600 {
-        let hours = secs / 3600;
-        let mins = (secs % 3600) / 60;
-        format!("{}h {}m", hours, mins)
-    } else if secs >= 60 {
-        let mins = secs / 60;
-        let rem_secs = secs % 60;
-        format!("{}m {}s", mins, rem_secs)
-    } else {
-        format!("{}s", secs)
-    }
-}
-
-async fn ensure_persistent_ws_is_healthy(state: &mut PersistentWsState) -> Result<bool, String> {
-    let idle_for = state.last_activity_at.elapsed();
-    if persistent_ws_idle_requires_reconnect(idle_for) {
-        crate::logging::info(&format!(
-            "Persistent WS idle for {}s; reconnecting before reuse",
-            idle_for.as_secs()
-        ));
-        return Ok(false);
-    }
-
-    if !persistent_ws_idle_needs_healthcheck(idle_for) {
-        return Ok(true);
-    }
-
-    crate::logging::info(&format!(
-        "Persistent WS idle for {}ms; sending healthcheck ping before reuse",
-        idle_for.as_millis()
-    ));
-
-    state
-        .ws_stream
-        .send(WsMessage::Ping(Vec::new()))
-        .await
-        .map_err(|err| format!("healthcheck ping send error: {}", err))?;
-
-    let started_at = Instant::now();
-    let timeout = Duration::from_millis(WEBSOCKET_PERSISTENT_HEALTHCHECK_TIMEOUT_MS);
-
-    while started_at.elapsed() < timeout {
-        let remaining = timeout.saturating_sub(started_at.elapsed());
-        let next_item = tokio::time::timeout(remaining, state.ws_stream.next())
-            .await
-            .map_err(|_| {
-                format!(
-                    "healthcheck pong timeout after {}ms",
-                    WEBSOCKET_PERSISTENT_HEALTHCHECK_TIMEOUT_MS
-                )
-            })?;
-
-        match next_item {
-            Some(Ok(WsMessage::Pong(_))) => {
-                state.last_activity_at = Instant::now();
-                crate::logging::info(&format!(
-                    "Persistent WS healthcheck pong after {}ms",
-                    started_at.elapsed().as_millis()
-                ));
-                return Ok(true);
-            }
-            Some(Ok(WsMessage::Ping(payload))) => {
-                state
-                    .ws_stream
-                    .send(WsMessage::Pong(payload))
-                    .await
-                    .map_err(|err| format!("healthcheck pong send error: {}", err))?;
-                state.last_activity_at = Instant::now();
-            }
-            Some(Ok(WsMessage::Close(_))) => {
-                return Ok(false);
-            }
-            Some(Ok(other)) => {
-                return Err(format!(
-                    "unexpected websocket frame during healthcheck: {:?}",
-                    other
-                ));
-            }
-            Some(Err(err)) => {
-                return Err(format!("healthcheck receive error: {}", err));
-            }
-            None => {
-                return Ok(false);
-            }
-        }
-    }
-
-    Ok(false)
-}
-
-pub struct OpenAIProvider {
-    client: Client,
-    credentials: Arc<RwLock<CodexCredentials>>,
-    credential_mode: Arc<RwLock<OpenAICredentialMode>>,
-    model: Arc<RwLock<String>>,
-    prompt_cache_key: Option<String>,
-    prompt_cache_retention: Option<String>,
-    max_output_tokens: Option<u32>,
-    reasoning_effort: Arc<StdRwLock<Option<String>>>,
-    service_tier: Arc<StdRwLock<Option<String>>>,
-    native_compaction_mode: OpenAINativeCompactionMode,
-    native_compaction_threshold_tokens: usize,
-    transport_mode: Arc<RwLock<OpenAITransportMode>>,
-    websocket_cooldowns: Arc<RwLock<HashMap<String, Instant>>>,
-    websocket_failure_streaks: Arc<RwLock<HashMap<String, u32>>>,
-    /// Persistent WebSocket connection for incremental continuation
-    persistent_ws: Arc<Mutex<Option<PersistentWsState>>>,
-}
-
-impl OpenAIProvider {
-    pub(crate) fn supports_extended_prompt_cache_retention(model_id: &str) -> bool {
-        let model = model_id.trim().to_ascii_lowercase();
-        model.starts_with("gpt-5.5")
-            || model.starts_with("gpt-5.4")
-            || model.starts_with("gpt-5.2")
-            || model.starts_with("gpt-5.1")
-            || model == "gpt-5"
-            || model.starts_with("gpt-5-")
-            || model.starts_with("gpt-4.1")
-    }
-
-    fn effective_prompt_cache_retention<'a>(
-        model_id: &str,
-        configured: Option<&'a str>,
-    ) -> Option<&'a str> {
-        configured
-            .or_else(|| Self::supports_extended_prompt_cache_retention(model_id).then_some("24h"))
-    }
-
-    pub fn new(credentials: CodexCredentials) -> Self {
-        let credential_mode =
-            OpenAICredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::OpenAI);
-        let credentials = match credential_mode {
-            OpenAICredentialMode::Auto => credentials,
-            OpenAICredentialMode::OAuth | OpenAICredentialMode::ApiKey => {
-                load_credentials_for_mode(credential_mode).unwrap_or(credentials)
-            }
+    for var in OVERRIDE_VARS {
+        let Ok(raw) = std::env::var(var) else {
+            continue;
         };
-
-        // Check for model override from environment
-        let mut model =
-            std::env::var("JCODE_OPENAI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
-        if !crate::provider::known_openai_model_ids()
-            .iter()
-            .any(|known| known == &model)
-        {
-            crate::logging::info(&format!(
-                "Warning: '{}' is not supported; falling back to '{}'",
-                model, DEFAULT_MODEL
-            ));
-            model = DEFAULT_MODEL.to_string();
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
         }
-
-        let prompt_cache_key = std::env::var("JCODE_OPENAI_PROMPT_CACHE_KEY")
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty());
-        let prompt_cache_retention = std::env::var("JCODE_OPENAI_PROMPT_CACHE_RETENTION")
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty());
-        let prompt_cache_retention = match prompt_cache_retention.as_deref() {
-            Some("in_memory") | Some("24h") => prompt_cache_retention,
-            Some(other) => {
-                crate::logging::info(&format!(
-                    "Warning: Unsupported JCODE_OPENAI_PROMPT_CACHE_RETENTION '{}'; expected 'in_memory' or '24h'",
-                    other
-                ));
-                None
-            }
-            None => None,
-        };
-        let max_output_tokens = Self::load_max_output_tokens();
-        let reasoning_effort = crate::config::config()
-            .provider
-            .openai_reasoning_effort
-            .as_deref()
-            .and_then(Self::normalize_reasoning_effort);
-        let service_tier = Self::load_service_tier(
-            crate::config::config()
-                .provider
-                .openai_service_tier
-                .as_deref(),
-        );
-        let transport_mode = OpenAITransportMode::from_config(
-            crate::config::config().provider.openai_transport.as_deref(),
-        );
-        let native_compaction_mode = OpenAINativeCompactionMode::from_config(
-            &crate::config::config()
-                .provider
-                .openai_native_compaction_mode,
-        );
-        let native_compaction_threshold_tokens = crate::config::config()
-            .provider
-            .openai_native_compaction_threshold_tokens
-            .max(1000);
-
-        Self {
-            client: crate::provider::shared_http_client(),
-            credentials: Arc::new(RwLock::new(credentials)),
-            credential_mode: Arc::new(RwLock::new(credential_mode)),
-            model: Arc::new(RwLock::new(model)),
-            prompt_cache_key,
-            prompt_cache_retention,
-            max_output_tokens,
-            reasoning_effort: Arc::new(StdRwLock::new(reasoning_effort)),
-            service_tier: Arc::new(StdRwLock::new(service_tier)),
-            native_compaction_mode,
-            native_compaction_threshold_tokens,
-            transport_mode: Arc::new(RwLock::new(transport_mode)),
-            websocket_cooldowns: Arc::clone(&WEBSOCKET_COOLDOWNS),
-            websocket_failure_streaks: Arc::clone(&WEBSOCKET_FAILURE_STREAKS),
-            persistent_ws: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    pub(crate) fn reload_credentials_now(&self) {
-        let mode = self
-            .credential_mode
-            .try_read()
-            .map(|mode| *mode)
-            .unwrap_or(OpenAICredentialMode::Auto);
-        if let Ok(credentials) = load_credentials_for_mode(mode) {
-            match self.credentials.try_write() {
-                Ok(mut guard) => {
-                    *guard = credentials;
-                }
-                Err(_) => {
-                    crate::logging::info(
-                        "OpenAI credentials were updated on disk, but the in-memory credential lock was busy; async refresh will retry",
-                    );
-                }
-            }
-        }
-
-        self.clear_persistent_ws_try("credentials reloaded");
-    }
-
-    pub(crate) fn set_credential_mode(&self, mode: OpenAICredentialMode) -> Result<()> {
-        let credentials = load_credentials_for_mode(mode)?;
-        match self.credentials.try_write() {
-            Ok(mut guard) => {
-                *guard = credentials;
-            }
-            Err(_) => {
-                anyhow::bail!(
-                    "Cannot change OpenAI credential mode while a request is in progress"
-                );
-            }
-        }
-        match self.credential_mode.try_write() {
-            Ok(mut guard) => {
-                *guard = mode;
-            }
-            Err(_) => {
-                anyhow::bail!(
-                    "Cannot change OpenAI credential mode while a request is in progress"
-                );
-            }
-        }
-        self.clear_persistent_ws_try("OpenAI credential mode changed");
-        // Keep the runtime provider identity in sync with the explicit credential
-        // choice so UI surfaces report the auth method requests will actually use.
-        // `Auto` leaves the existing identity untouched.
-        if let Some(route) = mode.auth_route(jcode_provider_core::DualAuthProvider::OpenAI) {
-            crate::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
-        }
-        // Drop any cached auth snapshot so surfaces that still consult the cheap
-        // cached probe (auto-mode resolution, usage availability, account labels)
-        // re-derive from the new credential choice on their next read instead of
-        // lingering on a snapshot taken before the switch.
-        crate::auth::AuthStatus::invalidate_cache();
-        Ok(())
-    }
-
-    pub(crate) fn credential_mode_snapshot(&self) -> OpenAICredentialMode {
-        self.credential_mode
-            .try_read()
-            .map(|mode| *mode)
-            .unwrap_or(OpenAICredentialMode::Auto)
-    }
-
-    fn clear_persistent_ws_try(&self, reason: &str) {
-        if let Ok(mut persistent_ws) = self.persistent_ws.try_lock() {
-            if persistent_ws.is_some() {
-                crate::logging::info(&format!("Clearing persistent OpenAI WS state: {}", reason));
-            }
-            *persistent_ws = None;
-        }
-    }
-
-    async fn clear_persistent_ws(&self, reason: &str) {
-        let mut persistent_ws = self.persistent_ws.lock().await;
-        if persistent_ws.is_some() {
-            crate::logging::info(&format!("Clearing persistent OpenAI WS state: {}", reason));
-        }
-        *persistent_ws = None;
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn test_access_token(&self) -> String {
-        self.credentials.read().await.access_token.clone()
-    }
-
-    fn is_chatgpt_mode(credentials: &CodexCredentials) -> bool {
-        !credentials.refresh_token.is_empty() || credentials.id_token.is_some()
-    }
-
-    fn should_prefer_websocket(model: &str) -> bool {
-        !model.trim().is_empty()
-    }
-
-    fn normalize_reasoning_effort(raw: &str) -> Option<String> {
-        let value = raw.trim().to_lowercase();
-        if value.is_empty() {
-            return None;
-        }
-        match value.as_str() {
-            // `swarm` is a UI sentinel meaning "max effort + use the swarm tool".
-            // We keep it stored so the UI/session reflect it and the agent injects
-            // the swarm directive; it is translated to a real effort at request time
-            // by `api_reasoning_effort`.
-            "none" | "low" | "medium" | "high" | "xhigh" | "swarm" | "swarm-deep" => Some(value),
-            other => {
-                crate::logging::info(&format!(
-                    "Warning: Unsupported OpenAI reasoning effort '{}'; expected none|low|medium|high|xhigh. Using 'xhigh'.",
-                    other
-                ));
-                Some("xhigh".to_string())
-            }
-        }
-    }
-
-    /// Translate a stored reasoning effort into the value sent to the API.
-    /// The `swarm` sentinel maps to the strongest real effort (`xhigh`).
-    fn api_reasoning_effort(effort: Option<&str>) -> Option<String> {
-        match effort {
-            Some(e) if crate::prompt::is_swarm_effort(e) => Some("xhigh".to_string()),
-            other => other.map(|e| e.to_string()),
-        }
-    }
-
-    fn native_compaction_threshold_for_context_window(
-        &self,
-        context_window: usize,
-    ) -> Option<usize> {
-        if self.native_compaction_mode != OpenAINativeCompactionMode::Auto {
-            return None;
-        }
-        Some(
-            self.native_compaction_threshold_tokens
-                .max(1000)
-                .min(context_window.max(1000)),
-        )
-    }
-
-    fn parse_max_output_tokens(raw: Option<&str>) -> Option<u32> {
-        let raw = match raw {
-            Some(value) => value.trim(),
-            None => return Some(DEFAULT_MAX_OUTPUT_TOKENS),
-        };
-        if raw.is_empty() {
-            return Some(DEFAULT_MAX_OUTPUT_TOKENS);
-        }
-        match raw.parse::<u32>() {
-            Ok(0) => None,
-            Ok(value) => Some(value),
-            Err(_) => {
-                crate::logging::warn(&format!(
-                    "Invalid JCODE_OPENAI_MAX_OUTPUT_TOKENS='{}'; using default {}",
-                    raw, DEFAULT_MAX_OUTPUT_TOKENS
-                ));
-                Some(DEFAULT_MAX_OUTPUT_TOKENS)
-            }
-        }
-    }
-
-    fn normalize_service_tier(raw: &str) -> Result<Option<String>> {
-        let value = raw.trim().to_ascii_lowercase();
-        if value.is_empty() {
-            return Ok(None);
-        }
-
-        match value.as_str() {
-            "fast" | "priority" => Ok(Some("priority".to_string())),
-            "flex" => Ok(Some("flex".to_string())),
-            "default" | "auto" | "none" | "off" => Ok(None),
-            other => anyhow::bail!(
-                "Unsupported OpenAI service tier '{}'; expected priority|fast|flex|default|off",
-                other
-            ),
-        }
-    }
-
-    fn load_service_tier(raw: Option<&str>) -> Option<String> {
-        let raw = raw?;
-        match Self::normalize_service_tier(raw) {
-            Ok(value) => value,
-            Err(err) => {
-                crate::logging::warn(&format!(
-                    "{}; ignoring configured service tier override",
-                    err
-                ));
-                None
-            }
-        }
-    }
-
-    fn load_max_output_tokens() -> Option<u32> {
-        let raw = std::env::var("JCODE_OPENAI_MAX_OUTPUT_TOKENS").ok();
-        let parsed = Self::parse_max_output_tokens(raw.as_deref());
-        if raw.is_some() {
-            match parsed {
-                Some(value) => crate::logging::info(&format!(
-                    "OpenAI max_output_tokens configured to {}",
-                    value
-                )),
-                None => crate::logging::info(
-                    "OpenAI max_output_tokens disabled (JCODE_OPENAI_MAX_OUTPUT_TOKENS=0)",
-                ),
-            }
-        }
-        parsed
-    }
-
-    fn responses_url(credentials: &CodexCredentials) -> String {
-        let base = if Self::is_chatgpt_mode(credentials) {
-            // ChatGPT/Codex OAuth backend is fixed; a custom base only applies
-            // to API-key usage of the native Responses API.
-            CHATGPT_API_BASE.to_string()
-        } else {
-            Self::resolve_api_base()
-        };
-        format!("{}/{}", base.trim_end_matches('/'), RESPONSES_PATH)
-    }
-
-    /// Resolve the OpenAI Responses API base URL for **API-key** mode.
-    ///
-    /// Defaults to `https://api.openai.com/v1`, but honors a user override so
-    /// the native `openai-api` provider can target a local/proxied Responses
-    /// API endpoint (issue #343). Checked in order:
-    /// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
-    ///
-    /// The override must be an absolute `http(s)://` URL; anything else is
-    /// logged and ignored so a malformed value never silently breaks requests.
-    /// A `/responses` suffix is not expected here (it is appended by callers),
-    /// so a trailing `/responses` is trimmed to avoid `.../responses/responses`.
-    pub(crate) fn resolve_api_base() -> String {
-        const OVERRIDE_VARS: [&str; 3] = [
-            "JCODE_OPENAI_API_BASE",
-            "OPENAI_BASE_URL",
-            "OPENAI_API_BASE",
-        ];
-        for var in OVERRIDE_VARS {
-            let Ok(raw) = std::env::var(var) else {
-                continue;
-            };
-            let trimmed = raw.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
-                crate::logging::warn(&format!(
-                    "Ignoring invalid {} '{}'; expected an absolute http(s):// URL",
-                    var, trimmed
-                ));
-                continue;
-            }
-            let normalized = trimmed
-                .trim_end_matches('/')
-                .trim_end_matches("/responses")
-                .trim_end_matches('/');
-            if normalized.is_empty() {
-                crate::logging::warn(&format!(
-                    "Ignoring invalid {} '{}'; URL has no host/path",
-                    var, trimmed
-                ));
-                continue;
-            }
-            crate::logging::info(&format!(
-                "OpenAI Responses API base overridden to '{}' via {}",
-                normalized, var
-            ));
-            return normalized.to_string();
-        }
-        // Fall back to the active Codex Responses provider base URL from
-        // `~/.codex/config.toml` so OpenAI-compatible API-key traffic honors a
-        // gateway configured there, before defaulting to api.openai.com (#374).
-        if let Some(base) = Self::codex_config_responses_base() {
-            crate::logging::info(&format!(
-                "OpenAI Responses API base resolved to '{}' from ~/.codex/config.toml",
-                base
-            ));
-            return base;
-        }
-        OPENAI_API_BASE.to_string()
-    }
-
-    /// Read the active Codex model_provider's `base_url` from
-    /// `~/.codex/config.toml` when it serves the Responses wire API.
-    ///
-    /// Codex config shape:
-    /// ```toml
-    /// model_provider = "mygw"
-    /// [model_providers.mygw]
-    /// base_url = "https://gateway.example/v1"
-    /// wire_api = "responses"   # only "responses" is honored here
-    /// ```
-    /// Returns `None` when the file/keys are missing, the URL is not absolute
-    /// http(s), or the provider's `wire_api` is not `responses`.
-    fn codex_config_responses_base() -> Option<String> {
-        let path = crate::storage::user_home_path(".codex/config.toml").ok()?;
-        let contents = std::fs::read_to_string(&path).ok()?;
-        let value: toml::Value = contents.parse().ok()?;
-
-        let provider_name = value.get("model_provider")?.as_str()?.trim();
-        if provider_name.is_empty() {
-            return None;
-        }
-        let provider = value
-            .get("model_providers")?
-            .as_table()?
-            .get(provider_name)?
-            .as_table()?;
-
-        // Only honor providers that speak the Responses wire API. When the key
-        // is absent, Codex defaults to the Responses API for OpenAI-style
-        // providers, so treat "missing" as eligible.
-        if let Some(wire_api) = provider.get("wire_api").and_then(|v| v.as_str())
-            && !wire_api.trim().eq_ignore_ascii_case("responses")
-        {
-            return None;
-        }
-
-        let base = provider.get("base_url")?.as_str()?.trim();
-        if !(base.starts_with("http://") || base.starts_with("https://")) {
+        if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
             crate::logging::warn(&format!(
-                "Ignoring ~/.codex/config.toml base_url '{}' for provider '{}'; expected an absolute http(s):// URL",
-                base, provider_name
+                "Ignoring invalid {} '{}'; expected an absolute http(s):// URL",
+                var, trimmed
             ));
-            return None;
+            continue;
         }
-        let normalized = base
+        let normalized = trimmed
             .trim_end_matches('/')
             .trim_end_matches("/responses")
             .trim_end_matches('/');
         if normalized.is_empty() {
-            return None;
+            crate::logging::warn(&format!(
+                "Ignoring invalid {} '{}'; URL has no host/path",
+                var, trimmed
+            ));
+            continue;
         }
-        Some(normalized.to_string())
+        crate::logging::info(&format!(
+            "OpenAI Responses API base overridden to '{}' via {}",
+            normalized, var
+        ));
+        return normalized.to_string();
     }
-
-    fn responses_ws_url(credentials: &CodexCredentials) -> String {
-        let base = Self::responses_url(credentials);
-        base.replace("https://", "wss://")
-            .replace("http://", "ws://")
+    // Fall back to the active Codex Responses provider base URL from
+    // `~/.codex/config.toml` so OpenAI-compatible API-key traffic honors a
+    // gateway configured there, before defaulting to api.openai.com (#374).
+    if let Some(base) = codex_config_responses_base() {
+        crate::logging::info(&format!(
+            "OpenAI Responses API base resolved to '{}' from ~/.codex/config.toml",
+            base
+        ));
+        return base;
     }
-
-    fn responses_compact_url(credentials: &CodexCredentials) -> String {
-        format!("{}/compact", Self::responses_url(credentials))
-    }
-
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "request construction threads explicit per-request OpenAI settings without hidden state"
-    )]
-    fn build_response_request(
-        model_id: &str,
-        instructions: String,
-        input: &[Value],
-        api_tools: &[Value],
-        is_chatgpt_mode: bool,
-        max_output_tokens: Option<u32>,
-        reasoning_effort: Option<&str>,
-        service_tier: Option<&str>,
-        prompt_cache_key: Option<&str>,
-        prompt_cache_retention: Option<&str>,
-        native_compaction_threshold: Option<usize>,
-    ) -> Value {
-        let mut tools = api_tools.to_vec();
-        // The hosted `image_generation` tool is only available to general
-        // ChatGPT/GPT models on the Responses backend. Codex models
-        // (`*-codex*`) reject unknown hosted tools, so don't attach it for them.
-        if is_chatgpt_mode && model_supports_image_generation(model_id) {
-            tools.push(serde_json::json!({ "type": "image_generation" }));
-        }
-
-        let mut request = serde_json::json!({
-            "model": model_id,
-            "instructions": instructions,
-            "input": input,
-            "tools": tools,
-            "tool_choice": "auto",
-            "parallel_tool_calls": false,
-            "stream": true,
-            "store": false,
-            "include": ["reasoning.encrypted_content"],
-        });
-
-        if !is_chatgpt_mode && let Some(max_output_tokens) = max_output_tokens {
-            request["max_output_tokens"] = serde_json::json!(max_output_tokens);
-        }
-
-        if let Some(effort) = reasoning_effort {
-            request["reasoning"] = serde_json::json!({ "effort": effort });
-        }
-
-        if let Some(service_tier) = service_tier {
-            request["service_tier"] = serde_json::json!(service_tier);
-        }
-
-        if let Some(compact_threshold) = native_compaction_threshold {
-            request["context_management"] = serde_json::json!([
-                {
-                    "type": "compaction",
-                    "compact_threshold": compact_threshold,
-                }
-            ]);
-        }
-
-        if !is_chatgpt_mode {
-            if let Some(key) = prompt_cache_key {
-                request["prompt_cache_key"] = serde_json::json!(key);
-            }
-            if let Some(retention) =
-                Self::effective_prompt_cache_retention(model_id, prompt_cache_retention)
-            {
-                request["prompt_cache_retention"] = serde_json::json!(retention);
-            }
-        }
-
-        request
-    }
-
-    async fn model_id(&self) -> String {
-        let current = self.model.read().await.clone();
-        let availability = crate::provider::model_availability_for_account(&current);
-
-        match availability.state {
-            crate::provider::AccountModelAvailabilityState::Unavailable => {
-                if let Some(detail) = availability.reason {
-                    crate::logging::info(&format!(
-                        "Model '{}' currently unavailable ({}); selecting fallback",
-                        current, detail
-                    ));
-                }
-                if let Some(fallback) = crate::provider::get_best_available_openai_model()
-                    && fallback != current
-                {
-                    crate::logging::info(&format!(
-                        "Model '{}' not available for account; falling back to '{}'",
-                        current, fallback
-                    ));
-                    {
-                        let mut w = self.model.write().await;
-                        *w = fallback.clone();
-                    }
-                    self.clear_persistent_ws(
-                        "automatic OpenAI model fallback changed the response chain",
-                    )
-                    .await;
-                    return fallback;
-                }
-            }
-            crate::provider::AccountModelAvailabilityState::Unknown => {
-                if crate::provider::should_refresh_openai_model_catalog()
-                    && crate::provider::begin_openai_model_catalog_refresh()
-                {
-                    let creds = self.credentials.read().await;
-                    let token = creds.access_token.clone();
-                    let is_chatgpt_mode = Self::is_chatgpt_mode(&creds);
-                    drop(creds);
-                    crate::provider::refresh_openai_model_catalog_in_background(
-                        token,
-                        is_chatgpt_mode,
-                        "openai-request-setup",
-                    );
-                }
-            }
-            crate::provider::AccountModelAvailabilityState::Available => {}
-        }
-
-        current.strip_suffix("[1m]").unwrap_or(&current).to_string()
-    }
-
-    fn diagnostic_persistent_ws_summary(&self) -> String {
-        match self.persistent_ws.try_lock() {
-            Ok(guard) => guard
-                .as_ref()
-                .map(|state| state.diag_snapshot().log_fields())
-                .unwrap_or_else(|| PersistentWsDiagSnapshot::absent().log_fields()),
-            Err(_) => "persistent_ws=busy".to_string(),
-        }
-    }
-
-    pub fn diagnostic_state_summary(&self) -> String {
-        let transport_mode = self
-            .transport_mode
-            .try_read()
-            .map(|mode| mode.as_str().to_string())
-            .unwrap_or_else(|_| "busy".to_string());
-        format!(
-            "transport_mode={} {}",
-            transport_mode,
-            self.diagnostic_persistent_ws_summary()
-        )
-    }
+    OPENAI_API_BASE.to_string()
 }
 
-mod stream;
+/// Read the active Codex model_provider's `base_url` from
+/// `~/.codex/config.toml` when it serves the Responses wire API.
+///
+/// Codex config shape:
+/// ```toml
+/// model_provider = "mygw"
+/// [model_providers.mygw]
+/// base_url = "https://gateway.example/v1"
+/// wire_api = "responses"   # only "responses" is honored here
+/// ```
+/// Returns `None` when the file/keys are missing, the URL is not absolute
+/// http(s), or the provider's `wire_api` is not `responses`.
+fn codex_config_responses_base() -> Option<String> {
+    let path = crate::storage::user_home_path(".codex/config.toml").ok()?;
+    let contents = std::fs::read_to_string(&path).ok()?;
+    let value: toml::Value = contents.parse().ok()?;
 
-use self::openai_stream_runtime::{PersistentWsResult, is_retryable_error, openai_access_token};
+    let provider_name = value.get("model_provider")?.as_str()?.trim();
+    if provider_name.is_empty() {
+        return None;
+    }
+    let provider = value
+        .get("model_providers")?
+        .as_table()?
+        .get(provider_name)?
+        .as_table()?;
 
-use self::stream::{OpenAIResponsesStream, parse_openai_response_event};
-#[cfg(test)]
-use self::stream::{handle_openai_output_item, parse_text_wrapped_tool_call};
+    // Only honor providers that speak the Responses wire API. When the key
+    // is absent, Codex defaults to the Responses API for OpenAI-style
+    // providers, so treat "missing" as eligible.
+    if let Some(wire_api) = provider.get("wire_api").and_then(|v| v.as_str())
+        && !wire_api.trim().eq_ignore_ascii_case("responses")
+    {
+        return None;
+    }
 
-#[path = "openai_provider_impl.rs"]
-mod openai_provider_impl;
-#[path = "openai_stream_runtime.rs"]
-mod openai_stream_runtime;
+    let base = provider.get("base_url")?.as_str()?.trim();
+    if !(base.starts_with("http://") || base.starts_with("https://")) {
+        crate::logging::warn(&format!(
+            "Ignoring ~/.codex/config.toml base_url '{}' for provider '{}'; expected an absolute http(s):// URL",
+            base, provider_name
+        ));
+        return None;
+    }
+    let normalized = base
+        .trim_end_matches('/')
+        .trim_end_matches("/responses")
+        .trim_end_matches('/');
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(normalized.to_string())
+}
 
-mod websocket_health;
-
-use self::websocket_health::{
-    WEBSOCKET_COMPLETION_TIMEOUT_SECS, WEBSOCKET_FALLBACK_NOTICE,
-    WEBSOCKET_FIRST_EVENT_TIMEOUT_SECS, classify_websocket_fallback_reason,
-    is_stream_activity_event, is_websocket_activity_payload, is_websocket_fallback_notice,
-    is_websocket_first_activity_payload, record_websocket_fallback, record_websocket_success,
-    summarize_websocket_fallback_reason, websocket_activity_timeout_kind,
-    websocket_cooldown_remaining, websocket_next_activity_timeout_secs_with_completion,
-};
-#[cfg(test)]
-use self::websocket_health::{
-    WEBSOCKET_MODEL_COOLDOWN_BASE_SECS, WEBSOCKET_MODEL_COOLDOWN_MAX_SECS, WebsocketFallbackReason,
-    clear_websocket_cooldown, normalize_transport_model, set_websocket_cooldown,
-    websocket_cooldown_for_streak, websocket_next_activity_timeout_secs,
-    websocket_remaining_timeout_secs,
-};
-
-#[cfg(test)]
-#[path = "openai_tests.rs"]
-mod tests;
+/// Whether `model_id` supports OpenAI's extended prompt-cache retention.
+pub fn supports_extended_prompt_cache_retention(model_id: &str) -> bool {
+    let model = model_id.trim().to_ascii_lowercase();
+    model.starts_with("gpt-5.5")
+        || model.starts_with("gpt-5.4")
+        || model.starts_with("gpt-5.2")
+        || model.starts_with("gpt-5.1")
+        || model == "gpt-5"
+}

@@ -3269,6 +3269,7 @@ dependencies = [
  "jcode-provider-cursor-runtime",
  "jcode-provider-doctor",
  "jcode-provider-gemini-runtime",
+ "jcode-provider-openai-runtime",
  "jcode-selfdev-types",
  "jcode-tui",
  "jcode-tui-session-picker",
@@ -3862,6 +3863,7 @@ dependencies = [
  "jcode-provider-cursor-runtime",
  "jcode-provider-gemini-runtime",
  "jcode-provider-metadata",
+ "jcode-provider-openai-runtime",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3933,6 +3935,29 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "jcode-provider-openai-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dirs",
+ "futures",
+ "jcode-base",
+ "jcode-message-types",
+ "jcode-provider-core",
+ "jcode-provider-openai",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "uuid",
 ]
 
 [[package]]
