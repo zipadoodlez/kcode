@@ -62,6 +62,34 @@ pub fn validate_swarm_tldr(
 /// further spawns are refused.
 pub const MAX_SWARM_MEMBERS: usize = 1000;
 
+/// Upper bound for a member's derived task label, sized for one-line UI chips.
+pub const MAX_SWARM_TASK_LABEL_CHARS: usize = 48;
+
+/// Derive a short, stable task label from a spawn prompt or task assignment.
+///
+/// Takes the first non-empty line, strips common markdown/list prefixes,
+/// collapses whitespace, and truncates on a char boundary with an ellipsis.
+/// Returns `None` when the text has no usable content.
+pub fn derive_swarm_task_label(text: &str) -> Option<String> {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let line = line
+        .trim_start_matches(['#', '-', '*', '>', ' '])
+        .trim_end_matches(':')
+        .trim();
+    let collapsed = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        return None;
+    }
+    if collapsed.chars().count() <= MAX_SWARM_TASK_LABEL_CHARS {
+        return Some(collapsed);
+    }
+    let truncated: String = collapsed
+        .chars()
+        .take(MAX_SWARM_TASK_LABEL_CHARS.saturating_sub(1))
+        .collect();
+    Some(format!("{}…", truncated.trim_end()))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SwarmRole {
     Agent,
@@ -197,6 +225,9 @@ pub struct SwarmMemberRecord {
     pub swarm_enabled: bool,
     pub status: SwarmLifecycleStatus,
     pub detail: Option<String>,
+    /// Stable label of the task/role this member was spawned or assigned for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_label: Option<String>,
     pub friendly_name: Option<String>,
     pub report_back_to_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -751,5 +782,36 @@ mod tests {
         index.remove_session("worker-1");
         assert!(index.channels_for_session("worker-1", "swarm-a").is_empty());
         assert_eq!(index.members("swarm-a", "tests"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn task_label_takes_first_line_strips_prefixes_and_collapses_whitespace() {
+        assert_eq!(
+            derive_swarm_task_label("Fix the   parser\n\nMore detail here"),
+            Some("Fix the parser".to_string())
+        );
+        assert_eq!(
+            derive_swarm_task_label("\n\n  ## Investigate flaky test:  \nbody"),
+            Some("Investigate flaky test".to_string())
+        );
+        assert_eq!(
+            derive_swarm_task_label("- review PR #42"),
+            Some("review PR #42".to_string())
+        );
+    }
+
+    #[test]
+    fn task_label_truncates_long_prompts_with_ellipsis() {
+        let long = "implement the entire authentication subsystem including oauth flows";
+        let label = derive_swarm_task_label(long).unwrap();
+        assert!(label.chars().count() <= MAX_SWARM_TASK_LABEL_CHARS);
+        assert!(label.ends_with('…'), "got: {label}");
+    }
+
+    #[test]
+    fn task_label_rejects_empty_or_marker_only_text() {
+        assert_eq!(derive_swarm_task_label(""), None);
+        assert_eq!(derive_swarm_task_label("   \n\t\n"), None);
+        assert_eq!(derive_swarm_task_label("###"), None);
     }
 }

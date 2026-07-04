@@ -13,8 +13,8 @@ use super::{
     ClientConnectionInfo, SwarmEvent, SwarmEventType, SwarmMember, SwarmMutationRuntime,
     SwarmState, SwarmTaskProgress, VersionedPlan, broadcast_swarm_plan,
     broadcast_swarm_plan_with_previous, broadcast_swarm_status, fanout_session_event,
-    persist_swarm_state_for, queue_soft_interrupt_for_session, record_swarm_event, truncate_detail,
-    update_member_status, update_member_status_with_report,
+    persist_swarm_state_for, queue_soft_interrupt_for_session, record_swarm_event,
+    set_member_task_label, truncate_detail, update_member_status, update_member_status_with_report,
 };
 use crate::agent::Agent;
 use crate::plan::{
@@ -810,6 +810,7 @@ fn spawn_assigned_task_run(
             &swarms_by_id,
         )
         .await;
+        set_member_task_label(&target_session, &assignment_text, &swarm_members).await;
         update_member_status(
             &target_session,
             "running",
@@ -1740,6 +1741,7 @@ async fn handle_comm_assign_task_with_mode(
     };
     let queued_task_prompt = append_swarm_completion_report_instructions(&notification);
     let assignment_text = combine_assignment_text(&content, message.as_deref());
+    set_member_task_label(&target_session, &assignment_text, swarm_members).await;
     update_member_status(
         &target_session,
         "queued",

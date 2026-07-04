@@ -20,6 +20,7 @@ fn strip_member(id: &str, name: &str, status: &str) -> SwarmMemberStatus {
         friendly_name: Some(name.to_string()),
         status: status.to_string(),
         detail: Some("working on task".to_string()),
+        task_label: None,
         role: None,
         is_headless: Some(true),
         live_attachments: None,

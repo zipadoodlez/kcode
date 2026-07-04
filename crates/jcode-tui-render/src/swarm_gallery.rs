@@ -131,6 +131,10 @@ pub struct GalleryMember {
     pub label: String,
     /// Lifecycle status string (drives the badge text and accent color).
     pub status: String,
+    /// Short label of the task this member was spawned/assigned for. Shown
+    /// dimmed next to the name on the strip so the line answers "who is doing
+    /// what", not just "who exists".
+    pub task: Option<String>,
     /// Swarm role, if any (drives the title glyph and sort order).
     pub role: Option<String>,
     /// Pre-rendered body lines shown inside the tile.
@@ -284,6 +288,12 @@ pub fn render_swarm_panel(
     out
 }
 
+/// Bounds for per-chip task labels on the strip: never wider than MAX (keeps
+/// one agent from dominating the line) and dropped entirely below MIN (a two-
+/// column "·…" label is noise, not information).
+const CHIP_TASK_MAX_W: usize = 24;
+const CHIP_TASK_MIN_W: usize = 6;
+
 /// A key/label pair for the swarm strip hint line.
 pub struct SwarmStripHint {
     /// The key chord to show, e.g. "alt+n" or "j/k".
@@ -347,10 +357,14 @@ pub fn render_swarm_strip(
     let gap = 2usize; // minimum gap between chips and the right tail
     let hint_w = hint_text.map(|h| disp_w(h) + disp_w(hint_sep)).unwrap_or(0);
 
-    // ---- Chips: "<glyph> <name>[ done/total]" ----
+    // ---- Chips: "<glyph> <name>[·task][ done/total]" ----
+    // Task labels are additive: chips are fitted by their base width (glyph +
+    // name + todo) so a long task can never hide other agents; leftover line
+    // width is then shared out to task labels (see below).
     struct Chip {
         glyph: String,
         name: String,
+        task: Option<String>,
         todo: Option<String>,
         color: Color,
         is_sel: bool,
@@ -361,6 +375,11 @@ pub fn render_swarm_strip(
         .map(|(idx, m)| Chip {
             glyph: status_glyph(&m.status, spinner_frame).to_string(),
             name: m.label.clone(),
+            task: m
+                .task
+                .as_deref()
+                .filter(|t| !t.trim().is_empty())
+                .map(|t| truncate_label(t, CHIP_TASK_MAX_W)),
             todo: m.todo.map(|(done, total)| format!("{done}/{total}")),
             color: status_accent(&m.status),
             is_sel: idx == selected,
@@ -429,7 +448,33 @@ pub fn render_swarm_strip(
     let show_hint = tail_w > tally_w;
     let show_tally = tail_w > 0;
 
+    // ---- Task label allocation: share leftover width across shown chips ----
+    // Only when every chip already fits does the strip spend columns on task
+    // labels, splitting the slack evenly (each capped at CHIP_TASK_MAX_W,
+    // dropped entirely below CHIP_TASK_MIN_W so we never show "·…").
+    let per_task_w: usize = {
+        let budget = width.saturating_sub(lead_w + if tail_w > 0 { tail_w + gap } else { 0 });
+        let leftover = budget.saturating_sub(chips_used);
+        let task_count = chips
+            .iter()
+            .take(shown)
+            .filter(|c| c.task.is_some())
+            .count();
+        if shown == chips.len() && task_count > 0 {
+            // +1 per label for the '·' separator.
+            let per = leftover / task_count;
+            if per >= CHIP_TASK_MIN_W + 1 {
+                (per - 1).min(CHIP_TASK_MAX_W)
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    };
+
     let mut spans: Vec<Span<'static>> = lead;
+    let mut task_used = 0usize;
     let used: usize;
     if shown == 0 && !chips.is_empty() {
         // Degenerate width: show the first chip truncated.
@@ -453,6 +498,16 @@ pub fn render_swarm_strip(
                 style = style.add_modifier(Modifier::BOLD);
             }
             spans.push(Span::styled(format!("{} {}", chip.glyph, chip.name), style));
+            if per_task_w > 0
+                && let Some(task) = &chip.task
+            {
+                let label = truncate_label(task, per_task_w);
+                task_used += 1 + disp_w(&label);
+                spans.push(Span::styled(
+                    format!("·{label}"),
+                    Style::default().fg(rgb(150, 150, 160)),
+                ));
+            }
             if let Some(todo) = &chip.todo {
                 spans.push(Span::styled(
                     format!(" {todo}"),
@@ -467,7 +522,7 @@ pub fn render_swarm_strip(
                 Style::default().fg(rgb(140, 140, 150)),
             ));
         }
-        used = chips_used;
+        used = chips_used + task_used;
     }
 
     // ---- Right-align the tail (tally [+ hint]) ----
@@ -1162,6 +1217,7 @@ mod tests {
         GalleryMember {
             label: id.to_string(),
             status: status.to_string(),
+            task: None,
             role: role.map(str::to_string),
             body: body.iter().map(|s| s.to_string()).collect(),
             sort_key: id.to_string(),
@@ -1499,6 +1555,80 @@ mod tests {
         let lines = render_swarm_strip(&[m], 0, false, &hints(), None, 0, 90, 12);
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("8/16"), "todo counter missing: {chips}");
+    }
+
+    #[test]
+    fn strip_shows_task_label_when_width_allows() {
+        let mut a = member("fox", "running", None, &[]);
+        a.task = Some("fix parser".to_string());
+        let mut b = member("owl", "running", None, &[]);
+        b.task = Some("write docs".to_string());
+        let lines = render_swarm_strip(&[a, b], 0, false, &hints(), None, 0, 100, 12);
+        let chips = plain_line(&lines[0]);
+        assert!(chips.contains("fox·fix parser"), "got: {chips}");
+        assert!(chips.contains("owl·write docs"), "got: {chips}");
+        assert!(lines[0].width() <= 100);
+    }
+
+    #[test]
+    fn strip_drops_task_labels_before_hiding_agents() {
+        // Same members with and without long task labels: labels are additive
+        // only, so they must never reduce how many agents are visible.
+        let base: Vec<GalleryMember> = (0..8)
+            .map(|i| member(&format!("agent{i}"), "running", None, &[]))
+            .collect();
+        let with_tasks: Vec<GalleryMember> = base
+            .iter()
+            .map(|m| {
+                let mut m = m.clone();
+                m.task = Some("a very long task description that would eat the line".into());
+                m
+            })
+            .collect();
+        for width in [40usize, 60, 90, 120] {
+            let plain = plain_line(&render_swarm_strip(
+                &base,
+                0,
+                false,
+                &hints(),
+                None,
+                0,
+                width,
+                12,
+            )[0]);
+            let labeled_lines =
+                render_swarm_strip(&with_tasks, 0, false, &hints(), None, 0, width, 12);
+            let labeled = plain_line(&labeled_lines[0]);
+            assert!(labeled_lines[0].width() <= width);
+            let count = |s: &str| (0..8).filter(|i| s.contains(&format!("agent{i}"))).count();
+            assert_eq!(
+                count(&plain),
+                count(&labeled),
+                "labels hid agents at width {width}: plain={plain} labeled={labeled}"
+            );
+        }
+    }
+
+    #[test]
+    fn strip_task_labels_never_break_width_bound_across_widths() {
+        let members: Vec<GalleryMember> = (0..5)
+            .map(|i| {
+                let mut m = member(&format!("worker-{i}"), "running", None, &[]);
+                m.task = Some(format!("task {i}: refactor the swarm gallery renderer"));
+                m.todo = Some((i as u32, 9));
+                m
+            })
+            .collect();
+        for width in 8..200 {
+            let lines = render_swarm_strip(&members, 2, false, &hints(), None, 0, width, 12);
+            for line in &lines {
+                assert!(
+                    line.width() <= width,
+                    "width {width} exceeded: {}",
+                    plain_line(line)
+                );
+            }
+        }
     }
 
     #[test]

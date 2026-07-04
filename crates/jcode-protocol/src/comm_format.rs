@@ -164,6 +164,17 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
                 .as_deref()
                 .map(|detail| format!(" — {}", detail))
                 .unwrap_or_default();
+            // Stable task label: what this agent was spawned/assigned for.
+            // Skip when the transient detail already says the same thing.
+            let task_suffix = match member.task_label.as_deref() {
+                Some(task)
+                    if !task.trim().is_empty()
+                        && member.detail.as_deref().is_none_or(|d| !d.contains(task)) =>
+                {
+                    format!("\n    Task: {}", task)
+                }
+                _ => String::new(),
+            };
             let age_suffix = match member.status_age_secs {
                 Some(age) if status == "ready" || status == "idle" => {
                     format!(" · idle {}", format_secs(age))
@@ -260,7 +271,7 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
             };
 
             output.push_str(&format!(
-                "  {}{} ({})\n    Status: {}{}{}{}{}{}{}{}{}{}{}\n",
+                "  {}{} ({})\n    Status: {}{}{}{}{}{}{}{}{}{}{}{}\n",
                 name,
                 role_label,
                 if is_me { "you" } else { session },
@@ -268,6 +279,7 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
                 detail_suffix,
                 age_suffix,
                 activity_age_suffix,
+                task_suffix,
                 activity_suffix,
                 progress_suffix,
                 work_suffix,

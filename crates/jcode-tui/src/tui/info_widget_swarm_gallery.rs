@@ -62,6 +62,7 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
         .map(|member| GalleryMember {
             label: member_label(member),
             status: member.status.clone(),
+            task: member.task_label.clone(),
             role: member.role.clone(),
             body: member_body(member),
             sort_key: member.session_id.clone(),
@@ -219,6 +220,7 @@ mod tests {
             friendly_name: Some(id.to_string()),
             status: status.to_string(),
             detail: detail.map(str::to_string),
+            task_label: None,
             role: role.map(str::to_string),
             is_headless: Some(true),
             live_attachments: None,

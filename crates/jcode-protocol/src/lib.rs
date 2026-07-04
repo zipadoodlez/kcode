@@ -213,6 +213,9 @@ pub struct AgentInfo {
     /// Optional status detail (current task, error, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// Stable label of the task/role this member was spawned or assigned for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_label: Option<String>,
     /// Role: "agent", "coordinator", "worktree_manager"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
@@ -441,6 +444,10 @@ pub struct SwarmMemberStatus {
     /// Optional detail (task, error, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+    /// Stable label of the task/role this member was spawned or assigned for.
+    /// Unlike `detail`, it is not overwritten by transient status updates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_label: Option<String>,
     /// Role: "agent", "coordinator", "worktree_manager"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,

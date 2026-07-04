@@ -128,6 +128,7 @@ fn main() {
     let gm = |name: &str, role: Option<&str>, status: &str, body: &[&str]| GalleryMember {
         label: name.to_string(),
         status: status.to_string(),
+        task: None,
         role: role.map(str::to_string),
         body: body.iter().map(|s| s.to_string()).collect(),
         sort_key: name.to_string(),

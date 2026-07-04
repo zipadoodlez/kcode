@@ -99,6 +99,7 @@ fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
             GalleryMember {
                 label: w.name.clone(),
                 status: w.status.clone(),
+                task: None,
                 role: w.role.map(str::to_string),
                 body,
                 sort_key: w.name.clone(),

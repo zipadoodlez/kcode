@@ -594,6 +594,7 @@ async fn broadcast_swarm_status_now(
                     friendly_name: m.friendly_name.clone(),
                     status: m.status.clone(),
                     detail: m.detail.clone(),
+                    task_label: m.task_label.clone(),
                     role: Some(m.role.clone()),
                     is_headless: Some(m.is_headless),
                     live_attachments: Some(m.event_txs.len()),
@@ -1043,6 +1044,24 @@ pub(super) async fn remove_session_from_swarm(
         ],
     );
     broadcast_swarm_status(swarm_id, swarm_members, swarms_by_id).await;
+}
+
+/// Set a member's stable task label, derived from its spawn prompt or task
+/// assignment. Unlike `detail` (transient status text), the label survives
+/// status churn so UIs can always answer "what was this agent for?". A later
+/// assignment overwrites the label: the member is now doing that task.
+pub(super) async fn set_member_task_label(
+    session_id: &str,
+    task_text: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) {
+    let Some(label) = jcode_swarm_core::derive_swarm_task_label(task_text) else {
+        return;
+    };
+    let mut members = swarm_members.write().await;
+    if let Some(member) = members.get_mut(session_id) {
+        member.task_label = Some(label);
+    }
 }
 
 pub(super) async fn record_swarm_event(
@@ -1624,6 +1643,7 @@ mod tests {
                 swarm_enabled: true,
                 status: "ready".to_string(),
                 detail: None,
+                task_label: None,
                 friendly_name: Some(session_id.to_string()),
                 report_back_to_session_id: None,
                 latest_completion_report: None,

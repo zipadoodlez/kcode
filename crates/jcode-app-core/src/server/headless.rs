@@ -188,6 +188,7 @@ pub(super) async fn create_headless_session(
                 swarm_enabled,
                 status: "ready".to_string(),
                 detail: None,
+                task_label: None,
                 friendly_name: Some(friendly_name.clone()),
                 report_back_to_session_id: report_back_to_session_id.clone(),
                 latest_completion_report: None,

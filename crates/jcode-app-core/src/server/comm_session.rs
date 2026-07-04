@@ -10,7 +10,7 @@ use super::{
     create_headless_session, fanout_session_event, persist_swarm_state_for, record_swarm_event,
     record_swarm_event_for_session, remove_background_tool_signal,
     remove_session_channel_subscriptions, remove_session_from_swarm,
-    remove_session_interrupt_queue, truncate_detail, update_member_status,
+    remove_session_interrupt_queue, set_member_task_label, truncate_detail, update_member_status,
     update_member_status_with_report,
 };
 use crate::agent::Agent;
@@ -492,6 +492,7 @@ async fn register_visible_spawned_member(
                 swarm_enabled: true,
                 status,
                 detail,
+                task_label: None,
                 friendly_name: Some(friendly_name),
                 report_back_to_session_id: report_back_to_session_id.map(str::to_string),
                 latest_completion_report: None,
@@ -703,6 +704,12 @@ pub(super) async fn spawn_swarm_agent(
             swarm_event_tx,
         )
         .await;
+    }
+    // Label the worker with what it was spawned for (from the raw prompt,
+    // before completion-report boilerplate is appended) so the swarm strip
+    // and member lists can show the task, not just the animal name.
+    if let Some(ref task_text) = initial_message {
+        set_member_task_label(&new_session_id, task_text, swarm_members).await;
     }
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),

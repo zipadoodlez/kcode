@@ -13,6 +13,7 @@ fn member(id: &str, status: &str, role: Option<&str>, body: &[&str]) -> GalleryM
     GalleryMember {
         label: id.to_string(),
         status: status.to_string(),
+        task: None,
         role: role.map(str::to_string),
         body: body.iter().map(|s| s.to_string()).collect(),
         sort_key: id.to_string(),
