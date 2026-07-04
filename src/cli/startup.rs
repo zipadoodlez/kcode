@@ -45,6 +45,12 @@ pub async fn run() -> Result<()> {
         crate::auth::external::load_api_key_for_env,
     );
 
+    // Register externally-implemented provider runtimes with the base
+    // provider registry. These crates sit downstream of jcode-base (so
+    // provider edits do not rebuild the app spine), which means base cannot
+    // name their concrete types; this composition root wires them up instead.
+    register_external_provider_runtimes();
+
     // Invert the legacy safety -> notifications dependency: safety raises a
     // permission request and the notifications layer (which depends on safety
     // types) delivers it via the dispatcher registered here.
@@ -108,6 +114,17 @@ pub async fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Register provider runtimes that live downstream of `jcode-base` with the
+/// base crate's external provider registry. Keep every downstream runtime
+/// registration in this one function so the composition-root wiring stays
+/// discoverable as more providers move out of the base crate.
+pub fn register_external_provider_runtimes() {
+    crate::provider::external::register_external_provider(
+        crate::provider::external::GEMINI_RUNTIME,
+        || std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new()),
+    );
 }
 
 fn parse_and_prepare_args() -> Result<Args> {
@@ -270,5 +287,18 @@ mod tests {
         assert!(matches!(args.command, Some(Command::Update)));
         assert!(!should_spawn_background_update_check(&args));
         assert!(should_auto_install_update(&args));
+    }
+    #[test]
+    fn external_gemini_runtime_registers_and_instantiates() {
+        register_external_provider_runtimes();
+        assert!(crate::provider::external::external_provider_registered(
+            crate::provider::external::GEMINI_RUNTIME
+        ));
+        let provider = crate::provider::external::instantiate_external_provider(
+            crate::provider::external::GEMINI_RUNTIME,
+        )
+        .expect("gemini runtime factory should instantiate");
+        assert_eq!(provider.name(), "gemini");
+        assert!(!provider.model().is_empty());
     }
 }

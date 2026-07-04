@@ -9,6 +9,9 @@ pub mod models;
 pub mod openai_schema;
 pub mod pricing;
 pub mod selection;
+pub mod transport;
+
+pub use transport::is_transient_transport_error;
 
 pub use anthropic::{
     ANTHROPIC_OAUTH_BETA_HEADERS, ANTHROPIC_OAUTH_BETA_HEADERS_1M, AnthropicContextMode,
@@ -456,6 +459,18 @@ impl NativeToolResult {
 
 /// Canonical User-Agent for generic outbound Jcode HTTP requests.
 pub const JCODE_USER_AGENT: &str = concat!("jcode/", env!("CARGO_PKG_VERSION"));
+
+/// Read an HTTP error body without hiding failures behind an empty string.
+///
+/// This is useful after a non-success status when the response is about to be
+/// converted into an error. If reading the body itself fails, the returned text
+/// preserves that failure so callers can include it in their error message.
+pub async fn http_error_body(response: reqwest::Response, context: &str) -> String {
+    match response.text().await {
+        Ok(body) => body,
+        Err(err) => format!("<failed to read {context} response body: {err}>"),
+    }
+}
 
 /// Shared HTTP client for all generic provider requests. Creating a `reqwest::Client` is expensive
 /// (~10ms due to TLS init, connection pool setup), so we reuse a single instance. Provider-specific

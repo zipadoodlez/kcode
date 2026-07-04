@@ -29,7 +29,7 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn gemini_provider(&self) -> Option<Arc<gemini::GeminiProvider>> {
+    pub(super) fn gemini_provider(&self) -> Option<Arc<dyn Provider>> {
         self.gemini
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

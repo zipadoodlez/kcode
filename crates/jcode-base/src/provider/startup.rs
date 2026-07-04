@@ -178,7 +178,7 @@ impl MultiProvider {
         };
 
         let gemini_provider = if has_gemini_creds {
-            Some(Arc::new(gemini::GeminiProvider::new()))
+            external::instantiate_expected_external_provider(external::GEMINI_RUNTIME)
         } else {
             None
         };

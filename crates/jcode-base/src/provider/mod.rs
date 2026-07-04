@@ -10,6 +10,7 @@ pub mod claude;
 pub mod copilot;
 pub mod cursor;
 mod dispatch;
+pub mod external;
 mod failover;
 mod fingerprint;
 pub mod gemini;
@@ -60,11 +61,11 @@ pub use jcode_provider_core::{
     model_name_for_provider, normalize_copilot_model_name, provider_from_model_key,
     shared_http_client, summarize_model_catalog_refresh,
 };
-pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use jcode_provider_core::{
     FallbackPickOptions, error_looks_like_credential_failure, model_route_provider_labels_match,
     pick_next_fallback_route, pick_next_fallback_route_with_options,
 };
+pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use route_builders::{
     build_anthropic_oauth_route, build_copilot_route, build_openai_api_key_route,
     build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
@@ -304,11 +305,11 @@ pub use self::models::{
     note_openai_model_catalog_refresh_attempt, persist_anthropic_model_catalog,
     persist_openai_model_catalog, populate_account_models, populate_anthropic_models,
     populate_context_limits, populate_context_limits_from_config,
-    populate_context_limits_from_config_value, provider_for_model,
-    provider_for_model_with_hint, provider_unavailability_detail_for_account,
-    record_model_unavailable_for_account, record_provider_unavailable_for_account,
-    refresh_openai_model_catalog_in_background, resolve_model_capabilities,
-    should_refresh_anthropic_model_catalog, should_refresh_openai_model_catalog,
+    populate_context_limits_from_config_value, provider_for_model, provider_for_model_with_hint,
+    provider_unavailability_detail_for_account, record_model_unavailable_for_account,
+    record_provider_unavailable_for_account, refresh_openai_model_catalog_in_background,
+    resolve_model_capabilities, should_refresh_anthropic_model_catalog,
+    should_refresh_openai_model_catalog,
 };
 pub use self::selection::DefaultModelSelection;
 use self::selection::{ActiveProvider, ProviderAvailability};
@@ -326,8 +327,10 @@ pub struct MultiProvider {
     copilot_api: RwLock<Option<Arc<copilot::CopilotApiProvider>>>,
     /// Antigravity provider (direct HTTPS, hot-swappable after login)
     antigravity: RwLock<Option<Arc<antigravity::AntigravityProvider>>>,
-    /// Gemini provider (hot-swappable after login)
-    gemini: RwLock<Option<Arc<gemini::GeminiProvider>>>,
+    /// Gemini provider (hot-swappable after login). Held as `dyn Provider`:
+    /// the concrete runtime lives downstream in `jcode-provider-gemini-runtime`
+    /// and is instantiated through `external::instantiate_external_provider`.
+    gemini: RwLock<Option<Arc<dyn Provider>>>,
     /// Cursor provider (native/direct API, hot-swappable after login)
     cursor: RwLock<Option<Arc<cursor::CursorCliProvider>>>,
     /// AWS Bedrock provider (native Converse/ConverseStream, IAM/SigV4)
@@ -1224,13 +1227,16 @@ impl MultiProvider {
         }
 
         let already_has_gemini = self.gemini_provider().is_some();
-        if !already_has_gemini && crate::auth::gemini::load_tokens().is_ok() {
+        if !already_has_gemini
+            && crate::auth::gemini::load_tokens().is_ok()
+            && let Some(gemini) =
+                external::instantiate_expected_external_provider(external::GEMINI_RUNTIME)
+        {
             crate::logging::info("Hot-initialized Gemini provider after login");
             *self
                 .gemini
                 .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                Some(Arc::new(gemini::GeminiProvider::new()));
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(gemini);
         }
 
         let already_has_cursor = self.cursor_provider().is_some();

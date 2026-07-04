@@ -50,6 +50,7 @@ members = [
     "crates/jcode-provider-openrouter",
     "crates/jcode-provider-openai",
     "crates/jcode-provider-gemini",
+    "crates/jcode-provider-gemini-runtime",
     "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
@@ -171,6 +172,10 @@ jcode-tui = { path = "crates/jcode-tui", default-features = false }
 # `jcode provider-doctor` / provider diagnostics; sits downstream of jcode-base
 # so doctor edits do not rebuild the base -> app-core -> tui spine.
 jcode-provider-doctor = { path = "crates/jcode-provider-doctor" }
+# Gemini provider runtime; sits downstream of jcode-base so gemini edits do
+# not rebuild the base -> app-core -> tui spine. Registered with the external
+# provider registry at startup (src/cli/startup.rs).
+jcode-provider-gemini-runtime = { path = "crates/jcode-provider-gemini-runtime" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)

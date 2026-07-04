@@ -581,6 +581,39 @@ fn test_on_auth_changed_hot_initializes_gemini_and_marks_routes_available() {
         let runtime = enter_test_runtime();
         let _enter = runtime.enter();
 
+        // The concrete Gemini runtime lives downstream in
+        // jcode-provider-gemini-runtime, so base tests register a stub through
+        // the same composition-root registry the binary uses. This also
+        // exercises the external-provider hot-init path end to end.
+        struct StubGeminiRuntime;
+        #[async_trait::async_trait]
+        impl Provider for StubGeminiRuntime {
+            async fn complete(
+                &self,
+                _messages: &[Message],
+                _tools: &[ToolDefinition],
+                _system: &str,
+                _resume_session_id: Option<&str>,
+            ) -> anyhow::Result<EventStream> {
+                anyhow::bail!("stub gemini runtime does not stream")
+            }
+            fn name(&self) -> &'static str {
+                "gemini"
+            }
+            fn model(&self) -> String {
+                "gemini-2.5-pro".to_string()
+            }
+            fn available_models_display(&self) -> Vec<String> {
+                vec!["gemini-2.5-pro".to_string()]
+            }
+            fn fork(&self) -> std::sync::Arc<dyn Provider> {
+                std::sync::Arc::new(StubGeminiRuntime)
+            }
+        }
+        external::register_external_provider(external::GEMINI_RUNTIME, || {
+            std::sync::Arc::new(StubGeminiRuntime)
+        });
+
         crate::auth::gemini::save_tokens(&crate::auth::gemini::GeminiTokens {
             access_token: "test-access-token".to_string(),
             refresh_token: "test-refresh-token".to_string(),

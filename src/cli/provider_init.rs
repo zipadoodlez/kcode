@@ -1288,7 +1288,7 @@ pub async fn login_and_bootstrap_provider(
             disable_subscription_runtime_mode();
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
-            Arc::new(provider::gemini::GeminiProvider::new())
+            Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
         LoginProviderTarget::Antigravity => {
             disable_subscription_runtime_mode();
@@ -1444,7 +1444,7 @@ async fn init_provider_with_options(
             }
             unlock_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
-            Arc::new(provider::gemini::GeminiProvider::new())
+            Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
         ProviderChoice::Openrouter => {
             disable_subscription_runtime_mode();
