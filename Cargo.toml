@@ -53,6 +53,7 @@ members = [
     "crates/jcode-provider-gemini-runtime",
     "crates/jcode-provider-cursor-runtime",
     "crates/jcode-provider-antigravity-runtime",
+    "crates/jcode-provider-copilot-runtime",
     "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
@@ -180,6 +181,7 @@ jcode-provider-doctor = { path = "crates/jcode-provider-doctor" }
 jcode-provider-gemini-runtime = { path = "crates/jcode-provider-gemini-runtime" }
 jcode-provider-cursor-runtime = { path = "crates/jcode-provider-cursor-runtime" }
 jcode-provider-antigravity-runtime = { path = "crates/jcode-provider-antigravity-runtime" }
+jcode-provider-copilot-runtime = { path = "crates/jcode-provider-copilot-runtime" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)

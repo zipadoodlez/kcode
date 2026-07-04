@@ -797,6 +797,15 @@ impl StubExternalRuntime {
             antigravity::AVAILABLE_MODELS,
         )
     }
+
+    fn copilot() -> Self {
+        Self::new(
+            "copilot",
+            "GitHub Copilot",
+            "copilot",
+            copilot::FALLBACK_MODELS,
+        )
+    }
 }
 
 #[async_trait::async_trait]
@@ -868,6 +877,10 @@ fn test_cursor_runtime() -> Arc<dyn Provider> {
 
 fn test_antigravity_runtime() -> Arc<dyn Provider> {
     Arc::new(StubExternalRuntime::antigravity())
+}
+
+fn test_copilot_runtime() -> Arc<dyn Provider> {
+    Arc::new(StubExternalRuntime::copilot())
 }
 
 fn test_multi_provider_with_cursor() -> MultiProvider {

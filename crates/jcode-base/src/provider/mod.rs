@@ -3,7 +3,6 @@ mod account_failover;
 pub mod activation;
 pub mod anthropic;
 pub mod antigravity;
-mod attempt_tracker;
 pub mod bedrock;
 mod catalog_routes;
 pub mod claude;
@@ -50,6 +49,7 @@ pub use catalog_routes::{
     remote_model_routes_lightweight_fallback, remote_model_should_offer_copilot_route,
     remote_openai_compatible_route_for_model, simplified_model_routes_for_picker,
 };
+pub use jcode_provider_core::attempt_tracker;
 pub use jcode_provider_core::cli_provider_arg_for_session_key;
 pub use jcode_provider_core::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, CHEAPNESS_REFERENCE_INPUT_TOKENS,
@@ -74,7 +74,7 @@ pub use route_builders::{
 };
 pub(crate) use routing::{
     anthropic_api_key_route_availability, anthropic_oauth_route_availability,
-    is_transient_transport_error, should_eager_detect_copilot_tier,
+    is_transient_transport_error,
 };
 
 /// Process-wide handle to the live agent provider.
@@ -323,8 +323,11 @@ pub struct MultiProvider {
     /// Direct Anthropic API provider (no Python dependency)
     anthropic: RwLock<Option<Arc<anthropic::AnthropicProvider>>>,
     openai: RwLock<Option<Arc<openai::OpenAIProvider>>>,
-    /// GitHub Copilot API provider (direct API, hot-swappable after login)
-    copilot_api: RwLock<Option<Arc<copilot::CopilotApiProvider>>>,
+    /// GitHub Copilot API provider (direct API, hot-swappable after login).
+    /// Held as `dyn Provider`: the concrete runtime lives downstream in
+    /// `jcode-provider-copilot-runtime` and is instantiated through
+    /// `external::instantiate_external_provider`.
+    copilot_api: RwLock<Option<Arc<dyn Provider>>>,
     /// Antigravity provider (direct HTTPS, hot-swappable after login). Held as
     /// `dyn Provider`: the concrete runtime lives downstream in
     /// `jcode-provider-antigravity-runtime` and is instantiated through
@@ -1198,27 +1201,16 @@ impl MultiProvider {
         let already_has = self.copilot_provider().is_some();
         if !already_has {
             let status = crate::auth::AuthStatus::check_fast();
-            if status.copilot_has_api_token {
-                match copilot::CopilotApiProvider::new() {
-                    Ok(p) => {
-                        crate::logging::info("Hot-initialized Copilot API provider after login");
-                        let provider = Arc::new(p);
-                        let p_clone = provider.clone();
-                        tokio::spawn(async move {
-                            p_clone.detect_tier_and_set_default().await;
-                        });
-                        *self
-                            .copilot_api
-                            .write()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
-                    }
-                    Err(e) => {
-                        crate::logging::info(&format!(
-                            "Failed to hot-initialize Copilot API after login: {}",
-                            e
-                        ));
-                    }
-                }
+            // The composition-root factory schedules tier detection itself.
+            if status.copilot_has_api_token
+                && let Some(provider) =
+                    external::instantiate_expected_external_provider(external::COPILOT_RUNTIME)
+            {
+                crate::logging::info("Hot-initialized Copilot API provider after login");
+                *self
+                    .copilot_api
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
             }
         }
 
@@ -2382,7 +2374,7 @@ impl Provider for MultiProvider {
 
     fn premium_mode(&self) -> PremiumMode {
         if let Some(copilot) = self.copilot_provider() {
-            copilot.get_premium_mode()
+            copilot.premium_mode()
         } else {
             PremiumMode::Normal
         }

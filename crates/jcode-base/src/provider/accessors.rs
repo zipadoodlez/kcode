@@ -36,7 +36,7 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn copilot_provider(&self) -> Option<Arc<copilot::CopilotApiProvider>> {
+    pub(super) fn copilot_provider(&self) -> Option<Arc<dyn Provider>> {
         self.copilot_api
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())

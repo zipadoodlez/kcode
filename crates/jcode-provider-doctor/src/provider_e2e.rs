@@ -1468,9 +1468,9 @@ impl NativeProviderKind {
                 // the default grace window the doctor's immediate prefetch returns
                 // early without marking init done, so the live probes would hang.
                 jcode_base::env::set_var("JCODE_COPILOT_PREFETCH_STARTUP_GRACE_MS", "0");
-                let runtime = match jcode_base::provider::copilot::CopilotApiProvider::new() {
+                let runtime = match jcode_provider_copilot_runtime::CopilotApiProvider::new() {
                     Ok(runtime) => runtime,
-                    Err(_) => jcode_base::provider::copilot::CopilotApiProvider::new_with_token(
+                    Err(_) => jcode_provider_copilot_runtime::CopilotApiProvider::new_with_token(
                         String::new(),
                     ),
                 };

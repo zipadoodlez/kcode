@@ -3289,6 +3289,7 @@ dependencies = [
  "hex",
  "jcode-build-meta",
  "jcode-provider-antigravity-runtime",
+ "jcode-provider-copilot-runtime",
  "jcode-provider-cursor-runtime",
  "jcode-provider-doctor",
  "jcode-provider-gemini-runtime",
@@ -3775,6 +3776,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-provider-copilot-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "dirs",
+ "futures",
+ "hex",
+ "jcode-base",
+ "jcode-message-types",
+ "jcode-provider-copilot",
+ "jcode-provider-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "uuid",
+]
+
+[[package]]
 name = "jcode-provider-core"
 version = "0.1.0"
 dependencies = [
@@ -3783,6 +3808,7 @@ dependencies = [
  "futures",
  "jcode-logging",
  "jcode-message-types",
+ "rand 0.9.3",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3818,6 +3844,7 @@ dependencies = [
  "futures",
  "jcode-base",
  "jcode-provider-antigravity-runtime",
+ "jcode-provider-copilot-runtime",
  "jcode-provider-cursor-runtime",
  "jcode-provider-gemini-runtime",
  "jcode-provider-metadata",

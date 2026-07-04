@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod attempt_tracker;
 pub mod auth_mode;
 pub mod catalog_refresh;
 pub mod failover;
@@ -318,6 +319,13 @@ pub trait Provider: Send + Sync {
     /// Get the current Copilot premium mode.
     fn premium_mode(&self) -> PremiumMode {
         PremiumMode::Normal
+    }
+
+    /// Human-readable freshness note for this provider's model catalog, shown
+    /// as route detail in the model picker (e.g. "cached live catalog" or
+    /// "catalog still loading"). Empty when the catalog is live/authoritative.
+    fn model_catalog_detail(&self) -> String {
+        String::new()
     }
 
     /// Returns true if jcode should use its own compaction for this provider.

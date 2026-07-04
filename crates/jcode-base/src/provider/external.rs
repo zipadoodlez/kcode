@@ -27,7 +27,13 @@ pub const CURSOR_RUNTIME: &str = "cursor";
 /// Registry key for the Antigravity provider runtime.
 pub const ANTIGRAVITY_RUNTIME: &str = "antigravity";
 
-type Factory = Arc<dyn Fn() -> Arc<dyn Provider> + Send + Sync>;
+/// Registry key for the GitHub Copilot provider runtime.
+pub const COPILOT_RUNTIME: &str = "copilot";
+
+/// Factories are fallible: a runtime whose constructor needs credentials
+/// (e.g. Copilot's GitHub token load) returns `None` when they are absent
+/// or invalid, and callers treat that like an unavailable provider.
+type Factory = Arc<dyn Fn() -> Option<Arc<dyn Provider>> + Send + Sync>;
 
 fn registry() -> &'static RwLock<HashMap<&'static str, Factory>> {
     static REGISTRY: OnceLock<RwLock<HashMap<&'static str, Factory>>> = OnceLock::new();
@@ -42,6 +48,18 @@ fn registry() -> &'static RwLock<HashMap<&'static str, Factory>> {
 pub fn register_external_provider<F>(key: &'static str, factory: F)
 where
     F: Fn() -> Arc<dyn Provider> + Send + Sync + 'static,
+{
+    register_external_provider_fallible(key, move || Some(factory()));
+}
+
+/// Register a fallible factory for an externally-implemented provider runtime.
+///
+/// Use this for runtimes whose construction can fail (e.g. a credential load);
+/// returning `None` is treated as "provider unavailable" rather than a wiring
+/// bug.
+pub fn register_external_provider_fallible<F>(key: &'static str, factory: F)
+where
+    F: Fn() -> Option<Arc<dyn Provider>> + Send + Sync + 'static,
 {
     registry()
         .write()
@@ -68,7 +86,7 @@ pub fn instantiate_external_provider(key: &str) -> Option<Arc<dyn Provider>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(key)
         .cloned()?;
-    Some(factory())
+    factory()
 }
 
 /// Instantiate `key`, logging a wiring warning when credentials exist but the

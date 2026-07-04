@@ -16,5 +16,6 @@ jcode-message-types = { path = "../jcode-message-types" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rand = "0.9.3"
 sha2 = "0.10"
 tokio = { version = "1", features = ["sync"] }

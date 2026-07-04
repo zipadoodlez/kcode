@@ -1517,9 +1517,7 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
 #[test]
 fn test_forced_copilot_treats_claude_like_model_as_provider_local() {
     with_clean_provider_test_env(|| {
-        let copilot = Arc::new(copilot::CopilotApiProvider::new_with_token(
-            "test-token".to_string(),
-        ));
+        let copilot = test_copilot_runtime();
         let provider = MultiProvider {
             claude: RwLock::new(None),
             anthropic: RwLock::new(None),

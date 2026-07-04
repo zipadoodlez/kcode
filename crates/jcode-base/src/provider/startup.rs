@@ -141,32 +141,20 @@ impl MultiProvider {
         };
 
         let copilot_api = if has_copilot_api {
+            // The composition-root factory handles construction, tier-detection
+            // scheduling (eager vs non-interactive deferral), and init-done
+            // signaling; None means credentials were missing or invalid.
             let copilot_init_start = std::time::Instant::now();
-            match copilot::CopilotApiProvider::new() {
-                Ok(p) => {
-                    crate::logging::info(&format!(
-                        "Copilot API provider initialized (direct API) in {}ms",
-                        copilot_init_start.elapsed().as_millis()
-                    ));
-                    let provider = Arc::new(p);
-                    if should_eager_detect_copilot_tier() {
-                        let p_clone = provider.clone();
-                        tokio::spawn(async move {
-                            p_clone.detect_tier_and_set_default().await;
-                        });
-                    } else {
-                        crate::logging::info(
-                            "Deferring Copilot tier detection during non-interactive startup",
-                        );
-                        provider.complete_init_without_tier_detection();
-                    }
-                    Some(provider)
-                }
-                Err(e) => {
-                    crate::logging::info(&format!("Failed to initialize Copilot API: {}", e));
-                    None
-                }
+            let provider =
+                external::instantiate_expected_external_provider(external::COPILOT_RUNTIME);
+            match &provider {
+                Some(_) => crate::logging::info(&format!(
+                    "Copilot API provider initialized (direct API) in {}ms",
+                    copilot_init_start.elapsed().as_millis()
+                )),
+                None => crate::logging::info("Failed to initialize Copilot API (no credentials)"),
             }
+            provider
         } else {
             None
         };

@@ -389,6 +389,12 @@ fn test_on_auth_changed_hot_initializes_copilot_and_marks_routes_available() {
             let runtime = enter_test_runtime();
             let _enter = runtime.enter();
 
+            // The concrete Copilot runtime lives downstream; register the
+            // shared test stub through the composition-root registry.
+            external::register_external_provider(external::COPILOT_RUNTIME, || {
+                test_copilot_runtime()
+            });
+
             let provider = MultiProvider {
                 claude: RwLock::new(None),
                 anthropic: RwLock::new(None),

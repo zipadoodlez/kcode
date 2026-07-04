@@ -1,7 +1,3 @@
-pub(crate) fn should_eager_detect_copilot_tier() -> bool {
-    std::env::var("JCODE_NON_INTERACTIVE").is_err()
-}
-
 pub(crate) use jcode_provider_core::is_transient_transport_error;
 
 pub(crate) fn anthropic_oauth_route_availability(model: &str) -> (bool, String) {
