@@ -251,6 +251,15 @@ pub struct RemoteConnection {
 
 const DETACHED_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_STRAY_REMOTE_PROTOCOL_LINES: usize = 32;
+/// Capacity above which the persistent `read_buffer` is considered oversized
+/// once its backlog drains. A single multi-megabyte protocol line (e.g. a
+/// `History` event with embedded images) would otherwise pin that capacity
+/// for the lifetime of the connection.
+const READ_BUFFER_SHRINK_THRESHOLD: usize = 256 * 1024;
+/// Capacity retained after shrinking an oversized `read_buffer`. Comfortably
+/// above typical streaming line sizes so steady-state traffic never causes
+/// grow/shrink thrash.
+const READ_BUFFER_RETAIN_CAPACITY: usize = 64 * 1024;
 
 pub(crate) trait RemoteEventState {
     fn handle_tool_start(&mut self, id: &str, name: &str);
@@ -1031,6 +1040,17 @@ impl RemoteConnection {
         let newline = self.read_buffer.iter().position(|&b| b == b'\n')?;
         let mut line: Vec<u8> = self.read_buffer.drain(..=newline).collect();
         line.pop(); // drop trailing '\n'
+        // A single oversized line (e.g. a multi-megabyte `History` event)
+        // permanently grows this persistent buffer. Once the line has been
+        // split off, release the excess so each connection returns to a small
+        // steady-state footprint. The mostly-unused check (len < cap/4) plus
+        // the retain floor keep normal streaming from ever reallocating.
+        if self.read_buffer.capacity() > READ_BUFFER_SHRINK_THRESHOLD
+            && self.read_buffer.len() < self.read_buffer.capacity() / 4
+        {
+            self.read_buffer
+                .shrink_to(self.read_buffer.len().max(READ_BUFFER_RETAIN_CAPACITY));
+        }
         Some(line)
     }
 
@@ -1590,5 +1610,88 @@ mod tests {
             RemoteRead::Event(ServerEvent::Done { id }) => assert_eq!(id, 2),
             other => panic!("expected second Done event, got {other:?}"),
         }
+    }
+
+    /// A single multi-megabyte protocol line (e.g. a `History` event with
+    /// embedded images) must not pin its full capacity inside the persistent
+    /// `read_buffer` for the rest of the connection. Once the line drains, the
+    /// buffer shrinks back to a bounded size, preserving any partial remainder.
+    #[tokio::test]
+    async fn take_buffered_line_shrinks_oversized_read_buffer() {
+        let mut remote = RemoteConnection::dummy();
+        let large_len = 4 * 1024 * 1024;
+        remote.read_buffer.resize(large_len, b'x');
+        remote.read_buffer.push(b'\n');
+        // Trailing partial fragment of the next line must survive the shrink.
+        remote.read_buffer.extend_from_slice(b"{\"partial");
+        assert!(remote.read_buffer.capacity() > READ_BUFFER_SHRINK_THRESHOLD);
+
+        let line = remote
+            .take_buffered_line()
+            .expect("large buffered line should be returned");
+        assert_eq!(line.len(), large_len);
+        assert_eq!(remote.read_buffer, b"{\"partial");
+        assert!(
+            remote.read_buffer.capacity() <= READ_BUFFER_RETAIN_CAPACITY,
+            "read_buffer should shrink after a large line drains, capacity={}",
+            remote.read_buffer.capacity()
+        );
+    }
+
+    /// Steady-state streaming buffers (small capacity) must never shrink, so
+    /// normal traffic does not thrash between grow and shrink reallocations.
+    #[tokio::test]
+    async fn take_buffered_line_keeps_capacity_for_small_buffers() {
+        let mut remote = RemoteConnection::dummy();
+        remote.read_buffer.reserve(32 * 1024);
+        let capacity = remote.read_buffer.capacity();
+        remote.read_buffer.extend_from_slice(b"hello\n");
+
+        let line = remote
+            .take_buffered_line()
+            .expect("buffered line should be returned");
+        assert_eq!(line, b"hello");
+        assert_eq!(
+            remote.read_buffer.capacity(),
+            capacity,
+            "small read_buffer must retain its capacity"
+        );
+    }
+
+    /// While a large backlog is still buffered (buffer mostly full), capacity
+    /// is retained so draining the remaining lines does not reallocate. Only
+    /// once the backlog empties out does the buffer shrink.
+    #[tokio::test]
+    async fn take_buffered_line_keeps_capacity_while_backlog_remains() {
+        let mut remote = RemoteConnection::dummy();
+        let line_len = 1024 * 1024;
+        for _ in 0..3 {
+            let start = remote.read_buffer.len();
+            remote.read_buffer.resize(start + line_len, b'y');
+            remote.read_buffer.push(b'\n');
+        }
+        let capacity = remote.read_buffer.capacity();
+
+        let first = remote
+            .take_buffered_line()
+            .expect("first buffered line should be returned");
+        assert_eq!(first.len(), line_len);
+        assert_eq!(
+            remote.read_buffer.capacity(),
+            capacity,
+            "capacity must be retained while a large backlog remains buffered"
+        );
+
+        remote
+            .take_buffered_line()
+            .expect("second buffered line should be returned");
+        remote
+            .take_buffered_line()
+            .expect("third buffered line should be returned");
+        assert!(
+            remote.read_buffer.capacity() <= READ_BUFFER_RETAIN_CAPACITY,
+            "read_buffer should shrink once the backlog drains, capacity={}",
+            remote.read_buffer.capacity()
+        );
     }
 }
