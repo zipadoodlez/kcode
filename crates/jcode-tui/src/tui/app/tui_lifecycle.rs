@@ -578,6 +578,7 @@ impl App {
             app_started: Instant::now(),
             client_focused: true,
             runtime_memory_log,
+            idle_heap_release: Default::default(),
             client_binary_mtime: std::env::current_exe()
                 .ok()
                 .and_then(|p| std::fs::metadata(&p).ok())
@@ -985,6 +986,7 @@ impl App {
             app_started: Instant::now(),
             client_focused: true,
             runtime_memory_log,
+            idle_heap_release: Default::default(),
             client_binary_mtime: std::env::current_exe()
                 .ok()
                 .and_then(|p| std::fs::metadata(&p).ok())

@@ -65,6 +65,7 @@ mod event_wrappers;
 mod handterm_native_scroll;
 pub(crate) mod helpers;
 mod hotkey_feedback;
+mod idle_heap_release;
 mod inline_interactive;
 mod input;
 mod input_help;
@@ -1341,6 +1342,8 @@ pub struct App {
     client_focused: bool,
     // Optional client runtime memory logger for low-overhead attribution journaling.
     runtime_memory_log: Option<RuntimeMemoryLogController>,
+    // Once-per-idle-period retained-heap trim state (see idle_heap_release.rs).
+    idle_heap_release: idle_heap_release::IdleHeapRelease,
     // Binary modification time when client started (for smart reload detection)
     client_binary_mtime: Option<std::time::SystemTime>,
     // Rate limit state: when rate limit resets (if rate limited)
