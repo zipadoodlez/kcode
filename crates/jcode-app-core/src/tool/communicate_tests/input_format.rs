@@ -236,6 +236,7 @@ fn format_members_renders_activity_progress_churn_and_turns() {
             latest_completion_report: None,
             live_attachments: Some(1),
             status_age_secs: Some(8),
+            last_activity_age_secs: Some(3),
             activity: Some(SessionActivitySnapshot {
                 is_processing: true,
                 current_tool_name: Some("edit".to_string()),
@@ -261,6 +262,9 @@ fn format_members_renders_activity_progress_churn_and_turns() {
     assert!(text.contains("Model: anthropic/claude-sonnet"), "got: {text}");
     // Running agent shows current-turn duration, not an "idle" label.
     assert!(text.contains("· 8s"), "got: {text}");
+    // Running agent also surfaces last observed activity so a long turn does
+    // not read as a dead worker.
+    assert!(text.contains("· active 3s ago"), "got: {text}");
     assert!(!text.contains("idle"), "got: {text}");
 }
 
@@ -375,6 +379,7 @@ fn format_status_snapshot_includes_activity_and_metadata() {
         is_headless: Some(true),
         live_attachments: Some(0),
         status_age_secs: Some(7),
+        last_activity_age_secs: Some(3),
         joined_age_secs: Some(42),
         files_touched: vec!["src/server/comm_sync.rs".to_string()],
         activity: Some(SessionActivitySnapshot {
@@ -400,7 +405,7 @@ fn format_status_snapshot_includes_activity_and_metadata() {
     assert!(
         output
             .output
-            .contains("Meta: headless · attachments=0 · status_age=7s · joined=42s")
+            .contains("Meta: headless · attachments=0 · active=3s ago · status_age=7s · joined=42s")
     );
     assert!(output.output.contains("Files: src/server/comm_sync.rs"));
 }

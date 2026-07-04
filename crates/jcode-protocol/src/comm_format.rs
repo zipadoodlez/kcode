@@ -169,6 +169,15 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
                 Some(age) => format!(" · {} ago", format_secs(age)),
                 None => String::new(),
             };
+            // Last observed activity (tokens/tools/heartbeats). status_age only
+            // tracks lifecycle transitions, so a worker mid-turn for minutes
+            // looks stale without this even while it streams tokens.
+            let activity_age_suffix = match member.last_activity_age_secs {
+                Some(age) if status == "running" || status == "queued" => {
+                    format!(" · active {} ago", format_secs(age))
+                }
+                _ => String::new(),
+            };
 
             // Live activity: what the agent is doing right now.
             let activity_suffix = match member.activity.as_ref() {
@@ -248,13 +257,14 @@ pub fn format_comm_members(current_session_id: &str, members: &[AgentInfo]) -> S
             };
 
             output.push_str(&format!(
-                "  {}{} ({})\n    Status: {}{}{}{}{}{}{}{}{}{}\n",
+                "  {}{} ({})\n    Status: {}{}{}{}{}{}{}{}{}{}{}\n",
                 name,
                 role_label,
                 if is_me { "you" } else { session },
                 status,
                 detail_suffix,
                 age_suffix,
+                activity_age_suffix,
                 activity_suffix,
                 progress_suffix,
                 work_suffix,
@@ -364,6 +374,9 @@ pub fn format_comm_status_snapshot(snapshot: &AgentStatusSnapshot) -> String {
     }
     if let Some(attachments) = snapshot.live_attachments {
         meta.push(format!("attachments={attachments}"));
+    }
+    if let Some(age_secs) = snapshot.last_activity_age_secs {
+        meta.push(format!("active={} ago", format_secs(age_secs)));
     }
     if let Some(age_secs) = snapshot.status_age_secs {
         meta.push(format!("status_age={}s", age_secs));

@@ -77,6 +77,7 @@ pub(super) struct MemberRuntimeExtras {
     pub(super) recent_output_tokens: Option<u64>,
     pub(super) recent_window_secs: Option<u64>,
     pub(super) cumulative_total_tokens: Option<u64>,
+    pub(super) last_activity_age_secs: Option<u64>,
     pub(super) todos_completed: Option<usize>,
     pub(super) todos_total: Option<usize>,
 }
@@ -134,6 +135,7 @@ pub(super) async fn member_runtime_extras(
         recent_output_tokens: metrics.map(|m| m.recent_output_tokens),
         recent_window_secs: metrics.map(|_| SWARM_LIST_TOKEN_WINDOW_SECS),
         cumulative_total_tokens: metrics.map(|m| m.cumulative_total_tokens),
+        last_activity_age_secs: metrics.and_then(|m| m.last_activity_age_secs),
         todos_completed,
         todos_total,
     }
@@ -309,6 +311,7 @@ pub(super) async fn handle_comm_status(
             is_headless: Some(member.is_headless),
             live_attachments: Some(member.event_txs.len()),
             status_age_secs: Some(member.last_status_change.elapsed().as_secs()),
+            last_activity_age_secs: crate::session_metrics::last_activity_age_secs(&target_session),
             joined_age_secs: Some(member.joined_at.elapsed().as_secs()),
             files_touched,
             activity,

@@ -39,6 +39,11 @@ struct SessionMetrics {
     turns: u64,
     cumulative_total_tokens: u64,
     cumulative_output_tokens: u64,
+    /// Last observed activity of any kind: token usage, turn start, tool
+    /// events, or swarm task heartbeats/checkpoints. Used to answer "is this
+    /// agent actually doing something right now" independently of lifecycle
+    /// status transitions, which can stay unchanged for minutes mid-turn.
+    last_activity: Option<Instant>,
 }
 
 impl SessionMetrics {
@@ -80,6 +85,7 @@ pub fn record_token_usage(session_id: &str, total_tokens: u64, output_tokens: u6
         entry.cumulative_total_tokens = entry.cumulative_total_tokens.saturating_add(total_tokens);
         entry.cumulative_output_tokens =
             entry.cumulative_output_tokens.saturating_add(output_tokens);
+        entry.last_activity = Some(now);
         entry.prune(now);
     });
 }
@@ -92,7 +98,33 @@ pub fn record_turn(session_id: &str) {
     with_registry(|map| {
         let entry = map.entry(session_id.to_string()).or_default();
         entry.turns = entry.turns.saturating_add(1);
+        entry.last_activity = Some(Instant::now());
     });
+}
+
+/// Record a generic activity mark for a session (tool start/finish, swarm
+/// task heartbeat/checkpoint, throttled streaming progress). Cheap: one
+/// registry lock and one `Instant` store, so it is safe to call from hot
+/// paths as long as callers throttle per-token call sites.
+pub fn record_activity(session_id: &str) {
+    if session_id.is_empty() {
+        return;
+    }
+    with_registry(|map| {
+        let entry = map.entry(session_id.to_string()).or_default();
+        entry.last_activity = Some(Instant::now());
+    });
+}
+
+/// Seconds since the session's last recorded activity, or `None` if the
+/// session has never recorded any activity.
+pub fn last_activity_age_secs(session_id: &str) -> Option<u64> {
+    with_registry(|map| {
+        map.get(session_id)
+            .and_then(|entry| entry.last_activity)
+            .map(|at| at.elapsed().as_secs())
+    })
+    .flatten()
 }
 
 /// Snapshot of a session's recent activity.
@@ -108,6 +140,9 @@ pub struct SessionMetricsSnapshot {
     pub cumulative_output_tokens: u64,
     /// Number of turns recorded for the session.
     pub turns: u64,
+    /// Seconds since the last observed activity (tokens, turns, tool events,
+    /// or swarm task heartbeats). `None` when no activity was ever recorded.
+    pub last_activity_age_secs: Option<u64>,
 }
 
 impl SessionMetricsSnapshot {
@@ -143,6 +178,9 @@ pub fn snapshot(session_id: &str, lookback: Duration) -> Option<SessionMetricsSn
             cumulative_total_tokens: entry.cumulative_total_tokens,
             cumulative_output_tokens: entry.cumulative_output_tokens,
             turns: entry.turns,
+            last_activity_age_secs: entry
+                .last_activity
+                .map(|at| now.saturating_duration_since(at).as_secs()),
         })
     })
     .flatten()
@@ -204,5 +242,37 @@ mod tests {
         assert!(snapshot(sid, Duration::from_secs(10)).is_some());
         forget(sid);
         assert!(snapshot(sid, Duration::from_secs(10)).is_none());
+    }
+
+    #[test]
+    fn records_last_activity_age() {
+        let sid = "session_metrics_test_activity";
+        forget(sid);
+        assert_eq!(last_activity_age_secs(sid), None);
+        record_activity(sid);
+        let age = last_activity_age_secs(sid).expect("activity age");
+        assert!(age <= 1, "fresh activity should be ~0s old, got {age}");
+        let snap = snapshot(sid, Duration::from_secs(10)).expect("snapshot");
+        assert!(snap.last_activity_age_secs.is_some());
+        forget(sid);
+        assert_eq!(last_activity_age_secs(sid), None);
+    }
+
+    #[test]
+    fn token_usage_and_turns_mark_activity() {
+        let sid = "session_metrics_test_activity_sources";
+        forget(sid);
+        record_token_usage(sid, 10, 5);
+        assert!(last_activity_age_secs(sid).is_some());
+        forget(sid);
+        record_turn(sid);
+        assert!(last_activity_age_secs(sid).is_some());
+        forget(sid);
+    }
+
+    #[test]
+    fn record_activity_ignores_empty_session() {
+        record_activity("");
+        assert_eq!(last_activity_age_secs(""), None);
     }
 }

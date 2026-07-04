@@ -230,6 +230,12 @@ pub struct AgentInfo {
     /// Seconds since the last status change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_age_secs: Option<u64>,
+    /// Seconds since the last observed activity (token usage, turn start,
+    /// tool events, or swarm task heartbeats). Unlike `status_age_secs`,
+    /// which measures the last lifecycle transition, this reflects whether
+    /// the agent is actually doing work right now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_activity_age_secs: Option<u64>,
     /// Live activity (whether processing + current tool name).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<SessionActivitySnapshot>,
@@ -282,6 +288,10 @@ pub struct AgentStatusSnapshot {
     pub live_attachments: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_age_secs: Option<u64>,
+    /// Seconds since the last observed activity (tokens, turns, tool events,
+    /// or swarm task heartbeats), independent of lifecycle transitions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_activity_age_secs: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joined_age_secs: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

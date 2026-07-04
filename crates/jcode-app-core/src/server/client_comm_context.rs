@@ -283,6 +283,7 @@ pub(super) async fn handle_comm_list(
                 latest_completion_report: m.latest_completion_report,
                 live_attachments: Some(m.live_attachments),
                 status_age_secs: Some(m.status_age_secs),
+                last_activity_age_secs: extras.last_activity_age_secs,
                 activity: extras.activity,
                 provider_name: extras.provider_name,
                 provider_model: extras.provider_model,

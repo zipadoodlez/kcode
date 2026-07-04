@@ -204,6 +204,12 @@ pub(super) async fn touch_swarm_task_progress(
         if let Some(session_id) = assigned_session_id {
             progress.assigned_session_id = Some(session_id.to_string());
         }
+        // Heartbeats/checkpoints are proof of life for the assigned session:
+        // fold them into the member activity clock so swarm status reflects
+        // busy workers whose lifecycle status has not changed in a while.
+        if let Some(session_id) = progress.assigned_session_id.as_deref() {
+            crate::session_metrics::record_activity(session_id);
+        }
         progress.last_heartbeat_unix_ms = Some(now_ms);
         progress.heartbeat_count = Some(progress.heartbeat_count.unwrap_or(0) + 1);
         if let Some(detail) = detail {

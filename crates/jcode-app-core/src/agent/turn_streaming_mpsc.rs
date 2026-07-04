@@ -289,6 +289,12 @@ impl Agent {
             let mut inline_tap_last = Instant::now()
                 .checked_sub(std::time::Duration::from_millis(1000))
                 .unwrap_or_else(Instant::now);
+            // Throttled "this session is alive" marks while tokens stream, so
+            // swarm status can distinguish a busy worker from a dead one
+            // without paying a registry lock per token.
+            let mut activity_mark_last = Instant::now()
+                .checked_sub(std::time::Duration::from_secs(10))
+                .unwrap_or_else(Instant::now);
             let mut tool_calls: Vec<ToolCall> = Vec::new();
             let mut current_tool: Option<ToolCall> = None;
             let mut current_tool_input = String::new();
@@ -343,6 +349,11 @@ impl Agent {
                     }
                     event = next_event => event,
                 };
+
+                if activity_mark_last.elapsed() >= std::time::Duration::from_secs(2) {
+                    activity_mark_last = Instant::now();
+                    crate::session_metrics::record_activity(&self.session.id);
+                }
                 let Some(event) = event else {
                     log_agent_provider_stream_lifecycle(
                         if saw_message_end {
@@ -1250,6 +1261,7 @@ impl Agent {
                 }
 
                 logging::info(&format!("Tool starting: {}", tc.name));
+                crate::session_metrics::record_activity(&self.session.id);
                 if inline_output_tap {
                     // Surface the tool execution on the coordinator's inline
                     // viewport immediately: workers spend most wall-clock time
@@ -1314,6 +1326,7 @@ impl Agent {
 
                 self.unlock_tools_if_needed(&tc.name);
                 let tool_elapsed = tool_start.elapsed();
+                crate::session_metrics::record_activity(&self.session.id);
 
                 if let Some(result) = tool_result {
                     // Normal tool completion
