@@ -1385,7 +1385,7 @@ impl MultiProvider {
                     // the bare provider key (route without pinning a credential).
                     anthropic
                         .credential_mode_snapshot()
-                        .auth_route()
+                        .auth_route(jcode_provider_core::DualAuthProvider::Anthropic)
                         .map(|route| route.model_prefix())
                         .unwrap_or("claude")
                 } else {
@@ -1396,7 +1396,7 @@ impl MultiProvider {
                 if let Some(openai) = self.openai_provider() {
                     openai
                         .credential_mode_snapshot()
-                        .auth_route()
+                        .auth_route(jcode_provider_core::DualAuthProvider::OpenAI)
                         .map(|route| route.model_prefix())
                         .unwrap_or("openai")
                 } else {

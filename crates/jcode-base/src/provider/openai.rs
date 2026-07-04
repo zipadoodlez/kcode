@@ -171,44 +171,16 @@ enum OpenAINativeCompactionMode {
     Off,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum OpenAICredentialMode {
-    Auto,
-    OAuth,
-    ApiKey,
-}
+/// Shared dual-auth credential pin (see `jcode_provider_core::CredentialMode`).
+/// The OpenAI-specific alias is kept so existing call sites read naturally.
+pub(crate) use jcode_provider_core::CredentialMode as OpenAICredentialMode;
 
-impl OpenAICredentialMode {
-    fn from_runtime_env() -> Self {
-        // Canonical parse: recognizes every runtime/route/CLI/prefix alias for
-        // the OpenAI OAuth-vs-API decision in one place, so this can never drift
-        // from the other vocabularies (see jcode_provider_core::auth_mode).
-        match jcode_provider_core::runtime_env_pinned_mode(
-            jcode_provider_core::DualAuthProvider::OpenAI,
-        ) {
-            Some(jcode_provider_core::AuthMode::ApiKey) => Self::ApiKey,
-            Some(jcode_provider_core::AuthMode::Oauth) => Self::OAuth,
-            None => Self::Auto,
-        }
-    }
-
-    /// The canonical dual-auth route this explicit mode pins, if any.
-    /// `Auto` has no explicit pin and returns `None`.
-    pub(crate) fn auth_route(self) -> Option<jcode_provider_core::AuthRoute> {
-        use jcode_provider_core::{AuthMode, AuthRoute};
-        match self {
-            Self::Auto => None,
-            Self::OAuth => Some(AuthRoute::openai(AuthMode::Oauth)),
-            Self::ApiKey => Some(AuthRoute::openai(AuthMode::ApiKey)),
-        }
-    }
-
-    fn load_credentials(self) -> Result<CodexCredentials> {
-        match self {
-            Self::Auto => crate::auth::codex::load_credentials(),
-            Self::OAuth => crate::auth::codex::load_oauth_credentials(),
-            Self::ApiKey => crate::auth::codex::load_api_key_credentials(),
-        }
+/// Load Codex credentials for the given credential pin.
+pub(crate) fn load_credentials_for_mode(mode: OpenAICredentialMode) -> Result<CodexCredentials> {
+    match mode {
+        OpenAICredentialMode::Auto => crate::auth::codex::load_credentials(),
+        OpenAICredentialMode::OAuth => crate::auth::codex::load_oauth_credentials(),
+        OpenAICredentialMode::ApiKey => crate::auth::codex::load_api_key_credentials(),
     }
 }
 
@@ -564,11 +536,12 @@ impl OpenAIProvider {
     }
 
     pub fn new(credentials: CodexCredentials) -> Self {
-        let credential_mode = OpenAICredentialMode::from_runtime_env();
+        let credential_mode =
+            OpenAICredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::OpenAI);
         let credentials = match credential_mode {
             OpenAICredentialMode::Auto => credentials,
             OpenAICredentialMode::OAuth | OpenAICredentialMode::ApiKey => {
-                credential_mode.load_credentials().unwrap_or(credentials)
+                load_credentials_for_mode(credential_mode).unwrap_or(credentials)
             }
         };
 
@@ -655,7 +628,7 @@ impl OpenAIProvider {
             .try_read()
             .map(|mode| *mode)
             .unwrap_or(OpenAICredentialMode::Auto);
-        if let Ok(credentials) = mode.load_credentials() {
+        if let Ok(credentials) = load_credentials_for_mode(mode) {
             match self.credentials.try_write() {
                 Ok(mut guard) => {
                     *guard = credentials;
@@ -672,7 +645,7 @@ impl OpenAIProvider {
     }
 
     pub(crate) fn set_credential_mode(&self, mode: OpenAICredentialMode) -> Result<()> {
-        let credentials = mode.load_credentials()?;
+        let credentials = load_credentials_for_mode(mode)?;
         match self.credentials.try_write() {
             Ok(mut guard) => {
                 *guard = credentials;
@@ -697,7 +670,7 @@ impl OpenAIProvider {
         // Keep the runtime provider identity in sync with the explicit credential
         // choice so UI surfaces report the auth method requests will actually use.
         // `Auto` leaves the existing identity untouched.
-        if let Some(route) = mode.auth_route() {
+        if let Some(route) = mode.auth_route(jcode_provider_core::DualAuthProvider::OpenAI) {
             crate::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         // Drop any cached auth snapshot so surfaces that still consult the cheap

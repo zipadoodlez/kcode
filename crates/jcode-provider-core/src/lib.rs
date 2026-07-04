@@ -321,6 +321,17 @@ pub trait Provider: Send + Sync {
         PremiumMode::Normal
     }
 
+    /// Current OAuth-vs-API-key credential pin for dual-auth providers.
+    /// Non-dual-auth providers report `Auto`.
+    fn credential_mode(&self) -> CredentialMode {
+        CredentialMode::Auto
+    }
+
+    /// Pin the OAuth-vs-API-key credential route for dual-auth providers.
+    fn set_credential_mode(&self, _mode: CredentialMode) -> Result<()> {
+        Ok(())
+    }
+
     /// Human-readable freshness note for this provider's model catalog, shown
     /// as route detail in the model picker (e.g. "cached live catalog" or
     /// "catalog still loading"). Empty when the catalog is live/authoritative.
@@ -416,6 +427,45 @@ pub enum PremiumMode {
     Normal = 0,
     OnePerSession = 1,
     Zero = 2,
+}
+
+/// Explicit OAuth-vs-API-key credential pin for dual-auth providers
+/// (Anthropic and OpenAI). `Auto` means "prefer OAuth when present, fall back
+/// to an API key"; the explicit variants pin one route for the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CredentialMode {
+    #[default]
+    Auto,
+    OAuth,
+    ApiKey,
+}
+
+impl CredentialMode {
+    /// Resolve the runtime-env pin (JCODE_*_AUTH / route aliases) for a
+    /// dual-auth provider through the canonical auth_mode vocabulary.
+    pub fn from_runtime_env(provider: DualAuthProvider) -> Self {
+        match runtime_env_pinned_mode(provider) {
+            Some(AuthMode::ApiKey) => Self::ApiKey,
+            Some(AuthMode::Oauth) => Self::OAuth,
+            None => Self::Auto,
+        }
+    }
+
+    /// The canonical dual-auth route this explicit mode pins, if any.
+    /// `Auto` has no explicit pin and returns `None`.
+    pub fn auth_route(self, provider: DualAuthProvider) -> Option<AuthRoute> {
+        match (self, provider) {
+            (Self::Auto, _) => None,
+            (Self::OAuth, DualAuthProvider::Anthropic) => {
+                Some(AuthRoute::anthropic(AuthMode::Oauth))
+            }
+            (Self::ApiKey, DualAuthProvider::Anthropic) => {
+                Some(AuthRoute::anthropic(AuthMode::ApiKey))
+            }
+            (Self::OAuth, DualAuthProvider::OpenAI) => Some(AuthRoute::openai(AuthMode::Oauth)),
+            (Self::ApiKey, DualAuthProvider::OpenAI) => Some(AuthRoute::openai(AuthMode::ApiKey)),
+        }
+    }
 }
 
 /// Channel for sending provider-native tool results back to a provider bridge.
