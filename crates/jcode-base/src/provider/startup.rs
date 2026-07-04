@@ -105,7 +105,7 @@ impl MultiProvider {
             .assessment_for_provider(crate::provider_catalog::CURSOR_LOGIN_PROVIDER)
             .is_available();
         let has_bedrock_creds = bedrock::BedrockProvider::has_credentials();
-        let has_openrouter_creds = openrouter::OpenRouterProvider::has_credentials();
+        let has_openrouter_creds = openrouter::has_credentials();
 
         let use_claude_cli = std::env::var("JCODE_USE_CLAUDE_CLI")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -184,20 +184,19 @@ impl MultiProvider {
             let named_profile = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
                 .ok()
                 .or_else(|| default_named_provider_profile.clone());
-            let provider_result = if let Some(profile_name) = named_profile.as_deref() {
-                if let Some(profile) = cfg.providers.get(profile_name) {
-                    openrouter::OpenRouterProvider::new_named_openai_compatible(
-                        profile_name,
-                        profile,
-                    )
-                } else {
-                    openrouter::OpenRouterProvider::new()
-                }
-            } else {
-                openrouter::OpenRouterProvider::new()
-            };
-            match provider_result {
-                Ok(p) => Some(Arc::new(p)),
+            let spec = named_profile
+                .as_deref()
+                .and_then(|profile_name| {
+                    cfg.providers.get(profile_name).map(|profile| {
+                        external::OpenRouterRuntimeSpec::NamedProfile {
+                            name: profile_name.to_string(),
+                            config: profile.clone(),
+                        }
+                    })
+                })
+                .unwrap_or(external::OpenRouterRuntimeSpec::Default);
+            match external::instantiate_openrouter_runtime(spec) {
+                Ok(p) => Some(p),
                 Err(e) => {
                     crate::logging::info(&format!("Failed to initialize OpenRouter: {}", e));
                     None

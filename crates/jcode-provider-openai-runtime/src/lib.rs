@@ -18,6 +18,9 @@ use jcode_base::provider::openai_request::{build_responses_input, build_tools};
 use jcode_message_types::TOOL_OUTPUT_MISSING_TEXT;
 use jcode_message_types::{Message as ChatMessage, StreamEvent, ToolDefinition};
 use jcode_provider_core::{EventStream, Provider};
+
+#[cfg(test)]
+const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 use reqwest::header::HeaderValue;
 use reqwest::{Client, StatusCode};
 use serde_json::Value;

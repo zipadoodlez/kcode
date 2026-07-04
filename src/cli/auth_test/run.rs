@@ -296,7 +296,7 @@ async fn audit_openrouter_context_windows(
 ) -> AuthTestContextAuditReport {
     use crate::provider::Provider as _;
 
-    let provider = match crate::provider::openrouter::OpenRouterProvider::new() {
+    let provider = match jcode_provider_openrouter_runtime::OpenRouterProvider::new() {
         Ok(provider) => provider,
         Err(err) => {
             return AuthTestContextAuditReport {

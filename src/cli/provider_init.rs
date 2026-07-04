@@ -599,7 +599,7 @@ fn maybe_enable_config_default_provider_for_auto() -> Result<bool> {
         crate::provider_catalog::resolve_openai_compatible_profile_selection(default_provider)
     {
         apply_openai_compatible_profile_env(Some(profile));
-        return Ok(provider::openrouter::OpenRouterProvider::has_credentials());
+        return Ok(provider::openrouter::has_credentials());
     }
 
     if cfg.providers.contains_key(default_provider) {
@@ -607,7 +607,7 @@ fn maybe_enable_config_default_provider_for_auto() -> Result<bool> {
             default_provider,
             cfg,
         )?;
-        return Ok(provider::openrouter::OpenRouterProvider::has_credentials());
+        return Ok(provider::openrouter::has_credentials());
     }
 
     Ok(false)
@@ -727,7 +727,7 @@ fn direct_env_file_contains_key(env_key: &str, env_file: &str) -> bool {
 }
 
 fn maybe_enable_external_api_key_auth_for_auto(has_other_provider: bool) -> Result<bool> {
-    if provider::openrouter::OpenRouterProvider::has_credentials() {
+    if provider::openrouter::has_credentials() {
         return Ok(true);
     }
     if has_other_provider {
@@ -753,7 +753,7 @@ fn maybe_enable_external_api_key_auth_for_auto(has_other_provider: bool) -> Resu
         }
         if prompt_to_trust_external_auth(&provider_name, source.display_name(), &path)? {
             auth::external::trust_external_auth_source(source)?;
-            return Ok(provider::openrouter::OpenRouterProvider::has_credentials());
+            return Ok(provider::openrouter::has_credentials());
         }
         return Ok(false);
     }
@@ -1540,13 +1540,13 @@ async fn init_provider_with_options(
                     anyhow::anyhow!("Unknown provider profile '{}'", profile_name)
                 })?;
                 Arc::new(
-                    provider::openrouter::OpenRouterProvider::new_named_openai_compatible(
+                    jcode_provider_openrouter_runtime::OpenRouterProvider::new_named_openai_compatible(
                         &profile_name,
                         profile,
                     )?,
                 )
             } else {
-                Arc::new(provider::openrouter::OpenRouterProvider::new()?)
+                Arc::new(jcode_provider_openrouter_runtime::OpenRouterProvider::new()?)
             }
         }
         ProviderChoice::Antigravity => {

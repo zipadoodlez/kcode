@@ -1486,7 +1486,7 @@ impl NativeProviderKind {
                 // so the runtime points at the user's Azure deployment.
                 jcode_base::auth::azure::apply_runtime_env()
                     .context("apply Azure OpenAI runtime env")?;
-                let runtime = jcode_base::provider::openrouter::OpenRouterProvider::new()
+                let runtime = jcode_provider_openrouter_runtime::OpenRouterProvider::new()
                     .context("construct Azure OpenAI (OpenRouter transport) runtime")?;
                 // Azure exposes a single user-configured deployment rather than a
                 // live catalog; pin the runtime to it so the catalog/picker

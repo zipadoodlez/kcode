@@ -141,6 +141,32 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::ANTHROPIC_RUNTIME,
         || std::sync::Arc::new(jcode_provider_anthropic_runtime::AnthropicProvider::new()),
     );
+    // OpenRouter serves several identities (aggregator, pinned API-key
+    // runtime, direct OpenAI-compatible profiles, named config profiles)
+    // through one concrete type, so it registers a parameterized factory.
+    crate::provider::external::register_openrouter_factory(|spec| {
+        use crate::provider::external::OpenRouterRuntimeSpec;
+        use jcode_provider_openrouter_runtime::OpenRouterProvider;
+        let provider: std::sync::Arc<dyn crate::provider::Provider> = match spec {
+            OpenRouterRuntimeSpec::Default => std::sync::Arc::new(OpenRouterProvider::new()?),
+            OpenRouterRuntimeSpec::OpenRouterApiKey => {
+                std::sync::Arc::new(OpenRouterProvider::new_openrouter_api_key_runtime()?)
+            }
+            OpenRouterRuntimeSpec::CompatibleProfile(profile) => std::sync::Arc::new(
+                OpenRouterProvider::new_openai_compatible_profile_runtime(profile)?,
+            ),
+            OpenRouterRuntimeSpec::NamedProfile { name, config } => std::sync::Arc::new(
+                OpenRouterProvider::new_named_openai_compatible(&name, &config)?,
+            ),
+        };
+        Ok(provider)
+    });
+    crate::provider::external::register_profile_catalog_refresh(
+        jcode_provider_openrouter_runtime::maybe_schedule_openai_compatible_profile_catalog_refresh,
+    );
+    crate::provider::external::register_standard_openrouter_catalog_refresh(
+        jcode_provider_openrouter_runtime::maybe_schedule_standard_openrouter_catalog_refresh,
+    );
     // OpenAI's constructor needs Codex credentials on hand; absence means the
     // provider is simply unavailable.
     crate::provider::external::register_external_provider_fallible(

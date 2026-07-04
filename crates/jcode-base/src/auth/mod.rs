@@ -898,7 +898,7 @@ fn probe_anthropic_status(status: &mut AuthStatus) {
 }
 
 fn probe_openrouter_status(status: &mut AuthStatus) {
-    if crate::provider::openrouter::OpenRouterProvider::has_credentials() {
+    if crate::provider::openrouter::has_credentials() {
         status.openrouter = AuthState::Available;
     }
 }

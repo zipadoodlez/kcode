@@ -345,14 +345,14 @@ pub struct MultiProvider {
     /// AWS Bedrock provider (native Converse/ConverseStream, IAM/SigV4)
     bedrock: RwLock<Option<Arc<bedrock::BedrockProvider>>>,
     /// OpenRouter API provider
-    openrouter: RwLock<Option<Arc<openrouter::OpenRouterProvider>>>,
+    openrouter: RwLock<Option<Arc<dyn Provider>>>,
     /// Direct OpenAI-compatible runtimes keyed by profile id.
     ///
     /// These use the same wire protocol implementation as OpenRouter, but must
     /// not occupy the real OpenRouter slot. Keeping them separate prevents a
     /// compatible endpoint selection from corrupting later OpenRouter model
     /// switches, catalog display, or auth refresh handling.
-    openai_compatible_profiles: RwLock<HashMap<String, Arc<openrouter::OpenRouterProvider>>>,
+    openai_compatible_profiles: RwLock<HashMap<String, Arc<dyn Provider>>>,
     active_openai_compatible_profile: RwLock<Option<String>>,
     active: RwLock<ActiveProvider>,
     /// Use Claude CLI instead of direct API (legacy mode)
@@ -1026,8 +1026,9 @@ impl MultiProvider {
                     }
                 };
                 if needs_rebind {
-                    let provider =
-                        Arc::new(openrouter::OpenRouterProvider::new_openrouter_api_key_runtime()?);
+                    let provider = external::instantiate_openrouter_runtime(
+                        external::OpenRouterRuntimeSpec::OpenRouterApiKey,
+                    )?;
                     *self
                         .openrouter
                         .write()
@@ -1081,10 +1082,10 @@ impl MultiProvider {
             if let Some(provider) = existing {
                 provider
             } else {
-                let provider = Arc::new(
-                    openrouter::OpenRouterProvider::new_openai_compatible_profile_runtime(profile)?,
-                );
-                registry.install_compatible_profile(profile_id.clone(), provider.clone());
+                let provider = external::instantiate_openrouter_runtime(
+                    external::OpenRouterRuntimeSpec::CompatibleProfile(profile),
+                )?;
+                registry.install_compatible_profile(profile_id.clone(), Arc::clone(&provider));
                 provider
             }
         };
@@ -1095,8 +1096,8 @@ impl MultiProvider {
     }
 
     fn should_replace_openrouter_after_auth_change(
-        existing: &openrouter::OpenRouterProvider,
-        candidate: &openrouter::OpenRouterProvider,
+        existing: &dyn Provider,
+        candidate: &dyn Provider,
     ) -> bool {
         if existing.supports_provider_routing_features()
             != candidate.supports_provider_routing_features()
@@ -1164,15 +1165,17 @@ impl MultiProvider {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(openai);
         }
 
-        if openrouter::OpenRouterProvider::has_credentials() {
-            match openrouter::OpenRouterProvider::new() {
+        if openrouter::has_credentials() {
+            match external::instantiate_openrouter_runtime(external::OpenRouterRuntimeSpec::Default)
+            {
                 Ok(provider) => {
                     let should_install = if preserve_existing_openrouter_profile {
                         self.openrouter_provider()
                             .as_deref()
                             .map(|existing| {
                                 Self::should_replace_openrouter_after_auth_change(
-                                    existing, &provider,
+                                    existing,
+                                    provider.as_ref(),
                                 )
                             })
                             .unwrap_or(true)
@@ -1186,8 +1189,7 @@ impl MultiProvider {
                         *self
                             .openrouter
                             .write()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                            Some(Arc::new(provider));
+                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
                     } else {
                         crate::logging::info(
                             "Preserved existing OpenRouter/OpenAI-compatible provider after unrelated auth change",
@@ -2492,7 +2494,7 @@ impl Provider for MultiProvider {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .is_some()
         {
-            openrouter::OpenRouterProvider::new().ok().map(Arc::new)
+            external::instantiate_openrouter_runtime(external::OpenRouterRuntimeSpec::Default).ok()
         } else {
             None
         };

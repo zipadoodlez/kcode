@@ -337,6 +337,44 @@ pub trait Provider: Send + Sync {
     /// this; the default is a no-op.
     fn reload_credentials(&self) {}
 
+    /// Human-facing label for the runtime backing this provider instance.
+    /// Unlike `display_name`, this reflects instance state (e.g. which
+    /// OpenAI-compatible profile an aggregator runtime currently serves).
+    fn runtime_display_name(&self) -> String {
+        self.display_name()
+    }
+
+    /// Whether this runtime speaks the real OpenRouter aggregator API with
+    /// provider-routing features (provider pins, per-provider endpoints), as
+    /// opposed to a plain OpenAI-compatible endpoint.
+    fn supports_provider_routing_features(&self) -> bool {
+        false
+    }
+
+    /// For direct OpenAI-compatible endpoints: the (provider label,
+    /// api_method, detail) triple used to build the route entry. `None` for
+    /// everything else (including the real OpenRouter aggregator).
+    fn direct_openai_compatible_route_parts(&self) -> Option<(String, String, String)> {
+        None
+    }
+
+    /// The explicit upstream-provider pin for the current model, when the
+    /// user pinned one on an aggregator runtime.
+    fn explicit_provider_pin_for_current_model(&self) -> Option<String> {
+        None
+    }
+
+    /// Give aggregator runtimes a chance to refresh per-model endpoint data
+    /// used by display surfaces. Returns true when a refresh was scheduled.
+    fn maybe_schedule_endpoint_refresh_for_display(
+        &self,
+        _model: &str,
+        _cache_age_secs: Option<u64>,
+        _context: &'static str,
+    ) -> bool {
+        false
+    }
+
     /// Human-readable freshness note for this provider's model catalog, shown
     /// as route detail in the model picker (e.g. "cached live catalog" or
     /// "catalog still loading"). Empty when the catalog is live/authoritative.

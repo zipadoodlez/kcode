@@ -5,7 +5,7 @@ use jcode::cli::provider_init::{
     init_provider_for_validation,
 };
 use jcode::provider::Provider;
-use jcode::provider::openrouter::OpenRouterProvider;
+use jcode_provider_openrouter_runtime::OpenRouterProvider;
 use jcode::provider_catalog::{
     LoginProviderDescriptor, LoginProviderTarget, OPENAI_COMPAT_PROFILE, OpenAiCompatibleProfile,
     apply_openai_compatible_profile_env, load_api_key_from_env_or_config, login_providers,
@@ -723,7 +723,7 @@ fn provider_matrix_openai_compatible_auth_state_space_material_states_preserve_l
                         "runtime no-auth flag mismatch for {state_label}"
                     );
                     assert_eq!(
-                        OpenRouterProvider::has_credentials(),
+                        jcode::provider::openrouter::has_credentials(),
                         expected_configured,
                         "runtime credentials mismatch for {state_label}"
                     );
@@ -808,7 +808,7 @@ fn provider_matrix_env_credentials_activate_openrouter_runtime() -> Result<()> {
             Some("0")
         );
         assert!(
-            OpenRouterProvider::has_credentials(),
+            jcode::provider::openrouter::has_credentials(),
             "expected credentials for {}",
             resolved.id
         );
@@ -837,7 +837,7 @@ fn provider_matrix_file_credentials_activate_openrouter_runtime() -> Result<()> 
         AuthStatus::invalidate_cache();
 
         assert!(
-            OpenRouterProvider::has_credentials(),
+            jcode::provider::openrouter::has_credentials(),
             "expected file credentials for {}",
             resolved.id
         );
@@ -889,7 +889,7 @@ fn provider_matrix_custom_compat_overrides_flow_into_runtime() -> Result<()> {
         std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
         Some("groq.env")
     );
-    assert!(OpenRouterProvider::has_credentials());
+    assert!(jcode::provider::openrouter::has_credentials());
     OpenRouterProvider::new()?;
     assert_eq!(AuthStatus::check().openrouter, AuthState::Available);
 
@@ -916,7 +916,7 @@ fn provider_matrix_custom_local_compat_without_api_key_activates_openrouter_runt
             .as_deref(),
         Some("1")
     );
-    assert!(OpenRouterProvider::has_credentials());
+    assert!(jcode::provider::openrouter::has_credentials());
     OpenRouterProvider::new()?;
     assert_eq!(AuthStatus::check().openrouter, AuthState::Available);
 

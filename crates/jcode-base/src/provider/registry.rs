@@ -15,7 +15,7 @@ impl<'a> ProviderRegistry<'a> {
         Self { provider }
     }
 
-    pub(super) fn real_openrouter(&self) -> Option<Arc<openrouter::OpenRouterProvider>> {
+    pub(super) fn real_openrouter(&self) -> Option<Arc<dyn Provider>> {
         self.provider
             .openrouter
             .read()
@@ -23,10 +23,7 @@ impl<'a> ProviderRegistry<'a> {
             .clone()
     }
 
-    pub(super) fn compatible_profile(
-        &self,
-        profile_id: &str,
-    ) -> Option<Arc<openrouter::OpenRouterProvider>> {
+    pub(super) fn compatible_profile(&self, profile_id: &str) -> Option<Arc<dyn Provider>> {
         self.provider
             .openai_compatible_profiles
             .read()
@@ -38,7 +35,7 @@ impl<'a> ProviderRegistry<'a> {
     pub(super) fn install_compatible_profile(
         &self,
         profile_id: impl Into<String>,
-        runtime: Arc<openrouter::OpenRouterProvider>,
+        runtime: Arc<dyn Provider>,
     ) {
         self.provider
             .openai_compatible_profiles
@@ -71,15 +68,13 @@ impl<'a> ProviderRegistry<'a> {
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
     }
 
-    pub(super) fn active_compatible_profile(&self) -> Option<Arc<openrouter::OpenRouterProvider>> {
+    pub(super) fn active_compatible_profile(&self) -> Option<Arc<dyn Provider>> {
         let profile_id = self.active_compatible_profile_id()?;
         self.compatible_profile(&profile_id)
     }
 
     /// Runtime that should execute requests for the public OpenRouter slot.
-    pub(super) fn active_openrouter_execution(
-        &self,
-    ) -> Option<Arc<openrouter::OpenRouterProvider>> {
+    pub(super) fn active_openrouter_execution(&self) -> Option<Arc<dyn Provider>> {
         self.active_compatible_profile()
             .or_else(|| self.real_openrouter())
     }

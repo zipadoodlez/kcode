@@ -748,7 +748,7 @@ fn standard_openrouter_catalog_refresh_fires_when_named_profile_owns_slot() {
             // running) an `openrouter` catalog refresh; clear the process-wide
             // backoff/in-flight tracker or this assertion is flaky under
             // parallel test execution.
-            openrouter::reset_profile_catalog_refresh_tracker_for_tests();
+            jcode_provider_openrouter_runtime::reset_profile_catalog_refresh_tracker_for_tests();
 
             assert!(
                 openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
@@ -947,6 +947,38 @@ fn register_test_external_runtimes() {
     external::register_external_provider(external::CURSOR_RUNTIME, test_cursor_runtime);
     external::register_external_provider(external::ANTIGRAVITY_RUNTIME, test_antigravity_runtime);
     external::register_external_provider(external::COPILOT_RUNTIME, test_copilot_runtime);
+    // OpenRouter tests exercise the real runtime (profile-scoped catalogs,
+    // transport identities), so register the real factory like the binary's
+    // composition root does. The dev-dependency cycle is test-only.
+    external::register_openrouter_factory(|spec| {
+        use external::OpenRouterRuntimeSpec;
+        use jcode_provider_openrouter_runtime::OpenRouterProvider;
+        let provider: Arc<dyn Provider> = match spec {
+            OpenRouterRuntimeSpec::Default => Arc::new(OpenRouterProvider::new()?),
+            OpenRouterRuntimeSpec::OpenRouterApiKey => {
+                Arc::new(OpenRouterProvider::new_openrouter_api_key_runtime()?)
+            }
+            OpenRouterRuntimeSpec::CompatibleProfile(profile) => Arc::new(
+                OpenRouterProvider::new_openai_compatible_profile_runtime(profile)?,
+            ),
+            OpenRouterRuntimeSpec::NamedProfile { name, config } => Arc::new(
+                OpenRouterProvider::new_named_openai_compatible(&name, &config)?,
+            ),
+        };
+        Ok(provider)
+    });
+    external::register_profile_catalog_refresh(
+        jcode_provider_openrouter_runtime::maybe_schedule_openai_compatible_profile_catalog_refresh,
+    );
+    external::register_standard_openrouter_catalog_refresh(
+        jcode_provider_openrouter_runtime::maybe_schedule_standard_openrouter_catalog_refresh,
+    );
+}
+
+/// Construct a real OpenRouter/OpenAI-compatible runtime for tests through
+/// the registry, mirroring production construction.
+fn test_openrouter_runtime() -> anyhow::Result<Arc<dyn Provider>> {
+    external::instantiate_openrouter_runtime(external::OpenRouterRuntimeSpec::Default)
 }
 
 fn test_multi_provider_with_cursor() -> MultiProvider {

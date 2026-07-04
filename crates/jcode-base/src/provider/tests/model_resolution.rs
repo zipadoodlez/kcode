@@ -124,10 +124,8 @@ fn test_cerebras_model_routes_are_profile_scoped_and_unique() {
             crate::provider_catalog::force_apply_openai_compatible_profile_env(
                 crate::provider_catalog::openai_compatible_profile_by_id("cerebras"),
             );
-            let openrouter = Arc::new(
-                openrouter::OpenRouterProvider::new()
-                    .expect("Cerebras direct provider should initialize"),
-            );
+            let openrouter =
+                test_openrouter_runtime().expect("Cerebras direct provider should initialize");
             let provider = MultiProvider {
                 claude: RwLock::new(None),
                 anthropic: RwLock::new(None),
@@ -208,10 +206,8 @@ fn test_direct_chutes_ignores_legacy_openrouter_catalog_cache() {
             .expect("write legacy chutes cache");
 
             with_env_var("CHUTES_API_KEY", "test-chutes-key", || {
-                let openrouter = Arc::new(
-                    openrouter::OpenRouterProvider::new()
-                        .expect("autodetected Chutes provider should initialize"),
-                );
+                let openrouter = test_openrouter_runtime()
+                    .expect("autodetected Chutes provider should initialize");
                 let direct_route = openrouter
                     .direct_openai_compatible_route_parts()
                     .expect("Chutes should initialize as a direct profile");
@@ -279,9 +275,7 @@ fn test_auth_changed_preserves_existing_direct_profile_session() {
 
         crate::env::set_var("CEREBRAS_API_KEY", "test-cerebras-key");
         crate::provider_catalog::force_apply_openai_compatible_profile_env(Some(cerebras));
-        let openrouter = Arc::new(
-            openrouter::OpenRouterProvider::new().expect("Cerebras provider should initialize"),
-        );
+        let openrouter = test_openrouter_runtime().expect("Cerebras provider should initialize");
         openrouter
             .set_model("qwen-3-235b-a22b-instruct-2507")
             .expect("Cerebras model should be selectable");
@@ -344,9 +338,7 @@ fn test_auth_changed_replaces_template_direct_profile_for_new_logins() {
 
         crate::env::set_var("CEREBRAS_API_KEY", "test-cerebras-key");
         crate::provider_catalog::force_apply_openai_compatible_profile_env(Some(cerebras));
-        let openrouter = Arc::new(
-            openrouter::OpenRouterProvider::new().expect("Cerebras provider should initialize"),
-        );
+        let openrouter = test_openrouter_runtime().expect("Cerebras provider should initialize");
 
         let provider = MultiProvider {
             claude: RwLock::new(None),
@@ -395,9 +387,7 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
 
         crate::env::set_var("OPENROUTER_API_KEY", "test-openrouter-key");
         crate::provider_catalog::force_apply_openai_compatible_profile_env(None);
-        let openrouter = Arc::new(
-            openrouter::OpenRouterProvider::new().expect("OpenRouter provider should initialize"),
-        );
+        let openrouter = test_openrouter_runtime().expect("OpenRouter provider should initialize");
         openrouter
             .set_model("openrouter/owl-alpha")
             .expect("OpenRouter default model should be selectable");
@@ -583,9 +573,7 @@ fn test_openrouter_and_compatible_profile_transition_invariants() {
         crate::env::set_var("OPENROUTER_API_KEY", "test-openrouter-key");
         crate::env::set_var(nvidia.api_key_env, "test-nvidia-key");
         crate::provider_catalog::force_apply_openai_compatible_profile_env(None);
-        let openrouter = Arc::new(
-            openrouter::OpenRouterProvider::new().expect("OpenRouter provider should initialize"),
-        );
+        let openrouter = test_openrouter_runtime().expect("OpenRouter provider should initialize");
         openrouter
             .set_model("openrouter/owl-alpha")
             .expect("OpenRouter default model should be selectable");
@@ -660,10 +648,8 @@ fn test_openrouter_and_compatible_profile_transition_invariants() {
 fn test_set_model_accepts_bare_openai_openrouter_pin_when_openrouter_available() {
     with_clean_provider_test_env(|| {
         with_env_var("OPENROUTER_API_KEY", "test-openrouter-key", || {
-            let openrouter = Arc::new(
-                openrouter::OpenRouterProvider::new()
-                    .expect("openrouter provider should initialize"),
-            );
+            let openrouter =
+                test_openrouter_runtime().expect("openrouter provider should initialize");
             let provider = MultiProvider {
                 claude: RwLock::new(None),
                 anthropic: RwLock::new(None),
@@ -702,10 +688,8 @@ fn test_forced_openrouter_treats_claude_like_model_as_provider_local() {
                     "JCODE_OPENROUTER_API_BASE",
                     "https://compat.example.test/v1",
                     || {
-                        let openrouter = Arc::new(
-                            openrouter::OpenRouterProvider::new()
-                                .expect("custom compatible provider should initialize"),
-                        );
+                        let openrouter = test_openrouter_runtime()
+                            .expect("custom compatible provider should initialize");
                         let provider = MultiProvider {
                             claude: RwLock::new(None),
                             anthropic: RwLock::new(None),
@@ -749,10 +733,8 @@ fn test_forced_openrouter_preserves_custom_at_sign_model_ids() {
                     "JCODE_OPENROUTER_API_BASE",
                     "https://compat.example.test/v1",
                     || {
-                        let openrouter = Arc::new(
-                            openrouter::OpenRouterProvider::new()
-                                .expect("custom compatible provider should initialize"),
-                        );
+                        let openrouter = test_openrouter_runtime()
+                            .expect("custom compatible provider should initialize");
                         let provider = MultiProvider {
                             claude: RwLock::new(None),
                             anthropic: RwLock::new(None),
@@ -799,10 +781,8 @@ fn test_config_default_provider_openai_compatible_keeps_gpt_model_provider_local
                         crate::provider_catalog::force_apply_openai_compatible_profile_env(Some(
                             crate::provider_catalog::OPENAI_COMPAT_PROFILE,
                         ));
-                        let openrouter = Arc::new(
-                            openrouter::OpenRouterProvider::new()
-                                .expect("OpenAI-compatible provider should initialize"),
-                        );
+                        let openrouter = test_openrouter_runtime()
+                            .expect("OpenAI-compatible provider should initialize");
                         let provider = MultiProvider {
                             claude: RwLock::new(None),
                             anthropic: RwLock::new(None),
@@ -852,10 +832,8 @@ fn test_custom_compatible_model_routes_do_not_request_openrouter_rewrite() {
                     "JCODE_OPENROUTER_API_BASE",
                     "https://compat.example.test/v1",
                     || {
-                        let openrouter = Arc::new(
-                            openrouter::OpenRouterProvider::new()
-                                .expect("custom compatible provider should initialize"),
-                        );
+                        let openrouter = test_openrouter_runtime()
+                            .expect("custom compatible provider should initialize");
                         let provider = MultiProvider {
                             claude: RwLock::new(None),
                             anthropic: RwLock::new(None),
@@ -1428,10 +1406,8 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
         let rt = enter_test_runtime();
         let _runtime_guard = rt.enter();
         with_env_var("OPENROUTER_API_KEY", "test-openrouter-key", || {
-            let openrouter = Arc::new(
-                openrouter::OpenRouterProvider::new()
-                    .expect("openrouter provider should initialize"),
-            );
+            let openrouter =
+                test_openrouter_runtime().expect("openrouter provider should initialize");
             let provider = MultiProvider {
                 claude: RwLock::new(None),
                 anthropic: RwLock::new(None),
@@ -1545,10 +1521,8 @@ fn test_forced_copilot_treats_claude_like_model_as_provider_local() {
 fn test_provider_specific_model_prefix_cannot_bypass_provider_lock() {
     with_clean_provider_test_env(|| {
         with_env_var("OPENROUTER_API_KEY", "test-openrouter-key", || {
-            let openrouter = Arc::new(
-                openrouter::OpenRouterProvider::new()
-                    .expect("openrouter provider should initialize"),
-            );
+            let openrouter =
+                test_openrouter_runtime().expect("openrouter provider should initialize");
             let provider = MultiProvider {
                 claude: RwLock::new(None),
                 anthropic: RwLock::new(None),
@@ -1766,4 +1740,343 @@ fn test_context_limit_dynamic_cache() {
             .collect(),
     );
     assert_eq!(context_limit_for_model("test-model-xyz"), Some(64_000));
+}
+
+// --- Migrated from the OpenRouter runtime tests: these exercise MultiProvider
+// --- routing/identity with a real OpenRouter runtime via the registry.
+
+struct OrEnvVarGuard {
+    key: &'static str,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl OrEnvVarGuard {
+    fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        let previous = std::env::var_os(key);
+        crate::env::set_var(key, value);
+        Self { key, previous }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let previous = std::env::var_os(key);
+        crate::env::remove_var(key);
+        Self { key, previous }
+    }
+}
+
+impl Drop for OrEnvVarGuard {
+    fn drop(&mut self) {
+        if let Some(previous) = &self.previous {
+            crate::env::set_var(self.key, previous);
+        } else {
+            crate::env::remove_var(self.key);
+        }
+    }
+}
+
+fn isolate_openrouter_autodetect_env_or() -> Vec<OrEnvVarGuard> {
+    let mut guards = vec![
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_API_BASE"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_API_KEY_NAME"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_ENV_FILE"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_MODEL"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_ALLOW_NO_AUTH"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_TRANSPORT_STATE"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_PROVIDER_FEATURES"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_MODEL_CATALOG"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_AUTH_HEADER"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_AUTH_HEADER_NAME"),
+        OrEnvVarGuard::remove("JCODE_OPENROUTER_STATIC_MODELS"),
+        OrEnvVarGuard::remove("JCODE_ACTIVE_PROVIDER"),
+        OrEnvVarGuard::remove("JCODE_RUNTIME_PROVIDER"),
+        OrEnvVarGuard::remove("JCODE_NAMED_PROVIDER_PROFILE"),
+        OrEnvVarGuard::remove("JCODE_PROVIDER_PROFILE_NAME"),
+        OrEnvVarGuard::remove("JCODE_PROVIDER_PROFILE_ACTIVE"),
+        OrEnvVarGuard::remove("JCODE_OPENAI_COMPAT_API_BASE"),
+        OrEnvVarGuard::remove("JCODE_OPENAI_COMPAT_API_KEY_NAME"),
+        OrEnvVarGuard::remove("JCODE_OPENAI_COMPAT_ENV_FILE"),
+        OrEnvVarGuard::remove("JCODE_OPENAI_COMPAT_SETUP_URL"),
+        OrEnvVarGuard::remove("JCODE_OPENAI_COMPAT_DEFAULT_MODEL"),
+        OrEnvVarGuard::remove("JCODE_OPENAI_COMPAT_LOCAL_ENABLED"),
+        OrEnvVarGuard::remove("OPENROUTER_API_KEY"),
+    ];
+    guards.extend(
+        crate::provider_catalog::openai_compatible_profiles()
+            .iter()
+            .map(|profile| OrEnvVarGuard::remove(profile.api_key_env)),
+    );
+    guards
+}
+
+fn spawn_single_response_chat_server_or() -> (String, std::sync::mpsc::Receiver<String>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind fake provider server");
+    let addr = listener.local_addr().expect("fake provider addr");
+    let (request_tx, request_rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept fake provider request");
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .expect("set read timeout");
+        let mut request = vec![0u8; 16384];
+        let n = stream.read(&mut request).unwrap_or(0);
+        let request = String::from_utf8_lossy(&request[..n]).into_owned();
+        let _ = request_tx.send(request);
+
+        let body = "data: [DONE]\n\n";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write fake provider response");
+    });
+
+    (format!("http://{addr}/v1"), request_rx)
+}
+
+#[test]
+fn default_named_openai_compatible_provider_uses_direct_compatible_request_path() {
+    let _lock = crate::storage::lock_test_env();
+    // These tests construct MultiProvider directly (not via
+    // with_clean_provider_test_env), so make sure the external runtime
+    // factories are registered before startup paths need them.
+    register_test_external_runtimes();
+    let temp = tempfile::TempDir::new().expect("create temp home");
+    let jcode_home = temp.path().join("jcode-home");
+    let _jcode_home = OrEnvVarGuard::set("JCODE_HOME", &jcode_home);
+    let _home = OrEnvVarGuard::set("HOME", temp.path());
+    let _appdata = OrEnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
+    let _env = isolate_openrouter_autodetect_env_or();
+    let _key = OrEnvVarGuard::set("TEST_DEFAULT_COMPAT_KEY", "test-key");
+    let (api_base, request_rx) = spawn_single_response_chat_server_or();
+
+    std::fs::create_dir_all(&jcode_home).expect("create test config dir");
+    std::fs::write(
+        jcode_home.join("config.toml"),
+        format!(
+            r#"
+[provider]
+default_provider = "my-gateway"
+
+[providers.my-gateway]
+type = "openai-compatible"
+base_url = "{api_base}"
+api_key_env = "TEST_DEFAULT_COMPAT_KEY"
+default_model = "opaque/model@id"
+model_catalog = false
+"#
+        ),
+    )
+    .expect("write test config");
+    crate::config::invalidate_config_cache();
+
+    let provider = MultiProvider::new_with_auth_status(crate::auth::AuthStatus::default());
+    assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
+    let openrouter = provider
+        .openrouter_provider()
+        .expect("openrouter execution slot");
+    assert!(
+        !openrouter.supports_provider_routing_features(),
+        "named openai-compatible defaults must not use OpenRouter provider routing features"
+    );
+    assert_eq!(
+        openrouter
+            .direct_openai_compatible_route_parts()
+            .as_ref()
+            .map(|parts| parts.1.as_str()),
+        Some("openai-compatible:my-gateway")
+    );
+
+    let messages = vec![crate::message::Message {
+        role: crate::message::Role::User,
+        content: vec![crate::message::ContentBlock::Text {
+            text: "hello".to_string(),
+            cache_control: None,
+        }],
+        timestamp: None,
+        tool_duration_ms: None,
+    }];
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    rt.block_on(async {
+        let mut stream = openrouter
+            .complete(&messages, &[], "", None)
+            .await
+            .expect("fake chat request should start");
+        while let Some(event) = futures::StreamExt::next(&mut stream).await {
+            event.expect("stream event should parse");
+        }
+    });
+
+    let request = request_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("capture fake provider request");
+    assert!(
+        request.starts_with("POST /v1/chat/completions "),
+        "unexpected chat request: {request}"
+    );
+    assert!(
+        request.contains(r#""model":"opaque/model@id""#),
+        "request should use named profile default model: {request}"
+    );
+    assert!(
+        !request.contains(r#""provider":"#),
+        "direct OpenAI-compatible request must not include OpenRouter provider routing object: {request}"
+    );
+    assert!(
+        !request.contains("HTTP-Referer") && !request.contains("X-Title"),
+        "direct OpenAI-compatible request must not include OpenRouter-only headers: {request}"
+    );
+}
+
+/// Regression for issue #304: a `default_provider` pointing at an
+/// `openai-compatible` profile must build requests with the direct
+/// OpenAI-compatible request shape, NOT the OpenRouter request builder, even
+/// when `model_catalog` is left enabled (the default). Using the OpenRouter
+/// builder leaks the `provider` routing object / OpenRouter-only headers and
+/// causes strict third-party gateways to reject the request with
+/// 400 "Unrecognized chat message".
+#[test]
+fn default_named_openai_compatible_with_catalog_uses_direct_compatible_request_path() {
+    let _lock = crate::storage::lock_test_env();
+    // These tests construct MultiProvider directly (not via
+    // with_clean_provider_test_env), so make sure the external runtime
+    // factories are registered before startup paths need them.
+    register_test_external_runtimes();
+    let temp = tempfile::TempDir::new().expect("create temp home");
+    let jcode_home = temp.path().join("jcode-home");
+    let _jcode_home = OrEnvVarGuard::set("JCODE_HOME", &jcode_home);
+    let _home = OrEnvVarGuard::set("HOME", temp.path());
+    let _appdata = OrEnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
+    let _env = isolate_openrouter_autodetect_env_or();
+    let _key = OrEnvVarGuard::set("TEST_DEFAULT_COMPAT_KEY", "test-key");
+    let (api_base, request_rx) = spawn_single_response_chat_server_or();
+
+    std::fs::create_dir_all(&jcode_home).expect("create test config dir");
+    std::fs::write(
+        jcode_home.join("config.toml"),
+        format!(
+            r#"
+[provider]
+default_provider = "my-gateway"
+
+[providers.my-gateway]
+type = "openai-compatible"
+base_url = "{api_base}"
+api_key_env = "TEST_DEFAULT_COMPAT_KEY"
+default_model = "opaque/model@id"
+"#
+        ),
+    )
+    .expect("write test config");
+    crate::config::invalidate_config_cache();
+
+    let provider = MultiProvider::new_with_auth_status(crate::auth::AuthStatus::default());
+    assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
+    let openrouter = provider
+        .openrouter_provider()
+        .expect("openrouter execution slot");
+    assert!(
+        !openrouter.supports_provider_routing_features(),
+        "named openai-compatible defaults must not use OpenRouter provider routing features even with catalog enabled"
+    );
+
+    let messages = vec![crate::message::Message {
+        role: crate::message::Role::User,
+        content: vec![crate::message::ContentBlock::Text {
+            text: "hello".to_string(),
+            cache_control: None,
+        }],
+        timestamp: None,
+        tool_duration_ms: None,
+    }];
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    rt.block_on(async {
+        let mut stream = openrouter
+            .complete(&messages, &[], "", None)
+            .await
+            .expect("fake chat request should start");
+        while let Some(event) = futures::StreamExt::next(&mut stream).await {
+            event.expect("stream event should parse");
+        }
+    });
+
+    let request = request_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("capture fake provider request");
+    assert!(
+        request.starts_with("POST /v1/chat/completions "),
+        "unexpected chat request: {request}"
+    );
+    assert!(
+        !request.contains(r#""provider":"#),
+        "direct OpenAI-compatible request must not include OpenRouter provider routing object: {request}"
+    );
+    assert!(
+        !request.contains("HTTP-Referer") && !request.contains("X-Title"),
+        "direct OpenAI-compatible request must not include OpenRouter-only headers: {request}"
+    );
+}
+
+#[test]
+fn runtime_display_name_tracks_active_openai_compatible_profile() {
+    // Regression for issue #329: switching to a direct OpenAI-compatible
+    // profile (NVIDIA NIM) at runtime must surface that profile's display
+    // name, not the fixed "OpenRouter" aggregator label. The machine-facing
+    // `name()` stays "openrouter" because billing/routing logic keys off it.
+    let _lock = crate::storage::lock_test_env();
+    // These tests construct MultiProvider directly (not via
+    // with_clean_provider_test_env), so make sure the external runtime
+    // factories are registered before startup paths need them.
+    register_test_external_runtimes();
+    let temp = tempfile::TempDir::new().expect("create temp home");
+    let jcode_home = temp.path().join("jcode-home");
+    let _jcode_home = OrEnvVarGuard::set("JCODE_HOME", &jcode_home);
+    let _home = OrEnvVarGuard::set("HOME", temp.path());
+    let _appdata = OrEnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
+    let _env = isolate_openrouter_autodetect_env_or();
+
+    // Configure both the OpenRouter aggregator and NVIDIA NIM credentials so
+    // the slot can host either runtime. Set after the isolate guard, which
+    // clears every profile api-key env var.
+    let _or_key = OrEnvVarGuard::set("OPENROUTER_API_KEY", "or-test-key");
+    let _nim_key = OrEnvVarGuard::set("NVIDIA_API_KEY", "nim-test-key");
+    crate::config::invalidate_config_cache();
+
+    let provider = MultiProvider::new_with_auth_status(crate::auth::AuthStatus::default());
+
+    // Switch to a NVIDIA NIM model via the profile-prefixed model request.
+    provider
+        .set_model("nvidia-nim:nvidia/llama-3.1-nemotron-ultra-253b-v1")
+        .expect("switch to nvidia-nim profile");
+
+    assert_eq!(
+        Provider::name(&provider),
+        "OpenRouter",
+        "machine-facing name must stay stable for billing/routing"
+    );
+    assert_eq!(
+        Provider::display_name(&provider),
+        "NVIDIA NIM",
+        "header/UI display name must reflect the active runtime profile"
+    );
+
+    // Switching back to the plain OpenRouter aggregator restores the label.
+    provider
+        .set_model("anthropic/claude-sonnet-4")
+        .expect("switch back to openrouter aggregator");
+    assert_eq!(Provider::display_name(&provider), "OpenRouter");
 }

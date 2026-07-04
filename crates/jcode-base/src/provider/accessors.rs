@@ -57,13 +57,11 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn openrouter_provider(&self) -> Option<Arc<openrouter::OpenRouterProvider>> {
+    pub(super) fn openrouter_provider(&self) -> Option<Arc<dyn Provider>> {
         ProviderRegistry::new(self).real_openrouter()
     }
 
-    pub(super) fn active_openrouter_execution_provider(
-        &self,
-    ) -> Option<Arc<openrouter::OpenRouterProvider>> {
+    pub(super) fn active_openrouter_execution_provider(&self) -> Option<Arc<dyn Provider>> {
         ProviderRegistry::new(self).active_openrouter_execution()
     }
 

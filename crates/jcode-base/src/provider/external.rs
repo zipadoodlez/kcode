@@ -39,10 +39,144 @@ pub const ANTHROPIC_RUNTIME: &str = "anthropic";
 /// Registry key for the OpenAI (Codex) provider runtime.
 pub const OPENAI_RUNTIME: &str = "openai";
 
+/// Construction spec for the OpenRouter / OpenAI-compatible runtime family.
+/// Unlike the other providers, one concrete runtime type serves several
+/// distinct identities (the real OpenRouter aggregator, a pinned OpenRouter
+/// API-key runtime, and direct OpenAI-compatible profile endpoints), so the
+/// composition root registers one parameterized factory instead of one
+/// zero-arg factory per identity.
+#[derive(Debug, Clone)]
+pub enum OpenRouterRuntimeSpec {
+    /// Environment-derived default runtime (`OpenRouterProvider::new()`).
+    Default,
+    /// Real OpenRouter aggregator pinned to the OPENROUTER_API_KEY route.
+    OpenRouterApiKey,
+    /// Direct OpenAI-compatible profile endpoint (DeepSeek, NVIDIA NIM, ...).
+    CompatibleProfile(crate::provider_catalog::OpenAiCompatibleProfile),
+    /// User-defined named OpenAI-compatible provider from config
+    /// (`[providers.<name>]` in config.toml).
+    NamedProfile {
+        name: String,
+        config: crate::config::NamedProviderConfig,
+    },
+}
+
 /// Factories are fallible: a runtime whose constructor needs credentials
 /// (e.g. Copilot's GitHub token load) returns `None` when they are absent
 /// or invalid, and callers treat that like an unavailable provider.
 type Factory = Arc<dyn Fn() -> Option<Arc<dyn Provider>> + Send + Sync>;
+type OpenRouterFactory =
+    Arc<dyn Fn(OpenRouterRuntimeSpec) -> anyhow::Result<Arc<dyn Provider>> + Send + Sync>;
+
+fn openrouter_factory_slot() -> &'static RwLock<Option<OpenRouterFactory>> {
+    static SLOT: OnceLock<RwLock<Option<OpenRouterFactory>>> = OnceLock::new();
+    SLOT.get_or_init(|| RwLock::new(None))
+}
+
+/// Register the parameterized OpenRouter/OpenAI-compatible runtime factory.
+pub fn register_openrouter_factory<F>(factory: F)
+where
+    F: Fn(OpenRouterRuntimeSpec) -> anyhow::Result<Arc<dyn Provider>> + Send + Sync + 'static,
+{
+    *openrouter_factory_slot()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::new(factory));
+}
+
+/// Background OpenAI-compatible profile catalog refresh, implemented by the
+/// OpenRouter runtime crate and registered by the composition root. Base's
+/// route-building path calls this on a display cache miss; when unregistered
+/// (e.g. minimal test binaries) the refresh is skipped gracefully.
+type ProfileCatalogRefresh = Arc<
+    dyn Fn(crate::provider_catalog::OpenAiCompatibleProfile, &'static str) -> bool + Send + Sync,
+>;
+
+fn profile_catalog_refresh_slot() -> &'static RwLock<Option<ProfileCatalogRefresh>> {
+    static SLOT: OnceLock<RwLock<Option<ProfileCatalogRefresh>>> = OnceLock::new();
+    SLOT.get_or_init(|| RwLock::new(None))
+}
+
+/// Register the background profile-catalog refresh scheduler.
+pub fn register_profile_catalog_refresh<F>(refresh: F)
+where
+    F: Fn(crate::provider_catalog::OpenAiCompatibleProfile, &'static str) -> bool
+        + Send
+        + Sync
+        + 'static,
+{
+    *profile_catalog_refresh_slot()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::new(refresh));
+}
+
+/// Background refresh of the standard public OpenRouter catalog, implemented
+/// by the OpenRouter runtime crate. Same graceful-no-op contract as
+/// [`maybe_schedule_profile_catalog_refresh`].
+type StandardCatalogRefresh = Arc<dyn Fn(&'static str) -> bool + Send + Sync>;
+
+fn standard_catalog_refresh_slot() -> &'static RwLock<Option<StandardCatalogRefresh>> {
+    static SLOT: OnceLock<RwLock<Option<StandardCatalogRefresh>>> = OnceLock::new();
+    SLOT.get_or_init(|| RwLock::new(None))
+}
+
+/// Register the standard OpenRouter catalog refresh scheduler.
+pub fn register_standard_openrouter_catalog_refresh<F>(refresh: F)
+where
+    F: Fn(&'static str) -> bool + Send + Sync + 'static,
+{
+    *standard_catalog_refresh_slot()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Arc::new(refresh));
+}
+
+/// Schedule a background refresh of the standard OpenRouter catalog.
+pub(crate) fn maybe_schedule_standard_openrouter_catalog_refresh(context: &'static str) -> bool {
+    let refresh = standard_catalog_refresh_slot()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    match refresh {
+        Some(refresh) => refresh(context),
+        None => false,
+    }
+}
+
+/// Schedule a background catalog refresh for a direct OpenAI-compatible
+/// profile. Returns false when no scheduler is registered or the refresh was
+/// not started.
+pub(crate) fn maybe_schedule_profile_catalog_refresh(
+    profile: crate::provider_catalog::OpenAiCompatibleProfile,
+    context: &'static str,
+) -> bool {
+    let refresh = profile_catalog_refresh_slot()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    match refresh {
+        Some(refresh) => refresh(profile, context),
+        None => false,
+    }
+}
+
+/// Instantiate an OpenRouter/OpenAI-compatible runtime for `spec`.
+///
+/// Errors either bubble the runtime constructor's failure or report the
+/// missing composition-root registration.
+pub fn instantiate_openrouter_runtime(
+    spec: OpenRouterRuntimeSpec,
+) -> anyhow::Result<Arc<dyn Provider>> {
+    let factory = openrouter_factory_slot()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    match factory {
+        Some(factory) => factory(spec),
+        None => anyhow::bail!(
+            "no OpenRouter runtime factory registered; the composition root must call \
+             register_openrouter_factory() at startup"
+        ),
+    }
+}
 
 fn registry() -> &'static RwLock<HashMap<&'static str, Factory>> {
     static REGISTRY: OnceLock<RwLock<HashMap<&'static str, Factory>>> = OnceLock::new();
