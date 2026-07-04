@@ -853,6 +853,11 @@ struct BodyCacheEntry {
     prepared: Arc<PreparedMessages>,
     prepared_bytes: usize,
     msg_count: usize,
+    /// `compacted_hidden_user_prompts` at build time. Prepend (suffix) reuse
+    /// renders absolute prompt numbers into the reused lines, so a rebuild that
+    /// stitches older history above a cached suffix must verify numbering
+    /// continuity against the offset the base was built with.
+    prompt_offset: usize,
 }
 
 const BODY_CACHE_MAX_ENTRIES: usize = 8;
@@ -959,7 +964,7 @@ impl BodyCacheState {
     fn take_best_incremental_base(
         &mut self,
         key: &BodyCacheKey,
-    ) -> Option<(Arc<PreparedMessages>, usize)> {
+    ) -> Option<(Arc<PreparedMessages>, usize, usize)> {
         let regular = self
             .entries
             .iter()
@@ -1019,10 +1024,16 @@ impl BodyCacheState {
         } else {
             self.entries.remove(idx)?
         };
-        Some((entry.prepared, msg_count))
+        Some((entry.prepared, msg_count, entry.prompt_offset))
     }
 
-    fn insert(&mut self, key: BodyCacheKey, prepared: Arc<PreparedMessages>, msg_count: usize) {
+    fn insert(
+        &mut self,
+        key: BodyCacheKey,
+        prepared: Arc<PreparedMessages>,
+        msg_count: usize,
+        prompt_offset: usize,
+    ) {
         let prepared_bytes = estimate_prepared_messages_bytes(&prepared);
         if prepared_bytes > BODY_CACHE_MAX_BYTES {
             if let Some(pos) = self
@@ -1037,6 +1048,7 @@ impl BodyCacheState {
                 prepared,
                 prepared_bytes,
                 msg_count,
+                prompt_offset,
             });
             while self.oversized_entries.len() > BODY_OVERSIZED_CACHE_MAX_ENTRIES {
                 self.oversized_entries.pop_back();
@@ -1058,6 +1070,7 @@ impl BodyCacheState {
             prepared,
             prepared_bytes,
             msg_count,
+            prompt_offset,
         });
         while self.entries.len() > BODY_CACHE_MAX_ENTRIES
             || self.total_bytes() > BODY_CACHE_MAX_BYTES
