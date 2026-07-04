@@ -2751,8 +2751,18 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let narrow_prepare_width = wide_prepare_width.saturating_sub(1);
     let pinned_mermaid_aspect_ratio =
         diagram_area.and_then(|area| pinned_diagram_preferred_aspect_ratio(area, pane_position));
+    // Aspect-ratio goal for transcript mermaid renders (deferred and
+    // synchronous): the pinned pane's aspect wins when the pane is open so
+    // inline and pane share one cached PNG; otherwise a terminal-friendly
+    // inline goal keeps diagrams within a readable-height budget. Best-effort:
+    // falls back to None (today's 4:3 sizing) when font geometry is unknown.
+    let transcript_mermaid_aspect_ratio = mermaid::transcript_preferred_aspect_ratio(
+        pinned_mermaid_aspect_ratio,
+        wide_prepare_width,
+        chat_area.height,
+    );
     let prepare_at = |width: u16| {
-        mermaid::with_preferred_aspect_ratio(pinned_mermaid_aspect_ratio, || {
+        mermaid::with_preferred_aspect_ratio(transcript_mermaid_aspect_ratio, || {
             prepare::prepare_messages(app, width, chat_area.height)
         })
     };
