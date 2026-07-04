@@ -563,12 +563,37 @@ impl SessionControlHandle {
     /// Fire the stop-current-turn signal. Returns the signal's fire epoch so
     /// callers that schedule a deferred [`reset_cancel_if_epoch`](Self::reset_cancel_if_epoch)
     /// can avoid erasing a newer cancel that fired in the meantime (issue #428).
+    ///
+    /// Also fires every cancel signal registered for currently running turns
+    /// of this session. The handle's own signal can be a stale instance that
+    /// the streaming turn never observes (reattach after reload/disconnect,
+    /// server-initiated turns, headless recovery), which used to make Esc show
+    /// "Interrupting..." while the model kept generating for minutes
+    /// (issue #428).
     pub fn request_cancel(&self) -> u64 {
         crate::logging::info(&format!(
             "SESSION_CANCEL_SIGNAL_FIRE session={}",
             self.session_id
         ));
         self.stop_current_turn_signal.fire();
+        let active_turn_signals =
+            crate::turn_cancel_registry::active_turn_signals(&self.session_id);
+        let mut fired_active = 0usize;
+        for signal in &active_turn_signals {
+            if signal.same_instance(&self.stop_current_turn_signal) {
+                continue;
+            }
+            signal.fire();
+            fired_active += 1;
+        }
+        if fired_active > 0 {
+            crate::logging::info(&format!(
+                "SESSION_CANCEL_ACTIVE_TURN_SIGNALS_FIRED session={} fired={} registered={}",
+                self.session_id,
+                fired_active,
+                active_turn_signals.len()
+            ));
+        }
         self.stop_current_turn_signal.epoch()
     }
 

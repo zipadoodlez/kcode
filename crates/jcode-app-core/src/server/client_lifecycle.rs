@@ -266,9 +266,20 @@ async fn refresh_session_control_handle(
             let fallback_stop_signal = shutdown_signals.read().await.get(session_id).cloned();
             let fallback_soft_interrupt_queue =
                 soft_interrupt_queues.read().await.get(session_id).cloned();
-            if let (Some(stop_signal), Some(soft_interrupt_queue)) =
-                (fallback_stop_signal, fallback_soft_interrupt_queue)
-            {
+            if let Some(soft_interrupt_queue) = fallback_soft_interrupt_queue {
+                // A missing shutdown-signal registration (e.g. a session created
+                // through the headless spawn path) must not force this connection
+                // to block on the busy agent mutex: cancels fired through the
+                // handle fan out to the running turn's own signal via the
+                // turn-cancel registry (issue #428), so a detached signal is a
+                // safe stand-in.
+                let stop_signal = fallback_stop_signal.unwrap_or_else(|| {
+                    crate::logging::warn(&format!(
+                        "refresh_session_control_handle: no registered shutdown signal for busy session {}; using detached signal (cancels reach the running turn via the turn cancel registry)",
+                        session_id
+                    ));
+                    InterruptSignal::new()
+                });
                 crate::logging::warn(&format!(
                     "refresh_session_control_handle: using lock-free cancel-only control handle for busy session {} after {}ms",
                     session_id,

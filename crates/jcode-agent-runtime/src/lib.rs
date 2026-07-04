@@ -108,6 +108,13 @@ impl InterruptSignal {
     pub fn as_atomic(&self) -> Arc<std::sync::atomic::AtomicBool> {
         Arc::clone(&self.flag)
     }
+
+    /// True when `other` is a clone of this signal (shares the same state).
+    /// Used by cancel fan-out to avoid double-firing the same signal and by
+    /// diagnostics that need to detect stale signal instances (issue #428).
+    pub fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.flag, &other.flag)
+    }
 }
 
 impl Default for InterruptSignal {
