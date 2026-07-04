@@ -2070,11 +2070,11 @@ pub(in crate::tui::app) fn handle_server_event(
             // enqueues in the background and registers the diagram on
             // completion, so plan updates never block the event loop. Gated
             // like transcript mermaid: a diagram surface must be enabled and
-            // mermaid rendering itself must be switched on (currently the
-            // JCODE_ENABLE_MERMAID=1 rollout gate while the renderer
-            // stabilizes), so plan graphs follow the same rollout switch.
+            // mermaid rendering must not be opted out (enabled by default,
+            // JCODE_ENABLE_MERMAID=0 disables), matching the markdown
+            // pipeline's mermaid_rendering_enabled semantics.
             if app.diagram_mode != crate::config::DiagramDisplayMode::None
-                && std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "1")
+                && !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
                 && let Some(graph) =
                     crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
             {
