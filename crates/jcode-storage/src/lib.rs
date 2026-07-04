@@ -412,17 +412,24 @@ where
 
 /// Fast append of a single JSON value followed by a newline.
 /// Intended for append-only journals where per-write fsync is not required.
+///
+/// The entire line (value + trailing newline) is serialized into one buffer
+/// and appended with a single `write_all`. Streaming the serializer straight
+/// into the file issued many small writes, so a concurrent reader (or a
+/// process killed mid-append) could observe a torn half-line, and two
+/// concurrent appenders could interleave fragments. A single `O_APPEND` write
+/// of the complete line keeps each journal line intact.
 pub fn append_json_line_fast<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
         ensure_dir(parent)?;
     }
 
+    let mut line = serde_json::to_vec(value)?;
+    line.push(b'\n');
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)?;
-    serde_json::to_writer(&mut file, value)?;
-    file.write_all(b"\n")?;
-    file.flush()?;
+    file.write_all(&line)?;
     Ok(())
 }

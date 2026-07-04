@@ -892,6 +892,189 @@ fn test_save_checkpoints_after_full_mutation_and_clears_journal() -> Result<()> 
 }
 
 #[test]
+fn test_journal_replay_skips_corrupt_line_and_keeps_tail() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-session-journal-corrupt-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_journal_corrupt_tail_test";
+    let mut session = Session::create_with_id(
+        session_id.to_string(),
+        None,
+        Some("corrupt journal test".to_string()),
+    );
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "first".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Two good journal entries.
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::Text {
+            text: "second".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "third".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Corrupt the middle line (torn write) but keep the final line intact.
+    let journal_path = session_journal_path(session_id)?;
+    let journal = std::fs::read_to_string(&journal_path)?;
+    let lines: Vec<&str> = journal.lines().collect();
+    assert_eq!(lines.len(), 2);
+    let torn = &lines[0][..lines[0].len() / 2];
+    std::fs::write(&journal_path, format!("{}\n{}\n", torn, lines[1]))?;
+
+    // The last prompt ("third") must survive even though an earlier journal
+    // line is unparseable.
+    let loaded = Session::load(session_id)?;
+    assert_eq!(loaded.messages.len(), 2);
+    assert_eq!(loaded.messages[0].content_preview(), "first");
+    assert_eq!(loaded.messages[1].content_preview(), "third");
+
+    let remote = Session::load_for_remote_startup(session_id)?;
+    assert_eq!(remote.messages.len(), 2);
+    assert_eq!(remote.messages[1].content_preview(), "third");
+    Ok(())
+}
+
+#[test]
+fn test_journal_replay_salvages_glued_entries_on_torn_line() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-session-journal-glued-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_journal_glued_test";
+    let mut session = Session::create_with_id(
+        session_id.to_string(),
+        None,
+        Some("glued journal test".to_string()),
+    );
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "first".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::Text {
+            text: "second".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "third".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Simulate a torn append glued to the next complete entry: half of entry 1
+    // followed (no newline) by all of entry 2 on the same line.
+    let journal_path = session_journal_path(session_id)?;
+    let journal = std::fs::read_to_string(&journal_path)?;
+    let lines: Vec<&str> = journal.lines().collect();
+    assert_eq!(lines.len(), 2);
+    let torn = &lines[0][..lines[0].len() / 2];
+    std::fs::write(&journal_path, format!("{}{}\n", torn, lines[1]))?;
+
+    // The glued complete entry ("third") must be salvaged from the corrupt line.
+    let loaded = Session::load(session_id)?;
+    assert_eq!(loaded.messages.len(), 2);
+    assert_eq!(loaded.messages[0].content_preview(), "first");
+    assert_eq!(loaded.messages[1].content_preview(), "third");
+    Ok(())
+}
+
+#[test]
+fn test_corrupt_journal_heals_via_checkpoint_on_next_save() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-session-journal-heal-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_journal_heal_test";
+    let mut session = Session::create_with_id(
+        session_id.to_string(),
+        None,
+        Some("heal journal test".to_string()),
+    );
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "first".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+    session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::Text {
+            text: "second".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Corrupt the only journal line.
+    let journal_path = session_journal_path(session_id)?;
+    let journal = std::fs::read_to_string(&journal_path)?;
+    let line = journal.lines().next().unwrap_or_default();
+    std::fs::write(&journal_path, &line[..line.len() / 2])?;
+
+    let mut loaded = Session::load(session_id)?;
+    assert_eq!(loaded.messages.len(), 1);
+
+    // A forensic backup of the corrupt journal is kept.
+    let backup_path = journal_path.with_extension("corrupt.jsonl");
+    assert!(backup_path.exists());
+
+    // The next save checkpoints a full snapshot and removes the corrupt journal,
+    // so the bad line is never replayed again.
+    loaded.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "after heal".to_string(),
+            cache_control: None,
+        }],
+    );
+    loaded.save()?;
+    assert!(!journal_path.exists());
+
+    let reloaded = Session::load(session_id)?;
+    assert_eq!(reloaded.messages.len(), 2);
+    assert_eq!(reloaded.messages[1].content_preview(), "after heal");
+    Ok(())
+}
+
+#[test]
 fn test_redacted_for_export_redacts_tool_result_and_tool_input() -> Result<()> {
     let mut session = Session::create_with_id(
         "session_redact_persist_test".to_string(),

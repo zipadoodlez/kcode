@@ -9,6 +9,125 @@ use super::storage_paths::{file_len_or_zero, session_journal_path_from_snapshot,
 use super::{MAX_SESSION_JOURNAL_BYTES, RemoteStartupSessionSnapshot, Session, SessionStartupStub};
 use crate::storage;
 
+/// Outcome of replaying one session journal file.
+#[derive(Debug, Default)]
+struct JournalReplayStats {
+    entries: usize,
+    skipped_lines: usize,
+    salvaged_entries: usize,
+}
+
+impl JournalReplayStats {
+    fn is_corrupt(&self) -> bool {
+        self.skipped_lines > 0
+    }
+}
+
+/// Attempt to recover complete entries from a journal line that failed the
+/// strict one-entry-per-line parse.
+///
+/// If a writer died mid-append (torn line without a trailing newline), the
+/// next successful append starts writing on the same line, producing
+/// `<torn json><complete entry json>\n` or `<entry json><entry json>\n`.
+/// Serialized entries always begin with `{"meta":` (struct field order), so
+/// scan for candidate starts and stream-parse consecutive complete entries
+/// from the first position that yields any.
+fn salvage_glued_journal_entries(
+    line: &str,
+    mut apply: impl FnMut(SessionJournalEntry),
+) -> usize {
+    const ENTRY_START: &str = "{\"meta\":";
+    let mut salvaged = 0usize;
+    let mut search_from = 0usize;
+    while let Some(rel) = line.get(search_from..).and_then(|rest| rest.find(ENTRY_START)) {
+        let candidate_start = search_from + rel;
+        let mut stream = serde_json::Deserializer::from_str(&line[candidate_start..])
+            .into_iter::<SessionJournalEntry>();
+        let mut parsed = Vec::new();
+        for item in &mut stream {
+            match item {
+                Ok(entry) => parsed.push(entry),
+                Err(_) => break,
+            }
+        }
+        if !parsed.is_empty() {
+            salvaged += parsed.len();
+            for entry in parsed {
+                apply(entry);
+            }
+            break;
+        }
+        search_from = candidate_start + ENTRY_START.len();
+    }
+    salvaged
+}
+
+/// Replay every parseable entry from a session journal, tolerating corrupt
+/// lines instead of truncating the transcript at the first bad byte.
+///
+/// Journals are append-only JSONL written by `append_json_line_fast`. A crash,
+/// full disk, or (historically) interleaved multi-write appends can leave a
+/// torn or glued line behind. The old replay loop stopped at the first parse
+/// failure, silently dropping every later entry, which surfaced as "my last
+/// prompt is missing" after resuming a long session. Skipping only the bad
+/// line preserves the rest of the transcript; per-entry `meta` snapshots make
+/// later entries self-sufficient for metadata, and appended messages after a
+/// gap are far better than losing the whole tail.
+fn replay_journal_lines(
+    journal_path: &Path,
+    mut apply: impl FnMut(SessionJournalEntry),
+) -> Result<JournalReplayStats> {
+    let mut stats = JournalReplayStats::default();
+    if !journal_path.exists() {
+        return Ok(stats);
+    }
+
+    let file = std::fs::File::open(journal_path)?;
+    let reader = BufReader::new(file);
+    for (line_idx, line) in reader.lines().enumerate() {
+        let line = line?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<SessionJournalEntry>(trimmed) {
+            Ok(entry) => {
+                stats.entries += 1;
+                apply(entry);
+            }
+            Err(err) => {
+                stats.skipped_lines += 1;
+                let salvaged = salvage_glued_journal_entries(trimmed, &mut apply);
+                stats.entries += salvaged;
+                stats.salvaged_entries += salvaged;
+                crate::logging::warn(&format!(
+                    "Session journal parse failed at {} line {} ({}); salvaged {} glued entr{} and continuing replay",
+                    journal_path.display(),
+                    line_idx + 1,
+                    err,
+                    salvaged,
+                    if salvaged == 1 { "y" } else { "ies" }
+                ));
+            }
+        }
+    }
+
+    if stats.is_corrupt() {
+        crate::logging::event_warn(
+            "SESSION_PERSISTENCE",
+            vec![
+                ("phase", "journal_replay_corruption".to_string()),
+                ("path", journal_path.display().to_string()),
+                ("entries_replayed", stats.entries.to_string()),
+                ("lines_skipped", stats.skipped_lines.to_string()),
+                ("entries_salvaged", stats.salvaged_entries.to_string()),
+            ],
+        );
+    }
+
+    Ok(stats)
+}
+
 impl Session {
     fn apply_journal_entry(&mut self, entry: SessionJournalEntry) {
         self.apply_journal_meta(entry.meta);
@@ -29,6 +148,30 @@ impl Session {
         Ok(())
     }
 
+    /// After replaying a journal that contained unparseable lines, force the
+    /// next `save()` to checkpoint a full snapshot (which deletes the corrupt
+    /// journal) so the salvaged in-memory state becomes durable and the bad
+    /// lines can never be replayed again. A best-effort copy of the corrupt
+    /// journal is kept next to it for forensics.
+    fn schedule_checkpoint_after_corrupt_journal(&mut self, journal_path: &Path) {
+        self.mark_messages_full_dirty();
+        let backup_path = journal_path.with_extension("corrupt.jsonl");
+        if let Err(err) = std::fs::copy(journal_path, &backup_path) {
+            crate::logging::warn(&format!(
+                "Failed to back up corrupt session journal {} to {}: {}",
+                journal_path.display(),
+                backup_path.display(),
+                err
+            ));
+        }
+        crate::logging::warn(&format!(
+            "Session {} journal {} contained corrupt lines; next save will checkpoint a full snapshot (backup at {})",
+            self.id,
+            journal_path.display(),
+            backup_path.display()
+        ));
+    }
+
     pub fn load_from_path(path: &Path) -> Result<Self> {
         let load_start = Instant::now();
         let snapshot_bytes = file_len_or_zero(path);
@@ -38,38 +181,18 @@ impl Session {
         let journal_path = session_journal_path_from_snapshot(path);
         let journal_bytes = file_len_or_zero(&journal_path);
         let journal_start = Instant::now();
-        let mut journal_entries = 0usize;
-        if journal_path.exists() {
-            let file = std::fs::File::open(&journal_path)?;
-            let reader = BufReader::new(file);
-            for (line_idx, line) in reader.lines().enumerate() {
-                let line = line?;
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<SessionJournalEntry>(trimmed) {
-                    Ok(entry) => {
-                        journal_entries += 1;
-                        session.apply_journal_entry(entry)
-                    }
-                    Err(err) => {
-                        crate::logging::warn(&format!(
-                            "Session journal parse failed at {} line {}: {}",
-                            journal_path.display(),
-                            line_idx + 1,
-                            err
-                        ));
-                        break;
-                    }
-                }
-            }
-        }
+        let replay_stats = replay_journal_lines(&journal_path, |entry| {
+            session.apply_journal_entry(entry);
+        })?;
+        let journal_entries = replay_stats.entries;
         let journal_ms = journal_start.elapsed().as_millis();
         let finalize_start = Instant::now();
         session.reset_persist_state(path.exists());
         session.reset_provider_messages_cache();
         session.mark_memory_profile_dirty();
+        if replay_stats.is_corrupt() {
+            session.schedule_checkpoint_after_corrupt_journal(&journal_path);
+        }
         let finalize_ms = finalize_start.elapsed().as_millis();
         crate::logging::info(&format!(
             "[TIMING] session_load: session={}, snapshot={}ms, journal={}ms, finalize={}ms, snapshot_bytes={}, journal_bytes={}, journal_entries={}, messages={}, env_snapshots={}, replay_events={}, total={}ms",
@@ -137,34 +260,12 @@ impl Session {
         let journal_bytes = file_len_or_zero(&journal_path);
         let journal_start = Instant::now();
         let mut journal_entries = 0usize;
-        if journal_path.exists() {
-            let file = std::fs::File::open(&journal_path)?;
-            let reader = BufReader::new(file);
-            for (line_idx, line) in reader.lines().enumerate() {
-                let line = line?;
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<SessionJournalEntry>(trimmed) {
-                    Ok(entry) => {
-                        journal_entries += 1;
-                        session.apply_journal_meta(entry.meta);
-                        session.messages.extend(entry.append_messages);
-                        session.replay_events.extend(entry.append_replay_events);
-                    }
-                    Err(err) => {
-                        crate::logging::warn(&format!(
-                            "Remote startup journal parse failed at {} line {}: {}",
-                            journal_path.display(),
-                            line_idx + 1,
-                            err
-                        ));
-                        break;
-                    }
-                }
-            }
-        }
+        replay_journal_lines(&journal_path, |entry| {
+            journal_entries += 1;
+            session.apply_journal_meta(entry.meta);
+            session.messages.extend(entry.append_messages);
+            session.replay_events.extend(entry.append_replay_events);
+        })?;
         let journal_ms = journal_start.elapsed().as_millis();
         let finalize_start = Instant::now();
         session.reset_persist_state(path.exists());
