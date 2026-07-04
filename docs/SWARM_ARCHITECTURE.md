@@ -18,13 +18,12 @@ integrate work with optional git worktrees.
 
 ## Roles
 
-### Recursive spawning (depth-limited tree)
+### Recursive spawning (unbounded-depth tree)
 
 Spawning is recursive. Any swarm member can spawn child agents, and those
-children can spawn their own children, forming a spawn tree. The tree is capped
-at `MAX_SWARM_SPAWN_DEPTH` (currently 5): an agent at depth `d` may spawn
-children (which land at depth `d + 1`) only while `d < 5`. The root session that
-first spawns in a repo is depth 0.
+children can spawn their own children, forming a spawn tree. There is no depth
+cap: growth is bounded only by the total swarm member cap. The root session
+that first spawns in a repo is depth 0.
 
 The spawn/parent edge is encoded by `report_back_to_session_id`: a child spawned
 by `P` reports back to `P`. Walking that chain reconstructs ancestry and depth,
@@ -69,7 +68,8 @@ concurrently would make the shared plan incoherent.
 - Propose plan updates when they discover issues or new requirements.
 - Coordinate directly with other agents via DM or channels.
 - Emit lifecycle events when they start, finish, or stop unexpectedly.
-- May spawn their own child agents (subject to the depth-5 cap) and stop any
+- May spawn their own child agents (no depth cap; bounded only by the total
+  swarm member cap) and stop any
   agent in the subtree they spawned. Stopping agents outside their own subtree
   still requires `force=true`.
 
