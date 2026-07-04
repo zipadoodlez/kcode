@@ -77,7 +77,7 @@ impl App {
                 },
             },
             SimScreen {
-                title: "Import detected logins (multiple, checkbox list)",
+                title: "Import summary (detected logins, Continue preselected)",
                 phase: OnboardingPhase::Login {
                     import: ImportReview::new(vec![
                         crate::external_auth::ExternalAuthReviewCandidate::fixture(
@@ -96,13 +96,40 @@ impl App {
                 },
             },
             SimScreen {
+                title: "Import detected logins (multiple, checkbox list)",
+                phase: OnboardingPhase::Login {
+                    import: ImportReview::new(vec![
+                        crate::external_auth::ExternalAuthReviewCandidate::fixture(
+                            "OpenAI/Codex",
+                            "Codex auth.json",
+                        ),
+                        crate::external_auth::ExternalAuthReviewCandidate::fixture(
+                            "Claude",
+                            "Claude Code",
+                        ),
+                        crate::external_auth::ExternalAuthReviewCandidate::fixture(
+                            "GitHub Copilot",
+                            "github-copilot/hosts.json",
+                        ),
+                    ])
+                    .map(|mut review| {
+                        review.enter_choose_mode();
+                        review
+                    }),
+                },
+            },
+            SimScreen {
                 title: "Import detected logins (single)",
                 phase: OnboardingPhase::Login {
                     import: ImportReview::new(vec![
                         crate::external_auth::ExternalAuthReviewCandidate::fixture(
                             "Cursor", "Cursor",
                         ),
-                    ]),
+                    ])
+                    .map(|mut review| {
+                        review.enter_choose_mode();
+                        review
+                    }),
                 },
             },
             SimScreen {

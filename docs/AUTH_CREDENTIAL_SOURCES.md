@@ -111,7 +111,7 @@ Shared `auth.json`-style sources (`ExternalAuthSource`):
 |-----------|------------------------------------|------------------------------------------------------------------------------|
 | OpenCode  | `~/.local/share/opencode/auth.json`| flat `{ provider: { type: "oauth", access, refresh, expires } \| { type: "api", key } }` |
 | pi        | `~/.pi/agent/auth.json`            | flat `{ provider: { type: "oauth", ... } \| { type: "api_key", key } }` (key may be `$ENV` ref) |
-| OpenClaw  | `~/.openclaw/agent/auth.json`      | same shape as pi (OpenClaw is a pi fork)                                      |
+| OpenClaw  | `~/.openclaw/agent/auth.json`, `~/.openclaw/agents/<id>/agent/auth-profiles.json`, `~/.openclaw/agents/<id>/agent/auth.json`, `~/.openclaw/credentials/oauth.json` | legacy flat pi shape, or the current `{ "profiles": { "<provider>:<name>": ... } }` store (first existing path wins; `main` agent and `:default` profiles preferred) |
 | Hermes    | `~/.hermes/auth.json`              | nested `{ credential_pool: { provider: [ { auth_type, access_token, refresh_token, expires_at_ms } ] }, providers: {...} }` |
 
 Notes:

@@ -795,10 +795,13 @@ pub struct LoginImportPrompt {
     pub rows: Vec<LoginImportRow>,
     /// Index of the row the cursor is currently on.
     pub cursor: usize,
-    /// When `true`, the navigable "Continue" pill (above and below the list) is
-    /// focused instead of a login row, so it renders highlighted and Enter
-    /// commits the import.
+    /// When `true`, the navigable "Continue" pill is focused. On the summary
+    /// screen this is the preselected default; in choose mode it means focus is
+    /// on the pill rather than a login row, so Enter commits the import.
     pub continue_focused: bool,
+    /// `false` = the default summary screen (detected logins listed read-only,
+    /// with Continue / Choose pills). `true` = the per-login checkbox list.
+    pub choosing: bool,
     /// How many rows are currently checked for import.
     pub checked_count: usize,
     /// Seconds left before the screen auto-imports all checked logins.

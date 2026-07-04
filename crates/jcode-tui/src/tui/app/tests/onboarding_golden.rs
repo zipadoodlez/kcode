@@ -106,7 +106,9 @@ fn onboarding_golden_walks_every_phase() {
         );
     }
 
-    // 2. Login with detected imports (two-column list + Next button).
+    // 2. Login with detected imports: the default SUMMARY screen. It lists
+    // everything we detected read-only and lands focus on a preselected
+    // "Continue" pill, with a second "Choose what to import" pill beside it.
     {
         let review = ImportReview::new(vec![
             ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
@@ -117,7 +119,46 @@ fn onboarding_golden_walks_every_phase() {
             import: Some(review),
         });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (import two-column list, 2 logins)", &text);
+        dump("Login (import summary, 2 logins)", &text);
+        // The headline states how many logins were found.
+        assert!(
+            text.contains("We found 2 existing logins:"),
+            "summary headline: {text}"
+        );
+        // Every detected login is listed with a checkmark (read-only summary).
+        assert!(text.contains("OpenAI/Codex"), "provider 1: {text}");
+        assert!(text.contains("Codex auth.json"), "source 1: {text}");
+        assert!(text.contains("Claude"), "provider 2: {text}");
+        assert!(text.contains('✓'), "detected checkmark: {text}");
+        // The two action pills: "Continue" (preselected) and "Choose what to
+        // import", drawn as lozenges with half-circle end caps (◖ ◗).
+        assert!(text.contains("Continue"), "continue pill label: {text}");
+        assert!(
+            text.contains("Choose what to import"),
+            "choose pill label: {text}"
+        );
+        assert!(
+            text.contains('\u{25D6}') && text.contains('\u{25D7}'),
+            "pill rounded end caps: {text}"
+        );
+        // The summary is read-only: no per-row choice circles yet.
+        assert!(!text.contains('●'), "no choice circles on summary: {text}");
+    }
+
+    // 2b. Choose mode: the per-login checkbox list (opened via the "Choose
+    // what to import" pill) still renders the labeled two-column list.
+    {
+        let mut review = ImportReview::new(vec![
+            ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+            ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+        ])
+        .unwrap();
+        review.enter_choose_mode();
+        let app = app_in_phase(OnboardingPhase::Login {
+            import: Some(review),
+        });
+        let text = render_onboarding_text(&app, width, height);
+        dump("Login (import choose mode, 2 logins)", &text);
         // The section is labeled "Import:" (lean header; the list itself shows
         // how many and which logins were found).
         assert!(text.contains("Import:"), "import label: {text}");
@@ -141,7 +182,7 @@ fn onboarding_golden_walks_every_phase() {
         );
     }
 
-    // 2b. A single detected login still renders the labeled list + one row.
+    // 2c. A single detected login still renders the summary + one row.
     {
         let review =
             ImportReview::new(vec![ExternalAuthReviewCandidate::fixture("Cursor", "Cursor")])
@@ -150,11 +191,13 @@ fn onboarding_golden_walks_every_phase() {
             import: Some(review),
         });
         let text = render_onboarding_text(&app, width, height);
-        dump("Login (import two-column list, single login)", &text);
-        assert!(text.contains("Import:"), "import label: {text}");
+        dump("Login (import summary, single login)", &text);
+        assert!(
+            text.contains("We found 1 existing login:"),
+            "singular headline: {text}"
+        );
         assert!(text.contains("Cursor"), "single login row: {text}");
-        assert!(text.contains("Yes") && text.contains("No"), "yes/no header: {text}");
-        assert!(text.contains('●'), "filled choice circle: {text}");
+        assert!(text.contains("Continue"), "continue pill: {text}");
     }
 
     // 4. Continue prompt (resume an external session).

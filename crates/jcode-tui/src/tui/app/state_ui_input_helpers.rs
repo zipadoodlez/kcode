@@ -1212,6 +1212,7 @@ impl App {
                         rows,
                         cursor: review.cursor,
                         continue_focused: review.continue_focused,
+                        choosing: review.choosing,
                         checked_count: review.checked_count(),
                         seconds_left: review.seconds_remaining(),
                     }

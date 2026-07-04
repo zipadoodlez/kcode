@@ -376,3 +376,96 @@ fn hermes_oauth_tokens_parse_rfc3339_expiry() {
         crate::env::remove_var("JCODE_HOME");
     }
 }
+
+#[test]
+fn openclaw_auth_profiles_store_resolves_and_flattens() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    // No legacy ~/.openclaw/agent/auth.json: the current per-agent
+    // auth-profiles.json store must be discovered instead.
+    let profiles_path = crate::storage::user_home_path(
+        ".openclaw/agents/main/agent/auth-profiles.json",
+    )
+    .unwrap();
+    write_auth_file(
+        &profiles_path,
+        serde_json::json!({
+            "version": 1,
+            "profiles": {
+                "openai:work": {
+                    "type": "oauth",
+                    "provider": "openai",
+                    "access": "work-access",
+                    "refresh": "work-refresh",
+                    "expires": chrono::Utc::now().timestamp_millis() + 60_000
+                },
+                "openai:default": {
+                    "type": "oauth",
+                    "provider": "openai",
+                    "access": "openclaw-access",
+                    "refresh": "openclaw-refresh",
+                    "expires": chrono::Utc::now().timestamp_millis() + 60_000
+                },
+                "openrouter:default": {
+                    "type": "api_key",
+                    "provider": "openrouter",
+                    "key": "sk-or-openclaw"
+                }
+            }
+        }),
+    );
+
+    assert_eq!(ExternalAuthSource::OpenClaw.path().unwrap(), profiles_path);
+    trust_external_auth_source(ExternalAuthSource::OpenClaw).unwrap();
+
+    // The `:default` profile wins over the sibling `openai:work` profile.
+    let tokens = load_openai_oauth_tokens().expect("oauth tokens imported");
+    assert_eq!(tokens.access_token, "openclaw-access");
+    assert_eq!(
+        load_api_key_for_env("OPENROUTER_API_KEY").as_deref(),
+        Some("sk-or-openclaw")
+    );
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
+fn openclaw_legacy_flat_auth_json_still_wins_when_present() {
+    let _guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().unwrap();
+    let prev = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", dir.path());
+
+    // Both layouts exist: the original pi-fork path must take precedence so
+    // previously-recorded trust decisions stay bound to the same file.
+    let legacy_path = crate::storage::user_home_path(".openclaw/agent/auth.json").unwrap();
+    write_auth_file(
+        &legacy_path,
+        serde_json::json!({
+            "anthropic": { "type": "api_key", "key": "sk-ant-legacy" }
+        }),
+    );
+    let profiles_path = crate::storage::user_home_path(
+        ".openclaw/agents/main/agent/auth-profiles.json",
+    )
+    .unwrap();
+    write_auth_file(
+        &profiles_path,
+        serde_json::json!({ "version": 1, "profiles": {} }),
+    );
+
+    assert_eq!(ExternalAuthSource::OpenClaw.path().unwrap(), legacy_path);
+
+    if let Some(prev) = prev {
+        crate::env::set_var("JCODE_HOME", prev);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}

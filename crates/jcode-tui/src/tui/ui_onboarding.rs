@@ -92,6 +92,43 @@ fn continue_pill_line(focused: bool, align: Alignment) -> Line<'static> {
     Line::from(lozenge_pill_spans("Continue", focused)).alignment(align)
 }
 
+/// The summary-screen action row: "Continue" (imports everything, preselected)
+/// next to "Choose what to import" (opens the per-login checkbox list).
+fn import_summary_pills_line(continue_focused: bool, align: Alignment) -> Line<'static> {
+    let mut spans = Vec::new();
+    spans.extend(lozenge_pill_spans("Continue", continue_focused));
+    spans.push(Span::raw("   "));
+    spans.extend(lozenge_pill_spans("Choose what to import", !continue_focused));
+    Line::from(spans).alignment(align)
+}
+
+/// Render the read-only detected-login list for the import summary screen: one
+/// dim checkmarked row per detected login. No cursor, no columns - the user is
+/// just being shown what we found before they hit Continue.
+fn import_summary_lines(prompt: &crate::tui::LoginImportPrompt) -> Vec<Line<'static>> {
+    let check_style = Style::default()
+        .fg(rgb(126, 211, 159))
+        .add_modifier(Modifier::BOLD);
+    prompt
+        .rows
+        .iter()
+        .map(|row| {
+            Line::from(vec![
+                Span::styled("✓ ", check_style),
+                Span::styled(
+                    row.provider_summary.clone(),
+                    Style::default().fg(rgb(210, 210, 210)),
+                ),
+                Span::styled(
+                    format!(" ({})", row.source_name),
+                    Style::default().fg(dim_color()),
+                ),
+            ])
+            .alignment(Alignment::Center)
+        })
+        .collect()
+}
+
 /// Render the import screen body: a "Yes / No" header row, then one row per
 /// detected login. Each login has a circle under the Yes column and a circle
 /// under the No column; the *filled* circle is the current choice. Every login
@@ -345,8 +382,31 @@ fn welcome_body_lines(app: &dyn TuiState) -> Vec<Line<'static>> {
                         .alignment(align),
                     );
                 }
+                Some(prompt) if !prompt.choosing => {
+                    // Summary screen (default): show what we detected as a
+                    // read-only checkmarked list, then land the user on a
+                    // preselected "Continue" pill that imports everything.
+                    // "Choose what to import" opens the per-login list.
+                    let found = prompt.rows.len();
+                    lines.push(
+                        Line::from(Span::styled(
+                            format!(
+                                "We found {found} existing login{}:",
+                                if found == 1 { "" } else { "s" }
+                            ),
+                            Style::default()
+                                .fg(welcome_accent())
+                                .add_modifier(Modifier::BOLD),
+                        ))
+                        .alignment(align),
+                    );
+                    lines.push(Line::from(""));
+                    lines.extend(import_summary_lines(&prompt));
+                    lines.push(Line::from(""));
+                    lines.push(import_summary_pills_line(prompt.continue_focused, align));
+                }
                 Some(prompt) => {
-                    // Lean layout: a short "Import:" label, the Continue pill,
+                    // Choose mode: a short "Import:" label, the Continue pill,
                     // then the per-login rows. The interactive pill + rows show
                     // what is selectable, so we drop the old instruction prose
                     // and countdown sentence to keep the screen uncluttered.

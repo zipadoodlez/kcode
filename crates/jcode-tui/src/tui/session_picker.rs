@@ -1897,34 +1897,36 @@ impl SessionPicker {
         }
 
         let selected = self.onboarding_start_new_highlighted;
-        let (marker, marker_style, label_style) = if selected {
+        // Render "Start a new session" as a real button (a filled capsule when
+        // selected) instead of a bare text row, so first-run users immediately
+        // read it as the primary action rather than a list caption. The hint
+        // next to it spells out both moves: Enter commits, Down browses.
+        let (cap_style, body_style) = if selected {
             (
-                "▸ ",
-                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                Style::default().fg(accent),
                 Style::default()
-                    .fg(Color::White)
+                    .fg(rgb(20, 24, 32))
+                    .bg(accent)
                     .add_modifier(Modifier::BOLD),
             )
         } else {
             (
-                "  ",
-                Style::default().fg(rgb(120, 120, 130)),
-                Style::default().fg(rgb(180, 180, 190)),
+                Style::default().fg(rgb(58, 62, 70)),
+                Style::default().fg(rgb(170, 174, 182)).bg(rgb(58, 62, 70)),
             )
         };
-        let start_new = Line::from(vec![
-            Span::styled(marker, marker_style),
-            Span::styled("Start a new session", label_style),
-            Span::styled(
-                "  (or pick a session below to resume)",
-                Style::default().fg(rgb(90, 90, 100)),
-            ),
-        ]);
-        let row = Paragraph::new(start_new).style(if selected {
-            Style::default().bg(rgb(40, 32, 60))
+        let hint = if selected {
+            "  Enter starts fresh · ↓ resume a session below"
         } else {
-            Style::default()
-        });
+            "  ↑ back to this button · Enter resumes the highlighted session"
+        };
+        let start_new = Line::from(vec![
+            Span::styled("\u{25D6}", cap_style),
+            Span::styled(" Start a new session ", body_style),
+            Span::styled("\u{25D7}", cap_style),
+            Span::styled(hint, Style::default().fg(rgb(120, 120, 130))),
+        ]);
+        let row = Paragraph::new(start_new);
         frame.render_widget(row, chunks[1]);
     }
 

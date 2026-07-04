@@ -46,10 +46,63 @@ impl ExternalAuthSource {
         match self {
             Self::OpenCode => crate::storage::user_home_path(".local/share/opencode/auth.json"),
             Self::Pi => crate::storage::user_home_path(".pi/agent/auth.json"),
-            Self::OpenClaw => crate::storage::user_home_path(".openclaw/agent/auth.json"),
+            Self::OpenClaw => openclaw_auth_path(),
             Self::Hermes => crate::storage::user_home_path(".hermes/auth.json"),
         }
     }
+}
+
+/// Resolve OpenClaw's credential file. OpenClaw has moved its auth store over
+/// time, so probe the known locations and return the first that exists:
+///
+///   1. `~/.openclaw/agent/auth.json` - the original pi-fork layout.
+///   2. `~/.openclaw/agents/<agentId>/agent/auth-profiles.json` - the current
+///      per-agent profile store (`main` is checked first, then any agent).
+///   3. `~/.openclaw/agents/<agentId>/agent/auth.json` - per-agent legacy file.
+///   4. `~/.openclaw/credentials/oauth.json` - legacy import-only OAuth file.
+///
+/// Falls back to the pi-fork path when nothing exists (so consent bookkeeping
+/// always has a stable path to record).
+fn openclaw_auth_path() -> Result<PathBuf> {
+    let legacy = crate::storage::user_home_path(".openclaw/agent/auth.json")?;
+    if legacy.is_file() {
+        return Ok(legacy);
+    }
+
+    let agents_root = crate::storage::user_home_path(".openclaw/agents")?;
+    let agent_dirs = || -> Vec<PathBuf> {
+        let mut dirs = Vec::new();
+        // Check the default agent first so multi-agent installs resolve
+        // deterministically to the main store.
+        dirs.push(agents_root.join("main"));
+        if let Ok(entries) = std::fs::read_dir(&agents_root) {
+            let mut rest: Vec<PathBuf> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_dir() && p.file_name().is_some_and(|n| n != "main"))
+                .collect();
+            rest.sort();
+            dirs.extend(rest);
+        }
+        dirs
+    };
+    for dir in agent_dirs() {
+        let profiles = dir.join("agent/auth-profiles.json");
+        if profiles.is_file() {
+            return Ok(profiles);
+        }
+        let auth = dir.join("agent/auth.json");
+        if auth.is_file() {
+            return Ok(auth);
+        }
+    }
+
+    let credentials = crate::storage::user_home_path(".openclaw/credentials/oauth.json")?;
+    if credentials.is_file() {
+        return Ok(credentials);
+    }
+
+    Ok(legacy)
 }
 
 const SOURCES: [ExternalAuthSource; 4] = [
@@ -312,7 +365,7 @@ fn load_auth_map(source: ExternalAuthSource) -> Result<HashMap<String, Value>> {
     let value: Value = serde_json::from_str(&raw)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
     match source {
-        ExternalAuthSource::OpenCode | ExternalAuthSource::Pi | ExternalAuthSource::OpenClaw => {
+        ExternalAuthSource::OpenCode | ExternalAuthSource::Pi => {
             // Flat `provider -> credential` maps.
             Ok(value
                 .as_object()
@@ -324,8 +377,54 @@ fn load_auth_map(source: ExternalAuthSource) -> Result<HashMap<String, Value>> {
                 })
                 .unwrap_or_default())
         }
+        ExternalAuthSource::OpenClaw => Ok(flatten_openclaw_auth_store(&value)),
         ExternalAuthSource::Hermes => Ok(flatten_hermes_auth_store(&value)),
     }
+}
+
+/// OpenClaw historically used the flat pi-style `provider -> credential` map,
+/// but its current store is `auth-profiles.json`:
+///
+/// ```json
+/// {
+///   "version": 1,
+///   "profiles": {
+///     "openai:default": { "type": "oauth", "provider": "openai", "access": ..., "refresh": ..., "expires": ... },
+///     "openrouter:default": { "type": "api_key", "provider": "openrouter", "key": "..." }
+///   }
+/// }
+/// ```
+///
+/// Normalize both shapes to a flat `provider -> credential` map. Profile
+/// entries keep the pi-style credential fields, so the shared extractors work
+/// unchanged. When several profiles exist for one provider, the `<provider>:default`
+/// profile wins; otherwise the first seen is kept.
+fn flatten_openclaw_auth_store(value: &Value) -> HashMap<String, Value> {
+    let Some(object) = value.as_object() else {
+        return HashMap::new();
+    };
+    let Some(profiles) = object.get("profiles").and_then(Value::as_object) else {
+        // Legacy flat map.
+        return object
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+    };
+
+    let mut map: HashMap<String, Value> = HashMap::new();
+    for (profile_id, entry) in profiles {
+        let provider = entry
+            .get("provider")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .or_else(|| profile_id.split(':').next().map(ToOwned::to_owned));
+        let Some(provider) = provider else { continue };
+        let is_default = profile_id.ends_with(":default") || !profile_id.contains(':');
+        if is_default || !map.contains_key(&provider) {
+            map.insert(provider, entry.clone());
+        }
+    }
+    map
 }
 
 /// Hermes persists credentials in a nested store:

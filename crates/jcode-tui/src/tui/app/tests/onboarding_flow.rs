@@ -95,13 +95,18 @@ fn import_review_collects_checked_logins() {
         ExternalAuthReviewCandidate::fixture("Gemini", "Gemini CLI"),
     ])
     .unwrap();
-    assert_eq!(review.position(), 1);
+    // The default is the summary screen with Continue preselected.
+    assert!(!review.choosing);
+    assert!(review.continue_focused);
     assert_eq!(review.total(), 3);
     // All pre-checked: the default action imports everything.
     assert_eq!(review.approved_indices(), vec![0, 1, 2]);
     assert_eq!(review.checked_count(), 3);
 
-    // Uncheck the middle login (cursor on row 1).
+    // Switch to the checkbox list and uncheck the middle login (cursor on row 1).
+    review.enter_choose_mode();
+    assert!(review.choosing);
+    assert_eq!(review.position(), 1);
     review.cursor_down();
     review.toggle_current();
     assert_eq!(review.approved_indices(), vec![0, 2]);
@@ -118,6 +123,7 @@ fn import_review_cursor_navigation_wraps() {
         ExternalAuthReviewCandidate::fixture("Gemini", "Gemini CLI"),
     ])
     .unwrap();
+    review.enter_choose_mode();
     assert_eq!(review.position(), 1);
     assert!(!review.continue_focused);
     review.cursor_down();
@@ -450,11 +456,13 @@ fn import_review_decline_all_falls_back_to_manual_login() {
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow_at_login();
-        let review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
+        let mut review = ImportReview::new(vec![ExternalAuthReviewCandidate::fixture(
             "OpenAI/Codex",
             "Codex auth.json",
         )])
         .unwrap();
+        // Start in choose mode: this test exercises the per-login decline path.
+        review.enter_choose_mode();
         if let Some(flow) = app.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::Login {
                 import: Some(review),
@@ -1118,17 +1126,18 @@ fn liveness_import_review_decline_all_then_enter_escapes() {
         let mut app = create_test_app();
         app.onboarding_flow = None;
         app.begin_onboarding_flow_at_login();
-        let review = ImportReview::new(vec![
+        let mut review = ImportReview::new(vec![
             ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
             ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
         ])
         .unwrap();
+        // Start in choose mode: this liveness path declines each login row.
+        review.enter_choose_mode();
         if let Some(flow) = app.onboarding_flow.as_mut() {
             flow.phase = OnboardingPhase::Login {
                 import: Some(review),
             };
         }
-        // Decline both logins, then commit.
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Down));
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Char('n')));
@@ -1374,5 +1383,114 @@ fn import_failure_h_key_is_inert_without_a_recorded_error() {
         // H must NOT be intercepted, so normal input handling can use it.
         app.onboarding_import_error = None;
         assert!(!app.handle_onboarding_continue_prompt_key(KeyCode::Char('H')));
+    });
+}
+
+#[test]
+fn import_summary_defaults_to_continue_and_enter_imports_all() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        let review = ImportReview::new(vec![
+            ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+            ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+        ])
+        .unwrap();
+        // The summary screen is the default and lands on Continue.
+        assert!(!review.choosing);
+        assert!(review.continue_focused);
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login {
+                import: Some(review),
+            };
+        }
+        // Enter on the preselected Continue commits the whole import: the list
+        // clears. On a live runtime the async import is marked in-flight; the
+        // test harness has no tokio runtime, so the graceful fallback lands on
+        // the recovery screen instead (never a panic, never a stuck screen).
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Login { import: None })
+        ));
+        assert!(
+            app.onboarding_import_in_progress.is_some() || app.onboarding_import_error.is_some(),
+            "Continue must either start the import or fail it gracefully"
+        );
+    });
+}
+
+#[test]
+fn import_summary_choose_pill_opens_checkbox_list() {
+    use crate::external_auth::ExternalAuthReviewCandidate;
+    use crate::tui::app::onboarding_flow::ImportReview;
+
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.begin_onboarding_flow_at_login();
+        let review = ImportReview::new(vec![
+            ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
+            ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
+        ])
+        .unwrap();
+        if let Some(flow) = app.onboarding_flow.as_mut() {
+            flow.phase = OnboardingPhase::Login {
+                import: Some(review),
+            };
+        }
+        // Arrow to the "Choose what to import" pill, then commit it.
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Down));
+        assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
+        // Now in choose mode: the checkbox list with the cursor on row 1 and
+        // nothing imported yet.
+        match app.onboarding_phase() {
+            Some(OnboardingPhase::Login {
+                import: Some(review),
+            }) => {
+                assert!(review.choosing);
+                assert!(!review.continue_focused);
+                assert_eq!(review.cursor, 0);
+                assert_eq!(review.checked_count(), 2);
+            }
+            other => panic!("expected choose-mode import review, got {other:?}"),
+        }
+        assert!(app.onboarding_import_in_progress.is_none());
+
+        // The welcome snapshot reports choose mode so the renderer switches.
+        match app.onboarding_welcome_kind() {
+            crate::tui::OnboardingWelcomeKind::Login {
+                import: Some(prompt),
+                ..
+            } => assert!(prompt.choosing),
+            other => panic!("expected Login welcome with import prompt, got {other:?}"),
+        }
+    });
+}
+
+#[test]
+fn onboarding_resume_picker_is_shown_only_once_per_install() {
+    with_temp_jcode_home(|| {
+        // First pass: mark the resume screen as already shown.
+        let mut hints = crate::setup_hints::SetupHintsState::load();
+        assert!(!hints.onboarding_resume_shown, "fresh home starts unseen");
+        hints.onboarding_resume_shown = true;
+        hints.save().unwrap();
+
+        // Second pass: even if external transcripts exist, ModelSelect must
+        // fall through to Suggestions instead of re-opening the resume picker.
+        let mut app = create_test_app();
+        app.onboarding_flow = None;
+        app.onboarding_flow = Some(crate::tui::app::onboarding_flow::OnboardingFlow::begin());
+        app.onboarding_after_model_select();
+        assert!(app.session_picker_overlay.is_none());
+        assert!(matches!(
+            app.onboarding_phase(),
+            Some(OnboardingPhase::Suggestions) | None
+        ));
     });
 }

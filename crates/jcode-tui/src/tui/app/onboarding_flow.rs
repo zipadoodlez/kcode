@@ -57,14 +57,14 @@ impl ExternalCli {
     }
 }
 
-/// Single-screen multi-select review for importing detected external logins.
+/// Single-screen review for importing detected external logins.
 ///
 /// On a fresh install we may detect logins left behind by other tools (Codex,
-/// Claude Code, Copilot, ...). Rather than walking the user through one yes/no
-/// page per login, we show them ALL at once as a checkbox list. Every login is
-/// pre-checked (the safe, common default is "import everything"), the user can
-/// move a cursor and toggle any row off, and a single "Import" action commits
-/// all checked logins together. This collapses N pages into one screen.
+/// Claude Code, Copilot, OpenClaw, Hermes, ...). The default screen is a
+/// read-only SUMMARY: it lists everything we detected and lands the user on a
+/// preselected "Continue" pill that imports all of it with one Enter. A second
+/// "Choose what to import" pill switches to the per-login checkbox list
+/// (`choosing = true`) for users who want to opt logins out individually.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ImportReview {
     /// All detected importable logins, in display order.
@@ -74,18 +74,25 @@ pub(crate) struct ImportReview {
     pub(crate) checked: Vec<bool>,
     /// Index of the row the cursor is currently on (for toggling/highlight).
     pub(crate) cursor: usize,
-    /// When `true`, focus is on the "Continue" pill (rendered above and below
-    /// the list) rather than on a login row. Moving down past the last row, or
-    /// up past the first row, lands here; pressing Enter commits the import.
-    /// This lets the user reach the commit action purely by arrowing, instead
-    /// of relying on the "Press Enter" instruction text.
+    /// Focus flag for the "Continue" pill.
+    ///
+    /// On the summary screen (`choosing == false`) this is `true` when the
+    /// "Continue" pill is focused (the default landing spot) and `false` when
+    /// the "Choose what to import" pill is focused.
+    ///
+    /// On the checkbox list (`choosing == true`) it is `true` while the
+    /// "Continue" pill above/below the rows is focused rather than a login row.
     pub(crate) continue_focused: bool,
+    /// `false` = the default summary screen (detected logins listed read-only,
+    /// Continue preselected). `true` = the per-login checkbox list.
+    pub(crate) choosing: bool,
     /// When the screen was first shown, for the single decision countdown.
     pub(crate) shown_at: Instant,
 }
 
 impl ImportReview {
-    /// Create a review for the given candidates with every login pre-checked.
+    /// Create a review for the given candidates with every login pre-checked,
+    /// starting on the summary screen with "Continue" preselected.
     /// Returns `None` if there are no candidates.
     pub(crate) fn new(
         candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
@@ -98,9 +105,18 @@ impl ImportReview {
             candidates,
             checked,
             cursor: 0,
-            continue_focused: false,
+            continue_focused: true,
+            choosing: false,
             shown_at: Instant::now(),
         })
+    }
+
+    /// Switch from the summary screen to the per-login checkbox list, with the
+    /// cursor on the first login row.
+    pub(crate) fn enter_choose_mode(&mut self) {
+        self.choosing = true;
+        self.continue_focused = false;
+        self.cursor = 0;
     }
 
     /// The candidate the cursor is currently on, if any. Returns `None` while

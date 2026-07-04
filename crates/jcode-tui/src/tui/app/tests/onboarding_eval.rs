@@ -468,11 +468,12 @@ fn tier4_metrics() -> Tier4Metrics {
     let terminology_consistent = terminology_is_consistent(&all_welcome_screen_texts());
 
     // ---- progress_visibility: the multi-login import is a multi-step context
-    // and must set scope up front. The single-screen checkbox list does this by
-    // (a) labeling the section ("Import:") and (b) showing all N logins as
-    // visible rows at once, so the user always knows how many there are and what
-    // they are. We verify both: the label AND that every detected login is
-    // actually listed. Rendered from the real screen. ----
+    // and must set scope up front. The default summary screen does this by
+    // (a) stating the total in the headline ("We found N existing logins") and
+    // (b) showing all N logins as visible rows at once, so the user always
+    // knows how many there are and what they are. We verify both: the counted
+    // headline AND that every detected login is actually listed. Rendered from
+    // the real screen. ----
     let review = ImportReview::new(vec![
         ExternalAuthReviewCandidate::fixture("OpenAI/Codex", "Codex auth.json"),
         ExternalAuthReviewCandidate::fixture("Claude", "Claude Code"),
@@ -480,7 +481,7 @@ fn tier4_metrics() -> Tier4Metrics {
     .unwrap();
     let multi = app_in_phase(OnboardingPhase::Login { import: Some(review) });
     let multi_text = render_onboarding_text(&multi, 80, 30).to_ascii_lowercase();
-    let states_total = multi_text.contains("import:");
+    let states_total = multi_text.contains("we found 2 existing logins");
     let lists_all = multi_text.contains("openai/codex") && multi_text.contains("claude");
     let progress_visible = states_total && lists_all;
 
@@ -952,6 +953,12 @@ fn body_prose_lines(text: &str) -> Vec<String> {
         if t.contains('●') || t.contains('○') || t.contains('│') {
             continue;
         }
+        // The import-summary rows are prefixed with a decorative "✓ " marker.
+        // The row TEXT is load-bearing (it names the detected login) but the
+        // checkmark is pure decoration: strip the marker and keep the prose so
+        // reading-load still counts it while the glyph is not treated as a
+        // Unicode dependence.
+        let t = t.strip_prefix("✓ ").unwrap_or(t);
         // ASCII logo art: lines dominated by non-alphabetic symbols.
         let alpha = t.chars().filter(|c| c.is_ascii_alphabetic()).count();
         let nonspace = t.chars().filter(|c| !c.is_whitespace()).count();
