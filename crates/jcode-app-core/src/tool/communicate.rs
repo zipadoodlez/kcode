@@ -297,12 +297,36 @@ async fn cleanup_finished_workers_for_capacity(
 /// while the driver is blocked awaiting workers.
 const RUN_PLAN_PROGRESS_REFRESH_SECS: u64 = 15;
 
+/// Whether the driver should abandon the current member-await and start a new
+/// coordination loop because the plan's ready frontier grew while it was
+/// blocked. Pure for unit testing.
+///
+/// `ready_baseline` is the set of ready item ids observed at the top of the
+/// loop that started this await. Any *new* ready id means work the driver has
+/// never had a chance to dispatch: a failed node re-queued via `swarm retry`,
+/// a node unblocked by an externally-driven completion, or a gate-injected
+/// gap. Comparing against the baseline (instead of `!ready.is_empty()`) is
+/// what prevents wake storms: items that were already ready when the await
+/// began (e.g. just-assigned tasks still momentarily `queued`, or ready nodes
+/// that could not be assigned to any drivable worker) do not re-trigger, so a
+/// permanently-stuck ready node wakes the driver at most once per await.
+fn await_should_wake_for_new_ready(
+    ready_baseline: &std::collections::HashSet<String>,
+    summary: &PlanGraphStatus,
+) -> bool {
+    summary
+        .ready_ids
+        .iter()
+        .any(|id| !ready_baseline.contains(id))
+}
+
 async fn await_swarm_progress(
     ctx: &ToolContext,
     session_ids: Vec<String>,
     timeout_minutes: u64,
     reporter: &RunPlanReporter,
     assignment_count: usize,
+    ready_baseline: &std::collections::HashSet<String>,
 ) -> Result<()> {
     let request = Request::CommAwaitMembers {
         id: REQUEST_ID,
@@ -338,20 +362,32 @@ async fn await_swarm_progress(
         tokio::select! {
             result = &mut await_members => break result,
             _ = refresh.tick() => {
-                if !reporter.is_background() {
-                    continue;
-                }
                 let summary = match fetch_plan_status(&ctx.session_id).await {
                     Ok(summary) => summary,
                     Err(_) => continue,
                 };
-                let live_active = fetch_in_flight_swarm_sessions(&ctx.session_id)
-                    .await
-                    .map(|sessions| sessions.len())
-                    .unwrap_or(0);
-                let (completed, total, message) =
-                    run_plan_progress_snapshot(&summary, live_active, assignment_count);
-                reporter.progress(completed, total, message).await;
+                if reporter.is_background() {
+                    let live_active = fetch_in_flight_swarm_sessions(&ctx.session_id)
+                        .await
+                        .map(|sessions| sessions.len())
+                        .unwrap_or(0);
+                    let (completed, total, message) =
+                        run_plan_progress_snapshot(&summary, live_active, assignment_count);
+                    reporter.progress(completed, total, message).await;
+                }
+                // Ready frontier grew while blocked (a `swarm retry` re-queued
+                // failed nodes, an external completion unblocked work, a gate
+                // injected gaps): return to the coordination loop so the new
+                // work is dispatched under the normal budget instead of
+                // waiting out the current wave. The abandoned await is a
+                // plain request future; dropping it cancels only our wait,
+                // not the workers.
+                if await_should_wake_for_new_ready(ready_baseline, &summary) {
+                    reporter
+                        .log("ready frontier grew during await (retry/requeue or external unblock); re-entering dispatch loop")
+                        .await;
+                    return Ok(());
+                }
             }
         }
     };
@@ -1168,8 +1204,21 @@ async fn run_swarm_plan_loop(
                 detail
             ));
         }
-        await_swarm_progress(ctx, await_sessions, timeout_minutes, reporter, assignment_count)
-            .await?;
+        // Baseline for requeue pickup: everything ready at the top of this
+        // loop either gets assigned below or is known-undispatchable this
+        // wave. Anything ready *beyond* this set while we block (a retried
+        // failure, an external unblock) should cut the await short.
+        let ready_baseline: std::collections::HashSet<String> =
+            summary.ready_ids.iter().cloned().collect();
+        await_swarm_progress(
+            ctx,
+            await_sessions,
+            timeout_minutes,
+            reporter,
+            assignment_count,
+            &ready_baseline,
+        )
+        .await?;
         // Real progress (an await completed); clear the transient-stall backoff so
         // a later genuine stall starts counting fresh.
         transient_stall_loops = 0;

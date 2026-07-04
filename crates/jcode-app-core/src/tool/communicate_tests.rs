@@ -296,6 +296,42 @@ fn run_plan_utilization_handles_unbounded_budget() {
 }
 
 #[test]
+fn await_wakes_only_for_ready_items_beyond_the_wave_baseline() {
+    let baseline: std::collections::HashSet<String> =
+        ["stuck".to_string(), "assigned".to_string()].into();
+    let mut summary = crate::protocol::PlanGraphStatus {
+        swarm_id: None,
+        version: 3,
+        item_count: 6,
+        ready_ids: vec!["stuck".to_string()],
+        blocked_ids: Vec::new(),
+        active_ids: vec!["a1".to_string()],
+        completed_ids: Vec::new(),
+        failed_ids: Vec::new(),
+        cycle_ids: Vec::new(),
+        unresolved_dependency_ids: Vec::new(),
+        next_ready_ids: Vec::new(),
+        newly_ready_ids: Vec::new(),
+        low_confidence_ids: Vec::new(),
+        mode: "deep".to_string(),
+        seeded_count: 0,
+        grown_count: 0,
+    };
+
+    // Items already ready at wave start (even permanently-undispatchable
+    // ones) must not wake the driver: that would busy-spin the await.
+    assert!(!super::await_should_wake_for_new_ready(&baseline, &summary));
+
+    // No ready items at all: keep waiting on members.
+    summary.ready_ids.clear();
+    assert!(!super::await_should_wake_for_new_ready(&baseline, &summary));
+
+    // A retried failed node re-enters ready as a NEW id -> wake and dispatch.
+    summary.ready_ids = vec!["stuck".to_string(), "retried-node".to_string()];
+    assert!(super::await_should_wake_for_new_ready(&baseline, &summary));
+}
+
+#[test]
 fn run_plan_progress_counts_only_completed_toward_percent_and_shows_live_active() {
     // Regression: a plan with 33 completed / 116 failed of 152 used to report
     // terminal/total = 149/152 (~98%) with active 0 while four externally

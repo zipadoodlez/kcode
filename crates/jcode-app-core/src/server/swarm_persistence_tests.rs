@@ -65,6 +65,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
                     heartbeat_count: Some(2),
                     checkpoint_count: Some(1),
                     no_artifact_requeues: None,
+                    dead_assignee_reclaims: None,
                 },
             )]),
             mode: "light".to_string(),
