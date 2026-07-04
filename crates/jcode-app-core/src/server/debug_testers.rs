@@ -61,6 +61,8 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
     let id = format!("tester_{}", crate::id::new_id("tui"));
     let cwd = opts.get("cwd").and_then(|v| v.as_str()).unwrap_or(".");
     let binary = opts.get("binary").and_then(|v| v.as_str());
+    let cols = opts.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
+    let rows = opts.get("rows").and_then(|v| v.as_u64()).unwrap_or(40) as u16;
 
     let binary_path = if let Some(b) = binary {
         PathBuf::from(b)
@@ -120,8 +122,57 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
         debug_resp.to_string_lossy().to_string(),
     );
     cmd.arg("--debug-socket");
-    cmd.stdout(Stdio::from(stdout_file));
-    cmd.stderr(Stdio::from(stderr_file));
+
+    // The TUI refuses to start unless stdin/stdout are a TTY, so a headless
+    // tester must own a real PTY. Allocate one, hand the slave end to the
+    // child, and drain the master into the stdout log so the child never
+    // blocks on a full PTY buffer.
+    #[cfg(unix)]
+    {
+        let pty = allocate_pty(cols, rows)
+            .map_err(|e| anyhow::anyhow!("Failed to allocate tester PTY: {}", e))?;
+        use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd};
+
+        let slave: OwnedFd = pty.slave;
+        let master: OwnedFd = pty.master;
+
+        let stdin_slave = slave.try_clone()?;
+        let stdout_slave = slave.try_clone()?;
+        cmd.stdin(Stdio::from(stdin_slave));
+        cmd.stdout(Stdio::from(stdout_slave));
+        cmd.stderr(Stdio::from(stderr_file));
+        drop(slave);
+
+        // Drain the master side so TUI output (including image escapes) does
+        // not back up. Log it for debugging; the thread ends when the child
+        // exits and the slave side closes.
+        let mut stdout_log = stdout_file;
+        let master_fd = master.into_raw_fd();
+        std::thread::Builder::new()
+            .name(format!("tester-pty-drain-{}", id))
+            .spawn(move || {
+                use std::io::{Read, Write};
+                // Safety: we own master_fd; this is the only holder now.
+                let mut master_file = unsafe { std::fs::File::from_raw_fd(master_fd) };
+                let mut buf = [0u8; 8192];
+                loop {
+                    match master_file.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            let _ = stdout_log.write_all(&buf[..n]);
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })
+            .ok();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (cols, rows);
+        cmd.stdout(Stdio::from(stdout_file));
+        cmd.stderr(Stdio::from(stderr_file));
+    }
 
     let child = cmd.spawn()?;
     let pid = child.id().unwrap_or(0);
@@ -148,6 +199,50 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
         "message": format!("Spawned tester {} (pid {})", id, pid)
     })
     .to_string())
+}
+
+/// Master/slave ends of a freshly allocated PTY.
+#[cfg(unix)]
+struct TesterPty {
+    master: std::os::fd::OwnedFd,
+    slave: std::os::fd::OwnedFd,
+}
+
+/// Allocate a PTY sized `cols` x `rows` for a headless tester. The TUI's
+/// terminal init requires stdin/stdout to be a TTY, so testers get the slave
+/// end as their stdio while the server drains the master end.
+#[cfg(unix)]
+fn allocate_pty(cols: u16, rows: u16) -> std::io::Result<TesterPty> {
+    use std::os::fd::{FromRawFd, OwnedFd};
+
+    let winsize = libc::winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let mut master_fd: libc::c_int = -1;
+    let mut slave_fd: libc::c_int = -1;
+    // Safety: openpty writes two valid fds on success; name is unused (null).
+    let rc = unsafe {
+        libc::openpty(
+            &mut master_fd,
+            &mut slave_fd,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            &winsize,
+        )
+    };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // Safety: on success both fds are valid and exclusively owned here.
+    Ok(unsafe {
+        TesterPty {
+            master: OwnedFd::from_raw_fd(master_fd),
+            slave: OwnedFd::from_raw_fd(slave_fd),
+        }
+    })
 }
 
 async fn execute_tester_subcommand(
