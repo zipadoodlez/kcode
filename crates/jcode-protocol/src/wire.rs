@@ -623,6 +623,14 @@ pub enum Request {
         spawn_if_needed: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         message: Option<String>,
+        /// Optional model override for workers spawned by this assignment
+        /// (same semantics as CommSpawn::model).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
+        /// Optional reasoning effort for workers spawned by this assignment
+        /// (same semantics as CommSpawn::effort).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        effort: Option<String>,
     },
 
     /// Control an existing assigned task lifecycle (coordinator only)

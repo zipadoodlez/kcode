@@ -1292,6 +1292,8 @@ async fn run_swarm_plan_loop(
                     spawn_if_needed
                 },
                 message: params.message.clone(),
+                model: params.model.clone(),
+                effort: params.effort.clone(),
             };
             match send_request(request).await {
                 Ok(ServerEvent::CommAssignTaskResponse {
@@ -2794,6 +2796,8 @@ impl Tool for CommunicateTool {
                     prefer_spawn: params.prefer_spawn,
                     spawn_if_needed: params.spawn_if_needed,
                     message: params.message.clone(),
+                    model: params.model.clone(),
+                    effort: params.effort.clone(),
                 };
 
                 match send_request(request).await {
@@ -2844,6 +2848,8 @@ impl Tool for CommunicateTool {
                         prefer_spawn: params.prefer_spawn,
                         spawn_if_needed: params.spawn_if_needed,
                         message: params.message.clone(),
+                        model: params.model.clone(),
+                        effort: params.effort.clone(),
                     };
 
                     match send_request(request).await {

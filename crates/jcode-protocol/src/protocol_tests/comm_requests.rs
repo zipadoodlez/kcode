@@ -383,6 +383,8 @@ fn test_comm_assign_next_roundtrip() -> Result<()> {
         prefer_spawn: Some(true),
         spawn_if_needed: Some(true),
         message: Some("Take the next runnable task.".to_string()),
+        model: Some("gpt-5.5".to_string()),
+        effort: Some("low".to_string()),
     };
     let json = serde_json::to_string(&req)?;
     assert!(json.contains("\"type\":\"comm_assign_next\""));
@@ -395,6 +397,8 @@ fn test_comm_assign_next_roundtrip() -> Result<()> {
         prefer_spawn,
         spawn_if_needed,
         message,
+        model,
+        effort,
         ..
     } = decoded
     else {
@@ -406,6 +410,8 @@ fn test_comm_assign_next_roundtrip() -> Result<()> {
     assert_eq!(prefer_spawn, Some(true));
     assert_eq!(spawn_if_needed, Some(true));
     assert_eq!(message.as_deref(), Some("Take the next runnable task."));
+    assert_eq!(model.as_deref(), Some("gpt-5.5"));
+    assert_eq!(effort.as_deref(), Some("low"));
     Ok(())
 }
 

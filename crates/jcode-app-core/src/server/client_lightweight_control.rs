@@ -654,6 +654,8 @@ pub(super) async fn handle_lightweight_control_request(
             prefer_spawn,
             spawn_if_needed,
             message,
+            model,
+            effort,
         } => {
             handle_comm_assign_next(
                 id,
@@ -663,6 +665,8 @@ pub(super) async fn handle_lightweight_control_request(
                 prefer_spawn,
                 spawn_if_needed,
                 message,
+                model,
+                effort,
                 &client_event_tx,
                 sessions,
                 global_session_id,
