@@ -37,6 +37,10 @@ pub(in crate::tui::app) async fn begin_remote_send(
     app.last_stream_activity = Some(Instant::now());
     app.remote_resume_activity = None;
     app.reset_streaming_tps();
+    // New turn -> new API call: the next usage report must replace, not merge
+    // into, the previous call's cache counters (issue #441). Newer servers
+    // also emit KvCacheRequest per call, which re-arms this flag per call.
+    app.mark_stream_usage_call_boundary();
     app.thought_line_inserted = false;
     app.thinking_prefix_emitted = false;
     app.thinking_buffer.clear();

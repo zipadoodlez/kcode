@@ -345,6 +345,47 @@ pub fn estimate_compaction_tokens(
     estimate_compaction_tokens_from_chars(summary_chars + active_message_chars, token_budget)
 }
 
+/// Best-effort context size (tokens) from a provider usage report.
+///
+/// Providers disagree on what `input_tokens` means:
+/// - **Split accounting** (Anthropic-style): `input_tokens` is only the
+///   *uncached* remainder; cache reads/writes are separate counters, so the
+///   real context size is `input + cache_read + cache_creation`.
+/// - **Subset accounting** (OpenAI-style): `input_tokens` (`prompt_tokens`)
+///   already includes cached tokens; `cached_tokens` is a subset and must NOT
+///   be added again.
+///
+/// This is the single source of truth for that heuristic. Both the sidebar
+/// context figure and the compaction manager's observed-token feed must use it
+/// so the two never disagree (issue #441). When in doubt, avoid over-counting
+/// unless there is strong evidence of split accounting.
+pub fn effective_context_tokens_from_usage(
+    provider_name: &str,
+    input_tokens: u64,
+    cache_read_input_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+) -> u64 {
+    if input_tokens == 0 {
+        return 0;
+    }
+    let cache_read = cache_read_input_tokens.unwrap_or(0);
+    let cache_creation = cache_creation_input_tokens.unwrap_or(0);
+    let provider_name = provider_name.to_lowercase();
+
+    let split_cache_accounting = provider_name.contains("anthropic")
+        || provider_name.contains("claude")
+        || cache_creation > 0
+        || cache_read > input_tokens;
+
+    if split_cache_accounting {
+        input_tokens
+            .saturating_add(cache_read)
+            .saturating_add(cache_creation)
+    } else {
+        input_tokens
+    }
+}
+
 pub fn estimate_compaction_tokens_from_chars(total_chars: usize, token_budget: usize) -> usize {
     let msg_tokens = total_chars / CHARS_PER_TOKEN;
     // Add overhead for system prompt + tool definitions, which are not in the
@@ -677,6 +718,55 @@ pub fn tail_str_boundary(value: &str, max_bytes: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn effective_context_split_accounting_adds_cache_counters() {
+        // Anthropic-style: input is the uncached remainder.
+        assert_eq!(
+            effective_context_tokens_from_usage("anthropic", 10_000, Some(300_000), Some(5_000)),
+            315_000
+        );
+        assert_eq!(
+            effective_context_tokens_from_usage("Claude", 10_000, Some(300_000), None),
+            310_000
+        );
+    }
+
+    #[test]
+    fn effective_context_subset_accounting_does_not_double_count() {
+        // OpenAI-style: prompt_tokens already includes cached tokens.
+        assert_eq!(
+            effective_context_tokens_from_usage("openai", 400_000, Some(390_000), None),
+            400_000
+        );
+        // No cache info at all: pass through.
+        assert_eq!(
+            effective_context_tokens_from_usage("opencode-go", 396_000, None, None),
+            396_000
+        );
+    }
+
+    #[test]
+    fn effective_context_infers_split_accounting_from_counter_shape() {
+        // cache_read > input implies input can't already contain it.
+        assert_eq!(
+            effective_context_tokens_from_usage("unknown", 10_000, Some(500_000), None),
+            510_000
+        );
+        // Any cache_creation implies split accounting.
+        assert_eq!(
+            effective_context_tokens_from_usage("unknown", 10_000, Some(2_000), Some(1_000)),
+            13_000
+        );
+    }
+
+    #[test]
+    fn effective_context_zero_input_reports_zero() {
+        assert_eq!(
+            effective_context_tokens_from_usage("anthropic", 0, Some(300_000), Some(5_000)),
+            0
+        );
+    }
 
     #[test]
     fn builds_compaction_prompt_with_summary_and_truncated_tool_result() {

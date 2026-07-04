@@ -686,6 +686,19 @@ struct StreamingProgress {
     streaming_output_tokens: u64,
     streaming_cache_read_tokens: Option<u64>,
     streaming_cache_creation_tokens: Option<u64>,
+    /// Set at the start of each API call; cleared when the call's first usage
+    /// report (with input tokens) arrives. The first report of a call replaces
+    /// the cache counters wholesale (even with `None`) instead of merging, so
+    /// stale cache-read/creation numbers from a previous call can never leak
+    /// into the context-size display for a call that reported no cache usage
+    /// (issue #441).
+    streaming_usage_call_reset_pending: bool,
+    /// True when the last provider-reported usage no longer describes the
+    /// active message list (set when a compaction event is applied). While
+    /// stale, `current_stream_context_tokens()` returns `None` so the context
+    /// display falls back to the local estimate. Cleared by the next usage
+    /// report (issue #441).
+    streaming_context_stale: bool,
     // Accurate TPS tracking: counts model output generation time, not tool execution.
     /// Set while the provider is generating output tokens (text, reasoning, or tool-call JSON).
     streaming_tps_start: Option<Instant>,
@@ -1516,6 +1529,7 @@ impl App {
         );
         self.pause_streaming_tps(false);
         self.kv_cache.current_api_usage_recorded = false;
+        self.mark_stream_usage_call_boundary();
 
         self.kv_cache.pending_kv_cache_request = Some(PendingKvCacheRequest {
             turn_number,
@@ -1562,6 +1576,7 @@ impl App {
         );
         self.pause_streaming_tps(false);
         self.kv_cache.current_api_usage_recorded = false;
+        self.mark_stream_usage_call_boundary();
         self.kv_cache.pending_kv_cache_request = Some(PendingKvCacheRequest {
             turn_number,
             call_index: self.kv_cache.kv_cache_turn_call_index,

@@ -664,36 +664,30 @@ impl App {
         cache_read_input_tokens: Option<u64>,
         cache_creation_input_tokens: Option<u64>,
     ) -> u64 {
-        if input_tokens == 0 {
-            return 0;
-        }
-        let cache_read = cache_read_input_tokens.unwrap_or(0);
-        let cache_creation = cache_creation_input_tokens.unwrap_or(0);
         let provider_name = if self.is_remote {
             self.remote_provider_name.clone().unwrap_or_default()
         } else {
             self.provider.name().to_string()
-        }
-        .to_lowercase();
+        };
 
-        // Some providers report cache tokens as separate counters, others report them as subsets.
-        // When in doubt, avoid over-counting unless we have strong evidence of split accounting.
-        let split_cache_accounting = provider_name.contains("anthropic")
-            || provider_name.contains("claude")
-            || cache_creation > 0
-            || cache_read > input_tokens;
-
-        if split_cache_accounting {
-            input_tokens
-                .saturating_add(cache_read)
-                .saturating_add(cache_creation)
-        } else {
-            input_tokens
-        }
+        // Shared heuristic (jcode-compaction-core): keeps the sidebar figure
+        // consistent with the compaction manager's observed-token feed.
+        crate::compaction::effective_context_tokens_from_usage(
+            &provider_name,
+            input_tokens,
+            cache_read_input_tokens,
+            cache_creation_input_tokens,
+        )
     }
 
     pub(super) fn current_stream_context_tokens(&self) -> Option<u64> {
         if self.streaming.streaming_input_tokens == 0 {
+            return None;
+        }
+        // After a compaction event the last usage report describes the old,
+        // pre-compaction message list; report "unknown" so the UI falls back
+        // to the local estimate over the new active messages (issue #441).
+        if self.streaming.streaming_context_stale {
             return None;
         }
         Some(self.effective_context_tokens_from_usage(
@@ -701,6 +695,60 @@ impl App {
             self.streaming.streaming_cache_read_tokens,
             self.streaming.streaming_cache_creation_tokens,
         ))
+    }
+
+    /// Apply a provider usage report's input/cache counters to the streaming
+    /// state, with per-call reset semantics.
+    ///
+    /// Providers merge `Option` cache counters across repeated snapshots of
+    /// the *same* call, but the first report of a *new* call must replace the
+    /// counters wholesale: some gateways (e.g. deepseek via opencode-go) only
+    /// report `cache_read_input_tokens` on some calls, and a stale cache-read
+    /// figure from a previous call would otherwise be added on top of the new
+    /// call's input tokens, inflating the context display (issue #441).
+    ///
+    /// Returns true when any input/cache counter changed.
+    pub(super) fn apply_stream_usage_input_report(
+        &mut self,
+        input_tokens: Option<u64>,
+        cache_read_input_tokens: Option<u64>,
+        cache_creation_input_tokens: Option<u64>,
+    ) -> bool {
+        let mut usage_changed = false;
+        let has_any_report = input_tokens.is_some()
+            || cache_read_input_tokens.is_some()
+            || cache_creation_input_tokens.is_some();
+        if self.streaming.streaming_usage_call_reset_pending && has_any_report {
+            self.streaming.streaming_usage_call_reset_pending = false;
+            self.streaming.streaming_cache_read_tokens = None;
+            self.streaming.streaming_cache_creation_tokens = None;
+            usage_changed = true;
+        }
+        if let Some(input) = input_tokens {
+            self.streaming.streaming_input_tokens = input;
+            usage_changed = true;
+        }
+        if cache_read_input_tokens.is_some() {
+            self.streaming.streaming_cache_read_tokens = cache_read_input_tokens;
+            usage_changed = true;
+        }
+        if cache_creation_input_tokens.is_some() {
+            self.streaming.streaming_cache_creation_tokens = cache_creation_input_tokens;
+            usage_changed = true;
+        }
+        if usage_changed {
+            // Fresh provider usage describes the current active message list
+            // again, so the stream-derived context figure is trustworthy.
+            self.streaming.streaming_context_stale = false;
+        }
+        usage_changed
+    }
+
+    /// Mark the start of a new provider API call for usage accounting: the
+    /// next usage report replaces (rather than merges into) the cache
+    /// counters. See [`Self::apply_stream_usage_input_report`].
+    pub(super) fn mark_stream_usage_call_boundary(&mut self) {
+        self.streaming.streaming_usage_call_reset_pending = true;
     }
 
     pub(super) fn update_compaction_usage_from_stream(&mut self) {

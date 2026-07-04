@@ -381,6 +381,15 @@ impl App {
         self.provider_session_id = None;
         self.session.provider_session_id = None;
         self.context_warning_shown = false;
+        // The sidebar/status context figure is derived from the last
+        // provider-reported stream usage, which described the *pre-compaction*
+        // message list. Mark it stale so the display falls back to the local
+        // estimate over the new (summary + recent) active messages until the
+        // next provider usage report arrives (issue #441). The raw counters
+        // are kept intact for turn footers and cost accounting.
+        self.streaming.streaming_context_stale = true;
+        self.streaming.streaming_usage_call_reset_pending = true;
+        self.bump_context_revision();
         if let Err(err) = self.session.save() {
             crate::logging::warn(&format!(
                 "Failed to persist provider session reset after compaction for session {}: {}",

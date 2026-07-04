@@ -289,25 +289,15 @@ impl Agent {
         cache_read_input_tokens: Option<u64>,
         cache_creation_input_tokens: Option<u64>,
     ) -> u64 {
-        if input_tokens == 0 {
-            return 0;
-        }
-        let cache_read = cache_read_input_tokens.unwrap_or(0);
-        let cache_creation = cache_creation_input_tokens.unwrap_or(0);
-        let provider_name = self.provider.name().to_lowercase();
-
-        let split_cache_accounting = provider_name.contains("anthropic")
-            || provider_name.contains("claude")
-            || cache_creation > 0
-            || cache_read > input_tokens;
-
-        if split_cache_accounting {
-            input_tokens
-                .saturating_add(cache_read)
-                .saturating_add(cache_creation)
-        } else {
-            input_tokens
-        }
+        // Shared heuristic (jcode-compaction-core): keeps the compaction
+        // manager's observed-token feed consistent with the client-side
+        // context display.
+        crate::compaction::effective_context_tokens_from_usage(
+            self.provider.name(),
+            input_tokens,
+            cache_read_input_tokens,
+            cache_creation_input_tokens,
+        )
     }
 
     pub(super) fn update_compaction_usage_from_stream(
