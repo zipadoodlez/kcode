@@ -280,6 +280,8 @@ async fn build_server_memory_payload(
     let process = crate::process_memory::snapshot_with_source("server:memory");
     let background_tasks = crate::background::global().list().await;
     let embedder_stats = crate::embedding::stats();
+    let (search_index_count, search_index_entries, search_index_bytes) =
+        crate::tool::session_search_index::cache_memory_stats();
     let embedding_model_available = crate::embedding::is_model_available();
 
     let sessions_guard = sessions.read().await;
@@ -662,6 +664,11 @@ async fn build_server_memory_payload(
             "loaded_secs": embedder_stats.loaded_secs,
             "cache_hits": embedder_stats.cache_hits,
             "cache_size": embedder_stats.cache_size,
+        },
+        "session_search_index": {
+            "index_count": search_index_count,
+            "entry_count": search_index_entries,
+            "approx_resident_bytes": search_index_bytes,
         }
     })
 }

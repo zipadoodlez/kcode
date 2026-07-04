@@ -47,6 +47,24 @@ const BLOOM_HASHES: u32 = 4;
 
 static INDEX_CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<TokenHashIndex>>>> = OnceLock::new();
 
+/// Snapshot of the resident index cache for memory attribution:
+/// `(index_count, entry_count, approx_resident_bytes)`.
+pub fn cache_memory_stats() -> (usize, usize, usize) {
+    let Some(cache) = INDEX_CACHE.get() else {
+        return (0, 0, 0);
+    };
+    let Ok(guard) = cache.lock() else {
+        return (0, 0, 0);
+    };
+    let mut entries = 0usize;
+    let mut bytes = 0usize;
+    for index in guard.values() {
+        entries += index.entries.len();
+        bytes += index.approx_resident_bytes();
+    }
+    (guard.len(), entries, bytes)
+}
+
 /// Identity of one indexable file (or file group) inside a store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexFileSpec {
