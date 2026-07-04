@@ -2133,3 +2133,90 @@ fn test_remote_fork_without_prompt_splits_immediately() {
         "bare /fork should split immediately like /split"
     );
 }
+
+#[test]
+fn test_credential_failure_breaker_trips_after_consecutive_auth_errors() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    // Auto-poke on with an auto-retryable pending message: this is the
+    // runaway-loop shape that produced thousands of 401s per session.
+    app.auto_poke_incomplete_todos = true;
+
+    for attempt in 0..App::CREDENTIAL_FAILURE_BREAKER_THRESHOLD {
+        app.rate_limit_pending_message = Some(PendingRemoteMessage {
+            content: "poke".to_string(),
+            images: vec![],
+            is_system: true,
+            system_reminder: None,
+            auto_retry: true,
+            retry_attempts: 0,
+            retry_at: None,
+        });
+        app.is_processing = true;
+        app.status = ProcessingStatus::Streaming;
+        app.handle_server_event(
+            crate::protocol::ServerEvent::Error {
+                id: 100 + u64::from(attempt),
+                message: "401 Unauthorized: invalid api key".to_string(),
+                retry_after_secs: None,
+            },
+            &mut remote,
+        );
+    }
+
+    assert!(
+        app.rate_limit_pending_message.is_none(),
+        "breaker must clear the pending auto-retry"
+    );
+    assert!(
+        !app.auto_poke_incomplete_todos,
+        "breaker must disable auto-poke"
+    );
+    assert!(app.overnight_auto_poke.is_none());
+    assert_eq!(app.consecutive_credential_failures, 0);
+    assert!(
+        app.display_messages().iter().any(|m| m.role == "error"
+            && m.content.contains("Stopped automatic retries")),
+        "breaker must surface an actionable stop message"
+    );
+}
+
+#[test]
+fn test_credential_failure_breaker_streak_resets_on_other_errors() {
+    let mut app = create_test_app();
+
+    assert!(!app.note_error_for_credential_breaker("401 unauthorized"));
+    assert!(!app.note_error_for_credential_breaker("invalid api key"));
+    // A non-credential error resets the streak: mixed transient failures must
+    // not trip the breaker.
+    assert!(!app.note_error_for_credential_breaker("500 internal server error"));
+    assert_eq!(app.consecutive_credential_failures, 0);
+    assert!(!app.note_error_for_credential_breaker("401 unauthorized"));
+    assert!(!app.note_error_for_credential_breaker("token expired"));
+    assert!(app.note_error_for_credential_breaker("unauthorized"));
+}
+
+#[test]
+fn test_credential_failure_breaker_resets_on_turn_success() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+
+    assert!(!app.note_error_for_credential_breaker("401 unauthorized"));
+    assert!(!app.note_error_for_credential_breaker("401 unauthorized"));
+
+    app.is_processing = true;
+    app.current_message_id = Some(7);
+    app.handle_server_event(crate::protocol::ServerEvent::Done { id: 7 }, &mut remote);
+
+    assert_eq!(
+        app.consecutive_credential_failures, 0,
+        "a successful turn must reset the credential-failure streak"
+    );
+}
