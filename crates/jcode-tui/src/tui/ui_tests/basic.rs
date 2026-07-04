@@ -2,8 +2,8 @@ use super::*;
 use crate::tui::ui::{
     FlickerFrameSample, FramePerfStats, SlowFrameSample, clear_flicker_frame_history_for_tests,
     clear_slow_frame_history_for_tests, copy_badge_reserved_width, expand_badge_reserved_width,
-    record_flicker_frame_sample, record_slow_frame_sample, reserve_copy_badge_margins,
-    truncate_copy_badge_line_to_width,
+    pick_copy_badge_line, record_flicker_frame_sample, record_slow_frame_sample,
+    reserve_copy_badge_margins, truncate_copy_badge_line_to_width, truncate_line_for_copy_badge,
 };
 
 include!("basic/frame_flicker.rs");

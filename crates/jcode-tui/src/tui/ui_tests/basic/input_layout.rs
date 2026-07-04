@@ -278,6 +278,48 @@ fn test_copy_badge_truncates_full_width_line_before_appending_shortcut() {
 }
 
 #[test]
+fn test_copy_badge_line_prefers_row_with_free_width_over_truncation() {
+    // A blockquote whose first line fills the viewport but whose second line
+    // is short: the badge must move to the short line instead of cutting off
+    // the first line's words.
+    let full = Line::from("│ ".to_string() + &"x".repeat(60));
+    let short = Line::from("│ short".to_string());
+    let visible_lines = vec![full, short];
+    let reserved = 14usize; // " [Alt] [⇧] [S]"
+
+    let picked = pick_copy_badge_line(0, 0, 2, 0, 2, &visible_lines, 62, reserved);
+    assert_eq!(picked, 1, "badge should move to the line with free width");
+
+    // When no line in the block fits, keep the natural badge line.
+    let picked_none = pick_copy_badge_line(0, 0, 1, 0, 1, &visible_lines, 62, reserved);
+    assert_eq!(picked_none, 0);
+}
+
+#[test]
+fn test_copy_badge_truncation_marks_cut_content_with_ellipsis() {
+    // Content wider than the allowance must end in a visible ellipsis.
+    let mut line = Line::from("y".repeat(30));
+    truncate_line_for_copy_badge(&mut line, 10);
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert!(text.ends_with('…'), "cut content must show ellipsis: {text:?}");
+    assert!(line.width() <= 10);
+
+    // Content that fits is left intact (trailing spaces trimmed only).
+    let mut fits = Line::from("short  ");
+    truncate_line_for_copy_badge(&mut fits, 10);
+    let fits_text: String = fits
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert_eq!(fits_text, "short");
+}
+
+#[test]
 fn test_estimate_pinned_diagram_pane_width_scales_to_height() {
     let diagram = info_widget::DiagramInfo {
         hash: 1,

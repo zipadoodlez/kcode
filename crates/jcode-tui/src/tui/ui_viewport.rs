@@ -210,6 +210,57 @@ pub(crate) fn trim_line_trailing_spaces(line: &mut Line<'static>) {
     }
 }
 
+/// Prepare a line to host an inline badge within `max_content_width` cells.
+/// When the content already fits, only trailing spaces are trimmed (the badge
+/// separator space is accounted for in the reserved width). When the content
+/// must be cut, end it with a dim ellipsis so the truncation is visible
+/// instead of silently swallowing words.
+pub(crate) fn truncate_line_for_copy_badge(line: &mut Line<'static>, max_content_width: usize) {
+    if line.width() <= max_content_width {
+        trim_line_trailing_spaces(line);
+        return;
+    }
+    truncate_line_in_place_to_width(line, max_content_width.saturating_sub(1));
+    trim_line_trailing_spaces(line);
+    line.spans
+        .push(Span::styled("…", Style::default().fg(dim_color())));
+}
+
+/// Choose the wrapped line that hosts an inline copy badge for a copy target
+/// spanning `block_start..block_end`.
+///
+/// Prefers the target's natural badge line (the `┌─ lang` header for code
+/// blocks), but when that line is too wide to fit the badge without cutting
+/// content (e.g. a full-width blockquote line), falls back to the first
+/// visible line of the block with enough free width. Returns the natural line
+/// when nothing fits; the caller then truncates with a visible ellipsis.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pick_copy_badge_line(
+    preferred: usize,
+    block_start: usize,
+    block_end: usize,
+    scroll: usize,
+    visible_end: usize,
+    visible_lines: &[Line<'_>],
+    content_width: usize,
+    reserved: usize,
+) -> usize {
+    let fits = |abs_line: usize| -> bool {
+        if abs_line < scroll || abs_line >= visible_end {
+            return false;
+        }
+        visible_lines
+            .get(abs_line - scroll)
+            .is_some_and(|line| line.width().saturating_add(reserved) <= content_width)
+    };
+    if fits(preferred) {
+        return preferred;
+    }
+    (block_start.max(scroll)..block_end.min(visible_end))
+        .find(|&abs_line| abs_line != preferred && fits(abs_line))
+        .unwrap_or(preferred)
+}
+
 pub(crate) fn copy_badge_reserved_width(
     key: char,
     copy_badge_ui: &crate::tui::app::CopyBadgeUiState,
@@ -557,7 +608,19 @@ pub(super) fn draw_messages(
             copied_notice: target.kind.copied_notice(),
             content: target.content.clone(),
         });
-        badge_assignments.push((target.badge_line, key));
+        // Prefer a line in the block with enough free width so the badge
+        // doesn't cut off content (full-width blockquote lines especially).
+        let badge_line = pick_copy_badge_line(
+            target.badge_line,
+            target.start_line,
+            target.end_line,
+            scroll,
+            visible_end,
+            &visible_lines,
+            content_area.width as usize,
+            copy_badge_reserved_width(key, &copy_badge_ui, copy_badge_now),
+        );
+        badge_assignments.push((badge_line, key));
     }
     reserve_copy_badge_margins(
         &mut margins,
@@ -715,7 +778,7 @@ pub(super) fn draw_messages(
                 };
                 let reserved = expand_badge_reserved_width(badge_text);
                 let max_content_width = (content_area.width as usize).saturating_sub(reserved);
-                truncate_line_in_place_to_width(line, max_content_width);
+                truncate_line_for_copy_badge(line, max_content_width);
 
                 // Reserve the badge's width in the info-widget margin profile so a
                 // floating widget (e.g. the KV cache panel) docks far enough left to
@@ -769,10 +832,10 @@ pub(super) fn draw_messages(
         if let Some(line) = visible_lines.get_mut(rel_idx) {
             let reserved = copy_badge_reserved_width(key, &copy_badge_ui, copy_badge_now);
             let max_content_width = (content_area.width as usize).saturating_sub(reserved);
-            truncate_line_in_place_to_width(line, max_content_width);
-            // Normalize the gap between the row content and the badge to
-            // exactly one space (the reserved width accounts for it).
-            trim_line_trailing_spaces(line);
+            // Trims trailing spaces so the badge sits exactly one separator
+            // space after the content; ends with a dim ellipsis when the
+            // content genuinely has to be cut.
+            truncate_line_for_copy_badge(line, max_content_width);
             line.spans.push(Span::raw(" "));
 
             let alt_style = if copy_badge_ui.alt_is_active(copy_badge_now) {
