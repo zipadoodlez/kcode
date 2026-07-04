@@ -1,11 +1,11 @@
 use anyhow::Result;
 use jcode::auth::{AuthState, AuthStatus};
 use jcode::provider::Provider;
-use jcode_provider_openrouter_runtime::OpenRouterProvider;
 use jcode::provider_catalog::{
     OPENAI_COMPAT_LOGIN_PROVIDER, login_providers, openai_compatible_profiles,
 };
 use jcode::tui::login_picker::{LoginPicker, LoginPickerItem, LoginPickerSummary};
+use jcode_provider_openrouter_runtime::OpenRouterProvider;
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use std::collections::HashSet;
 use std::io::{Read, Write};
