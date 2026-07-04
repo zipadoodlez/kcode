@@ -519,7 +519,8 @@ async fn communicate_spawn_with_prompt_and_summary_work_end_to_end() {
 }
 
 /// `message` routes by the fields supplied (DM when `to_session` is set,
-/// broadcast otherwise), while `broadcast` always targets the whole swarm.
+/// broadcast otherwise), while `broadcast` is a group send scoped to the
+/// sender's spawned subtree (whole swarm when the sender is the coordinator).
 /// Regression test for the bug where `message` and `broadcast` were identical
 /// because the tool discarded `to_session`/`channel` for both.
 #[tokio::test]
@@ -595,6 +596,27 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
         "message with to_session should be delivered with dm scope"
     );
 
+    // Broadcasts are scoped to the sender's spawned subtree; the coordinator
+    // keeps whole-swarm reach as an escape hatch. The peer was not spawned by
+    // the sender, so promote the sender to coordinator (self-promotion is
+    // allowed while the swarm has no coordinator) so the broadcast reaches it.
+    let assign_output = tool
+        .execute(
+            json!({
+                "action": "assign_role",
+                "target_session": sender_session.clone(),
+                "role": "coordinator"
+            }),
+            ctx.clone(),
+        )
+        .await
+        .expect("self-promotion to coordinator should succeed");
+    assert!(
+        assign_output.output.contains("Assigned role 'coordinator'"),
+        "unexpected assign_role output: {}",
+        assign_output.output
+    );
+
     // `broadcast` should reach the peer scoped as a broadcast even though no
     // explicit target is supplied.
     let broadcast_output = tool
@@ -608,8 +630,10 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
         .await
         .expect("broadcast should succeed");
     assert!(
-        broadcast_output.output.contains("Broadcast sent to all agents"),
-        "broadcast should report a group send, got: {}",
+        broadcast_output
+            .output
+            .contains("Broadcast sent to your spawned subtree"),
+        "broadcast should report a subtree-scoped group send, got: {}",
         broadcast_output.output
     );
     let broadcast_scope = peer
