@@ -423,7 +423,50 @@ fn empty_prepared_messages() -> PreparedMessages {
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
+        mermaid_pending_epoch: None,
     }
+}
+
+/// Stamp `prepared` with the deferred-mermaid staleness marker: `Some(epoch)`
+/// when any wrapped line is the "rendering mermaid diagram..." placeholder
+/// (a background render is still in flight), `None` otherwise. `epoch_before`
+/// must be the deferred-render epoch read *before* the markdown was rendered,
+/// so a render completing mid-build immediately reads as stale.
+fn stamp_mermaid_pending(prepared: &mut PreparedMessages, epoch_before: u64) {
+    prepared.mermaid_pending_epoch = prepared
+        .wrapped_lines
+        .iter()
+        .any(markdown::line_is_mermaid_pending_placeholder)
+        .then_some(epoch_before);
+}
+
+/// Merge the pending stamp of a reused base with a freshly rendered part.
+/// Keeps the earliest epoch so staleness is never masked.
+fn merge_mermaid_pending(
+    base: Option<u64>,
+    fresh_lines_pending: bool,
+    epoch_before: u64,
+) -> Option<u64> {
+    let fresh = fresh_lines_pending.then_some(epoch_before);
+    match (base, fresh) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Transcript message index owning the first deferred-mermaid pending
+/// placeholder line, for cutting a stale base at a message boundary. `None`
+/// when no pending line exists.
+fn first_mermaid_pending_message(prepared: &PreparedMessages) -> Option<usize> {
+    let line_idx = prepared
+        .wrapped_lines
+        .iter()
+        .position(markdown::line_is_mermaid_pending_placeholder)?;
+    Some(
+        prepared
+            .message_boundaries
+            .partition_point(|boundary| boundary.wrapped_len <= line_idx),
+    )
 }
 
 fn active_batch_progress(app: &dyn TuiState) -> Option<crate::bus::BatchProgress> {
@@ -583,9 +626,18 @@ pub(super) fn prepare_messages(
         };
         let mut cache = cache;
         if let Some((prepared, kind)) = cache.get_exact_with_kind(&key) {
-            super::note_full_prep_cache_lookup(cache_lookup_start.elapsed());
-            super::note_full_prep_cache_hit(kind, prepared.as_ref());
-            return prepared;
+            // A completed deferred mermaid render does not bump
+            // `messages_version`/`streaming_text_hash`, so an exact hit can
+            // still bake in a stale "rendering..." placeholder. Fall through
+            // to a rebuild, which re-renders the pending tail.
+            let stale = prepared
+                .mermaid_pending_epoch()
+                .is_some_and(|stamp| crate::tui::mermaid::deferred_render_epoch() != stamp);
+            if !stale {
+                super::note_full_prep_cache_lookup(cache_lookup_start.elapsed());
+                super::note_full_prep_cache_hit(kind, prepared.as_ref());
+                return prepared;
+            }
         }
     }
 
@@ -756,6 +808,7 @@ fn prepare_messages_inner(app: &dyn TuiState, width: u16, height: u16) -> Prepar
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
             message_boundaries: Vec::new(),
+            mermaid_pending_epoch: None,
         });
         let frame = PreparedChatFrame::from_single(prepared);
         super::note_full_prep_phase_metrics(super::FullPrepPhaseMetrics {
@@ -819,9 +872,19 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
 
     let mut cache = cache;
     if let Some((prepared, kind)) = cache.get_exact_with_kind(&key) {
-        super::note_body_cache_lookup(cache_lookup_start.elapsed());
-        super::note_body_cache_hit(kind, prepared.as_ref());
-        return prepared;
+        // A deferred mermaid render completing does not bump
+        // `messages_version`, so an exact hit can still be stale: it bakes in
+        // a "rendering..." placeholder whose background render has since
+        // finished. Fall through to the rebuild path, which truncates the
+        // base at the pending message and re-renders the tail.
+        let stale = prepared
+            .mermaid_pending_epoch
+            .is_some_and(|stamp| crate::tui::mermaid::deferred_render_epoch() != stamp);
+        if !stale {
+            super::note_body_cache_lookup(cache_lookup_start.elapsed());
+            super::note_body_cache_hit(kind, prepared.as_ref());
+            return prepared;
+        }
     }
 
     super::note_body_cache_lookup(cache_lookup_start.elapsed());
@@ -863,11 +926,36 @@ pub(super) fn build_body_from_base(
     app: &dyn TuiState,
     width: u16,
     mut prev: Arc<PreparedMessages>,
-    prev_count: usize,
+    mut prev_count: usize,
     prev_prompt_offset: usize,
     msg_count: usize,
 ) -> (Arc<PreparedMessages>, &'static str) {
     let messages = app.display_messages();
+    // A stale deferred-mermaid base (its background render finished after the
+    // base was built) must not be reused verbatim: cut it at the message that
+    // owns the first pending placeholder so that message and everything after
+    // it re-render and pick up the completed diagram.
+    if let Some(stamp) = prev.mermaid_pending_epoch
+        && crate::tui::mermaid::deferred_render_epoch() != stamp
+    {
+        match first_mermaid_pending_message(prev.as_ref()) {
+            Some(keep) if !prev.message_boundaries.is_empty() => {
+                let prepared = Arc::make_mut(&mut prev);
+                truncate_prepared_to_boundary(prepared, keep);
+                prepared.mermaid_pending_epoch = None;
+                prev_count = prepared.message_boundaries.len();
+            }
+            Some(_) => {
+                // No boundary tracking: cannot cut at the pending message.
+                return (Arc::new(prepare_body(app, width, false)), "full");
+            }
+            None => {
+                // Stamp outlived its placeholder (e.g. the pending tail was
+                // truncated away); clear it and reuse normally.
+                Arc::make_mut(&mut prev).mermaid_pending_epoch = None;
+            }
+        }
+    }
     // The selected base shares this key's width/mode/image signature. Find the
     // longest message prefix whose hashes still match the current transcript.
     let k = matching_prefix_len(prev.as_ref(), messages);
@@ -1357,6 +1445,9 @@ pub(super) fn prepare_body_incremental(
         return prev;
     }
 
+    // Read before rendering the tail: a background diagram render completing
+    // mid-build must leave the stamp already-stale.
+    let mermaid_epoch_before = crate::tui::mermaid::deferred_render_epoch();
     let centered = app.centered_mode();
     markdown::set_center_code_blocks(centered);
 
@@ -1422,6 +1513,15 @@ pub(super) fn prepare_body_incremental(
     );
 
     let prepared = Arc::make_mut(&mut prev);
+    let new_tail_pending = new_wrapped
+        .wrapped_lines
+        .iter()
+        .any(markdown::line_is_mermaid_pending_placeholder);
+    prepared.mermaid_pending_epoch = merge_mermaid_pending(
+        prepared.mermaid_pending_epoch,
+        new_tail_pending,
+        mermaid_epoch_before,
+    );
     let prev_len = prepared.wrapped_lines.len();
     let prev_raw_len = prepared.raw_plain_lines.len();
     let prev_prompt_len = prepared.user_prompt_texts.len();
@@ -1568,6 +1668,17 @@ pub(super) fn truncate_prepared_to_boundary(prepared: &mut PreparedMessages, kee
         .edit_tool_ranges
         .retain(|r| r.start_line < wrapped_len);
     prepared.copy_targets.retain(|t| t.start_line < wrapped_len);
+
+    // The pending-mermaid placeholder may have lived in the dropped tail;
+    // recompute so a stale-positive stamp cannot force rebuilds forever.
+    if prepared.mermaid_pending_epoch.is_some()
+        && !prepared
+            .wrapped_lines
+            .iter()
+            .any(markdown::line_is_mermaid_pending_placeholder)
+    {
+        prepared.mermaid_pending_epoch = None;
+    }
 }
 
 /// Longest message prefix length `k` such that `base.message_boundaries[..k]`
@@ -1730,6 +1841,7 @@ pub(super) fn prepare_body_prepended(
         return Err(prev);
     }
 
+    let head_pending_epoch = head.mermaid_pending_epoch;
     let head_wrapped_len = head.wrapped_lines.len();
     let head_raw_len = head.raw_plain_lines.len();
     let head_prompt_len = head.user_prompt_texts.len();
@@ -1871,6 +1983,11 @@ pub(super) fn prepare_body_prepended(
         prepared.message_boundaries = boundaries;
     }
 
+    prepared.mermaid_pending_epoch = match (prepared.mermaid_pending_epoch, head_pending_epoch) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+
     Ok(prev)
 }
 
@@ -1881,23 +1998,11 @@ fn prepare_streaming_cached(
 ) -> PreparedMessages {
     let streaming = app.streaming_text();
     if streaming.is_empty() {
-        return PreparedMessages {
-            wrapped_lines: Vec::new(),
-            wrapped_plain_lines: Arc::new(Vec::new()),
-            wrapped_copy_offsets: Arc::new(Vec::new()),
-            raw_plain_lines: Arc::new(Vec::new()),
-            wrapped_line_map: Arc::new(Vec::new()),
-            wrapped_user_indices: Vec::new(),
-            wrapped_user_prompt_starts: Vec::new(),
-            wrapped_user_prompt_ends: Vec::new(),
-            user_prompt_texts: Vec::new(),
-            image_regions: Vec::new(),
-            edit_tool_ranges: Vec::new(),
-            copy_targets: Vec::new(),
-            message_boundaries: Vec::new(),
-        };
+        return empty_prepared_messages();
     }
 
+    // Read before rendering: see `stamp_mermaid_pending`.
+    let mermaid_epoch_before = crate::tui::mermaid::deferred_render_epoch();
     let centered = app.centered_mode();
     markdown::set_center_code_blocks(centered);
     let display_width = width.saturating_sub(4) as usize;
@@ -1925,7 +2030,9 @@ fn prepare_streaming_cached(
         lines.push(align_if_unset(line, align));
     }
 
-    wrap_lines(lines, &[], &[], &[], width)
+    let mut prepared = wrap_lines(lines, &[], &[], &[], width);
+    stamp_mermaid_pending(&mut prepared, mermaid_epoch_before);
+    prepared
 }
 
 pub(super) fn prepare_body(
@@ -1933,6 +2040,9 @@ pub(super) fn prepare_body(
     width: u16,
     include_streaming: bool,
 ) -> PreparedMessages {
+    // Read before rendering: a background diagram render completing mid-build
+    // must leave the stamp already-stale (see `stamp_mermaid_pending`).
+    let mermaid_epoch_before = crate::tui::mermaid::deferred_render_epoch();
     let centered = app.centered_mode();
     markdown::set_center_code_blocks(centered);
     let display_width = width.saturating_sub(4) as usize;
@@ -1984,7 +2094,7 @@ pub(super) fn prepare_body(
         }
     }
 
-    wrap_lines_with_map(
+    let mut prepared = wrap_lines_with_map(
         acc.lines,
         &acc.raw_plain_lines,
         &acc.line_raw_overrides,
@@ -1995,7 +2105,9 @@ pub(super) fn prepare_body(
         &acc.edit_tool_line_ranges,
         &acc.copy_targets,
         &acc.segments,
-    )
+    );
+    stamp_mermaid_pending(&mut prepared, mermaid_epoch_before);
+    prepared
 }
 
 fn wrap_lines(
@@ -2076,6 +2188,7 @@ fn wrap_lines(
         edit_tool_ranges: Vec::new(),
         copy_targets: Vec::new(),
         message_boundaries: Vec::new(),
+        mermaid_pending_epoch: None,
     }
 }
 
@@ -2238,6 +2351,7 @@ fn wrap_lines_with_map(
         edit_tool_ranges,
         copy_targets,
         message_boundaries,
+        mermaid_pending_epoch: None,
     }
 }
 

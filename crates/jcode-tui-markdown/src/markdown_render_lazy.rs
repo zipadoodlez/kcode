@@ -407,7 +407,7 @@ pub fn render_markdown_lazy(
                         }
                         None => {
                             lines.push(mermaid_sidebar_placeholder(
-                                "↻ rendering mermaid diagram...",
+                                MERMAID_PENDING_PLACEHOLDER_TEXT,
                             ));
                         }
                     }

@@ -458,7 +458,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
                         }
                         None => {
                             lines.push(mermaid_sidebar_placeholder(
-                                "↻ rendering mermaid diagram...",
+                                MERMAID_PENDING_PLACEHOLDER_TEXT,
                             ));
                         }
                     }

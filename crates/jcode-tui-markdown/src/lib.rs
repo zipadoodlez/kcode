@@ -514,6 +514,32 @@ fn mermaid_sidebar_placeholder(text: &str) -> Line<'static> {
     .left_aligned()
 }
 
+/// Placeholder text emitted while a deferred mermaid render runs in the
+/// background. Cache layers above the markdown renderer use
+/// [`line_is_mermaid_pending_placeholder`] to detect prepared content that
+/// must be re-rendered once the background render completes (the deferred
+/// render epoch advances).
+pub const MERMAID_PENDING_PLACEHOLDER_TEXT: &str = "↻ rendering mermaid diagram...";
+
+/// Prefix used to recognize the pending placeholder even when a narrow width
+/// wraps its tail onto a following line.
+const MERMAID_PENDING_MATCH_PREFIX: &str = "↻ rendering mermaid";
+
+/// True when `line` is the deferred-mermaid pending placeholder. Tolerates
+/// leading/trailing padding spans added by centered display modes and the
+/// truncated tail produced when a narrow width wraps the placeholder.
+pub fn line_is_mermaid_pending_placeholder(line: &Line<'_>) -> bool {
+    let mut spans = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref().trim())
+        .filter(|content| !content.is_empty());
+    let Some(first) = spans.next() else {
+        return false;
+    };
+    first.starts_with(MERMAID_PENDING_MATCH_PREFIX) && spans.next().is_none()
+}
+
 fn apply_inline_decorations(mut style: Style, strike: bool, in_link: bool) -> Style {
     if strike {
         style = style.crossed_out();

@@ -88,6 +88,7 @@ fn matching_suffix_len_detects_prepended_history() {
                 user_prompt_len: 0,
             })
             .collect(),
+        mermaid_pending_epoch: None,
     };
 
     // New transcript: two older-history messages prepended, tail unchanged.

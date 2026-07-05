@@ -11,6 +11,14 @@ pub struct IncrementalMarkdownRenderer {
     lines_at_checkpoint: usize,
     /// Whether a blank separator should be preserved at the checkpoint boundary
     checkpoint_needs_separator: bool,
+    /// Whether `rendered_lines` contains a deferred-mermaid pending
+    /// placeholder; when true the identical-text fast path must re-render
+    /// once the deferred render epoch advances so the completed diagram
+    /// replaces the placeholder.
+    rendered_mermaid_pending: bool,
+    /// Deferred-render epoch observed just before `rendered_lines` was
+    /// rendered.
+    rendered_mermaid_epoch: u64,
     /// Width constraint
     max_width: Option<usize>,
 }
@@ -23,6 +31,8 @@ impl IncrementalMarkdownRenderer {
             last_checkpoint: 0,
             lines_at_checkpoint: 0,
             checkpoint_needs_separator: false,
+            rendered_mermaid_pending: false,
+            rendered_mermaid_epoch: 0,
             max_width,
         }
     }
@@ -51,8 +61,14 @@ impl IncrementalMarkdownRenderer {
     }
 
     fn update_internal(&mut self, full_text: &str) -> Vec<Line<'static>> {
-        // Fast path: text unchanged
-        if full_text == self.rendered_text {
+        // Fast path: text unchanged. Not taken while a deferred mermaid
+        // placeholder is baked into the cached lines and the deferred render
+        // epoch has advanced: the background render finished, so re-render to
+        // pick up the completed diagram.
+        if full_text == self.rendered_text
+            && !(self.rendered_mermaid_pending
+                && mermaid::deferred_render_epoch() != self.rendered_mermaid_epoch)
+        {
             return self.rendered_lines.clone();
         }
 
@@ -62,8 +78,18 @@ impl IncrementalMarkdownRenderer {
         // but markdown block separators and list continuity make that unsafe without
         // carrying richer parser state across updates. In practice this caused transient
         // streaming artifacts like duplicated/misaligned content. Favor correctness here.
+        //
+        // The epoch is read *before* rendering: if a background diagram render
+        // completes mid-render, the stamp is already older than the new epoch
+        // and the next update re-renders instead of waiting forever.
+        let mermaid_epoch_before = mermaid::deferred_render_epoch();
         self.rendered_lines = render_markdown_with_width(full_text, self.max_width);
         self.rendered_text = full_text.to_string();
+        self.rendered_mermaid_pending = self
+            .rendered_lines
+            .iter()
+            .any(line_is_mermaid_pending_placeholder);
+        self.rendered_mermaid_epoch = mermaid_epoch_before;
 
         // Find checkpoint for next incremental update
         self.refresh_checkpoint(full_text, true);
@@ -209,6 +235,8 @@ impl IncrementalMarkdownRenderer {
         self.last_checkpoint = 0;
         self.lines_at_checkpoint = 0;
         self.checkpoint_needs_separator = false;
+        self.rendered_mermaid_pending = false;
+        self.rendered_mermaid_epoch = 0;
     }
 
     /// Update width constraint, resets if changed

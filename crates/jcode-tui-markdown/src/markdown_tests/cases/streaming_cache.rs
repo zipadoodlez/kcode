@@ -332,6 +332,66 @@ fn test_incremental_renderer_defers_mermaid_render_until_background_ready() {
 }
 
 #[test]
+fn test_pending_placeholder_line_detection() {
+    let placeholder = Line::from(Span::styled(
+        MERMAID_PENDING_PLACEHOLDER_TEXT.to_string(),
+        Style::default(),
+    ));
+    assert!(line_is_mermaid_pending_placeholder(&placeholder));
+
+    // Centered display modes prepend a padding span.
+    let padded = Line::from(vec![
+        Span::raw("        "),
+        Span::styled(MERMAID_PENDING_PLACEHOLDER_TEXT.to_string(), Style::default()),
+    ]);
+    assert!(line_is_mermaid_pending_placeholder(&padded));
+
+    // A narrow wrap can truncate the tail; the prefix still matches.
+    let wrapped = Line::from(Span::raw("↻ rendering mermaid"));
+    assert!(line_is_mermaid_pending_placeholder(&wrapped));
+
+    assert!(!line_is_mermaid_pending_placeholder(&Line::from("")));
+    assert!(!line_is_mermaid_pending_placeholder(&Line::from(
+        "↗ mermaid diagram (image protocols unavailable)"
+    )));
+    assert!(!line_is_mermaid_pending_placeholder(&Line::from(vec![
+        Span::raw(MERMAID_PENDING_PLACEHOLDER_TEXT),
+        Span::raw("extra content"),
+    ])));
+}
+
+/// A completed background mermaid render advances the deferred epoch without
+/// changing the streamed text. The incremental renderer must not serve its
+/// identical-text fast path in that case, or the transcript placeholder
+/// ("rendering mermaid diagram...") never resolves into the diagram.
+#[cfg(feature = "mermaid-renderer")]
+#[test]
+fn test_incremental_renderer_rerenders_pending_mermaid_after_epoch_bump() {
+    let mut renderer = IncrementalMarkdownRenderer::new(Some(80));
+    // Unique content so no earlier test populated the render cache for it.
+    let text = "Plan:\n\n```mermaid\nflowchart LR\n  E1[EpochBump] --> E2[FastPath]\n```\n";
+
+    let lines = renderer.update(text);
+    if !lines.iter().any(line_is_mermaid_pending_placeholder) {
+        // Cache already warm (render finished before this update); nothing to pin.
+        return;
+    }
+
+    // Simulate the background render completing. (The real worker may also
+    // bump concurrently; either way the epoch now differs from the stamp
+    // taken before the pending render above.)
+    jcode_tui_mermaid::debug_bump_deferred_render_epoch_for_tests();
+
+    let before = thread_render_count();
+    let _ = renderer.update(text);
+    assert!(
+        thread_render_count() > before,
+        "identical text with an advanced deferred epoch must re-render \
+         so the completed diagram replaces its placeholder"
+    );
+}
+
+#[test]
 fn test_checkpoint_does_not_enter_unclosed_fence() {
     let renderer = IncrementalMarkdownRenderer::new(Some(80));
     let text = "Intro\n\n```\nProcess A\n\nProcess B";
