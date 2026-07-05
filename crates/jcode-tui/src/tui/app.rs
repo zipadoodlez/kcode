@@ -188,6 +188,11 @@ struct KvCacheBaseline {
     /// the new (often smaller) history look like a broken prefix and produces a
     /// spurious `harness:_prefix_changed` miss.
     session_id: Option<String>,
+    /// Effective prompt size of the last completed request (input + cache read
+    /// + cache creation for split-accounting providers like Anthropic). This is
+    /// the reusable cached prefix, i.e. what gets resent if the cache goes
+    /// cold, NOT the bare `input` field, which for split providers is only the
+    /// uncached remainder of that one request.
     input_tokens: u64,
     completed_at: Instant,
     provider: String,
@@ -1751,9 +1756,20 @@ impl App {
             ColdCacheWarningTrigger::IdleExpiry => "will be resent with your next message",
             ColdCacheWarningTrigger::RequestStart => "may be resent on this request",
         };
+        // The idle trigger fires the moment the TTL expires, so "expired Ns
+        // ago" would always read ~0s and is pure noise there. The
+        // request-start fallback can fire long after expiry (e.g. suspended
+        // TUI), where the elapsed detail is genuinely informative.
+        let detail = match trigger {
+            ColdCacheWarningTrigger::IdleExpiry => format!("{}s TTL just expired", ttl_secs),
+            ColdCacheWarningTrigger::RequestStart => format!(
+                "{}s TTL expired {}s ago; last cache write was {}s ago",
+                ttl_secs, expired_ago_secs, age_secs
+            ),
+        };
         self.push_display_message(DisplayMessage::system(format!(
-            "🧊 Prompt cache is cold: ~{} input tokens {} ({}s TTL expired {}s ago; last cache write was {}s ago). Use /cache to extend the timer before long breaks, or start a fresh/compacted session for very large histories.",
-            token_label, resend_clause, ttl_secs, expired_ago_secs, age_secs
+            "🧊 Prompt cache is cold: ~{} input tokens {} ({}). Use /cache to extend the timer before long breaks, or start a fresh/compacted session for very large histories.",
+            token_label, resend_clause, detail
         )));
         true
     }
@@ -1773,12 +1789,12 @@ impl App {
         // cache-read can be compared against everything that just became cacheable.
         // For split-accounting providers (Anthropic) bare `input` is only the
         // uncached remainder, so the reusable prefix is input + read + creation.
-        self.token_accounting.cache_next_optimal_input_tokens =
-            Some(crate::tui::info_widget::effective_prompt_tokens(
-                self.streaming.streaming_input_tokens,
-                self.streaming.streaming_cache_read_tokens.unwrap_or(0),
-                self.streaming.streaming_cache_creation_tokens.unwrap_or(0),
-            ));
+        let effective_prompt_tokens = crate::tui::info_widget::effective_prompt_tokens(
+            self.streaming.streaming_input_tokens,
+            self.streaming.streaming_cache_read_tokens.unwrap_or(0),
+            self.streaming.streaming_cache_creation_tokens.unwrap_or(0),
+        );
+        self.token_accounting.cache_next_optimal_input_tokens = Some(effective_prompt_tokens);
 
         let request = self
             .kv_cache
@@ -1834,7 +1850,7 @@ impl App {
 
         self.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
             session_id: baseline_session_id,
-            input_tokens: self.streaming.streaming_input_tokens,
+            input_tokens: effective_prompt_tokens,
             completed_at: Instant::now(),
             provider: request.provider,
             model: request.model,

@@ -219,6 +219,14 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
             .contains("will be resent with your next message"),
         "{warning:?}"
     );
+    assert!(
+        warning.content.contains("3600s TTL just expired"),
+        "idle warning should not report a stale 'expired Ns ago' detail: {warning:?}"
+    );
+    assert!(
+        !warning.content.contains("expired 100s ago"),
+        "{warning:?}"
+    );
 
     // Subsequent ticks for the same cold period must not spam the transcript.
     assert!(!app.maybe_push_idle_cold_cache_warning());
@@ -337,6 +345,35 @@ fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
         "{alarm:?}"
     );
     assert!(alarm.content.contains("50K"), "{alarm:?}");
+}
+
+#[test]
+fn kv_cache_baseline_stores_effective_prompt_tokens() {
+    // For split-accounting providers (Anthropic), the reported `input` is only
+    // the uncached remainder of the request. The baseline drives the cold-cache
+    // warning's "~N input tokens will be resent" figure, so it must store the
+    // whole effective prompt (input + cache read + cache creation), not the
+    // bare input.
+    let mut app = create_test_app();
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+
+    let messages = vec![Message::user("first prompt")];
+    app.begin_kv_cache_request(&messages, &[], "system", "");
+    app.streaming.streaming_input_tokens = 700;
+    app.streaming.streaming_cache_read_tokens = Some(90_000);
+    app.streaming.streaming_cache_creation_tokens = Some(5_000);
+    app.kv_cache.current_api_usage_recorded = false;
+    app.record_completed_stream_cache_usage();
+
+    let baseline = app
+        .kv_cache
+        .kv_cache_baseline
+        .as_ref()
+        .expect("completed stream should record a baseline");
+    assert_eq!(
+        baseline.input_tokens, 95_700,
+        "baseline must capture input + read + creation, not bare input"
+    );
 }
 
 #[test]

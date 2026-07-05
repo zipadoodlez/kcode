@@ -858,16 +858,21 @@ pub(in crate::tui::app) fn handle_server_event(
                         Some(app.streaming.streaming_cache_creation_tokens.unwrap_or(0));
                 }
 
+                let effective_prompt_tokens = crate::tui::info_widget::effective_prompt_tokens(
+                    input,
+                    app.streaming.streaming_cache_read_tokens.unwrap_or(0),
+                    app.streaming.streaming_cache_creation_tokens.unwrap_or(0),
+                );
                 if let Some(baseline) = app.kv_cache.kv_cache_baseline.as_mut() {
-                    baseline.input_tokens = input;
+                    // Store the effective prompt (input + read + creation): for
+                    // split-accounting providers bare `input` is only the
+                    // uncached remainder, while the whole effective prompt is
+                    // what gets resent when the cache goes cold.
+                    baseline.input_tokens = effective_prompt_tokens;
                     baseline.completed_at = Instant::now();
                 }
                 app.token_accounting.cache_next_optimal_input_tokens =
-                    Some(crate::tui::info_widget::effective_prompt_tokens(
-                        input,
-                        app.streaming.streaming_cache_read_tokens.unwrap_or(0),
-                        app.streaming.streaming_cache_creation_tokens.unwrap_or(0),
-                    ));
+                    Some(effective_prompt_tokens);
                 app.last_api_completed = Some(Instant::now());
                 app.last_api_completed_provider = Some(<App as TuiState>::provider_name(app));
                 app.last_api_completed_model = Some(<App as TuiState>::provider_model(app));
