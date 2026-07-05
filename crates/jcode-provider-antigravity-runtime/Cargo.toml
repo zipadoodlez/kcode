@@ -12,7 +12,11 @@ path = "src/lib.rs"
 anyhow = "1"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
-jcode-base = { path = "../jcode-base" }
+# default-features = false: the top-level binary decides heavy optional base
+# features (embeddings/bedrock). Runtime crates must not re-enable them via
+# feature unification, or --no-default-features release targets (e.g. Windows
+# ARM64, which cannot build tract-linalg asm) break.
+jcode-base = { path = "../jcode-base", default-features = false }
 jcode-message-types = { path = "../jcode-message-types" }
 jcode-provider-antigravity = { path = "../jcode-provider-antigravity" }
 jcode-provider-core = { path = "../jcode-provider-core" }
