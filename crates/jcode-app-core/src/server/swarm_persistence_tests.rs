@@ -712,3 +712,178 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         Some(&HashSet::from(["coord-1".to_string()]))
     );
 }
+
+/// Removal-lifecycle half of the `.bak` finding
+/// (wiring-audit.bak-resurrection). `storage::write_json_fast` hard-links
+/// the previous snapshot to `<swarm>.bak` on every overwrite
+/// (jcode-storage/src/lib.rs:310-323), but `remove_swarm_state`
+/// (swarm_persistence.rs:320) deletes only `state_path(swarm_id)` — the
+/// `.json` primary. Because `load_runtime_state` ingests `.bak` files as
+/// snapshots (see `load_runtime_state_reads_bak_files_as_snapshots`), a
+/// dissolved swarm resurrects from its orphaned backup at the next server
+/// startup: a zombie swarm carrying its second-to-last state.
+///
+/// Real-world evidence: `~/.jcode/state/swarm` accumulates `<id>.bak`
+/// files that disagree with (or outlive) their `<id>.json` primaries.
+#[test]
+fn remove_swarm_state_leaves_orphaned_bak_that_resurrects_on_load() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    // First persist creates the primary; the second overwrite makes
+    // write_json_fast hard-link the previous (coord-v1) snapshot to `.bak`.
+    persist_swarm_state("swarm-zombie", None, Some("coord-v1"), &[]);
+    persist_swarm_state("swarm-zombie", None, Some("coord-v2"), &[]);
+    let bak_path = state_path("swarm-zombie").with_extension("bak");
+    assert!(bak_path.exists(), "write_json_fast leaves a .bak hard link");
+
+    remove_swarm_state("swarm-zombie");
+    assert!(!state_path("swarm-zombie").exists());
+    assert!(
+        bak_path.exists(),
+        "remove_swarm_state deletes only the primary; the .bak survives"
+    );
+
+    // Next startup: the removed swarm resurrects from the orphaned .bak,
+    // and with STALE (second-to-last) state at that.
+    let loaded = load_runtime_state();
+    assert_eq!(
+        loaded.coordinators.get("swarm-zombie"),
+        Some(&"coord-v1".to_string()),
+        "orphaned .bak resurrects the dissolved swarm at the next \
+         load_runtime_state; if this returns None the removal paths \
+         learned to delete the .bak (update the wiring audit)"
+    );
+}
+
+/// Same orphaned-`.bak` lifecycle bug via the OTHER removal path: the
+/// all-empty dissolution branch of `persist_swarm_state`
+/// (swarm_persistence.rs:293) also calls `remove_file(state_path(..))`
+/// only, so dissolving a swarm by persisting its empty runtime leaves the
+/// backup behind and the swarm resurrects on the next load.
+#[test]
+fn empty_persist_dissolution_leaves_orphaned_bak_that_resurrects_on_load() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    persist_swarm_state("swarm-dissolve", None, Some("coord-v1"), &[]);
+    persist_swarm_state("swarm-dissolve", None, Some("coord-v2"), &[]);
+    let bak_path = state_path("swarm-dissolve").with_extension("bak");
+    assert!(bak_path.exists(), "write_json_fast leaves a .bak hard link");
+
+    // Dissolution: no plan, no coordinator, no members hits the
+    // remove_file branch instead of writing a snapshot.
+    persist_swarm_state("swarm-dissolve", None, None, &[]);
+    assert!(!state_path("swarm-dissolve").exists());
+    assert!(
+        bak_path.exists(),
+        "the empty-state persist branch deletes only the primary; the \
+         .bak survives"
+    );
+
+    let loaded = load_runtime_state();
+    assert_eq!(
+        loaded.coordinators.get("swarm-dissolve"),
+        Some(&"coord-v1".to_string()),
+        "orphaned .bak resurrects the dissolved swarm at the next \
+         load_runtime_state; if this returns None the dissolution branch \
+         learned to delete the .bak (update the wiring audit)"
+    );
+}
+
+/// Delete-vs-write interleaving between `remove_persisted_swarm_state_for`
+/// and a concurrent persist (wiring-audit.bak-resurrection, part b).
+///
+/// `remove_persisted_swarm_state_for` (server.rs:120) is `load_runtime()
+/// .await` followed by an unserialized `remove_swarm_state`. Like the
+/// persist inversion race above, `load_runtime` observes the four state
+/// maps across multiple await points, so a remover that saw an all-empty
+/// (dissolved) runtime can park, lose the race to a swarm re-creation plus
+/// persist, then resume and delete the FRESH snapshot the re-creation just
+/// wrote. Two failures compound:
+///   1. Orphaned live swarm: the recreated swarm (coordinator registered
+///      in memory) has no primary snapshot, so a clean restart loses it.
+///   2. Zombie resurrection: the persist that the remover clobbered
+///      hard-linked the PRE-dissolution snapshot to `.bak`, and
+///      `load_runtime_state` reads `.bak` files, so restart restores the
+///      stale pre-dissolution state instead.
+///
+/// Same gate technique as
+/// `persist_snapshot_can_regress_to_older_plan_version_when_calls_interleave`:
+/// park A inside `load_runtime` at the contended `members.read()`, run
+/// mutator B's re-creation and persist while A is parked, release A.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn remove_racing_persist_deletes_fresh_snapshot_and_resurrects_stale_bak() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    // The previous incarnation's snapshot is on disk; the swarm has since
+    // been dissolved, so the in-memory runtime is empty.
+    persist_swarm_state("swarm-del-race", None, Some("coord-stale"), &[]);
+    let swarm_state = crate::server::SwarmState::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashMap::new(),
+        HashMap::new(),
+    );
+
+    // Gate: hold members.write() so remover A parks inside load_runtime at
+    // the final members.read(), AFTER it has already observed the
+    // dissolved (all-empty) plans/coordinators/swarms_by_id state.
+    let gate = swarm_state.members.write().await;
+
+    let a = tokio::spawn({
+        let swarm_state = swarm_state.clone();
+        async move {
+            crate::server::remove_persisted_swarm_state_for("swarm-del-race", &swarm_state)
+                .await;
+        }
+    });
+    // Current-thread test runtime: yielding runs A until it parks on the
+    // contended members.read().await.
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+
+    // Mutator B: the swarm is recreated while A is parked. B registers a
+    // new coordinator in memory ...
+    {
+        let mut coordinators = swarm_state.coordinators.write().await;
+        coordinators.insert("swarm-del-race".to_string(), "coord-new".to_string());
+    }
+    // ... and B's persist half runs to completion (in production this is
+    // B's own persist_swarm_state_for on another worker thread, whose
+    // uncontended lock reads resolve without suspending). This overwrite
+    // also hard-links the stale pre-dissolution snapshot to `.bak`.
+    persist_swarm_state("swarm-del-race", None, Some("coord-new"), &[]);
+    let on_disk = storage::read_json::<PersistedSwarmState>(&state_path("swarm-del-race"))
+        .expect("fresh snapshot");
+    assert_eq!(
+        on_disk.coordinator_session_id.as_deref(),
+        Some("coord-new"),
+        "fresh snapshot must be durably on disk before A resumes"
+    );
+
+    // Release A: its stale all-empty runtime passes has_any_state() and it
+    // deletes the snapshot B just wrote.
+    drop(gate);
+    a.await.expect("remove task");
+
+    assert!(
+        !state_path("swarm-del-race").exists(),
+        "expected the racing remove to delete the freshly persisted \
+         snapshot; if the primary survives, the remove path gained \
+         ordering/state re-checks (update the wiring audit)"
+    );
+    // The live swarm (coord-new is still registered in memory) now has no
+    // primary snapshot, and the only durable trace is the STALE backup, so
+    // the next load_runtime_state resurrects the pre-dissolution state.
+    let loaded = load_runtime_state();
+    assert_eq!(
+        loaded.coordinators.get("swarm-del-race"),
+        Some(&"coord-stale".to_string()),
+        "restart restores the stale .bak snapshot: coord-new's fresh state \
+         was orphaned by the delete-vs-write race"
+    );
+}
