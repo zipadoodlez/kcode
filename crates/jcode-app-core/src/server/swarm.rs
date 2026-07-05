@@ -1552,11 +1552,11 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 #[cfg(test)]
 mod tests {
     use super::{
-        broadcast_swarm_plan, broadcast_swarm_plan_with_previous, member_status_is_dead,
-        now_unix_ms, parse_swarm_tasks, refresh_swarm_task_staleness, remove_session_from_swarm,
-        salvage_assignments_of_dead_member, swarm_ancestors, swarm_is_self_or_ancestor,
-        swarm_spawn_depth, touch_swarm_task_progress, update_member_status,
-        update_member_status_with_report,
+        broadcast_swarm_plan, broadcast_swarm_plan_with_previous, broadcast_swarm_status,
+        member_status_is_dead, now_unix_ms, parse_swarm_tasks, refresh_swarm_task_staleness,
+        remove_session_from_swarm, salvage_assignments_of_dead_member, swarm_ancestors,
+        swarm_is_self_or_ancestor, swarm_spawn_depth, touch_swarm_task_progress,
+        update_member_status, update_member_status_with_report,
     };
     use crate::plan::PlanItem;
     use crate::protocol::{NotificationType, ServerEvent};

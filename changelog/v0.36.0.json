@@ -1,0 +1,31 @@
+{
+  "version": "0.36.0",
+  "date": "2026-07-05",
+  "title": "Image pipeline hardening, big memory cuts, and swarm orchestration upgrades",
+  "highlights": [
+    "Inline images are hardened end to end: payloads are released after decode (~8MB back per image-heavy session), evicted cache entries self-heal from disk, and undecodable images can no longer spin the render loop",
+    "Client memory drops sharply: syntect switches to the onig backend (~17MB), the session-search index is bloom-filtered (-24MB server-side), retained heap is trimmed on idle, and glibc mmap thresholds are pinned so large transients return to the OS",
+    "Swarm plans render as a live inline mermaid task graph in chat, with per-agent task labels, honest run_plan progress, and per-spawn model/effort selection"
+  ],
+  "improvements": [
+    "Swarm: broadcasts and shared context are scoped to the sender's spawned subtree",
+    "Swarm: tasks stranded on dead workers are salvaged and reported to the coordinator; orphaned children are reparented when a mid-tree member leaves",
+    "Swarm: run_plan pauses on credential-failure waves and surfaces the fix instead of burning retries",
+    "Swarm: state persistence moved to a durable directory so it survives reboots",
+    "Swarm: long messages and reports require a tldr and collapse to it with an expand badge",
+    "Composed input text is mouse-selectable and copyable (issue #430)",
+    "Interrupts fan out to all active turn signals so cancel is immediate (issue #428)",
+    "Fable 5 defaults to low reasoning effort; effort=none now fully suppresses thinking",
+    "Provider runtimes (Anthropic, OpenAI, OpenRouter, Copilot, Cursor, Gemini, Antigravity) moved out of the base crate, so provider edits rebuild far less",
+    "Resumed sessions survive corrupt journal lines and keep the last prompt",
+    "agentgrep fixes common agent failure modes and truncates huge trace lines"
+  ],
+  "fixes": [
+    "Scroll no longer hangs when older history is prepended to a live transcript (issue #344)",
+    "Sidebar context figure stays consistent with compaction accounting (issue #441)",
+    "Auto provider init registers external runtimes in every entry path, so OpenAI-compatible profile routes always reach the model picker",
+    "Resume no longer deadlocks when the live-attach target agent is busy",
+    "Auto-poke continuations no longer render as user prompts after reload",
+    "Copy badges no longer truncate blockquote content"
+  ]
+}
