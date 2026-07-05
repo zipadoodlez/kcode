@@ -118,10 +118,12 @@ fn test_tool_side_panel_uses_shared_right_pane_keyboard_focus() {
     assert!(app.handle_diagram_ctrl_key(KeyCode::Char('l'), false));
     assert!(app.diff_pane_focus);
 
+    // Cycle the diff display mode via its configured chord (Alt+G by
+    // default; BackTab was remapped to model-favorite cycling).
     assert!(super::input::handle_navigation_shortcuts(
         &mut app,
-        KeyCode::BackTab,
-        KeyModifiers::empty()
+        KeyCode::Char('g'),
+        KeyModifiers::ALT
     ));
     assert!(
         app.diff_pane_focus,
