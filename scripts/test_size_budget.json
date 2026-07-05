@@ -28,7 +28,7 @@
     "crates/jcode-tui/src/tui/app/tests/state_model_poke_02/part_01.rs": 1307,
     "crates/jcode-tui/src/tui/app/tests/state_model_poke_03.rs": 2456,
     "crates/jcode-tui/src/tui/app/tests/swarm_plan_graph_inline.rs": 1835,
-    "crates/jcode-tui/src/tui/info_widget_tests.rs": 1592,
+    "crates/jcode-tui/src/tui/info_widget_tests.rs": 1591,
     "crates/jcode-tui/src/tui/session_picker_tests.rs": 2179,
     "crates/jcode-tui/src/tui/ui_messages/tests.rs": 1384,
     "tests/e2e/test_support/mod.rs": 1376
