@@ -549,6 +549,130 @@ fn test_handle_server_event_history_same_session_midstream_duplicate_is_dropped_
 }
 
 #[test]
+fn test_handle_server_event_history_same_session_rewind_then_late_done_does_not_resurrect_content()
+{
+    // Regression pin for the Done-vs-History writer ordering race: a remote
+    // /rewind makes the server write the truncated History payload DIRECTLY to
+    // the socket (client_lifecycle.rs handle_get_history), while a `Done` from
+    // the just-finished turn can still be queued in the per-client mpsc event
+    // forwarder. The client can therefore apply the rewind-truncated History
+    // FIRST and process the stale Done SECOND. The Done handler flushes
+    // stream_buffer and commits any non-empty streaming_text as an assistant
+    // message plus a turn footer, resurrecting content that was just rewound
+    // away. The same-session force-reapply path must drop stale streaming
+    // state (text, buffered ops, tool cards) when a rewind notice is pending
+    // so the late Done settles the turn without appending anything.
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.remote_session_id = Some("session_rewind_done_race".to_string());
+    remote.set_session_id("session_rewind_done_race".to_string());
+    // Stale streaming state left over from the turn whose Done is still queued
+    // behind the History payload.
+    app.is_processing = true;
+    app.status = ProcessingStatus::Streaming;
+    app.current_message_id = Some(7);
+    app.streaming.streaming_text = "rewound-away assistant text".to_string();
+    app.streaming_tool_calls.push(crate::message::ToolCall {
+        id: "tool_stale".to_string(),
+        name: "bash".to_string(),
+        input: serde_json::json!({}),
+        intent: None,
+        thought_signature: None,
+    });
+    // The client-side /rewind path arms the pending notice before the server's
+    // History redelivery arrives (remote/key_handling.rs).
+    app.pending_remote_rewind_notice = Some(crate::tui::app::PendingRemoteRewindNotice {
+        undo: false,
+        message_index: Some(1),
+        changed_messages: 2,
+    });
+
+    // Truncated payload after the rewind: same session id, fewer messages.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::History {
+            id: 2,
+            session_id: "session_rewind_done_race".to_string(),
+            messages: vec![crate::protocol::HistoryMessage {
+                role: "user".to_string(),
+                content: "first message kept by the rewind".to_string(),
+                tool_calls: None,
+                tool_data: None,
+            }],
+            images: vec![],
+            provider_name: Some("claude".to_string()),
+            provider_model: Some("claude-sonnet-4-20250514".to_string()),
+            subagent_model: None,
+            autoreview_enabled: None,
+            autojudge_enabled: None,
+            available_models: vec![],
+            available_model_routes: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            total_tokens: None,
+            token_usage_totals: None,
+            all_sessions: vec![],
+            client_count: None,
+            is_canary: None,
+            reload_recovery: None,
+            server_version: None,
+            server_name: None,
+            server_icon: None,
+            server_has_update: None,
+            was_interrupted: None,
+            connection_type: None,
+            status_detail: None,
+            upstream_provider: None,
+            resolved_credential: None,
+            reasoning_effort: None,
+            service_tier: None,
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+        },
+        &mut remote,
+    );
+
+    // The re-apply must have dropped the stale streaming state.
+    assert!(
+        app.streaming.streaming_text.is_empty(),
+        "same-session rewind re-apply must drop buffered streaming text"
+    );
+    assert!(
+        app.streaming_tool_calls.is_empty(),
+        "same-session rewind re-apply must drop stale streaming tool cards"
+    );
+    assert!(
+        app.pending_remote_rewind_notice.is_none(),
+        "pending rewind notice should be consumed by the History re-apply"
+    );
+    let transcript_len_after_history = app.display_messages().len();
+
+    // The stale Done from the rewound-away turn arrives AFTER the truncated
+    // History (mpsc forwarder ordering).
+    app.handle_server_event(
+        crate::protocol::ServerEvent::Done { id: 7 },
+        &mut remote,
+    );
+
+    assert!(!app.is_processing, "late Done should settle the turn");
+    assert!(
+        !app
+            .display_messages()
+            .iter()
+            .any(|m| m.content.contains("rewound-away assistant text")),
+        "late Done must not resurrect assistant text that the rewind removed"
+    );
+    assert_eq!(
+        app.display_messages().len(),
+        transcript_len_after_history,
+        "late Done must not append messages (assistant text or turn footer) onto the rewind-truncated transcript"
+    );
+}
+
+#[test]
 fn test_handle_server_event_history_session_change_clears_pending_interleaves() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();

@@ -1840,6 +1840,41 @@ pub(in crate::tui::app) fn handle_server_event(
                         // (markdown_render_full.rs set_streaming_preview_diagram).
                         if !session_changed {
                             crate::tui::mermaid::clear_streaming_preview_diagram();
+                            // A rewind (or rewind-undo) re-apply can race a
+                            // stale `Done` from the just-finished turn: the
+                            // History payload is written directly to the
+                            // socket by handle_get_history while the Done is
+                            // still queued in the per-client event forwarder
+                            // (server/client_lifecycle.rs), so the client can
+                            // apply the truncated transcript FIRST and process
+                            // the Done SECOND. The Done handler flushes
+                            // stream_buffer and commits any non-empty
+                            // streaming_text as an assistant message plus a
+                            // turn footer, resurrecting content that was just
+                            // rewound away. Drop all stale streaming state
+                            // here so the late Done settles the turn without
+                            // appending anything. This is gated on the pending
+                            // rewind notice (armed by the client /rewind path
+                            // before the redelivery) because other same-session
+                            // re-applies, like a reconnect bootstrap during a
+                            // live turn, may hold legitimately buffered stream
+                            // chunks. The server rejects rewinds while a turn
+                            // is processing, so streaming state present at this
+                            // point is stale by construction.
+                            if app.pending_remote_rewind_notice.is_some() {
+                                app.stream_buffer.clear();
+                                app.clear_streaming_render_state();
+                                app.streaming_tool_calls.clear();
+                                app.batch_progress = None;
+                                app.thought_line_inserted = false;
+                                app.thinking_prefix_emitted = false;
+                                app.thinking_buffer.clear();
+                                app.streaming.streaming_input_tokens = 0;
+                                app.streaming.streaming_output_tokens = 0;
+                                app.streaming.streaming_cache_read_tokens = None;
+                                app.streaming.streaming_cache_creation_tokens = None;
+                                app.reset_streaming_tps();
+                            }
                         }
                         record_applied_history_fingerprint(
                             &app.remote_client_instance_id,
