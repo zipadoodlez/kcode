@@ -94,6 +94,7 @@ mod state_ui_runtime;
 mod state_ui_storage;
 mod support;
 mod swarm_hint;
+mod sponsor_disclosure;
 mod todos_view;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
@@ -1311,6 +1312,9 @@ pub struct App {
     learn_hint_shown_this_session: bool,
     // Whether the swarm-config-is-a-prompt hint has been surfaced this session.
     swarm_hint_shown_this_session: bool,
+    // Whether the sponsored-discovery disclosure line has been surfaced this
+    // session. Disclosure fires once per session on first discover_tools use.
+    sponsor_disclosure_shown_this_session: bool,
     // Inline hotkey feedback: "you just pressed X → does Y" for rarely-used
     // known chords, or "X isn't bound · nearest: ..." for unknown chords.
     // Rendered in the same pop-out slot as learn_hint.

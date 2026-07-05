@@ -205,6 +205,8 @@ pub struct ContextInfo {
     pub prompt_overlay_chars: usize,
     /// Preferred tools section size (chars)
     pub preferred_tools_chars: usize,
+    /// Sponsored discovery section size (chars)
+    pub sponsored_discovery_chars: usize,
 
     // === Dynamic (Conversation) ===
     /// Tool definitions sent to API (chars)
@@ -248,6 +250,7 @@ impl ContextInfo {
             + self.memory_chars
             + self.prompt_overlay_chars
             + self.preferred_tools_chars
+            + self.sponsored_discovery_chars
             + self.tool_defs_chars
     }
 
@@ -285,6 +288,9 @@ impl ContextInfo {
         }
         if self.preferred_tools_chars > 0 {
             parts.push(("tools", self.preferred_tools_chars, "🧰"));
+        }
+        if self.sponsored_discovery_chars > 0 {
+            parts.push(("sponsored", self.sponsored_discovery_chars, "📢"));
         }
         parts
     }
@@ -380,6 +386,12 @@ pub fn build_system_prompt_full(
         parts.push(content);
     }
 
+    // Add sponsored discovery categories (disabled by default; see sponsors.rs)
+    if let Some(section) = crate::sponsors::build_discovery_prompt_section() {
+        info.sponsored_discovery_chars = section.len();
+        parts.push(section);
+    }
+
     if let Some(memory) = memory_prompt {
         info.memory_chars = memory.len();
         parts.push(memory.to_string());
@@ -460,6 +472,12 @@ pub fn build_system_prompt_split(
     if let Some(content) = preferred_tools_content {
         info.preferred_tools_chars = preferred_tools_chars;
         static_parts.push(content);
+    }
+
+    // Add sponsored discovery categories (static; disabled by default)
+    if let Some(section) = crate::sponsors::build_discovery_prompt_section() {
+        info.sponsored_discovery_chars = section.len();
+        static_parts.push(section);
     }
 
     // Add available skills list (fairly static)

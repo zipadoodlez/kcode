@@ -560,6 +560,7 @@ impl App {
                                             if tool.name == "swarm" {
                                                 self.maybe_surface_swarm_config_hint();
                                             }
+                                            self.maybe_surface_sponsor_disclosure(&tool.name);
                                             if let Some(streaming_tool) = self
                                                 .streaming_tool_calls
                                                 .iter_mut()
