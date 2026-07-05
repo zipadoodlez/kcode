@@ -1,5 +1,3 @@
-pub(crate) use jcode_provider_core::is_transient_transport_error;
-
 pub(crate) fn anthropic_oauth_route_availability(model: &str) -> (bool, String) {
     if model.ends_with("[1m]") && !crate::usage::has_extra_usage() {
         (false, "requires extra usage".to_string())

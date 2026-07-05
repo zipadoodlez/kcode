@@ -1096,7 +1096,9 @@ fn gate_pass_requires_enumerated_coverage_of_all_siblings() {
         HandoffArtifact::brief("root.x verified clean"),
     )
     .unwrap_err();
-    assert!(matches!(err, DagError::UncoveredSiblings { ref nodes, .. } if nodes == &vec!["root.y".to_string()]));
+    assert!(
+        matches!(err, DagError::UncoveredSiblings { ref nodes, .. } if nodes == &vec!["root.y".to_string()])
+    );
     // Accounting via open_questions also counts as addressing.
     let mut pass = HandoffArtifact::brief("root.x verified clean; no gaps remain");
     pass.open_questions = vec!["root.y: minor doubt about edge ordering, acceptable".into()];
@@ -1133,7 +1135,9 @@ fn gate_coverage_enumeration_relaxes_above_cap_but_confidence_debt_remains() {
         HandoffArtifact::brief("sampled the set; looks clean"),
     )
     .unwrap_err();
-    assert!(matches!(err, DagError::UnaddressedLowConfidence { ref nodes, .. } if nodes == &vec!["root.c3".to_string()]));
+    assert!(
+        matches!(err, DagError::UnaddressedLowConfidence { ref nodes, .. } if nodes == &vec!["root.c3".to_string()])
+    );
     complete_node(
         &mut g,
         &gate_id,
@@ -1176,7 +1180,9 @@ fn gate_coverage_above_cap_still_binds_non_high_confidence_nodes() {
         HandoffArtifact::brief("sampled the set; looks clean"),
     )
     .unwrap_err();
-    assert!(matches!(err, DagError::UncoveredSiblings { ref nodes, .. } if nodes == &vec!["root.c5".to_string()]));
+    assert!(
+        matches!(err, DagError::UncoveredSiblings { ref nodes, .. } if nodes == &vec!["root.c5".to_string()])
+    );
     complete_node(
         &mut g,
         &gate_id,
@@ -1218,7 +1224,13 @@ fn node_origins_are_recorded_per_op() {
     assert_eq!(g.get("plan::gate").unwrap().origin, Some(NodeOrigin::Gate));
 
     dispatch(&mut g, "root", "w0");
-    let outcome = expand_node(&mut g, "root", "w0", vec![spec("root.1", NodeKind::Explore)]).unwrap();
+    let outcome = expand_node(
+        &mut g,
+        "root",
+        "w0",
+        vec![spec("root.1", NodeKind::Explore)],
+    )
+    .unwrap();
     let gate_id = outcome.gate_id.unwrap();
     assert_eq!(g.get("root.1").unwrap().origin, Some(NodeOrigin::Expand));
     assert_eq!(g.get(&gate_id).unwrap().origin, Some(NodeOrigin::Gate));
@@ -1226,7 +1238,13 @@ fn node_origins_are_recorded_per_op() {
     dispatch(&mut g, "root.1", "w1");
     complete_node(&mut g, "root.1", "w1", sim::deep_artifact("done")).unwrap();
     dispatch(&mut g, &gate_id, "w2");
-    inject_from_gate(&mut g, &gate_id, "w2", vec![spec("root.gap", NodeKind::Explore)]).unwrap();
+    inject_from_gate(
+        &mut g,
+        &gate_id,
+        "w2",
+        vec![spec("root.gap", NodeKind::Explore)],
+    )
+    .unwrap();
     assert_eq!(g.get("root.gap").unwrap().origin, Some(NodeOrigin::Gap));
 }
 
@@ -1263,10 +1281,7 @@ fn gate_pass_accepts_id_followed_by_sentence_punctuation() {
 fn simulator_flat_deep_seed_grows_via_root_gate() {
     let mut g = dag(
         Mode::Deep,
-        vec![
-            spec("t1", NodeKind::Explore),
-            spec("t2", NodeKind::Explore),
-        ],
+        vec![spec("t1", NodeKind::Explore), spec("t2", NodeKind::Explore)],
     );
     let mut gate_fired = false;
     let mut worker = move |id: &str, kind: NodeKind, input: &str| -> WorkerAction {
@@ -1287,7 +1302,9 @@ fn simulator_flat_deep_seed_grows_via_root_gate() {
     assert!(!report.stalled, "flat deep plan must not stall: {report:?}");
     assert!(g.all_terminal());
     // The audit grew the plan beyond its seed.
-    let gap = g.get("t3.missed").expect("root gate must have grown the plan");
+    let gap = g
+        .get("t3.missed")
+        .expect("root gate must have grown the plan");
     assert!(gap.is_done());
     assert_eq!(gap.origin, Some(NodeOrigin::Gap));
     assert!(g.get("plan::gate").unwrap().is_done());

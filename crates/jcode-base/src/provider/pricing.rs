@@ -20,8 +20,7 @@ static OPENAI_AUTH_MODE_MEMO: Mutex<Option<(Instant, &'static str)>> = Mutex::ne
 /// Monotonic generation bumped on every auth invalidation. Route-catalog memos
 /// snapshot this at build time so `AuthStatus::invalidate_cache()` immediately
 /// invalidates every provider's memoized catalog, not just the pricing inputs.
-static AUTH_PRICING_GENERATION: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+static AUTH_PRICING_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub(crate) fn auth_pricing_generation() -> u64 {
     AUTH_PRICING_GENERATION.load(std::sync::atomic::Ordering::Relaxed)

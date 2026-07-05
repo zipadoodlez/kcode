@@ -229,9 +229,7 @@ impl BackgroundTaskManager {
     ///   alone; only the explicit startup sweep in
     ///   [`Self::reconcile_orphaned_tasks`] handles those.
     fn status_is_reconcilable_orphan(status: &TaskStatusFile) -> bool {
-        if status.status != BackgroundTaskStatus::Running
-            || status.detached
-            || status.pid.is_some()
+        if status.status != BackgroundTaskStatus::Running || status.detached || status.pid.is_some()
         {
             return false;
         }

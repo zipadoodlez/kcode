@@ -833,7 +833,7 @@ mod tests {
         assert!(applescript.contains("tell application \"Terminal\""));
         assert!(applescript.contains("do script"));
         // The shell's single quotes survive; AppleScript only escapes \\ and ".
-        assert!(applescript.contains("exec \\\"") == false);
+        assert!(!applescript.contains("exec \\\""));
         assert!(applescript.contains("'/usr/local/bin/jcode'"));
     }
 

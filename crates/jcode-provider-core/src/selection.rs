@@ -627,7 +627,9 @@ mod tests {
         let mut seed = 0x9e37_79b9_u64;
         let mut routes = Vec::new();
         for i in 0..600 {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let p = providers[(seed >> 7) as usize % providers.len()];
             let m = models[(seed >> 17) as usize % models.len()];
             let a = api_methods[(seed >> 27) as usize % api_methods.len()];

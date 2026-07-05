@@ -9,8 +9,8 @@
 
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery, render_swarm_dock,
-    render_swarm_compact, render_swarm_panel, render_swarm_strip,
+    GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery,
+    render_swarm_compact, render_swarm_dock, render_swarm_panel, render_swarm_strip,
 };
 use ratatui::prelude::*;
 

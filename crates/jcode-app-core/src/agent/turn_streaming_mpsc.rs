@@ -1090,22 +1090,23 @@ impl Agent {
                         // Only when the provider actually finished the message
                         // (saw_message_end) and the user did not cancel, so
                         // interrupted turns never show a spurious notice.
-                        if saw_message_end && !self.is_graceful_shutdown() {
-                            if let Some(notice) = Self::provider_guardrail_notice(
+                        if saw_message_end
+                            && !self.is_graceful_shutdown()
+                            && let Some(notice) = Self::provider_guardrail_notice(
                                 stop_reason.as_deref(),
                                 text_content.trim().is_empty(),
                                 !reasoning_content.trim().is_empty(),
-                            ) {
-                                logging::warn(&format!(
-                                    "PROVIDER_GUARDRAIL: turn ended with no visible output (stop_reason={:?}, reasoning_chars={})",
-                                    stop_reason,
-                                    reasoning_content.len()
-                                ));
-                                let _ = event_tx.send(ServerEvent::ProviderGuardrail {
-                                    stop_reason: stop_reason.clone(),
-                                    message: notice,
-                                });
-                            }
+                            )
+                        {
+                            logging::warn(&format!(
+                                "PROVIDER_GUARDRAIL: turn ended with no visible output (stop_reason={:?}, reasoning_chars={})",
+                                stop_reason,
+                                reasoning_content.len()
+                            ));
+                            let _ = event_tx.send(ServerEvent::ProviderGuardrail {
+                                stop_reason: stop_reason.clone(),
+                                message: notice,
+                            });
                         }
                         break;
                     }

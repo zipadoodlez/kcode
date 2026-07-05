@@ -757,7 +757,7 @@ impl App {
         // Persist while the counters still matter, plus an occasional refresh so
         // `last_used_unix` on disk tracks reality without rewriting the file on
         // every rapid keypress (word-nav, scrolling).
-        if stat.uses <= FAMILIAR_USES || unfamiliar || stat.uses % 32 == 0 {
+        if stat.uses <= FAMILIAR_USES || unfamiliar || stat.uses.is_multiple_of(32) {
             save_state(state);
         }
 

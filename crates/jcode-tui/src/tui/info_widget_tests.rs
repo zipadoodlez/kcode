@@ -1128,11 +1128,13 @@ fn swarm_widget_dock_mode_lists_managed_agents() {
     let text = lines_text(&lines);
     assert!(text.contains("1/2 agents"), "got: {text}");
     assert!(text.contains("nodes 3/7"), "got: {text}");
-    // Second line is the plan progress bar (done + running + empty cells).
+    // Second line is the plan progress bar (low-profile underline cells).
     assert_eq!(lines.len(), 2, "compact widget is exactly two lines");
     let bar: String = lines[1].spans.iter().map(|s| s.content.as_ref()).collect();
-    assert!(bar.contains('█'), "expected filled bar cells: {bar}");
-    assert!(bar.contains('░'), "expected empty bar cells: {bar}");
+    assert!(
+        bar.chars().all(|c| c == '▁') && !bar.is_empty(),
+        "expected underline bar cells: {bar}"
+    );
     // Height: summary line + bar (+ borders).
     let h = calculate_widget_height(WidgetKind::SwarmStatus, &data, 34, 20);
     assert_eq!(h, 4, "compact height should be 2 content + 2 border: {h}");

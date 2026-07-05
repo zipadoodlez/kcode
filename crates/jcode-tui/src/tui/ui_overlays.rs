@@ -1,8 +1,7 @@
 use super::{
-    accent_color, ai_color, ai_text, asap_color, clear_area, dim_color,
-    get_grouped_changelog, header_icon_color, header_name_color, header_session_color,
-    pending_color, queued_color, record_chat_overlay_copy_snapshot, rgb, tool_color, user_bg,
-    user_color, user_text,
+    accent_color, ai_color, ai_text, asap_color, clear_area, dim_color, get_grouped_changelog,
+    header_icon_color, header_name_color, header_session_color, pending_color, queued_color,
+    record_chat_overlay_copy_snapshot, rgb, tool_color, user_bg, user_color, user_text,
 };
 use crate::tui::TuiState;
 use crate::tui::info_widget::WidgetPlacement;

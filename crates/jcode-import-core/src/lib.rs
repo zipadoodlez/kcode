@@ -1329,8 +1329,7 @@ mod tests {
         let mut file = File::create(&path).unwrap();
         writeln!(
             file,
-            "{}",
-            r#"{"role":"user","message":{"content":[{"type":"text","text":"subagent work"}]}}"#
+            "{{\"role\":\"user\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"subagent work\"}}]}}}}"
         )
         .unwrap();
         drop(file);
@@ -1360,14 +1359,12 @@ mod tests {
         let mut file = File::create(&path).unwrap();
         writeln!(
             file,
-            "{}",
-            r#"{"role":"user","message":{"content":[{"type":"text","text":"hello cursor"}]}}"#
+            "{{\"role\":\"user\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hello cursor\"}}]}}}}"
         )
         .unwrap();
         writeln!(
             file,
-            "{}",
-            r#"{"role":"assistant","message":{"content":[{"type":"text","text":"hi there"}]}}"#
+            "{{\"role\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"hi there\"}}]}}}}"
         )
         .unwrap();
         drop(file);

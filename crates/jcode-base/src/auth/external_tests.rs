@@ -386,10 +386,8 @@ fn openclaw_auth_profiles_store_resolves_and_flattens() {
 
     // No legacy ~/.openclaw/agent/auth.json: the current per-agent
     // auth-profiles.json store must be discovered instead.
-    let profiles_path = crate::storage::user_home_path(
-        ".openclaw/agents/main/agent/auth-profiles.json",
-    )
-    .unwrap();
+    let profiles_path =
+        crate::storage::user_home_path(".openclaw/agents/main/agent/auth-profiles.json").unwrap();
     write_auth_file(
         &profiles_path,
         serde_json::json!({
@@ -452,10 +450,8 @@ fn openclaw_legacy_flat_auth_json_still_wins_when_present() {
             "anthropic": { "type": "api_key", "key": "sk-ant-legacy" }
         }),
     );
-    let profiles_path = crate::storage::user_home_path(
-        ".openclaw/agents/main/agent/auth-profiles.json",
-    )
-    .unwrap();
+    let profiles_path =
+        crate::storage::user_home_path(".openclaw/agents/main/agent/auth-profiles.json").unwrap();
     write_auth_file(
         &profiles_path,
         serde_json::json!({ "version": 1, "profiles": {} }),

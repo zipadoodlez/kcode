@@ -465,6 +465,9 @@ async fn status_read_self_heals_orphaned_task() -> Result<()> {
         .wait("orphan3cccc", Duration::from_secs(5), false)
         .await
         .ok_or_else(|| anyhow!("wait should find the task"))?;
-    assert_eq!(wait_result.reason, BackgroundTaskWaitReason::AlreadyFinished);
+    assert_eq!(
+        wait_result.reason,
+        BackgroundTaskWaitReason::AlreadyFinished
+    );
     Ok(())
 }

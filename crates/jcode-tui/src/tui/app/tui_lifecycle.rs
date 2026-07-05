@@ -288,8 +288,7 @@ impl App {
         // Surface the streak in telemetry as an explicit auth_failed event so
         // the dashboard can distinguish "breaker tripped on a dead credential"
         // from one-off auth blips.
-        let reason =
-            crate::auth::login_diagnostics::classify_auth_failure_message(message);
+        let reason = crate::auth::login_diagnostics::classify_auth_failure_message(message);
         let provider = self.provider_name().to_string();
         crate::telemetry::record_auth_failed_reason(&provider, "session", reason.label());
 

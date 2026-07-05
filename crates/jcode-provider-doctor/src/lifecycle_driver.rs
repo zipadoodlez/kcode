@@ -60,8 +60,10 @@ pub(crate) struct AuthLifecycleSpec {
 
 impl AuthLifecycleSpec {
     pub(crate) fn cerebras_fixture(auth_path: AuthLifecycleAuthPath) -> Self {
-        let mut spec =
-            Self::openai_compatible_fixture(jcode_base::provider_catalog::CEREBRAS_PROFILE, auth_path);
+        let mut spec = Self::openai_compatible_fixture(
+            jcode_base::provider_catalog::CEREBRAS_PROFILE,
+            auth_path,
+        );
         spec.catalog_models_after_auth = vec![
             "qwen-3-235b-a22b-instruct-2507".to_string(),
             "llama3.1-8b".to_string(),
@@ -382,7 +384,8 @@ impl AuthLifecycleDriver {
         &self,
         spec: &AuthLifecycleSpec,
     ) -> anyhow::Result<AuthLifecycleResult> {
-        let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(spec.profile);
+        let resolved =
+            jcode_base::provider_catalog::resolve_openai_compatible_profile(spec.profile);
         ensure!(
             resolved.id == spec.provider_id,
             "spec provider id {} did not match profile {}",
@@ -691,7 +694,9 @@ mod tests {
         );
     }
 
-    fn cost_quota_safety_stage(spend_enabled: bool) -> jcode_base::live_tests::LiveVerificationStage {
+    fn cost_quota_safety_stage(
+        spend_enabled: bool,
+    ) -> jcode_base::live_tests::LiveVerificationStage {
         jcode_base::live_tests::LiveVerificationStage::passed(
             jcode_base::live_tests::checkpoints::COST_QUOTA_SAFETY,
         )
@@ -704,10 +709,14 @@ mod tests {
         )
     }
 
-    fn covered_stage_names(stages: &[jcode_base::live_tests::LiveVerificationStage]) -> Vec<String> {
+    fn covered_stage_names(
+        stages: &[jcode_base::live_tests::LiveVerificationStage],
+    ) -> Vec<String> {
         stages
             .iter()
-            .filter(|stage| stage.status != jcode_base::live_tests::LiveVerificationStageStatus::NotRun)
+            .filter(|stage| {
+                stage.status != jcode_base::live_tests::LiveVerificationStageStatus::NotRun
+            })
             .map(|stage| stage.name.clone())
             .collect()
     }
@@ -1914,7 +1923,8 @@ mod tests {
     fn fresh_start_sandbox_is_unconfigured_then_tui_key_lifecycle_configures_provider() {
         let driver = AuthLifecycleDriver::new().expect("driver");
         let spec = AuthLifecycleSpec::cerebras_fixture(AuthLifecycleAuthPath::TuiPasteApiKey);
-        let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(spec.profile);
+        let resolved =
+            jcode_base::provider_catalog::resolve_openai_compatible_profile(spec.profile);
         let env_file = driver.sandbox.env_file_path(&resolved.env_file);
         let provider = jcode_base::provider_catalog::resolve_login_provider(spec.provider_id)
             .expect("Cerebras login provider descriptor");

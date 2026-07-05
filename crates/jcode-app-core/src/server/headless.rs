@@ -106,13 +106,12 @@ pub(super) async fn create_headless_session(
         .as_deref()
         .map(str::trim)
         .filter(|effort| !effort.is_empty())
+        && let Err(e) = new_agent.set_reasoning_effort(effort)
     {
-        if let Err(e) = new_agent.set_reasoning_effort(effort) {
-            crate::logging::warn(&format!(
-                "Failed to set headless session reasoning effort override '{}': {}",
-                effort, e
-            ));
-        }
+        crate::logging::warn(&format!(
+            "Failed to set headless session reasoning effort override '{}': {}",
+            effort, e
+        ));
     }
 
     if let Some(ref dir) = working_dir

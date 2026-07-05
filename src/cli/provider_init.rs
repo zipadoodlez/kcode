@@ -1348,6 +1348,15 @@ async fn init_provider_with_options(
     show_init_messages: bool,
     allow_login_bootstrap: bool,
 ) -> Result<Arc<dyn provider::Provider>> {
+    // Provider construction resolves concrete runtimes through the base
+    // crate's external-runtime registry (composition-root pattern). The
+    // binary's normal path registers them in `startup::run()`, but this
+    // function is also entered directly by validation/login/test flows that
+    // never run startup. Registration is idempotent, so do it here too;
+    // otherwise Auto-init silently loses registry-backed runtimes (e.g. the
+    // OpenRouter/OpenAI-compatible factory) and their model-picker routes.
+    super::startup::register_external_provider_runtimes();
+
     if let Ok(profile_name) = std::env::var("JCODE_PROVIDER_PROFILE_NAME")
         && !profile_name.trim().is_empty()
     {

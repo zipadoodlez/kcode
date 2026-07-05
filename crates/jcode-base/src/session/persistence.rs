@@ -32,14 +32,14 @@ impl JournalReplayStats {
 /// Serialized entries always begin with `{"meta":` (struct field order), so
 /// scan for candidate starts and stream-parse consecutive complete entries
 /// from the first position that yields any.
-fn salvage_glued_journal_entries(
-    line: &str,
-    mut apply: impl FnMut(SessionJournalEntry),
-) -> usize {
+fn salvage_glued_journal_entries(line: &str, mut apply: impl FnMut(SessionJournalEntry)) -> usize {
     const ENTRY_START: &str = "{\"meta\":";
     let mut salvaged = 0usize;
     let mut search_from = 0usize;
-    while let Some(rel) = line.get(search_from..).and_then(|rest| rest.find(ENTRY_START)) {
+    while let Some(rel) = line
+        .get(search_from..)
+        .and_then(|rest| rest.find(ENTRY_START))
+    {
         let candidate_start = search_from + rel;
         let mut stream = serde_json::Deserializer::from_str(&line[candidate_start..])
             .into_iter::<SessionJournalEntry>();

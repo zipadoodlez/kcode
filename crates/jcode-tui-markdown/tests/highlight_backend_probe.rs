@@ -34,21 +34,60 @@ fn vm_rss_bytes() -> u64 {
 /// highlights (tool output diffs, fenced blocks in assistant replies).
 fn workload() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("rs", "pub fn handle_server_event(app: &mut App, event: ServerEvent) -> Result<()> {"),
-        ("rs", "    let resolved = std::sync::Arc::new(resolve_anchored_items(&app.side_pane_images()));"),
-        ("py", "def compute_totals(items: list[dict], *, key: str = 'bytes') -> int:"),
-        ("py", "    return sum(item.get(key, 0) for item in items if item['active'])"),
-        ("js", "const totals = items.filter(i => i.active).reduce((acc, i) => acc + i.bytes, 0);"),
-        ("ts", "export async function fetchState(id: string): Promise<SessionState | null> {"),
-        ("go", "func (s *Server) HandleConn(ctx context.Context, conn net.Conn) error {"),
-        ("json", "{\"session_id\": \"abc\", \"messages\": 322, \"json_bytes\": 2133255}"),
-        ("sh", "for pid in $(pgrep -f jcode); do awk '/VmRSS/{print $2}' /proc/$pid/status; done"),
-        ("toml", "syntect = { version = \"5\", default-features = false, features = [\"regex-onig\"] }"),
+        (
+            "rs",
+            "pub fn handle_server_event(app: &mut App, event: ServerEvent) -> Result<()> {",
+        ),
+        (
+            "rs",
+            "    let resolved = std::sync::Arc::new(resolve_anchored_items(&app.side_pane_images()));",
+        ),
+        (
+            "py",
+            "def compute_totals(items: list[dict], *, key: str = 'bytes') -> int:",
+        ),
+        (
+            "py",
+            "    return sum(item.get(key, 0) for item in items if item['active'])",
+        ),
+        (
+            "js",
+            "const totals = items.filter(i => i.active).reduce((acc, i) => acc + i.bytes, 0);",
+        ),
+        (
+            "ts",
+            "export async function fetchState(id: string): Promise<SessionState | null> {",
+        ),
+        (
+            "go",
+            "func (s *Server) HandleConn(ctx context.Context, conn net.Conn) error {",
+        ),
+        (
+            "json",
+            "{\"session_id\": \"abc\", \"messages\": 322, \"json_bytes\": 2133255}",
+        ),
+        (
+            "sh",
+            "for pid in $(pgrep -f jcode); do awk '/VmRSS/{print $2}' /proc/$pid/status; done",
+        ),
+        (
+            "toml",
+            "syntect = { version = \"5\", default-features = false, features = [\"regex-onig\"] }",
+        ),
         ("md", "## Heading with `inline code` and **bold** text"),
-        ("c", "static int parse_header(const uint8_t *buf, size_t len, struct dims *out) {"),
-        ("sql", "SELECT session_id, SUM(json_bytes) FROM sessions GROUP BY session_id ORDER BY 2 DESC;"),
+        (
+            "c",
+            "static int parse_header(const uint8_t *buf, size_t len, struct dims *out) {",
+        ),
+        (
+            "sql",
+            "SELECT session_id, SUM(json_bytes) FROM sessions GROUP BY session_id ORDER BY 2 DESC;",
+        ),
         ("yaml", "jobs:\n  build:\n    runs-on: ubuntu-latest"),
-        ("html", "<div class=\"transcript\"><span data-id=\"42\">hello</span></div>"),
+        (
+            "html",
+            "<div class=\"transcript\"><span data-id=\"42\">hello</span></div>",
+        ),
     ]
 }
 
@@ -65,7 +104,10 @@ fn highlight_backend_probe() {
     let cold_start = std::time::Instant::now();
     for (ext, code) in &lines {
         let spans = highlight_line(code, Some(ext));
-        assert!(!spans.is_empty(), "highlighting produced no spans for {ext}");
+        assert!(
+            !spans.is_empty(),
+            "highlighting produced no spans for {ext}"
+        );
     }
     let cold = cold_start.elapsed();
 

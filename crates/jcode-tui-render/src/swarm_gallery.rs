@@ -463,7 +463,7 @@ pub fn render_swarm_strip(
         if shown == chips.len() && task_count > 0 {
             // +1 per label for the '·' separator.
             let per = leftover / task_count;
-            if per >= CHIP_TASK_MIN_W + 1 {
+            if per > CHIP_TASK_MIN_W {
                 (per - 1).min(CHIP_TASK_MAX_W)
             } else {
                 0
@@ -742,7 +742,7 @@ pub fn render_swarm_dock(
 ///
 /// ```text
 /// 🐝 2/4 agents · nodes 5/12 · ⚠1
-/// █████████████░░░░░░░░░░░░░░░░░░░   (green done · yellow running · dim rest)
+/// ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁   (green done · yellow running · dim rest)
 /// ```
 ///
 /// Line 1 tallies active/total agents, then (width permitting, dropped
@@ -818,9 +818,11 @@ pub fn render_swarm_compact(
 }
 
 /// The compact widget's plan bar: green = done, yellow = running, dim = the
-/// rest. Non-empty classes always get at least one cell so tiny progress is
+/// rest. Rendered as a low-profile underline (▁) rather than full-height
+/// blocks. Non-empty classes always get at least one cell so tiny progress is
 /// visible, and the bar never exceeds `width` cells.
 fn plan_progress_bar(done: u32, running: u32, total: u32, width: usize) -> Line<'static> {
+    const CELL: &str = "▁";
     let cells = width.max(1);
     let total = total.max(1) as usize;
     let done = (done as usize).min(total);
@@ -839,20 +841,20 @@ fn plan_progress_bar(done: u32, running: u32, total: u32, width: usize) -> Line<
     let mut spans: Vec<Span<'static>> = Vec::new();
     if done_w > 0 {
         spans.push(Span::styled(
-            "█".repeat(done_w),
+            CELL.repeat(done_w),
             Style::default().fg(rgb(100, 200, 100)),
         ));
     }
     if running_w > 0 {
         spans.push(Span::styled(
-            "█".repeat(running_w),
+            CELL.repeat(running_w),
             Style::default().fg(rgb(255, 200, 100)),
         ));
     }
     if empty_w > 0 {
         spans.push(Span::styled(
-            "░".repeat(empty_w),
-            Style::default().fg(rgb(70, 70, 80)),
+            CELL.repeat(empty_w),
+            Style::default().fg(rgb(60, 60, 70)),
         ));
     }
     Line::from(spans)
@@ -1707,16 +1709,8 @@ mod tests {
             })
             .collect();
         for width in [40usize, 60, 90, 120] {
-            let plain = plain_line(&render_swarm_strip(
-                &base,
-                0,
-                false,
-                &hints(),
-                None,
-                0,
-                width,
-                12,
-            )[0]);
+            let plain =
+                plain_line(&render_swarm_strip(&base, 0, false, &hints(), None, 0, width, 12)[0]);
             let labeled_lines =
                 render_swarm_strip(&with_tasks, 0, false, &hints(), None, 0, width, 12);
             let labeled = plain_line(&labeled_lines[0]);
@@ -1946,9 +1940,9 @@ mod tests {
         let bar_text = plain_line(bar);
         assert_eq!(disp_w(&bar_text), 32, "bar fills the width: {bar_text:?}");
         assert_eq!(bar.spans.len(), 3, "done + running + empty segments");
-        assert!(bar.spans[0].content.chars().all(|c| c == '█'));
-        assert!(bar.spans[1].content.chars().all(|c| c == '█'));
-        assert!(bar.spans[2].content.chars().all(|c| c == '░'));
+        for span in &bar.spans {
+            assert!(span.content.chars().all(|c| c == '▁'), "got: {bar_text:?}");
+        }
         assert_eq!(bar.spans[0].style.fg, Some(rgb(100, 200, 100)));
         assert_eq!(bar.spans[1].style.fg, Some(rgb(255, 200, 100)));
     }

@@ -1553,8 +1553,7 @@ fn parse_swarm_tasks(text: &str) -> Vec<SwarmTaskSpec> {
 mod tests {
     use super::{
         broadcast_swarm_plan, broadcast_swarm_plan_with_previous, member_status_is_dead,
-        now_unix_ms, parse_swarm_tasks,
-        refresh_swarm_task_staleness, remove_session_from_swarm,
+        now_unix_ms, parse_swarm_tasks, refresh_swarm_task_staleness, remove_session_from_swarm,
         salvage_assignments_of_dead_member, swarm_ancestors, swarm_is_self_or_ancestor,
         swarm_spawn_depth, touch_swarm_task_progress, update_member_status,
         update_member_status_with_report,
@@ -2066,11 +2065,7 @@ mod tests {
         let swarm_members = Arc::new(RwLock::new(HashMap::new()));
         let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),
-            HashSet::from([
-                "root".to_string(),
-                "mid".to_string(),
-                "leaf".to_string(),
-            ]),
+            HashSet::from(["root".to_string(), "mid".to_string(), "leaf".to_string()]),
         )])));
         let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
             "swarm-1".to_string(),

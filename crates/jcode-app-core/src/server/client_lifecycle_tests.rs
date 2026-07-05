@@ -412,14 +412,8 @@ fn cancel_aborts_detached_streaming_turn_with_stale_stop_signal() -> anyhow::Res
         // connection's processing-task map.
         let turn_agent = Arc::clone(&agent);
         let turn = tokio::spawn(async move {
-            process_message_streaming_mpsc(
-                turn_agent,
-                "stream forever",
-                Vec::new(),
-                None,
-                event_tx,
-            )
-            .await
+            process_message_streaming_mpsc(turn_agent, "stream forever", Vec::new(), None, event_tx)
+                .await
         });
 
         // Wait until the provider stream is actively producing output.
@@ -519,10 +513,7 @@ impl Provider for NeverEndingStreamProvider {
     ) -> Result<EventStream> {
         Ok(Box::pin(stream::unfold(0u64, |n| async move {
             tokio::time::sleep(Duration::from_millis(20)).await;
-            Some((
-                Ok(StreamEvent::TextDelta(format!("token{} ", n))),
-                n + 1,
-            ))
+            Some((Ok(StreamEvent::TextDelta(format!("token{} ", n))), n + 1))
         })))
     }
 

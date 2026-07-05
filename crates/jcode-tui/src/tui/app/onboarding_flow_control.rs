@@ -575,12 +575,14 @@ impl App {
                     KeyCode::Up | KeyCode::Char('k') => review.cursor_up(),
                     KeyCode::Down | KeyCode::Char('j') => review.cursor_down(),
                     // Left = Yes (import), Right = No (skip), for the highlighted row.
-                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('y') | KeyCode::Char('Y') => {
-                        review.set_current(true)
-                    }
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('n') | KeyCode::Char('N') => {
-                        review.set_current(false)
-                    }
+                    KeyCode::Left
+                    | KeyCode::Char('h')
+                    | KeyCode::Char('y')
+                    | KeyCode::Char('Y') => review.set_current(true),
+                    KeyCode::Right
+                    | KeyCode::Char('l')
+                    | KeyCode::Char('n')
+                    | KeyCode::Char('N') => review.set_current(false),
                     // Space toggles the highlighted row between Yes and No.
                     KeyCode::Char(' ') => review.toggle_current(),
                     // Enter commits the whole list (import all chosen logins).

@@ -66,9 +66,7 @@ pub fn extract_copy_targets_from_rendered_lines(lines: &[Line<'static>]) -> Vec<
                 // gets a single badge.
                 if line_text.trim().is_empty() {
                     let mut probe = idx + 1;
-                    while probe < lines.len()
-                        && line_plain_text(&lines[probe]).trim().is_empty()
-                    {
+                    while probe < lines.len() && line_plain_text(&lines[probe]).trim().is_empty() {
                         probe += 1;
                     }
                     if probe < lines.len()

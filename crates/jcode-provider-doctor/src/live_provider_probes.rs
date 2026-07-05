@@ -14,8 +14,8 @@ use serde::Deserialize;
 
 use jcode_base::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use jcode_base::provider::Provider;
-use jcode_provider_anthropic_runtime::AnthropicProvider;
 use jcode_base::provider_catalog::{OpenAiCompatibleProfile, ResolvedOpenAiCompatibleProfile};
+use jcode_provider_anthropic_runtime::AnthropicProvider;
 use jcode_provider_antigravity_runtime::AntigravityProvider;
 
 /// Resolve the per-request timeout for an OpenAI-compatible smoke probe.

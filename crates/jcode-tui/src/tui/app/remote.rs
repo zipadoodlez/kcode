@@ -1384,7 +1384,7 @@ fn format_stall_duration(timeout: Duration) -> String {
     let secs = timeout.as_secs();
     if secs < 120 {
         format!("{} seconds", secs)
-    } else if secs % 60 == 0 {
+    } else if secs.is_multiple_of(60) {
         format!("{} minutes", secs / 60)
     } else {
         format!("{:.1} minutes", secs as f64 / 60.0)

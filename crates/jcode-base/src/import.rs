@@ -11,10 +11,10 @@ use jcode_import_core::{
     ClaudeCodeContent, ClaudeCodeContentBlock, ClaudeCodeEntry, ClaudeCodeSessionInfo,
     SessionIndexEntry, SessionsIndex, claude_code_session_info_from_index,
     claude_text_from_content, claude_title_candidate, clean_optional_text, codex_title_candidate,
-    collect_files_recursive, collect_recent_files_recursive,
-    extract_external_text_from_json, extract_opencode_part_text,
-    extract_text_from_json_value, ordered_claude_code_message_entries, parse_rfc3339_json,
-    parse_rfc3339_string, resolve_claude_session_path, truncate_title, truncate_title_text,
+    collect_files_recursive, collect_recent_files_recursive, extract_external_text_from_json,
+    extract_opencode_part_text, extract_text_from_json_value, ordered_claude_code_message_entries,
+    parse_rfc3339_json, parse_rfc3339_string, resolve_claude_session_path, truncate_title,
+    truncate_title_text,
 };
 pub use jcode_import_core::{
     cursor_cwd_from_transcript_path, cursor_session_id_from_path,
@@ -1050,10 +1050,10 @@ pub fn import_cursor_session_from_path(
     let session_id = session_id_hint
         .map(|id| id.to_string())
         .unwrap_or_else(|| cursor_session_id_from_path(session_path));
-    let created_at = jcode_import_core::file_modified_datetime(session_path).unwrap_or_else(Utc::now);
+    let created_at =
+        jcode_import_core::file_modified_datetime(session_path).unwrap_or_else(Utc::now);
 
-    let mut session =
-        Session::create_with_id(imported_cursor_session_id(&session_id), None, None);
+    let mut session = Session::create_with_id(imported_cursor_session_id(&session_id), None, None);
     session.provider_session_id = Some(session_id.clone());
     session.provider_key = Some("cursor".to_string());
     session.working_dir = cursor_cwd_from_transcript_path(session_path);

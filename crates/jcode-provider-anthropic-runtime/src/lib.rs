@@ -30,9 +30,7 @@ use jcode_base::provider::anthropic::{
     apply_oauth_attribution_headers, is_cache_ttl_1h, load_anthropic_api_key,
 };
 #[cfg(test)]
-use jcode_base::provider::anthropic::{
-    OAUTH_BETA_HEADERS, effectively_1m, has_anthropic_api_key, new_oauth_request_id,
-};
+use jcode_base::provider::anthropic::{OAUTH_BETA_HEADERS, effectively_1m};
 #[cfg(test)]
 use jcode_message_types::{ContentBlock, Role};
 use jcode_message_types::{Message, StreamEvent, ToolDefinition};

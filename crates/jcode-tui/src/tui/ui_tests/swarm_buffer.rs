@@ -416,7 +416,7 @@ fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
         "expected node progress in dock header, got:\n{dock_text}"
     );
     assert!(
-        dock_text.contains('█') && dock_text.contains('░'),
+        dock_text.contains('▁'),
         "expected plan progress bar inside dock rect, got:\n{dock_text}"
     );
     // Nothing from the dock leaked left of its rect.

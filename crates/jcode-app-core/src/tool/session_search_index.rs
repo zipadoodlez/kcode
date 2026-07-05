@@ -230,9 +230,7 @@ impl TokenHashIndex {
         self.entries
             .iter()
             .map(|entry| {
-                std::mem::size_of::<IndexEntry>()
-                    + entry.key.len()
-                    + entry.tokens.bits.len() * 8
+                std::mem::size_of::<IndexEntry>() + entry.key.len() + entry.tokens.bits.len() * 8
             })
             .sum()
     }
@@ -412,13 +410,13 @@ pub fn build_or_update(
     }
 
     let index = TokenHashIndex { entries };
-    if !stale_slots.is_empty() || previous.entries.len() != specs.len() {
-        if let Err(err) = index.save(index_path) {
-            crate::logging::warn(&format!(
-                "session_search index save failed for {}: {err}",
-                index_path.display()
-            ));
-        }
+    if (!stale_slots.is_empty() || previous.entries.len() != specs.len())
+        && let Err(err) = index.save(index_path)
+    {
+        crate::logging::warn(&format!(
+            "session_search index save failed for {}: {err}",
+            index_path.display()
+        ));
     }
     let index = Arc::new(index);
     if let Ok(mut guard) = cache.lock() {
@@ -539,10 +537,7 @@ mod tests {
         let index = build_or_update(&index_path, &specs, &read).expect("build");
         assert_eq!(index.len(), 2);
         assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 2);
-        assert_eq!(
-            index.candidate_slots(&vec!["needle".to_string()], 1),
-            vec![0]
-        );
+        assert_eq!(index.candidate_slots(&["needle".to_string()], 1), vec![0]);
 
         // Change only file b; a must not be re-read.
         texts.lock().unwrap()[1] = "needle three";
@@ -550,7 +545,7 @@ mod tests {
         let index = build_or_update(&index_path, &specs, &read).expect("update");
         assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 3);
         assert_eq!(
-            index.candidate_slots(&vec!["needle".to_string()], 1),
+            index.candidate_slots(&["needle".to_string()], 1),
             vec![0, 1]
         );
 
@@ -558,7 +553,7 @@ mod tests {
         let loaded = TokenHashIndex::load(&index_path).expect("load");
         assert!(loaded.matches_specs(&specs));
         assert_eq!(
-            loaded.candidate_slots(&vec!["needle".to_string()], 1),
+            loaded.candidate_slots(&["needle".to_string()], 1),
             vec![0, 1]
         );
     }
@@ -569,10 +564,7 @@ mod tests {
         let index_path = temp.path().join("index.bin");
         let specs = vec![spec("gone", 5, 5)];
         let index = build_or_update(&index_path, &specs, &|_| None).expect("build");
-        assert_eq!(
-            index.candidate_slots(&vec!["anything".to_string()], 1),
-            vec![0]
-        );
+        assert_eq!(index.candidate_slots(&["anything".to_string()], 1), vec![0]);
     }
 
     /// Bloom filters must never produce false negatives: every inserted token
@@ -580,7 +572,9 @@ mod tests {
     #[test]
     fn bloom_has_no_false_negatives() {
         for count in [1usize, 3, 64, 1000, 20_000] {
-            let hashes: Vec<u32> = (0..count as u32).map(|i| hash_token(&format!("token-{i}"))).collect();
+            let hashes: Vec<u32> = (0..count as u32)
+                .map(|i| hash_token(&format!("token-{i}")))
+                .collect();
             let bloom = TokenBloom::from_hashes(&hashes);
             for hash in &hashes {
                 assert!(bloom.contains(*hash), "false negative at set size {count}");
@@ -592,7 +586,9 @@ mod tests {
     /// design point (~2-3%), well under 10% even with collision noise.
     #[test]
     fn bloom_false_positive_rate_is_bounded() {
-        let hashes: Vec<u32> = (0..10_000u32).map(|i| hash_token(&format!("present-{i}"))).collect();
+        let hashes: Vec<u32> = (0..10_000u32)
+            .map(|i| hash_token(&format!("present-{i}")))
+            .collect();
         let bloom = TokenBloom::from_hashes(&hashes);
         let mut false_positives = 0usize;
         const PROBES: usize = 20_000;
@@ -636,11 +632,9 @@ mod tests {
             .map(|(i, text)| spec(&format!("f{i}"), 1, text.len() as u64))
             .collect();
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let index = build_or_update(
-            &temp.path().join("index.bin"),
-            &specs,
-            &|slot| Some(texts[slot].to_string()),
-        )
+        let index = build_or_update(&temp.path().join("index.bin"), &specs, &|slot| {
+            Some(texts[slot].to_string())
+        })
         .expect("build");
         let bytes = index.approx_resident_bytes();
         let min_expected: usize = index
@@ -648,6 +642,9 @@ mod tests {
             .iter()
             .map(|entry| entry.tokens.bits.len() * 8)
             .sum();
-        assert!(bytes >= min_expected, "{bytes} < filter bits {min_expected}");
+        assert!(
+            bytes >= min_expected,
+            "{bytes} < filter bits {min_expected}"
+        );
     }
 }

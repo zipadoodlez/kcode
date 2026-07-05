@@ -618,10 +618,9 @@ async fn persist_snapshot_can_regress_to_older_plan_version_when_calls_interleav
          (update the wiring audit)"
     );
     // The newer v6 snapshot survives only as the write_json_fast backup.
-    let backup = storage::read_json::<PersistedSwarmState>(
-        &state_path("swarm-race").with_extension("bak"),
-    )
-    .expect("backup snapshot");
+    let backup =
+        storage::read_json::<PersistedSwarmState>(&state_path("swarm-race").with_extension("bak"))
+            .expect("backup snapshot");
     assert_eq!(backup.plan.expect("plan").version, 6);
 }
 
@@ -836,8 +835,7 @@ async fn remove_racing_persist_deletes_fresh_snapshot_and_resurrects_stale_bak()
     let a = tokio::spawn({
         let swarm_state = swarm_state.clone();
         async move {
-            crate::server::remove_persisted_swarm_state_for("swarm-del-race", &swarm_state)
-                .await;
+            crate::server::remove_persisted_swarm_state_for("swarm-del-race", &swarm_state).await;
         }
     });
     // Current-thread test runtime: yielding runs A until it parks on the

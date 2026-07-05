@@ -487,8 +487,8 @@ async fn send_history_from_persisted_session(
     // (including its message transcript) before building and serializing the
     // large History event, so we do not hold Session + rendered payload +
     // serialized wire bytes simultaneously.
-    let provider_name = history_provider_name_from_session(&session)
-        .or_else(|| Some(provider.name().to_string()));
+    let provider_name =
+        history_provider_name_from_session(&session).or_else(|| Some(provider.name().to_string()));
     let provider_model = session.model.clone().or_else(|| Some(provider.model()));
     let subagent_model = session.subagent_model.clone();
     let autoreview_enabled = session.autoreview_enabled;

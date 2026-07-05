@@ -74,7 +74,6 @@ pub use route_builders::{
 };
 pub(crate) use routing::{
     anthropic_api_key_route_availability, anthropic_oauth_route_availability,
-    is_transient_transport_error,
 };
 
 /// Process-wide handle to the live agent provider.

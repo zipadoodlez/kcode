@@ -5,7 +5,6 @@ use jcode::cli::provider_init::{
     init_provider_for_validation,
 };
 use jcode::provider::Provider;
-use jcode_provider_openrouter_runtime::OpenRouterProvider;
 use jcode::provider_catalog::{
     LoginProviderDescriptor, LoginProviderTarget, OPENAI_COMPAT_PROFILE, OpenAiCompatibleProfile,
     apply_openai_compatible_profile_env, load_api_key_from_env_or_config, login_providers,
@@ -13,6 +12,7 @@ use jcode::provider_catalog::{
     resolve_openai_compatible_profile, save_env_value_to_env_file,
     server_bootstrap_login_providers,
 };
+use jcode_provider_openrouter_runtime::OpenRouterProvider;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};

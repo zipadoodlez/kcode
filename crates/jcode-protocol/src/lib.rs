@@ -18,8 +18,8 @@ pub use notifications::{FeatureToggle, NotificationType};
 use jcode_batch_types::BatchProgress;
 use jcode_message_types::{InputShellResult, ToolCall};
 use jcode_plan::{PlanItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
-use std::collections::BTreeMap;
 use jcode_side_panel_types::{SidePanelSnapshot, snapshot_is_empty};
+use std::collections::BTreeMap;
 
 #[path = "protocol_memory.rs"]
 mod memory_snapshots;

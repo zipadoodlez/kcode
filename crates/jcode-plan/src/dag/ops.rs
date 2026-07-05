@@ -214,7 +214,11 @@ pub fn expand_node(
 
     // Insert children, parented to this node.
     for spec in children {
-        staged.push(spec_to_node(spec, Some(node_id.to_string()), NodeOrigin::Expand));
+        staged.push(spec_to_node(
+            spec,
+            Some(node_id.to_string()),
+            NodeOrigin::Expand,
+        ));
     }
 
     // The synthesis (parent) must wait for every child. In deep mode it must also

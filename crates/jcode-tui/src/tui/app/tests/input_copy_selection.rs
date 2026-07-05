@@ -58,8 +58,8 @@ fn drag_copy(
             true
         },
     );
-    let result = copied.lock().unwrap().clone();
-    result
+    
+    copied.lock().unwrap().clone()
 }
 
 #[test]

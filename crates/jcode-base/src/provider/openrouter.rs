@@ -15,15 +15,14 @@
 
 use crate::provider_catalog::{
     OPENAI_COMPAT_PROFILE, is_safe_env_file_name, is_safe_env_key_name,
-    load_api_key_from_env_or_config, normalize_api_base, openai_compatible_profile_is_configured,
-    openai_compatible_profiles, resolve_openai_compatible_profile,
+    load_api_key_from_env_or_config, normalize_api_base, openai_compatible_profiles,
+    resolve_openai_compatible_profile,
 };
 pub use jcode_provider_openrouter::{
     EndpointInfo, ModelInfo, ModelPricing, ModelTimestampIndex, ProviderRouting,
     all_model_timestamps, load_endpoints_disk_cache_public, load_model_pricing_disk_cache_public,
     load_model_timestamp_index, model_created_timestamp, model_created_timestamp_from_index,
 };
-use reqwest::header::HeaderName;
 
 /// Schedule a background catalog refresh for a direct OpenAI-compatible
 /// profile through the composition-root hook (implemented by the runtime
@@ -67,27 +66,6 @@ const DEFAULT_API_BASE: &str = "https://openrouter.ai/api/v1";
 const DEFAULT_API_KEY_NAME: &str = "OPENROUTER_API_KEY";
 const DEFAULT_ENV_FILE: &str = "openrouter.env";
 const OPENROUTER_TRANSPORT_STATE_ENV: &str = "JCODE_OPENROUTER_TRANSPORT_STATE";
-const KIMI_CODING_USER_AGENT: &str = "claude-cli/1.0.0";
-const KIMI_CODING_X_APP: &str = "cli";
-
-/// Default model (Claude Sonnet via OpenRouter)
-const DEFAULT_MODEL: &str = "anthropic/claude-sonnet-4";
-
-/// Soft refresh TTL for the model catalog.
-///
-/// We keep the 24h disk cache for resilience/offline startup, but after this
-/// shorter interval we refresh in the background so new models appear quickly
-/// without blocking the picker UI.
-const MODEL_CATALOG_SOFT_REFRESH_SECS: u64 = 15 * 60;
-/// Minimum delay between background refresh attempts.
-const MODEL_CATALOG_REFRESH_RETRY_SECS: u64 = 60;
-/// Standard OpenRouter catalog freshness window for the inactive-slot refresh
-/// path. Matches the shared on-disk model-catalog TTL (24h).
-const STANDARD_OPENROUTER_CATALOG_TTL_SECS: u64 = 24 * 60 * 60;
-
-/// Endpoints cache TTL (1 hour) - per-model provider endpoint data
-const ENDPOINTS_CACHE_TTL_SECS: u64 = 60 * 60;
-const MAX_BACKGROUND_ENDPOINT_REFRESHES: usize = 8;
 
 fn explicit_openrouter_runtime_configured() -> bool {
     [
@@ -187,25 +165,6 @@ fn configured_env_file_name() -> String {
     }
 }
 
-fn load_named_profile_api_key(
-    env_key: &str,
-    profile: &crate::config::NamedProviderConfig,
-) -> Option<String> {
-    if let Some(env_file) = profile
-        .env_file
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return load_api_key_from_env_or_config(env_key, env_file);
-    }
-
-    std::env::var(env_key)
-        .ok()
-        .map(|key| key.trim().to_string())
-        .filter(|key| !key.is_empty())
-}
-
 fn parse_env_bool(value: &str) -> Option<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Some(true),
@@ -225,62 +184,6 @@ fn provider_features_enabled(api_base: &str) -> bool {
         ));
     }
     api_base.contains("openrouter.ai")
-}
-
-fn model_catalog_enabled() -> bool {
-    if let Ok(raw) = std::env::var("JCODE_OPENROUTER_MODEL_CATALOG") {
-        if let Some(value) = parse_env_bool(&raw) {
-            return value;
-        }
-        crate::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_MODEL_CATALOG '{}'; expected true/false",
-            raw
-        ));
-    }
-    true
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AuthHeaderMode {
-    AuthorizationBearer,
-    ApiKey,
-}
-
-fn configured_auth_header_mode() -> AuthHeaderMode {
-    let Some(raw) = std::env::var("JCODE_OPENROUTER_AUTH_HEADER")
-        .ok()
-        .map(|v| v.trim().to_ascii_lowercase())
-        .filter(|v| !v.is_empty())
-    else {
-        return AuthHeaderMode::AuthorizationBearer;
-    };
-
-    match raw.as_str() {
-        "authorization" | "authorization-bearer" | "bearer" => AuthHeaderMode::AuthorizationBearer,
-        "api-key" | "apikey" => AuthHeaderMode::ApiKey,
-        other => {
-            crate::logging::warn(&format!(
-                "Ignoring invalid JCODE_OPENROUTER_AUTH_HEADER '{}'; expected authorization-bearer or api-key",
-                other
-            ));
-            AuthHeaderMode::AuthorizationBearer
-        }
-    }
-}
-
-fn configured_auth_header_name() -> HeaderName {
-    let raw = std::env::var("JCODE_OPENROUTER_AUTH_HEADER_NAME")
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| "api-key".to_string());
-    HeaderName::from_bytes(raw.as_bytes()).unwrap_or_else(|_| {
-        crate::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_AUTH_HEADER_NAME '{}'; using api-key",
-            raw
-        ));
-        HeaderName::from_static("api-key")
-    })
 }
 
 fn configured_dynamic_bearer_provider() -> Option<String> {

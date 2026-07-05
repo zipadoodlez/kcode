@@ -68,9 +68,7 @@ impl App {
             crate::tui::CopySelectionPane::SidePane => {
                 crate::tui::ui::side_pane_line_text(abs_line)
             }
-            crate::tui::CopySelectionPane::Input => {
-                crate::tui::ui::input_pane_line_text(abs_line)
-            }
+            crate::tui::CopySelectionPane::Input => crate::tui::ui::input_pane_line_text(abs_line),
         }
     }
 

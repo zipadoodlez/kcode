@@ -2486,10 +2486,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 } if scope == "plan"
             );
             if plan_scope {
-                app.set_status_notice(format!(
-                    "{} · {}",
-                    presentation.title, presentation.message
-                ));
+                app.set_status_notice(format!("{} · {}", presentation.title, presentation.message));
                 return false;
             }
             app.push_display_message(DisplayMessage::swarm(

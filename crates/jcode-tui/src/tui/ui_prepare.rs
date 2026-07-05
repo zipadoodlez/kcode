@@ -1724,7 +1724,7 @@ pub(super) fn prepare_body_prepended(
     // a leading blank iff the dropped prefix rendered content; a full rebuild
     // gives it one iff the head renders content. Both sides are non-empty in
     // the real compacted flow; bail on the degenerate mismatch.
-    if (cut_wrapped > 0) != !head.wrapped_lines.is_empty() {
+    if (cut_wrapped > 0) == head.wrapped_lines.is_empty() {
         return Err(prev);
     }
 

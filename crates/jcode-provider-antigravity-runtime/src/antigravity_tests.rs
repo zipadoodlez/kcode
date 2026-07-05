@@ -1,7 +1,7 @@
 use super::*;
 use chrono::Utc;
 use jcode_provider_antigravity::{
-    FETCH_MODELS_API_URL, FetchAvailableModelsResponse, parse_fetch_available_models_response,
+    FetchAvailableModelsResponse, parse_fetch_available_models_response,
 };
 use jcode_provider_core::Provider;
 use tokio_stream::StreamExt;

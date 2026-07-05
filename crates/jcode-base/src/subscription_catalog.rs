@@ -182,7 +182,10 @@ mod tests {
     #[test]
     fn curated_model_aliases_resolve_to_canonical_ids() {
         assert_eq!(canonical_model_id("opus 4.8"), Some("claude-opus-4-8"));
-        assert_eq!(canonical_model_id("Claude Opus 4.8"), Some("claude-opus-4-8"));
+        assert_eq!(
+            canonical_model_id("Claude Opus 4.8"),
+            Some("claude-opus-4-8")
+        );
         assert_eq!(canonical_model_id("gpt-5.5"), Some("gpt-5.5"));
         assert_eq!(canonical_model_id("GPT 5.5"), Some("gpt-5.5"));
         assert_eq!(canonical_model_id("unknown-model"), None);

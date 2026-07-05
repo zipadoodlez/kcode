@@ -1360,7 +1360,10 @@ fn render_swarm_message_preserves_inline_image_placeholder_lines() {
         .map(|s| s.content.as_ref())
         .collect::<String>();
 
-    let msg = DisplayMessage::swarm("Plan graph · v3", "```mermaid\nflowchart TD\n    a --> b\n```");
+    let msg = DisplayMessage::swarm(
+        "Plan graph · v3",
+        "```mermaid\nflowchart TD\n    a --> b\n```",
+    );
     // Rendering the real message goes through the markdown pipeline; whether a
     // real image materializes depends on protocol availability, so test the
     // line-preservation path directly through render_swarm_message with a body
@@ -1368,7 +1371,10 @@ fn render_swarm_message_preserves_inline_image_placeholder_lines() {
     // tests. Instead assert the parser round-trips the marker we emit.
     let parsed = crate::tui::mermaid::parse_inline_image_placeholder(&placeholder[0]);
     assert_eq!(parsed, Some((0xabcd1234, 4, 20)));
-    assert!(marker_text.starts_with('\u{0}'), "marker must keep its sentinel prefix");
+    assert!(
+        marker_text.starts_with('\u{0}'),
+        "marker must keep its sentinel prefix"
+    );
 
     // And the swarm renderer must not panic or drop content for a mermaid body.
     let lines = render_swarm_message(&msg, 100, crate::config::DiffDisplayMode::Off);

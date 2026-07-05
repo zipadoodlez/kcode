@@ -2217,7 +2217,10 @@ fn input_copy_snapshot_parts(
     let mut wrapped_plain = Vec::with_capacity(segments.len());
     let mut line_map = Vec::with_capacity(segments.len());
     for segment in &segments {
-        let (raw_line, start_col) = boundaries.get(segment.start_char).copied().unwrap_or((0, 0));
+        let (raw_line, start_col) = boundaries
+            .get(segment.start_char)
+            .copied()
+            .unwrap_or((0, 0));
         line_map.push(super::WrappedLineMap {
             raw_line,
             start_col,

@@ -608,22 +608,20 @@ async fn drain_native_frames(
                     }
                 }
             }
-            2 | 3 => {
-                if payload != b"{}" {
-                    let json: Value = serde_json::from_slice(&payload)
-                        .context("Failed to decode Cursor native JSON frame")?;
-                    if let Some(message) = json
-                        .get("error")
-                        .and_then(|error| error.get("message"))
-                        .and_then(Value::as_str)
-                    {
-                        if message.eq_ignore_ascii_case("error") {
-                            anyhow::bail!("Cursor native API stream error: {}", json);
-                        }
-                        anyhow::bail!("Cursor native API stream error: {}", message);
+            2 | 3 if payload != b"{}" => {
+                let json: Value = serde_json::from_slice(&payload)
+                    .context("Failed to decode Cursor native JSON frame")?;
+                if let Some(message) = json
+                    .get("error")
+                    .and_then(|error| error.get("message"))
+                    .and_then(Value::as_str)
+                {
+                    if message.eq_ignore_ascii_case("error") {
+                        anyhow::bail!("Cursor native API stream error: {}", json);
                     }
-                    anyhow::bail!("Cursor native API stream error: {}", json);
+                    anyhow::bail!("Cursor native API stream error: {}", message);
                 }
+                anyhow::bail!("Cursor native API stream error: {}", json);
             }
             _ => {}
         }

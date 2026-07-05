@@ -98,7 +98,10 @@ fn import_summary_pills_line(continue_focused: bool, align: Alignment) -> Line<'
     let mut spans = Vec::new();
     spans.extend(lozenge_pill_spans("Continue", continue_focused));
     spans.push(Span::raw("   "));
-    spans.extend(lozenge_pill_spans("Choose what to import", !continue_focused));
+    spans.extend(lozenge_pill_spans(
+        "Choose what to import",
+        !continue_focused,
+    ));
     Line::from(spans).alignment(align)
 }
 
