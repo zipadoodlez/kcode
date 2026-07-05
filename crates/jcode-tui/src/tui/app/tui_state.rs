@@ -1889,47 +1889,48 @@ impl App {
         self.swarm_panel_selected = next as usize;
     }
 
+    /// Advance the swarm panel selection by one, wrapping at the end. Used by
+    /// repeated presses of the focus chord (alt+n, alt+n, ... cycles agents).
+    pub(crate) fn cycle_swarm_panel_selection(&mut self) {
+        let count = self.inline_swarm_members().len();
+        if count == 0 {
+            return;
+        }
+        self.swarm_panel_selected = (self.swarm_panel_selected + 1) % count;
+    }
+
     /// Handle a key while the swarm panel is focused. Returns true if the key was
     /// consumed.
+    ///
+    /// Only Esc and Alt-chords are captured (see [`swarm_panel_action_for_key`]):
+    /// the panel is an overlay, not a modal, so plain typing keeps flowing to
+    /// the chat input while it is focused.
     pub(crate) fn handle_swarm_panel_key(
         &mut self,
         code: crossterm::event::KeyCode,
         modifiers: crossterm::event::KeyModifiers,
     ) -> bool {
-        use crossterm::event::KeyCode;
         if !self.swarm_panel_focused || !self.inline_swarm_gallery_active() {
             return false;
         }
-        if modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
-            return false;
-        }
-        match code {
-            KeyCode::Char('j') | KeyCode::Down => {
+        match swarm_panel_action_for_key(code, modifiers) {
+            Some(SwarmPanelAction::SelectNext) => {
                 self.move_swarm_panel_selection(1);
                 true
             }
-            KeyCode::Char('k') | KeyCode::Up => {
+            Some(SwarmPanelAction::SelectPrev) => {
                 self.move_swarm_panel_selection(-1);
                 true
             }
-            KeyCode::Char('g') | KeyCode::Home => {
-                self.swarm_panel_selected = 0;
-                true
-            }
-            KeyCode::Char('G') | KeyCode::End => {
-                let count = self.inline_swarm_members().len();
-                self.swarm_panel_selected = count.saturating_sub(1);
-                true
-            }
-            KeyCode::Char('o') | KeyCode::Enter => {
+            Some(SwarmPanelAction::PopOut) => {
                 self.pop_out_selected_swarm_agent();
                 true
             }
-            KeyCode::Esc => {
+            Some(SwarmPanelAction::Exit) => {
                 self.swarm_panel_focused = false;
                 true
             }
-            _ => false,
+            None => false,
         }
     }
 
@@ -1963,6 +1964,51 @@ impl App {
             )),
             Err(e) => self.set_status_notice(format!("Failed to open {label}: {e}")),
         }
+    }
+}
+
+/// What a key press should do while the swarm panel is focused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SwarmPanelAction {
+    SelectNext,
+    SelectPrev,
+    PopOut,
+    Exit,
+}
+
+/// Map a key to a focused-swarm-panel action.
+///
+/// Deliberately narrow: the focused panel must NOT swallow plain typing (the
+/// user may keep writing into the chat input while glancing at agents), so
+/// only Esc and Alt-chords are claimed:
+/// - Alt+↑ / Alt+↓ (also Alt+k / Alt+j): move the selection
+/// - Alt+o / Alt+Enter: pop the selected agent out to a terminal
+/// - Esc: exit the panel
+///
+/// (Alt+N itself cycles the selection; that is handled at the toggle-key
+/// call sites since the chord is user-configurable.)
+pub(crate) fn swarm_panel_action_for_key(
+    code: crossterm::event::KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+) -> Option<SwarmPanelAction> {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    if code == KeyCode::Esc && modifiers.is_empty() {
+        return Some(SwarmPanelAction::Exit);
+    }
+    let alt = modifiers.contains(KeyModifiers::ALT);
+    // macOS Option+letter often arrives as a transformed glyph with no ALT
+    // modifier; normalize through the shared shortcut helper.
+    let macos_letter = crate::tui::keybind::shortcut_char_for_macos_option_key(code, modifiers);
+    match code {
+        KeyCode::Down | KeyCode::Char('j') if alt => Some(SwarmPanelAction::SelectNext),
+        KeyCode::Up | KeyCode::Char('k') if alt => Some(SwarmPanelAction::SelectPrev),
+        KeyCode::Char('o') | KeyCode::Enter if alt => Some(SwarmPanelAction::PopOut),
+        _ => match macos_letter {
+            Some('j') => Some(SwarmPanelAction::SelectNext),
+            Some('k') => Some(SwarmPanelAction::SelectPrev),
+            Some('o') => Some(SwarmPanelAction::PopOut),
+            _ => None,
+        },
     }
 }
 
@@ -2019,6 +2065,87 @@ pub(crate) fn filter_inline_swarm_subtree(
         .filter(|m| is_descendant(m.session_id.as_str()))
         .cloned()
         .collect()
+}
+
+#[cfg(test)]
+mod swarm_panel_key_tests {
+    use super::{SwarmPanelAction, swarm_panel_action_for_key};
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    /// Plain typing (letters, space, enter, arrows without alt) must pass
+    /// through so the user can keep writing into the chat input while the
+    /// panel is focused.
+    #[test]
+    fn plain_typing_is_not_captured() {
+        for code in [
+            KeyCode::Char('j'),
+            KeyCode::Char('k'),
+            KeyCode::Char('o'),
+            KeyCode::Char('g'),
+            KeyCode::Char('G'),
+            KeyCode::Char(' '),
+            KeyCode::Enter,
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::Backspace,
+        ] {
+            let mods = if code == KeyCode::Char('G') {
+                KeyModifiers::SHIFT
+            } else {
+                KeyModifiers::NONE
+            };
+            assert_eq!(
+                swarm_panel_action_for_key(code, mods),
+                None,
+                "{code:?} must pass through to the chat input"
+            );
+        }
+    }
+
+    #[test]
+    fn alt_chords_drive_the_panel() {
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Down, KeyModifiers::ALT),
+            Some(SwarmPanelAction::SelectNext)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Up, KeyModifiers::ALT),
+            Some(SwarmPanelAction::SelectPrev)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('j'), KeyModifiers::ALT),
+            Some(SwarmPanelAction::SelectNext)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('k'), KeyModifiers::ALT),
+            Some(SwarmPanelAction::SelectPrev)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('o'), KeyModifiers::ALT),
+            Some(SwarmPanelAction::PopOut)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Enter, KeyModifiers::ALT),
+            Some(SwarmPanelAction::PopOut)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Esc, KeyModifiers::NONE),
+            Some(SwarmPanelAction::Exit)
+        );
+    }
+
+    #[test]
+    fn ctrl_chords_pass_through() {
+        for code in [KeyCode::Char('j'), KeyCode::Char('o'), KeyCode::Down] {
+            assert_eq!(
+                swarm_panel_action_for_key(code, KeyModifiers::CONTROL),
+                None,
+                "{code:?}+ctrl belongs to other handlers"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

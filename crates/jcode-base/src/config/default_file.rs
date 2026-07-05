@@ -66,9 +66,10 @@ diagram_pane_toggle = "alt+t"
 typing_scroll_lock_toggle = "alt+s"
 diff_mode_cycle = "alt+g"
 info_widget_toggle = "alt+i"
-# Focus the inline swarm panel (list of agents this session manages). While
-# focused: j/k select, o pops the selected agent out to a new terminal, esc
-# exits. Active only with agents.swarm_spawn_mode = "inline".
+# Focus the inline swarm panel (list of agents this session manages). Press
+# again to cycle agents. While focused: alt+↑/↓ select, alt+o pops the agent
+# out to a new terminal, esc exits. Plain typing still goes to the chat input.
+# Active only with agents.swarm_spawn_mode = "inline".
 swarm_panel_focus = "alt+n"
 
 # Spawn a fresh jcode session in a new terminal window, reusing the current

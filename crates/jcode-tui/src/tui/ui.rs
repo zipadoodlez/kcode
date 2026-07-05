@@ -2790,10 +2790,12 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     };
 
     // Inline swarm strip: when `swarm_spawn_mode = inline` and this session
-    // manages agents, render a compact strip (agent chips + keybinding hints)
-    // directly above the status line instead of a big gallery band. When the
-    // panel is focused, the strip expands into a taller viewport showing the
-    // hovered agent's live transcript tail and todo list. The strip stands
+    // manages agents, render a compact strip (vertical agent list by default,
+    // see `agents.swarm_strip_layout`) directly above the status line instead
+    // of a big gallery band. When the panel is focused (alt+n), the selected
+    // agent's row expands in place with its live transcript tail and todos;
+    // alt+n cycles agents, alt+↑/↓ select, alt+o pops out, esc exits, and
+    // plain typing keeps flowing to the chat input. The strip stands
     // down while the SwarmStatus dock widget (margin HUD) is showing the same
     // agents, unless the panel is focused (keyboard interaction lives here).
     // The stand-down is sticky (anchored blinks count as engaged, plus a short

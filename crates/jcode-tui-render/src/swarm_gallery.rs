@@ -32,7 +32,6 @@ pub fn status_accent(status: &str) -> Color {
 pub fn role_glyph(role: Option<&str>) -> Option<&'static str> {
     match role {
         Some("coordinator") => Some("★"),
-        Some("worktree_manager") => Some("◆"),
         _ => None,
     }
 }
@@ -76,12 +75,10 @@ pub fn status_glyph(status: &str, spinner_frame: usize) -> &'static str {
     }
 }
 
-/// Sort rank for stable placement: coordinator first, then worktree manager,
-/// then everything else.
+/// Sort rank for stable placement: coordinator first, then everything else.
 fn role_rank(role: Option<&str>) -> u8 {
     match role {
         Some("coordinator") => 0,
-        Some("worktree_manager") => 1,
         _ => 2,
     }
 }
@@ -636,21 +633,24 @@ pub fn render_swarm_strip(
 /// agent per row, capped to `max_rows` agent lines with a `+N more` overflow
 /// marker on the last row.
 ///
-/// Each row is `<icon> <status glyph> <name> · <task>` with a right-aligned
-/// todo counter when present. The first row carries the leading "🐝" swarm
-/// marker; the header tally (`M/N active`) and the enter hint live on the
-/// first row's right side, mirroring the horizontal strip.
+/// Each row is `<status glyph> <icon> · <task>` with a right-aligned todo
+/// counter when present. The first row carries the leading "🐝" swarm marker;
+/// the header tally (`M/N active`) and the enter hint live on the first row's
+/// right side, mirroring the horizontal strip.
 ///
 /// - Unfocused: up to `max_rows` agent rows.
-/// - Focused: the rows (selected agent highlighted) + an expanded detail
-///   viewport for the hovered agent + a keybinding hint line, all bounded by
-///   `max_height` total lines.
+/// - Focused: an accordion. The selected agent's row gains a `▸` marker and
+///   its full icon+name, and its live transcript tail + todos expand in place
+///   directly beneath its row; a keybinding hint line closes the strip. All
+///   bounded by `max_height` total lines.
 ///
 /// ```text
-/// 🐝 ⠙ 🦊 fox · wire the auth flow 3/9        2/3 active · alt+n controls
-///    ⠹ 🐝 bee · audit the webhook path
-///    ✓ 🐅 tigress · support/contact page
-///    +2 more
+/// 🐝 ⠙ 🦊 · wire the auth flow 3/9            2/3 active · alt+n controls
+///  ▸ ⠹ 🐝 bee · audit the webhook path
+///    │ checking the signing secret path
+///    │ ▸ verify replay protection
+///    ✓ 🐅 · support/contact page
+///    alt+n next · alt+↑/↓ select · alt+o open · esc exit
 /// ```
 #[allow(clippy::too_many_arguments)]
 pub fn render_swarm_strip_vertical(
@@ -702,6 +702,8 @@ pub fn render_swarm_strip_vertical(
     let lead_w = disp_w(LEAD);
 
     let mut out: Vec<Line<'static>> = Vec::new();
+    // Where the selected agent's row landed in `out` (focused accordion).
+    let mut selected_row_at: Option<usize> = None;
     for (row, m) in ordered.iter().enumerate().skip(start).take(shown) {
         let first = out.is_empty();
         let is_sel = row == selected;
@@ -739,15 +741,21 @@ pub fn render_swarm_strip_vertical(
         // <glyph> [icon ]<name>[ · task][ done/total]
         let mut style = Style::default().fg(color);
         if is_sel && focused {
-            style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
-        } else if is_sel {
             style = style.add_modifier(Modifier::BOLD);
         }
+        // The focused selection shows both icon and name (you are about to act
+        // on this agent); other rows keep the compact icon-only identity.
         let ident = match m.icon.as_deref().filter(|i| !i.is_empty()) {
+            Some(icon) if is_sel && focused => format!("{icon} {}", m.label),
             Some(icon) => icon.to_string(),
             None => m.label.clone(),
         };
-        let head = format!("{glyph} {ident}");
+        let marker = if focused {
+            if is_sel { "▸ " } else { "  " }
+        } else {
+            ""
+        };
+        let head = format!("{marker}{glyph} {ident}");
         let head_w = disp_w(&head);
         let todo_w = todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0);
         let mut used = head_w;
@@ -800,6 +808,9 @@ pub fn render_swarm_strip_vertical(
                 }
             }
         }
+        if is_sel {
+            selected_row_at = Some(out.len());
+        }
         out.push(Line::from(spans));
     }
 
@@ -813,19 +824,19 @@ pub fn render_swarm_strip_vertical(
         ]));
     }
 
-    // ---- Focused extras: expanded detail viewport + hint line ----
+    // ---- Focused: accordion detail under the selected row + hint line ----
     if focused {
         let hint_rows = usize::from(!hints.is_empty());
         let detail_budget = max_height.saturating_sub(out.len() + hint_rows);
-        if let Some(m) = ordered.get(selected)
-            && detail_budget >= 4
+        if let (Some(m), Some(at)) = (ordered.get(selected), selected_row_at)
+            && detail_budget >= 1
         {
-            out.extend(render_hovered_detail(
-                m,
-                spinner_frame,
-                width,
-                detail_budget,
-            ));
+            // Insert directly beneath the selected row so the list expands in
+            // place (accordion) instead of jumping to a detached pane below.
+            let detail = hovered_detail_body(m, width, detail_budget);
+            for (i, line) in detail.into_iter().enumerate() {
+                out.insert(at + 1 + i, line);
+            }
         }
         if !hints.is_empty() {
             let mut hint_spans: Vec<Span<'static>> = vec![Span::raw(INDENT)];
@@ -1256,19 +1267,9 @@ fn render_hovered_detail(
 ) -> Vec<Line<'static>> {
     let accent = status_accent(&m.status);
     let dim = rgb(120, 120, 130);
-    let text_fg = rgb(190, 190, 200);
-    let gutter_fg = rgb(80, 80, 90);
     const GUTTER: &str = "   ";
-    const BAR: &str = "│ ";
 
-    // Split body lines into transcript vs '·'-prefixed meta markers (the age
-    // hint the adapter appends); the age moves into the header.
-    let transcript: Vec<&str> = m
-        .body
-        .iter()
-        .map(|l| l.as_str())
-        .filter(|l| !l.trim_start().starts_with('·'))
-        .collect();
+    // The age hint the adapter appends ('·'-prefixed meta) moves into the header.
     let age: Option<String> = m
         .body
         .iter()
@@ -1291,17 +1292,45 @@ fn render_hovered_detail(
         header.push(Span::styled(format!(" · {age}"), Style::default().fg(dim)));
     }
     out.push(Line::from(header));
+    out.extend(hovered_detail_body(m, width, budget.saturating_sub(1)));
+    out
+}
 
-    // ---- Budget split: todos take at most half of what remains ----
-    let remaining = budget.saturating_sub(1);
+/// The body of the hovered-agent detail viewport: a tail of the agent's live
+/// transcript plus its todo list, gutter-indented, without the header row.
+/// Used directly by the vertical strip (where the selected agent's row already
+/// serves as the header) and by [`render_hovered_detail`].
+fn hovered_detail_body(m: &GalleryMember, width: usize, budget: usize) -> Vec<Line<'static>> {
+    let dim = rgb(120, 120, 130);
+    let text_fg = rgb(190, 190, 200);
+    let gutter_fg = rgb(80, 80, 90);
+    const GUTTER: &str = "   ";
+    const BAR: &str = "│ ";
+
+    if budget == 0 {
+        return Vec::new();
+    }
+
+    // Split body lines into transcript vs '·'-prefixed meta markers (the age
+    // hint the adapter appends).
+    let transcript: Vec<&str> = m
+        .body
+        .iter()
+        .map(|l| l.as_str())
+        .filter(|l| !l.trim_start().starts_with('·'))
+        .collect();
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+
+    // ---- Budget split: todos take at most half ----
     let todo_want = if m.todo_items.is_empty() {
         0
     } else {
         // +1 for the "todos C/T" section header.
         m.todo_items.len() + 1
     };
-    let todo_rows = todo_want.min(remaining / 2);
-    let transcript_rows = remaining.saturating_sub(todo_rows);
+    let todo_rows = todo_want.min(budget / 2);
+    let transcript_rows = budget.saturating_sub(todo_rows);
 
     // ---- Transcript tail ----
     let text_budget = width.saturating_sub(GUTTER.len() + BAR.len());
@@ -1593,7 +1622,7 @@ mod tests {
     fn display_order_matches_tile_order_for_mixed_members() {
         let mut members = vec![
             member("zeta", "running", None, &[]),
-            member("mid", "done", Some("worktree_manager"), &[]),
+            member("mid", "done", Some("mystery_role_2"), &[]),
             member("boss", "running", Some("coordinator"), &[]),
             member("alpha", "thinking", Some("mystery_role"), &[]),
             member("beta", "failed", None, &[]),
@@ -1612,13 +1641,12 @@ mod tests {
             .collect();
         assert_eq!(ordered_labels, tile_titles);
         let ordered_labels: Vec<&str> = ordered_labels.iter().map(String::as_str).collect();
-        // Role buckets come first, then active-before-finished status order,
-        // then sort_key within the same status rank.
+        // Role buckets come first (coordinator only), then active-before-
+        // finished status order, then sort_key within the same status rank.
         assert_eq!(ordered_labels[0], "boss");
-        assert_eq!(ordered_labels[1], "mid");
         assert_eq!(
-            &ordered_labels[2..],
-            &["alpha", "zeta", "beta", "beta-label-2"]
+            &ordered_labels[1..],
+            &["alpha", "zeta", "beta", "beta-label-2", "mid"]
         );
     }
 
@@ -1878,18 +1906,79 @@ mod tests {
     }
 
     #[test]
-    fn vertical_strip_focused_shows_detail_and_hints() {
-        let members = vec![
-            member("fox", "running", None, &["compiling the renderer"]),
-            member("bee", "ready", None, &[]),
-        ];
-        let lines = render_swarm_strip_vertical(&members, 0, true, &hints(), None, 0, 80, 4, 14);
-        let text: String = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+    fn vertical_strip_focused_expands_accordion_under_selected_row() {
+        let mut fox = member("fox", "running", None, &["compiling the renderer"]);
+        fox.icon = Some("🦊".to_string());
+        let mut bee = member("bee", "ready", None, &["waiting for work"]);
+        bee.icon = Some("🐝".to_string());
+        let lines =
+            render_swarm_strip_vertical(&[fox, bee], 1, true, &hints(), None, 0, 80, 4, 14);
+        let texts: Vec<String> = lines.iter().map(plain_line).collect();
+        let all = texts.join("\n");
+        // Selected agent (bee, sorted second: fox is active and sorts first)
+        // shows marker + icon + name; its detail slides in directly beneath.
+        let bee_row = texts
+            .iter()
+            .position(|l| l.contains("▸") && l.contains("🐝") && l.contains("bee"))
+            .expect("selected row shows marker, icon and name: {texts:?}");
         assert!(
-            text.contains("compiling the renderer"),
-            "hovered detail shown: {text:?}"
+            texts[bee_row + 1].contains("waiting for work"),
+            "detail expands directly under the selected row: {texts:?}"
         );
-        assert!(text.contains("pop out"), "hint line shown: {text:?}");
+        // Unselected agent stays icon-only.
+        assert!(
+            !texts
+                .iter()
+                .any(|l| l.contains("fox") && !l.contains("▸")),
+            "unselected agents stay icon-only: {texts:?}"
+        );
+        assert!(
+            !all.contains("compiling the renderer"),
+            "unselected agent's transcript stays collapsed: {all:?}"
+        );
+        assert!(all.contains("pop out"), "hint line shown: {all:?}");
+    }
+
+    /// Focused vertical strip: plain typing must never be part of the deal.
+    /// (Key mapping lives in the TUI crate; this just pins that the strip
+    /// renders hint labels for the alt-chord scheme it advertises.)
+    #[test]
+    fn vertical_strip_focused_detail_stays_within_height_budget() {
+        let mut m = member(
+            "fox",
+            "running",
+            None,
+            &["line 1", "line 2", "line 3", "line 4", "line 5", "line 6"],
+        );
+        m.todo_items = vec![
+            GalleryTodo {
+                content: "first".into(),
+                status: "completed".into(),
+            },
+            GalleryTodo {
+                content: "second".into(),
+                status: "in_progress".into(),
+            },
+        ];
+        let members = vec![m, member("bee", "ready", None, &[])];
+        for max_height in 3..=14 {
+            let lines = render_swarm_strip_vertical(
+                &members,
+                0,
+                true,
+                &hints(),
+                None,
+                0,
+                80,
+                4,
+                max_height,
+            );
+            assert!(
+                lines.len() <= max_height,
+                "focused vertical strip exceeded max_height {max_height}: {} lines",
+                lines.len()
+            );
+        }
     }
 
     #[test]

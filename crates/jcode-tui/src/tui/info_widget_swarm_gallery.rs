@@ -154,14 +154,20 @@ pub(crate) fn render_swarm_strip_lines(
         return Vec::new();
     }
     let enter_hint = format!("{focus_key} controls");
+    // Focused hints: only Alt-chords (plus esc) are claimed so plain typing
+    // keeps flowing to the chat input while the panel is focused.
     let hints = vec![
         SwarmStripHint {
-            key: "↑/↓".into(),
+            key: focus_key.to_string(),
+            label: "next".into(),
+        },
+        SwarmStripHint {
+            key: "alt+↑/↓".into(),
             label: "select".into(),
         },
         SwarmStripHint {
-            key: "enter".into(),
-            label: "pop out".into(),
+            key: "alt+o".into(),
+            label: "open".into(),
         },
         SwarmStripHint {
             key: "esc".into(),
@@ -308,7 +314,7 @@ mod tests {
     fn members_display_order_matches_rendered_tile_order() {
         let mut members = vec![
             member("zeta-session", "running", None, None),
-            member("wt-session", "done", None, Some("worktree_manager")),
+            member("wt-session", "done", None, Some("mystery_role_2")),
             member("coord-session", "running", None, Some("coordinator")),
             member("mystery-session", "thinking", None, Some("mystery_role")),
             member("alpha-session", "failed", None, None),
@@ -338,17 +344,17 @@ mod tests {
             "pop-out order must match rendered tile order"
         );
 
-        // Sanity: coordinator first, worktree manager second, then the rest
-        // active-first (thinking/running), then failed, then idle, ties by id.
+        // Sanity: coordinator first, then the rest active-first
+        // (thinking/running), then failed, then idle/finished, ties by id.
         assert_eq!(order[0], "coord-session");
-        assert_eq!(order[1], "wt-session");
         assert_eq!(
-            &order[2..],
+            &order[1..],
             &[
                 "mystery-session".to_string(),
                 "zeta-session".to_string(),
                 "alpha-session".to_string(),
                 "beta-session-long-id".to_string(),
+                "wt-session".to_string(),
             ]
         );
     }
