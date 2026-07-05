@@ -1911,8 +1911,7 @@ mod tests {
         fox.icon = Some("🦊".to_string());
         let mut bee = member("bee", "ready", None, &["waiting for work"]);
         bee.icon = Some("🐝".to_string());
-        let lines =
-            render_swarm_strip_vertical(&[fox, bee], 1, true, &hints(), None, 0, 80, 4, 14);
+        let lines = render_swarm_strip_vertical(&[fox, bee], 1, true, &hints(), None, 0, 80, 4, 14);
         let texts: Vec<String> = lines.iter().map(plain_line).collect();
         let all = texts.join("\n");
         // Selected agent (bee, sorted second: fox is active and sorts first)
@@ -1927,9 +1926,7 @@ mod tests {
         );
         // Unselected agent stays icon-only.
         assert!(
-            !texts
-                .iter()
-                .any(|l| l.contains("fox") && !l.contains("▸")),
+            !texts.iter().any(|l| l.contains("fox") && !l.contains("▸")),
             "unselected agents stay icon-only: {texts:?}"
         );
         assert!(
