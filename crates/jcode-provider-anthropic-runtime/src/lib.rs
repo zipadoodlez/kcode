@@ -906,11 +906,6 @@ impl AnthropicProvider {
             .unwrap_or(AnthropicCredentialMode::Auto)
     }
 
-    #[cfg(test)]
-    pub(crate) async fn test_access_token_and_oauth_mode(&self) -> Result<(String, bool)> {
-        self.get_access_token().await
-    }
-
     /// Convert our Message type to Anthropic API format
     /// Also repairs dangling tool_uses by injecting synthetic tool_results
     fn format_messages(&self, messages: &[Message], is_oauth: bool) -> Vec<ApiMessage> {

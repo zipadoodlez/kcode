@@ -294,11 +294,8 @@ fn is_retryable_error(error_str: &str) -> bool {
     // (auth, billing, malformed request) where retrying is futile and just
     // burns time/credits. 429 (rate limit) is intentionally NOT listed here so
     // it can still be retried.
-    if let Some(status) = parsed_http_status(error_str) {
-        match status {
-            400 | 401 | 402 | 403 | 404 | 405 | 406 | 422 => return false,
-            _ => {}
-        }
+    if let Some(400 | 401 | 402 | 403 | 404 | 405 | 406 | 422) = parsed_http_status(error_str) {
+        return false;
     }
 
     jcode_provider_core::is_transient_transport_error(error_str)

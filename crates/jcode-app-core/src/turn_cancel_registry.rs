@@ -29,7 +29,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
-static ACTIVE_TURNS: LazyLock<Mutex<HashMap<String, Vec<(u64, InterruptSignal)>>>> =
+/// All interrupt signals registered for one session's in-flight turns.
+type SessionTurnSignals = Vec<(u64, InterruptSignal)>;
+static ACTIVE_TURNS: LazyLock<Mutex<HashMap<String, SessionTurnSignals>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// RAII registration for one running turn. Dropping the guard removes the

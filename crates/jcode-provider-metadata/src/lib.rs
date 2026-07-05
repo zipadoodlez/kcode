@@ -454,7 +454,7 @@ mod tests {
             "https://inference-docs.cerebras.ai/introduction"
         );
         assert_eq!(CEREBRAS_PROFILE.default_model, Some("gpt-oss-120b"));
-        assert!(CEREBRAS_PROFILE.requires_api_key);
+        const { assert!(CEREBRAS_PROFILE.requires_api_key) };
         assert_eq!(
             CEREBRAS_LOGIN_PROVIDER.auth_kind,
             LoginProviderAuthKind::ApiKey

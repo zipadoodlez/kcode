@@ -184,7 +184,7 @@ fn render_assistant_segments(
 /// Render the inner markdown of a ```plan block as a bordered plan card.
 fn render_plan_card(body: &str, width: u16) -> Vec<Line<'static>> {
     let border_style = Style::default().fg(rgb(158, 135, 255));
-    let max_box_width = (width.saturating_sub(4) as usize).min(100).max(28);
+    let max_box_width = (width.saturating_sub(4) as usize).clamp(28, 100);
     let inner_width = max_box_width.saturating_sub(4).max(8);
 
     let title = plan_card_title(body);

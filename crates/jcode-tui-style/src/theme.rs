@@ -252,9 +252,11 @@ mod tests {
             "liveness spinner should advance every fast-path tick (80ms)"
         );
         // It must be meaningfully faster than the old ~1.5 Hz cadence.
-        assert!(
-            LIVENESS_SPINNER_FPS >= 8.0,
-            "liveness spinner should animate at a smooth, responsive rate"
-        );
+        const {
+            assert!(
+                LIVENESS_SPINNER_FPS >= 8.0,
+                "liveness spinner should animate at a smooth, responsive rate"
+            );
+        }
     }
 }

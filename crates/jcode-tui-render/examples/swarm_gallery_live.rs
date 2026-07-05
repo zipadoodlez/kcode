@@ -12,8 +12,8 @@
 //! Controls:
 //!   q / Esc      quit
 //!   + / -        more / fewer agents
-//!   [ / ]        shrink / grow the gallery band (the max_pct knob)
-//!   space        pause / resume the animation
+//!     [ / ]        shrink / grow the gallery band (the max_pct knob)
+//!     space        pause / resume the animation
 
 use std::io::{self, Stdout};
 use std::time::{Duration, Instant};

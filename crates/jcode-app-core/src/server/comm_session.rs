@@ -406,6 +406,7 @@ fn cleanup_prepared_visible_spawn_session(session_id: &str) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prepare_visible_spawn_session<F>(
     working_dir: Option<&str>,
     model_override: Option<&str>,

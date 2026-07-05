@@ -57,7 +57,7 @@ fn configure_system_allocator() {
 
 /// Parse a positive i32 allocator tuning knob from an env var, falling back
 /// to `default` when unset, unparsable, or non-positive.
-#[cfg(any(test, all(target_os = "linux", not(feature = "jemalloc"))))]
+#[cfg(all(target_os = "linux", not(feature = "jemalloc")))]
 fn parse_alloc_tuning_env(var: &str, default: i32) -> i32 {
     parse_alloc_tuning(std::env::var(var).ok().as_deref(), default)
 }

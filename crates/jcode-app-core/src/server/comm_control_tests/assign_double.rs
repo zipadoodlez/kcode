@@ -117,6 +117,7 @@ fn active_assignment_conflict_detects_only_assigned_and_fresh_items() {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn double_assign_fixture(
     swarm_id: &str,
     requester: &str,

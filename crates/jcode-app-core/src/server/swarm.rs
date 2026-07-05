@@ -1894,6 +1894,96 @@ mod tests {
         );
     }
 
+    /// Deterministic demonstration of the SwarmStatus immediate-path
+    /// snapshot-vs-send inversion (wiring-audit.status-proposal-ordering).
+    ///
+    /// `broadcast_swarm_status_now` snapshots member statuses under
+    /// `swarm_members.read()`, drops the guard, then awaits
+    /// `fanout_session_event` (a `swarm_members.write()` acquisition) before
+    /// sending. Swarms below `JCODE_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD`
+    /// (default 2) take this immediate, non-debounced path on every status
+    /// change, so two concurrent broadcasts can deliver an old snapshot after
+    /// a newer one on the same ordered mpsc channel. A last-write-wins
+    /// consumer (the TUI SwarmStatus handler) is then left showing the stale
+    /// status until the next unrelated broadcast.
+    ///
+    /// Unlike the SwarmPlan inversion test above, there is no second lock we
+    /// can gate on: the status path snapshots from the same `swarm_members`
+    /// lock it later writes, so holding any guard also blocks the mutator.
+    /// Instead this test uses tokio's cooperative budget (128 units per task
+    /// poll on a current-thread runtime; every RwLock acquisition consumes
+    /// exactly one). Draining 126 units leaves broadcast A exactly enough for
+    /// `swarms_by_id.read()` and the `swarm_members.read()` snapshot, forcing
+    /// a yield at the (uncontended) `swarm_members.write()` inside
+    /// `fanout_session_event`, i.e. precisely inside the race window between
+    /// snapshot and send.
+    ///
+    /// If this test starts failing with `["running", "running"]` or
+    /// `["ready", "running"]`, the race has been fixed (e.g. by holding the
+    /// read lock through the send, or by stamping a monotonic sequence on
+    /// SwarmStatus and dropping stale ones consumer-side); update the wiring
+    /// audit. If it fails because broadcast A parks somewhere else, the tokio
+    /// coop budget constants changed: re-derive the `128 - 2` drain count.
+    #[tokio::test]
+    async fn swarm_status_immediate_broadcasts_can_invert_on_one_member_channel() {
+        let (worker, mut worker_rx) = swarm_member("worker", "agent", false);
+        let swarm_members = Arc::new(RwLock::new(HashMap::from([("worker".to_string(), worker)])));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-1".to_string(),
+            HashSet::from(["worker".to_string()]),
+        )])));
+
+        // Broadcast A: snapshots status "ready", then is forced to yield at
+        // the fanout write acquisition, before sending.
+        let a = tokio::spawn({
+            let swarm_members = Arc::clone(&swarm_members);
+            let swarms_by_id = Arc::clone(&swarms_by_id);
+            async move {
+                // Initial task budget is 128. Leave exactly 2 units so the two
+                // read acquisitions (session-id list + status snapshot)
+                // succeed and the fanout write acquisition forces a yield.
+                for _ in 0..126 {
+                    tokio::task::coop::consume_budget().await;
+                }
+                broadcast_swarm_status("swarm-1", &swarm_members, &swarms_by_id).await;
+            }
+        });
+        // Single yield on the current-thread runtime: A runs its entire first
+        // poll (budget drain + both reads) and parks after snapshotting
+        // "ready". Its coop yield happens *before* joining the lock queue, so
+        // every acquisition below is uncontended and the mutator finishes
+        // within one poll, before A is re-polled.
+        tokio::task::yield_now().await;
+
+        // Concurrent mutator: flips the status and completes its own
+        // immediate broadcast while A is parked between snapshot and send.
+        {
+            let mut members = swarm_members.write().await;
+            members.get_mut("worker").expect("worker member").status = "running".to_string();
+        }
+        broadcast_swarm_status("swarm-1", &swarm_members, &swarms_by_id).await;
+
+        // Release A: it resumes with a fresh budget and sends its stale
+        // "ready" snapshot after "running" on the same ordered channel.
+        a.await.expect("broadcast task");
+
+        let mut statuses = Vec::new();
+        while let Ok(event) = worker_rx.try_recv() {
+            if let ServerEvent::SwarmStatus { members } = event {
+                assert_eq!(members.len(), 1);
+                assert_eq!(members[0].session_id, "worker");
+                statuses.push(members[0].status.clone());
+            }
+        }
+        assert_eq!(
+            statuses,
+            vec!["running".to_string(), "ready".to_string()],
+            "expected status inversion (new-then-old) on one member channel; \
+             if this fails with the correct order, the snapshot-vs-send race \
+             may have been fixed (update the wiring audit)"
+        );
+    }
+
     /// Restored (persisted) plan participants with dead channels starve live
     /// swarm members of plan broadcasts: the fallback to swarms_by_id only
     /// triggers when `participants` is EMPTY, so a participant set that only

@@ -464,7 +464,7 @@ pub(crate) fn detect_external_cli_oauths() -> Vec<ExternalCli> {
 
 /// Whether `root` contains at least one file with the given extension, searched
 /// shallowly-recursively. Cheap directory walk used for resume detection.
-fn external_transcripts_present(root: &PathBuf, ext: &str) -> bool {
+fn external_transcripts_present(root: &std::path::Path, ext: &str) -> bool {
     fn walk(dir: &std::path::Path, ext: &str, budget: &mut u32) -> bool {
         if *budget == 0 {
             return false;

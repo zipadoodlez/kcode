@@ -319,6 +319,7 @@ pub struct SwarmStripHint {
 /// ```text
 /// 🐝 swarm  · ⠙ researcher 8/16  ✓ reviewer         2/3 active · ctrl+t controls
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub fn render_swarm_strip(
     members: &[GalleryMember],
     selected: usize,

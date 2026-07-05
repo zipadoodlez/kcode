@@ -716,11 +716,6 @@ impl OpenAIProvider {
         *persistent_ws = None;
     }
 
-    #[cfg(test)]
-    pub(crate) async fn test_access_token(&self) -> String {
-        self.credentials.read().await.access_token.clone()
-    }
-
     fn is_chatgpt_mode(credentials: &CodexCredentials) -> bool {
         !credentials.refresh_token.is_empty() || credentials.id_token.is_some()
     }
