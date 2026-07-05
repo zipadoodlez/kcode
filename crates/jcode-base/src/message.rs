@@ -10,7 +10,8 @@ use std::sync::OnceLock;
 
 pub use jcode_message_types::{
     CacheControl, ConnectionPhase, ContentBlock, InputShellResult, Message, Role, StreamEvent,
-    TOOL_OUTPUT_MISSING_TEXT, ToolCall, ToolDefinition, ends_with_fresh_user_turn,
+    TOOL_OUTPUT_MISSING_TEXT, ToolCall, ToolDefinition, cache_relevant_message_hashes,
+    cache_relevant_message_value, cache_relevant_messages, ends_with_fresh_user_turn,
     extend_stable_hash, messages_with_dynamic_system_context, sanitize_tool_id,
     stable_message_hash,
 };

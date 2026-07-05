@@ -2317,52 +2317,12 @@ fn stable_json_len<T: serde::Serialize + ?Sized>(value: &T) -> usize {
         .unwrap_or_default()
 }
 
-/// Project a message down to the fields that actually influence a provider's
-/// KV-cache key, dropping harness-only / volatile metadata.
-///
-/// Providers never receive `Message.timestamp`, `Message.tool_duration_ms`,
-/// history-only `ReasoningTrace` blocks, or the positional `cache_control`
-/// ephemeral breakpoint markers. Hashing the raw `Message` therefore reports
-/// spurious `harness:_prefix_changed` misses whenever one of those fields is
-/// backfilled on an already-sent boundary message, even though the bytes sent
-/// upstream are unchanged. This was confirmed in production logs: at the exact
-/// instant the harness flagged a tail message, `PROVIDER_CANONICAL_INPUT`
-/// showed an append-only prefix (`prefix_matches=true`) and the request still
-/// served 82-98% from cache. Projecting to the cache-relevant shape keeps the
-/// fingerprint aligned with what the provider actually caches.
-fn cache_relevant_message_value(message: &Message) -> serde_json::Value {
-    let mut value = serde_json::to_value(message).unwrap_or(serde_json::Value::Null);
-    if let serde_json::Value::Object(map) = &mut value {
-        // Struct-level metadata that is never part of the prompt token stream.
-        // For user messages the human-readable timestamp is already baked into
-        // the text by `Message::with_timestamps` before this hash is computed,
-        // so removing the redundant struct field cannot hide a real change.
-        map.remove("timestamp");
-        map.remove("tool_duration_ms");
-        if let Some(serde_json::Value::Array(blocks)) = map.get_mut("content") {
-            // `ReasoningTrace` is documented as history-only and is never
-            // replayed to any provider, so it must not affect the cache key.
-            blocks.retain(|block| {
-                block.get("type").and_then(|kind| kind.as_str()) != Some("reasoning_trace")
-            });
-            for block in blocks.iter_mut() {
-                if let serde_json::Value::Object(block) = block
-                    && block.get("type").and_then(|kind| kind.as_str()) == Some("text")
-                {
-                    // The ephemeral cache breakpoint marker hops to the newest
-                    // message each turn; it marks where caching ends, not the
-                    // cached content itself.
-                    block.remove("cache_control");
-                }
-            }
-        }
-    }
-    value
-}
-
-fn cache_relevant_messages(messages: &[Message]) -> Vec<serde_json::Value> {
-    messages.iter().map(cache_relevant_message_value).collect()
-}
+// The cache-relevant projection lives in `jcode-message-types` (re-exported
+// through `crate::message`) so this local path and the server event path in
+// `jcode-app-core::agent::kv_cache_request_event` hash messages identically.
+// If the two projections drift, remote sessions report false
+// `harness:_prefix_changed` KV-cache misses.
+use crate::message::{cache_relevant_message_value, cache_relevant_messages};
 
 fn message_hashes(messages: &[Message]) -> Vec<u64> {
     messages

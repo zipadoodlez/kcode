@@ -356,6 +356,74 @@ pub fn stable_message_hash(message: &Message) -> u64 {
     }
 }
 
+/// Project a message down to the fields that actually influence a provider's
+/// KV-cache key, dropping harness-only / volatile metadata.
+///
+/// Providers never receive `Message.timestamp`, `Message.tool_duration_ms`,
+/// history-only `ReasoningTrace` blocks, or the positional `cache_control`
+/// ephemeral breakpoint markers. Hashing the raw `Message` therefore reports
+/// spurious `harness:_prefix_changed` cache misses whenever one of those
+/// fields differs on an already-sent boundary message even though the bytes
+/// sent upstream are unchanged. A confirmed production instance: persisted
+/// memory-injection messages are stored with a slightly later timestamp than
+/// the in-flight copy hashed for the request signature, so the raw hash of
+/// the same message differed across turns and falsely flagged a prefix edit.
+///
+/// For user messages the human-readable timestamp is already baked into the
+/// text by `Message::with_timestamps` before this projection runs (and
+/// system-reminder messages skip timestamp injection entirely), so removing
+/// the struct-level `timestamp` field cannot hide a real content change.
+pub fn cache_relevant_message_value(message: &Message) -> serde_json::Value {
+    let mut value = serde_json::to_value(message).unwrap_or(serde_json::Value::Null);
+    if let serde_json::Value::Object(map) = &mut value {
+        // Struct-level metadata that is never part of the prompt token stream.
+        map.remove("timestamp");
+        map.remove("tool_duration_ms");
+        if let Some(serde_json::Value::Array(blocks)) = map.get_mut("content") {
+            // `ReasoningTrace` is documented as history-only and is never
+            // replayed to any provider, so it must not affect the cache key.
+            blocks.retain(|block| {
+                block.get("type").and_then(|kind| kind.as_str()) != Some("reasoning_trace")
+            });
+            for block in blocks.iter_mut() {
+                if let serde_json::Value::Object(block) = block
+                    && block.get("type").and_then(|kind| kind.as_str()) == Some("text")
+                {
+                    // The ephemeral cache breakpoint marker hops to the newest
+                    // message each turn; it marks where caching ends, not the
+                    // cached content itself.
+                    block.remove("cache_control");
+                }
+            }
+        }
+    }
+    value
+}
+
+/// Cache-relevant projections for a whole message list (see
+/// [`cache_relevant_message_value`]).
+pub fn cache_relevant_messages(messages: &[Message]) -> Vec<serde_json::Value> {
+    messages.iter().map(cache_relevant_message_value).collect()
+}
+
+/// Per-message hashes over the cache-relevant projection. These are the
+/// hashes compared across turns to decide whether the conversation prefix was
+/// mutated (a harness bug) or merely appended to (normal growth). Both the
+/// local TUI path and the server event path must use this same projection so
+/// prefix-change detection never keys off non-transmitted metadata.
+pub fn cache_relevant_message_hashes(messages: &[Message]) -> Vec<u64> {
+    messages
+        .iter()
+        .map(|message| {
+            let encoded =
+                serde_json::to_string(&cache_relevant_message_value(message)).unwrap_or_default();
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(&encoded, &mut hasher);
+            std::hash::Hasher::finish(&hasher)
+        })
+        .collect()
+}
+
 pub fn ends_with_fresh_user_turn(messages: &[Message]) -> bool {
     for msg in messages.iter().rev() {
         if msg.role != Role::User {
@@ -763,5 +831,63 @@ mod tests {
             "<system-reminder>\ninternal\n</system-reminder>",
         );
         assert!(text_of(&out[2]).contains("Time: 10:00:00 UTC"));
+    }
+
+    #[test]
+    fn cache_relevant_hashes_ignore_non_transmitted_metadata() {
+        // A persisted memory-injection message is re-serialized on the next
+        // turn with a later struct-level timestamp (and possibly a backfilled
+        // tool_duration_ms, a hopped cache_control breakpoint, or a
+        // history-only ReasoningTrace block). None of that is sent upstream,
+        // so the cache-relevant hash must be identical across both copies.
+        let sent = Message {
+            role: Role::User,
+            content: vec![ContentBlock::Text {
+                text: "<system-reminder>\n# Memory\n</system-reminder>".to_string(),
+                cache_control: None,
+            }],
+            timestamp: Some(chrono::Utc::now()),
+            tool_duration_ms: None,
+        };
+        let persisted = Message {
+            role: Role::User,
+            content: vec![
+                ContentBlock::Text {
+                    text: "<system-reminder>\n# Memory\n</system-reminder>".to_string(),
+                    cache_control: Some(CacheControl::ephemeral(None)),
+                },
+                ContentBlock::ReasoningTrace {
+                    text: "history-only scratch".to_string(),
+                },
+            ],
+            timestamp: Some(chrono::Utc::now() + chrono::Duration::seconds(7)),
+            tool_duration_ms: Some(42),
+        };
+
+        assert_eq!(
+            cache_relevant_message_hashes(&[sent.clone()]),
+            cache_relevant_message_hashes(&[persisted.clone()]),
+            "non-transmitted metadata must not change the cache-relevant hash"
+        );
+        assert_eq!(
+            cache_relevant_messages(&[sent]),
+            cache_relevant_messages(&[persisted]),
+            "cache-relevant projections must be byte-identical"
+        );
+    }
+
+    #[test]
+    fn cache_relevant_hashes_detect_real_content_change() {
+        let original = Message::user("original prompt");
+        let mut edited = original.clone();
+        if let Some(ContentBlock::Text { text, .. }) = edited.content.first_mut() {
+            *text = "edited prompt".to_string();
+        }
+
+        assert_ne!(
+            cache_relevant_message_hashes(&[original]),
+            cache_relevant_message_hashes(&[edited]),
+            "real content edits must still change the hash"
+        );
     }
 }
