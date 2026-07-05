@@ -4,7 +4,7 @@
 
 use jcode_tui_render::swarm_gallery::{
     GalleryMember, SwarmStripHint, render_swarm_compact, render_swarm_dock, render_swarm_panel,
-    render_swarm_strip,
+    render_swarm_strip, render_swarm_strip_vertical,
 };
 use jcode_tui_render::swarm_tiles::{SwarmGalleryConfig, SwarmTile, render_swarm_gallery};
 use ratatui::prelude::*;
@@ -179,23 +179,19 @@ fn main() {
     let hints = vec![
         SwarmStripHint {
             key: "alt+n".into(),
-            label: "focus".into(),
+            label: "next".into(),
         },
         SwarmStripHint {
-            key: "j/k".into(),
+            key: "alt+↑/↓".into(),
             label: "select".into(),
         },
         SwarmStripHint {
-            key: "o".into(),
-            label: "pop out".into(),
-        },
-        SwarmStripHint {
-            key: "enter".into(),
+            key: "alt+o".into(),
             label: "open".into(),
         },
         SwarmStripHint {
             key: "esc".into(),
-            label: "back".into(),
+            label: "exit".into(),
         },
     ];
     print_lines(
@@ -218,6 +214,59 @@ fn main() {
     print_lines(
         "STRIP: focused narrow @ width 54",
         &render_swarm_strip(&panel_members, 0, true, &hints, None, 5, 54, 12),
+    );
+
+    // ---- Vertical strip (default layout: one agent per row) ----
+    let mut vert_members = panel_members.clone();
+    for (m, icon) in vert_members.iter_mut().zip(["🦊", "🐝", "🐅", "🦉"]) {
+        m.icon = Some(icon.to_string());
+        m.task = Some(match m.label.as_str() {
+            "researcher" => "wire the auth flow".to_string(),
+            "implementer" => "audit the webhook path".to_string(),
+            "reviewer" => "support/contact page".to_string(),
+            _ => "misc background task".to_string(),
+        });
+    }
+    vert_members[1].todo = Some((3, 9));
+    print_lines(
+        "VERTICAL: unfocused @ width 90",
+        &render_swarm_strip_vertical(
+            &vert_members,
+            1,
+            false,
+            &hints,
+            Some("alt+n controls"),
+            0,
+            90,
+            4,
+            12,
+        ),
+    );
+    print_lines(
+        "VERTICAL: focused (accordion), selected #1 @ width 90",
+        &render_swarm_strip_vertical(&vert_members, 1, true, &hints, None, 3, 90, 4, 12),
+    );
+    print_lines(
+        "VERTICAL: 7 agents overflow @ width 80",
+        &render_swarm_strip_vertical(
+            &{
+                let mut many = Vec::new();
+                for i in 0..7 {
+                    let mut m = gm(&format!("agent-{i}"), None, "running", &[]);
+                    m.icon = Some("🐜".to_string());
+                    many.push(m);
+                }
+                many
+            },
+            0,
+            false,
+            &hints,
+            Some("alt+n controls"),
+            0,
+            80,
+            4,
+            12,
+        ),
     );
 
     // ---- Dock (vertical agent list for the info-widget margins) ----
