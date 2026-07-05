@@ -499,6 +499,171 @@ fn legacy_snapshot_without_mode_defaults_to_light() {
     assert_eq!(plan.version, 2);
 }
 
+/// Deterministic demonstration of the persist-snapshot version-inversion race
+/// (wiring-audit.persist-snapshot-inversion).
+///
+/// `persist_swarm_state_for` (server.rs) is `load_runtime().await` followed by
+/// a synchronous, unserialized `persist_swarm_state`. `load_runtime`
+/// (server/state.rs) clones the plan under `plans.read()` FIRST, then awaits
+/// three more locks (coordinators, swarms_by_id, members), so the cloned plan
+/// can go stale at any of those suspension points. On the multithreaded
+/// server runtime a second persist call can observe a NEWER plan and land it
+/// on disk while the first call is still suspended; when the first call
+/// resumes, its stale snapshot clobbers the newer one. Neither
+/// `persist_swarm_state` nor `storage::write_json_fast` compares versions:
+/// last rename wins.
+///
+/// This test parks persist A inside `load_runtime` at `members.read()`
+/// (after A has already cloned the v5 plan) behind a held `members.write()`
+/// gate, then performs mutator B's work while A is parked: bump the
+/// in-memory plan to v6 and run B's persist half (`persist_swarm_state` with
+/// the v6 runtime, exactly what B's unblocked `persist_swarm_state_for` does
+/// on another worker thread, where its uncontended lock reads resolve
+/// without suspending). v6 is then durably on disk. Releasing A regresses
+/// the durable snapshot back to v5.
+///
+/// Post-restart impact: `Server::new` seeds `SwarmState` from
+/// `load_runtime_state()` and `recover_headless_sessions_on_startup`
+/// (server.rs:584-918) drives recovery from that state, so a regressed
+/// snapshot silently restores the older plan: work completed between v5 and
+/// v6 flips back to queued/running_stale and newer node_meta artifacts are
+/// lost.
+///
+/// If this test starts failing with version == 6 at the final assert, the
+/// persist path gained ordering/version protection (e.g. a persist mutex per
+/// swarm, or persist_swarm_state refusing to overwrite a newer on-disk
+/// version); update the wiring audit.
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn persist_snapshot_can_regress_to_older_plan_version_when_calls_interleave() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let mut plan = VersionedPlan::new();
+    plan.version = 5;
+    plan.items = vec![crate::plan::PlanItem {
+        content: "task one".to_string(),
+        status: "queued".to_string(),
+        priority: "medium".to_string(),
+        id: "t1".to_string(),
+        subsystem: None,
+        file_scope: Vec::new(),
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    }];
+    let swarm_state = crate::server::SwarmState::new(
+        HashMap::new(),
+        HashMap::new(),
+        HashMap::from([("swarm-race".to_string(), plan)]),
+        HashMap::new(),
+    );
+
+    // Gate: hold members.write() so persist A parks inside load_runtime at
+    // the final members.read(), AFTER it has already cloned the v5 plan
+    // under plans.read().
+    let gate = swarm_state.members.write().await;
+
+    let a = tokio::spawn({
+        let swarm_state = swarm_state.clone();
+        async move {
+            crate::server::persist_swarm_state_for("swarm-race", &swarm_state).await;
+        }
+    });
+    // Current-thread test runtime: yielding runs A until it parks on the
+    // contended members.read().await, past its v5 plan clone.
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+
+    // Mutator B: bump the in-memory plan to v6 ...
+    let v6_plan = {
+        let mut plans = swarm_state.plans.write().await;
+        let plan = plans.get_mut("swarm-race").expect("plan");
+        plan.version = 6;
+        plan.clone()
+    };
+    // ... and B's persist half runs to completion while A is parked. In
+    // production this is B's own persist_swarm_state_for on another worker
+    // thread: nothing gates B on A (there is no per-swarm persist lock), so
+    // B's load_runtime observes v6 and its synchronous persist_swarm_state
+    // lands v6 on disk before A's task is polled again.
+    persist_swarm_state("swarm-race", Some(&v6_plan), None, &[]);
+    assert_eq!(
+        load_runtime_state()
+            .plans
+            .get("swarm-race")
+            .expect("v6 snapshot")
+            .version,
+        6,
+        "v6 must be durably on disk before A resumes"
+    );
+
+    // Release A: it resumes with its stale v5 runtime snapshot and
+    // synchronously overwrites the newer v6 snapshot.
+    drop(gate);
+    a.await.expect("persist task");
+
+    // Assert on the primary snapshot file directly: load_runtime_state()
+    // cannot be used here because it also reads the `.bak` file (see
+    // `load_runtime_state_reads_bak_files_as_snapshots` below), which after
+    // this sequence holds v6 and shadows the regressed primary in
+    // directory-iteration order.
+    let primary = storage::read_json::<PersistedSwarmState>(&state_path("swarm-race"))
+        .expect("primary snapshot");
+    assert_eq!(
+        primary.plan.expect("plan").version,
+        5,
+        "expected the stale persist to regress the durable snapshot to v5; \
+         if this reads 6 the persist path gained ordering/version protection \
+         (update the wiring audit)"
+    );
+    // The newer v6 snapshot survives only as the write_json_fast backup.
+    let backup = storage::read_json::<PersistedSwarmState>(
+        &state_path("swarm-race").with_extension("bak"),
+    )
+    .expect("backup snapshot");
+    assert_eq!(backup.plan.expect("plan").version, 6);
+}
+
+/// Companion finding discovered while writing the regression test above:
+/// `load_runtime_state` filters entries only with `path.is_file()`, with no
+/// `.json` extension check (unlike `migrate_legacy_state`, which does check).
+/// Since `storage::write_json_fast` leaves a `<swarm>.bak` hard link of the
+/// PREVIOUS snapshot next to the primary, startup restore parses both files
+/// and inserts them into the same maps keyed by `state.swarm_id`, so
+/// whichever the directory iterator yields last wins. After a regressed
+/// primary (v5) with a newer backup (v6), restart restore is therefore
+/// nondeterministic between the two. This test pins the underlying behavior
+/// deterministically: a `.bak` file with no primary at all is still loaded
+/// as a live snapshot.
+#[test]
+fn load_runtime_state_reads_bak_files_as_snapshots() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let snapshot = serde_json::json!({
+        "swarm_id": "swarm-bak-only",
+        "coordinator_session_id": "coord-from-bak",
+        "updated_at_unix_ms": 1u64
+    });
+    std::fs::create_dir_all(state_dir()).expect("state dir");
+    std::fs::write(
+        state_dir().join("swarm-bak-only.bak"),
+        serde_json::to_vec(&snapshot).unwrap(),
+    )
+    .expect("write bak snapshot");
+
+    let loaded = load_runtime_state();
+    assert_eq!(
+        loaded.coordinators.get("swarm-bak-only"),
+        Some(&"coord-from-bak".to_string()),
+        "load_runtime_state currently ingests .bak files as snapshots; if \
+         this fails the loader gained a .json extension filter (update the \
+         wiring audit and the primary-file assertions in \
+         persist_snapshot_can_regress_to_older_plan_version_when_calls_interleave)"
+    );
+}
+
 #[test]
 fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
     let dir = tempfile::TempDir::new().expect("tempdir");
