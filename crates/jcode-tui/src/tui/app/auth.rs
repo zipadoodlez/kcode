@@ -211,12 +211,19 @@ impl App {
                     crate::subscription_catalog::JCODE_API_KEY_ENV,
                     crate::subscription_catalog::JCODE_ENV_FILE,
                 )?;
-                crate::provider_catalog::save_env_value_to_env_file(
+                for env_key in [
                     crate::subscription_catalog::JCODE_API_BASE_ENV,
-                    crate::subscription_catalog::JCODE_ENV_FILE,
-                    None,
-                )?;
-                Ok("Logged out of jcode subscription API key.".to_string())
+                    crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
+                    crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
+                    crate::subscription_catalog::JCODE_TIER_ENV,
+                ] {
+                    crate::provider_catalog::save_env_value_to_env_file(
+                        env_key,
+                        crate::subscription_catalog::JCODE_ENV_FILE,
+                        None,
+                    )?;
+                }
+                Ok("Logged out of jcode subscription.".to_string())
             }
             LoginProviderTarget::Claude => {
                 let removed = crate::auth::claude::clear_accounts()?;
@@ -319,12 +326,19 @@ impl App {
             crate::subscription_catalog::JCODE_API_KEY_ENV,
             crate::subscription_catalog::JCODE_ENV_FILE,
         );
-        if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
+        for env_key in [
             crate::subscription_catalog::JCODE_API_BASE_ENV,
-            crate::subscription_catalog::JCODE_ENV_FILE,
-            None,
-        ) {
-            errors.push(format!("jcode subscription API base: {}", err));
+            crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
+            crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
+            crate::subscription_catalog::JCODE_TIER_ENV,
+        ] {
+            if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
+                env_key,
+                crate::subscription_catalog::JCODE_ENV_FILE,
+                None,
+            ) {
+                errors.push(format!("jcode subscription {}: {}", env_key, err));
+            }
         }
 
         Self::clear_api_key_logout_summary(

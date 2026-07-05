@@ -161,27 +161,52 @@ fn tui_jcode_subscription_logout_clears_key_and_base() -> anyhow::Result<()> {
             crate::subscription_catalog::JCODE_ENV_FILE,
             Some("https://subscription.example/v1"),
         )?;
+        crate::provider_catalog::save_env_value_to_env_file(
+            crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
+            crate::subscription_catalog::JCODE_ENV_FILE,
+            Some("acct_test"),
+        )?;
+        crate::provider_catalog::save_env_value_to_env_file(
+            crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
+            crate::subscription_catalog::JCODE_ENV_FILE,
+            Some("user@example.com"),
+        )?;
 
         App::clear_api_key_login(
             crate::subscription_catalog::JCODE_API_KEY_ENV,
             crate::subscription_catalog::JCODE_ENV_FILE,
         )?;
-        crate::provider_catalog::save_env_value_to_env_file(
+        for env_key in [
             crate::subscription_catalog::JCODE_API_BASE_ENV,
-            crate::subscription_catalog::JCODE_ENV_FILE,
-            None,
-        )?;
+            crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
+            crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
+            crate::subscription_catalog::JCODE_TIER_ENV,
+        ] {
+            crate::provider_catalog::save_env_value_to_env_file(
+                env_key,
+                crate::subscription_catalog::JCODE_ENV_FILE,
+                None,
+            )?;
+        }
 
         assert!(std::env::var_os(crate::subscription_catalog::JCODE_API_KEY_ENV).is_none());
         assert!(std::env::var_os(crate::subscription_catalog::JCODE_API_BASE_ENV).is_none());
+        assert!(std::env::var_os(crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV).is_none());
+        assert!(std::env::var_os(crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV).is_none());
         assert!(crate::subscription_catalog::configured_api_key().is_none());
-        assert!(
-            crate::provider_catalog::load_env_value_from_env_or_config(
-                crate::subscription_catalog::JCODE_API_BASE_ENV,
-                crate::subscription_catalog::JCODE_ENV_FILE,
-            )
-            .is_none()
-        );
+        for env_key in [
+            crate::subscription_catalog::JCODE_API_BASE_ENV,
+            crate::subscription_catalog::JCODE_ACCOUNT_ID_ENV,
+            crate::subscription_catalog::JCODE_ACCOUNT_EMAIL_ENV,
+        ] {
+            assert!(
+                crate::provider_catalog::load_env_value_from_env_or_config(
+                    env_key,
+                    crate::subscription_catalog::JCODE_ENV_FILE,
+                )
+                .is_none()
+            );
+        }
         Ok(())
     })
 }

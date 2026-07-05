@@ -11,6 +11,7 @@ use crate::provider_catalog::{
 
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
 
+mod jcode_device;
 mod scriptable;
 use scriptable::*;
 
@@ -271,7 +272,9 @@ pub async fn run_login_provider(
                 eprintln!("Imported {} existing auth source(s).", imported);
                 Ok(LoginFlowOutcome::Completed)
             }
-            LoginProviderTarget::Jcode => login_jcode_flow().map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::Jcode => {
+                login_jcode_flow(options.no_browser).map(|_| LoginFlowOutcome::Completed)
+            }
             LoginProviderTarget::Claude => login_claude_flow(account_label, options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
@@ -456,11 +459,21 @@ async fn notify_running_server_auth_changed_best_effort(provider: Option<&str>) 
     }
 }
 
-fn login_jcode_flow() -> Result<()> {
-    eprintln!("Setting up Jcode subscription access...");
+fn login_jcode_flow(no_browser: bool) -> Result<()> {
+    eprintln!("Starting jcode subscription sign-in...");
     eprintln!(
-        "Paste the jcode subscription API key from your account portal. This key is used for your curated jcode router access.\n"
+        "Enter the email for your jcode subscription account. We'll send you a sign-in link.\n(Or press Enter to paste an API key from your account portal instead.)\n"
     );
+    let email = read_line_trimmed("Email: ")?;
+
+    if !email.is_empty() {
+        return tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(jcode_device::login_jcode_device_flow(&email, no_browser))
+        });
+    }
+
+    eprintln!("\nFalling back to manual API key entry.");
     eprint!("Paste your Jcode API key: ");
     io::stdout().flush()?;
 
