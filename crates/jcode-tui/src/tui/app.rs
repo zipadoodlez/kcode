@@ -672,6 +672,25 @@ struct KvCacheState {
     kv_cache_turn_number: Option<usize>,
     kv_cache_turn_call_index: u16,
     kv_cache_miss_samples: Vec<KvCacheMissSample>,
+    /// Baseline completion time the cold-cache warning was last pushed for.
+    ///
+    /// The warning fires at most once per cache write: the idle tick warns as
+    /// soon as the TTL expires, and the request-start fallback is suppressed
+    /// for the same cold period. A newly completed call refreshes the
+    /// baseline's `completed_at`, which re-arms the warning automatically.
+    cold_cache_warned_baseline_completed_at: Option<Instant>,
+}
+
+/// Where a cold-cache warning is being surfaced from, so the copy can say
+/// "will be resent with your next message" while idle vs "may be resent on
+/// this request" when the request is already being built.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ColdCacheWarningTrigger {
+    /// The prompt-cache TTL expired while the session sat idle.
+    IdleExpiry,
+    /// A request is starting against an already-expired cache (fallback for
+    /// when the idle tick never got a chance to warn, e.g. suspended TUI).
+    RequestStart,
 }
 
 /// Live streaming/turn progress: streamed text, per-turn token counts, and the
@@ -1646,15 +1665,77 @@ impl App {
         let Some(baseline) = baseline else {
             return;
         };
+        self.push_cold_cache_warning_for_baseline(baseline, ColdCacheWarningTrigger::RequestStart);
+    }
+
+    /// Idle-tick counterpart of [`Self::maybe_push_cold_cache_warning`]: warn
+    /// in the transcript the moment the prompt-cache TTL expires while the
+    /// session sits idle, instead of only after the user submits the next
+    /// message and the miss is already unavoidable. Returns true when a
+    /// warning was pushed so the tick loop can request a redraw.
+    pub(super) fn maybe_push_idle_cold_cache_warning(&mut self) -> bool {
+        if self.is_processing {
+            return false;
+        }
+        // Cheap per-tick gates first: this runs on every tick (up to animation
+        // cadence), and the baseline clone below can carry a full request
+        // signature, so bail before cloning whenever possible.
+        {
+            let Some(baseline) = self.kv_cache.kv_cache_baseline.as_ref() else {
+                return false;
+            };
+            if self.kv_cache.cold_cache_warned_baseline_completed_at == Some(baseline.completed_at)
+            {
+                return false;
+            }
+            let Some(ttl_secs) =
+                crate::tui::cache_ttl_for_provider_model(&baseline.provider, Some(&baseline.model))
+            else {
+                return false;
+            };
+            if baseline.completed_at.elapsed().as_secs() < ttl_secs {
+                return false;
+            }
+        }
+        // Turn-1 sessions have no meaningful warm prefix to lose; mirror the
+        // request-start gate.
+        let user_turns = self
+            .display_messages
+            .iter()
+            .filter(|message| message.role == "user")
+            .count();
+        if user_turns < 1 {
+            return false;
+        }
+        let Some(baseline) = self.kv_cache_baseline_for_current_session() else {
+            return false;
+        };
+        self.push_cold_cache_warning_for_baseline(&baseline, ColdCacheWarningTrigger::IdleExpiry)
+    }
+
+    /// Push the cold-cache transcript warning if `baseline`'s TTL has expired
+    /// and this cold period has not been warned about yet. Returns true when
+    /// a warning was pushed.
+    fn push_cold_cache_warning_for_baseline(
+        &mut self,
+        baseline: &KvCacheBaseline,
+        trigger: ColdCacheWarningTrigger,
+    ) -> bool {
         let Some(ttl_secs) =
             crate::tui::cache_ttl_for_provider_model(&baseline.provider, Some(&baseline.model))
         else {
-            return;
+            return false;
         };
         let age_secs = baseline.completed_at.elapsed().as_secs();
         if age_secs < ttl_secs {
-            return;
+            return false;
         }
+        // Warn at most once per cache write (the baseline's completed_at is
+        // refreshed by every completed call, which re-arms the warning).
+        if self.kv_cache.cold_cache_warned_baseline_completed_at == Some(baseline.completed_at) {
+            return false;
+        }
+        self.kv_cache.cold_cache_warned_baseline_completed_at = Some(baseline.completed_at);
 
         let expired_ago_secs = age_secs.saturating_sub(ttl_secs);
         let tokens = baseline.input_tokens;
@@ -1665,10 +1746,15 @@ impl App {
         } else {
             tokens.to_string()
         };
+        let resend_clause = match trigger {
+            ColdCacheWarningTrigger::IdleExpiry => "will be resent with your next message",
+            ColdCacheWarningTrigger::RequestStart => "may be resent on this request",
+        };
         self.push_display_message(DisplayMessage::system(format!(
-            "🧊 Prompt cache is cold: ~{} input tokens may be resent on this request ({}s TTL expired {}s ago; last cache write was {}s ago). Use /cache to extend the timer before long breaks, or start a fresh/compacted session for very large histories.",
-            token_label, ttl_secs, expired_ago_secs, age_secs
+            "🧊 Prompt cache is cold: ~{} input tokens {} ({}s TTL expired {}s ago; last cache write was {}s ago). Use /cache to extend the timer before long breaks, or start a fresh/compacted session for very large histories.",
+            token_label, resend_clause, ttl_secs, expired_ago_secs, age_secs
         )));
+        true
     }
 
     pub(super) fn record_completed_stream_cache_usage(&mut self) -> bool {

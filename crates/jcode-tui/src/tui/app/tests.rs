@@ -183,6 +183,110 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
 }
 
 #[test]
+fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
+    // The whole point of the warning is to appear *before* the user submits
+    // the next message, so they can decide to /cache-extend or compact. The
+    // idle tick must therefore push it as soon as the TTL expires, not wait
+    // for the next request to start.
+    let mut app = create_test_app();
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+    app.display_messages.push(DisplayMessage::user("first"));
+    let session_id = app.kv_cache_session_id();
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id,
+        input_tokens: 42_000,
+        completed_at: Instant::now() - Duration::from_secs(3700),
+        provider: "anthropic".to_string(),
+        model: "claude-opus-4-6".to_string(),
+        upstream_provider: None,
+        signature: None,
+    });
+
+    assert!(
+        app.maybe_push_idle_cold_cache_warning(),
+        "idle tick should push the cold-cache warning once the TTL expires"
+    );
+    let warning = app
+        .display_messages()
+        .iter()
+        .find(|message| {
+            message.role == "system" && message.content.contains("Prompt cache is cold")
+        })
+        .expect("idle cold cache warning should be persisted in the transcript");
+    assert!(
+        warning
+            .content
+            .contains("will be resent with your next message"),
+        "{warning:?}"
+    );
+
+    // Subsequent ticks for the same cold period must not spam the transcript.
+    assert!(!app.maybe_push_idle_cold_cache_warning());
+    let count = app
+        .display_messages()
+        .iter()
+        .filter(|message| message.content.contains("Prompt cache is cold"))
+        .count();
+    assert_eq!(count, 1);
+
+    // And the request-start fallback must not duplicate the idle warning.
+    app.display_messages.push(DisplayMessage::user("second"));
+    app.begin_kv_cache_request(&[Message::user("second")], &[], "system", "");
+    let count = app
+        .display_messages()
+        .iter()
+        .filter(|message| message.content.contains("Prompt cache is cold"))
+        .count();
+    assert_eq!(
+        count, 1,
+        "request start should not repeat the warning for the same cold period"
+    );
+}
+
+#[test]
+fn idle_cold_cache_warning_waits_for_ttl_and_rearms_after_new_cache_write() {
+    let mut app = create_test_app();
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+    app.display_messages.push(DisplayMessage::user("first"));
+    let session_id = app.kv_cache_session_id();
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id: session_id.clone(),
+        input_tokens: 42_000,
+        completed_at: Instant::now() - Duration::from_secs(60),
+        provider: "anthropic".to_string(),
+        model: "claude-opus-4-6".to_string(),
+        upstream_provider: None,
+        signature: None,
+    });
+
+    assert!(
+        !app.maybe_push_idle_cold_cache_warning(),
+        "a warm cache must not warn"
+    );
+
+    // TTL expires: warn once.
+    app.kv_cache
+        .kv_cache_baseline
+        .as_mut()
+        .unwrap()
+        .completed_at = Instant::now() - Duration::from_secs(3700);
+    assert!(app.maybe_push_idle_cold_cache_warning());
+    assert!(!app.maybe_push_idle_cold_cache_warning());
+
+    // A new completed call refreshes the baseline (new cache write), which
+    // re-arms the warning for the next cold period.
+    app.kv_cache
+        .kv_cache_baseline
+        .as_mut()
+        .unwrap()
+        .completed_at = Instant::now() - Duration::from_secs(3800);
+    assert!(
+        app.maybe_push_idle_cold_cache_warning(),
+        "a fresh cache write should re-arm the cold warning"
+    );
+}
+
+#[test]
 fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
     // A warm session whose system prompt hash silently changes between turns is
     // the exact failure mode of the skill-ordering bug: the conversation only
