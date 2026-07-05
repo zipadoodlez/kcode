@@ -202,10 +202,14 @@ fn test_subscription_command_shows_jcode_status_scaffold() {
     assert_eq!(msg.role, "system");
     assert!(msg.content.contains("Jcode Subscription Status"));
     assert!(msg.content.contains("/login jcode"));
-    assert!(msg.content.contains("Healer Alpha"));
-    assert!(msg.content.contains("Kimi K2.5"));
-    assert!(msg.content.contains("$20 Starter"));
-    assert!(msg.content.contains("$100 Pro"));
+    assert!(msg.content.contains("Claude Opus 4.8"));
+    assert!(msg.content.contains("GPT-5.5"));
+    assert!(msg.content.contains("Claude Fable 5"));
+    assert!(msg.content.contains("GPT-5.6 Sol"));
+    assert!(msg.content.contains("Plus"));
+    assert!(msg.content.contains("Flagship"));
+    assert!(msg.content.contains("$10/mo"));
+    assert!(msg.content.contains("$1000/mo"));
 }
 
 #[test]
