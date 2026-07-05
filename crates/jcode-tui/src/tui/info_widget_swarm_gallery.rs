@@ -11,6 +11,7 @@ use crate::protocol::SwarmMemberStatus;
 use jcode_tui_render::swarm_gallery::{
     GalleryMember, SwarmStripHint, display_order, humanize_age, render_gallery,
     render_swarm_compact, render_swarm_dock, render_swarm_panel, render_swarm_strip,
+    render_swarm_strip_vertical,
 };
 use ratatui::prelude::*;
 
@@ -19,6 +20,20 @@ fn member_label(member: &SwarmMemberStatus) -> String {
         .friendly_name
         .clone()
         .unwrap_or_else(|| member.session_id.chars().take(8).collect())
+}
+
+/// Session icon (emoji) for a member, derived from its friendly name (session
+/// names come from the shared `SESSION_NAMES` word list, e.g. "fox" -> 🦊).
+/// Falls back to `None` when the name is unknown so the strip shows the name.
+fn member_icon(member: &SwarmMemberStatus) -> Option<String> {
+    let name = member.friendly_name.as_deref()?;
+    let icon = crate::id::session_icon(name);
+    if icon == "💫" {
+        // Unknown word: don't show the generic fallback, keep the name.
+        None
+    } else {
+        Some(icon.to_string())
+    }
 }
 
 /// Age marker appended to member bodies, e.g. "· 7s ago" or "· now".
@@ -61,6 +76,7 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
         .iter()
         .map(|member| GalleryMember {
             label: member_label(member),
+            icon: member_icon(member),
             status: member.status.clone(),
             task: member.task_label.clone(),
             role: member.role.clone(),
@@ -117,6 +133,10 @@ pub(crate) fn render_swarm_panel_lines(
 /// Render the compact swarm strip (agent chips + status glyphs + todo counts)
 /// shown directly above the status line.
 ///
+/// The layout follows `agents.swarm_strip_layout`: `vertical` (default) lists
+/// one agent per row (session icon + task, capped to a few rows), while
+/// `horizontal` packs all agents as chips on a single row.
+///
 /// `focus_key` is the configured chord to enter the controls (e.g. "ctrl+t"),
 /// used both for the unfocused enter-hint and as the first focused hint.
 /// `spinner_frame` animates active agents' glyphs. `max_height` bounds the
@@ -148,21 +168,42 @@ pub(crate) fn render_swarm_strip_lines(
             label: "exit".into(),
         },
     ];
-    render_swarm_strip(
-        &members_to_gallery(members),
-        selected,
-        focused,
-        &hints,
-        if focused {
-            None
-        } else {
-            Some(enter_hint.as_str())
-        },
-        spinner_frame,
-        width,
-        max_height,
-    )
+    match crate::config::config().agents.swarm_strip_layout {
+        crate::config::SwarmStripLayout::Vertical => render_swarm_strip_vertical(
+            &members_to_gallery(members),
+            selected,
+            focused,
+            &hints,
+            if focused {
+                None
+            } else {
+                Some(enter_hint.as_str())
+            },
+            spinner_frame,
+            width,
+            SWARM_STRIP_VERTICAL_MAX_ROWS,
+            max_height,
+        ),
+        crate::config::SwarmStripLayout::Horizontal => render_swarm_strip(
+            &members_to_gallery(members),
+            selected,
+            focused,
+            &hints,
+            if focused {
+                None
+            } else {
+                Some(enter_hint.as_str())
+            },
+            spinner_frame,
+            width,
+            max_height,
+        ),
+    }
 }
+
+/// Row cap for the vertical strip: agents beyond this collapse into a
+/// `+N more` line (the cap includes that overflow row).
+const SWARM_STRIP_VERTICAL_MAX_ROWS: usize = 4;
 
 /// Render the compact swarm widget body: at most two lines, an agents/nodes
 /// summary plus a green/yellow/empty plan progress bar. `plan` is the

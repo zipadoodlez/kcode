@@ -10,8 +10,8 @@ pub use jcode_config_types::{
     LaunchHotkeyEntry, LaunchHotkeysConfig, MarkdownSpacingMode, NamedProviderAuth,
     NamedProviderConfig, NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig,
     NotificationsConfig, PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
-    SessionPickerResumeAction, SwarmSpawnMode, TerminalConfig, UpdateChannel, WebSearchConfig,
-    WebSearchEngine,
+    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
+    WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -154,6 +154,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_SWARM_MODEL",
     "JCODE_SWARM_MAX_CONCURRENT_AGENTS",
     "JCODE_SWARM_SPAWN_MODE",
+    "JCODE_SWARM_STRIP_LAYOUT",
     "JCODE_TELEGRAM_BOT_TOKEN",
     "JCODE_TELEGRAM_CHAT_ID",
     "JCODE_TELEGRAM_REPLY_ENABLED",

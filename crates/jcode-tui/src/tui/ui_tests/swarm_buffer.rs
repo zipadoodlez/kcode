@@ -72,18 +72,26 @@ fn swarm_strip_full_draw_writes_chips_row_above_status_line() {
     let status_area = crate::tui::ui::last_status_area().expect("status area recorded");
     assert!(status_area.y > 0, "status line should not be the top row");
     let rows = buffer_rows(&terminal);
-    let strip_row = &rows[(status_area.y - 1) as usize];
+    // Vertical strip (default layout): one agent per row directly above the
+    // status line, first row carrying the 🐝 marker.
+    let strip_rows = rows[..status_area.y as usize]
+        .iter()
+        .rev()
+        .take(2)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
-        strip_row.contains("swarm"),
-        "expected the swarm strip on the row above the status line, got: {strip_row:?}"
+        strip_rows.contains("🐝"),
+        "expected the swarm marker above the status line, got: {strip_rows:?}"
     );
     assert!(
-        strip_row.contains("researcher"),
-        "expected member chip in strip row cells, got: {strip_row:?}"
+        strip_rows.contains("researcher"),
+        "expected member row in strip cells, got: {strip_rows:?}"
     );
     assert!(
-        strip_row.contains("2/5"),
-        "expected todo progress counter in strip row cells, got: {strip_row:?}"
+        strip_rows.contains("2/5"),
+        "expected todo progress counter in strip cells, got: {strip_rows:?}"
     );
 }
 
@@ -314,9 +322,15 @@ fn swarm_strip_stands_down_through_dock_blinks() {
             .expect("draw with engaged dock should not panic");
         let status_area = crate::tui::ui::last_status_area().expect("status area recorded");
         let rows = buffer_rows(&terminal);
-        let above_status = &rows[(status_area.y - 1) as usize];
+        let above_status = rows[..status_area.y as usize]
+            .iter()
+            .rev()
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(
-            !above_status.contains("swarm"),
+            !above_status.contains("🐝") && !above_status.contains("researcher"),
             "strip must not render while the dock stands it down, got: {above_status:?}"
         );
     }

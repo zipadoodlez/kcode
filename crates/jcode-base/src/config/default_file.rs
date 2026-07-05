@@ -331,6 +331,13 @@ swarm_max_concurrent_agents = 32
 # near the minimum to collapse the gallery to a thin strip.
 # swarm_gallery_max_pct = 40
 #
+# Layout of the inline swarm strip above the status line:
+#   "vertical"   - one agent per row (session icon + status + task), capped to
+#                  a few rows with a "+N more" overflow marker (default)
+#   "horizontal" - all agents packed as chips on a single row
+# Env override: JCODE_SWARM_STRIP_LAYOUT
+# swarm_strip_layout = "vertical"
+#
 # Model for the memory sidecar (relevance/extraction). Unset = sidecar auto-select.
 # Env override: JCODE_MEMORY_MODEL
 # memory_model = "claude-haiku-4"

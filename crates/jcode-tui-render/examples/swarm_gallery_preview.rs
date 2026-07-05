@@ -128,6 +128,7 @@ fn main() {
     // ---- New list+detail panel ----
     let gm = |name: &str, role: Option<&str>, status: &str, body: &[&str]| GalleryMember {
         label: name.to_string(),
+        icon: None,
         status: status.to_string(),
         task: None,
         role: role.map(str::to_string),

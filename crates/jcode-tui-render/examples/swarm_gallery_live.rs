@@ -98,6 +98,7 @@ fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
             body.push(format!("· {} ago", humanize_age(w.age_secs())));
             GalleryMember {
                 label: w.name.clone(),
+                icon: None,
                 status: w.status.clone(),
                 task: None,
                 role: w.role.map(str::to_string),

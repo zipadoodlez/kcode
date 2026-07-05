@@ -12,6 +12,7 @@ use unicode_width::UnicodeWidthStr;
 fn member(id: &str, status: &str, role: Option<&str>, body: &[&str]) -> GalleryMember {
     GalleryMember {
         label: id.to_string(),
+        icon: None,
         status: status.to_string(),
         task: None,
         role: role.map(str::to_string),

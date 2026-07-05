@@ -129,6 +129,9 @@ pub fn gallery_header(total: usize, active: usize) -> Line<'static> {
 pub struct GalleryMember {
     /// Display title (friendly name or short id).
     pub label: String,
+    /// Optional session icon (emoji) shown in place of the name on the
+    /// vertical strip, e.g. "🦊" for a session named "fox".
+    pub icon: Option<String>,
     /// Lifecycle status string (drives the badge text and accent color).
     pub status: String,
     /// Short label of the task this member was spawned/assigned for. Shown
@@ -626,6 +629,222 @@ pub fn render_swarm_strip(
         clamp_line_to_width(line, width);
     }
 
+    out
+}
+
+/// Render the vertical swarm strip shown directly above the status line: one
+/// agent per row, capped to `max_rows` agent lines with a `+N more` overflow
+/// marker on the last row.
+///
+/// Each row is `<icon> <status glyph> <name> · <task>` with a right-aligned
+/// todo counter when present. The first row carries the leading "🐝" swarm
+/// marker; the header tally (`M/N active`) and the enter hint live on the
+/// first row's right side, mirroring the horizontal strip.
+///
+/// - Unfocused: up to `max_rows` agent rows.
+/// - Focused: the rows (selected agent highlighted) + an expanded detail
+///   viewport for the hovered agent + a keybinding hint line, all bounded by
+///   `max_height` total lines.
+///
+/// ```text
+/// 🐝 ⠙ 🦊 fox · wire the auth flow 3/9        2/3 active · alt+n controls
+///    ⠹ 🐝 bee · audit the webhook path
+///    ✓ 🐅 tigress · support/contact page
+///    +2 more
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn render_swarm_strip_vertical(
+    members: &[GalleryMember],
+    selected: usize,
+    focused: bool,
+    hints: &[SwarmStripHint],
+    enter_hint: Option<&str>,
+    spinner_frame: usize,
+    width: usize,
+    max_rows: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() || width < 8 || max_rows == 0 {
+        return Vec::new();
+    }
+    let ordered = sort_members_for_display(members);
+    let selected = selected.min(ordered.len().saturating_sub(1));
+    let active = members
+        .iter()
+        .filter(|m| is_active_status(&m.status))
+        .count();
+
+    // Row budget: reserve one row for "+N more" when not everything fits.
+    let shown = if ordered.len() <= max_rows {
+        ordered.len()
+    } else {
+        max_rows.saturating_sub(1).max(1)
+    };
+    let hidden = ordered.len() - shown;
+
+    // Keep the selected agent visible: window the list around the selection.
+    let start = if selected >= shown {
+        selected + 1 - shown
+    } else {
+        0
+    };
+
+    // ---- First-row right tail: "M/N active" plus the controls hint. ----
+    let tally = format!("{active}/{} active", members.len());
+    let tally_w = disp_w(&tally);
+    let hint_text = if focused { None } else { enter_hint };
+    let hint_sep = " · ";
+    let gap = 2usize;
+    let hint_w = hint_text.map(|h| disp_w(h) + disp_w(hint_sep)).unwrap_or(0);
+
+    const LEAD: &str = "🐝 ";
+    const INDENT: &str = "   ";
+    let lead_w = disp_w(LEAD);
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    for (row, m) in ordered.iter().enumerate().skip(start).take(shown) {
+        let first = out.is_empty();
+        let is_sel = row == selected;
+        let color = status_accent(&m.status);
+        let glyph = status_glyph(&m.status, spinner_frame);
+        let todo = m.todo.map(|(done, total)| format!("{done}/{total}"));
+
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        if first {
+            spans.push(Span::styled(
+                LEAD.to_string(),
+                Style::default().fg(rgb(255, 200, 100)),
+            ));
+        } else {
+            spans.push(Span::raw(INDENT));
+        }
+
+        // Right tail only on the first row; degrade by dropping hint first.
+        let (row_tail_w, show_hint) = if first {
+            if lead_w + gap + tally_w + hint_w + 16 <= width && hint_w > 0 {
+                (tally_w + hint_w, true)
+            } else if lead_w + gap + tally_w + 12 <= width {
+                (tally_w, false)
+            } else {
+                (0, false)
+            }
+        } else {
+            (0, false)
+        };
+
+        let body_budget = width
+            .saturating_sub(lead_w)
+            .saturating_sub(if row_tail_w > 0 { row_tail_w + gap } else { 0 });
+
+        // <glyph> [icon ]<name>[ · task][ done/total]
+        let mut style = Style::default().fg(color);
+        if is_sel && focused {
+            style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+        } else if is_sel {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        let ident = match m.icon.as_deref().filter(|i| !i.is_empty()) {
+            Some(icon) => icon.to_string(),
+            None => m.label.clone(),
+        };
+        let head = format!("{glyph} {ident}");
+        let head_w = disp_w(&head);
+        let todo_w = todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0);
+        let mut used = head_w;
+        spans.push(Span::styled(head, style));
+
+        if let Some(task) = m.task.as_deref().filter(|t| !t.trim().is_empty()) {
+            let avail = body_budget.saturating_sub(used + todo_w + disp_w(" · "));
+            if avail >= CHIP_TASK_MIN_W {
+                let label = truncate_label(task, avail);
+                used += disp_w(" · ") + disp_w(&label);
+                spans.push(Span::styled(
+                    format!(" · {label}"),
+                    Style::default().fg(rgb(150, 150, 160)),
+                ));
+            }
+        }
+        if let Some(todo) = &todo {
+            if used + todo_w <= body_budget {
+                used += todo_w;
+                spans.push(Span::styled(
+                    format!(" {todo}"),
+                    Style::default().fg(rgb(130, 130, 140)),
+                ));
+            }
+        }
+
+        // ---- Right-align the first-row tail ----
+        if row_tail_w > 0 {
+            let consumed = lead_w + used;
+            if consumed + gap + row_tail_w <= width {
+                let pad = width - consumed - row_tail_w;
+                spans.push(Span::raw(" ".repeat(pad)));
+                spans.push(Span::styled(
+                    tally.clone(),
+                    Style::default().fg(if active > 0 {
+                        rgb(255, 200, 100)
+                    } else {
+                        rgb(120, 120, 130)
+                    }),
+                ));
+                if show_hint && let Some(hint) = hint_text {
+                    spans.push(Span::styled(
+                        hint_sep.to_string(),
+                        Style::default().fg(rgb(80, 80, 90)),
+                    ));
+                    spans.push(Span::styled(
+                        hint.to_string(),
+                        Style::default().fg(rgb(110, 130, 170)),
+                    ));
+                }
+            }
+        }
+        out.push(Line::from(spans));
+    }
+
+    if hidden > 0 {
+        out.push(Line::from(vec![
+            Span::raw(INDENT),
+            Span::styled(
+                format!("+{hidden} more"),
+                Style::default().fg(rgb(140, 140, 150)),
+            ),
+        ]));
+    }
+
+    // ---- Focused extras: expanded detail viewport + hint line ----
+    if focused {
+        let hint_rows = usize::from(!hints.is_empty());
+        let detail_budget = max_height.saturating_sub(out.len() + hint_rows);
+        if let Some(m) = ordered.get(selected)
+            && detail_budget >= 4
+        {
+            out.extend(render_hovered_detail(m, spinner_frame, width, detail_budget));
+        }
+        if !hints.is_empty() {
+            let mut hint_spans: Vec<Span<'static>> = vec![Span::raw(INDENT)];
+            for (i, h) in hints.iter().enumerate() {
+                if i > 0 {
+                    hint_spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+                }
+                hint_spans.push(Span::styled(
+                    h.key.clone(),
+                    Style::default().fg(rgb(150, 170, 210)),
+                ));
+                hint_spans.push(Span::raw(" "));
+                hint_spans.push(Span::styled(
+                    h.label.clone(),
+                    Style::default().fg(rgb(120, 120, 130)),
+                ));
+            }
+            out.push(Line::from(hint_spans));
+        }
+    }
+
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
     out
 }
 
@@ -1340,6 +1559,7 @@ mod tests {
     fn member(id: &str, status: &str, role: Option<&str>, body: &[&str]) -> GalleryMember {
         GalleryMember {
             label: id.to_string(),
+            icon: None,
             status: status.to_string(),
             task: None,
             role: role.map(str::to_string),
@@ -1565,6 +1785,119 @@ mod tests {
     #[test]
     fn strip_empty_renders_nothing() {
         assert!(render_swarm_strip(&[], 0, true, &hints(), None, 0, 80, 12).is_empty());
+    }
+
+    #[test]
+    fn vertical_strip_empty_renders_nothing() {
+        assert!(render_swarm_strip_vertical(&[], 0, true, &hints(), None, 0, 80, 4, 12).is_empty());
+    }
+
+    #[test]
+    fn vertical_strip_lists_one_agent_per_row_with_icon_and_task() {
+        let mut a = member("fox", "running", None, &[]);
+        a.icon = Some("🦊".to_string());
+        a.task = Some("wire the auth flow".to_string());
+        a.todo = Some((3, 9));
+        let mut b = member("bee", "completed", None, &[]);
+        b.icon = Some("🐝".to_string());
+        b.task = Some("audit the webhook path".to_string());
+        let lines =
+            render_swarm_strip_vertical(&[a, b], 0, false, &hints(), Some("alt+n controls"), 0, 90, 4, 12);
+        assert_eq!(lines.len(), 2, "one row per agent");
+        let row0 = plain_line(&lines[0]);
+        let row1 = plain_line(&lines[1]);
+        assert!(row0.contains("🐝"), "first row carries the swarm marker: {row0:?}");
+        assert!(row0.contains("🦊"), "icon replaces the name: {row0:?}");
+        assert!(!row0.contains("fox"), "name hidden when icon present: {row0:?}");
+        assert!(row0.contains("wire the auth flow"), "task shown: {row0:?}");
+        assert!(row0.contains("3/9"), "todo counter shown: {row0:?}");
+        assert!(row0.contains("1/2 active"), "tally on first row: {row0:?}");
+        assert!(row0.contains("alt+n controls"), "hint on first row: {row0:?}");
+        assert!(row1.contains("audit the webhook path"), "second agent row: {row1:?}");
+        assert!(!row1.contains("active"), "tally only on first row: {row1:?}");
+        for line in &lines {
+            assert!(line.width() <= 90);
+        }
+    }
+
+    #[test]
+    fn vertical_strip_falls_back_to_name_without_icon() {
+        let members = vec![member("zeta", "running", None, &[])];
+        let lines = render_swarm_strip_vertical(&members, 0, false, &hints(), None, 0, 80, 4, 12);
+        assert!(plain_line(&lines[0]).contains("zeta"));
+    }
+
+    #[test]
+    fn vertical_strip_caps_rows_and_reports_overflow() {
+        let members: Vec<GalleryMember> = (0..7)
+            .map(|i| member(&format!("agent{i}"), "running", None, &[]))
+            .collect();
+        let lines = render_swarm_strip_vertical(&members, 0, false, &hints(), None, 0, 80, 4, 12);
+        assert_eq!(lines.len(), 4, "capped to max_rows lines");
+        let last = plain_line(&lines[3]);
+        assert!(last.contains("+4 more"), "overflow marker: {last:?}");
+    }
+
+    #[test]
+    fn vertical_strip_windows_to_keep_selection_visible() {
+        let members: Vec<GalleryMember> = (0..7)
+            .map(|i| member(&format!("agent{i}"), "running", None, &[]))
+            .collect();
+        let lines = render_swarm_strip_vertical(&members, 6, true, &[], None, 0, 80, 4, 4);
+        let text: String = lines.iter().map(plain_line).collect();
+        assert!(text.contains("agent6"), "selected agent visible: {text:?}");
+    }
+
+    #[test]
+    fn vertical_strip_focused_shows_detail_and_hints() {
+        let members = vec![
+            member("fox", "running", None, &["compiling the renderer"]),
+            member("bee", "ready", None, &[]),
+        ];
+        let lines = render_swarm_strip_vertical(&members, 0, true, &hints(), None, 0, 80, 4, 14);
+        let text: String = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert!(
+            text.contains("compiling the renderer"),
+            "hovered detail shown: {text:?}"
+        );
+        assert!(text.contains("pop out"), "hint line shown: {text:?}");
+    }
+
+    #[test]
+    fn vertical_strip_is_display_width_bounded_at_all_widths() {
+        let mut wide = member("調整役エージェント", "running", Some("coordinator"), &[]);
+        wide.icon = Some("🐯".to_string());
+        wide.task = Some("寬字元邊界の検証テスト for the renderer".to_string());
+        wide.todo = Some((12, 34));
+        let members = vec![
+            wide,
+            member("bee", "completed", None, &[]),
+            member("fox", "failed", None, &[]),
+            member("owl", "thinking", None, &[]),
+            member("ram", "ready", None, &[]),
+        ];
+        for width in 0..=120 {
+            for focused in [false, true] {
+                let lines = render_swarm_strip_vertical(
+                    &members,
+                    2,
+                    focused,
+                    &hints(),
+                    Some("alt+n controls"),
+                    3,
+                    width,
+                    4,
+                    12,
+                );
+                for line in &lines {
+                    assert!(
+                        line.width() <= width,
+                        "line wider than {width}: {:?}",
+                        plain_line(line)
+                    );
+                }
+            }
+        }
     }
 
     #[test]
