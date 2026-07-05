@@ -229,12 +229,48 @@ pub fn allocator_info() -> AllocatorInfo {
 /// heap into "live" (bytes the app currently holds) and "retained" (bytes
 /// freed by the app but kept by the allocator), which is the distinction that
 /// matters when diagnosing unattributed RSS.
+///
+/// `mallinfo2` is resolved with `dlsym` instead of linked directly: release
+/// binaries are built against a glibc 2.17 (manylinux2014) baseline where the
+/// symbol does not exist, so a direct call fails to link. At runtime on a
+/// modern glibc the lookup succeeds and stats work as before; on an old glibc
+/// this returns `None` and callers already treat stats as unavailable.
 #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
 fn glibc_malloc_stats() -> Option<AllocatorStats> {
+    // Mirrors glibc's `struct mallinfo2` (all fields `size_t`).
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct Mallinfo2 {
+        arena: libc::size_t,
+        ordblks: libc::size_t,
+        smblks: libc::size_t,
+        hblks: libc::size_t,
+        hblkhd: libc::size_t,
+        usmblks: libc::size_t,
+        fsmblks: libc::size_t,
+        uordblks: libc::size_t,
+        fordblks: libc::size_t,
+        keepcost: libc::size_t,
+    }
+    type Mallinfo2Fn = unsafe extern "C" fn() -> Mallinfo2;
+
+    static MALLINFO2: std::sync::OnceLock<Option<Mallinfo2Fn>> = std::sync::OnceLock::new();
+    let mallinfo2 = (*MALLINFO2.get_or_init(|| {
+        // Safety: dlsym with a NUL-terminated literal; the default namespace
+        // (RTLD_DEFAULT) searches the already-loaded glibc.
+        let sym = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"mallinfo2".as_ptr()) };
+        if sym.is_null() {
+            None
+        } else {
+            // Safety: glibc's mallinfo2 has exactly this signature.
+            Some(unsafe { std::mem::transmute::<*mut libc::c_void, Mallinfo2Fn>(sym) })
+        }
+    }))?;
+
     // Totals are summed across all arenas by modern glibc.
     // uordblks: in-use arena bytes; fordblks: freed-but-retained arena bytes;
     // hblkhd: mmap-backed allocation bytes; arena: total sbrk/mmap arena size.
-    let info = unsafe { libc::mallinfo2() };
+    let info = unsafe { mallinfo2() };
     let live = (info.uordblks as u64).saturating_add(info.hblkhd as u64);
     let mapped = (info.arena as u64).saturating_add(info.hblkhd as u64);
     Some(AllocatorStats {
