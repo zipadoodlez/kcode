@@ -140,6 +140,50 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
 }
 
 #[test]
+fn ready_headless_member_with_report_survives_reload_without_crashed_status() {
+    // A headless worker that finished its task (status "ready", completion
+    // report recorded) must not be resurrected as "crashed" after a server
+    // reload: nothing in-flight was lost. Regression test for finished swarm
+    // workers reporting "(crashed)" in await_members summaries after reloads.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: "session-ready".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: Some(PathBuf::from("/tmp/swarm-gamma")),
+        swarm_id: Some("swarm-gamma".to_string()),
+        swarm_enabled: true,
+        status: "ready".to_string(),
+        detail: None,
+        friendly_name: Some("pig".to_string()),
+        report_back_to_session_id: Some("session-coordinator".to_string()),
+        latest_completion_report: Some("Done. Built the worker; all tests pass.".to_string()),
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        task_label: None,
+    }];
+
+    persist_swarm_state("swarm-gamma", None, None, &members);
+    let loaded = load_runtime_state();
+
+    let recovered = loaded.members.get("session-ready").expect("member");
+    assert_eq!(recovered.status, "ready");
+    assert_eq!(recovered.detail, None);
+    assert_eq!(
+        recovered.latest_completion_report.as_deref(),
+        Some("Done. Built the worker; all tests pass.")
+    );
+}
+
+#[test]
 fn remove_swarm_state_deletes_persisted_snapshot() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
