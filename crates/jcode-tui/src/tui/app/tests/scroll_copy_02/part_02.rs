@@ -980,6 +980,95 @@ fn test_real_draw_click_on_body_anchored_image_label_cycles_level() {
     assert_eq!(app.status_notice(), Some("Image size: large".to_string()));
 }
 
+/// The inline-image placeholder marker row must never reach the terminal as
+/// text. It used to be drawn black-on-black and relied on staying invisible,
+/// but terminal-side compositing (kitty translucent background + contrast
+/// compositing) and selection highlighting can recolor it, leaking raw
+/// "IIMG:<hash>:..." into the transcript whenever the image is not painted
+/// over it (cold cache after reload, prewarm in flight, no image protocol).
+/// The draw path must blank marker rows instead.
+#[test]
+fn test_real_draw_never_emits_inline_image_marker_text() {
+    use crate::message::{ContentBlock, Role};
+
+    let _render_lock = scroll_render_test_lock();
+    let mut app = create_test_app();
+    assert!(!app.is_remote, "repro must use the local image render path");
+
+    const TOOL_ID: &str = "read-shot-marker";
+
+    app.session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "read the screenshot".to_string(),
+            cache_control: None,
+        }],
+    );
+    app.session.add_message(
+        Role::Assistant,
+        vec![ContentBlock::ToolUse {
+            id: TOOL_ID.to_string(),
+            name: "read".to_string(),
+            input: serde_json::json!({"file_path": "shot.png"}),
+            thought_signature: None,
+        }],
+    );
+    app.session.add_message(
+        Role::User,
+        vec![
+            ContentBlock::ToolResult {
+                tool_use_id: TOOL_ID.to_string(),
+                content: "read image".to_string(),
+                is_error: None,
+            },
+            ContentBlock::Image {
+                media_type: "image/png".to_string(),
+                data: REPRO_TINY_PNG_B64.to_string(),
+            },
+        ],
+    );
+
+    app.display_messages = vec![
+        DisplayMessage::user("read the screenshot"),
+        DisplayMessage::tool(
+            "read shot.png",
+            crate::message::ToolCall {
+                id: TOOL_ID.to_string(),
+                name: "read".to_string(),
+                input: serde_json::json!({"file_path": "shot.png"}),
+                intent: None,
+                thought_signature: None,
+            },
+        ),
+    ];
+    app.bump_display_messages_version();
+    app.invalidate_side_pane_images_signature();
+    app.pin_images = true;
+    app.inline_images_visible = true;
+    app.scroll_offset = 0;
+    app.auto_scroll_paused = false;
+    app.is_processing = false;
+    app.status = ProcessingStatus::Idle;
+    app.session.short_name = Some("test".to_string());
+
+    let backend = ratatui::backend::TestBackend::new(80, 40);
+    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
+    let rendered = render_and_snap(&app, &mut terminal);
+
+    assert!(
+        rendered.contains("shot.png"),
+        "sanity: the anchored image's label line must render, got:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("IIMG"),
+        "raw inline-image marker text must never be drawn to the terminal, got:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("MERMAID_IMAGE"),
+        "raw mermaid marker text must never be drawn to the terminal, got:\n{rendered}"
+    );
+}
+
 /// Clicking anywhere on the image body (its placeholder rows) must cycle the
 /// expand level, exactly like the label badge. Clicks in the blank area to
 /// the RIGHT of a narrow image must not.
