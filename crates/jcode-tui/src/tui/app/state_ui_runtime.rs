@@ -125,7 +125,15 @@ impl App {
         self.last_api_completed_provider = Some(<Self as TuiState>::provider_name(self));
         self.last_api_completed_model = Some(<Self as TuiState>::provider_model(self));
         self.last_turn_input_tokens = {
-            let input = self.streaming.streaming_input_tokens;
+            // Effective prompt size (input + cache read + creation): for
+            // split-accounting providers bare input is only the uncached
+            // remainder, and this figure feeds the cache countdown/cold
+            // indicators as "what gets resent".
+            let input = crate::tui::info_widget::effective_prompt_tokens(
+                self.streaming.streaming_input_tokens,
+                self.streaming.streaming_cache_read_tokens.unwrap_or(0),
+                self.streaming.streaming_cache_creation_tokens.unwrap_or(0),
+            );
             if input > 0 { Some(input) } else { None }
         };
 

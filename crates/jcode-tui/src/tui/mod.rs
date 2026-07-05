@@ -556,7 +556,7 @@ pub trait TuiState {
                 return true;
             }
             if let Some(cache_info) = self.cache_ttl_status()
-                && (cache_info.is_cold || cache_info.remaining_secs <= 60)
+                && (cache_info.is_cold || cache_info.expiring_soon())
             {
                 return true;
             }
@@ -595,6 +595,24 @@ pub struct CacheTtlInfo {
     pub is_cold: bool,
     /// Estimated cached tokens (from last response's input tokens)
     pub cached_tokens: Option<u64>,
+}
+
+impl CacheTtlInfo {
+    /// How long before expiry the `⏳ cache ...` countdown should appear.
+    ///
+    /// A fixed 60s window is fine for a 5-minute TTL but far too easy to miss
+    /// on a 1-hour (or 24-hour) TTL where stepping away is exactly the failure
+    /// mode. Scale with the TTL (10%) but keep it within 60s..10min so short
+    /// TTLs keep their old behavior and long TTLs don't nag for hours.
+    pub fn warn_window_secs(&self) -> u64 {
+        (self.ttl_secs / 10).clamp(60, 600)
+    }
+
+    /// Whether the cache is warm but close enough to expiry that the
+    /// countdown should be shown (and idle redraws kept alive).
+    pub fn expiring_soon(&self) -> bool {
+        !self.is_cold && self.remaining_secs <= self.warn_window_secs()
+    }
 }
 
 /// Prompt cache TTL helpers now live in `crate::provider` (provider
@@ -1396,7 +1414,7 @@ fn cache_cold_countdown_redraw_active(state: &dyn TuiState) -> bool {
     }
     state
         .cache_ttl_status()
-        .map(|info| info.is_cold || info.remaining_secs <= 60)
+        .map(|info| info.is_cold || info.expiring_soon())
         .unwrap_or(false)
 }
 

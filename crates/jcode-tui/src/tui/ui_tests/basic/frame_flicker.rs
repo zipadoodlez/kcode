@@ -119,6 +119,24 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
         "the last-minute cache countdown must keep driving redraws at deep idle"
     );
 
+    // For long TTLs the countdown window scales (10% of TTL, capped at 10min):
+    // a 1h cache with 5 minutes left is about to expire and must warn.
+    let warm_countdown_1h = TestState {
+        display_messages: vec![DisplayMessage::system("seed".to_string())],
+        time_since_activity: Some(deep_idle),
+        cache_ttl_status: Some(crate::tui::CacheTtlInfo {
+            remaining_secs: 300,
+            ttl_secs: 3600,
+            is_cold: false,
+            cached_tokens: Some(4000),
+        }),
+        ..Default::default()
+    };
+    assert!(
+        crate::tui::periodic_redraw_required(&warm_countdown_1h),
+        "a 1h cache within its scaled countdown window must keep driving redraws"
+    );
+
     // A comfortably warm cache should not defeat the deep-idle short-circuit.
     let warm = TestState {
         display_messages: vec![DisplayMessage::system("seed".to_string())],

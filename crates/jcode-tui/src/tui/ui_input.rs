@@ -1550,7 +1550,7 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
                     format!("🧊 cache cold{}", tokens_str),
                     Style::default().fg(rgb(140, 180, 255)),
                 ));
-            } else if cache_info.remaining_secs <= 60 {
+            } else if cache_info.expiring_soon() {
                 let tokens_str = cache_info
                     .cached_tokens
                     .map(|t| {
@@ -1561,9 +1561,17 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
                         }
                     })
                     .unwrap_or_default();
+                // Above a minute, a raw seconds count is hard to read at a
+                // glance; show minutes granularity instead.
+                let remaining = cache_info.remaining_secs;
+                let time_str = if remaining > 60 {
+                    format!("{}m", remaining.div_ceil(60))
+                } else {
+                    format!("{}s", remaining)
+                };
                 push_sep(&mut spans);
                 spans.push(Span::styled(
-                    format!("⏳ cache {}s{}", cache_info.remaining_secs, tokens_str),
+                    format!("⏳ cache {}{}", time_str, tokens_str),
                     Style::default().fg(rgb(255, 193, 7)),
                 ));
             }
