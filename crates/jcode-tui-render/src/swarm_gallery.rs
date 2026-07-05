@@ -764,14 +764,14 @@ pub fn render_swarm_strip_vertical(
                 ));
             }
         }
-        if let Some(todo) = &todo {
-            if used + todo_w <= body_budget {
-                used += todo_w;
-                spans.push(Span::styled(
-                    format!(" {todo}"),
-                    Style::default().fg(rgb(130, 130, 140)),
-                ));
-            }
+        if let Some(todo) = &todo
+            && used + todo_w <= body_budget
+        {
+            used += todo_w;
+            spans.push(Span::styled(
+                format!(" {todo}"),
+                Style::default().fg(rgb(130, 130, 140)),
+            ));
         }
 
         // ---- Right-align the first-row tail ----
@@ -820,7 +820,12 @@ pub fn render_swarm_strip_vertical(
         if let Some(m) = ordered.get(selected)
             && detail_budget >= 4
         {
-            out.extend(render_hovered_detail(m, spinner_frame, width, detail_budget));
+            out.extend(render_hovered_detail(
+                m,
+                spinner_frame,
+                width,
+                detail_budget,
+            ));
         }
         if !hints.is_empty() {
             let mut hint_spans: Vec<Span<'static>> = vec![Span::raw(INDENT)];
@@ -1801,20 +1806,44 @@ mod tests {
         let mut b = member("bee", "completed", None, &[]);
         b.icon = Some("🐝".to_string());
         b.task = Some("audit the webhook path".to_string());
-        let lines =
-            render_swarm_strip_vertical(&[a, b], 0, false, &hints(), Some("alt+n controls"), 0, 90, 4, 12);
+        let lines = render_swarm_strip_vertical(
+            &[a, b],
+            0,
+            false,
+            &hints(),
+            Some("alt+n controls"),
+            0,
+            90,
+            4,
+            12,
+        );
         assert_eq!(lines.len(), 2, "one row per agent");
         let row0 = plain_line(&lines[0]);
         let row1 = plain_line(&lines[1]);
-        assert!(row0.contains("🐝"), "first row carries the swarm marker: {row0:?}");
+        assert!(
+            row0.contains("🐝"),
+            "first row carries the swarm marker: {row0:?}"
+        );
         assert!(row0.contains("🦊"), "icon replaces the name: {row0:?}");
-        assert!(!row0.contains("fox"), "name hidden when icon present: {row0:?}");
+        assert!(
+            !row0.contains("fox"),
+            "name hidden when icon present: {row0:?}"
+        );
         assert!(row0.contains("wire the auth flow"), "task shown: {row0:?}");
         assert!(row0.contains("3/9"), "todo counter shown: {row0:?}");
         assert!(row0.contains("1/2 active"), "tally on first row: {row0:?}");
-        assert!(row0.contains("alt+n controls"), "hint on first row: {row0:?}");
-        assert!(row1.contains("audit the webhook path"), "second agent row: {row1:?}");
-        assert!(!row1.contains("active"), "tally only on first row: {row1:?}");
+        assert!(
+            row0.contains("alt+n controls"),
+            "hint on first row: {row0:?}"
+        );
+        assert!(
+            row1.contains("audit the webhook path"),
+            "second agent row: {row1:?}"
+        );
+        assert!(
+            !row1.contains("active"),
+            "tally only on first row: {row1:?}"
+        );
         for line in &lines {
             assert!(line.width() <= 90);
         }

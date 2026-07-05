@@ -183,13 +183,13 @@ pub(super) async fn poll_token_once(
 
     if status.is_success() {
         // Some backends signal pending with 200 + {"status":"pending"}.
-        if let Ok(err_body) = serde_json::from_str::<TokenErrorResponse>(&body) {
-            if matches!(
+        if let Ok(err_body) = serde_json::from_str::<TokenErrorResponse>(&body)
+            && matches!(
                 err_body.status.as_deref(),
                 Some("pending") | Some("authorization_pending")
-            ) {
-                return Ok(PollOutcome::Pending);
-            }
+            )
+        {
+            return Ok(PollOutcome::Pending);
         }
         let approved: TokenApprovedResponse = serde_json::from_str(&body)
             .context("Failed to parse approved token response from jcode auth service")?;

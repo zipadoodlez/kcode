@@ -82,6 +82,9 @@ async fn device_code_request_parses_response() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+// The env lock is a std Mutex shared with sync tests; holding it across the
+// scripted-server awaits is intentional (same pattern as provider_init_tests).
+#[allow(clippy::await_holding_lock)]
 async fn poll_state_machine_pending_then_approved_persists_key() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("temp dir");
