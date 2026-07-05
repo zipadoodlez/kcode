@@ -1857,13 +1857,17 @@ fn render_side_panel_markdown_lines_cached(
         debug.stats.markdown_cache_misses += 1;
     });
 
-    let saved_override = markdown::get_diagram_mode_override();
     let saved_centered = markdown::center_code_blocks();
-    markdown::set_diagram_mode_override(Some(crate::config::DiagramDisplayMode::None));
     markdown::set_center_code_blocks(centered);
-    let rendered_lines = mermaid::with_preferred_aspect_ratio(mermaid_aspect_ratio, || {
-        markdown::render_markdown_with_width(&page.content, Some(inner_width as usize))
-    });
+    // Pin the diagram mode for this render only (thread-local scope): the
+    // side panel always renders diagrams inline. Using the process-global
+    // override here would race concurrent renders/tests that read or set it.
+    let rendered_lines =
+        markdown::with_diagram_mode_scope(crate::config::DiagramDisplayMode::None, || {
+            mermaid::with_preferred_aspect_ratio(mermaid_aspect_ratio, || {
+                markdown::render_markdown_with_width(&page.content, Some(inner_width as usize))
+            })
+        });
     let rendered_lines = if has_protocol {
         rendered_lines
             .into_iter()
@@ -1874,7 +1878,6 @@ fn render_side_panel_markdown_lines_cached(
     };
     let lines = wrap_side_panel_markdown_lines(rendered_lines, inner_width as usize);
     markdown::set_center_code_blocks(saved_centered);
-    markdown::set_diagram_mode_override(saved_override);
 
     let placeholder_hashes: Vec<Option<u64>> = if has_protocol {
         lines

@@ -67,6 +67,16 @@ pub fn get_diagram_mode_override() -> Option<crate::config::DiagramDisplayMode> 
     jcode_tui_markdown::get_diagram_mode_override().map(from_markdown_diagram_mode)
 }
 
+/// Run `f` with the diagram display mode pinned on the current thread only.
+/// Unlike `set_diagram_mode_override`, this never mutates process-global
+/// state, so concurrent renders (and parallel tests) are unaffected.
+pub fn with_diagram_mode_scope<T>(
+    mode: crate::config::DiagramDisplayMode,
+    f: impl FnOnce() -> T,
+) -> T {
+    jcode_tui_markdown::with_diagram_mode_scope(to_markdown_diagram_mode(mode), f)
+}
+
 pub fn with_deferred_mermaid_render_context<T>(f: impl FnOnce() -> T) -> T {
     jcode_tui_markdown::with_deferred_mermaid_render_context(f)
 }
