@@ -92,6 +92,7 @@ mod state_ui_maintenance;
 mod state_ui_messages;
 mod state_ui_runtime;
 mod state_ui_storage;
+mod support;
 mod swarm_hint;
 mod todos_view;
 mod tui_lifecycle;

@@ -128,6 +128,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     ),
     RegisteredCommand::public("/wrapped", "Alias for /productivity"),
     RegisteredCommand::public("/feedback", "Send feedback about jcode"),
+    RegisteredCommand::public("/support", "Email support with diagnostics prefilled"),
     RegisteredCommand::public("/subscription", "Show jcode subscription status"),
     RegisteredCommand::public("/config", "Show or edit configuration"),
     RegisteredCommand::public("/log", "Mark the current location in the jcode logs"),
