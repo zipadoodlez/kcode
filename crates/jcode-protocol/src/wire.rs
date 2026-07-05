@@ -522,6 +522,11 @@ pub enum Request {
         /// `low`, `medium`, `high`, `xhigh`, `max`). Unset = provider default.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         effort: Option<String>,
+        /// Optional short human-readable label for the spawned agent shown in
+        /// swarm UI (gallery chips, member lists). Overrides the task label
+        /// otherwise derived from the first line of `initial_message`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
     },
 
     /// List models/routes available for spawning swarm agents

@@ -177,7 +177,7 @@ fn make_workers(n: usize) -> Vec<MockWorker> {
         ),
         (
             "packager",
-            Some("worktree_manager"),
+            None,
             vec![
                 "Preparing the release worktree.",
                 "Bumping version.",

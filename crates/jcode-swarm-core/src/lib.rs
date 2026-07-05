@@ -94,7 +94,6 @@ pub fn derive_swarm_task_label(text: &str) -> Option<String> {
 pub enum SwarmRole {
     Agent,
     Coordinator,
-    WorktreeManager,
     Other(String),
 }
 
@@ -103,7 +102,6 @@ impl SwarmRole {
         match self {
             Self::Agent => Cow::Borrowed("agent"),
             Self::Coordinator => Cow::Borrowed("coordinator"),
-            Self::WorktreeManager => Cow::Borrowed("worktree_manager"),
             Self::Other(value) => Cow::Borrowed(value.as_str()),
         }
     }
@@ -114,7 +112,6 @@ impl From<String> for SwarmRole {
         match value.as_str() {
             "agent" => Self::Agent,
             "coordinator" => Self::Coordinator,
-            "worktree_manager" => Self::WorktreeManager,
             _ => Self::Other(value),
         }
     }

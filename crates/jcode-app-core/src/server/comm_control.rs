@@ -1926,6 +1926,7 @@ pub(super) async fn handle_comm_assign_next(
                 None,
                 model.clone(),
                 effort.clone(),
+                None,
                 sessions,
                 global_session_id,
                 provider_template,

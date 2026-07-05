@@ -214,7 +214,7 @@ pub struct SwarmMember {
     pub report_back_to_session_id: Option<String>,
     /// Latest explicit completion report submitted by this member.
     pub latest_completion_report: Option<String>,
-    /// Role: "agent", "coordinator", "worktree_manager"
+    /// Role: "agent" or "coordinator"
     pub role: String,
     /// When this member joined the swarm
     pub joined_at: Instant,

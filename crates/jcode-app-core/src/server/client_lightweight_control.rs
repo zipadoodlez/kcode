@@ -410,6 +410,7 @@ pub(super) async fn handle_lightweight_control_request(
             spawn_mode,
             model,
             effort,
+            label,
         } => {
             let spawn_mode = match parse_swarm_spawn_mode(id, spawn_mode, &client_event_tx) {
                 Some(spawn_mode) => spawn_mode,
@@ -424,6 +425,7 @@ pub(super) async fn handle_lightweight_control_request(
                 spawn_mode,
                 model,
                 effort,
+                label,
                 &client_event_tx,
                 sessions,
                 global_session_id,

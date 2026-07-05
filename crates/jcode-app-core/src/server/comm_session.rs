@@ -542,6 +542,7 @@ pub(super) async fn spawn_swarm_agent(
     spawn_mode: Option<SwarmSpawnMode>,
     requested_model: Option<String>,
     requested_effort: Option<String>,
+    label: Option<String>,
     sessions: &SessionAgents,
     global_session_id: &Arc<RwLock<String>>,
     provider_template: &Arc<dyn Provider>,
@@ -706,11 +707,12 @@ pub(super) async fn spawn_swarm_agent(
         )
         .await;
     }
-    // Label the worker with what it was spawned for (from the raw prompt,
-    // before completion-report boilerplate is appended) so the swarm strip
-    // and member lists can show the task, not just the animal name.
-    if let Some(ref task_text) = initial_message {
-        set_member_task_label(&new_session_id, task_text, swarm_members).await;
+    // Label the worker with what it was spawned for so the swarm strip and
+    // member lists can show the task, not just the animal name. An explicit
+    // spawn `label` wins; otherwise the label is derived from the raw prompt
+    // (before completion-report boilerplate is appended).
+    if let Some(ref label_text) = label.as_deref().or(initial_message.as_deref()) {
+        set_member_task_label(&new_session_id, label_text, swarm_members).await;
     }
     let swarm_state = SwarmState {
         members: Arc::clone(swarm_members),
@@ -813,6 +815,7 @@ pub(super) async fn handle_comm_spawn(
     spawn_mode: Option<SwarmSpawnMode>,
     model: Option<String>,
     effort: Option<String>,
+    label: Option<String>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     global_session_id: &Arc<RwLock<String>>,
@@ -834,7 +837,6 @@ pub(super) async fn handle_comm_spawn(
     let swarm_id = match ensure_spawn_coordinator_swarm(
         id,
         &req_session_id,
-        "Only the coordinator can spawn new agents. Assign the current session as coordinator first, e.g. swarm assign_role target_session=current role=coordinator.",
         client_event_tx,
         swarm_members,
         swarms_by_id,
@@ -860,6 +862,7 @@ pub(super) async fn handle_comm_spawn(
                 .unwrap_or_default(),
             model.clone().unwrap_or_default(),
             effort.clone().unwrap_or_default(),
+            label.clone().unwrap_or_default(),
         ],
     );
     let Some(mutation_state) = begin_or_replay(
@@ -883,6 +886,7 @@ pub(super) async fn handle_comm_spawn(
         spawn_mode,
         model,
         effort,
+        label,
         sessions,
         global_session_id,
         provider_template,
@@ -1197,17 +1201,12 @@ fn swarm_member_status_is_stale_for_coordination(status: &str) -> bool {
 async fn ensure_spawn_coordinator_swarm(
     id: u64,
     req_session_id: &str,
-    permission_error: &str,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
     swarm_coordinators: &Arc<RwLock<HashMap<String, String>>>,
     swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
 ) -> Option<String> {
-    // `permission_error` is retained for signature compatibility with callers and
-    // tests; recursive spawning no longer rejects non-coordinators, so it is only
-    // referenced defensively below.
-    let _ = permission_error;
     let (swarm_id, from_name, is_root, coordinator_id, coordinator_is_stale, swarm_size) = {
         let members = swarm_members.read().await;
         let swarm_id = members

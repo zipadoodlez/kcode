@@ -187,7 +187,7 @@ async fn can_read_full_context(
     let members = swarm_members.read().await;
     members
         .get(req_session_id)
-        .map(|member| member.role == "coordinator" || member.role == "worktree_manager")
+        .map(|member| member.role == "coordinator")
         .unwrap_or(false)
 }
 

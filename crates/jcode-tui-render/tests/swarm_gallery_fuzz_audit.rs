@@ -76,7 +76,7 @@ fn member_sets() -> Vec<Vec<GalleryMember>> {
         vec![wide.clone()],
         vec![
             wide,
-            member("b", "done", Some("worktree_manager"), &["ok", "· 1h ago"]),
+            member("b", "done", Some("mystery_role_2"), &["ok", "· 1h ago"]),
             member(
                 "",
                 "weird-status-xyz",

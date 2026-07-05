@@ -84,7 +84,6 @@ fn swarm_status_style(status: &str) -> (Color, &'static str) {
 fn swarm_role_prefix(member: &SwarmMemberStatus) -> &'static str {
     match member.role.as_deref() {
         Some("coordinator") => "★ ",
-        Some("worktree_manager") => "◆ ",
         _ => "  ",
     }
 }

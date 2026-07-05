@@ -1187,7 +1187,7 @@ fn swarm_widget_renders_member_roles_and_details() {
                     status: "ready".to_string(),
                     detail: Some("worktree synced".to_string()),
                     task_label: None,
-                    role: Some("worktree_manager".to_string()),
+                    role: Some("agent".to_string()),
                     is_headless: None,
                     live_attachments: None,
                     status_age_secs: None,
@@ -1207,7 +1207,6 @@ fn swarm_widget_renders_member_roles_and_details() {
     assert!(text.contains("3s"), "got: {text}");
     assert!(text.contains("1c"), "got: {text}");
     assert!(text.contains("★"), "got: {text}");
-    assert!(text.contains("◆"), "got: {text}");
     assert!(
         text.contains("coord running - orchestrating patch"),
         "got: {text}"

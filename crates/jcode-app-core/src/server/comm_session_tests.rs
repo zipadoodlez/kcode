@@ -777,7 +777,6 @@ async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
     let swarm_id = ensure_spawn_coordinator_swarm(
         1,
         "req",
-        "Only the coordinator can spawn new agents.",
         &client_event_tx,
         &swarm_members,
         &swarms_by_id,
@@ -840,7 +839,6 @@ async fn nested_agent_can_spawn_while_live_coordinator_exists() {
     let swarm_id = ensure_spawn_coordinator_swarm(
         2,
         "child",
-        "Only the coordinator can spawn new agents.",
         &client_event_tx,
         &swarm_members,
         &swarms_by_id,
@@ -908,7 +906,6 @@ async fn spawn_allowed_at_arbitrary_depth_without_depth_cap() {
     let allowed = ensure_spawn_coordinator_swarm(
         7,
         "f",
-        "Only the coordinator can spawn new agents.",
         &client_event_tx,
         &swarm_members,
         &swarms_by_id,
@@ -948,7 +945,6 @@ async fn spawn_rejected_when_member_limit_reached() {
     let refused = ensure_spawn_coordinator_swarm(
         7,
         "root",
-        "Only the coordinator can spawn new agents.",
         &client_event_tx,
         &swarm_members,
         &swarms_by_id,

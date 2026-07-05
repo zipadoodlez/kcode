@@ -1445,6 +1445,7 @@ async fn spawn_assignment_session(ctx: &ToolContext, params: &CommunicateInput) 
         spawn_mode: params.spawn_mode.clone(),
         model: params.model.clone(),
         effort: params.effort.clone(),
+        label: None,
     };
 
     match send_request(spawn_request).await {
@@ -1797,6 +1798,10 @@ struct CommunicateInput {
     /// Reasoning effort for spawned agents (none|low|medium|high|xhigh|max).
     #[serde(default)]
     effort: Option<String>,
+    /// Short human-readable label for a spawned agent shown in swarm UI.
+    /// Overrides the task label otherwise derived from the spawn prompt.
+    #[serde(default)]
+    label: Option<String>,
 }
 
 impl CommunicateInput {
@@ -1893,7 +1898,11 @@ impl Tool for CommunicateTool {
                 },
                 "role": {
                     "type": "string",
-                    "enum": ["agent", "coordinator", "worktree_manager"]
+                    "enum": ["agent", "coordinator"]
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Optional short label for spawn, shown on the spawned agent's chip in swarm UI (e.g. 'api reviewer'). Defaults to a label derived from the first line of the prompt."
                 },
                 "working_dir": {
                     "type": "string",
@@ -2531,6 +2540,7 @@ impl Tool for CommunicateTool {
                     spawn_mode: params.spawn_mode.clone(),
                     model: params.model.clone(),
                     effort: params.effort.clone(),
+                    label: params.label.clone(),
                 };
 
                 match send_request(request).await {
