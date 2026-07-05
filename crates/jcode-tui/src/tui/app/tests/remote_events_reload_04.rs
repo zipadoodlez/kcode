@@ -1715,6 +1715,10 @@ fn test_debug_command_message_respects_queue_mode() {
 
 #[test]
 fn test_debug_command_side_panel_latency_bench_reports_immediate_redraw() {
+    // run_side_panel_latency_bench mutates process-global mermaid/markdown
+    // state (diagram-mode override, ACTIVE_DIAGRAMS snapshot/restore), so
+    // serialize with the other diagram-mutating tests.
+    let _render_lock = scroll_render_test_lock();
     let mut app = create_test_app();
     let result = app.handle_debug_command(
         r#"side-panel-latency:{"iterations":8,"warmup_iterations":2,"include_samples":false}"#,

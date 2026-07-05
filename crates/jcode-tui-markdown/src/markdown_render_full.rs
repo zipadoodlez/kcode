@@ -1,6 +1,22 @@
 use super::render_support::highlight_code;
 use super::*;
 
+thread_local! {
+    /// Renders performed by THIS thread. `MarkdownDebugStats::total_renders`
+    /// is process-global, so tests that assert "no extra render happened
+    /// between two calls" race concurrent renders on other test threads;
+    /// they should diff this counter instead (see `thread_render_count`).
+    static THREAD_RENDER_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Number of full markdown renders performed by the current thread. Unlike
+/// `debug_stats().total_renders`, this is immune to concurrent renders on
+/// other threads, making it suitable for cache-behavior assertions in
+/// parallel test runs.
+pub fn thread_render_count() -> u64 {
+    THREAD_RENDER_COUNT.with(|c| c.get())
+}
+
 pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<Line<'static>> {
     let render_start = Instant::now();
     let text = escape_currency_dollars(text);
@@ -990,6 +1006,7 @@ pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<L
         center_structured_block_ranges(&mut lines, width, &centered_blocks.ranges);
     }
 
+    THREAD_RENDER_COUNT.with(|c| c.set(c.get() + 1));
     if let Ok(mut state) = MARKDOWN_DEBUG.lock() {
         state.stats.total_renders += 1;
         state.stats.last_render_ms = Some(render_start.elapsed().as_secs_f32() * 1000.0);
