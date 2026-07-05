@@ -59,7 +59,9 @@ pub(crate) fn filtered_model_routes(routes: Vec<ModelRoute>) -> Vec<ModelRoute> 
 
     routes
         .into_iter()
-        .filter(|route| crate::subscription_catalog::is_model_allowed_for_current_tier(&route.model))
+        .filter(|route| {
+            crate::subscription_catalog::is_model_allowed_for_current_tier(&route.model)
+        })
         .collect()
 }
 

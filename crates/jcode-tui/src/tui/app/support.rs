@@ -156,9 +156,8 @@ pub(super) fn handle_support_command(app: &mut App, trimmed: &str) -> bool {
     if opened {
         message.push_str("Opened a support email draft in your mail client.\n\n");
     } else {
-        message.push_str(
-            "Could not open your mail client automatically. Copy the email below.\n\n",
-        );
+        message
+            .push_str("Could not open your mail client automatically. Copy the email below.\n\n");
     }
     message.push_str(&format!("To: {}\n", SUPPORT_EMAIL));
     message.push_str(&format!("Subject: {}\n\n", SUPPORT_SUBJECT));

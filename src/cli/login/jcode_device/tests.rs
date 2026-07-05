@@ -201,10 +201,7 @@ async fn poll_state_machine_expired_token_yields_clear_error() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn poll_for_api_key_expiry_produces_clear_error() {
-    let base = spawn_scripted_http_server(vec![(
-        400,
-        r#"{"error":"expired_token"}"#.to_string(),
-    )]);
+    let base = spawn_scripted_http_server(vec![(400, r#"{"error":"expired_token"}"#.to_string())]);
     let auth_base = strip_v1_suffix(&base);
 
     let err = poll_for_api_key(&test_client(), &auth_base, "dc-4", 1, 30)

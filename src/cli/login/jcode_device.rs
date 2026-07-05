@@ -210,11 +210,11 @@ pub(super) async fn poll_token_once(
         "authorization_pending" | "pending" => Ok(PollOutcome::Pending),
         "slow_down" => Ok(PollOutcome::SlowDown),
         "expired_token" | "expired" | "expired_device_code" => Ok(PollOutcome::Expired),
-        "access_denied" | "denied" => Ok(PollOutcome::Denied(
-            parsed
-                .description()
-                .unwrap_or_else(|| "Authorization was denied.".to_string()),
-        )),
+        "access_denied" | "denied" => {
+            Ok(PollOutcome::Denied(parsed.description().unwrap_or_else(
+                || "Authorization was denied.".to_string(),
+            )))
+        }
         _ if status.as_u16() == 404 || status.as_u16() == 410 => Ok(PollOutcome::Expired),
         _ => anyhow::bail!(
             "jcode auth service returned an unexpected error (HTTP {}): {}",
