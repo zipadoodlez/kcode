@@ -2269,102 +2269,14 @@ pub(crate) fn link_target_from_screen(column: u16, row: u16) -> Option<String> {
     link_target_from_snapshot(&snapshot, point)
 }
 
-/// First display column of the inline-image expand badge within a label line,
-/// if present. The badge is the `🖱 ●○ expand` suffix that `image_label_line`
-/// appends; we accept a click from the leading click-icon to end of line as
-/// "hit the badge". Returns `None` when the line has no badge (e.g. a
-/// hidden/collapsed image label).
-fn expand_badge_start_col(text: &str) -> Option<usize> {
-    let icon = crate::tui::ui::inline_image_ui::EXPAND_BADGE_CLICK_ICON;
-    // Prefer the click icon (the badge's first cell); fall back to the dots so a
-    // future icon change can never silently drop the whole hit-region.
-    let byte_idx = text.find(icon).or_else(|| text.find(['○', '●']))?;
-    Some(line_display_width(&text[..byte_idx]))
-}
-
-/// Display column of a trailing badge verb (`expand` / `reset`) when the line
-/// ends with one. Long image labels wrap in the transcript, and the wrap can
-/// split inside the badge, leaving only the verb on the final label row (the
-/// row the region mapping identifies). The verb is then the whole visible
-/// badge on that row, so it must stay clickable even without the icon/dots.
-fn expand_badge_verb_start_col(text: &str) -> Option<usize> {
-    let trimmed = text.trim_end();
-    for verb in ["expand", "reset"] {
-        if let Some(prefix) = trimmed.strip_suffix(verb) {
-            // Must be a whole trailing token, not the tail of a longer word.
-            if prefix.is_empty() || prefix.ends_with(char::is_whitespace) {
-                return Some(line_display_width(prefix));
-            }
-        }
-    }
-    None
-}
-
-#[cfg(test)]
-mod expand_badge_hit_tests {
-    use super::expand_badge_start_col;
-
-    #[test]
-    fn returns_none_without_dots() {
-        assert_eq!(expand_badge_start_col("  🖼 600×400  hide"), None);
-    }
-
-    #[test]
-    fn locates_first_dot_display_column() {
-        // ASCII prefix: the badge starts exactly at the prefix's display width.
-        let text = "abc ●○ expand";
-        assert_eq!(expand_badge_start_col(text), Some(4));
-    }
-
-    #[test]
-    fn accounts_for_wide_chars_before_badge() {
-        // Multi-byte chars before the badge must be measured by display width,
-        // not byte offset. unicode-width reports the picture glyph as width 1,
-        // so emoji(1) + space(1) = 2.
-        let text = "🖼 ●○ expand";
-        assert_eq!(expand_badge_start_col(text), Some(2));
-    }
-
-    #[test]
-    fn anchors_on_the_click_icon_when_present() {
-        // The real label puts a click icon ahead of the dots; the hit-region
-        // must start at the icon so users can click the whole affordance.
-        let icon = crate::tui::ui::inline_image_ui::EXPAND_BADGE_CLICK_ICON;
-        let text = format!("abc {icon} ●○ expand");
-        // Prefix is "abc " (display width 4); the icon is the first badge cell.
-        assert_eq!(expand_badge_start_col(&text), Some(4));
-    }
-
-    #[test]
-    fn verb_fallback_matches_wrapped_badge_tail() {
-        use super::expand_badge_verb_start_col;
-        // A wrapped label row can carry only the badge verb.
-        assert_eq!(expand_badge_verb_start_col("expand"), Some(0));
-        assert_eq!(expand_badge_verb_start_col("reset"), Some(0));
-        assert_eq!(expand_badge_verb_start_col("  expand  "), Some(2));
-        // Must be a whole trailing token, not a word tail or mid-line text.
-        assert_eq!(expand_badge_verb_start_col("preexpand"), None);
-        assert_eq!(expand_badge_verb_start_col("expand more"), None);
-        assert_eq!(expand_badge_verb_start_col("shot.png 600×400"), None);
-    }
-}
-
-/// If a screen click landed on an inline-image expand badge, return the image
-/// id so the caller can cycle that image's size. Only clicks on the badge
-/// suffix of the label line count, so the rest of the label stays inert.
+/// If a screen click landed on an inline-image label line, return the image
+/// id so the caller can cycle that image's size. The label line is short and
+/// single purpose (there is no visible expand badge anymore), so the whole
+/// line acts as the click target alongside the image body itself.
 pub(crate) fn inline_image_expand_target_from_screen(column: u16, row: u16) -> Option<u64> {
     let point = copy_point_from_screen(column, row)?;
     let snapshot = copy_snapshot_for_pane(point.pane)?;
-    let image_id = snapshot.inline_image_id_for_label_line(point.abs_line)?;
-    let text = snapshot.wrapped_plain_line(point.abs_line)?;
-    // Long labels wrap: the final label row may carry only the badge verb
-    // (`expand`/`reset`), with the icon and dots on the previous wrapped row.
-    let badge_start = expand_badge_start_col(text).or_else(|| expand_badge_verb_start_col(text))?;
-    if point.column >= badge_start {
-        Some(image_id)
-    } else {
-        None
-    }
+    snapshot.inline_image_id_for_label_line(point.abs_line)
 }
 
 /// If a screen click landed on a collapsed/expanded swarm notification's
@@ -2397,7 +2309,8 @@ pub(crate) fn swarm_expand_target_from_screen(column: u16, row: u16) -> Option<u
 
 /// If a screen click landed on the rendered body of an inline image (its
 /// placeholder rows), return the image id so the caller can cycle that image's
-/// size. This makes the whole picture clickable, not just the label badge.
+/// size. Together with the label-line hit-test this makes the whole picture
+/// clickable.
 /// The hit-region is bounded by the image's rendered width (`region.width`,
 /// which includes the 2-cell left border), shifted right when `centered` mode
 /// horizontally centers the drawn pixels, so clicks in empty space beside a
@@ -2439,8 +2352,9 @@ pub(crate) fn inline_image_body_target_from_screen(
 }
 
 /// Debug dump of the live chat snapshot's inline-image regions plus the screen
-/// coordinates of each visible expand badge, so external drivers (debug
-/// socket) can compute real click targets against the running TUI.
+/// coordinates of each visible label line (the click target that cycles the
+/// image size), so external drivers (debug socket) can compute real click
+/// targets against the running TUI.
 pub(crate) fn debug_chat_image_regions_json() -> String {
     let Some(snapshot) = copy_snapshot_for_pane(crate::tui::CopySelectionPane::Chat) else {
         return "{\"error\":\"no chat snapshot\"}".to_string();
@@ -2458,14 +2372,14 @@ pub(crate) fn debug_chat_image_regions_json() -> String {
         .map(|region| {
             let label_line = region.abs_line_idx.saturating_sub(1);
             let label_text = snapshot.wrapped_plain_line(label_line).unwrap_or("");
-            let badge_col = expand_badge_start_col(label_text)
-                .or_else(|| expand_badge_verb_start_col(label_text));
             let label_visible = label_line >= snapshot.scroll && label_line < snapshot.visible_end;
-            let badge_screen = badge_col.filter(|_| label_visible).map(|col| {
+            // The whole label line is clickable now; report its first cell as
+            // the badge coordinate so existing drivers keep working.
+            let badge_screen = label_visible.then(|| {
                 let rel_row = label_line - snapshot.scroll;
                 let left_margin = snapshot.left_margins.get(rel_row).copied().unwrap_or(0);
                 serde_json::json!({
-                    "col": area.x as usize + left_margin as usize + col,
+                    "col": area.x as usize + left_margin as usize,
                     "row": area.y as usize + rel_row,
                 })
             });
