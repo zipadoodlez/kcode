@@ -683,10 +683,7 @@ impl App {
             return false;
         }
         let registry = self.hotkey_registry(self.is_remote);
-        if self.hotkey_usage.is_none() {
-            self.hotkey_usage = Some(load_state());
-        }
-        let usage = self.hotkey_usage.as_ref().expect("hotkey usage loaded");
+        let usage = self.hotkey_usage.get_or_insert_with(load_state);
         let listing = render_hotkeys_listing(&registry, usage, now_unix());
         self.push_display_message(jcode_tui_messages::DisplayMessage::system(listing));
         true
@@ -746,10 +743,7 @@ impl App {
         };
 
         let now = now_unix();
-        if self.hotkey_usage.is_none() {
-            self.hotkey_usage = Some(load_state());
-        }
-        let state = self.hotkey_usage.as_mut().expect("hotkey usage loaded");
+        let state = self.hotkey_usage.get_or_insert_with(load_state);
         let stat = state.actions.entry(info.action.to_string()).or_default();
         let unfamiliar = is_unfamiliar(stat, now);
         stat.uses = stat.uses.saturating_add(1);

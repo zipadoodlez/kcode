@@ -405,7 +405,14 @@ pub fn build_or_update(
     for reusable in reused {
         match reusable {
             Some(entry) => entries.push(entry),
-            None => entries.push(rebuilt_iter.next().expect("rebuilt entry per stale slot")),
+            // One rebuilt entry exists per stale slot by construction; if the
+            // invariant ever breaks, skip the slot instead of panicking inside
+            // the search path (the file is simply re-tokenized next rebuild).
+            None => {
+                if let Some(entry) = rebuilt_iter.next() {
+                    entries.push(entry);
+                }
+            }
         }
     }
 

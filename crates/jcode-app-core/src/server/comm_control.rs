@@ -1585,22 +1585,20 @@ async fn handle_comm_assign_task_with_mode(
                 .as_deref()
                 .and_then(|task_id| explicit_task_blocked_reason(plan, task_id))
         });
-        let found = if blocked_reason.is_some() {
+        let found_idx = if blocked_reason.is_some() {
             None
         } else {
             selected_task_id.as_ref().and_then(|selected_task_id| {
                 plan.items
-                    .iter_mut()
-                    .find(|item| item.id == *selected_task_id)
+                    .iter()
+                    .position(|item| item.id == *selected_task_id)
             })
         };
-        if found.is_some() {
+        if let Some(found_idx) = found_idx {
             // Resolve identity + forward-dataflow context before taking the
             // mutable borrow, so hydration can read sibling artifacts immutably.
-            let item_id = found.as_ref().map(|item| item.id.clone()).unwrap();
-            let raw_content = found.as_ref().map(|item| item.content.clone()).unwrap();
-            // Drop the mutable borrow held by `found` before the immutable read.
-            let _ = found;
+            let item_id = plan.items[found_idx].id.clone();
+            let raw_content = plan.items[found_idx].content.clone();
             // A re-woken composite is the synthesis/join step: its original content
             // was the (now-stale) decomposition brief, so replace it with an explicit
             // synthesis instruction. Without this the planner replays the old "expand
@@ -1618,11 +1616,8 @@ async fn handle_comm_assign_task_with_mode(
             let content =
                 deep_mode_assignment_content(plan, &item_id, is_composite_synthesis, &hydrated);
 
-            let item = plan
-                .items
-                .iter_mut()
-                .find(|item| item.id == item_id)
-                .expect("selected task still present");
+            // Index resolved under this same plan lock, so it stays valid.
+            let item = &mut plan.items[found_idx];
             item.assigned_to = Some(target_session.clone());
             item.status = "queued".to_string();
             plan.task_progress.insert(

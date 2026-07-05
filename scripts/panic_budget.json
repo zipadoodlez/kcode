@@ -1,11 +1,10 @@
 {
-  "total": 35,
+  "total": 33,
   "tracked_files": {
     "crates/jcode-app-core/src/session_launch.rs": 1,
     "crates/jcode-app-core/src/tool/computer/win.rs": 3,
     "crates/jcode-base/src/auth/oauth.rs": 3,
     "crates/jcode-base/src/hooks.rs": 1,
-    "crates/jcode-desktop/src/main.rs": 2,
     "crates/jcode-desktop/src/single_session_render/wrapping.rs": 1,
     "crates/jcode-provider-doctor/src/lifecycle_driver.rs": 2,
     "crates/jcode-terminal-launch/src/lib.rs": 1,

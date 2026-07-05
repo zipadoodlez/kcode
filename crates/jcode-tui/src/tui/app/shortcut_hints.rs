@@ -227,12 +227,11 @@ fn next_learn_hint() -> Option<String> {
 
     let candidates: Vec<(&'static str, &ActionStat, bool)> = LearnableAction::ALL
         .into_iter()
-        .map(|a| {
-            (
-                a.id(),
-                stats.get(a.id()).unwrap(),
-                labels.contains_key(a.id()),
-            )
+        .filter_map(|a| {
+            // `stats` is built from the same `ALL` list above, so this always
+            // resolves; filter_map keeps the invariant panic-free anyway.
+            let stat = stats.get(a.id())?;
+            Some((a.id(), stat, labels.contains_key(a.id())))
         })
         .collect();
 

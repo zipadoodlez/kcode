@@ -87,7 +87,11 @@ fn ensure_root_gate(graph: &mut TaskGraph) {
 
     match existing_gate {
         Some(gate_id) => {
-            let gate = graph.get_mut(&gate_id).expect("root gate exists");
+            // Id was resolved from `graph` two lines above; skip silently if a
+            // racecondition-free graph somehow lost it rather than panic.
+            let Some(gate) = graph.get_mut(&gate_id) else {
+                return;
+            };
             let mut widened = false;
             for id in root_ids {
                 if !gate.depends_on.contains(&id) {
@@ -184,25 +188,24 @@ pub fn expand_node(
         }
     }
 
-    // Validate child ids and dependency references.
+    // Validate child ids and dependency references. Collect the validated ids
+    // once so later steps never re-unwrap `spec.id`.
     let mut seen = std::collections::HashSet::new();
+    let mut child_ids: Vec<String> = Vec::with_capacity(children.len());
     for spec in &children {
         let id = validated_spec_id(spec, "expand")?;
         if graph.contains(&id) || !seen.insert(id.clone()) {
             return Err(DagError::DuplicateNode(id));
         }
+        child_ids.push(id);
     }
-    let child_ids: Vec<String> = children
-        .iter()
-        .map(|spec| spec.id.clone().unwrap())
-        .collect();
     let child_set: std::collections::HashSet<&str> = child_ids.iter().map(String::as_str).collect();
-    for spec in &children {
+    for (spec, child_id) in children.iter().zip(child_ids.iter()) {
         for dep in &spec.depends_on {
             // A child may depend on a sibling or any already-existing node.
             if !child_set.contains(dep.as_str()) && !graph.contains(dep) {
                 return Err(DagError::UnknownDependency {
-                    node: spec.id.clone().unwrap(),
+                    node: child_id.clone(),
                     dependency: dep.clone(),
                 });
             }
@@ -264,7 +267,9 @@ pub fn expand_node(
     // gate/children, and is marked expanded. Its prior upstream deps are retained
     // so the synthesis still waits on the original dependencies too.
     {
-        let node = staged.get_mut(node_id).unwrap();
+        let node = staged
+            .get_mut(node_id)
+            .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
         node.expanded = true;
         node.status = NodeStatus::Queued;
         // Record the planner (current owner) for synthesis re-wake affinity, then
@@ -326,7 +331,9 @@ pub fn complete_node(
         validate_gate_pass(graph, node_id, &artifact)?;
     }
 
-    let node = graph.get_mut(node_id).unwrap();
+    let node = graph
+        .get_mut(node_id)
+        .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
     node.status = NodeStatus::Done;
     node.output = Some(artifact);
     Ok(())
@@ -350,7 +357,10 @@ pub fn fail_node(graph: &mut TaskGraph, node_id: &str, actor: &str) -> Result<()
             status: node.status,
         });
     }
-    graph.get_mut(node_id).unwrap().status = NodeStatus::Failed;
+    graph
+        .get_mut(node_id)
+        .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?
+        .status = NodeStatus::Failed;
     Ok(())
 }
 
@@ -403,13 +413,16 @@ pub fn inject_from_gate(
             return Err(DagError::DuplicateNode(id));
         }
     }
-    let new_ids: Vec<String> = new_nodes.iter().map(|s| s.id.clone().unwrap()).collect();
-    let new_set: std::collections::HashSet<&str> = new_ids.iter().map(String::as_str).collect();
+    let mut new_ids: Vec<String> = Vec::with_capacity(new_nodes.len());
     for spec in &new_nodes {
+        new_ids.push(validated_spec_id(spec, "inject_from_gate")?);
+    }
+    let new_set: std::collections::HashSet<&str> = new_ids.iter().map(String::as_str).collect();
+    for (spec, new_id) in new_nodes.iter().zip(new_ids.iter()) {
         for dep in &spec.depends_on {
             if !new_set.contains(dep.as_str()) && !graph.contains(dep) {
                 return Err(DagError::UnknownDependency {
-                    node: spec.id.clone().unwrap(),
+                    node: new_id.clone(),
                     dependency: dep.clone(),
                 });
             }
@@ -422,7 +435,9 @@ pub fn inject_from_gate(
     }
     // Re-queue the gate, now depending on the new nodes (re-critique/re-verify).
     {
-        let gate = staged.get_mut(gate_id).unwrap();
+        let gate = staged
+            .get_mut(gate_id)
+            .ok_or_else(|| DagError::UnknownNode(gate_id.to_string()))?;
         gate.status = NodeStatus::Queued;
         gate.owner = None;
         for id in &new_ids {
@@ -468,7 +483,9 @@ pub fn requeue_failed(graph: &mut TaskGraph, node_id: &str) -> Result<(), DagErr
             status: node.status,
         });
     }
-    let node = graph.get_mut(node_id).unwrap();
+    let node = graph
+        .get_mut(node_id)
+        .ok_or_else(|| DagError::UnknownNode(node_id.to_string()))?;
     node.status = NodeStatus::Queued;
     node.owner = None;
     Ok(())

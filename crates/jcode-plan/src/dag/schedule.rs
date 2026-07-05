@@ -49,7 +49,10 @@ pub fn dispatch(graph: &mut TaskGraph, node_id: &str, worker: &str) -> bool {
     if !dispatchable {
         return false;
     }
-    let node = graph.get_mut(node_id).unwrap();
+    // `dispatchable` proved the node exists under this same borrow of `graph`.
+    let Some(node) = graph.get_mut(node_id) else {
+        return false;
+    };
     node.owner = Some(worker.to_string());
     node.status = NodeStatus::Running;
     true

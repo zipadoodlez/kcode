@@ -66,7 +66,13 @@ fn spec(id: &str, kind: NodeKind) -> NodeSpec {
 /// the natural peak concurrency, while still counting every dispatch (= agent).
 fn measure(scn: &Scenario) -> Measured {
     let mut g = TaskGraph::new(scn.mode);
-    seed(&mut g, scn.seed.clone()).expect("seed should validate");
+    if let Err(err) = seed(&mut g, scn.seed.clone()) {
+        eprintln!("scenario seed failed to validate: {err}");
+        return Measured {
+            stalled: true,
+            ..Measured::default()
+        };
+    }
 
     let mut script = scn.script.clone();
     let mut done_once: HashSet<String> = HashSet::new();
@@ -108,26 +114,29 @@ fn measure(scn: &Scenario) -> Measured {
             };
             done_once.insert(id.clone());
 
-            match act {
+            let step = match act {
                 Act::Complete => {
                     let art = if scn.mode.requires_gates() {
                         deep_artifact(&format!("did {id}"))
                     } else {
                         HandoffArtifact::brief(format!("did {id}"))
                     };
-                    complete_node(&mut g, &id, &worker, art).expect("complete");
+                    complete_node(&mut g, &id, &worker, art)
                 }
                 Act::Expand(children) => {
                     m.expansions += 1;
-                    expand_node(&mut g, &id, &worker, children).expect("expand");
+                    expand_node(&mut g, &id, &worker, children).map(|_| ())
                 }
                 Act::InjectGap(nodes) => {
                     m.gaps_injected += nodes.len();
-                    inject_from_gate(&mut g, &id, &worker, nodes).expect("inject");
+                    inject_from_gate(&mut g, &id, &worker, nodes).map(|_| ())
                 }
-                Act::Fail => {
-                    fail_node(&mut g, &id, &worker).expect("fail");
-                }
+                Act::Fail => fail_node(&mut g, &id, &worker),
+            };
+            if let Err(err) = step {
+                eprintln!("scenario step on '{id}' failed: {err}");
+                m.stalled = true;
+                break;
             }
             m.steps += 1;
         }
