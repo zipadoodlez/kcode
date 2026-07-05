@@ -82,8 +82,9 @@ mod wrap;
 #[cfg(test)]
 pub(crate) use context::with_markdown_spacing_mode_override;
 pub use context::{
-    center_code_blocks, get_diagram_mode_override, set_center_code_blocks,
-    set_diagram_mode_override, with_deferred_mermaid_render_context,
+    center_code_blocks, get_diagram_mode_override, mermaid_rendering_enabled,
+    set_center_code_blocks, set_diagram_mode_override, with_deferred_mermaid_render_context,
+    with_mermaid_rendering_override,
 };
 use context::{
     deferred_mermaid_render_context_enabled, effective_diagram_mode,
@@ -503,12 +504,6 @@ struct CenteredStructuredBlockState {
 
 fn mermaid_should_register_active() -> bool {
     !matches!(effective_diagram_mode(), DiagramDisplayMode::None)
-}
-
-fn mermaid_rendering_enabled() -> bool {
-    // Mermaid rendering is enabled by default (renderer v0.3.0+ passes the
-    // hard geometry gate). Set JCODE_ENABLE_MERMAID=0 to opt out.
-    !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
 }
 
 fn mermaid_sidebar_placeholder(text: &str) -> Line<'static> {

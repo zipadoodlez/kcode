@@ -2090,7 +2090,7 @@ pub(in crate::tui::app) fn handle_server_event(
             // of stacking one diagram per assignment churn. Skipped only when
             // mermaid rendering is opted out (JCODE_ENABLE_MERMAID=0), since a
             // raw mermaid source block would just be noise.
-            if !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
+            if crate::tui::markdown::mermaid_rendering_enabled()
                 && let Some(graph) =
                     crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
             {
