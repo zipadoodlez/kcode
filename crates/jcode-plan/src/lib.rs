@@ -3,6 +3,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub mod bridge;
 pub mod dag;
+pub mod mermaid;
 
 /// A swarm plan item.
 ///

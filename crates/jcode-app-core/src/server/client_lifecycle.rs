@@ -48,8 +48,9 @@ use super::{
     AwaitMembersRuntime, ClientConnectionInfo, ClientDebugState, FileTouchService,
     SessionControlHandle, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
     SwarmMutationRuntime, VersionedPlan, format_structured_completion_report,
-    register_session_interrupt_queue, truncate_detail, update_member_status,
-    update_member_status_with_report, update_member_status_with_report_tldr,
+    register_session_interrupt_queue, send_swarm_plan_to_session, truncate_detail,
+    update_member_status, update_member_status_with_report,
+    update_member_status_with_report_tldr,
 };
 use crate::agent::Agent;
 use crate::bus::{Bus, BusEvent};
@@ -1207,6 +1208,15 @@ pub(super) async fn handle_client(
                         {
                             break;
                         }
+                        // The truncated History replaces the client transcript
+                        // (dropping the inline plan graph); re-send the plan so
+                        // the diagram comes back.
+                        send_swarm_plan_to_session(
+                            &client_session_id,
+                            &swarm_members,
+                            &swarm_plans,
+                        )
+                        .await;
                     }
                     Err(message) => {
                         let _ = client_event_tx.send(ServerEvent::Error {
@@ -1258,6 +1268,14 @@ pub(super) async fn handle_client(
                         {
                             break;
                         }
+                        // Same as rewind: restore the inline plan graph after
+                        // the transcript replacement.
+                        send_swarm_plan_to_session(
+                            &client_session_id,
+                            &swarm_members,
+                            &swarm_plans,
+                        )
+                        .await;
                     }
                     Err(message) => {
                         let _ = client_event_tx.send(ServerEvent::Error {
@@ -1477,6 +1495,12 @@ pub(super) async fn handle_client(
                 {
                     break;
                 }
+                // Follow the History payload with the current swarm plan: a
+                // session-changing History clears the client's plan snapshot
+                // (and the inline plan graph), so re-send it afterwards
+                // instead of leaving the graph blank until the next plan
+                // mutation broadcast.
+                send_swarm_plan_to_session(&client_session_id, &swarm_members, &swarm_plans).await;
                 if let Some(snapshot) = try_available_models_snapshot(&agent) {
                     last_available_models_snapshot = Some(snapshot);
                 }

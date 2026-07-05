@@ -2082,43 +2082,58 @@ pub(in crate::tui::app) fn handle_server_event(
             summary,
             ..
         } => {
-            let snapshot = RemoteSwarmPlanSnapshot {
-                swarm_id: swarm_id.clone(),
-                version,
-                items: items.clone(),
-                participants: participants.clone(),
-                reason: reason.clone(),
-                summary,
-            };
-            let notice = snapshot.status_notice();
-            app.swarm_plan_swarm_id = Some(snapshot.swarm_id.clone());
-            app.swarm_plan_version = Some(snapshot.version);
-            app.swarm_plan_items = snapshot.items.clone();
-            // Render the plan's task DAG as an inline chat diagram: the graph
-            // is pushed as a normal swarm message containing a mermaid fence,
-            // so it renders through the standard markdown/mermaid pipeline and
-            // scrolls by like any other transcript image. Rapid version bumps
-            // coalesce (see upsert_trailing_swarm_plan_graph_message) instead
-            // of stacking one diagram per assignment churn. Skipped only when
-            // mermaid rendering is opted out (JCODE_ENABLE_MERMAID=0), since a
-            // raw mermaid source block would just be noise.
-            if crate::tui::markdown::mermaid_rendering_enabled()
-                && let Some(graph) =
-                    crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
-            {
-                let title = format!("Plan graph · v{}", snapshot.version);
-                let content = format!("```mermaid\n{}\n```", graph.trim_end());
-                app.upsert_trailing_swarm_plan_graph_message(title, content);
+            // Drop stale out-of-order broadcasts. Server-side plan mutations
+            // snapshot under the lock but send after releasing it, so two
+            // racing mutations can deliver an older version after a newer
+            // one; applying it would regress both the snapshot state and the
+            // inline diagram. Same-swarm version regressions are ignored,
+            // except near v1 (a deleted-and-recreated plan restarts its
+            // version counter and must still render).
+            let stale_regression = app.swarm_plan_swarm_id.as_deref() == Some(swarm_id.as_str())
+                && app
+                    .swarm_plan_version
+                    .is_some_and(|current| version < current)
+                && version > 2;
+            if !stale_regression {
+                let snapshot = RemoteSwarmPlanSnapshot {
+                    swarm_id: swarm_id.clone(),
+                    version,
+                    items: items.clone(),
+                    participants: participants.clone(),
+                    reason: reason.clone(),
+                    summary,
+                };
+                let notice = snapshot.status_notice();
+                app.swarm_plan_swarm_id = Some(snapshot.swarm_id.clone());
+                app.swarm_plan_version = Some(snapshot.version);
+                app.swarm_plan_items = snapshot.items.clone();
+                // Render the plan's task DAG as an inline chat diagram: the graph
+                // is pushed as a normal swarm message containing a mermaid fence,
+                // so it renders through the standard markdown/mermaid pipeline and
+                // scrolls by like any other transcript image. Plan updates
+                // coalesce onto a single transcript message (see
+                // upsert_trailing_swarm_plan_graph_message) instead of stacking
+                // one diagram per assignment churn. Skipped only when mermaid
+                // rendering is opted out (JCODE_ENABLE_MERMAID=0), since a raw
+                // mermaid source block would just be noise.
+                if crate::tui::markdown::mermaid_rendering_enabled()
+                    && let Some(graph) =
+                        crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
+                {
+                    let title = format!("Plan graph · v{}", snapshot.version);
+                    let content = format!("```mermaid\n{}\n```", graph.trim_end());
+                    app.upsert_trailing_swarm_plan_graph_message(title, content);
+                }
+                persist_swarm_plan_snapshot(
+                    app,
+                    snapshot.swarm_id,
+                    snapshot.version,
+                    snapshot.items,
+                    snapshot.participants,
+                    snapshot.reason,
+                );
+                app.set_status_notice(notice);
             }
-            persist_swarm_plan_snapshot(
-                app,
-                snapshot.swarm_id,
-                snapshot.version,
-                snapshot.items,
-                snapshot.participants,
-                snapshot.reason,
-            );
-            app.set_status_notice(notice);
             false
         }
         ServerEvent::SwarmPlanProposal {

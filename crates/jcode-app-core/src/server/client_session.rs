@@ -8,8 +8,8 @@ use super::{
     register_session_interrupt_queue, remove_background_tool_signal, remove_plan_participant,
     remove_session_channel_subscriptions, remove_session_from_swarm,
     remove_session_interrupt_queue, rename_background_tool_signal, rename_plan_participant,
-    rename_session_interrupt_queue, swarm_id_for_dir, unregister_session_event_sender,
-    update_member_status,
+    rename_session_interrupt_queue, send_swarm_plan_to_session, swarm_id_for_dir,
+    unregister_session_event_sender, update_member_status,
 };
 use crate::agent::Agent;
 use crate::message::ContentBlock;
@@ -665,6 +665,10 @@ pub(super) async fn handle_subscribe(
         )
         .await;
     }
+
+    // Re-send the current swarm plan so a reconnecting client renders the
+    // plan graph immediately instead of waiting for the next plan mutation.
+    send_swarm_plan_to_session(client_session_id, swarm_members, swarm_plans).await;
 
     let _ = client_event_tx.send(ServerEvent::Done { id });
 }
@@ -1389,6 +1393,10 @@ pub(super) async fn handle_resume_session(
             )
             .await?;
             let _ = client_event_tx.send(ServerEvent::Done { id });
+            // Re-send the swarm plan AFTER the History payload: the client
+            // clears its plan snapshot on session change, so without this the
+            // plan graph would stay blank until the next plan mutation.
+            send_swarm_plan_to_session(&session_id, swarm_members, swarm_plans).await;
             // Resolve project-local MCP config against the restored session's
             // working dir, not the server process cwd (issue #420).
             let mcp_working_dir = {

@@ -4235,6 +4235,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "image",
+ "jcode-plan",
  "jcode-tui-workspace",
  "mermaid-rs-renderer",
  "ratatui",

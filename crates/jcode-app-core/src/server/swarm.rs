@@ -796,6 +796,56 @@ pub(super) async fn broadcast_swarm_plan_with_previous(
     );
 }
 
+/// Send the current swarm plan snapshot to ONE session (subscribe/resume
+/// refresh). Unlike [`broadcast_swarm_plan`] this does not fan out to all
+/// participants: reconnecting clients would otherwise show no plan graph
+/// until the next plan mutation happens to broadcast.
+pub(super) async fn send_swarm_plan_to_session(
+    session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarm_plans: &Arc<RwLock<HashMap<String, VersionedPlan>>>,
+) {
+    let swarm_id = {
+        let members = swarm_members.read().await;
+        members
+            .get(session_id)
+            .and_then(|member| member.swarm_id.clone())
+    };
+    let Some(swarm_id) = swarm_id else {
+        return;
+    };
+
+    let event = {
+        let plans = swarm_plans.read().await;
+        let Some(vp) = plans.get(&swarm_id) else {
+            return;
+        };
+        if vp.items.is_empty() {
+            return;
+        }
+        let mut participants: Vec<String> = vp.participants.iter().cloned().collect();
+        participants.sort();
+        ServerEvent::SwarmPlan {
+            swarm_id: swarm_id.clone(),
+            version: vp.version,
+            items: vp.items.clone(),
+            participants,
+            reason: Some("reconnect".to_string()),
+            summary: Some(crate::protocol::PlanGraphStatus::from_versioned_plan(
+                &swarm_id,
+                vp,
+                Some(3),
+                Vec::new(),
+            )),
+        }
+    };
+
+    let members = swarm_members.read().await;
+    if let Some(member) = members.get(session_id) {
+        let _ = member.event_tx.send(event);
+    }
+}
+
 pub(super) async fn rename_plan_participant(
     swarm_id: &str,
     old_session_id: &str,
