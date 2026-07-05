@@ -807,6 +807,11 @@ impl App {
 
         self.clear_provider_messages();
         self.clear_display_messages();
+        // Ctrl+R is reachable mid-stream (turn.rs key handling); drop the
+        // in-flight streaming render state (including the ephemeral mermaid
+        // preview slot) so it cannot leak into the recovered session's
+        // transcript.
+        self.clear_streaming_render_state();
         self.queued_messages.clear();
         self.pasted_contents.clear();
         self.pending_images.clear();

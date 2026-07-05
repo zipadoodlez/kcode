@@ -272,6 +272,11 @@ pub(super) fn reset_current_session(app: &mut App) {
     let _ = app.session.save();
     app.clear_provider_messages();
     app.clear_display_messages();
+    // A streaming mermaid preview (STREAMING_PREVIEW_DIAGRAM) belongs to the
+    // transcript being discarded; clear it with the rest of the streaming
+    // render state so it cannot outlive the reset (remote /clear at
+    // remote/key_handling.rs does the same).
+    app.clear_streaming_render_state();
     app.queued_messages.clear();
     app.pasted_contents.clear();
     app.pending_images.clear();

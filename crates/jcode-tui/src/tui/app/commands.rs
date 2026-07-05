@@ -1931,6 +1931,10 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         app.replace_provider_messages(provider_messages);
 
         app.clear_display_messages();
+        // Drop any streaming mermaid preview tied to the transcript being
+        // replaced (defensive: submit_input's commit already clears it on the
+        // slash-command path, but direct callers must not leak the slot).
+        app.clear_streaming_render_state();
         for rendered in crate::session::render_messages(&app.session) {
             app.push_display_message(DisplayMessage {
                 role: rendered.role,
@@ -2002,6 +2006,8 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
                 app.session.updated_at = chrono::Utc::now();
 
                 app.clear_display_messages();
+                // Same defensive preview clear as /rewind undo above.
+                app.clear_streaming_render_state();
                 for rendered in crate::session::render_messages(&app.session) {
                     app.push_display_message(DisplayMessage {
                         role: rendered.role,
