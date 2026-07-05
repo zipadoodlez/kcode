@@ -441,6 +441,114 @@ fn test_handle_server_event_history_same_session_rewind_reapply_clears_streaming
 }
 
 #[test]
+fn test_handle_server_event_history_same_session_midstream_duplicate_is_dropped_and_keeps_preview() {
+    // Multi-client rewind fan-out pin (server side has NO fan-out: a /rewind
+    // History redelivery is written only to the rewinding connection's socket,
+    // per-client event channel, server/client_lifecycle.rs:521 and
+    // client_state.rs handle_get_history). This test pins the CLIENT side of
+    // that contract: if a mid-stream client (is_processing=true, bootstrap
+    // already complete: has_loaded_history=true) ever receives a same-session
+    // History payload it did not request, the payload must be DROPPED
+    // (server_events.rs should_apply_history_payload gate), the local
+    // transcript must stay intact, and the live streaming preview diagram must
+    // NOT be cleared (the c7612068 preview-clear only runs on the forced
+    // re-apply path, which only the rewinding client arms by resetting
+    // has_loaded_history in backend.rs rewind()/rewind_undo()).
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.remote_session_id = Some("session_midstream_dup".to_string());
+    remote.set_session_id("session_midstream_dup".to_string());
+    remote.mark_history_loaded();
+
+    // Mid-stream state on this (non-rewinding) client.
+    app.push_display_message(DisplayMessage::user("kept local message".to_string()));
+    app.streaming.streaming_text = "```mermaid\ngraph TD; A-->B\n```".to_string();
+    app.is_processing = true;
+    let preview_hash: u64 = 0xDEAD_BEEF_5EAF_0003;
+    crate::tui::mermaid::set_streaming_preview_diagram(
+        preview_hash,
+        320,
+        240,
+        Some("stream-preview".to_string()),
+    );
+
+    // Same-session, rewind-truncated payload this client never requested.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::History {
+            id: 3,
+            session_id: "session_midstream_dup".to_string(),
+            messages: vec![crate::protocol::HistoryMessage {
+                role: "user".to_string(),
+                content: "truncated payload from another client's rewind".to_string(),
+                tool_calls: None,
+                tool_data: None,
+            }],
+            images: vec![],
+            provider_name: Some("claude".to_string()),
+            provider_model: Some("claude-sonnet-4-20250514".to_string()),
+            subagent_model: None,
+            autoreview_enabled: None,
+            autojudge_enabled: None,
+            available_models: vec![],
+            available_model_routes: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            total_tokens: None,
+            token_usage_totals: None,
+            all_sessions: vec![],
+            client_count: None,
+            is_canary: None,
+            reload_recovery: None,
+            server_version: None,
+            server_name: None,
+            server_icon: None,
+            server_has_update: None,
+            was_interrupted: None,
+            connection_type: None,
+            status_detail: None,
+            upstream_provider: None,
+            resolved_credential: None,
+            reasoning_effort: None,
+            service_tier: None,
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+        },
+        &mut remote,
+    );
+
+    // Payload dropped: local transcript untouched, unsolicited truncation not applied.
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.content.contains("kept local message")),
+        "unsolicited same-session History must not replace a bootstrapped mid-stream transcript"
+    );
+    assert!(
+        !app.display_messages()
+            .iter()
+            .any(|m| m.content.contains("truncated payload from another client's rewind")),
+        "unsolicited same-session History payload should be dropped, not applied"
+    );
+    // Live stream state preserved: preview and streaming text survive.
+    assert!(
+        crate::tui::mermaid::get_active_diagrams()
+            .iter()
+            .any(|d| d.hash == preview_hash),
+        "a dropped duplicate History must not clear a live streaming preview diagram"
+    );
+    assert!(
+        !app.streaming.streaming_text.is_empty(),
+        "a dropped duplicate History must not clear in-flight streaming text"
+    );
+    // Cleanup the global preview slot for other tests.
+    crate::tui::mermaid::clear_streaming_preview_diagram();
+}
+
+#[test]
 fn test_handle_server_event_history_session_change_clears_pending_interleaves() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
