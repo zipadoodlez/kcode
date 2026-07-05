@@ -2944,9 +2944,19 @@ impl App {
             // Tool-only boundary (no answer text): keep the retained trace on
             // screen so the thought stays readable while the tool runs. It
             // folds when superseded by the next trace or at end of turn.
+            //
+            // The ephemeral mermaid preview slot mirrors the (now empty) live
+            // buffer, so any surviving entry here is stale by definition. The
+            // buffer can only become empty without the slot being cleared via
+            // `replace_streaming_text` (remote TextReplace, debug snapshot
+            // restore); `take_streaming_text` and `clear_streaming_render_state`
+            // both clear it themselves.
+            crate::tui::mermaid::clear_streaming_preview_diagram();
             return false;
         }
 
+        // `take_streaming_text` also clears the streaming mermaid preview
+        // slot, so the whitespace-only early return below cannot leak it.
         let content = self.take_streaming_text();
         let content = self.collapse_reasoning_for_commit(content);
         if content.trim().is_empty() {
