@@ -208,7 +208,9 @@ fn is_error_copy_content(content: &str) -> bool {
 /// of the blank run starting at that line. The previous implementation scanned
 /// forward through the trailing blanks for every placeholder, which is O(L^2)
 /// when a message has many placeholders each followed by long blank runs.
-fn compute_image_regions(wrapped_lines: &[ratatui::text::Line<'static>]) -> Vec<ImageRegion> {
+pub(super) fn compute_image_regions(
+    wrapped_lines: &[ratatui::text::Line<'static>],
+) -> Vec<ImageRegion> {
     fn is_blank_line(line: &ratatui::text::Line<'static>) -> bool {
         line.spans.is_empty() || (line.spans.len() == 1 && line.spans[0].content.is_empty())
     }
