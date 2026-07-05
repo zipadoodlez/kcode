@@ -246,7 +246,8 @@ async fn poll_state_machine_treats_gone_as_expired() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn poll_state_machine_handles_live_worker_shapes() {
-    // The live subscription-worker replies 428 + nested error while pending,
+    // The live backend (subscription worker in the private solosystems-backend
+    // repo) replies 428 + nested error while pending,
     // and 400 + nested {"error":{"code":"expired_token",...}} on expiry.
     let base = spawn_scripted_http_server(vec![
         (

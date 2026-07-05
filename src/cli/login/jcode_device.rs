@@ -1,6 +1,6 @@
 //! Jcode subscription device-code (magic-link) login flow.
 //!
-//! Contract (see subscription-worker/ for the live backend):
+//! Contract (the live backend lives in the private solosystems-backend repo):
 //! - `POST {auth_base}/v1/auth/device {"email": "..."}` ->
 //!   `{device_code, verify_url, expires_in, interval}`
 //! - `POST {auth_base}/v1/auth/token {"device_code": "..."}` ->
