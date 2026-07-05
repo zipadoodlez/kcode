@@ -43,17 +43,13 @@ fn test_processing_status_display() {
 fn test_skill_invocation_not_queued() {
     let mut app = create_test_app();
 
-    // Type a skill command
-    app.handle_key(KeyCode::Char('/'), KeyModifiers::empty())
-        .unwrap();
-    app.handle_key(KeyCode::Char('t'), KeyModifiers::empty())
-        .unwrap();
-    app.handle_key(KeyCode::Char('e'), KeyModifiers::empty())
-        .unwrap();
-    app.handle_key(KeyCode::Char('s'), KeyModifiers::empty())
-        .unwrap();
-    app.handle_key(KeyCode::Char('t'), KeyModifiers::empty())
-        .unwrap();
+    // Type a slash invocation for a skill that does not exist. The name must
+    // not collide with a built-in slash command (`/test` is the verification
+    // orchestrator now), so use an obviously bogus skill name.
+    for ch in "/nosuchskill".chars() {
+        app.handle_key(KeyCode::Char(ch), KeyModifiers::empty())
+            .unwrap();
+    }
 
     app.submit_input();
 
