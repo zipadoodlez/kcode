@@ -861,6 +861,7 @@ fn test_create_transfer_session_from_parent_copies_todos_and_uses_compacted_cont
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -1025,6 +1026,7 @@ fn test_escape_interrupt_disables_auto_poke_while_processing() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             },
         ]));
 

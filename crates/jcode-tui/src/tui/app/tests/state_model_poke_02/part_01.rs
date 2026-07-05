@@ -1000,6 +1000,7 @@ fn test_context_command_reports_session_context_snapshot() {
                 assigned_to: None,
                 confidence: Some(77),
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

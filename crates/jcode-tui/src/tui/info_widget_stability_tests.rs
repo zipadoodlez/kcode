@@ -29,6 +29,7 @@ fn rich_data() -> InfoWidgetData {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             },
             crate::todo::TodoItem {
                 group: None,
@@ -40,6 +41,7 @@ fn rich_data() -> InfoWidgetData {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             },
         ],
         background_info: Some(BackgroundInfo {

@@ -266,7 +266,7 @@ fn test_todo(
 }
 
 #[test]
-fn run_auto_poke_followup_sends_confidence_summary_when_todos_are_done() {
+fn run_auto_poke_followup_targets_below_threshold_todos() {
     let todos = vec![
         test_todo("a", "completed", "high", Some(90), Some(90)),
         test_todo("b", "completed", "low", Some(80), Some(80)),
@@ -281,11 +281,60 @@ fn run_auto_poke_followup_sends_confidence_summary_when_todos_are_done() {
         }) => {
             assert_eq!(total_todos, 2);
             assert!(message.contains("All todos are done. Todo confidence summary:"));
-            assert!(message.contains("- Weighted completion confidence: 88%."));
-            assert!(message.contains("- 1 completed todo is below the 90% confidence threshold."));
+            assert!(message.contains("\"todo b\" was completed at 80% confidence"));
+            assert!(!message.contains("todo a\" was completed at"));
         }
         _ => panic!("expected confidence-summary follow-up"),
     }
+}
+
+#[test]
+fn run_auto_poke_followup_flags_confidence_spikes() {
+    // Stepped, evidence-backed rise: no spike, no follow-up.
+    let mut steady = test_todo("a", "completed", "high", Some(100), Some(100));
+    steady.confidence_history = vec![75, 85, 95, 100];
+    // Bulk end-of-task stamp: 75 -> 100 in one step.
+    let mut spiked = test_todo("b", "completed", "high", Some(100), Some(100));
+    spiked.confidence_history = vec![75, 100];
+
+    let followup = build_run_auto_poke_follow_up_from_todos(&[steady.clone()], false);
+    assert!(
+        followup.is_none(),
+        "stepped rise above threshold should not trigger a follow-up"
+    );
+
+    match build_run_auto_poke_follow_up_from_todos(&[steady, spiked], false) {
+        Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
+            assert!(message.contains("\"todo b\" jumped to its final confidence in one step"));
+            assert!(message.contains("75 -> 100"));
+            assert!(!message.contains("todo a\" jumped"));
+        }
+        _ => panic!("expected spike follow-up"),
+    }
+}
+
+#[test]
+fn run_auto_poke_followup_flags_spike_without_history() {
+    // No tool-maintained history (legacy todos): fall back to the
+    // planning-vs-completion gap on the scalar fields.
+    let todos = vec![test_todo("a", "completed", "high", Some(70), Some(100))];
+    match build_run_auto_poke_follow_up_from_todos(&todos, false) {
+        Some(RunAutoPokeFollowUp::ConfidenceSummary { message, .. }) => {
+            assert!(message.contains("jumped to its final confidence"));
+        }
+        _ => panic!("expected spike follow-up from scalar fields"),
+    }
+}
+
+#[test]
+fn run_auto_poke_followup_silent_when_confident_and_earned() {
+    // All above threshold and no spikes: the old behavior sent an "all good"
+    // summary anyway; now we spend no tokens and end the run.
+    let todos = vec![
+        test_todo("a", "completed", "high", Some(95), Some(95)),
+        test_todo("b", "completed", "low", Some(92), Some(98)),
+    ];
+    assert!(build_run_auto_poke_follow_up_from_todos(&todos, false).is_none());
 }
 
 #[test]

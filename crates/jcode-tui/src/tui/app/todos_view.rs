@@ -511,6 +511,7 @@ mod tests {
             group: None,
             confidence,
             completion_confidence,
+            confidence_history: Vec::new(),
             blocked_by: Vec::new(),
             assigned_to: None,
         }

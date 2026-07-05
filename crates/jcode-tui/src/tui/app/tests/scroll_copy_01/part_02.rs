@@ -270,6 +270,7 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             },
         ]));
 

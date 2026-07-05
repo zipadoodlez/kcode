@@ -18,6 +18,7 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -60,6 +61,7 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
                     assigned_to: None,
                     confidence: None,
                     completion_confidence: None,
+                    confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
                     group: None,
@@ -71,6 +73,7 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
                     assigned_to: None,
                     confidence: None,
                     completion_confidence: None,
+                    confidence_history: Vec::new(),
                 },
             ],
         )
@@ -160,6 +163,7 @@ fn test_remote_interrupted_auto_poke_requeues_after_deferred_poke() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

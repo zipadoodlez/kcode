@@ -2574,7 +2574,6 @@ fn run_command_auto_poke_limit_reached(turns_completed: usize, max_turns: Option
 }
 
 const RUN_TODO_CONFIDENCE_THRESHOLD: u8 = 90;
-const RUN_TODO_CONFIDENCE_SUMMARY_PREFIX: &str = crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX;
 
 enum RunAutoPokeFollowUp {
     Incomplete { count: usize, message: String },
@@ -2600,10 +2599,13 @@ fn build_run_auto_poke_follow_up_from_todos(
             message: build_run_poke_message(&incomplete),
         });
     }
-    if !confidence_summary_sent && !todos.is_empty() {
+    if !confidence_summary_sent
+        && !todos.is_empty()
+        && let Some(message) = build_run_todo_validation_message(todos)
+    {
         return Some(RunAutoPokeFollowUp::ConfidenceSummary {
             total_todos: todos.len(),
-            message: build_run_todo_confidence_summary_message(todos),
+            message,
         });
     }
     None
@@ -2613,148 +2615,74 @@ fn build_run_poke_message(incomplete: &[crate::todo::TodoItem]) -> String {
     crate::todo::build_auto_poke_message(incomplete.len())
 }
 
-fn run_todo_confidence_weight(priority: &str) -> u32 {
-    match priority {
-        "high" => 3,
-        "medium" => 2,
-        _ => 1,
-    }
-}
-
-fn run_weighted_confidence_average(scores: impl IntoIterator<Item = (u8, u32)>) -> Option<u8> {
-    let mut weighted_sum = 0u32;
-    let mut total_weight = 0u32;
-    for (score, weight) in scores {
-        weighted_sum += u32::from(score) * weight;
-        total_weight += weight;
-    }
-    if total_weight == 0 {
-        None
-    } else {
-        Some(((weighted_sum + total_weight / 2) / total_weight) as u8)
-    }
-}
-
-fn build_run_todo_confidence_summary_message(todos: &[crate::todo::TodoItem]) -> String {
+fn build_run_todo_validation_message(todos: &[crate::todo::TodoItem]) -> Option<String> {
     let completed: Vec<&crate::todo::TodoItem> = todos
         .iter()
         .filter(|todo| todo.status == "completed")
         .collect();
-    let cancelled_count = todos
-        .iter()
-        .filter(|todo| todo.status == "cancelled")
-        .count();
+    if completed.is_empty() {
+        return None;
+    }
 
-    let planning_average = run_weighted_confidence_average(todos.iter().filter_map(|todo| {
-        todo.confidence
-            .map(|score| (score, run_todo_confidence_weight(&todo.priority)))
-    }));
-    let completion_scores: Vec<(&crate::todo::TodoItem, u8, u32)> = completed
+    // Todos whose confidence claims are suspect:
+    // - below the threshold (the model itself admits doubt), or
+    // - missing a completion confidence entirely, or
+    // - "spike-finished": confidence jumped to its final value in one large
+    //   unearned step instead of rising with evidence. Benchmark data shows
+    //   this is where every wrong 100%-confidence claim lives, and that the
+    //   planning-time score correctly identified the risky step.
+    let below: Vec<&&crate::todo::TodoItem> = completed
         .iter()
-        .filter_map(|todo| {
+        .filter(|todo| {
             todo.completion_confidence
-                .map(|score| (*todo, score, run_todo_confidence_weight(&todo.priority)))
+                .is_none_or(|score| score < RUN_TODO_CONFIDENCE_THRESHOLD)
         })
         .collect();
-    let completion_average = run_weighted_confidence_average(
-        completion_scores
-            .iter()
-            .map(|(_, score, weight)| (*score, *weight)),
-    );
-    let missing_completion_confidence = completed
-        .iter()
-        .filter(|todo| todo.completion_confidence.is_none())
-        .count();
-    let below_threshold_count = completion_scores
-        .iter()
-        .filter(|(_, score, _)| *score < RUN_TODO_CONFIDENCE_THRESHOLD)
-        .count();
-    let lowest_completed = completion_scores
-        .iter()
-        .min_by_key(|(_, score, _)| *score)
-        .map(|(_, score, _)| *score);
+    let spiked = crate::todo::spike_completed_todos(todos);
 
-    let mut lines = vec![RUN_TODO_CONFIDENCE_SUMMARY_PREFIX.to_string()];
-    lines.push(format!(
-        "- Completed todos: {}{}.",
-        completed.len(),
-        if cancelled_count == 0 {
-            String::new()
+    if below.is_empty() && spiked.is_empty() {
+        // Nothing actionable: completing the loop with a generic summary just
+        // spends tokens on "all good" theater, so send nothing and end the run.
+        return None;
+    }
+
+    let mut lines = vec![crate::todo::TODO_CONFIDENCE_SUMMARY_PREFIX.to_string()];
+    for todo in &below {
+        match todo.completion_confidence {
+            Some(score) => lines.push(format!(
+                "- \"{}\" was completed at {}% confidence (threshold {}%).",
+                todo.content, score, RUN_TODO_CONFIDENCE_THRESHOLD
+            )),
+            None => lines.push(format!(
+                "- \"{}\" was completed without recording completion confidence.",
+                todo.content
+            )),
+        }
+    }
+    for todo in &spiked {
+        let trail = if todo.confidence_history.len() >= 2 {
+            todo.confidence_history
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(" -> ")
         } else {
             format!(
-                " ({} cancelled todo{} skipped)",
-                cancelled_count,
-                if cancelled_count == 1 { "" } else { "s" }
+                "{} -> {}",
+                todo.confidence.unwrap_or_default(),
+                todo.completion_confidence.unwrap_or_default()
             )
-        }
-    ));
-
-    match completion_average {
-        Some(avg) => lines.push(format!("- Weighted completion confidence: {}%.", avg)),
-        None if !completed.is_empty() => lines.push(
-            "- Weighted completion confidence: unknown because no completed todo has completion_confidence."
-                .to_string(),
-        ),
-        None => lines.push("- No completed todos recorded completion confidence.".to_string()),
+        };
+        lines.push(format!(
+            "- \"{}\" jumped to its final confidence in one step ({}). You planned it as one of the riskier items; the confidence was not earned through intermediate validation.",
+            todo.content, trail
+        ));
     }
     lines.push(format!(
-        "- Confidence threshold: {}%.",
-        RUN_TODO_CONFIDENCE_THRESHOLD
+        "- {}",
+        crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
     ));
-
-    match planning_average {
-        Some(avg) => lines.push(format!("- Weighted planning confidence: {}%.", avg)),
-        None => lines.push("- Weighted planning confidence: unknown.".to_string()),
-    }
-
-    match lowest_completed {
-        Some(score) => lines.push(format!("- Lowest completed todo confidence: {}%.", score)),
-        None => lines.push("- Lowest completed todo confidence: unknown.".to_string()),
-    }
-
-    if missing_completion_confidence > 0 {
-        lines.push(format!(
-            "- Missing completion_confidence on {} completed todo{}.",
-            missing_completion_confidence,
-            if missing_completion_confidence == 1 {
-                ""
-            } else {
-                "s"
-            }
-        ));
-    }
-
-    if below_threshold_count > 0 {
-        lines.push(format!(
-            "- {} completed todo{} below the {}% confidence threshold.",
-            below_threshold_count,
-            if below_threshold_count == 1 {
-                " is"
-            } else {
-                "s are"
-            },
-            RUN_TODO_CONFIDENCE_THRESHOLD
-        ));
-    }
-
-    let needs_validation = completion_average
-        .map(|avg| avg < RUN_TODO_CONFIDENCE_THRESHOLD)
-        .unwrap_or(true)
-        || missing_completion_confidence > 0
-        || below_threshold_count > 0;
-    if needs_validation {
-        lines.push(format!(
-            "- {}",
-            crate::prompt::TODO_CONFIDENCE_NEEDS_VALIDATION_PROMPT.trim()
-        ));
-    } else {
-        lines.push(format!(
-            "- {}",
-            crate::prompt::TODO_CONFIDENCE_READY_PROMPT.trim()
-        ));
-    }
-
-    lines.join("\n")
+    Some(lines.join("\n"))
 }
 
 async fn run_single_message_command_plain_with_auto_poke(

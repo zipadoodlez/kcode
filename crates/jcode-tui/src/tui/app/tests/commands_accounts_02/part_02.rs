@@ -136,6 +136,7 @@ fn test_refactor_status_summarizes_current_todos() {
                     assigned_to: None,
                     confidence: Some(76),
                     completion_confidence: None,
+                    confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
                     group: None,
@@ -147,6 +148,7 @@ fn test_refactor_status_summarizes_current_todos() {
                     assigned_to: None,
                     confidence: None,
                     completion_confidence: None,
+                    confidence_history: Vec::new(),
                 },
             ],
         )
@@ -188,6 +190,7 @@ fn test_refactor_resume_uses_saved_mode_and_current_todos() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

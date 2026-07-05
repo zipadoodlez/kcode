@@ -281,6 +281,7 @@ mod tests {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
             memory_info: Some(MemoryInfo {
                 total_count: 3,

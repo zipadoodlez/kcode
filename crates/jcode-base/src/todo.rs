@@ -8,6 +8,38 @@ pub use jcode_task_types::TodoItem;
 /// auto-poke queues once every todo is complete.
 pub const TODO_CONFIDENCE_SUMMARY_PREFIX: &str = "All todos are done. Todo confidence summary:";
 
+/// A completed todo is "spike-finished" when its confidence jumped at least
+/// this many points in its final step. Benchmark analysis (TB2.1 k=5) showed
+/// planning confidence correctly flags the riskiest step, but a bulk
+/// end-of-task stamp to 100 erases that signal: every wrong 100%-confidence
+/// completion ended in such a spike, while stepped, evidence-backed rises
+/// were always right.
+pub const TODO_CONFIDENCE_SPIKE: u8 = 15;
+
+/// Completed todos whose confidence trail ends in an unearned jump: a final
+/// step of [`TODO_CONFIDENCE_SPIKE`]+ points in the tool-maintained
+/// `confidence_history`, or, for todos without a recorded trail, an equally
+/// large gap between planning `confidence` and `completion_confidence`.
+pub fn spike_completed_todos(todos: &[TodoItem]) -> Vec<&TodoItem> {
+    todos
+        .iter()
+        .filter(|todo| todo.status == "completed")
+        .filter(|todo| {
+            let history = &todo.confidence_history;
+            match history.len() {
+                0 => todo
+                    .confidence
+                    .zip(todo.completion_confidence)
+                    .is_some_and(|(first, last)| {
+                        last.saturating_sub(first) >= TODO_CONFIDENCE_SPIKE
+                    }),
+                1 => false,
+                n => history[n - 1].saturating_sub(history[n - 2]) >= TODO_CONFIDENCE_SPIKE,
+            }
+        })
+        .collect()
+}
+
 /// Build the synthetic auto-poke continuation prompt sent when the model
 /// stops with incomplete todos. Kept here so every producer (TUI auto-poke,
 /// `jcode run` auto-poke) and the transcript renderer agree on the exact text.

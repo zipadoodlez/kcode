@@ -91,6 +91,7 @@ fn test_remote_auto_poke_followup_preserves_visible_timer_and_stays_hidden() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -143,6 +144,7 @@ fn test_remote_auto_poke_completion_above_threshold_only_updates_ui() {
                 assigned_to: None,
                 confidence: Some(95),
                 completion_confidence: Some(95),
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -181,6 +183,7 @@ fn test_remote_auto_poke_completion_below_threshold_tells_model_to_keep_working(
                 assigned_to: None,
                 confidence: Some(80),
                 completion_confidence: Some(80),
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");
@@ -225,6 +228,7 @@ fn test_remote_poke_status_and_off_update_state() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                confidence_history: Vec::new(),
             }],
         )
         .expect("save todos");

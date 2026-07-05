@@ -107,6 +107,7 @@ fn todos_widgets_show_item_and_aggregate_confidence() {
                 priority: "high".to_string(),
                 confidence: Some(80),
                 completion_confidence: None,
+                confidence_history: Vec::new(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
             },
@@ -118,6 +119,7 @@ fn todos_widgets_show_item_and_aggregate_confidence() {
                 priority: "medium".to_string(),
                 confidence: Some(70),
                 completion_confidence: Some(95),
+                confidence_history: Vec::new(),
                 blocked_by: Vec::new(),
                 assigned_to: None,
             },
@@ -149,6 +151,7 @@ fn todos_widgets_render_group_headers_when_groups_present() {
         priority: "medium".to_string(),
         confidence: Some(80),
         completion_confidence: None,
+        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -186,6 +189,7 @@ fn todos_widgets_stay_flat_without_groups() {
         priority: "medium".to_string(),
         confidence: Some(80),
         completion_confidence: None,
+        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -207,6 +211,7 @@ fn todos_widget_renders_exact_pips_for_small_lists() {
         priority: "medium".to_string(),
         confidence: Some(80),
         completion_confidence: None,
+        confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,
     };
@@ -1487,6 +1492,7 @@ fn placements_never_include_border_only_widgets() {
             assigned_to: None,
             confidence: None,
             completion_confidence: None,
+            confidence_history: Vec::new(),
         }],
         queue_mode: Some(true),
         memory_info: Some(MemoryInfo {

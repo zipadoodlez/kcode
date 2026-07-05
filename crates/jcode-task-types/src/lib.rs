@@ -211,6 +211,14 @@ pub struct TodoItem {
     /// Confidence, from 0-100, recorded when the todo is marked completed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_confidence: Option<u8>,
+    /// Every distinct confidence value this todo has carried, oldest first,
+    /// ending with the current one. Maintained by the todo tool (not the
+    /// model): the first entry is the planning-time confidence, later entries
+    /// record how the assessment evolved while the item was worked on. This
+    /// preserves the planning signal even after the model overwrites
+    /// `confidence` when marking the item done.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub confidence_history: Vec<u8>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

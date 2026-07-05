@@ -5,12 +5,43 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 pub struct TodoTool;
 
 impl TodoTool {
     pub fn new() -> Self {
         Self
+    }
+}
+
+/// Fold each incoming todo's confidence into its tool-maintained history.
+///
+/// The model reports `confidence` (and `completion_confidence` at completion)
+/// as scalar fields; this keeps an append-only trail of every distinct value a
+/// todo has carried so downstream consumers (auto-poke spike checks, analysis)
+/// can distinguish a stepped, evidence-driven rise (75 -> 85 -> 95 -> 100)
+/// from a bulk end-of-task stamp (75 -> 100). Model-supplied
+/// `confidence_history` is ignored: the tool owns this field.
+fn merge_confidence_history(previous: &[TodoItem], incoming: &mut [TodoItem]) {
+    let prior: HashMap<&str, &TodoItem> = previous
+        .iter()
+        .map(|todo| (todo.id.as_str(), todo))
+        .collect();
+    for todo in incoming.iter_mut() {
+        let mut history = prior
+            .get(todo.id.as_str())
+            .map(|prev| prev.confidence_history.clone())
+            .unwrap_or_default();
+        for value in [todo.confidence, todo.completion_confidence]
+            .into_iter()
+            .flatten()
+        {
+            if history.last() != Some(&value) {
+                history.push(value);
+            }
+        }
+        todo.confidence_history = history;
     }
 }
 
@@ -101,7 +132,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Read or update the todo list. Include confidence for each item and completion_confidence when marking an item completed."
+        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -140,7 +171,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "Forward-looking confidence, 0-100, that this todo can be completed correctly. Set when creating or substantially revising a todo."
+                                "description": "Current confidence, 0-100, that this todo can be completed correctly. Set when creating the todo, and update it as evidence accumulates while working (each validation or test that passes justifies a step up). Confidence should rise in evidence-backed steps, not jump to 100 at the end."
                             },
                             "completion_confidence": {
                                 "type": "integer",
@@ -163,7 +194,9 @@ impl Tool for TodoTool {
             "read"
         };
         match params.todos {
-            Some(todos) => {
+            Some(mut todos) => {
+                let previous = load_todos(&ctx.session_id).unwrap_or_default();
+                merge_confidence_history(&previous, &mut todos);
                 save_todos(&ctx.session_id, &todos)?;
 
                 Bus::global().publish(BusEvent::TodoUpdated(TodoEvent {
@@ -296,5 +329,49 @@ mod tests {
     #[test]
     fn garbage_string_still_errors() {
         assert!(parse(json!({"todos": "not json at all"})).is_err());
+    }
+
+    fn history_todo(id: &str, confidence: Option<u8>, history: Vec<u8>) -> TodoItem {
+        TodoItem {
+            id: id.to_string(),
+            content: format!("todo {id}"),
+            status: "in_progress".to_string(),
+            priority: "high".to_string(),
+            confidence,
+            confidence_history: history,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn confidence_history_appends_changes_and_skips_repeats() {
+        let previous = vec![history_todo("1", Some(75), vec![75])];
+        // Same confidence again: no new entry.
+        let mut incoming = vec![history_todo("1", Some(75), Vec::new())];
+        merge_confidence_history(&previous, &mut incoming);
+        assert_eq!(incoming[0].confidence_history, vec![75]);
+        // Raised confidence: appended.
+        let mut incoming = vec![history_todo("1", Some(90), Vec::new())];
+        merge_confidence_history(&previous, &mut incoming);
+        assert_eq!(incoming[0].confidence_history, vec![75, 90]);
+    }
+
+    #[test]
+    fn confidence_history_records_completion_confidence() {
+        let previous = vec![history_todo("1", Some(75), vec![75])];
+        let mut done = history_todo("1", Some(100), Vec::new());
+        done.status = "completed".to_string();
+        done.completion_confidence = Some(100);
+        let mut incoming = vec![done];
+        merge_confidence_history(&previous, &mut incoming);
+        // 75 (planning) -> 100 (final bulk stamp): the spike stays visible.
+        assert_eq!(incoming[0].confidence_history, vec![75, 100]);
+    }
+
+    #[test]
+    fn confidence_history_ignores_model_supplied_history_for_new_todos() {
+        let mut incoming = vec![history_todo("9", Some(80), vec![1, 2, 3])];
+        merge_confidence_history(&[], &mut incoming);
+        assert_eq!(incoming[0].confidence_history, vec![80]);
     }
 }
