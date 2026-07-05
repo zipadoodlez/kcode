@@ -246,6 +246,92 @@ fn test_handle_server_event_history_preserves_connection_type_for_same_session_w
 }
 
 #[test]
+fn test_handle_server_event_history_session_change_clears_streaming_preview_diagram() {
+    // Regression pin: a mermaid preview registered mid-stream (via
+    // set_streaming_preview_diagram from the streaming markdown render) must
+    // not leak into a different session when a session-changing History event
+    // arrives while the stream is still in flight. The History handler's
+    // session_changed branch (remote/server_events.rs) calls
+    // clear_streaming_render_state() (app/input.rs), which clears the
+    // streaming preview slot.
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.remote_session_id = Some("session_old".to_string());
+    // Simulate a mid-stream turn: in-flight streaming text and processing on.
+    app.streaming.streaming_text = "```mermaid\ngraph TD; A-->B\n```".to_string();
+    app.is_processing = true;
+    // The streaming markdown renderer registered a preview for the in-flight
+    // fenced block (markdown_render_full.rs set_streaming_preview_diagram).
+    let preview_hash: u64 = 0xDEAD_BEEF_5EAF_0001;
+    crate::tui::mermaid::set_streaming_preview_diagram(
+        preview_hash,
+        320,
+        240,
+        Some("stream-preview".to_string()),
+    );
+    assert!(
+        crate::tui::mermaid::get_active_diagrams()
+            .iter()
+            .any(|d| d.hash == preview_hash),
+        "test setup: streaming preview should be visible before the History event"
+    );
+
+    app.handle_server_event(
+        crate::protocol::ServerEvent::History {
+            id: 1,
+            session_id: "session_new".to_string(),
+            messages: vec![],
+            images: vec![],
+            provider_name: Some("claude".to_string()),
+            provider_model: Some("claude-sonnet-4-20250514".to_string()),
+            subagent_model: None,
+            autoreview_enabled: None,
+            autojudge_enabled: None,
+            available_models: vec![],
+            available_model_routes: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            total_tokens: None,
+            token_usage_totals: None,
+            all_sessions: vec![],
+            client_count: None,
+            is_canary: None,
+            reload_recovery: None,
+            server_version: None,
+            server_name: None,
+            server_icon: None,
+            server_has_update: None,
+            was_interrupted: None,
+            connection_type: None,
+            status_detail: None,
+            upstream_provider: None,
+            resolved_credential: None,
+            reasoning_effort: None,
+            service_tier: None,
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+        },
+        &mut remote,
+    );
+
+    assert_eq!(app.remote_session_id.as_deref(), Some("session_new"));
+    assert!(
+        app.streaming.streaming_text.is_empty(),
+        "session-changing History must drop in-flight streaming text"
+    );
+    assert!(
+        !crate::tui::mermaid::get_active_diagrams()
+            .iter()
+            .any(|d| d.hash == preview_hash),
+        "streaming preview diagram leaked across a session-changing History event"
+    );
+}
+
+#[test]
 fn test_handle_server_event_history_session_change_clears_pending_interleaves() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
