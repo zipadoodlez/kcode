@@ -711,7 +711,7 @@ pub(super) async fn spawn_swarm_agent(
     // member lists can show the task, not just the animal name. An explicit
     // spawn `label` wins; otherwise the label is derived from the raw prompt
     // (before completion-report boilerplate is appended).
-    if let Some(ref label_text) = label.as_deref().or(initial_message.as_deref()) {
+    if let Some(label_text) = label.as_deref().or(initial_message.as_deref()) {
         set_member_task_label(&new_session_id, label_text, swarm_members).await;
     }
     let swarm_state = SwarmState {
@@ -1194,10 +1194,6 @@ fn swarm_member_status_is_stale_for_coordination(status: &str) -> bool {
     )
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "spawn coordinator resolution checks swarm membership, coordinator state, and promotion side effects together"
-)]
 async fn ensure_spawn_coordinator_swarm(
     id: u64,
     req_session_id: &str,
