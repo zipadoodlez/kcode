@@ -810,7 +810,10 @@ impl App {
         // Ctrl+R is reachable mid-stream (turn.rs key handling); drop the
         // in-flight streaming render state (including the ephemeral mermaid
         // preview slot) so it cannot leak into the recovered session's
-        // transcript.
+        // transcript. ACTIVE_DIAGRAMS deliberately survives: recovery keeps
+        // every text block, so registered diagrams still back retained
+        // messages, and body-cache prefix reuse (ui_prepare.rs) would skip
+        // re-registering them if we cleared the registry here.
         self.clear_streaming_render_state();
         self.queued_messages.clear();
         self.pasted_contents.clear();

@@ -277,6 +277,15 @@ pub(super) fn reset_current_session(app: &mut App) {
     // render state so it cannot outlive the reset (remote /clear at
     // remote/key_handling.rs does the same).
     app.clear_streaming_render_state();
+    // The WHOLE transcript is discarded, so every entry in the process-global
+    // ACTIVE_DIAGRAMS registry is now orphaned; drop them so the pinned pane
+    // and the Margin info widget (which draws get_active_diagrams()[0])
+    // cannot keep showing a diagram from the old transcript. Only
+    // full-discard paths may do this: partial-retention paths (/rewind,
+    // Ctrl+R recovery) deliberately keep the registry because body-cache
+    // prefix reuse means retained messages do not re-render/re-register
+    // (see the comments at the /rewind handlers in commands.rs).
+    crate::tui::mermaid::clear_active_diagrams();
     app.queued_messages.clear();
     app.pasted_contents.clear();
     app.pending_images.clear();

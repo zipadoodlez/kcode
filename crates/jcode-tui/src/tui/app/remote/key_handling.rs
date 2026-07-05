@@ -1617,6 +1617,11 @@ async fn handle_remote_key_internal(
                     app.pasted_contents.clear();
                     app.pending_images.clear();
                     app.clear_streaming_render_state();
+                    // Full transcript discard: every registered diagram is
+                    // orphaned, so re-scope the process-global registry too
+                    // (same rationale as reset_current_session in
+                    // commands_review.rs).
+                    crate::tui::mermaid::clear_active_diagrams();
                     app.is_processing = false;
                     app.status = ProcessingStatus::Idle;
                     app.set_status_notice("Session cleared");
