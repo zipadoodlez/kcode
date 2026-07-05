@@ -10,7 +10,7 @@
     "crates/jcode-app-core/src/server/comm_session.rs": 1346,
     "crates/jcode-app-core/src/server/jade_relay.rs": 1428,
     "crates/jcode-app-core/src/server/provider_control.rs": 1439,
-    "crates/jcode-app-core/src/server/swarm.rs": 2734,
+    "crates/jcode-app-core/src/server/swarm.rs": 2824,
     "crates/jcode-app-core/src/tool/communicate.rs": 3146,
     "crates/jcode-app-core/src/tool/session_search.rs": 1892,
     "crates/jcode-app-core/src/update.rs": 1715,
