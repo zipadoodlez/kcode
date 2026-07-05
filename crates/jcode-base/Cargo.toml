@@ -69,7 +69,6 @@ jcode-provider-core = { path = "../jcode-provider-core" }
 # default-features=false so this crate's `bedrock` feature (below) controls the
 # AWS SDK stack; the pure model-metadata/credential-detection layer is always on.
 jcode-provider-bedrock = { path = "../jcode-provider-bedrock", default-features = false }
-jcode-provider-anthropic = { path = "../jcode-provider-anthropic" }
 jcode-provider-antigravity = { path = "../jcode-provider-antigravity" }
 jcode-provider-copilot = { path = "../jcode-provider-copilot" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
@@ -87,8 +86,6 @@ jcode-telemetry-core = { path = "../jcode-telemetry-core" }
 jcode-usage-types = { path = "../jcode-usage-types" }
 
 # Streaming
-tokio-stream = "0.1"
-bytes = "1"
 
 # Terminal I/O (event stream for interactive auth/secret prompts). NOTE: the
 # heavier presentation deps (ratatui widgets, arboard clipboard) were dropped
@@ -116,7 +113,6 @@ jcode-tool-types = { path = "../jcode-tool-types" }
 jcode-side-panel-types = { path = "../jcode-side-panel-types" }
 
 # Gzip decoding (used by provider import/helpers)
-flate2 = "1"
 tempfile = "3"
 qrcode = { version = "0.14.1", default-features = false }
 
