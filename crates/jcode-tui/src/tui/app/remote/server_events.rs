@@ -1829,6 +1829,18 @@ pub(in crate::tui::app) fn handle_server_event(
                             })
                             .collect();
                         app.replace_display_messages(restored_messages);
+                        // A same-session forced re-apply (rewind / rewind-undo
+                        // truncation, or a deferred bootstrap) rebuilds the
+                        // transcript without running the session_changed
+                        // clears above. Drop any streaming preview diagram so
+                        // it cannot keep rendering a mermaid block from a
+                        // message that was just truncated away. This is safe
+                        // for a genuinely live stream: every streaming render
+                        // frame re-registers the preview
+                        // (markdown_render_full.rs set_streaming_preview_diagram).
+                        if !session_changed {
+                            crate::tui::mermaid::clear_streaming_preview_diagram();
+                        }
                         record_applied_history_fingerprint(
                             &app.remote_client_instance_id,
                             &session_id,

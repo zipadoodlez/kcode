@@ -332,6 +332,115 @@ fn test_handle_server_event_history_session_change_clears_streaming_preview_diag
 }
 
 #[test]
+fn test_handle_server_event_history_same_session_rewind_reapply_clears_streaming_preview_diagram() {
+    // Regression pin: a remote /rewind (or /rewind undo) triggers a History
+    // redelivery for the SAME session id, so the session_changed branch of the
+    // History handler (and its clear_streaming_render_state call) never runs.
+    // The forced re-apply path (replace_display_messages) must still drop any
+    // registered streaming preview diagram, otherwise a preview registered
+    // mid-stream keeps rendering a mermaid block from a message that was just
+    // rewound away (it sits at index 0 of get_active_diagrams in Margin mode).
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.remote_session_id = Some("session_rewind_preview".to_string());
+    remote.set_session_id("session_rewind_preview".to_string());
+    // A stale streaming preview is still registered (e.g. the turn ended via a
+    // path that did not clear it, or the rewind raced the end of the stream).
+    let preview_hash: u64 = 0xDEAD_BEEF_5EAF_0002;
+    crate::tui::mermaid::set_streaming_preview_diagram(
+        preview_hash,
+        320,
+        240,
+        Some("stream-preview".to_string()),
+    );
+    assert!(
+        crate::tui::mermaid::get_active_diagrams()
+            .iter()
+            .any(|d| d.hash == preview_hash),
+        "test setup: streaming preview should be visible before the History event"
+    );
+    // The client-side /rewind path arms a pending notice before the server's
+    // History redelivery arrives (remote/key_handling.rs).
+    app.pending_remote_rewind_notice =
+        Some(crate::tui::app::PendingRemoteRewindNotice {
+            undo: false,
+            message_index: Some(1),
+            changed_messages: 2,
+        });
+
+    // Truncated payload after the rewind: same session id, fewer messages.
+    app.handle_server_event(
+        crate::protocol::ServerEvent::History {
+            id: 2,
+            session_id: "session_rewind_preview".to_string(),
+            messages: vec![crate::protocol::HistoryMessage {
+                role: "user".to_string(),
+                content: "first message kept by the rewind".to_string(),
+                tool_calls: None,
+                tool_data: None,
+            }],
+            images: vec![],
+            provider_name: Some("claude".to_string()),
+            provider_model: Some("claude-sonnet-4-20250514".to_string()),
+            subagent_model: None,
+            autoreview_enabled: None,
+            autojudge_enabled: None,
+            available_models: vec![],
+            available_model_routes: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            total_tokens: None,
+            token_usage_totals: None,
+            all_sessions: vec![],
+            client_count: None,
+            is_canary: None,
+            reload_recovery: None,
+            server_version: None,
+            server_name: None,
+            server_icon: None,
+            server_has_update: None,
+            was_interrupted: None,
+            connection_type: None,
+            status_detail: None,
+            upstream_provider: None,
+            resolved_credential: None,
+            reasoning_effort: None,
+            service_tier: None,
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+        },
+        &mut remote,
+    );
+
+    // Same session id: this exercised the !session_changed re-apply path.
+    assert_eq!(
+        app.remote_session_id.as_deref(),
+        Some("session_rewind_preview")
+    );
+    // Payload was applied (transcript rebuilt + rewind notice consumed).
+    assert!(
+        app.display_messages()
+            .iter()
+            .any(|m| m.content.contains("first message kept by the rewind")),
+        "rewind-truncated History payload must be re-applied for the same session"
+    );
+    assert!(
+        app.pending_remote_rewind_notice.is_none(),
+        "pending rewind notice should be consumed by the History re-apply"
+    );
+    assert!(
+        !crate::tui::mermaid::get_active_diagrams()
+            .iter()
+            .any(|d| d.hash == preview_hash),
+        "streaming preview diagram leaked across a same-session rewind History re-apply"
+    );
+}
+
+#[test]
 fn test_handle_server_event_history_session_change_clears_pending_interleaves() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
