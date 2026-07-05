@@ -1206,7 +1206,8 @@ impl crate::tui::TuiState for App {
             Some(self.session.id.as_str())
         };
 
-        let todos = if self.swarm_enabled && !self.swarm_plan_items.is_empty() {
+        let todos_are_swarm_plan = self.swarm_enabled && !self.swarm_plan_items.is_empty();
+        let todos = if todos_are_swarm_plan {
             crate::tui::info_widget::swarm_plan_todos(&self.swarm_plan_items)
         } else {
             gather_todos_for_session(session_id)
@@ -1495,6 +1496,7 @@ impl crate::tui::TuiState for App {
 
         crate::tui::info_widget::InfoWidgetData {
             todos,
+            todos_are_swarm_plan,
             context_info,
             context_info_stale: !context_snapshot.fresh,
             queue_mode: Some(self.queue_mode),

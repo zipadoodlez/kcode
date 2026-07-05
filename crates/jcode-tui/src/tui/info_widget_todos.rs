@@ -383,6 +383,16 @@ fn render_grouped_todo_lines(
     (lines, shown)
 }
 
+/// Header label for the todo slot: "Plan" when the items are the shared
+/// swarm plan projection, "Todos" for the session's own private list.
+fn todos_widget_label(data: &InfoWidgetData) -> &'static str {
+    if data.todos_are_swarm_plan {
+        "Plan"
+    } else {
+        "Todos"
+    }
+}
+
 /// Render todos widget content
 pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     if data.todos.is_empty() {
@@ -404,7 +414,10 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
 
     // Header with progress + inline pip meter
     let mut header = vec![
-        Span::styled("Todos ", Style::default().fg(rgb(180, 180, 190)).bold()),
+        Span::styled(
+            format!("{} ", todos_widget_label(data)),
+            Style::default().fg(rgb(180, 180, 190)).bold(),
+        ),
         Span::styled(
             format!("{}/{}", completed, total),
             Style::default().fg(rgb(140, 140, 150)),
@@ -474,7 +487,10 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
 
     // Header with progress + inline pip meter
     let mut header = vec![
-        Span::styled("Todos ", Style::default().fg(rgb(180, 180, 190)).bold()),
+        Span::styled(
+            format!("{} ", todos_widget_label(data)),
+            Style::default().fg(rgb(180, 180, 190)).bold(),
+        ),
         Span::styled(
             format!("{}/{}", completed, total),
             Style::default().fg(rgb(140, 140, 150)),
@@ -569,7 +585,7 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
 
     vec![
         Line::from(vec![Span::styled(
-            "Todos",
+            todos_widget_label(data),
             Style::default().fg(rgb(180, 180, 190)).bold(),
         )]),
         Line::from(summary),

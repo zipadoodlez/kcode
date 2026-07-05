@@ -567,6 +567,11 @@ const PAGE_SWITCH_SECONDS: u64 = 30;
 #[derive(Debug, Default, Clone)]
 pub struct InfoWidgetData {
     pub todos: Vec<TodoItem>,
+    /// True when `todos` is actually a projection of the shared swarm plan
+    /// (task DAG) rather than this session's private todo list. The widget
+    /// renders a "Plan" header instead of "Todos" so the two are not
+    /// conflated.
+    pub todos_are_swarm_plan: bool,
     pub context_info: Option<ContextInfo>,
     /// True when context state is being updated and no authoritative snapshot is available.
     pub context_info_stale: bool,

@@ -355,6 +355,32 @@ fn swarm_plan_running_items_render_before_completed_in_large_plans() {
 }
 
 #[test]
+fn todo_widget_header_says_plan_when_showing_swarm_plan_projection() {
+    let items = vec![plan_item("a", "running"), plan_item("b", "queued")];
+    let plan_data = InfoWidgetData {
+        todos: swarm_plan_todos(&items),
+        todos_are_swarm_plan: true,
+        ..Default::default()
+    };
+    for text in [
+        lines_text(&render_todos_widget(&plan_data, Rect::new(0, 0, 60, 8))),
+        lines_text(&render_todos_expanded(&plan_data, Rect::new(0, 0, 60, 14))),
+        lines_text(&render_todos_compact(&plan_data, Rect::new(0, 0, 60, 3))),
+    ] {
+        assert!(text.contains("Plan"), "plan header missing: {text}");
+        assert!(!text.contains("Todos"), "plan must not claim Todos: {text}");
+    }
+
+    let todo_data = InfoWidgetData {
+        todos: swarm_plan_todos(&items),
+        todos_are_swarm_plan: false,
+        ..Default::default()
+    };
+    let text = lines_text(&render_todos_widget(&todo_data, Rect::new(0, 0, 60, 8)));
+    assert!(text.contains("Todos"), "todos header missing: {text}");
+}
+
+#[test]
 fn swarm_plan_gate_items_render_like_normal_items() {
     // Deep-mode critique gates share the plan item shape; only the id differs.
     let mut gate = plan_item("explore-root::gate", "queued");
