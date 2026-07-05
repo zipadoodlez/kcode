@@ -279,11 +279,24 @@ pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
         }))
     }
 
-    #[cfg(not(feature = "jemalloc"))]
+    #[cfg(all(target_os = "linux", not(feature = "jemalloc")))]
     {
-        logging::warn("allocator purge requested but jemalloc feature is disabled");
+        // glibc has no arena purge API, but malloc_trim(0) walks all arenas
+        // and returns freed pages to the OS (MADV_DONTNEED), which is the
+        // equivalent retained-memory release.
+        logging::info("purging glibc allocator via malloc_trim(0)");
+        release_retained_heap("debug_allocator_purge");
+        Ok(AllocatorTuningInfo {
+            available: true,
+            ..AllocatorTuningInfo::default()
+        })
+    }
+
+    #[cfg(all(not(target_os = "linux"), not(feature = "jemalloc")))]
+    {
+        logging::warn("allocator purge requested but no purge mechanism is available");
         Err(anyhow!(
-            "allocator purge unavailable: rebuild with --features jemalloc"
+            "allocator purge unavailable on this platform: rebuild with --features jemalloc"
         ))
     }
 }
@@ -468,6 +481,55 @@ pub fn release_retained_heap_debounced(reason: &str, min_interval: std::time::Du
     }
     release_retained_heap(reason);
     true
+}
+
+/// Default freed-but-retained heap threshold that triggers a background trim.
+pub const DEFAULT_RETENTION_TRIM_THRESHOLD_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Release retained heap when the allocator reports more freed-but-retained
+/// bytes than `threshold_bytes`. Intended for periodic (heartbeat) callers:
+/// cheap when below threshold (one mallinfo2/stats read), debounced against
+/// other release paths when above it. Returns true when a release ran.
+///
+/// This closes the gap left by event-driven trims (turn completion, history
+/// load): a server hosting many mostly-idle sessions can accumulate hundreds
+/// of MB of retained arena pages without ever hitting those event hooks.
+pub fn release_retained_heap_if_excessive(
+    reason: &str,
+    threshold_bytes: u64,
+    min_interval: std::time::Duration,
+) -> bool {
+    let retained = allocator_info()
+        .stats
+        .and_then(|stats| stats.retained_bytes)
+        .unwrap_or(0);
+    if retained < threshold_bytes {
+        return false;
+    }
+    let released = release_retained_heap_debounced(reason, min_interval);
+    if released {
+        logging::info(&format!(
+            "retained-heap trim ({reason}): retained {} MB exceeded threshold {} MB",
+            retained / (1024 * 1024),
+            threshold_bytes / (1024 * 1024),
+        ));
+    }
+    released
+}
+
+/// Retention trim threshold in bytes, from `JCODE_HEAP_RETENTION_TRIM_MB`
+/// (in MiB), falling back to [`DEFAULT_RETENTION_TRIM_THRESHOLD_BYTES`].
+/// `0` disables retention-triggered trimming (returns `u64::MAX`).
+pub fn retention_trim_threshold_bytes() -> u64 {
+    parse_retention_trim_threshold(std::env::var("JCODE_HEAP_RETENTION_TRIM_MB").ok().as_deref())
+}
+
+fn parse_retention_trim_threshold(value: Option<&str>) -> u64 {
+    match value.and_then(|value| value.trim().parse::<u64>().ok()) {
+        Some(0) => u64::MAX,
+        Some(mb) => mb.saturating_mul(1024 * 1024),
+        None => DEFAULT_RETENTION_TRIM_THRESHOLD_BYTES,
+    }
 }
 
 fn record_snapshot(source: String, snapshot: ProcessMemorySnapshot) {
@@ -751,6 +813,49 @@ mod tests {
             !ran,
             "second call within debounce interval should be skipped"
         );
+    }
+
+    #[test]
+    fn parse_retention_trim_threshold_handles_default_disable_and_values() {
+        assert_eq!(
+            parse_retention_trim_threshold(None),
+            DEFAULT_RETENTION_TRIM_THRESHOLD_BYTES
+        );
+        assert_eq!(
+            parse_retention_trim_threshold(Some("garbage")),
+            DEFAULT_RETENTION_TRIM_THRESHOLD_BYTES
+        );
+        // 0 disables retention trimming entirely.
+        assert_eq!(parse_retention_trim_threshold(Some("0")), u64::MAX);
+        assert_eq!(
+            parse_retention_trim_threshold(Some(" 128 ")),
+            128 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn release_retained_heap_if_excessive_skips_below_threshold() {
+        // u64::MAX threshold can never be exceeded, so no release should run
+        // regardless of current allocator state.
+        let ran = release_retained_heap_if_excessive(
+            "unit_test_below_threshold",
+            u64::MAX,
+            std::time::Duration::ZERO,
+        );
+        assert!(!ran, "release should not run below threshold");
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
+    #[test]
+    fn release_retained_heap_if_excessive_runs_above_threshold() {
+        // Threshold 0 is always exceeded (glibc reports some retained bytes);
+        // with a zero debounce the release must run.
+        let ran = release_retained_heap_if_excessive(
+            "unit_test_above_threshold",
+            0,
+            std::time::Duration::ZERO,
+        );
+        assert!(ran, "release should run when retained exceeds threshold");
     }
 
     #[test]

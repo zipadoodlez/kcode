@@ -32,7 +32,7 @@ SERVER COMMANDS (server: prefix or no prefix):
   agent:info               - Get comprehensive agent internal state
   agent:memory             - Get process + session memory breakdown
   allocator                - Get allocator info and jemalloc stats, if available
-  allocator:purge          - Flush/purge jemalloc arenas to test retained-memory behavior
+  allocator:purge          - Release retained heap (jemalloc arena purge / glibc malloc_trim)
   allocator:decay:<ms>     - Set jemalloc dirty/muzzy decay for all arenas to <ms>
   allocator:profile:on     - Enable jemalloc sampling at runtime (jemalloc-prof builds)
   allocator:profile:off    - Disable jemalloc sampling at runtime (jemalloc-prof builds)

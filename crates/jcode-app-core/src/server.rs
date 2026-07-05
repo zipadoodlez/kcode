@@ -387,6 +387,9 @@ const IDLE_TIMEOUT_SECS: u64 = 300;
 /// How often to check whether the embedding model can be unloaded.
 const EMBEDDING_IDLE_CHECK_SECS: u64 = 30;
 
+/// How often the retained-heap watchdog samples allocator retention.
+const HEAP_RETENTION_CHECK_SECS: u64 = 120;
+
 /// Exit code when server shuts down due to idle timeout
 pub const EXIT_IDLE_TIMEOUT: i32 = 44;
 
@@ -1160,6 +1163,28 @@ impl Server {
                 }
             }
         });
+
+        // Spawn the retained-heap watchdog: glibc/jemalloc keep freed pages
+        // inside arenas, and the event-driven trim hooks (turn completion,
+        // history load) rarely fire on a server hosting mostly-idle sessions.
+        // Periodically check the allocator's freed-but-retained byte count and
+        // trim when it crosses the threshold, returning the pages to the OS.
+        let retention_threshold = crate::process_memory::retention_trim_threshold_bytes();
+        if retention_threshold != u64::MAX {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                    HEAP_RETENTION_CHECK_SECS,
+                ));
+                loop {
+                    interval.tick().await;
+                    crate::process_memory::release_retained_heap_if_excessive(
+                        "server_retention_watchdog",
+                        retention_threshold,
+                        std::time::Duration::from_secs(60),
+                    );
+                }
+            });
+        }
 
         if crate::runtime_memory_log::server_logging_enabled() {
             let log_identity = self.identity.clone();
