@@ -576,7 +576,7 @@ desktop_notifications = true
 # `discover_tools` tool listing third-party developer tools from jcode's
 # hosted sponsor manifest. Sponsors buy placement (discoverability), never
 # recommendations; every use is disclosed in the UI with a
-# [sponsored discovery] tag. See https://solosystems.dev/sponsored-discovery
+# (sponsored discovery) tag. See https://solosystems.dev/sponsored-discovery
 # enabled = false
 # endpoint = "https://api.solosystems.dev/v1/discovery"
 	"#;

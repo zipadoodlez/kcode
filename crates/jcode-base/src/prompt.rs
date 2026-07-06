@@ -290,7 +290,7 @@ impl ContextInfo {
             parts.push(("tools", self.preferred_tools_chars, "🧰"));
         }
         if self.sponsored_discovery_chars > 0 {
-            parts.push(("sponsored", self.sponsored_discovery_chars, "📢"));
+            parts.push(("sponsored", self.sponsored_discovery_chars, "$"));
         }
         parts
     }

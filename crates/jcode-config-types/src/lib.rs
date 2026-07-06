@@ -774,7 +774,7 @@ pub struct AutoReviewConfig {
 /// Sponsored discovery makes third-party developer tools discoverable to the
 /// agent via a `discover_tools` tool backed by a hosted manifest. Sponsors buy
 /// placement (discoverability), never recommendations. Every use is disclosed
-/// in the UI with a `[sponsored discovery]` tag. See
+/// in the UI with a `(sponsored discovery)` tag. See
 /// <https://solosystems.dev/sponsored-discovery>.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
