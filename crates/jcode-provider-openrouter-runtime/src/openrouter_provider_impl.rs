@@ -104,7 +104,9 @@ impl Provider for OpenRouterProvider {
                         // Prompt-visible. Approximate token cost for this field:
                         // t.description_token_estimate().
                         "description": t.description,
-                        "parameters": t.input_schema,
+                        // Sanitized so bare `{"type":"object"}` MCP tool
+                        // schemas do not 400 on strict endpoints (issue #446).
+                        "parameters": jcode_provider_openrouter::request::sanitize_tool_parameters_schema(&t.input_schema),
                     }
                 })
             })

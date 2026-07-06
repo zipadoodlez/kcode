@@ -4,6 +4,84 @@ use jcode_message_types::{
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+/// Normalize a tool `parameters` JSON schema for strict OpenAI-compatible
+/// endpoints (issue #446).
+///
+/// Some backends (LM Studio being the prominent example) validate
+/// `tools[].function.parameters` strictly and reject any object schema that
+/// lacks a `properties` field with HTTP 400. MCP servers commonly declare
+/// no-argument tools as a bare `{"type": "object"}`, and because the full tool
+/// array is sent on every request, one such tool makes the provider unusable.
+///
+/// This recursively inserts an empty `properties: {}` into every
+/// object-typed schema node that is missing it. The rewrite is semantically a
+/// no-op per JSON Schema, so it is safe to apply for every OpenAI-compatible
+/// endpoint rather than allow-listing strict ones.
+pub fn sanitize_tool_parameters_schema(schema: &Value) -> Value {
+    fn walk(node: &mut Value) {
+        let Some(obj) = node.as_object_mut() else {
+            if let Some(items) = node.as_array_mut() {
+                for item in items {
+                    walk(item);
+                }
+            }
+            return;
+        };
+
+        let is_object_type = match obj.get("type") {
+            Some(Value::String(ty)) => ty == "object",
+            Some(Value::Array(types)) => types.iter().any(|ty| ty.as_str() == Some("object")),
+            _ => false,
+        };
+        if is_object_type {
+            obj.entry("properties")
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        }
+
+        for (key, value) in obj.iter_mut() {
+            match key.as_str() {
+                // Schema maps: each value is a schema.
+                "properties" | "patternProperties" | "$defs" | "definitions" => {
+                    if let Some(map) = value.as_object_mut() {
+                        for sub in map.values_mut() {
+                            walk(sub);
+                        }
+                    }
+                }
+                // Direct sub-schemas (or arrays of schemas).
+                "items"
+                | "additionalProperties"
+                | "anyOf"
+                | "oneOf"
+                | "allOf"
+                | "not"
+                | "if"
+                | "then"
+                | "else"
+                | "prefixItems"
+                | "contains" => walk(value),
+                _ => {}
+            }
+        }
+    }
+
+    // A bare `{}` / non-object parameters value is also rejected by strict
+    // validators; OpenAI's spec models "no parameters" as an empty object
+    // schema.
+    let mut sanitized = if schema.is_object() {
+        schema.clone()
+    } else {
+        serde_json::json!({ "type": "object" })
+    };
+    if let Some(obj) = sanitized.as_object_mut()
+        && obj.is_empty()
+    {
+        obj.insert("type".to_string(), Value::String("object".to_string()));
+    }
+    walk(&mut sanitized);
+    sanitized
+}
+
 /// Build OpenAI-compatible chat `messages` for OpenRouter/direct compatible providers.
 ///
 /// This stays in the OpenRouter leaf crate so provider-specific message normalization,
@@ -515,4 +593,70 @@ pub fn build_chat_messages(
     }
 
     api_messages
+}
+
+#[cfg(test)]
+mod sanitize_schema_tests {
+    use super::sanitize_tool_parameters_schema;
+    use serde_json::json;
+
+    #[test]
+    fn bare_object_schema_gains_empty_properties() {
+        // The no-argument MCP tool shape from issue #446.
+        let sanitized = sanitize_tool_parameters_schema(&json!({"type": "object"}));
+        assert_eq!(sanitized, json!({"type": "object", "properties": {}}));
+    }
+
+    #[test]
+    fn empty_and_non_object_schemas_become_empty_object_schema() {
+        let expected = json!({"type": "object", "properties": {}});
+        assert_eq!(sanitize_tool_parameters_schema(&json!({})), expected);
+        assert_eq!(sanitize_tool_parameters_schema(&json!(null)), expected);
+    }
+
+    #[test]
+    fn existing_properties_and_unrelated_fields_are_preserved() {
+        let schema = json!({
+            "type": "object",
+            "properties": {"path": {"type": "string", "description": "a path"}},
+            "required": ["path"],
+            "additionalProperties": false
+        });
+        assert_eq!(sanitize_tool_parameters_schema(&schema), schema);
+    }
+
+    #[test]
+    fn nested_object_schemas_are_sanitized_recursively() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "config": {"type": "object"},
+                "items": {"type": "array", "items": {"type": "object"}},
+                "choice": {"anyOf": [{"type": "object"}, {"type": "string"}]}
+            }
+        });
+        let sanitized = sanitize_tool_parameters_schema(&schema);
+        assert_eq!(
+            sanitized["properties"]["config"],
+            json!({"type": "object", "properties": {}})
+        );
+        assert_eq!(
+            sanitized["properties"]["items"]["items"],
+            json!({"type": "object", "properties": {}})
+        );
+        assert_eq!(
+            sanitized["properties"]["choice"]["anyOf"][0],
+            json!({"type": "object", "properties": {}})
+        );
+        assert_eq!(
+            sanitized["properties"]["choice"]["anyOf"][1],
+            json!({"type": "string"})
+        );
+    }
+
+    #[test]
+    fn type_arrays_including_object_are_sanitized() {
+        let sanitized = sanitize_tool_parameters_schema(&json!({"type": ["object", "null"]}));
+        assert_eq!(sanitized["properties"], json!({}));
+    }
 }
