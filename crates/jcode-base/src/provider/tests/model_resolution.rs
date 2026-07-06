@@ -931,6 +931,44 @@ fn test_configured_direct_compatible_profiles_are_listed_without_openrouter_key(
 }
 
 #[test]
+fn test_config_default_provider_deepseek_applies_without_openrouter_key() {
+    // Issue #448: `default_provider = "deepseek"` + `default_model =
+    // "deepseek-v4-pro"` with only DEEPSEEK_API_KEY set must bind the DeepSeek
+    // profile runtime. The generic OpenRouter path would try to rebind the
+    // slot to a plain OpenRouter API-key runtime, fail (no OPENROUTER_API_KEY),
+    // and silently fall back to the auto-detected default provider.
+    with_clean_provider_test_env(|| {
+        with_env_var("DEEPSEEK_API_KEY", "test-deepseek-key", || {
+            let provider = MultiProvider {
+                claude: RwLock::new(None),
+                anthropic: RwLock::new(Some(test_anthropic_runtime())),
+                openai: RwLock::new(None),
+                copilot_api: RwLock::new(None),
+                antigravity: RwLock::new(None),
+                gemini: RwLock::new(None),
+                cursor: RwLock::new(None),
+                bedrock: RwLock::new(None),
+                openrouter: RwLock::new(None),
+                openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+                active_openai_compatible_profile: RwLock::new(None),
+                active: RwLock::new(ActiveProvider::Claude),
+                use_claude_cli: false,
+                startup_notices: RwLock::new(Vec::new()),
+                forced_provider: None,
+                routes_memo: std::sync::Mutex::new(None),
+            };
+
+            provider
+                .set_config_default_model("deepseek-v4-pro", Some("deepseek"))
+                .expect("configured DeepSeek default must bind the profile runtime");
+            assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
+            assert_eq!(provider.model(), "deepseek-v4-pro");
+            assert_eq!(provider.display_name(), "DeepSeek");
+        })
+    });
+}
+
+#[test]
 fn test_profile_prefixed_model_switch_reinitializes_direct_compatible_runtime() {
     with_clean_provider_test_env(|| {
         with_env_var("DEEPSEEK_API_KEY", "test-deepseek-key", || {

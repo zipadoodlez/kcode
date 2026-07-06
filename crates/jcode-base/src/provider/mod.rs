@@ -1333,6 +1333,21 @@ impl MultiProvider {
         }) && let Some(selection) =
             Self::resolve_config_provider_selection(pref, crate::config::config())
         {
+            // A known OpenAI-compatible catalog profile (deepseek, zai, ...)
+            // must be handled profile-locally. Its `active_provider()` maps to
+            // the shared OpenRouter slot, but routing through the generic
+            // OpenRouter path would trigger the OpenRouter rebind logic, which
+            // replaces the profile runtime with a plain OpenRouter API-key
+            // runtime and fails when OPENROUTER_API_KEY is not configured --
+            // silently dropping the configured default (issue #448).
+            if let selection::ConfigProviderSelection::OpenAiCompatibleProfile(profile_id) =
+                &selection
+                && let Some(profile) =
+                    crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
+            {
+                return self.set_model_on_openai_compatible_profile(profile, model);
+            }
+
             // A dual-auth config provider key (`anthropic-api`, `claude-oauth`,
             // `openai-api`, ...) also pins the OAuth-vs-API credential. Carry
             // that through so the active credential -- and every surface that
