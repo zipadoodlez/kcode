@@ -52,6 +52,40 @@ pub(super) async fn maybe_handle_swarm_write_command(
         ));
     }
 
+    if cmd.starts_with("swarm:clear_plan:") {
+        let swarm_id = cmd.strip_prefix("swarm:clear_plan:").unwrap_or("").trim();
+        if swarm_id.is_empty() {
+            return Err(anyhow::anyhow!(
+                "swarm:clear_plan requires a swarm_id: swarm:clear_plan:<swarm_id>"
+            ));
+        }
+        let removed = {
+            let mut plans = ctx.swarm_plans.write().await;
+            plans.remove(swarm_id)
+        };
+        let Some(removed) = removed else {
+            return Err(anyhow::anyhow!("No plan found for swarm '{}'", swarm_id));
+        };
+        // Re-persist so the on-disk swarm state drops the plan too; otherwise
+        // the next server restart resurrects it and every fresh session in
+        // this working dir gets the stale plan graph pushed on subscribe.
+        let swarm_state = SwarmState {
+            members: Arc::clone(ctx.swarm_members),
+            swarms_by_id: Arc::clone(ctx.swarms_by_id),
+            plans: Arc::clone(ctx.swarm_plans),
+            coordinators: Arc::clone(ctx.swarm_coordinators),
+        };
+        persist_swarm_state_for(swarm_id, &swarm_state).await;
+        return Ok(Some(
+            serde_json::json!({
+                "swarm_id": swarm_id,
+                "cleared_version": removed.version,
+                "cleared_item_count": removed.items.len(),
+            })
+            .to_string(),
+        ));
+    }
+
     if cmd.starts_with("swarm:broadcast:") {
         let rest = cmd.strip_prefix("swarm:broadcast:").unwrap_or("").trim();
         let (target_swarm_id, message) = if let Some(space_idx) = rest.find(' ') {

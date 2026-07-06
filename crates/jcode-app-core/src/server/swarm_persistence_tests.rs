@@ -707,6 +707,63 @@ fn load_runtime_state_reads_bak_files_as_snapshots() {
     );
 }
 
+/// A `.bak` sibling must NOT be loaded when the primary `.json` exists:
+/// the write path rotates the previous snapshot to `.bak`, so after an
+/// intentional state drop (e.g. `swarm:clear_plan`) the `.bak` still holds
+/// the dropped plan. Union-loading both would resurrect the cleared plan on
+/// every server restart.
+#[test]
+fn load_runtime_state_ignores_bak_when_primary_json_exists() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    std::fs::create_dir_all(state_dir()).expect("state dir");
+    let stale_with_plan = serde_json::json!({
+        "swarm_id": "swarm-cleared",
+        "plan": {
+            "items": [{
+                "id": "stale-task",
+                "content": "stale",
+                "status": "queued",
+                "assigned_to": null
+            }],
+            "version": 42u64,
+            "participants": [],
+            "task_progress": {},
+            "mode": "light",
+            "node_meta": {}
+        },
+        "coordinator_session_id": "coord-stale",
+        "updated_at_unix_ms": 1u64
+    });
+    let current_without_plan = serde_json::json!({
+        "swarm_id": "swarm-cleared",
+        "coordinator_session_id": "coord-current",
+        "updated_at_unix_ms": 2u64
+    });
+    std::fs::write(
+        state_dir().join("swarm-cleared.bak"),
+        serde_json::to_vec(&stale_with_plan).unwrap(),
+    )
+    .expect("write bak snapshot");
+    std::fs::write(
+        state_dir().join("swarm-cleared.json"),
+        serde_json::to_vec(&current_without_plan).unwrap(),
+    )
+    .expect("write primary snapshot");
+
+    let loaded = load_runtime_state();
+    assert!(
+        !loaded.plans.contains_key("swarm-cleared"),
+        "plan cleared from the primary snapshot must not be resurrected from .bak"
+    );
+    assert_eq!(
+        loaded.coordinators.get("swarm-cleared"),
+        Some(&"coord-current".to_string()),
+        "primary snapshot must win over its .bak sibling"
+    );
+}
+
 #[test]
 fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
     let dir = tempfile::TempDir::new().expect("tempdir");

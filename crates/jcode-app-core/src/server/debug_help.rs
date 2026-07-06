@@ -197,6 +197,7 @@ PLANS (server-scoped plan items):
   swarm:plans              - List all swarm plans with item counts
   swarm:plan:<swarm_id>    - Get plan items for specific swarm
   swarm:plan_version:<id>  - Show current plan version for a swarm
+  swarm:clear_plan:<id>    - Admin: delete a swarm's plan (memory + persisted state)
 
 PLAN PROPOSALS (pending approval):
   swarm:proposals          - List all pending proposals across swarms

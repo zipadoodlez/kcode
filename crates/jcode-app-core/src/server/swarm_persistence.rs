@@ -256,6 +256,19 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
         if !path.is_file() {
             continue;
         }
+        // `.bak` files are corruption-recovery fallbacks, not co-equal
+        // snapshots. When the primary `.json` still exists, reading the
+        // `.bak` alongside it can resurrect state the primary deliberately
+        // dropped (e.g. a cleared plan: the rotate-on-write keeps the old
+        // plan-bearing snapshot as `.bak`, and a union-load would re-insert
+        // that plan forever). `read_json` already falls back to the `.bak`
+        // internally when the primary is corrupt, so skipping it here loses
+        // nothing.
+        if path.extension().and_then(|ext| ext.to_str()) == Some("bak")
+            && path.with_extension("json").is_file()
+        {
+            continue;
+        }
         let Ok(state) = storage::read_json::<PersistedSwarmState>(&path) else {
             continue;
         };
