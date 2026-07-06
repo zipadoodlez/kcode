@@ -423,7 +423,76 @@ fn append_openai_compatible_profile_routes(
         added_any |= !profile_routes.is_empty();
         routes.extend(profile_routes);
     }
+
+    // User-defined named provider profiles (`[providers.<name>]` in
+    // config.toml). Their statically declared `[[providers.<name>.models]]`
+    // entries (and `default_model`) must surface in the picker with a route
+    // back to that profile, even when the profile is not the active provider
+    // (issue #444).
+    for (profile_name, profile_config) in &crate::config::config().providers {
+        let api_method = format!("openai-compatible:{}", profile_name);
+        // The active runtime already contributes this profile's models (with
+        // live-catalog freshness) via the OpenRouter slot path.
+        if active_direct_openai_compatible_api_method.as_deref() == Some(api_method.as_str()) {
+            continue;
+        }
+        let named_routes = named_provider_profile_routes(profile_name, profile_config);
+        added_any |= !named_routes.is_empty();
+        routes.extend(named_routes);
+    }
     added_any
+}
+
+/// Picker routes for one user-defined named provider profile from config.
+///
+/// Text-capable static models plus the profile's `default_model` are offered;
+/// models declared image-only via `input = ["image"]` are excluded.
+fn named_provider_profile_routes(
+    profile_name: &str,
+    profile_config: &crate::config::NamedProviderConfig,
+) -> Vec<ModelRoute> {
+    let mut models: Vec<String> = profile_config
+        .models
+        .iter()
+        .filter(|model| {
+            // `input` empty means unspecified (assume text-capable).
+            model.input.is_empty() || model.input.iter().any(|input| input == "text")
+        })
+        .map(|model| model.id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+    if models.is_empty()
+        && let Some(default_model) = profile_config
+            .default_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+    {
+        models.push(default_model.to_string());
+    }
+
+    let api_method = format!("openai-compatible:{}", profile_name);
+    let detail = if profile_config.base_url.trim().is_empty() {
+        "configured provider profile".to_string()
+    } else {
+        profile_config.base_url.trim().to_string()
+    };
+
+    let mut routes: Vec<ModelRoute> = Vec::new();
+    for model in models {
+        if !is_listable_model_name(&model) || routes.iter().any(|route| route.model == model) {
+            continue;
+        }
+        routes.push(ModelRoute {
+            model,
+            provider: profile_name.to_string(),
+            api_method: api_method.clone(),
+            available: true,
+            detail: detail.clone(),
+            cheapness: None,
+        });
+    }
+    routes
 }
 
 /// GitHub Copilot models, or a placeholder when credentials exist but the

@@ -931,6 +931,113 @@ fn test_configured_direct_compatible_profiles_are_listed_without_openrouter_key(
 }
 
 #[test]
+fn test_named_config_provider_models_appear_in_picker_and_are_selectable() {
+    // Issue #444: models declared under `[[providers.<name>.models]]` in
+    // config.toml must appear in the model picker with a route back to that
+    // profile, and selecting the emitted `<name>:<model>` spec must bind the
+    // named profile runtime.
+    with_clean_provider_test_env(|| {
+        let jcode_home = std::env::var_os("JCODE_HOME").expect("test JCODE_HOME should be set");
+        std::fs::write(
+            std::path::PathBuf::from(jcode_home).join("config.toml"),
+            r#"
+[provider]
+default_provider = "my-gateway"
+default_model = "vendor/my-model"
+
+[providers.my-gateway]
+type = "openai-compatible"
+base_url = "https://example.com/proxy/openai"
+auth = "none"
+default_model = "vendor/my-model"
+
+[[providers.my-gateway.models]]
+id = "vendor/my-model"
+context_window = 230000
+input = ["text"]
+
+[[providers.my-gateway.models]]
+id = "vendor/image-only-model"
+input = ["image"]
+"#,
+        )
+        .expect("write test config.toml");
+        crate::config::invalidate_config_cache();
+
+        let provider = MultiProvider {
+            claude: RwLock::new(None),
+            anthropic: RwLock::new(None),
+            openai: RwLock::new(None),
+            copilot_api: RwLock::new(None),
+            antigravity: RwLock::new(None),
+            gemini: RwLock::new(None),
+            cursor: RwLock::new(None),
+            bedrock: RwLock::new(None),
+            openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
+            active: RwLock::new(ActiveProvider::Claude),
+            use_claude_cli: false,
+            startup_notices: RwLock::new(Vec::new()),
+            forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
+        };
+
+        // The picker must offer the text-capable configured model with a
+        // route back to the named profile, and exclude image-only models.
+        let routes = provider.model_routes();
+        let route = routes
+            .iter()
+            .find(|route| route.model == "vendor/my-model")
+            .unwrap_or_else(|| {
+                panic!("configured named-profile model missing from picker: {routes:?}")
+            });
+        assert_eq!(route.provider, "my-gateway");
+        assert_eq!(route.api_method, "openai-compatible:my-gateway");
+        assert!(route.available);
+        assert!(
+            !routes
+                .iter()
+                .any(|route| route.model == "vendor/image-only-model"),
+            "image-only configured models must not be listed"
+        );
+
+        // Selecting the picker's spec must bind the named profile runtime.
+        provider
+            .set_model("my-gateway:vendor/my-model")
+            .expect("named profile model spec must be selectable");
+        assert_eq!(provider.active_provider(), ActiveProvider::OpenRouter);
+        assert_eq!(provider.model(), "vendor/my-model");
+
+        // And the configured default_provider/default_model pair must bind the
+        // profile directly (same bug class as issue #448).
+        let provider2 = MultiProvider {
+            claude: RwLock::new(None),
+            anthropic: RwLock::new(None),
+            openai: RwLock::new(None),
+            copilot_api: RwLock::new(None),
+            antigravity: RwLock::new(None),
+            gemini: RwLock::new(None),
+            cursor: RwLock::new(None),
+            bedrock: RwLock::new(None),
+            openrouter: RwLock::new(None),
+            openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
+            active_openai_compatible_profile: RwLock::new(None),
+            active: RwLock::new(ActiveProvider::Claude),
+            use_claude_cli: false,
+            startup_notices: RwLock::new(Vec::new()),
+            forced_provider: None,
+            routes_memo: std::sync::Mutex::new(None),
+        };
+        provider2
+            .set_config_default_model("vendor/my-model", Some("my-gateway"))
+            .expect("configured named-profile default must bind the profile runtime");
+        assert_eq!(provider2.active_provider(), ActiveProvider::OpenRouter);
+        assert_eq!(provider2.model(), "vendor/my-model");
+    });
+}
+
+#[test]
 fn test_config_default_provider_deepseek_applies_without_openrouter_key() {
     // Issue #448: `default_provider = "deepseek"` + `default_model =
     // "deepseek-v4-pro"` with only DEEPSEEK_API_KEY set must bind the DeepSeek

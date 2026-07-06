@@ -841,6 +841,71 @@ impl MultiProvider {
         Some((profile, rest))
     }
 
+    /// Parse a `<name>:<model>` spec whose prefix is a user-defined named
+    /// provider profile from config (`[providers.<name>]`). Built-in provider
+    /// prefixes and catalog profile ids take precedence and never reach here.
+    fn named_provider_profile_model_prefix(model: &str) -> Option<(String, String)> {
+        let (prefix, rest) = model.split_once(':')?;
+        if explicit_model_provider_prefix(model).is_some()
+            || Self::openai_compatible_model_prefix(model).is_some()
+        {
+            return None;
+        }
+        let prefix = prefix.trim();
+        let rest = rest.trim();
+        if prefix.is_empty() || rest.is_empty() {
+            return None;
+        }
+        crate::config::config()
+            .providers
+            .contains_key(prefix)
+            .then(|| (prefix.to_string(), rest.to_string()))
+    }
+
+    /// Bind (or reuse) the runtime for a named config provider profile and
+    /// select `model` on it (issue #444).
+    fn set_model_on_named_provider_profile(&self, profile_name: &str, model: &str) -> Result<()> {
+        let model = model.trim();
+        if model.is_empty() {
+            anyhow::bail!("Model cannot be empty");
+        }
+        let config = crate::config::config()
+            .providers
+            .get(profile_name)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Unknown provider profile '{}'", profile_name))?;
+
+        let expected_api_method = format!("openai-compatible:{}", profile_name);
+        let registry = ProviderRegistry::new(self);
+        let provider = {
+            let existing = registry
+                .compatible_profile(profile_name)
+                .filter(|provider| {
+                    provider
+                        .direct_openai_compatible_route_parts()
+                        .map(|(_provider, api_method, _detail)| api_method == expected_api_method)
+                        .unwrap_or(false)
+                });
+            if let Some(provider) = existing {
+                provider
+            } else {
+                let provider = external::instantiate_openrouter_runtime(
+                    external::OpenRouterRuntimeSpec::NamedProfile {
+                        name: profile_name.to_string(),
+                        config,
+                    },
+                )?;
+                registry
+                    .install_compatible_profile(profile_name.to_string(), Arc::clone(&provider));
+                provider
+            }
+        };
+        provider.set_model(model)?;
+        registry.set_active_compatible_profile(profile_name.to_string());
+        self.set_active_provider(ActiveProvider::OpenRouter);
+        Ok(())
+    }
+
     fn ensure_provider_lock_allows_model_target(
         &self,
         target: ActiveProvider,
@@ -1348,6 +1413,13 @@ impl MultiProvider {
                 return self.set_model_on_openai_compatible_profile(profile, model);
             }
 
+            // Same reasoning for user-defined named provider profiles from
+            // config: bind the named profile runtime directly instead of the
+            // generic OpenRouter slot path.
+            if let selection::ConfigProviderSelection::NamedProfile(profile_name) = &selection {
+                return self.set_model_on_named_provider_profile(profile_name, model);
+            }
+
             // A dual-auth config provider key (`anthropic-api`, `claude-oauth`,
             // `openai-api`, ...) also pins the OAuth-vs-API credential. Carry
             // that through so the active credential -- and every surface that
@@ -1679,6 +1751,17 @@ impl Provider for MultiProvider {
         {
             self.ensure_provider_lock_allows_openai_compatible_profile(requested_model)?;
             return self.set_model_on_openai_compatible_profile(profile, target_model);
+        }
+
+        // User-defined named provider profiles from config (`[providers.<name>]`).
+        // The model picker emits `<name>:<model>` specs for their routes
+        // (issue #444), so the switch must bind that profile's runtime instead
+        // of falling through to global model-name heuristics.
+        if let Some((profile_name, target_model)) =
+            Self::named_provider_profile_model_prefix(requested_model)
+        {
+            self.ensure_provider_lock_allows_openai_compatible_profile(requested_model)?;
+            return self.set_model_on_named_provider_profile(&profile_name, &target_model);
         }
 
         // Provider-prefixed model names are explicit routing directives. They
