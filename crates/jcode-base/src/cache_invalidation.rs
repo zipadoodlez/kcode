@@ -65,7 +65,11 @@ pub fn most_recent_since(since: Instant) -> Option<DocumentedInvalidation> {
     let journal = JOURNAL
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    journal.iter().rev().find(|entry| entry.at >= since).cloned()
+    journal
+        .iter()
+        .rev()
+        .find(|entry| entry.at >= since)
+        .cloned()
 }
 
 /// Clear the journal. Test-support only: process-global state otherwise leaks

@@ -27,12 +27,13 @@ pub fn spike_completed_todos(todos: &[TodoItem]) -> Vec<&TodoItem> {
         .filter(|todo| {
             let history = &todo.confidence_history;
             match history.len() {
-                0 => todo
-                    .confidence
-                    .zip(todo.completion_confidence)
-                    .is_some_and(|(first, last)| {
-                        last.saturating_sub(first) >= TODO_CONFIDENCE_SPIKE
-                    }),
+                0 => {
+                    todo.confidence
+                        .zip(todo.completion_confidence)
+                        .is_some_and(|(first, last)| {
+                            last.saturating_sub(first) >= TODO_CONFIDENCE_SPIKE
+                        })
+                }
                 1 => false,
                 n => history[n - 1].saturating_sub(history[n - 2]) >= TODO_CONFIDENCE_SPIKE,
             }
