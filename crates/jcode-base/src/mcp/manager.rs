@@ -18,6 +18,17 @@ use tokio::sync::RwLock;
 /// server from blocking a single tool call forever (and never blocks spawn).
 const CONNECT_ON_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Meter a completed tool call for sponsored-discovery provenance. No-op for
+/// servers without discovery provenance (the overwhelmingly common case) and
+/// whenever `sponsors.enabled` is false. Counts only; never content.
+fn meter_provenance_call(server: &str, result: &Result<ToolCallResult>) {
+    let is_error = match result {
+        Ok(res) => res.is_error,
+        Err(_) => true,
+    };
+    crate::sponsors::provenance::on_tool_call(server, is_error);
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct McpManagerMemoryProfile {
     pub shared_pool_enabled: bool,
@@ -190,6 +201,17 @@ impl McpManager {
         reason = "MCP connect flow keeps shared-pool and owned-server paths explicit"
     )]
     pub async fn connect(&self, name: &str, config: &McpServerConfig) -> Result<()> {
+        // Sponsored-discovery provenance: if this server's command matches a
+        // setup the agent saw in a discover_tools listing, tag it so calls to
+        // it are metered coarsely (counts only; see sponsors::provenance).
+        if let Some(sponsor) =
+            crate::sponsors::provenance::on_server_connected(name, &config.command, &config.args)
+        {
+            crate::logging::info(&format!(
+                "MCP: '{name}' connected via sponsored discovery (sponsor: {sponsor}); \
+                 coarse usage counts are shared per the disclosed policy"
+            ));
+        }
         if config.shared {
             if let Some(pool) = &self.pool {
                 pool.connect_server(name, config).await?;
@@ -239,6 +261,9 @@ impl McpManager {
 
     /// Disconnect from all servers
     pub async fn disconnect_all(&self) {
+        // Session is ending: flush any pending sponsored-discovery usage
+        // aggregates (best effort) so short sessions still report.
+        crate::sponsors::provenance::flush_now();
         // Release pool handles
         {
             let mut handles = self.pool_handles.write().await;
@@ -304,14 +329,18 @@ impl McpManager {
         {
             let handles = self.pool_handles.read().await;
             if let Some(handle) = handles.get(server) {
-                return handle.call_tool(tool, arguments).await;
+                let result = handle.call_tool(tool, arguments).await;
+                meter_provenance_call(server, &result);
+                return result;
             }
         }
         // Fast path: already connected via owned client.
         {
             let clients = self.owned_clients.read().await;
             if let Some(client) = clients.get(server) {
-                return client.call_tool(tool, arguments).await;
+                let result = client.call_tool(tool, arguments).await;
+                meter_provenance_call(server, &result);
+                return result;
             }
         }
 
@@ -327,12 +356,16 @@ impl McpManager {
                     {
                         let handles = self.pool_handles.read().await;
                         if let Some(handle) = handles.get(server) {
-                            return handle.call_tool(tool, arguments).await;
+                            let result = handle.call_tool(tool, arguments).await;
+                            meter_provenance_call(server, &result);
+                            return result;
                         }
                     }
                     let clients = self.owned_clients.read().await;
                     if let Some(client) = clients.get(server) {
-                        return client.call_tool(tool, arguments).await;
+                        let result = client.call_tool(tool, arguments).await;
+                        meter_provenance_call(server, &result);
+                        return result;
                     }
                     anyhow::bail!(
                         "MCP server '{server}' connected but exposed no handle for tool '{tool}'"
