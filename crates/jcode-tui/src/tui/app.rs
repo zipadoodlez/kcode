@@ -2129,20 +2129,9 @@ impl App {
             return;
         }
         let detail = match reason {
-            KvCacheMissReason::HarnessSystemChanged => {
-                "the system prompt changed between turns (its hash differs even though the \
-                 conversation only grew). Common causes: nondeterministic ordering in a \
-                 prompt section, or a same-width dynamic value embedded in the static prompt."
-            }
-            KvCacheMissReason::HarnessToolsChanged => {
-                "the tool set changed between turns. Tools should be locked after the first \
-                 turn; an unexpected change here resends the whole tool schema."
-            }
-            KvCacheMissReason::HarnessPrefixChanged => {
-                "an earlier message in the conversation prefix was modified (not just \
-                 appended to). Editing/replacing prior messages busts every cached token \
-                 after the edit point."
-            }
+            KvCacheMissReason::HarnessSystemChanged => "system prompt changed mid-session",
+            KvCacheMissReason::HarnessToolsChanged => "tool set changed mid-session",
+            KvCacheMissReason::HarnessPrefixChanged => "an earlier message was modified",
             // Not harness-caused: provider/model/upstream switch, TTL expiry,
             // and the soft zero/low-read diagnostics. Skip the alarm for these.
             _ => return,
@@ -2157,9 +2146,7 @@ impl App {
         };
 
         self.push_display_message(DisplayMessage::system(format!(
-            "⚠️ KV cache miss [{}] on turn {}: ~{} prefix tokens were resent instead of \
-             read from cache. Reason: {} This is a harness-side cache bust and should not \
-             normally happen — see KV_CACHE_USAGE in the logs for the exact hashes.",
+            "⚠️ KV cache miss [{}] turn {}: ~{} tokens resent ({}). See KV_CACHE_USAGE in logs.",
             reason.label(),
             turn_number,
             token_label,
