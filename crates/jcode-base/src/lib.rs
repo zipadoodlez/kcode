@@ -21,6 +21,7 @@ pub mod auth;
 pub mod background;
 pub mod browser;
 pub mod bus;
+pub mod cache_invalidation;
 pub mod cache_tracker;
 pub mod client_input;
 pub mod compaction;

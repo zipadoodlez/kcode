@@ -295,6 +295,9 @@ fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
     // grew, yet the cached prefix is invalidated. We must surface that loudly.
     let mut app = create_test_app();
     crate::provider::anthropic::set_cache_ttl_1h(true);
+    // No documented invalidation may explain this miss, or the alarm downgrades
+    // to the informational attribution notice.
+    crate::cache_invalidation::clear_for_tests();
 
     let messages = vec![
         Message::user("first prompt"),
@@ -339,6 +342,61 @@ fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
         "{alarm:?}"
     );
     assert!(alarm.content.contains("50K"), "{alarm:?}");
+}
+
+#[test]
+fn documented_invalidation_downgrades_kv_cache_alarm_to_attribution() {
+    // Config/skill reloads legitimately change the system prompt mid-session.
+    // Those sites document the invalidation; a harness-attributed miss that
+    // follows must be surfaced as an informational "refresh" with the cause,
+    // not as the unexplained harness-bust alarm.
+    let mut app = create_test_app();
+    crate::provider::anthropic::set_cache_ttl_1h(true);
+    crate::cache_invalidation::clear_for_tests();
+
+    let messages = vec![
+        Message::user("first prompt"),
+        Message::assistant_text("first answer"),
+        Message::user("second prompt"),
+    ];
+    let baseline_signature = App::kv_cache_request_signature(&messages, &[], "system PROMPT A", "");
+    let session_id = app.kv_cache_session_id();
+    let provider = app.kv_cache_provider_name();
+    let model = app.kv_cache_provider_model();
+    app.kv_cache.kv_cache_baseline = Some(KvCacheBaseline {
+        session_id,
+        input_tokens: 50_000,
+        completed_at: Instant::now(),
+        provider,
+        model,
+        upstream_provider: None,
+        signature: Some(baseline_signature),
+    });
+
+    // The documented cause lands between the baseline and the busted request.
+    crate::cache_invalidation::record("config reload", "modified_changed=true");
+
+    app.begin_kv_cache_request(&messages, &[], "system PROMPT B", "");
+    app.streaming.streaming_input_tokens = 50_000;
+    app.streaming.streaming_cache_read_tokens = Some(0);
+    app.streaming.streaming_cache_creation_tokens = Some(50_000);
+    app.kv_cache.current_api_usage_recorded = false;
+    app.record_completed_stream_cache_usage();
+
+    let notice = app
+        .display_messages()
+        .iter()
+        .find(|message| message.role == "system" && message.content.contains("KV cache refresh"))
+        .expect("documented invalidation should push an attribution notice");
+    assert!(notice.content.contains("config reload"), "{notice:?}");
+    assert!(
+        !app.display_messages()
+            .iter()
+            .any(|message| message.role == "system" && message.content.contains("KV cache miss")),
+        "documented invalidation must not also raise the harness alarm"
+    );
+
+    crate::cache_invalidation::clear_for_tests();
 }
 
 #[test]

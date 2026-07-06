@@ -517,6 +517,13 @@ impl SkillRegistry {
     /// Reload all skills, resolving project-local locations against an optional
     /// active session working directory.
     pub fn reload_all_for_working_dir(&mut self, working_dir: Option<&Path>) -> Result<usize> {
+        // The available-skills list is embedded in the static system prompt,
+        // so a reload that changes it legitimately invalidates warm KV cache
+        // prefixes. Document it so the miss is attributed instead of alarmed.
+        crate::cache_invalidation::record(
+            "skill reload",
+            "reloaded all skills; the skills list in the system prompt may have changed",
+        );
         self.skills.clear();
 
         let mut count = 0;

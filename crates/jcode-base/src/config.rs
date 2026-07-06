@@ -285,6 +285,12 @@ pub fn config() -> &'static Config {
 
     if let Some(reason) = reload_reason {
         crate::logging::info(&format!("CONFIG_RELOAD {}", reason));
+        // A config reload can change config-derived system prompt sections
+        // (feature toggles, sponsors, ...), which legitimately invalidates the
+        // KV cache prefix of warm sessions. Document it so a subsequent
+        // harness-attributed cache miss is surfaced with this cause instead of
+        // as an unexplained prompt mutation.
+        crate::cache_invalidation::record("config reload", &reason);
         notify_config_reloaded();
         // Re-seed the global context-limit cache so user edits to named
         // provider `context_window` values take effect without a restart.

@@ -2107,7 +2107,12 @@ impl App {
             self.kv_cache.kv_cache_miss_samples.drain(0..overflow);
         }
 
-        self.maybe_push_kv_cache_miss_notice(request.turn_number, reason, missed_tokens);
+        self.maybe_push_kv_cache_miss_notice(
+            request.turn_number,
+            reason,
+            missed_tokens,
+            baseline.completed_at,
+        );
     }
 
     /// Surface a loud in-chat alarm when a request missed the KV cache for a
@@ -2116,11 +2121,18 @@ impl App {
     /// time-driven, not harness bugs. The harness should essentially never
     /// invalidate the prefix cache on its own, so when it does we want it to be
     /// visible immediately rather than buried in logs.
+    ///
+    /// Some harness actions do legitimately change the prompt mid-session
+    /// (config reloads, skill reloads). Those sites document the invalidation
+    /// in `cache_invalidation` when it happens; if a documented cause is found
+    /// between the baseline and this request, the notice attributes the miss
+    /// to it (informational) instead of raising the unexplained-bust alarm.
     fn maybe_push_kv_cache_miss_notice(
         &mut self,
         turn_number: usize,
         reason: KvCacheMissReason,
         missed_tokens: u64,
+        baseline_completed_at: Instant,
     ) {
         if !crate::config::config().features.kv_cache_miss_notices {
             return;
@@ -2141,6 +2153,18 @@ impl App {
         } else {
             missed_tokens.to_string()
         };
+
+        // Documented invalidation between the baseline and now: expected
+        // resend, attribute instead of alarm.
+        if let Some(cause) =
+            crate::cache_invalidation::most_recent_since(baseline_completed_at)
+        {
+            self.push_display_message(DisplayMessage::system(format!(
+                "ℹ️ KV cache refresh [{}] turn {}: ~{} tokens resent ({}).",
+                cause.source, turn_number, token_label, detail,
+            )));
+            return;
+        }
 
         self.push_display_message(DisplayMessage::system(format!(
             "⚠️ KV cache miss [{}] turn {}: ~{} tokens resent ({}). See KV_CACHE_USAGE in logs.",
