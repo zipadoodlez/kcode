@@ -386,7 +386,7 @@ pub fn build_system_prompt_full(
         parts.push(content);
     }
 
-    // Add sponsored discovery categories (disabled by default; see sponsors.rs)
+    // Add sponsored discovery categories (on by default, opt-out; see sponsors.rs)
     if let Some(section) = crate::sponsors::build_discovery_prompt_section() {
         info.sponsored_discovery_chars = section.len();
         parts.push(section);
@@ -474,7 +474,7 @@ pub fn build_system_prompt_split(
         static_parts.push(content);
     }
 
-    // Add sponsored discovery categories (static; disabled by default)
+    // Add sponsored discovery categories (static; on by default, opt-out)
     if let Some(section) = crate::sponsors::build_discovery_prompt_section() {
         info.sponsored_discovery_chars = section.len();
         static_parts.push(section);

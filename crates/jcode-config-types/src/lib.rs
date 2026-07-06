@@ -773,15 +773,17 @@ pub struct AutoReviewConfig {
 ///
 /// Sponsored discovery makes third-party developer tools discoverable to the
 /// agent via a `discover_tools` tool backed by a hosted manifest. Sponsors buy
-/// placement (discoverability), never recommendations. Every use is disclosed
-/// in the UI with a `(sponsored discovery)` tag. See
-/// <https://solosystems.dev/sponsored-discovery>.
+/// placement (discoverability), never recommendations. Each session's first
+/// use of `discover_tools` is disclosed in the UI with a
+/// `(sponsored discovery)` tag; using a discovered tool afterwards carries no
+/// extra tag. See <https://solosystems.dev/sponsored-discovery>.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SponsorsConfig {
-    /// Enable sponsored discovery. When false (the default), no discovery
-    /// categories are added to the prompt, the `discover_tools` tool is not
-    /// registered, and jcode never contacts the discovery endpoint.
+    /// Enable sponsored discovery. Enabled by default; set to false to opt
+    /// out. When false, no discovery categories are added to the prompt, the
+    /// `discover_tools` tool is not registered, and jcode never contacts the
+    /// discovery endpoint.
     pub enabled: bool,
     /// Base URL of the discovery endpoint.
     pub endpoint: String,
@@ -790,7 +792,7 @@ pub struct SponsorsConfig {
 impl Default for SponsorsConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             endpoint: "https://api.solosystems.dev/v1/discovery".to_string(),
         }
     }

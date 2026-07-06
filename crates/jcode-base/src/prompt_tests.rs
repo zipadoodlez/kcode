@@ -94,28 +94,15 @@ fn test_sponsored_discovery_section_gated_on_config() {
     crate::env::set_var("JCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
 
-    // Default (no config file): sponsored discovery is off, no section.
-    crate::config::Config::invalidate_cache();
-    let (split, info) = build_system_prompt_split(None, &[], false, None, None);
-    assert!(
-        !split.static_part.contains("Discoverable Tools"),
-        "discovery section must be absent by default"
-    );
-    assert_eq!(info.sponsored_discovery_chars, 0);
-
-    // Enabled: section appears with the placement-not-preference policy.
-    std::fs::write(
-        temp.path().join("config.toml"),
-        "[sponsors]\nenabled = true\n",
-    )
-    .unwrap();
+    // Default (no config file): sponsored discovery is on (opt-out), so the
+    // section appears with the placement-not-preference policy.
     crate::config::Config::invalidate_cache();
     let (split, info) = build_system_prompt_split(None, &[], false, None, None);
     assert!(
         split
             .static_part
             .contains("# Discoverable Tools (sponsored discovery)"),
-        "discovery section must appear when enabled"
+        "discovery section must appear by default"
     );
     assert!(split.static_part.contains("discover_tools"));
     assert!(
@@ -125,6 +112,20 @@ fn test_sponsored_discovery_section_gated_on_config() {
         "policy line must be part of the injected prompt"
     );
     assert!(info.sponsored_discovery_chars > 0);
+
+    // Opted out: section is absent.
+    std::fs::write(
+        temp.path().join("config.toml"),
+        "[sponsors]\nenabled = false\n",
+    )
+    .unwrap();
+    crate::config::Config::invalidate_cache();
+    let (split, info) = build_system_prompt_split(None, &[], false, None, None);
+    assert!(
+        !split.static_part.contains("Discoverable Tools"),
+        "discovery section must be absent when opted out"
+    );
+    assert_eq!(info.sponsored_discovery_chars, 0);
 
     if let Some(prev) = prev_home {
         crate::env::set_var("JCODE_HOME", prev);

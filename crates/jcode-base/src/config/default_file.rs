@@ -572,12 +572,14 @@ desktop_notifications = true
 # jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
 
 # [sponsors]
-# Sponsored discovery (disabled by default). When enabled, the agent gains a
-# `discover_tools` tool listing third-party developer tools from jcode's
-# hosted sponsor manifest. Sponsors buy placement (discoverability), never
-# recommendations; every use is disclosed in the UI with a
-# (sponsored discovery) tag. See https://solosystems.dev/sponsored-discovery
-# enabled = false
+# Sponsored discovery (enabled by default; set enabled = false to opt out).
+# When enabled, the agent gains a `discover_tools` tool listing third-party
+# developer tools from jcode's hosted sponsor manifest. Sponsors buy
+# placement (discoverability), never recommendations; each session's first
+# use of discover_tools is disclosed in the UI with a (sponsored discovery)
+# tag.
+# See https://solosystems.dev/sponsored-discovery
+# enabled = true
 # endpoint = "https://api.solosystems.dev/v1/discovery"
 	"#;
 
