@@ -221,6 +221,35 @@ fn openai_compatible_models_endpoint_allows_models_array_with_name_ids() {
 }
 
 #[test]
+fn openai_compatible_models_endpoint_reads_llamacpp_meta_n_ctx() {
+    // llama.cpp's /v1/models only exposes the context window inside `meta`
+    // (issue #447). The `data` entry mirrors llama.cpp's response shape.
+    let parsed = parse_openai_compatible_models_response(
+        r#"{
+            "object": "list",
+            "data": [{
+                "id": "unsloth/gemma-4-31B-it-UD-Q8_K_XL",
+                "object": "model",
+                "created": 1783253170,
+                "owned_by": "llamacpp",
+                "meta": {
+                    "vocab_type": 2,
+                    "n_vocab": 262144,
+                    "n_ctx": 262144,
+                    "n_ctx_train": 262144,
+                    "n_embd": 5376
+                }
+            }]
+        }"#,
+    )
+    .expect("llama.cpp /v1/models response should parse");
+
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0].id, "unsloth/gemma-4-31B-it-UD-Q8_K_XL");
+    assert_eq!(parsed[0].context_length, Some(262144));
+}
+
+#[test]
 fn named_openai_compatible_provider_sets_catalog_cache_namespace() {
     let _lock = ENV_LOCK.lock();
     let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");

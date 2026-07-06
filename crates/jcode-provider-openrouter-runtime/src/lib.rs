@@ -626,7 +626,17 @@ fn parse_model_info_value(value: &Value) -> Option<ModelInfo> {
                 "max_model_len",
                 "trainingContextLength",
             ],
-        ),
+        )
+        // llama.cpp's /v1/models reports the serving context only inside
+        // `meta` (`n_ctx`, with `n_ctx_train` as the trained maximum). Without
+        // this, local llama.cpp models fall back to the generic 200K default
+        // and the context gauge overstates the real window (issue #447).
+        .or_else(|| {
+            object
+                .get("meta")
+                .and_then(Value::as_object)
+                .and_then(|meta| first_u64_field(meta, &["n_ctx", "n_ctx_train"]))
+        }),
         pricing: parse_model_pricing(object.get("pricing")),
         created: object.get("created").and_then(value_as_u64),
     })
