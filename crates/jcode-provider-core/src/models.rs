@@ -9,6 +9,7 @@ pub const ALL_CLAUDE_MODELS: &[&str] = &[
     "claude-opus-4-8",
     "claude-opus-4-6",
     "claude-opus-4-6[1m]",
+    "claude-sonnet-5",
     "claude-sonnet-4-6",
     "claude-sonnet-4-6[1m]",
     "claude-haiku-4-5",
@@ -155,6 +156,7 @@ fn base_is_known_claude_model(base: &str) -> bool {
         "claude-opus-4.6",
         "claude-opus-4-5",
         "claude-opus-4.5",
+        "claude-sonnet-5",
         "claude-sonnet-4-6",
         "claude-sonnet-4.6",
         "claude-sonnet-4-5",
@@ -467,6 +469,16 @@ mod tests {
         assert_eq!(
             anthropic_context_mode("claude-opus-4-6"),
             AnthropicContextMode::OptIn1M
+        );
+        // Sonnet 5 is native 1M: 1M is both the default and the maximum
+        // (issue #450).
+        assert_eq!(
+            anthropic_context_mode("claude-sonnet-5"),
+            AnthropicContextMode::Native1M
+        );
+        assert_eq!(
+            anthropic_context_mode("claude-sonnet-5-20260701"),
+            AnthropicContextMode::Native1M
         );
         assert_eq!(
             anthropic_context_mode("claude-sonnet-4-6"),
