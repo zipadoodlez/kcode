@@ -99,9 +99,31 @@ impl SkillTool {
         let name = normalize_skill_name(name, "load")?;
 
         let registry = self.registry.read().await;
-        let skill = registry
-            .get(&name)
-            .ok_or_else(|| anyhow::anyhow!("Skill '{}' not found", name))?;
+        let skill = registry.get(&name).ok_or_else(|| {
+            // Endorsed skills are advertised in `list` but are not bundled;
+            // a bare "not found" here reads like a bug (issue #445). Point at
+            // the actual install command instead.
+            if let Some(endorsed) = crate::skill::endorsed_skills()
+                .iter()
+                .find(|endorsed| endorsed.name == name)
+            {
+                match endorsed.install {
+                    Some(install) => anyhow::anyhow!(
+                        "Skill '{}' is endorsed but not installed. Install it with `{}`, then run skill_manage reload_all.",
+                        name,
+                        install
+                    ),
+                    None => anyhow::anyhow!(
+                        "Skill '{}' is endorsed but not installed (source: {}). Install it into ~/.jcode/skills/{}/SKILL.md, then run skill_manage reload_all.",
+                        name,
+                        endorsed.source,
+                        name
+                    ),
+                }
+            } else {
+                anyhow::anyhow!("Skill '{}' not found", name)
+            }
+        })?;
 
         let base_dir = skill
             .path

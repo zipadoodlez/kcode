@@ -3114,9 +3114,26 @@ impl App {
                     tool_data: None,
                 });
             } else {
+                // Distinguish an endorsed-but-not-installed skill from a
+                // typo: the skill list advertises endorsed skills, so a bare
+                // "Unknown skill" for them reads like a bug (issue #445).
+                let endorsed_hint = crate::skill::endorsed_skills()
+                    .iter()
+                    .find(|endorsed| endorsed.name == skill_name)
+                    .map(|endorsed| match endorsed.install {
+                        Some(install) => format!(
+                            "Skill /{} is endorsed but not installed. Install it with `{}`, then run /skills or skill_manage reload_all.",
+                            skill_name, install
+                        ),
+                        None => format!(
+                            "Skill /{} is endorsed but not installed (source: {}). Install it into ~/.jcode/skills/{}/SKILL.md.",
+                            skill_name, endorsed.source, skill_name
+                        ),
+                    });
                 self.push_display_message(DisplayMessage {
                     role: "error".to_string(),
-                    content: format!("Unknown skill: /{}", skill_name),
+                    content: endorsed_hint
+                        .unwrap_or_else(|| format!("Unknown skill: /{}", skill_name)),
                     tool_calls: vec![],
                     duration_secs: None,
                     title: None,
