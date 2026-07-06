@@ -1699,3 +1699,25 @@ fn anthropic_quality_rank_orders_opus_before_haiku_and_retired_last() {
         haiku
     );
 }
+
+#[test]
+fn ping_keepalive_emits_streaming_phase_event() {
+    // Issue #451: during silent reasoning phases, `ping` events can be the
+    // only upstream traffic. They must surface as a StreamEvent so the client
+    // stall guard sees activity instead of cancelling a healthy stream.
+    let mut state = SseStreamState::default();
+    let event = SseEvent {
+        event_type: "ping".to_string(),
+        data: r#"{"type": "ping"}"#.to_string(),
+    };
+    let events = process_sse_event(&event, &mut state, true);
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            StreamEvent::ConnectionPhase {
+                phase: jcode_message_types::ConnectionPhase::Streaming
+            }
+        )),
+        "expected ping to emit a Streaming ConnectionPhase event, got {events:?}"
+    );
+}

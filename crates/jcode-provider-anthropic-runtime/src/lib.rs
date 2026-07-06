@@ -2262,7 +2262,14 @@ fn process_sse_event(
             // Final message stop - we may have already sent MessageEnd via message_delta
         }
         "ping" => {
-            // Keepalive, ignore
+            // Keepalive. Surface it as a phase event instead of swallowing it:
+            // during silent reasoning phases (adaptive thinking with hidden or
+            // summarized display) pings can be the only upstream traffic, and
+            // downstream consumers (the TUI stall guard) need to see *some*
+            // event to know the stream is alive (issue #451).
+            events.push(StreamEvent::ConnectionPhase {
+                phase: jcode_message_types::ConnectionPhase::Streaming,
+            });
         }
         "error" => {
             jcode_base::logging::error(&format!("Anthropic stream error: {}", event.data));
