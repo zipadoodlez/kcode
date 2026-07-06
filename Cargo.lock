@@ -153,7 +153,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -164,7 +164,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4868,8 +4868,8 @@ dependencies = [
 
 [[package]]
 name = "mermaid-rs-renderer"
-version = "0.3.0"
-source = "git+https://github.com/1jehuang/mermaid-rs-renderer.git?tag=v0.3.0#bac530cc975d1daa957d21d8c1f76fc34cff7b04"
+version = "0.3.1"
+source = "git+https://github.com/1jehuang/mermaid-rs-renderer.git?tag=v0.3.1#2f993bd79a55235eb59a34d807852276ba25bea7"
 dependencies = [
  "anyhow",
  "clap",
