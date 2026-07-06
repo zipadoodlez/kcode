@@ -88,6 +88,7 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
             remaining_secs: 0,
             ttl_secs: 300,
             is_cold: true,
+            cold_for_secs: 90,
             cached_tokens: Some(4000),
         }),
         ..Default::default()
@@ -110,6 +111,7 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
             remaining_secs: 30,
             ttl_secs: 300,
             is_cold: false,
+            cold_for_secs: 0,
             cached_tokens: Some(4000),
         }),
         ..Default::default()
@@ -128,6 +130,7 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
             remaining_secs: 300,
             ttl_secs: 3600,
             is_cold: false,
+            cold_for_secs: 0,
             cached_tokens: Some(4000),
         }),
         ..Default::default()
@@ -145,6 +148,7 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
             remaining_secs: 200,
             ttl_secs: 300,
             is_cold: false,
+            cold_for_secs: 0,
             cached_tokens: Some(4000),
         }),
         ..Default::default()

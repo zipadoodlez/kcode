@@ -166,19 +166,17 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
         .display_messages()
         .iter()
         .find(|message| {
-            message.role == "system" && message.content.contains("Prompt cache is cold")
+            message.role == "system" && message.content.contains("Prompt cache went cold")
         })
         .expect("cold cache warning should be persisted in the transcript");
     assert!(warning.content.contains("911K"));
     assert!(
-        warning.content.contains("3600s TTL expired 123s ago")
-            || warning.content.contains("3600s TTL expired 124s ago"),
+        warning.content.contains("went cold 2m ago"),
         "{warning:?}"
     );
     assert!(
-        warning.content.contains("last cache write was 3723s ago")
-            || warning.content.contains("last cache write was 3724s ago"),
-        "{warning:?}"
+        warning.content.lines().count() == 1,
+        "cold-cache warning must stay one line: {warning:?}"
     );
 }
 
@@ -210,22 +208,18 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
         .display_messages()
         .iter()
         .find(|message| {
-            message.role == "system" && message.content.contains("Prompt cache is cold")
+            message.role == "system" && message.content.contains("Prompt cache went cold")
         })
         .expect("idle cold cache warning should be persisted in the transcript");
     assert!(
         warning
             .content
-            .contains("will be resent with your next message"),
+            .contains("resent with your next message"),
         "{warning:?}"
     );
     assert!(
-        warning.content.contains("3600s TTL just expired"),
-        "idle warning should not report a stale 'expired Ns ago' detail: {warning:?}"
-    );
-    assert!(
-        !warning.content.contains("expired 100s ago"),
-        "{warning:?}"
+        !warning.content.contains("ago"),
+        "idle warning should not report a stale 'went cold N ago' detail: {warning:?}"
     );
 
     // Subsequent ticks for the same cold period must not spam the transcript.
@@ -233,7 +227,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
     let count = app
         .display_messages()
         .iter()
-        .filter(|message| message.content.contains("Prompt cache is cold"))
+        .filter(|message| message.content.contains("Prompt cache went cold"))
         .count();
     assert_eq!(count, 1);
 
@@ -243,7 +237,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
     let count = app
         .display_messages()
         .iter()
-        .filter(|message| message.content.contains("Prompt cache is cold"))
+        .filter(|message| message.content.contains("Prompt cache went cold"))
         .count();
     assert_eq!(
         count, 1,

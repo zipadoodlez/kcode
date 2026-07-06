@@ -593,8 +593,38 @@ pub struct CacheTtlInfo {
     pub ttl_secs: u64,
     /// Whether the cache is expired (cold)
     pub is_cold: bool,
+    /// How long ago the cache went cold, in seconds (0 while warm)
+    pub cold_for_secs: u64,
     /// Estimated cached tokens (from last response's input tokens)
     pub cached_tokens: Option<u64>,
+}
+
+/// Compact human age like `30s`, `5m`, `1h 1m`, `2d 3h` for "went cold N ago"
+/// annotations. Keeps at most two units so it stays glanceable.
+pub(crate) fn format_compact_age(secs: u64) -> String {
+    if secs < 60 {
+        return format!("{}s", secs);
+    }
+    let mins = secs / 60;
+    if mins < 60 {
+        return format!("{}m", mins);
+    }
+    let hours = mins / 60;
+    let rem_mins = mins % 60;
+    if hours < 24 {
+        return if rem_mins == 0 {
+            format!("{}h", hours)
+        } else {
+            format!("{}h {}m", hours, rem_mins)
+        };
+    }
+    let days = hours / 24;
+    let rem_hours = hours % 24;
+    if rem_hours == 0 {
+        format!("{}d", days)
+    } else {
+        format!("{}d {}h", days, rem_hours)
+    }
 }
 
 impl CacheTtlInfo {
@@ -1806,6 +1836,7 @@ mod tests {
             remaining_secs: 240,
             ttl_secs: 300,
             is_cold: false,
+            cold_for_secs: 0,
             cached_tokens: Some(12_000),
         }
     }
@@ -1815,8 +1846,21 @@ mod tests {
             remaining_secs: 0,
             ttl_secs: 300,
             is_cold: true,
+            cold_for_secs: 90,
             cached_tokens: Some(12_000),
         }
+    }
+
+    #[test]
+    fn format_compact_age_is_glanceable() {
+        use super::format_compact_age;
+        assert_eq!(format_compact_age(0), "0s");
+        assert_eq!(format_compact_age(45), "45s");
+        assert_eq!(format_compact_age(60), "1m");
+        assert_eq!(format_compact_age(3_660), "1h 1m");
+        assert_eq!(format_compact_age(7_200), "2h");
+        assert_eq!(format_compact_age(90_000), "1d 1h");
+        assert_eq!(format_compact_age(172_800), "2d");
     }
 
     #[test]

@@ -1550,6 +1550,11 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
                     format!("🧊 cache cold{}", tokens_str),
                     Style::default().fg(rgb(140, 180, 255)),
                 ));
+                // Small gray "how long ago it went cold" hint, e.g. `1h 1m`.
+                spans.push(Span::styled(
+                    format!(" {}", crate::tui::format_compact_age(cache_info.cold_for_secs)),
+                    Style::default().fg(dim_color()),
+                ));
             } else if cache_info.expiring_soon() {
                 let tokens_str = cache_info
                     .cached_tokens

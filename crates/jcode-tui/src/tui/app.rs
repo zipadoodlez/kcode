@@ -1756,25 +1756,22 @@ impl App {
         } else {
             tokens.to_string()
         };
-        let resend_clause = match trigger {
-            ColdCacheWarningTrigger::IdleExpiry => "will be resent with your next message",
-            ColdCacheWarningTrigger::RequestStart => "may be resent on this request",
-        };
-        // The idle trigger fires the moment the TTL expires, so "expired Ns
-        // ago" would always read ~0s and is pure noise there. The
-        // request-start fallback can fire long after expiry (e.g. suspended
-        // TUI), where the elapsed detail is genuinely informative.
-        let detail = match trigger {
-            ColdCacheWarningTrigger::IdleExpiry => format!("{}s TTL just expired", ttl_secs),
+        // Keep this to a single short line. The idle trigger fires the moment
+        // the TTL expires, so an "N ago" detail would always read ~0s there;
+        // the request-start fallback can fire long after expiry (e.g.
+        // suspended TUI), where the age is genuinely informative.
+        let message = match trigger {
+            ColdCacheWarningTrigger::IdleExpiry => format!(
+                "🧊 Prompt cache went cold: ~{} tok resent with your next message (/cache to extend)",
+                token_label
+            ),
             ColdCacheWarningTrigger::RequestStart => format!(
-                "{}s TTL expired {}s ago; last cache write was {}s ago",
-                ttl_secs, expired_ago_secs, age_secs
+                "🧊 Prompt cache went cold {} ago: ~{} tok may be resent on this request",
+                crate::tui::format_compact_age(expired_ago_secs),
+                token_label
             ),
         };
-        self.push_display_message(DisplayMessage::system(format!(
-            "🧊 Prompt cache is cold: ~{} input tokens {} ({}). Use /cache to extend the timer before long breaks, or start a fresh/compacted session for very large histories.",
-            token_label, resend_clause, detail
-        )));
+        self.push_display_message(DisplayMessage::system(message));
         true
     }
 
