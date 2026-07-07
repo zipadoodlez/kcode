@@ -27,6 +27,7 @@ pub(crate) fn swarm_plan_todos(items: &[crate::plan::PlanItem]) -> Vec<crate::to
             assigned_to: item.assigned_to.clone(),
             confidence: None,
             completion_confidence: None,
+            hill_climbability: None,
             confidence_history: Vec::new(),
         })
         .collect()

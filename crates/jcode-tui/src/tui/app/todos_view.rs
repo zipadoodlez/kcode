@@ -452,6 +452,9 @@ fn format_todo_markdown(todo: &TodoItem) -> String {
             format_confidence_value(todo.completion_confidence)
         ));
     }
+    if let Some(hill) = todo.hill_climbability {
+        line.push_str(&format!("  - hill-climbability: `{}%`\n", hill));
+    }
     if let Some(assigned_to) = todo
         .assigned_to
         .as_deref()

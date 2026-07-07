@@ -89,7 +89,7 @@ fn normalize_todo_input(mut input: Value) -> Value {
             let Some(fields) = item.as_object_mut() else {
                 continue;
             };
-            for key in ["confidence", "completion_confidence"] {
+            for key in ["confidence", "completion_confidence", "hill_climbability"] {
                 if let Some(value) = fields.get_mut(key) {
                     coerce_value_to_integer(value);
                 }
@@ -132,7 +132,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed."
+        "Read or update the todo list. Include confidence for each item, update it as evidence accumulates while working, and include completion_confidence when marking an item completed. Rate each item's hill_climbability: how measurable and iterable progress on it is."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -178,6 +178,12 @@ impl Tool for TodoTool {
                                 "minimum": 0,
                                 "maximum": 100,
                                 "description": "Confidence, 0-100, that this todo is correctly completed. Set when marking the todo completed; omit until then."
+                            },
+                            "hill_climbability": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100,
+                                "description": "How hill-climbable this task is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? High for tasks with a clear metric (e.g. optimize grep latency, make failing tests pass), low for taste-driven or open-ended tasks (e.g. design an onboarding screen). High scores suggest building a measurement harness and iterating; low scores suggest checkpointing with the user or defining proxy metrics first."
                             }
                         }
                     }
@@ -262,6 +268,7 @@ mod tests {
             .expect("todo item should advertise properties");
         assert!(item_props.contains_key("confidence"));
         assert!(item_props.contains_key("completion_confidence"));
+        assert!(item_props.contains_key("hill_climbability"));
     }
 
     fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {
@@ -324,6 +331,20 @@ mod tests {
         });
         let parsed = parse(input).expect("native input should parse");
         assert_eq!(parsed.todos.expect("todos present")[0].confidence, Some(80));
+    }
+
+    #[test]
+    fn accepts_hill_climbability_including_string_coercion() {
+        let input = json!({
+            "todos": [
+                {"content": "f", "status": "pending", "priority": "high", "id": "6", "confidence": 80, "hill_climbability": "95"},
+                {"content": "g", "status": "pending", "priority": "low", "id": "7", "confidence": 60, "hill_climbability": 20}
+            ]
+        });
+        let parsed = parse(input).expect("hill_climbability should parse");
+        let todos = parsed.todos.expect("todos present");
+        assert_eq!(todos[0].hill_climbability, Some(95));
+        assert_eq!(todos[1].hill_climbability, Some(20));
     }
 
     #[test]

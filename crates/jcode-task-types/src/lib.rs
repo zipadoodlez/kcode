@@ -211,6 +211,12 @@ pub struct TodoItem {
     /// Confidence, from 0-100, recorded when the todo is marked completed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_confidence: Option<u8>,
+    /// How hill-climbable this task is, from 0-100: whether progress can be
+    /// driven by a quantifiable, verifiable objective that can be iterated
+    /// against (e.g. "optimize grep latency" is high, "design an onboarding
+    /// screen" is low because success is a taste judgment).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hill_climbability: Option<u8>,
     /// Every distinct confidence value this todo has carried, oldest first,
     /// ending with the current one. Maintained by the todo tool (not the
     /// model): the first entry is the planning-time confidence, later entries
