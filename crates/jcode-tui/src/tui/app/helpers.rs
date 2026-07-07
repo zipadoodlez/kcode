@@ -543,6 +543,7 @@ pub(super) fn inferred_reasoning_efforts(
         // the released model accepts effort low..xhigh (verified live
         // 2026-07-01).
         let supports_effort = model.contains("claude-fable-5")
+            || model.contains("claude-sonnet-5")
             || model.contains("claude-mythos")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
@@ -555,6 +556,7 @@ pub(super) fn inferred_reasoning_efforts(
             return Vec::new();
         }
         if model.contains("claude-fable-5")
+            || model.contains("claude-sonnet-5")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
         {

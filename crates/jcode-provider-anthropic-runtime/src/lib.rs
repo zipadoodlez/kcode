@@ -497,7 +497,10 @@ impl AnthropicProvider {
         // `claude-fable-5` initially rejected effort/thinking during its preview
         // (400s), but the released model accepts `output_config` effort
         // low/medium/high/xhigh/max (verified live 2026-07-01).
+        // `claude-sonnet-5` accepts the same ladder including xhigh/max
+        // (verified live 2026-07-07).
         model.contains("claude-fable-5")
+            || model.contains("claude-sonnet-5")
             || model.contains("claude-mythos")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
@@ -511,6 +514,7 @@ impl AnthropicProvider {
         // The released `claude-fable-5` accepts `thinking: {type: adaptive}`
         // (manual `enabled` budgets still 400; verified live 2026-07-01).
         model.contains("claude-fable-5")
+            || model.contains("claude-sonnet-5")
             || model.contains("claude-mythos")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
@@ -528,6 +532,7 @@ impl AnthropicProvider {
     fn model_supports_xhigh_effort(model: &str) -> bool {
         let model = Self::normalized_model_key(model);
         model.contains("claude-fable-5")
+            || model.contains("claude-sonnet-5")
             || model.contains("claude-opus-4-8")
             || model.contains("claude-opus-4-7")
     }

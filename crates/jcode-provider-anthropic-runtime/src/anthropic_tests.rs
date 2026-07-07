@@ -290,6 +290,66 @@ fn test_anthropic_fable_defaults_to_low_effort() {
 }
 
 #[test]
+fn test_anthropic_sonnet_5_supports_full_effort_ladder() {
+    // `claude-sonnet-5` accepts `output_config` effort low..xhigh/max and
+    // adaptive thinking (verified live 2026-07-07).
+    assert!(AnthropicProvider::model_supports_output_effort(
+        "claude-sonnet-5"
+    ));
+    assert!(AnthropicProvider::model_supports_adaptive_thinking(
+        "claude-sonnet-5"
+    ));
+    assert!(AnthropicProvider::model_supports_xhigh_effort(
+        "claude-sonnet-5"
+    ));
+    assert!(AnthropicProvider::model_supports_max_effort(
+        "claude-sonnet-5"
+    ));
+
+    let provider = AnthropicProvider::new();
+    *provider.reasoning_effort.write().unwrap() = None;
+    *provider
+        .model
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = "claude-sonnet-5".to_string();
+
+    // No forced default: Sonnet keeps the model's own reasoning behavior.
+    assert_eq!(
+        AnthropicProvider::default_reasoning_effort_for_model("claude-sonnet-5"),
+        None,
+    );
+
+    // Explicit efforts are accepted and drive the request.
+    for effort in ["low", "medium", "high", "xhigh", "max"] {
+        provider.set_reasoning_effort(effort).unwrap();
+        assert_eq!(provider.reasoning_effort().as_deref(), Some(effort));
+        let (thinking, output_config, _temp) =
+            provider.build_reasoning_request_parts_inner("claude-sonnet-5", true, false);
+        assert_eq!(
+            output_config
+                .expect("explicit effort should set output_config")
+                .effort,
+            effort,
+        );
+        assert!(matches!(thinking, Some(ApiThinking::Adaptive { .. })));
+    }
+
+    assert_eq!(
+        provider.available_efforts(),
+        vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "swarm",
+            "swarm-deep"
+        ],
+    );
+}
+
+#[test]
 fn test_anthropic_opus_defaults_to_xhigh_effort() {
     // Opus is a reasoning-heavy flagship, so when the user has *not* configured
     // an explicit effort it should default to its strongest supported level
