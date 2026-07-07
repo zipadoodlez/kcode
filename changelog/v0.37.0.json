@@ -1,0 +1,29 @@
+{
+  "version": "0.37.0",
+  "date": "2026-07-07",
+  "title": "Sponsored tool discovery, inline todo card, and cache-aware notices",
+  "highlights": [
+    "New discover_tools capability lets the agent browse and select sponsored third-party tools in two phases (browse a category, then fetch setup instructions), with clear (sponsored discovery) provenance tags, substantive selection reasons, and an opt-out config",
+    "A live todo card can be pinned inline in chat via /todos or Alt+P, and todos now track confidence history with a spike-aware validation gate",
+    "Claude Sonnet 5 supports reasoning effort selection and is classified as a native 1M-context model"
+  ],
+  "improvements": [
+    "Named provider models from your config now appear in the model picker (issue #444)",
+    "Endorsed-but-not-installed skills are explained instead of reported as 'Unknown skill' (issue #445)",
+    "Cold prompt-cache notices are shorter, show how long ago the cache went cold, report effective prompt tokens, and the expiry countdown window scales with the cache TTL",
+    "Documented harness cache invalidations are attributed in the TUI so cache misses are explainable",
+    "Swarm plans render as a reliable, legible mermaid task graph and are labeled Plan in the todo widget",
+    "The initiative tool no longer auto-opens the side panel"
+  ],
+  "fixes": [
+    "Explicit /login credentials now win over stale API-key environment variables inherited from the parent shell",
+    "Setting prevent_sleep_while_streaming=false is honored by the TUI sleep guard",
+    "Long silent reasoning phases no longer trip the client stall guard (issue #451)",
+    "OpenRouter: local llama.cpp context windows are read from meta.n_ctx (issue #447), and tool schemas are sanitized for strict OpenAI-compatible endpoints (issue #446)",
+    "default_provider pointing at an OpenAI-compatible catalog profile is honored (issue #448)",
+    "Server-path message hashing uses a cache-relevant projection, avoiding false KV-cache misses",
+    "Mermaid aspect-profile diagrams no longer draw outside their render scope, streaming previews clear on empty-buffer commits, and /clear fully re-scopes active diagrams",
+    "Inline-image marker text is never drawn to the terminal",
+    "Rewinding a session mid-stream drops stale streaming state instead of replaying it"
+  ]
+}
