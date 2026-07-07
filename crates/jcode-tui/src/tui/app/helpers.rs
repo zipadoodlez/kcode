@@ -539,56 +539,22 @@ pub(super) fn inferred_reasoning_efforts(
         || provider.contains("claude")
         || model.starts_with("claude-");
     if is_anthropic {
-        // `claude-fable-5` rejected reasoning fields during its preview, but
-        // the released model accepts effort low..xhigh (verified live
-        // 2026-07-01).
-        let supports_effort = model.contains("claude-fable-5")
-            || model.contains("claude-sonnet-5")
-            || model.contains("claude-mythos")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
-            || model.contains("claude-opus-4-6")
-            || model.contains("claude-sonnet-4-6")
-            || model.contains("claude-opus-4-5")
-            || model.contains("claude-3-7-sonnet")
-            || model.contains("claude-sonnet-3-7");
-        if !supports_effort {
+        // Shared capability table (optimistic for unknown 5.x+ generations);
+        // see `jcode_provider_core::anthropic_reasoning_caps`. Keeps the effort
+        // cycler in lockstep with what the Anthropic runtime actually sends.
+        let caps = jcode_provider_core::anthropic_reasoning_caps(&model);
+        if !caps.supports_reasoning_effort() {
             return Vec::new();
         }
-        if model.contains("claude-fable-5")
-            || model.contains("claude-sonnet-5")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
-        {
-            return vec![
-                "none",
-                "low",
-                "medium",
-                "high",
-                "xhigh",
-                "max",
-                "swarm",
-                "swarm-deep",
-            ];
+        let mut efforts = vec!["none", "low", "medium", "high"];
+        if caps.xhigh_effort {
+            efforts.push("xhigh");
         }
-        // `output_config` effort models without xhigh (Opus/Sonnet 4.6, Mythos)
-        // still support the real `max` API level. Manual-thinking models
-        // (Opus 4.5, Claude 3.7 Sonnet) top out at high.
-        if model.contains("claude-mythos")
-            || model.contains("claude-opus-4-6")
-            || model.contains("claude-sonnet-4-6")
-        {
-            return vec![
-                "none",
-                "low",
-                "medium",
-                "high",
-                "max",
-                "swarm",
-                "swarm-deep",
-            ];
+        if caps.max_effort {
+            efforts.push("max");
         }
-        return vec!["none", "low", "medium", "high", "swarm", "swarm-deep"];
+        efforts.extend(["swarm", "swarm-deep"]);
+        return efforts;
     }
 
     let is_deepseek = provider.contains("deepseek") || model.contains("deepseek");

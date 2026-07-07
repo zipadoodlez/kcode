@@ -493,48 +493,22 @@ impl AnthropicProvider {
     }
 
     fn model_supports_output_effort(model: &str) -> bool {
-        let model = Self::normalized_model_key(model);
-        // `claude-fable-5` initially rejected effort/thinking during its preview
-        // (400s), but the released model accepts `output_config` effort
-        // low/medium/high/xhigh/max (verified live 2026-07-01).
-        // `claude-sonnet-5` accepts the same ladder including xhigh/max
-        // (verified live 2026-07-07).
-        model.contains("claude-fable-5")
-            || model.contains("claude-sonnet-5")
-            || model.contains("claude-mythos")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
-            || model.contains("claude-opus-4-6")
-            || model.contains("claude-sonnet-4-6")
-            || model.contains("claude-opus-4-5")
+        // Shared capability table (with an optimistic default for unknown 5.x+
+        // generations); see `jcode_provider_core::anthropic_reasoning_caps`.
+        // Fable 5 verified live 2026-07-01; Sonnet 5 verified live 2026-07-07.
+        jcode_provider_core::anthropic_reasoning_caps(model).output_effort
     }
 
     fn model_supports_adaptive_thinking(model: &str) -> bool {
-        let model = Self::normalized_model_key(model);
-        // The released `claude-fable-5` accepts `thinking: {type: adaptive}`
-        // (manual `enabled` budgets still 400; verified live 2026-07-01).
-        model.contains("claude-fable-5")
-            || model.contains("claude-sonnet-5")
-            || model.contains("claude-mythos")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
-            || model.contains("claude-opus-4-6")
-            || model.contains("claude-sonnet-4-6")
+        jcode_provider_core::anthropic_reasoning_caps(model).adaptive_thinking
     }
 
     fn model_supports_manual_thinking(model: &str) -> bool {
-        let model = Self::normalized_model_key(model);
-        model.contains("claude-opus-4-5")
-            || model.contains("claude-3-7-sonnet")
-            || model.contains("claude-sonnet-3-7")
+        jcode_provider_core::anthropic_reasoning_caps(model).manual_thinking
     }
 
     fn model_supports_xhigh_effort(model: &str) -> bool {
-        let model = Self::normalized_model_key(model);
-        model.contains("claude-fable-5")
-            || model.contains("claude-sonnet-5")
-            || model.contains("claude-opus-4-8")
-            || model.contains("claude-opus-4-7")
+        jcode_provider_core::anthropic_reasoning_caps(model).xhigh_effort
     }
 
     /// `max` effort ("absolute maximum capability with no constraints on token
@@ -542,12 +516,11 @@ impl AnthropicProvider {
     /// except Claude Opus 4.5 where manual thinking keeps `max` as an alias for
     /// the strongest supported level.
     fn model_supports_max_effort(model: &str) -> bool {
-        Self::model_supports_output_effort(model)
-            && !Self::normalized_model_key(model).contains("claude-opus-4-5")
+        jcode_provider_core::anthropic_reasoning_caps(model).max_effort
     }
 
     fn model_supports_reasoning_effort(model: &str) -> bool {
-        Self::model_supports_output_effort(model) || Self::model_supports_manual_thinking(model)
+        jcode_provider_core::anthropic_reasoning_caps(model).supports_reasoning_effort()
     }
 
     fn normalize_reasoning_effort(raw: &str) -> Option<String> {
@@ -1171,7 +1144,7 @@ impl Provider for AnthropicProvider {
         }
         if normalized.as_deref() == Some("xhigh") && !Self::model_supports_xhigh_effort(&model) {
             anyhow::bail!(
-                "Anthropic xhigh effort is only supported for Claude Opus 4.7/4.8 and Fable 5 models"
+                "Anthropic xhigh effort is not supported by this model (available on Opus 4.7+, Sonnet 5+, and Fable 5+)"
             );
         }
         let normalized = normalized.map(|effort| Self::store_effort_for_model(&model, &effort));

@@ -115,6 +115,164 @@ pub fn anthropic_oauth_beta_headers(model: &str) -> &'static str {
     }
 }
 
+/// How a Claude model exposes reasoning effort and thinking on the live
+/// Messages API.
+///
+/// This is the single source of truth shared by the Anthropic runtime (request
+/// building, `set_reasoning_effort` validation) and the TUI effort cycler, so
+/// new models cannot drift between the two.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AnthropicReasoningCaps {
+    /// Accepts `output_config: {effort}`.
+    pub output_effort: bool,
+    /// Accepts `thinking: {type: adaptive}`.
+    pub adaptive_thinking: bool,
+    /// Needs `thinking: {type: enabled, budget_tokens}` (manual budgets).
+    pub manual_thinking: bool,
+    /// Accepts the `xhigh` effort level.
+    pub xhigh_effort: bool,
+    /// Accepts the `max` effort level.
+    pub max_effort: bool,
+}
+
+impl AnthropicReasoningCaps {
+    /// Full modern ladder: `output_config` effort low..xhigh/max + adaptive thinking.
+    const FULL: Self = Self {
+        output_effort: true,
+        adaptive_thinking: true,
+        manual_thinking: false,
+        xhigh_effort: true,
+        max_effort: true,
+    };
+    /// `output_config` effort + adaptive thinking, but no `xhigh` level.
+    const EFFORT_NO_XHIGH: Self = Self {
+        output_effort: true,
+        adaptive_thinking: true,
+        manual_thinking: false,
+        xhigh_effort: false,
+        max_effort: true,
+    };
+    /// `output_config` effort with manual thinking budgets (Opus 4.5).
+    const MANUAL_WITH_EFFORT: Self = Self {
+        output_effort: true,
+        adaptive_thinking: false,
+        manual_thinking: true,
+        xhigh_effort: false,
+        max_effort: false,
+    };
+    /// Manual thinking budgets only (Claude 3.7 Sonnet).
+    const MANUAL_ONLY: Self = Self {
+        output_effort: false,
+        adaptive_thinking: false,
+        manual_thinking: true,
+        xhigh_effort: false,
+        max_effort: false,
+    };
+    const NONE: Self = Self {
+        output_effort: false,
+        adaptive_thinking: false,
+        manual_thinking: false,
+        xhigh_effort: false,
+        max_effort: false,
+    };
+
+    /// Whether any reasoning-effort control is available at all.
+    pub fn supports_reasoning_effort(self) -> bool {
+        self.output_effort || self.manual_thinking
+    }
+}
+
+/// Normalize a Claude id for capability matching: lowercase, `[1m]` and
+/// `-YYYYMMDD` date suffixes stripped, dotted versions (`4.6`) dashed (`4-6`).
+fn normalized_claude_caps_key(model: &str) -> String {
+    let base = anthropic_strip_1m_suffix(model.trim())
+        .to_ascii_lowercase()
+        .replace('.', "-");
+    crate::model_id::strip_date_suffix(&base).to_string()
+}
+
+/// Parse `(family, version)` from a normalized Claude id. Handles both
+/// version-last (`claude-sonnet-4-6`) and version-first (`claude-3-7-sonnet`)
+/// forms. A single version number means `.0` (`claude-sonnet-5` -> 5.0).
+fn parse_claude_family_version(base: &str) -> (Option<&str>, Option<(u32, u32)>) {
+    let mut family = None;
+    let mut nums: Vec<u32> = Vec::new();
+    for segment in base.split('-') {
+        if segment == "claude" {
+            continue;
+        }
+        if let Ok(num) = segment.parse::<u32>() {
+            if nums.len() < 2 {
+                nums.push(num);
+            }
+        } else if family.is_none() && segment.chars().all(|c| c.is_ascii_alphabetic()) {
+            family = Some(segment);
+        }
+    }
+    let version = match nums.as_slice() {
+        [] => None,
+        [major] => Some((*major, 0)),
+        [major, minor, ..] => Some((*major, *minor)),
+    };
+    (family, version)
+}
+
+/// Reasoning-effort capabilities for a Claude model.
+///
+/// Known generations are pinned to what the live API accepts (verified live
+/// 2026-07-01 for Fable 5 / Opus 4.x, 2026-07-07 for Sonnet 5). Unknown
+/// *future* generations (version 5+ in any family) optimistically default to
+/// the full ladder: the Anthropic runtime self-heals by stripping the
+/// reasoning fields and retrying if a model rejects them, so optimism degrades
+/// gracefully while pessimism silently disables effort until someone probes
+/// the model and updates a table.
+pub fn anthropic_reasoning_caps(model: &str) -> AnthropicReasoningCaps {
+    let base = normalized_claude_caps_key(model);
+    if !base.starts_with("claude") {
+        return AnthropicReasoningCaps::NONE;
+    }
+    if base.contains("mythos") {
+        return AnthropicReasoningCaps::EFFORT_NO_XHIGH;
+    }
+    let (family, version) = parse_claude_family_version(&base);
+    let Some(version) = version else {
+        return AnthropicReasoningCaps::NONE;
+    };
+    match family {
+        Some("opus") => {
+            if version >= (4, 7) {
+                AnthropicReasoningCaps::FULL
+            } else if version == (4, 6) {
+                AnthropicReasoningCaps::EFFORT_NO_XHIGH
+            } else if version == (4, 5) {
+                AnthropicReasoningCaps::MANUAL_WITH_EFFORT
+            } else {
+                AnthropicReasoningCaps::NONE
+            }
+        }
+        Some("sonnet") => {
+            if version >= (5, 0) {
+                AnthropicReasoningCaps::FULL
+            } else if version == (4, 6) {
+                AnthropicReasoningCaps::EFFORT_NO_XHIGH
+            } else if version == (3, 7) {
+                AnthropicReasoningCaps::MANUAL_ONLY
+            } else {
+                AnthropicReasoningCaps::NONE
+            }
+        }
+        // Optimistic default for new generations (Fable 5, Haiku 5, future
+        // families): assume the modern full ladder from version 5 on.
+        _ => {
+            if version >= (5, 0) {
+                AnthropicReasoningCaps::FULL
+            } else {
+                AnthropicReasoningCaps::NONE
+            }
+        }
+    }
+}
+
 pub fn anthropic_map_tool_name_for_oauth(name: &str) -> String {
     match name {
         "bash" => "Bash",
@@ -209,5 +367,96 @@ mod tests {
     fn stainless_labels_are_non_empty() {
         assert!(!anthropic_stainless_arch().is_empty());
         assert!(!anthropic_stainless_os().is_empty());
+    }
+
+    #[test]
+    fn reasoning_caps_match_live_verified_generations() {
+        // Full ladder: Fable 5 (live 2026-07-01), Sonnet 5 (live 2026-07-07),
+        // Opus 4.7/4.8.
+        for model in [
+            "claude-fable-5",
+            "claude-sonnet-5",
+            "claude-opus-4-8",
+            "claude-opus-4-7",
+        ] {
+            let caps = anthropic_reasoning_caps(model);
+            assert!(caps.output_effort, "{model} should support output effort");
+            assert!(caps.adaptive_thinking, "{model} should be adaptive");
+            assert!(caps.xhigh_effort, "{model} should support xhigh");
+            assert!(caps.max_effort, "{model} should support max");
+            assert!(!caps.manual_thinking);
+        }
+
+        // Effort without xhigh: Opus/Sonnet 4.6, Mythos.
+        for model in ["claude-opus-4-6", "claude-sonnet-4-6", "claude-mythos"] {
+            let caps = anthropic_reasoning_caps(model);
+            assert!(caps.output_effort, "{model} should support output effort");
+            assert!(caps.adaptive_thinking);
+            assert!(!caps.xhigh_effort, "{model} has no xhigh");
+            assert!(caps.max_effort, "{model} still supports max");
+        }
+
+        // Manual thinking generations.
+        let opus_4_5 = anthropic_reasoning_caps("claude-opus-4-5");
+        assert!(opus_4_5.output_effort && opus_4_5.manual_thinking);
+        assert!(!opus_4_5.adaptive_thinking && !opus_4_5.xhigh_effort && !opus_4_5.max_effort);
+        let sonnet_3_7 = anthropic_reasoning_caps("claude-3-7-sonnet");
+        assert!(sonnet_3_7.manual_thinking && !sonnet_3_7.output_effort);
+        assert_eq!(
+            anthropic_reasoning_caps("claude-sonnet-3-7"),
+            sonnet_3_7,
+            "version-first and version-last forms must match"
+        );
+
+        // No reasoning-effort support.
+        for model in [
+            "claude-sonnet-4-5",
+            "claude-haiku-4-5",
+            "claude-opus-4-1",
+            "claude-3-5-haiku",
+            "gpt-5.5",
+        ] {
+            assert!(
+                !anthropic_reasoning_caps(model).supports_reasoning_effort(),
+                "{model} should not support effort"
+            );
+        }
+    }
+
+    #[test]
+    fn reasoning_caps_normalize_suffixes_and_dots() {
+        let base = anthropic_reasoning_caps("claude-sonnet-5");
+        assert_eq!(anthropic_reasoning_caps("claude-sonnet-5[1m]"), base);
+        assert_eq!(anthropic_reasoning_caps("claude-sonnet-5-20260701"), base);
+        assert_eq!(anthropic_reasoning_caps("Claude-Sonnet-5"), base);
+        assert_eq!(
+            anthropic_reasoning_caps("claude-opus-4.6"),
+            anthropic_reasoning_caps("claude-opus-4-6")
+        );
+    }
+
+    #[test]
+    fn reasoning_caps_are_optimistic_for_future_generations() {
+        // New 5.x+ models default to the full ladder (the runtime self-heals
+        // on 400 by stripping reasoning fields), instead of silently
+        // disabling effort until someone probes them.
+        for model in [
+            "claude-sonnet-5-1",
+            "claude-sonnet-6",
+            "claude-opus-5",
+            "claude-haiku-5",
+            "claude-fable-6",
+            "claude-nova-5",
+        ] {
+            let caps = anthropic_reasoning_caps(model);
+            assert_eq!(
+                caps,
+                anthropic_reasoning_caps("claude-fable-5"),
+                "{model} should default to the full modern ladder"
+            );
+        }
+        // But old/unversioned ids stay conservative.
+        assert!(!anthropic_reasoning_caps("claude-haiku-4-5").supports_reasoning_effort());
+        assert!(!anthropic_reasoning_caps("claude-instant").supports_reasoning_effort());
     }
 }
