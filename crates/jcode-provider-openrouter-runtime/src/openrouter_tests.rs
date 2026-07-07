@@ -2521,6 +2521,47 @@ fn compat_profile_serving_deepseek_model_supports_reasoning_effort() {
     assert_eq!(provider.reasoning_effort(), Some("high".to_string()));
 }
 
+/// GPT-family reasoning models served by a direct OpenAI-compatible gateway
+/// (e.g. OpenCode Zen's `gpt-5.3-codex-spark`) accept the standard OpenAI
+/// `reasoning_effort` field, so the effort command must work for them.
+#[test]
+fn compat_profile_serving_gpt_family_model_supports_reasoning_effort() {
+    let provider = make_custom_compatible_provider();
+
+    for model in ["gpt-5.3-codex-spark", "gpt-5.5", "gpt-5.1-codex-mini"] {
+        provider.set_model(model).unwrap();
+        assert_eq!(
+            provider.available_efforts(),
+            vec![
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "swarm",
+                "swarm-deep"
+            ],
+            "{model} should expose OpenAI effort vocabulary"
+        );
+        provider
+            .set_reasoning_effort("high")
+            .unwrap_or_else(|e| panic!("{model} on compat endpoint accepts effort: {e}"));
+        assert_eq!(provider.reasoning_effort(), Some("high".to_string()));
+        // OpenAI vocabulary: max maps to xhigh.
+        provider.set_reasoning_effort("max").unwrap();
+        assert_eq!(provider.reasoning_effort(), Some("xhigh".to_string()));
+    }
+
+    // Explicit config override still wins in the off direction.
+    let force_off = OpenRouterProvider {
+        reasoning_effort_support: Some(false),
+        ..make_custom_compatible_provider()
+    };
+    force_off.set_model("gpt-5.3-codex-spark").unwrap();
+    assert!(force_off.available_efforts().is_empty());
+    assert!(force_off.set_reasoning_effort("high").is_err());
+}
+
 /// Issue #352: named-profile config can override effort support explicitly in
 /// both directions.
 #[test]

@@ -1007,6 +1007,32 @@ impl OpenRouterProvider {
         ) && Self::model_is_deepseek_family(&self.model_snapshot())
     }
 
+    /// GPT-family reasoning models (gpt-5.x, codex variants, o-series) accept
+    /// the standard OpenAI `reasoning_effort` request field on any
+    /// OpenAI-compatible gateway that proxies them (e.g. OpenCode Zen serving
+    /// `gpt-5.3-codex-spark`). Real OpenRouter uses unified reasoning instead.
+    fn model_is_openai_reasoning_family(model: &str) -> bool {
+        let model = model.trim().to_ascii_lowercase();
+        model.starts_with("gpt-5")
+            || model.contains("codex")
+            || model.starts_with("o3")
+            || model.starts_with("o4")
+    }
+
+    /// Does this runtime accept the OpenAI-style `reasoning_effort` field for
+    /// the active model? Only for direct compat endpoints serving GPT-family
+    /// reasoning models, and only when no explicit config override or
+    /// DeepSeek-style support already applies.
+    pub(crate) fn supports_openai_reasoning_effort(&self) -> bool {
+        if self.reasoning_effort_support == Some(false) {
+            return false;
+        }
+        !Self::profile_supports_unified_reasoning(
+            self.profile_id.as_deref(),
+            self.send_openrouter_headers,
+        ) && Self::model_is_openai_reasoning_family(&self.model_snapshot())
+    }
+
     fn model_snapshot(&self) -> String {
         self.model
             .try_read()
@@ -1016,6 +1042,7 @@ impl OpenRouterProvider {
 
     pub(crate) fn supports_any_reasoning_effort(&self) -> bool {
         self.supports_deepseek_reasoning_effort()
+            || self.supports_openai_reasoning_effort()
             || Self::profile_supports_unified_reasoning(
                 self.profile_id.as_deref(),
                 self.send_openrouter_headers,

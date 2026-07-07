@@ -702,7 +702,7 @@ fn append_openrouter_alternative_routes(
                 stats.endpoint_routes += 1;
                 routes.push(build_openrouter_endpoint_route(&model, ep, true, None));
             }
-        } else {
+        } else if openrouter::standard_catalog_lists_model(&or_model) != Some(false) {
             routes.push(build_openrouter_fallback_provider_route(
                 &model,
                 &or_model,
@@ -719,7 +719,10 @@ fn append_openrouter_alternative_routes(
                 stats.endpoint_routes += 1;
                 routes.push(build_openrouter_endpoint_route(model, ep, true, None));
             }
-        } else {
+        } else if openrouter::standard_catalog_lists_model(&or_model) != Some(false) {
+            // Skip fallback routes for models OpenRouter definitively does not
+            // serve (e.g. openai/gpt-5.3-codex-spark) so the picker never
+            // offers a route that would 400 at request time.
             routes.push(build_openrouter_fallback_provider_route(
                 model, &or_model, "OpenAI",
             ));
@@ -915,6 +918,9 @@ pub fn remote_model_routes_fallback(
         }
 
         if auth.openrouter != AuthState::NotConfigured {
+            let catalog_lists_model = openrouter_catalog_model
+                .as_deref()
+                .and_then(openrouter::standard_catalog_lists_model);
             match (provider_for_model(model), openrouter_cached.as_ref()) {
                 (_, Some((endpoints, _age))) => {
                     for ep in endpoints {
@@ -922,7 +928,9 @@ pub fn remote_model_routes_fallback(
                     }
                     added_any = true;
                 }
-                (Some("claude"), None) => {
+                // Skip fallback routes for models the OpenRouter catalog
+                // definitively does not list (e.g. gpt-5.3-codex-spark).
+                (Some("claude"), None) if catalog_lists_model != Some(false) => {
                     routes.push(build_openrouter_fallback_provider_route(
                         model,
                         openrouter_catalog_model.as_deref().unwrap_or(model),
@@ -930,7 +938,7 @@ pub fn remote_model_routes_fallback(
                     ));
                     added_any = true;
                 }
-                (Some("openai"), None) => {
+                (Some("openai"), None) if catalog_lists_model != Some(false) => {
                     routes.push(build_openrouter_fallback_provider_route(
                         model,
                         openrouter_catalog_model.as_deref().unwrap_or(model),
@@ -1292,5 +1300,68 @@ mod tests {
         guard.save_opencode_cache("https://wrong.example.test/v1", &["qwen3.6-plus"]);
 
         assert!(remote_openai_compatible_route_for_model("qwen3.6-plus").is_none());
+    }
+
+    fn save_openrouter_catalog_cache(model_ids: &[&str]) {
+        let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
+        let cache_dir = std::path::PathBuf::from(jcode_home).join("cache");
+        std::fs::create_dir_all(&cache_dir).expect("create cache dir");
+        let cache = jcode_provider_openrouter::DiskCache {
+            cached_at: jcode_provider_openrouter::current_unix_secs().expect("current unix time"),
+            source_api_base: None,
+            models: model_ids
+                .iter()
+                .map(|id| jcode_provider_openrouter::ModelInfo {
+                    id: (*id).to_string(),
+                    name: String::new(),
+                    context_length: None,
+                    pricing: jcode_provider_openrouter::ModelPricing::default(),
+                    created: None,
+                })
+                .collect(),
+        };
+        std::fs::write(
+            cache_dir.join("openrouter_models.json"),
+            serde_json::to_string(&cache).expect("serialize cache"),
+        )
+        .expect("write cache");
+    }
+
+    /// OpenRouter alternative routes must not be fabricated for models the
+    /// OpenRouter catalog definitively does not list (e.g. the
+    /// ChatGPT-exclusive `gpt-5.3-codex-spark`), while staying optimistic
+    /// when no catalog cache exists yet.
+    #[test]
+    fn openrouter_alternative_routes_skip_models_absent_from_catalog() {
+        let _guard = EnvGuard::new();
+
+        // No catalog cache: optimistic, spark gets a fallback route.
+        let mut routes = Vec::new();
+        let mut stats = OpenRouterRouteStats::default();
+        append_openrouter_alternative_routes(&mut routes, &mut stats);
+        assert!(
+            routes
+                .iter()
+                .any(|r| r.model == "gpt-5.3-codex-spark" && r.api_method == "openrouter"),
+            "without a catalog cache the fallback route stays optimistic"
+        );
+
+        // Fresh catalog listing codex but not spark: spark route is dropped.
+        save_openrouter_catalog_cache(&["openai/gpt-5.3-codex", "openai/gpt-5.5"]);
+        let mut routes = Vec::new();
+        let mut stats = OpenRouterRouteStats::default();
+        append_openrouter_alternative_routes(&mut routes, &mut stats);
+        assert!(
+            !routes
+                .iter()
+                .any(|r| r.model == "gpt-5.3-codex-spark" && r.api_method == "openrouter"),
+            "catalog-confirmed-absent model must not get an OpenRouter fallback route"
+        );
+        assert!(
+            routes
+                .iter()
+                .any(|r| r.model == "gpt-5.3-codex" && r.api_method == "openrouter"),
+            "catalog-listed model keeps its OpenRouter fallback route"
+        );
     }
 }

@@ -24,6 +24,21 @@ pub use jcode_provider_openrouter::{
     load_model_timestamp_index, model_created_timestamp, model_created_timestamp_from_index,
 };
 
+/// Whether the standard OpenRouter public catalog (disk cache) lists a model.
+///
+/// Returns `None` when no fresh catalog cache exists (unknown), so callers can
+/// stay optimistic. Returns `Some(false)` for models OpenRouter definitively
+/// does not serve (e.g. `openai/gpt-5.3-codex-spark`, a ChatGPT-subscription
+/// exclusive), letting the model picker skip fabricated OpenRouter fallback
+/// routes that would 400 with "not a valid model ID" at request time.
+pub fn standard_catalog_lists_model(model_id: &str) -> Option<bool> {
+    let cache = jcode_provider_openrouter::load_disk_cache_entry_for_namespace("openrouter")?;
+    if cache.models.is_empty() {
+        return None;
+    }
+    Some(cache.models.iter().any(|model| model.id == model_id))
+}
+
 /// Schedule a background catalog refresh for a direct OpenAI-compatible
 /// profile through the composition-root hook (implemented by the runtime
 /// crate). Kept at its historical path for callers.
