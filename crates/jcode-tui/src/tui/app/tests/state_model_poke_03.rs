@@ -1954,6 +1954,7 @@ fn test_poke_arms_auto_poke_until_todos_are_done() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
@@ -1986,6 +1987,7 @@ fn test_poke_status_reports_current_state() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
@@ -2040,6 +2042,7 @@ fn test_poke_off_disarms_and_clears_queued_followup() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
@@ -2089,6 +2092,7 @@ fn test_poke_queues_when_turn_is_in_progress() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
@@ -2125,6 +2129,7 @@ fn test_poke_queues_when_turn_is_in_progress() {
                     assigned_to: None,
                     confidence: None,
                     completion_confidence: None,
+                    hill_climbability: None,
                     confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
@@ -2137,6 +2142,7 @@ fn test_poke_queues_when_turn_is_in_progress() {
                     assigned_to: None,
                     confidence: None,
                     completion_confidence: None,
+                    hill_climbability: None,
                     confidence_history: Vec::new(),
                 },
             ],
@@ -2190,6 +2196,7 @@ fn test_finish_turn_auto_pokes_again_when_todos_remain() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
@@ -2222,6 +2229,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
                     assigned_to: None,
                     confidence: Some(70),
                     completion_confidence: Some(80),
+                    hill_climbability: None,
                     confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
@@ -2234,6 +2242,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
                     assigned_to: None,
                     confidence: Some(90),
                     completion_confidence: Some(95),
+                    hill_climbability: None,
                     confidence_history: Vec::new(),
                 },
             ],
@@ -2306,6 +2315,7 @@ fn test_finish_turn_without_auto_poke_does_not_queue_confidence_summary() {
                 assigned_to: None,
                 confidence: Some(90),
                 completion_confidence: Some(90),
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
@@ -2341,6 +2351,7 @@ fn test_finish_turn_auto_poke_preserves_visible_turn_started() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
+                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )
