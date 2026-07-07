@@ -46,9 +46,12 @@ impl App {
     }
 
     /// Keep a power inhibitor held while a turn is processing/streaming so the
-    /// machine does not idle-sleep mid-stream. No-op on unsupported platforms.
+    /// machine does not idle-sleep mid-stream. No-op on unsupported platforms
+    /// or when `[power].prevent_sleep_while_streaming` is disabled (#452).
     pub(super) fn sync_sleep_guard(&mut self) {
-        self.power_inhibitor.set_active(self.is_processing());
+        let enabled = crate::config::config().power.prevent_sleep_while_streaming;
+        self.power_inhibitor
+            .set_active(enabled && self.is_processing());
     }
 
     pub fn streaming_text(&self) -> &str {
