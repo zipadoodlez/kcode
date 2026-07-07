@@ -433,6 +433,10 @@ async fn handle_remote_key_internal(
         app.toggle_typing_scroll_lock();
         return Ok(());
     }
+    if app.toggle_keys.todo_card.matches(code, modifiers) {
+        app.toggle_todo_card();
+        return Ok(());
+    }
     if app.centered_toggle_keys.matches(code, modifiers) {
         app.record_keybinding_fast(crate::tui::app::shortcut_hints::LearnableAction::Alignment);
         app.toggle_centered_mode();
@@ -1664,7 +1668,10 @@ async fn handle_remote_key_internal(
                     || trimmed == "/observe on"
                     || trimmed == "/observe off"
                     || trimmed == "/observe status"
+                    || trimmed == "/todo"
                     || trimmed == "/todos"
+                    || trimmed == "/todos card"
+                    || trimmed == "/todos panel"
                     || trimmed == "/todos on"
                     || trimmed == "/todos off"
                     || trimmed == "/todos status"

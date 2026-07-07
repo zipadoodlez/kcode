@@ -348,6 +348,70 @@ fn render_overnight_message_uses_rounded_progress_card() {
 }
 
 #[test]
+fn render_todos_message_shows_grouped_card_with_status_glyphs() {
+    fn todo(id: &str, content: &str, status: &str, group: Option<&str>) -> crate::todo::TodoItem {
+        crate::todo::TodoItem {
+            id: id.to_string(),
+            content: content.to_string(),
+            status: status.to_string(),
+            priority: "high".to_string(),
+            group: group.map(str::to_string),
+            confidence: Some(80),
+            completion_confidence: (status == "completed").then_some(95),
+            confidence_history: Vec::new(),
+            blocked_by: Vec::new(),
+            assigned_to: None,
+        }
+    }
+
+    let todos = vec![
+        todo("1", "Wire the hotkey", "completed", Some("todo card")),
+        todo("2", "Render the card", "in_progress", Some("todo card")),
+        todo("3", "Unrelated cleanup", "pending", None),
+    ];
+    let msg = DisplayMessage::todos(serde_json::to_string(&todos).unwrap());
+
+    let lines = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("todos · 1/3 done"), "{plain}");
+    assert!(plain.contains("todo card"), "{plain}");
+    assert!(plain.contains("other"), "{plain}");
+    assert!(plain.contains("✓ Wire the hotkey"), "{plain}");
+    assert!(plain.contains("▶ Render the card"), "{plain}");
+    assert!(plain.contains("○ Unrelated cleanup"), "{plain}");
+    // Completed items show completion confidence; open ones planning confidence.
+    assert!(plain.contains("95%"), "{plain}");
+    assert!(plain.contains("80%"), "{plain}");
+    // Only open items carry the high-priority marker.
+    assert!(!plain.contains("Wire the hotkey (high)"), "{plain}");
+    assert!(plain.contains("Render the card (high)"), "{plain}");
+}
+
+#[test]
+fn render_todos_message_empty_list_shows_placeholder() {
+    let msg = DisplayMessage::todos("[]");
+    let plain = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(plain.contains("☰ todos"), "{plain}");
+    assert!(plain.contains("No todos yet"), "{plain}");
+}
+
+#[test]
+fn render_todos_message_bad_payload_falls_back_to_system() {
+    let msg = DisplayMessage::todos("not json");
+    let lines = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off);
+    assert!(!lines.is_empty());
+}
+
+#[test]
 fn render_background_task_messages_prefer_display_name() {
     let completion = DisplayMessage::background_task(
         "**Background task** `bg123` · `Run integration tests` (`bash`) · ✓ completed · 7.1s · exit 0\n\n_No output captured._\n\n_Full output:_ `bg action=\"output\" task_id=\"bg123\"`",

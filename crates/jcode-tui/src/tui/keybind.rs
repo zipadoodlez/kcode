@@ -382,6 +382,7 @@ pub struct ToggleKeys {
     pub typing_scroll_lock: ToggleBinding,
     pub diff_mode_cycle: ToggleBinding,
     pub info_widget: ToggleBinding,
+    pub todo_card: ToggleBinding,
     pub swarm_panel_focus: ToggleBinding,
 }
 
@@ -394,6 +395,7 @@ pub fn load_toggle_keys() -> ToggleKeys {
         typing_scroll_lock: ToggleBinding::load(&cfg.keybindings.typing_scroll_lock_toggle, 's'),
         diff_mode_cycle: ToggleBinding::load(&cfg.keybindings.diff_mode_cycle, 'g'),
         info_widget: ToggleBinding::load(&cfg.keybindings.info_widget_toggle, 'i'),
+        todo_card: ToggleBinding::load(&cfg.keybindings.todo_card_toggle, 'p'),
         swarm_panel_focus: ToggleBinding::load_with_default(
             &cfg.keybindings.swarm_panel_focus,
             swarm_panel_focus_default(),
@@ -427,6 +429,22 @@ pub(crate) fn swarm_panel_focus_key_label() -> String {
     let default = swarm_panel_focus_default();
     let default_label = format_binding(&default);
     let (binding, _) = parse_optional(&cfg.keybindings.swarm_panel_focus, default, &default_label);
+    match binding {
+        Some(b) => format_binding(&b),
+        None => default_label,
+    }
+}
+
+/// Human-friendly label for the configured todo-card toggle chord (e.g.
+/// "Alt+P"), used in /todos help text.
+pub(crate) fn todo_card_key_label() -> String {
+    let cfg = config();
+    let default = KeyBinding {
+        code: KeyCode::Char('p'),
+        modifiers: KeyModifiers::ALT,
+    };
+    let default_label = format_binding(&default);
+    let (binding, _) = parse_optional(&cfg.keybindings.todo_card_toggle, default, &default_label);
     match binding {
         Some(b) => format_binding(&b),
         None => default_label,

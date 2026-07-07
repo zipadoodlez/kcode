@@ -79,6 +79,20 @@ impl DisplayMessage {
         }
     }
 
+    /// Create a display-only inline todo-list card. The content is the JSON
+    /// serialization of the session's todo items. Shown in the transcript UI
+    /// but not part of provider/model context.
+    pub fn todos(content: impl Into<String>) -> Self {
+        Self {
+            role: "todos".to_string(),
+            content: content.into(),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: Some("Todos".to_string()),
+            tool_data: None,
+        }
+    }
+
     /// Create a memory injection message (bordered box display).
     pub fn memory(title: impl Into<String>, content: impl Into<String>) -> Self {
         Self {

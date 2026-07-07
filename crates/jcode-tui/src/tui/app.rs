@@ -1197,6 +1197,9 @@ pub struct App {
     todos_view_markdown: String,
     todos_view_updated_at_ms: u64,
     todos_view_rendered_hash: u64,
+    /// Hash of the todo payload rendered into the inline chat todo card, used
+    /// to keep the card live-updating while it stays in the transcript.
+    todo_card_rendered_hash: u64,
     last_side_panel_refresh: Option<Instant>,
     // Most recently persisted focus target for dictation routing.
     last_client_focus_recorded_at: Option<Instant>,
@@ -2156,9 +2159,7 @@ impl App {
 
         // Documented invalidation between the baseline and now: expected
         // resend, attribute instead of alarm.
-        if let Some(cause) =
-            crate::cache_invalidation::most_recent_since(baseline_completed_at)
-        {
+        if let Some(cause) = crate::cache_invalidation::most_recent_since(baseline_completed_at) {
             self.push_display_message(DisplayMessage::system(format!(
                 "ℹ️ KV cache refresh [{}] turn {}: ~{} tokens resent ({}).",
                 cause.source, turn_number, token_label, detail,

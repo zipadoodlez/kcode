@@ -43,8 +43,8 @@ impl App {
             "observe" => {
                 "/observe\nToggle transient observe mode for the side panel.\n\n/observe on\nEnable observe mode and focus the observe page.\n\n/observe off\nDisable observe mode.\n\n/observe status\nShow whether observe mode is enabled.\n\nObserve mode shows only the latest tool call or tool result added to context, and it is not persisted to disk."
             }
-            "todos" => {
-                "/todos\nToggle a transient todo screen in the side panel.\n\n/todos on\nEnable the dedicated todo screen and focus it.\n\n/todos off\nDisable the dedicated todo screen.\n\n/todos status\nShow whether the dedicated todo screen is enabled.\n\nThis view shows only the current session's todo list and refreshes as it changes."
+            "todos" | "todo" => {
+                "/todos\nShow the current session's todo list as an inline card in the chat (press again, or the todo-card hotkey, to dismiss the trailing card). The card live-updates as the todo list changes.\n\n/todos panel\nToggle the legacy dedicated todo screen in the side panel.\n\n/todos on\nEnable the side-panel todo screen and focus it.\n\n/todos off\nDisable the side-panel todo screen.\n\n/todos status\nShow todo card/panel status."
             }
             "splitview" | "split-view" => {
                 "/splitview\nToggle a transient split view that mirrors the current chat in the side panel.\n\n/splitview on\nEnable split view and focus the mirrored chat page.\n\n/splitview off\nDisable split view.\n\n/splitview status\nShow whether split view is enabled.\n\nThis gives the side panel its own scroll position for the same conversation so you can read older context while keeping the main composer active."

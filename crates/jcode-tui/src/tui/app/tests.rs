@@ -41,6 +41,7 @@ include!("tests/onboarding_sim.rs");
 include!("tests/reasoning_region.rs");
 include!("tests/smoothness_benchmark.rs");
 include!("tests/hotkey_feedback_e2e.rs");
+include!("tests/todo_card.rs");
 
 #[test]
 fn kv_cache_signature_prefix_match_allows_appended_messages() {
@@ -170,10 +171,7 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
         })
         .expect("cold cache warning should be persisted in the transcript");
     assert!(warning.content.contains("911K"));
-    assert!(
-        warning.content.contains("went cold 2m ago"),
-        "{warning:?}"
-    );
+    assert!(warning.content.contains("went cold 2m ago"), "{warning:?}");
     assert!(
         warning.content.lines().count() == 1,
         "cold-cache warning must stay one line: {warning:?}"
@@ -212,9 +210,7 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
         })
         .expect("idle cold cache warning should be persisted in the transcript");
     assert!(
-        warning
-            .content
-            .contains("resent with your next message"),
+        warning.content.contains("resent with your next message"),
         "{warning:?}"
     );
     assert!(

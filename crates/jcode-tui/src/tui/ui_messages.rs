@@ -868,6 +868,137 @@ pub(crate) fn render_overnight_message(
     lines
 }
 
+/// Render the inline todo-list card (`role == "todos"`). The message content
+/// is the JSON serialization of the session's todo items; falls back to the
+/// system renderer when it cannot be parsed.
+pub(crate) fn render_todos_message(
+    msg: &DisplayMessage,
+    width: u16,
+    diff_mode: crate::config::DiffDisplayMode,
+) -> Vec<Line<'static>> {
+    let Ok(todos) = serde_json::from_str::<Vec<crate::todo::TodoItem>>(&msg.content) else {
+        return render_system_message(msg, width, diff_mode);
+    };
+
+    let centered = markdown::center_code_blocks();
+    let border_style = Style::default().fg(rgb(120, 190, 160));
+    let dim_style = Style::default().fg(dim_color());
+
+    let max_box_width = if centered {
+        (width.saturating_sub(4) as usize).min(120)
+    } else {
+        (width.saturating_sub(2) as usize).min(100)
+    }
+    .max(28);
+    let inner_width = max_box_width.saturating_sub(4).max(1);
+
+    let total = todos.len();
+    let completed = todos.iter().filter(|t| t.status == "completed").count();
+    let title = if total == 0 {
+        "☰ todos".to_string()
+    } else {
+        format!("☰ todos · {}/{} done", completed, total)
+    };
+
+    let mut content: Vec<Line<'static>> = Vec::new();
+    if todos.is_empty() {
+        content.push(Line::from(Span::styled(
+            "No todos yet. The model populates them with the todo tool.",
+            dim_style,
+        )));
+    } else {
+        // Partition into first-seen-order groups (ungrouped bucket last). When
+        // no todo declares a group, keep a flat list without headers.
+        let group_of = |todo: &crate::todo::TodoItem| -> Option<String> {
+            todo.group
+                .as_deref()
+                .map(str::trim)
+                .filter(|g| !g.is_empty())
+                .map(str::to_string)
+        };
+        let has_groups = todos.iter().any(|t| group_of(t).is_some());
+        if has_groups {
+            let mut groups: Vec<(Option<String>, Vec<&crate::todo::TodoItem>)> = Vec::new();
+            for todo in &todos {
+                let key = group_of(todo);
+                if let Some(entry) = groups.iter_mut().find(|(existing, _)| *existing == key) {
+                    entry.1.push(todo);
+                } else {
+                    groups.push((key, vec![todo]));
+                }
+            }
+            groups.sort_by_key(|(key, _)| key.is_none());
+            for (idx, (group, items)) in groups.iter().enumerate() {
+                if idx > 0 {
+                    content.push(Line::from(""));
+                }
+                let label = group.as_deref().unwrap_or("other");
+                content.push(super::truncate_line_with_ellipsis_to_width(
+                    &Line::from(Span::styled(
+                        label.to_string(),
+                        Style::default().fg(rgb(150, 160, 185)).bold(),
+                    )),
+                    inner_width,
+                ));
+                for todo in items {
+                    content.push(render_todo_card_item_line(todo, inner_width));
+                }
+            }
+        } else {
+            for todo in &todos {
+                content.push(render_todo_card_item_line(todo, inner_width));
+            }
+        }
+    }
+
+    let mut lines = render_rounded_box(&title, content, max_box_width, border_style);
+    if centered {
+        left_pad_lines_for_centered_mode(&mut lines, width);
+    }
+    lines
+}
+
+fn render_todo_card_item_line(todo: &crate::todo::TodoItem, inner_width: usize) -> Line<'static> {
+    let blocked = !todo.blocked_by.is_empty() && todo.status != "completed";
+    let (glyph, glyph_color) = if blocked {
+        ("⊳", rgb(180, 140, 100))
+    } else {
+        match todo.status.as_str() {
+            "completed" => ("✓", rgb(100, 180, 100)),
+            "in_progress" => ("▶", rgb(255, 200, 100)),
+            "cancelled" => ("✗", rgb(150, 90, 90)),
+            _ => ("○", rgb(120, 120, 130)),
+        }
+    };
+    let text_color = match todo.status.as_str() {
+        "completed" | "cancelled" => rgb(120, 120, 130),
+        "in_progress" => rgb(230, 232, 240),
+        _ => rgb(185, 190, 200),
+    };
+    let mut spans = vec![
+        Span::styled(format!("{} ", glyph), Style::default().fg(glyph_color)),
+        Span::styled(todo.content.clone(), Style::default().fg(text_color)),
+    ];
+    if todo.priority == "high" && todo.status != "completed" && todo.status != "cancelled" {
+        spans.push(Span::styled(
+            " (high)",
+            Style::default().fg(rgb(230, 150, 130)),
+        ));
+    }
+    let confidence = if todo.status == "completed" {
+        todo.completion_confidence.or(todo.confidence)
+    } else {
+        todo.confidence
+    };
+    if let Some(score) = confidence {
+        spans.push(Span::styled(
+            format!(" {}%", score),
+            Style::default().fg(dim_color()),
+        ));
+    }
+    super::truncate_line_with_ellipsis_to_width(&Line::from(spans), inner_width)
+}
+
 fn compact_run_id(run_id: &str) -> String {
     if run_id.width() <= 22 {
         run_id.to_string()

@@ -1623,6 +1623,10 @@ pub(super) fn handle_pre_control_shortcuts(
         app.set_status_notice(status);
         return true;
     }
+    if app.toggle_keys.todo_card.matches(code, modifiers) {
+        app.toggle_todo_card();
+        return true;
+    }
     if app.dictation_key_matches(code, modifiers) {
         app.handle_dictation_trigger();
         return true;

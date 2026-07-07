@@ -146,6 +146,11 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         "toggle the info widget",
     );
     push(
+        inputs.toggles.todo_card.binding().cloned(),
+        "todo_card_toggle",
+        "show/dismiss the inline todo card",
+    );
+    push(
         inputs.toggles.swarm_panel_focus.binding().cloned(),
         "swarm_panel_focus",
         "focus the swarm panel",

@@ -85,7 +85,7 @@ impl App {
             let is_system_reminder =
                 role == "user" && m.content.trim_start().starts_with("<system-reminder>");
             let is_scaffolding =
-                matches!(role, "system" | "usage" | "overnight" | "background_task");
+                matches!(role, "system" | "usage" | "overnight" | "todos" | "background_task");
             !is_system_reminder && !is_scaffolding
         });
         if has_real_conversation || self.is_processing || !self.input.is_empty() {

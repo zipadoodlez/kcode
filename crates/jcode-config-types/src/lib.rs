@@ -863,6 +863,9 @@ pub struct KeybindingsConfig {
     pub diff_mode_cycle: String,
     /// Toggle the info widget (default: "alt+i")
     pub info_widget_toggle: String,
+    /// Show/dismiss the session todo list as an inline card in the chat
+    /// transcript (default: "alt+p")
+    pub todo_card_toggle: String,
     /// Focus/unfocus the inline swarm panel for keyboard navigation (default:
     /// "alt+n"; press again to cycle agents, alt+↑/↓ select, alt+o pop out,
     /// esc exits). Active only when `agents.swarm_spawn_mode = "inline"` and
@@ -914,6 +917,7 @@ impl Default for KeybindingsConfig {
             typing_scroll_lock_toggle: get("typing_scroll_lock_toggle", "alt+s"),
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
+            todo_card_toggle: get("todo_card_toggle", "alt+p"),
             swarm_panel_focus: get("swarm_panel_focus", "alt+n"),
             new_terminal: get("new_terminal", ""),
             open_resume: get(
