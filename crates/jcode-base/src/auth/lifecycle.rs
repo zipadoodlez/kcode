@@ -742,6 +742,7 @@ pub fn provider_display_label(provider_id: Option<&str>) -> Option<String> {
 
 pub fn activate_auth_change(request: &AuthActivationRequest) -> AuthActivationResult {
     let provider_id = request.provider_id();
+    sync_process_env_from_saved_credentials(request, provider_id.as_deref());
     let provider_label = provider_display_label(provider_id.as_deref());
     let activated_model = apply_auth_provider_runtime(provider_id.as_deref());
     AuthActivationResult {
@@ -754,6 +755,143 @@ pub fn activate_auth_change(request: &AuthActivationRequest) -> AuthActivationRe
         expected_catalog_namespace: request
             .expected_catalog_namespace()
             .map(|namespace| namespace.as_str().to_string()),
+    }
+}
+
+/// Env keys and env-file names that persist API-key credentials for a
+/// normalized auth provider id. Empty for OAuth/CLI providers whose
+/// credentials live in token stores, not env vars.
+fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)> {
+    match provider_id {
+        "claude-api" => vec![("ANTHROPIC_API_KEY".to_string(), "anthropic.env".to_string())],
+        "openai-api" => vec![("OPENAI_API_KEY".to_string(), "openai.env".to_string())],
+        "openrouter" => vec![(
+            "OPENROUTER_API_KEY".to_string(),
+            "openrouter.env".to_string(),
+        )],
+        "jcode" => vec![
+            (
+                crate::subscription_catalog::JCODE_API_KEY_ENV.to_string(),
+                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
+            ),
+            (
+                crate::subscription_catalog::JCODE_API_BASE_ENV.to_string(),
+                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
+            ),
+        ],
+        "bedrock" => vec![
+            (
+                crate::provider::bedrock::API_KEY_ENV.to_string(),
+                crate::provider::bedrock::ENV_FILE.to_string(),
+            ),
+            (
+                crate::provider::bedrock::REGION_ENV.to_string(),
+                crate::provider::bedrock::ENV_FILE.to_string(),
+            ),
+        ],
+        "cursor" => vec![("CURSOR_API_KEY".to_string(), "cursor.env".to_string())],
+        "gemini" => super::gemini::GEMINI_API_KEY_ENV_VARS
+            .iter()
+            .map(|env_key| {
+                (
+                    env_key.to_string(),
+                    super::gemini::GEMINI_API_KEY_ENV_FILE.to_string(),
+                )
+            })
+            .collect(),
+        "azure-openai" => vec![
+            (
+                super::azure::API_KEY_ENV.to_string(),
+                super::azure::ENV_FILE.to_string(),
+            ),
+            (
+                super::azure::ENDPOINT_ENV.to_string(),
+                super::azure::ENV_FILE.to_string(),
+            ),
+            (
+                super::azure::MODEL_ENV.to_string(),
+                super::azure::ENV_FILE.to_string(),
+            ),
+        ],
+        other => crate::provider_catalog::openai_compatible_profile_by_id(other)
+            .map(|profile| {
+                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+                vec![(resolved.api_key_env, resolved.env_file)]
+            })
+            .unwrap_or_default(),
+    }
+}
+
+/// Make freshly saved credentials win over stale env vars inherited by this
+/// process (issue #453).
+///
+/// `/login` persists API keys to the per-provider env file under the jcode
+/// config dir, but credential resolution
+/// ([`crate::provider_catalog::load_api_key_from_env_or_config`]) prefers the
+/// process env var. A long-lived server that inherited a stale
+/// `ANTHROPIC_API_KEY` (or similar) would therefore keep 401-ing forever even
+/// though the login succeeded and the file holds a valid key. On an explicit
+/// auth change, overwrite this process's env var with the env-file value when
+/// the two diverge, so the just-saved credential is actually used.
+fn sync_process_env_from_saved_credentials(
+    request: &AuthActivationRequest,
+    provider_id: Option<&str>,
+) {
+    let Some(provider_id) = provider_id else {
+        return;
+    };
+    // Only do this for auth changes that plausibly wrote an env file. OAuth
+    // logins do not touch API-key env files, and process-env-preseeded auth
+    // means the env var itself is the intended source of truth.
+    let explicit_env_file_login = match request.auth.as_ref() {
+        Some(auth) => {
+            matches!(
+                auth.credential_source,
+                Some(crate::protocol::AuthCredentialSource::ApiKeyFile) | None
+            ) && !matches!(
+                auth.auth_method,
+                Some(crate::protocol::AuthMethod::ProcessEnvPreseeded)
+                    | Some(crate::protocol::AuthMethod::OAuthBrowser)
+                    | Some(crate::protocol::AuthMethod::DeviceCode)
+            )
+        }
+        // Legacy hint-only notifications carry no source metadata; syncing is
+        // still the safe default because it only runs when the file has a
+        // value that differs from the env var.
+        None => true,
+    };
+    if !explicit_env_file_login {
+        return;
+    }
+
+    for (env_key, env_file) in api_key_env_bindings_for_provider(provider_id) {
+        let Some(file_value) =
+            crate::provider_catalog::load_env_value_from_config_file(&env_key, &env_file)
+        else {
+            continue;
+        };
+        let env_value = std::env::var(&env_key).ok();
+        if env_value.as_deref() == Some(file_value.as_str()) {
+            continue;
+        }
+        let had_stale_env = env_value.is_some();
+        crate::env::set_var(&env_key, &file_value);
+        crate::logging::auth_event(
+            "auth_changed_env_synced_from_file",
+            provider_id,
+            &[
+                ("env_key", env_key.as_str()),
+                ("env_file", env_file.as_str()),
+                (
+                    "replaced",
+                    if had_stale_env {
+                        "stale_process_env"
+                    } else {
+                        "unset_process_env"
+                    },
+                ),
+            ],
+        );
     }
 }
 
@@ -949,6 +1087,74 @@ mod tests {
     }
 
     #[test]
+    fn api_key_login_replaces_stale_process_env_with_saved_file_key() {
+        // Issue #453: a server process that inherited a stale ANTHROPIC_API_KEY
+        // must start using the key that /login just wrote to anthropic.env.
+        let sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
+        crate::env::set_var("ANTHROPIC_API_KEY", "stale-inherited-key");
+        sandbox
+            .write_env_file("anthropic.env", "ANTHROPIC_API_KEY", "fresh-login-key")
+            .expect("write env file");
+
+        let mut auth = AuthChanged::new("claude-api");
+        auth.credential_source = Some(crate::protocol::AuthCredentialSource::ApiKeyFile);
+        auth.auth_method = Some(crate::protocol::AuthMethod::TuiPasteApiKey);
+        let _ = activate_auth_change(&AuthActivationRequest::new(None, Some(auth)));
+
+        assert_eq!(
+            std::env::var("ANTHROPIC_API_KEY").as_deref(),
+            Ok("fresh-login-key")
+        );
+        assert_eq!(
+            crate::provider_catalog::load_api_key_from_env_or_config(
+                "ANTHROPIC_API_KEY",
+                "anthropic.env"
+            )
+            .as_deref(),
+            Some("fresh-login-key"),
+            "credential resolution must use the freshly saved key"
+        );
+    }
+
+    #[test]
+    fn legacy_hint_only_auth_change_still_syncs_saved_file_key() {
+        let sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
+        crate::env::set_var("ANTHROPIC_API_KEY", "stale-inherited-key");
+        sandbox
+            .write_env_file("anthropic.env", "ANTHROPIC_API_KEY", "fresh-login-key")
+            .expect("write env file");
+
+        let _ = activate_auth_change(&AuthActivationRequest::new(
+            Some("anthropic-api".to_string()),
+            None,
+        ));
+
+        assert_eq!(
+            std::env::var("ANTHROPIC_API_KEY").as_deref(),
+            Ok("fresh-login-key")
+        );
+    }
+
+    #[test]
+    fn oauth_auth_change_does_not_touch_api_key_process_env() {
+        let sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
+        crate::env::set_var("ANTHROPIC_API_KEY", "env-key-left-alone");
+        sandbox
+            .write_env_file("anthropic.env", "ANTHROPIC_API_KEY", "file-key")
+            .expect("write env file");
+
+        let mut auth = AuthChanged::new("claude-api");
+        auth.auth_method = Some(crate::protocol::AuthMethod::OAuthBrowser);
+        auth.credential_source = Some(crate::protocol::AuthCredentialSource::OAuthTokenStore);
+        let _ = activate_auth_change(&AuthActivationRequest::new(None, Some(auth)));
+
+        assert_eq!(
+            std::env::var("ANTHROPIC_API_KEY").as_deref(),
+            Ok("env-key-left-alone")
+        );
+    }
+
+    #[test]
     fn direct_auth_catalog_matching_preserves_oauth_vs_api_key_route_identity() {
         for (provider_id, provider_label, matching_provider, matching_method, stale_method) in [
             (
@@ -1076,12 +1282,10 @@ mod tests {
 
     #[test]
     fn direct_login_provider_activation_sets_runtime_identity_and_active_provider() {
-        let _guard = EnvGuard::new(&[
-            "JCODE_RUNTIME_PROVIDER",
-            "JCODE_ACTIVE_PROVIDER",
-            "JCODE_FORCE_PROVIDER",
-            "JCODE_OPENROUTER_MODEL",
-        ]);
+        // Sandbox JCODE_HOME so activation's env-file credential sync (#453)
+        // cannot read the developer's real ~/.config/jcode/*.env files and
+        // leak keys into this process during the matrix run.
+        let _sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
 
         for (provider, runtime, active) in [
             ("claude", "claude", "claude"),
@@ -1120,12 +1324,9 @@ mod tests {
 
     #[test]
     fn direct_login_provider_descriptor_matrix_has_full_lifecycle_parity() {
-        let _guard = EnvGuard::new(&[
-            "JCODE_RUNTIME_PROVIDER",
-            "JCODE_ACTIVE_PROVIDER",
-            "JCODE_FORCE_PROVIDER",
-            "JCODE_OPENROUTER_MODEL",
-        ]);
+        // Sandbox JCODE_HOME for the same reason as the activation matrix
+        // above: keep the #453 credential sync away from real env files.
+        let _sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
 
         let mut covered = Vec::new();
         for provider in crate::provider_catalog::login_providers() {

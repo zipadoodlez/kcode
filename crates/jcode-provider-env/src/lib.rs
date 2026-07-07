@@ -163,6 +163,33 @@ pub fn load_env_value_from_env_or_config(env_key: &str, file_name: &str) -> Opti
         return Some(value);
     }
 
+    load_env_value_from_config_file(env_key, file_name)
+}
+
+/// Load a value only from the saved env file under the jcode config dir,
+/// ignoring the process environment.
+///
+/// [`load_env_value_from_env_or_config`] prefers the process env var, which is
+/// correct for ambient configuration but wrong right after an explicit
+/// `/login`: a stale env var inherited by a long-lived server process would
+/// silently win over the credential the user just saved (issue #453). This
+/// reader lets the auth-change path resolve what the file actually contains.
+pub fn load_env_value_from_config_file(env_key: &str, file_name: &str) -> Option<String> {
+    if !is_safe_env_key_name(env_key) {
+        jcode_logging::warn(&format!(
+            "Ignoring invalid variable name '{}' while loading config value",
+            env_key
+        ));
+        return None;
+    }
+    if !is_safe_env_file_name(file_name) {
+        jcode_logging::warn(&format!(
+            "Ignoring invalid env file name '{}' while loading config value",
+            file_name
+        ));
+        return None;
+    }
+
     let config_path = jcode_storage::app_config_dir().ok()?.join(file_name);
     jcode_storage::harden_secret_file_permissions(&config_path);
     let content = std::fs::read_to_string(config_path).ok()?;
