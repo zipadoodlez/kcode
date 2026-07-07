@@ -398,8 +398,7 @@ mod tests {
     #[test]
     fn session_id_assignees_shorten_to_friendly_name() {
         let mut assigned = item("t1", "do the thing", "running", &[]);
-        assigned.assigned_to =
-            Some("session_hamster_1783199147688_8fa34a84b95fe291".to_string());
+        assigned.assigned_to = Some("session_hamster_1783199147688_8fa34a84b95fe291".to_string());
         let graph = swarm_plan_mermaid(&[assigned]).expect("graph");
         assert!(graph.contains("· @hamster\""), "got: {graph}");
         assert!(
@@ -529,7 +528,14 @@ mod tests {
         // 25 completed + 15 queued: the queued (live) tasks must all survive
         // truncation, completed ones fill the remaining slots.
         let mut items: Vec<PlanItem> = (0..25)
-            .map(|i| item(&format!("d{i}"), &format!("done task {i}"), "completed", &[]))
+            .map(|i| {
+                item(
+                    &format!("d{i}"),
+                    &format!("done task {i}"),
+                    "completed",
+                    &[],
+                )
+            })
             .collect();
         items.extend(
             (0..15).map(|i| item(&format!("q{i}"), &format!("live task {i}"), "queued", &[])),

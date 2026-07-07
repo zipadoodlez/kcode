@@ -1552,7 +1552,10 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
                 ));
                 // Small gray "how long ago it went cold" hint, e.g. `1h 1m`.
                 spans.push(Span::styled(
-                    format!(" {}", crate::tui::format_compact_age(cache_info.cold_for_secs)),
+                    format!(
+                        " {}",
+                        crate::tui::format_compact_age(cache_info.cold_for_secs)
+                    ),
                     Style::default().fg(dim_color()),
                 ));
             } else if cache_info.expiring_soon() {
