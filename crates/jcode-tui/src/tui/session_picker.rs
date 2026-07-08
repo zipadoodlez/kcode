@@ -2018,6 +2018,8 @@ impl SessionPicker {
                 "session picker requires an interactive terminal (stdin/stdout must be a TTY)"
             );
         }
+        // Detect light/dark terminal background before raw mode (OSC 11 query).
+        super::theme_detect::init_theme_mode();
         let mut terminal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(ratatui::init))
             .map_err(|payload| {
                 let msg = if let Some(s) = payload.downcast_ref::<&str>() {
@@ -2044,7 +2046,12 @@ impl SessionPicker {
         }
 
         let result = loop {
-            terminal.draw(|frame| self.render(frame))?;
+            terminal.draw(|frame| {
+                self.render(frame);
+                // Standalone picker loop bypasses `ui::draw`; adapt for light
+                // terminal themes here (no-op on dark).
+                jcode_tui_style::adapt_buffer_for_theme(frame.buffer_mut());
+            })?;
 
             if event::poll(Duration::from_millis(100))? {
                 match event::read()? {

@@ -485,3 +485,82 @@ fn test_plan_memory_tile_truncates_long_category_title() {
         plan.lines.iter().map(extract_line_text).collect::<Vec<_>>()
     );
 }
+
+/// Light-theme adaptation: rendering a full frame and adapting it for a light
+/// background must leave every non-Reset foreground readable against its
+/// (possibly Reset = white) background. This exercises the same buffer-level
+/// hook `ui::draw` applies, but with an explicit mode so it cannot race other
+/// tests through the process-global theme mode.
+#[test]
+fn test_light_theme_adapted_frame_has_readable_contrast() {
+    fn channel_lum(c: ratatui::style::Color) -> Option<f32> {
+        let (r, g, b) = match c {
+            ratatui::style::Color::Rgb(r, g, b) => (r, g, b),
+            ratatui::style::Color::Indexed(n) => crate::tui::color_support::indexed_to_rgb(n),
+            _ => return None,
+        };
+        // Perceived luminance approximation.
+        Some((0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32) / 255.0)
+    }
+
+    let messages = vec![
+        DisplayMessage {
+            role: "user".into(),
+            content: "hello there".into(),
+            tool_calls: vec![],
+            duration_secs: None,
+            title: None,
+            tool_data: None,
+        },
+        DisplayMessage {
+            role: "assistant".into(),
+            content: "hi! *bold* and `code`".into(),
+            tool_calls: vec![],
+            duration_secs: None,
+            title: None,
+            tool_data: None,
+        },
+    ];
+    let state = TestState {
+        display_messages: messages,
+        input: "next question".into(),
+        ..Default::default()
+    };
+
+    let backend = ratatui::backend::TestBackend::new(80, 24);
+    let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| {
+            crate::tui::ui::draw(frame, &state);
+            jcode_tui_style::theme_mode::adapt_buffer(
+                frame.buffer_mut(),
+                jcode_tui_style::ThemeMode::Light,
+            );
+        })
+        .expect("draw");
+
+    let buffer = terminal.backend().buffer();
+    let mut checked = 0usize;
+    for cell in buffer.content.iter() {
+        if cell.symbol().trim().is_empty() {
+            continue;
+        }
+        let Some(fg_lum) = channel_lum(cell.fg) else {
+            continue;
+        };
+        // Reset bg on a light terminal is near-white (lum ~1.0).
+        let bg_lum = channel_lum(cell.bg).unwrap_or(1.0);
+        assert!(
+            (fg_lum - bg_lum).abs() > 0.2,
+            "unreadable cell {:?} fg={:?} bg={:?} (fg_lum={fg_lum:.2} bg_lum={bg_lum:.2})",
+            cell.symbol(),
+            cell.fg,
+            cell.bg,
+        );
+        checked += 1;
+    }
+    assert!(
+        checked > 20,
+        "expected to verify a meaningful number of glyph cells, got {checked}"
+    );
+}

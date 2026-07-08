@@ -166,6 +166,9 @@ fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
 }
 
 pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)> {
+    // Detect terminal background (light vs dark) before entering raw mode /
+    // the alternate screen; the OSC 11 query needs the cooked terminal.
+    crate::tui::theme_detect::init_theme_mode();
     let terminal = init_tui_terminal()?;
     crate::tui::mermaid::install_jcode_mermaid_hooks();
     crate::tui::markdown::install_jcode_markdown_hooks();

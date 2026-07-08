@@ -1022,6 +1022,11 @@ pub struct DisplayConfig {
     /// configured shortcut (default: true). Set false to disable all such hints.
     #[serde(default = "default_true")]
     pub keybinding_hints: bool,
+    /// Color theme: "auto" (detect terminal background), "dark", or "light".
+    /// Auto queries the terminal's background color (OSC 11) at startup and
+    /// adapts jcode's palette for light backgrounds. Default: auto.
+    #[serde(default)]
+    pub theme: String,
 }
 
 impl Default for DisplayConfig {
@@ -1052,6 +1057,7 @@ impl Default for DisplayConfig {
             show_agentgrep_output: false,
             native_scrollbars: NativeScrollbarConfig::default(),
             keybinding_hints: true,
+            theme: String::new(),
         }
     }
 }

@@ -37,6 +37,7 @@ pub mod session_picker;
 mod stream_buffer;
 pub(crate) mod swarm_plan_graph;
 pub mod test_harness;
+pub mod theme_detect;
 mod ui;
 mod ui_diff;
 pub mod usage_overlay;

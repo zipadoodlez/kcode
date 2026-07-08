@@ -2415,6 +2415,10 @@ pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
         Ok(()) => {}
         Err(payload) => render_recovered_panic_frame(frame, &payload),
     }
+    // Adapt the finished frame for light terminal backgrounds (no-op on dark).
+    // Doing this at the buffer level covers every widget and overlay without
+    // touching individual color call sites.
+    jcode_tui_style::adapt_buffer_for_theme(frame.buffer_mut());
 }
 
 fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
