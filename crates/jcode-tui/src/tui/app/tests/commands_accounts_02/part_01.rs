@@ -680,7 +680,6 @@ fn test_improve_status_summarizes_current_todos() {
                     assigned_to: None,
                     confidence: Some(82),
                     completion_confidence: None,
-                    hill_climbability: None,
                     confidence_history: Vec::new(),
                 },
                 crate::todo::TodoItem {
@@ -693,7 +692,6 @@ fn test_improve_status_summarizes_current_todos() {
                     assigned_to: None,
                     confidence: None,
                     completion_confidence: None,
-                    hill_climbability: None,
                     confidence_history: Vec::new(),
                 },
             ],
@@ -787,7 +785,6 @@ fn test_improve_resume_uses_saved_mode_and_current_todos() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
-                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )

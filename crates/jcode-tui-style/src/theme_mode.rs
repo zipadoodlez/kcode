@@ -281,10 +281,7 @@ mod tests {
     fn light_mode_maps_named_colors() {
         with_light_theme(|| {
             assert_eq!(as_rgb(adapt_color_for_theme(Color::White)), (0, 0, 0));
-            assert_eq!(
-                as_rgb(adapt_color_for_theme(Color::Black)),
-                (255, 255, 255)
-            );
+            assert_eq!(as_rgb(adapt_color_for_theme(Color::Black)), (255, 255, 255));
         });
     }
 

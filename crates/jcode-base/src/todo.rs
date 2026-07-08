@@ -2,7 +2,13 @@ use crate::storage;
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub use jcode_task_types::TodoItem;
+pub use jcode_task_types::{TodoGoal, TodoItem};
+
+/// Goals with a hill-climbability score strictly below this are considered
+/// low: no credible metric to iterate against. The todo tool nudges the model
+/// once per goal to either reframe the objective into something measurable or
+/// deliberately mark it taste-driven and plan user checkpoints.
+pub const LOW_HILL_CLIMBABILITY: u8 = 40;
 
 /// Prefix of the synthetic "all todos done" confidence summary follow-up that
 /// auto-poke queues once every todo is complete.
@@ -89,6 +95,29 @@ pub fn save_todos(session_id: &str, todos: &[TodoItem]) -> Result<()> {
 fn todo_path(session_id: &str) -> Result<PathBuf> {
     let base = storage::jcode_dir()?;
     Ok(base.join("todos").join(format!("{}.json", session_id)))
+}
+
+/// Goal-level assessments live beside the todo list in a separate file so the
+/// todo list format (a bare `Vec<TodoItem>` array) stays readable by every
+/// existing consumer.
+pub fn load_goals(session_id: &str) -> Result<Vec<TodoGoal>> {
+    let path = goals_path(session_id)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    storage::read_json(&path).or_else(|_| Ok(Vec::new()))
+}
+
+pub fn save_goals(session_id: &str, goals: &[TodoGoal]) -> Result<()> {
+    let path = goals_path(session_id)?;
+    storage::write_json_fast(&path, goals)
+}
+
+fn goals_path(session_id: &str) -> Result<PathBuf> {
+    let base = storage::jcode_dir()?;
+    Ok(base
+        .join("todos")
+        .join(format!("{}-goals.json", session_id)))
 }
 
 #[cfg(test)]

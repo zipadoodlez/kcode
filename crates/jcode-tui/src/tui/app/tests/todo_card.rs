@@ -88,7 +88,6 @@ fn refresh_todo_card_updates_content_when_todos_change() {
         group: None,
         confidence: Some(70),
         completion_confidence: None,
-        hill_climbability: None,
         confidence_history: Vec::new(),
         blocked_by: Vec::new(),
         assigned_to: None,

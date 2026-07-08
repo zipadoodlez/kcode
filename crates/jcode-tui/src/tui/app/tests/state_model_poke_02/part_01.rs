@@ -1000,7 +1000,6 @@ fn test_context_command_reports_session_context_snapshot() {
                 assigned_to: None,
                 confidence: Some(77),
                 completion_confidence: None,
-                hill_climbability: None,
                 confidence_history: Vec::new(),
             }],
         )

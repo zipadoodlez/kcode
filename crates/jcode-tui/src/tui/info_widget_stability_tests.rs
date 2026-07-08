@@ -29,7 +29,6 @@ fn rich_data() -> InfoWidgetData {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
-                hill_climbability: None,
                 confidence_history: Vec::new(),
             },
             crate::todo::TodoItem {
@@ -42,7 +41,6 @@ fn rich_data() -> InfoWidgetData {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
-                hill_climbability: None,
                 confidence_history: Vec::new(),
             },
         ],

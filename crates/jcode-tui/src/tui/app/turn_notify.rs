@@ -303,7 +303,6 @@ mod tests {
             group: None,
             confidence: None,
             completion_confidence: None,
-            hill_climbability: None,
             confidence_history: Vec::new(),
             blocked_by: blocked_by.iter().map(|s| s.to_string()).collect(),
             assigned_to: None,

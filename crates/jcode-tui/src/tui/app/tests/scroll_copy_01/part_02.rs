@@ -270,7 +270,6 @@ fn test_remote_escape_interrupt_disables_auto_poke_while_processing() {
                 assigned_to: None,
                 confidence: None,
                 completion_confidence: None,
-                hill_climbability: None,
                 confidence_history: Vec::new(),
             },
         ]));

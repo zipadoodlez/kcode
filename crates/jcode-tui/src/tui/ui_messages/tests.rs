@@ -358,7 +358,6 @@ fn render_todos_message_shows_grouped_card_with_status_glyphs() {
             group: group.map(str::to_string),
             confidence: Some(80),
             completion_confidence: (status == "completed").then_some(95),
-            hill_climbability: None,
             confidence_history: Vec::new(),
             blocked_by: Vec::new(),
             assigned_to: None,
