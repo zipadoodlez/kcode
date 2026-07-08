@@ -119,6 +119,13 @@ pub(crate) enum Command {
         /// Internal: idle shutdown timeout in seconds for a temporary server.
         #[arg(long, hide = true)]
         temp_idle_timeout_secs: Option<u64>,
+
+        /// Stable display name for this server in connected clients and session pickers.
+        ///
+        /// Useful for long-lived remote runtimes, e.g. `fabian`, `john`, or
+        /// `mount-cloud-fabian`. Unsafe characters are normalized before use.
+        #[arg(long)]
+        server_name: Option<String>,
     },
 
     /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon

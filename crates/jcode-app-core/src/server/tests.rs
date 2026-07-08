@@ -77,6 +77,50 @@ fn file_activity_scope_label_classifies_overlap() {
     assert_eq!(file_activity_scope_label(&previous, &current), "same file");
 }
 
+#[test]
+fn configured_server_name_normalizes_operator_labels() {
+    assert_eq!(
+        super::normalize_configured_server_name(" Mount Cloud/Fabian ").as_deref(),
+        Some("mount-cloud-fabian")
+    );
+    assert_eq!(
+        super::normalize_configured_server_name("john@example.com").as_deref(),
+        Some("john-example.com")
+    );
+    assert_eq!(super::normalize_configured_server_name(" 🫥 "), None);
+}
+
+#[test]
+fn server_identity_uses_configured_name() {
+    let _guard = crate::storage::lock_test_env();
+    let _server_name_guard = ScopedEnvVar::set("JCODE_SERVER_NAME", "env-name");
+    let _server_display_name_guard = ScopedEnvVar::set("JCODE_SERVER_DISPLAY_NAME", "display-name");
+
+    let server = Server::new_with_name(
+        Arc::new(StreamingMockProvider::default()),
+        Some("Mount Cloud/Fabian".to_string()),
+    );
+
+    assert_eq!(server.identity().name, "mount-cloud-fabian");
+    assert!(
+        server
+            .identity()
+            .id
+            .starts_with("server_mount-cloud-fabian_")
+    );
+}
+
+#[test]
+fn server_identity_reads_name_from_env() {
+    let _guard = crate::storage::lock_test_env();
+    let _server_name_guard = ScopedEnvVar::set("JCODE_SERVER_NAME", "mount-cloud/john");
+    let _server_display_name_guard = ScopedEnvVar::set("JCODE_SERVER_DISPLAY_NAME", "ignored");
+
+    let server = Server::new_with_name(Arc::new(StreamingMockProvider::default()), None);
+
+    assert_eq!(server.identity().name, "mount-cloud-john");
+}
+
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         if let Some(value) = &self.prev_home {
