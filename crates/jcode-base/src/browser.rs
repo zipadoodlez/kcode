@@ -111,8 +111,26 @@ pub fn ensure_browser_session(session_id: &str) -> Option<String> {
         return None;
     }
 
-    let result = std::process::Command::new(&bin)
-        .args(["session", "start", &session_name])
+    // Bind each agent session to a dedicated browser window so parallel
+    // sessions do not fight over the shared active tab. Fall back to an
+    // unbound session for older bridge CLIs without --bind-window.
+    if let Some(name) = spawn_browser_session(&bin, &session_name, true) {
+        return Some(name);
+    }
+    spawn_browser_session(&bin, &session_name, false)
+}
+
+fn spawn_browser_session(
+    bin: &std::path::Path,
+    session_name: &str,
+    bind_window: bool,
+) -> Option<String> {
+    let mut args = vec!["session", "start", session_name];
+    if bind_window {
+        args.push("--bind-window");
+    }
+    let result = std::process::Command::new(bin)
+        .args(&args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -120,23 +138,29 @@ pub fn ensure_browser_session(session_id: &str) -> Option<String> {
 
     match result {
         Ok(mut child) => {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             while std::time::Instant::now() < deadline {
-                if session_socket_path(&session_name).exists() && is_session_alive(&session_name) {
+                if session_socket_path(session_name).exists() && is_session_alive(session_name) {
                     let _ = child.stdout.take();
-                    return Some(session_name);
+                    return Some(session_name.to_string());
                 }
                 if let Ok(Some(status)) = child.try_wait() {
                     eprintln!(
-                        "[browser] session '{}' exited before startup with status {}",
-                        session_name, status
+                        "[browser] session '{}' exited before startup with status {}{}",
+                        session_name,
+                        status,
+                        if bind_window {
+                            " (retrying without --bind-window)"
+                        } else {
+                            ""
+                        }
                     );
                     return None;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             eprintln!(
-                "[browser] session '{}' did not start within 5s",
+                "[browser] session '{}' did not start within 10s",
                 session_name
             );
             None

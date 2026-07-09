@@ -35,6 +35,8 @@ struct BrowserInput {
     #[serde(default)]
     tab_id: Option<i64>,
     #[serde(default)]
+    window_id: Option<i64>,
+    #[serde(default)]
     frame_id: Option<i64>,
     #[serde(default)]
     all_frames: Option<bool>,
@@ -210,6 +212,7 @@ impl Tool for BrowserTool {
         for (name, schema) in [
             ("url", json!({"type": "string"})),
             ("tab_id", json!({"type": "integer"})),
+            ("window_id", json!({"type": "integer", "description": "Scope the action to a specific browser window. Useful when multiple agents drive the browser in parallel."})),
             ("frame_id", json!({"type": "integer"})),
             ("all_frames", json!({"type": "boolean"})),
             ("selector", json!({"type": "string"})),
@@ -699,6 +702,9 @@ fn bridge_request(action: &str, input: &BrowserInput) -> Result<(String, Value, 
 fn apply_common_targeting(params: &mut Map<String, Value>, input: &BrowserInput) {
     if let Some(tab_id) = input.tab_id {
         params.insert("tabId".into(), json!(tab_id));
+    }
+    if let Some(window_id) = input.window_id {
+        params.insert("windowId".into(), json!(window_id));
     }
     if let Some(frame_id) = input.frame_id {
         params.insert("frameId".into(), json!(frame_id));
