@@ -286,13 +286,11 @@ fn extract_answer_text(payload: &[u8]) -> Option<String> {
                 continue;
             }
             for leaf in iter_fields(f1_1.data) {
-                if leaf.field == 1 && leaf.wire == 2 {
-                    if let Ok(s) = std::str::from_utf8(leaf.data) {
-                        if !s.is_empty() {
+                if leaf.field == 1 && leaf.wire == 2
+                    && let Ok(s) = std::str::from_utf8(leaf.data)
+                        && !s.is_empty() {
                             return Some(s.to_string());
                         }
-                    }
-                }
             }
         }
     }
@@ -428,7 +426,6 @@ pub async fn run_agent_turn(
     let mut pending: Vec<u8> = Vec::new();
     let mut error_message: Option<String> = None;
     let mut got_text = false;
-    let mut stream_ended = false;
 
     // Idle timeouts guard against the server holding the stream open. Cursor
     // keeps the response side open after the assistant message when it expects
@@ -438,19 +435,13 @@ pub async fn run_agent_turn(
     let first_byte_timeout = Duration::from_secs(60);
     let idle_timeout = Duration::from_secs(4);
 
-    loop {
+    'read: loop {
         let budget = if got_text { idle_timeout } else { first_byte_timeout };
         let next = match tokio::time::timeout(budget, body.data()).await {
             Ok(Some(chunk)) => chunk,
-            Ok(None) => {
-                stream_ended = true;
-                break;
-            }
-            Err(_) => {
-                // Idle: server is waiting (likely for a tool result we do not
-                // send). Treat as end-of-turn if we already produced output.
-                break;
-            }
+            // Stream closed cleanly, or idle (server likely waiting for a tool
+            // exec-result we never send): finish the turn either way.
+            Ok(None) | Err(_) => break 'read,
         };
         let chunk = next.context("Cursor agent response stream error")?;
         let _ = body.flow_control().release_capacity(chunk.len());
@@ -458,16 +449,13 @@ pub async fn run_agent_turn(
         while let Some((flag, payload, consumed)) = next_frame(&pending) {
             pending.drain(..consumed);
             if flag & 0x02 != 0 {
-                // end-of-stream trailer (JSON). Detect errors.
-                if let Ok(text) = std::str::from_utf8(&payload) {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(text) {
-                        if let Some(err) = json.get("error") {
+                // end-of-stream trailer (JSON). Detect errors, then finish.
+                if let Ok(text) = std::str::from_utf8(&payload)
+                    && let Ok(json) = serde_json::from_str::<serde_json::Value>(text)
+                        && let Some(err) = json.get("error") {
                             error_message = Some(err.to_string());
                         }
-                    }
-                }
-                stream_ended = true;
-                continue;
+                break 'read;
             }
             if let Some(text) = extract_answer_text(&payload) {
                 got_text = true;
@@ -476,12 +464,9 @@ pub async fn run_agent_turn(
                     .await
                     .is_err()
                 {
-                    break;
+                    break 'read;
                 }
             }
-        }
-        if stream_ended {
-            break;
         }
     }
 
