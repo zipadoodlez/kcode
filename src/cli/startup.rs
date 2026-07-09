@@ -219,6 +219,8 @@ fn parse_and_prepare_args() -> Result<Args> {
         logging::info(&format!("Changed working directory to: {}", cwd));
     }
 
+    validate_remote_working_dir(args.remote_working_dir.as_deref())?;
+
     if args.trace {
         crate::env::set_var("JCODE_TRACE", "1");
     }
@@ -230,6 +232,27 @@ fn parse_and_prepare_args() -> Result<Args> {
     crate::cli::proctitle::set_initial_title(&args);
 
     Ok(args)
+}
+
+fn validate_remote_working_dir(remote_working_dir: Option<&str>) -> Result<()> {
+    if let Some(remote_working_dir) = remote_working_dir
+        && !remote_working_dir_is_absolute(remote_working_dir)
+    {
+        anyhow::bail!("--remote-working-dir must be an absolute path");
+    }
+    Ok(())
+}
+
+fn remote_working_dir_is_absolute(path: &str) -> bool {
+    if path.starts_with('/') || path.starts_with('\\') {
+        return true;
+    }
+
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[1] == b':'
+        && (bytes[2] == b'/' || bytes[2] == b'\\')
+        && bytes[0].is_ascii_alphabetic()
 }
 
 fn spawn_background_update_check(args: &Args) {
@@ -360,6 +383,20 @@ mod tests {
         let mut args = parse_args(&["jcode", "login"]);
         args.auto_update = false;
         assert!(!should_auto_install_update(&args));
+    }
+
+    #[test]
+    fn remote_working_dir_validation_requires_absolute_path() {
+        assert!(validate_remote_working_dir(Some("/home/agent/project")).is_ok());
+        assert!(validate_remote_working_dir(Some("C:\\Users\\agent\\project")).is_ok());
+        assert!(validate_remote_working_dir(None).is_ok());
+
+        let error = validate_remote_working_dir(Some("relative/project")).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("--remote-working-dir must be an absolute path")
+        );
     }
 
     #[test]

@@ -421,7 +421,11 @@ impl App {
     }
 
     /// Run the TUI in remote mode, connecting to a server
-    pub async fn run_remote(mut self, mut terminal: DefaultTerminal) -> Result<RunResult> {
+    pub async fn run_remote(
+        mut self,
+        mut terminal: DefaultTerminal,
+        remote_working_dir: Option<String>,
+    ) -> Result<RunResult> {
         let mut event_stream = EventStream::new();
         let mut redraw_period = crate::tui::redraw_interval(&self);
         let mut redraw_interval = redraw_timer(redraw_period);
@@ -473,6 +477,7 @@ impl App {
                 &mut event_stream,
                 &mut remote_state,
                 session_to_resume.as_deref(),
+                remote_working_dir.as_deref(),
             )
             .await?
             {

@@ -93,6 +93,20 @@ The server shuts down when:
 - **Manual**: server process is killed
 - **Reload**: server execs into a new binary (same socket path)
 
+### Remote Client Working Directory
+
+By default, a client sends its current working directory to the server when it
+subscribes, and the server uses that as the session working directory. Socket
+forwarding wrappers for remote daemons can keep the client and server paths
+separate with `--remote-working-dir`:
+
+```bash
+jcode --socket /tmp/jcode.sock -C /local/checkout --remote-working-dir /remote/checkout
+```
+
+`-C` must exist on the client. `--remote-working-dir` must be an absolute path
+that exists on the server.
+
 ### Client Reconnection
 
 Clients have a built-in reconnect loop. When the connection drops (server

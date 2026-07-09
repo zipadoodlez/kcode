@@ -35,9 +35,13 @@ pub(crate) struct Args {
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
-    /// Working directory
+    /// Working directory for the local client process
     #[arg(short = 'C', long, global = true)]
     pub(crate) cwd: Option<String>,
+
+    /// Working directory to send to a remote server when using --socket
+    #[arg(long, global = true)]
+    pub(crate) remote_working_dir: Option<String>,
 
     /// Skip the automatic update check
     #[arg(long, global = true)]

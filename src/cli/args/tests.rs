@@ -43,6 +43,23 @@ fn serve_server_name_option_parses() {
 }
 
 #[test]
+fn remote_working_dir_option_parses() {
+    let args = Args::try_parse_from([
+        "jcode",
+        "--socket",
+        "/tmp/jcode.sock",
+        "--remote-working-dir",
+        "/home/agent/project",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        args.remote_working_dir.as_deref(),
+        Some("/home/agent/project")
+    );
+}
+
+#[test]
 fn model_list_subcommand_parses() {
     let args = Args::try_parse_from(["jcode", "model", "list", "--json", "--verbose"]).unwrap();
     match args.command {

@@ -1737,13 +1737,29 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
     false
 }
 
-pub(crate) fn subscribe_metadata() -> (Option<String>, Option<bool>) {
+pub(crate) fn subscribe_metadata(
+    remote_working_dir: Option<&str>,
+) -> (Option<String>, Option<bool>) {
     let working_dir = std::env::current_dir().ok();
-    let working_dir_str = working_dir.as_ref().map(|p| p.display().to_string());
+    resolve_subscribe_metadata(
+        working_dir.as_deref(),
+        remote_working_dir,
+        jcode_selfdev_types::client_selfdev_requested(),
+    )
+}
 
-    let mut selfdev = jcode_selfdev_types::client_selfdev_requested();
-    if !selfdev && let Some(ref dir) = working_dir {
-        let mut current = Some(dir.as_path());
+pub(crate) fn resolve_subscribe_metadata(
+    client_working_dir: Option<&std::path::Path>,
+    remote_working_dir: Option<&str>,
+    client_selfdev_requested: bool,
+) -> (Option<String>, Option<bool>) {
+    let working_dir_str = remote_working_dir
+        .map(str::to_string)
+        .or_else(|| client_working_dir.map(|p| p.display().to_string()));
+
+    let mut selfdev = client_selfdev_requested;
+    if !selfdev && let Some(dir) = client_working_dir {
+        let mut current = Some(dir);
         while let Some(path) = current {
             if crate::build::is_jcode_repo(path) {
                 selfdev = true;
@@ -1844,7 +1860,7 @@ pub fn prewarm_focused_side_panel(
 mod tests {
     use super::{
         CacheTtlInfo, KvCacheProblemKind, connection_type_icon, detect_kv_cache_problem,
-        keyboard_enhancement_flags, scheduled_notification_text,
+        keyboard_enhancement_flags, resolve_subscribe_metadata, scheduled_notification_text,
     };
     use crate::ambient::AmbientStatus;
     use crate::tui::info_widget::AmbientWidgetData;
@@ -1868,6 +1884,24 @@ mod tests {
             cold_for_secs: 90,
             cached_tokens: Some(12_000),
         }
+    }
+
+    #[test]
+    fn subscribe_metadata_prefers_remote_working_dir_override() {
+        let local_dir = std::path::Path::new("/client/project");
+        let (working_dir, selfdev) =
+            resolve_subscribe_metadata(Some(local_dir), Some("/server/project"), false);
+
+        assert_eq!(working_dir.as_deref(), Some("/server/project"));
+        assert_eq!(selfdev, None);
+    }
+
+    #[test]
+    fn subscribe_metadata_uses_client_cwd_without_override() {
+        let local_dir = std::path::Path::new("/client/project");
+        let (working_dir, _selfdev) = resolve_subscribe_metadata(Some(local_dir), None, false);
+
+        assert_eq!(working_dir.as_deref(), Some("/client/project"));
     }
 
     #[test]
