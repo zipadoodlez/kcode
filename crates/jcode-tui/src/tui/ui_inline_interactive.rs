@@ -37,20 +37,6 @@ fn pad_left_display(text: &str, width: usize) -> String {
     format!("{}{}", truncated, " ".repeat(padding))
 }
 
-fn pad_center_display(text: &str, width: usize) -> String {
-    let truncated = truncate_display(text, width);
-    let rendered = display_width(truncated.as_str());
-    let total_padding = width.saturating_sub(rendered);
-    let left_padding = total_padding / 2;
-    let right_padding = total_padding.saturating_sub(left_padding);
-    format!(
-        "{}{}{}",
-        " ".repeat(left_padding),
-        truncated,
-        " ".repeat(right_padding)
-    )
-}
-
 fn api_method_display(raw: &str) -> String {
     crate::provider::ModelRouteApiMethod::parse(raw).display_label()
 }
@@ -502,7 +488,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
     };
     header_spans.push(Span::styled(
         if is_preview {
-            format!("{:^w$}", second_label, w = second_w)
+            format!(" {:<w$}", second_label, w = second_w.saturating_sub(1))
         } else {
             format!("{:<w$}", second_label, w = second_w)
         },
@@ -733,7 +719,10 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         }
 
         let padded_model = if is_preview {
-            pad_center_display(display_name.as_str(), model_width)
+            format!(
+                " {}",
+                pad_left_display(display_name.as_str(), model_width.saturating_sub(1))
+            )
         } else {
             pad_left_display(display_name.as_str(), model_width)
         };
@@ -741,13 +730,8 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
         let match_positions = if !picker.filter.is_empty() {
             let raw = fuzzy_match_positions(&picker.filter, &entry.name);
             if is_preview && !raw.is_empty() {
-                let name_len = display_width(display_name.as_str());
-                let pad = if name_len < model_width {
-                    (model_width - name_len) / 2
-                } else {
-                    0
-                };
-                raw.into_iter().map(|p| p + pad).collect()
+                // Account for the single leading space in the preview model column.
+                raw.into_iter().map(|p| p + 1).collect()
             } else {
                 raw
             }
