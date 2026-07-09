@@ -448,7 +448,7 @@ fn test_model_picker_preserves_recommendation_priority_order() {
         .entries
         .iter()
         .position(|model| {
-            model.name == "claude-opus-4-8"
+            model.name == "claude-opus-4-8 (high)"
                 && model
                     .active_option()
                     .map(|route| route.api_method == "claude-oauth")
@@ -459,7 +459,7 @@ fn test_model_picker_preserves_recommendation_priority_order() {
         .entries
         .iter()
         .position(|model| {
-            model.name == "claude-opus-4-8"
+            model.name == "claude-opus-4-8 (high)"
                 && model
                     .active_option()
                     .map(|route| route.api_method == "claude-api")
@@ -533,8 +533,8 @@ fn test_model_picker_preserves_recommendation_priority_order() {
         recommended_routes,
         vec![
             ("gpt-5.5 (high)", "OpenAI", "openai-oauth"),
-            ("claude-opus-4-8", "Anthropic", "claude-api"),
-            ("claude-opus-4-8", "Anthropic", "claude-oauth"),
+            ("claude-opus-4-8 (high)", "Anthropic", "claude-api"),
+            ("claude-opus-4-8 (high)", "Anthropic", "claude-oauth"),
         ],
         "only the exact requested routes should be recommended; got {:?}",
         recommended_routes

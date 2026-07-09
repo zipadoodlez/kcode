@@ -1107,12 +1107,14 @@ fn test_model_picker_state_space_preserves_provider_labels_after_route_hydration
         );
     }
 
+    // Models with reasoning-effort support expand into effort rows (issue
+    // #458); the hydrated route must be preserved on each variant.
     assert_eq!(
-        routes_by_model.get("gpt-5.5"),
+        routes_by_model.get("gpt-5.5 (high)"),
         Some(&("OpenAI".to_string(), "openai-oauth".to_string()))
     );
     assert_eq!(
-        routes_by_model.get("claude-opus-4-6"),
+        routes_by_model.get("claude-opus-4-6 (high)"),
         Some(&("Anthropic".to_string(), "claude-oauth".to_string()))
     );
     assert_eq!(
@@ -1120,7 +1122,7 @@ fn test_model_picker_state_space_preserves_provider_labels_after_route_hydration
         Some(&("Chutes".to_string(), "openai-compatible:chutes".to_string()))
     );
     assert_eq!(
-        routes_by_model.get("deepseek/deepseek-v4-pro"),
+        routes_by_model.get("deepseek/deepseek-v4-pro (high)"),
         Some(&("auto".to_string(), "openrouter".to_string()))
     );
 

@@ -68,6 +68,30 @@ fn model_picker_favorites_path() -> Option<std::path::PathBuf> {
         .map(|dir| dir.join(MODEL_PICKER_FAVORITES_FILE))
 }
 
+/// Whether a picker route's runtime can apply a per-request reasoning effort.
+/// Effort rows are only rendered for these routes; other routes (Copilot,
+/// Bedrock, Antigravity CLI, remote-catalog placeholders, ...) get one plain
+/// row per model because a picked effort could not actually be applied.
+fn route_supports_reasoning_effort(api_method: &str) -> bool {
+    use crate::provider::ModelRouteApiMethod as Method;
+    match Method::parse(api_method) {
+        Method::ClaudeOAuth
+        | Method::AnthropicApiKey
+        | Method::OpenAIOAuth
+        | Method::OpenAIApiKey
+        | Method::OpenRouter => true,
+        Method::OpenAiCompatible { .. }
+        | Method::Copilot
+        | Method::Cursor
+        | Method::Bedrock
+        | Method::CodeAssistOAuth
+        | Method::AntigravityHttps
+        | Method::RemoteCatalog
+        | Method::Current
+        | Method::Other(_) => false,
+    }
+}
+
 fn model_picker_usage_key(model_name: &str, route: &PickerOption, effort: Option<&str>) -> String {
     format!(
         "{}\u{1f}{}\u{1f}{}\u{1f}{}",
@@ -928,14 +952,6 @@ impl App {
         } else {
             self.provider.reasoning_effort()
         };
-        let available_efforts = if self.is_remote {
-            inferred_reasoning_efforts(
-                self.remote_provider_name.as_deref(),
-                self.remote_provider_model.as_deref(),
-            )
-        } else {
-            self.provider.available_efforts()
-        };
 
         let is_config_default = |name: &str, route: &PickerOption| -> bool {
             model_picker_route_is_default(
@@ -1041,7 +1057,6 @@ impl App {
             }
         }
 
-        let is_openai = !available_efforts.is_empty();
         let current_provider = if self.is_remote {
             self.remote_provider_name
                 .clone()
@@ -1084,10 +1099,22 @@ impl App {
                 }
             }
 
-            let is_openai_model = crate::provider::ALL_OPENAI_MODELS.contains(&name.as_str());
+            // One consistent policy across providers (issue #458): expand a
+            // model into effort rows exactly when that model's own ladder
+            // (inferred from the model id, same table the effort cycler uses)
+            // is non-empty AND the route's runtime can actually apply a
+            // reasoning effort. No provider-specific special cases.
+            let model_efforts: Vec<&'static str> = inferred_reasoning_efforts(None, Some(name));
+            let (effort_routes, plain_routes): (Vec<_>, Vec<_>) = if model_efforts.is_empty() {
+                (Vec::new(), entry_routes)
+            } else {
+                entry_routes
+                    .into_iter()
+                    .partition(|route| route_supports_reasoning_effort(&route.api_method))
+            };
 
-            if is_openai_model && is_openai && !available_efforts.is_empty() {
-                for effort in &available_efforts {
+            if !effort_routes.is_empty() {
+                for effort in &model_efforts {
                     // Swarm modes (swarm / swarm-deep) are orchestration rungs on
                     // the effort ladder, not per-model reasoning variants. They
                     // must not generate `model (swarm)` picker rows.
@@ -1107,7 +1134,7 @@ impl App {
                     let effort_matches_current =
                         *name == current_model && current_effort.as_deref() == Some(*effort);
                     let or_created = openrouter_created_timestamp(name);
-                    for route in &entry_routes {
+                    for route in &effort_routes {
                         let is_this_current = effort_matches_current
                             && model_picker_route_is_current(
                                 name,
@@ -1144,11 +1171,12 @@ impl App {
                         });
                     }
                 }
-            } else {
+            }
+            {
                 let or_created = openrouter_created_timestamp(name);
                 let is_old = old_threshold_secs > 0
                     && or_created.map(|t| t < old_threshold_secs).unwrap_or(false);
-                for route in entry_routes {
+                for route in plain_routes {
                     let is_recommended = model_picker_route_is_recommended(name, &route);
                     let is_current = model_picker_route_is_current(
                         name,

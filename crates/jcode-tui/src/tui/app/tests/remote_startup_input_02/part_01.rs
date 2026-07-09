@@ -1310,10 +1310,22 @@ fn test_model_picker_effort_variant_selection_stages_effort_in_remote_mode() {
 }
 
 /// Plain model rows (no effort suffix) must not stage a reasoning effort.
+/// Routes whose runtime cannot apply a reasoning effort (e.g. Copilot) get
+/// plain rows even for models that have an effort ladder elsewhere.
 #[test]
 fn test_model_picker_plain_selection_stages_no_effort_in_remote_mode() {
     let mut app = create_test_app();
     configure_test_remote_models_with_openai_recommendations(&mut app);
+    // A Copilot-backed route cannot apply per-request reasoning effort, so it
+    // must render as a plain row (issue #458 route gating).
+    app.remote_model_options.push(crate::provider::ModelRoute {
+        model: "claude-opus-4-8".to_string(),
+        provider: "Copilot".to_string(),
+        api_method: "copilot".to_string(),
+        available: true,
+        detail: String::new(),
+        cheapness: None,
+    });
 
     app.open_model_picker();
 
@@ -1322,7 +1334,6 @@ fn test_model_picker_plain_selection_stages_no_effort_in_remote_mode() {
         .as_ref()
         .expect("model picker should be open");
 
-    // claude-opus-4-8 rows are built without effort variants in this fixture.
     let entry_idx = picker
         .entries
         .iter()
