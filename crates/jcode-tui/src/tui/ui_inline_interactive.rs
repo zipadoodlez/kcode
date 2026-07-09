@@ -999,8 +999,11 @@ mod tests {
     fn picker_row_marker_uses_explicit_unavailable_marker() {
         assert_eq!(picker_row_marker(true, true, false), "×");
         assert_eq!(picker_row_marker(false, true, false), "×");
-        assert_eq!(picker_row_marker(true, false, true), "▸");
+        // Limited routes keep their warning marker even when selected, so the
+        // fallback/limited signal never disappears while navigating.
+        assert_eq!(picker_row_marker(true, false, true), "⚠");
         assert_eq!(picker_row_marker(false, false, true), "⚠");
+        assert_eq!(picker_row_marker(true, false, false), "▸");
         assert_eq!(picker_row_marker(false, false, false), " ");
     }
 
@@ -1057,9 +1060,19 @@ mod tests {
             width < 120,
             "model picker should fit content, not fill the window"
         );
-        assert!(
-            width >= 40,
-            "model picker should still fit its visible columns"
+        // Content-fit: marker + the widths of the model/provider/via columns.
+        // Each column is at least as wide as its header label, then grows to
+        // fit the widest row (the sample entry: "gpt-5.4 ★" / "openai" / OAuth).
+        let model = display_width(picker_entry_display_name(&picker.entries[0]).as_str())
+            .max(display_width(picker.primary_label()));
+        let provider = display_width("openai").max(display_width(picker.secondary_label(false))) + 1;
+        let via = display_width(api_method_display("oauth").as_str())
+            .max(display_width(picker.tertiary_label()))
+            + 1;
+        assert_eq!(
+            width,
+            3 + model + provider + via,
+            "model picker width should equal its content-fit column widths"
         );
     }
 
