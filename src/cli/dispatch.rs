@@ -60,6 +60,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             temporary_server,
             owner_pid,
             temp_idle_timeout_secs,
+            server_name,
         }) => {
             let serve_start = Instant::now();
             crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
@@ -71,7 +72,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 provider_init::init_provider(&args.provider, args.model.as_deref()).await?;
             let provider_ms = provider_start.elapsed().as_millis();
             let server_new_start = Instant::now();
-            let server = server::Server::new(provider);
+            let server = server::Server::new_with_name(provider, server_name);
             let server_new_ms = server_new_start.elapsed().as_millis();
             crate::logging::info(&format!(
                 "[TIMING] serve bootstrap: provider_init={}ms, server_new={}ms, before_run={}ms",

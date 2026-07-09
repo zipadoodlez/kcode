@@ -31,6 +31,18 @@ fn test_provider_choice_aliases_parse() {
 }
 
 #[test]
+fn serve_server_name_option_parses() {
+    let args =
+        Args::try_parse_from(["jcode", "serve", "--server-name", "mount-cloud/fabian"]).unwrap();
+    match args.command {
+        Some(Command::Serve { server_name, .. }) => {
+            assert_eq!(server_name.as_deref(), Some("mount-cloud/fabian"));
+        }
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
 fn model_list_subcommand_parses() {
     let args = Args::try_parse_from(["jcode", "model", "list", "--json", "--verbose"]).unwrap();
     match args.command {
