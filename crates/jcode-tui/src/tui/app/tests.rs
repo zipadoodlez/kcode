@@ -773,9 +773,10 @@ fn skills_command_marks_active_skill_in_remote_mode() {
     );
 }
 
-/// Regression for issue #431: skills added on disk after startup (e.g. by the
-/// agent-side `skill_manage reload_all`, which only refreshes the server
-/// process registry) must show up in `/skills` without a session restart.
+/// Regression for issue #431 (and #457): skills added on disk after startup
+/// must show up in `/skills` and the skills snapshot without a session
+/// restart. With the session-scoped project overlay, project-local skills are
+/// visible immediately, without even running `/skills` first.
 #[test]
 fn skills_command_refreshes_registry_from_disk_before_listing() {
     let mut app = create_test_app();
@@ -792,9 +793,11 @@ fn skills_command_refreshes_registry_from_disk_before_listing() {
     .expect("write SKILL.md");
     app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
 
+    // Project-local skills are a session overlay composed at read time, so
+    // the new skill is available immediately (issue #457).
     assert!(
-        app.current_skills_snapshot().get("late-skill").is_none(),
-        "snapshot must start without the new skill for this regression test"
+        app.current_skills_snapshot().get("late-skill").is_some(),
+        "project-local skill must be visible immediately without reload"
     );
 
     assert!(super::state_ui::handle_info_command(&mut app, "/skills"));

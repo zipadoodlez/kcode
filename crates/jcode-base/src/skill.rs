@@ -44,27 +44,35 @@ impl SkillRegistry {
     /// Process-wide shared mutable registry used by both `skill_manage` and
     /// direct slash invocation paths. Keeping a single registry prevents slash
     /// commands from seeing a stale startup-only skill snapshot after reloads.
+    ///
+    /// Holds GLOBAL skills only (plugins, `~/.jcode/skills/`,
+    /// `~/.agents/skills/`). Project-local skills are a per-session overlay
+    /// composed at read time from the session's workspace root (issue #457);
+    /// they must never enter this shared registry, and the daemon's startup
+    /// cwd must never influence its contents.
     pub fn shared_registry() -> Arc<RwLock<Self>> {
         #[cfg(test)]
         {
-            Arc::new(RwLock::new(Self::load().unwrap_or_default()))
+            Arc::new(RwLock::new(Self::load_global().unwrap_or_default()))
         }
 
         #[cfg(not(test))]
         {
             static SHARED: OnceLock<Arc<RwLock<SkillRegistry>>> = OnceLock::new();
             SHARED
-                .get_or_init(|| Arc::new(RwLock::new(SkillRegistry::load().unwrap_or_default())))
+                .get_or_init(|| {
+                    Arc::new(RwLock::new(SkillRegistry::load_global().unwrap_or_default()))
+                })
                 .clone()
         }
     }
 
-    /// Load a process-wide shared immutable snapshot of skills for startup paths
-    /// that only need read access.
+    /// Load a process-wide shared immutable snapshot of global skills for
+    /// startup paths that only need read access.
     pub fn shared_snapshot() -> Arc<Self> {
         #[cfg(test)]
         {
-            Arc::new(Self::load().unwrap_or_default())
+            Arc::new(Self::load_global().unwrap_or_default())
         }
 
         #[cfg(not(test))]
@@ -72,7 +80,7 @@ impl SkillRegistry {
             if let Ok(skills) = Self::shared_registry().try_read() {
                 Arc::new(skills.clone())
             } else {
-                Arc::new(SkillRegistry::load().unwrap_or_default())
+                Arc::new(SkillRegistry::load_global().unwrap_or_default())
             }
         }
     }
@@ -210,9 +218,14 @@ impl SkillRegistry {
         Self::load_for_working_dir(None)
     }
 
-    /// Load skills from all standard locations, with project-local locations
-    /// resolved against an optional active session working directory.
-    pub fn load_for_working_dir(working_dir: Option<&Path>) -> Result<Self> {
+    /// Load only the shared global skill sources: Claude Code plugin installs,
+    /// `~/.jcode/skills/`, and `~/.agents/skills/`.
+    ///
+    /// This is what the process-wide shared registry holds. Project-local
+    /// skills are intentionally excluded: they are a per-session overlay
+    /// resolved from the active session's workspace root (issue #457), never
+    /// from the daemon's startup cwd, and never shared across sessions.
+    pub fn load_global() -> Result<Self> {
         // First-run import from Claude Code / Codex CLI
         Self::import_from_external();
 
@@ -239,8 +252,44 @@ impl SkillRegistry {
             registry.load_from_dir(&agents_skills)?;
         }
 
-        registry.load_project_local_dirs(working_dir)?;
+        Ok(registry)
+    }
 
+    /// Load only the project-local skill overlay for a workspace root:
+    /// `./.jcode/skills/`, `./.agents/skills/`, and `./.claude/skills/`.
+    ///
+    /// Loaded fresh from disk on access so edits are visible without daemon
+    /// restarts and two sessions in different repositories never see each
+    /// other's project skills. `working_dir = None` resolves against the
+    /// process cwd (single-process CLI mode).
+    pub fn load_project_overlay(working_dir: Option<&Path>) -> Result<Self> {
+        let mut overlay = Self::default();
+        overlay.load_project_local_dirs(working_dir)?;
+        Ok(overlay)
+    }
+
+    /// Merge a project-local overlay into this registry. Overlay skills win
+    /// over same-named global skills, mirroring the historical load order
+    /// (project dirs loaded last).
+    pub fn merge_overlay(&mut self, overlay: Self) {
+        self.skills.extend(overlay.skills);
+    }
+
+    /// Effective skills for a session: shared global skills plus the
+    /// project-local overlay for the session's workspace root.
+    pub fn effective_for_working_dir(base: &Self, working_dir: Option<&Path>) -> Self {
+        let mut effective = base.clone();
+        if let Ok(overlay) = Self::load_project_overlay(working_dir) {
+            effective.merge_overlay(overlay);
+        }
+        effective
+    }
+
+    /// Load skills from all standard locations, with project-local locations
+    /// resolved against an optional active session working directory.
+    pub fn load_for_working_dir(working_dir: Option<&Path>) -> Result<Self> {
+        let mut registry = Self::load_global()?;
+        registry.load_project_local_dirs(working_dir)?;
         Ok(registry)
     }
 
@@ -511,12 +560,18 @@ impl SkillRegistry {
 
     /// Reload all skills from all locations
     pub fn reload_all(&mut self) -> Result<usize> {
-        self.reload_all_for_working_dir(None)
+        self.reload_global()
     }
 
-    /// Reload all skills, resolving project-local locations against an optional
-    /// active session working directory.
-    pub fn reload_all_for_working_dir(&mut self, working_dir: Option<&Path>) -> Result<usize> {
+    /// Reload the shared global skill sources (plugins, `~/.jcode/skills/`,
+    /// `~/.agents/skills/`) into this registry.
+    ///
+    /// Project-local skills are intentionally NOT loaded here: they are a
+    /// per-session overlay composed at read time via
+    /// [`Self::effective_for_working_dir`], so one session's `reload_all`
+    /// can never leak its project skills into the shared registry that other
+    /// sessions see (issue #457).
+    pub fn reload_global(&mut self) -> Result<usize> {
         // The available-skills list is embedded in the static system prompt,
         // so a reload that changes it legitimately invalidates warm KV cache
         // prefixes. Document it so the miss is attributed instead of alarmed.
@@ -547,24 +602,6 @@ impl SkillRegistry {
             && agents_skills.exists()
         {
             count += self.load_from_dir_count(&agents_skills)?;
-        }
-
-        // Load from ./.jcode/skills/ (project-local jcode skills)
-        let local_jcode = Self::project_local_dir(working_dir, ".jcode");
-        if local_jcode.exists() {
-            count += self.load_from_dir_count(&local_jcode)?;
-        }
-
-        // Load from ./.agents/skills/ (shared cross-tool `.agents` convention)
-        let local_agents = Self::project_local_dir(working_dir, ".agents");
-        if local_agents.exists() {
-            count += self.load_from_dir_count(&local_agents)?;
-        }
-
-        // Fallback: ./.claude/skills/ (project-local Claude skills for compatibility)
-        let local_claude = Self::project_local_dir(working_dir, ".claude");
-        if local_claude.exists() {
-            count += self.load_from_dir_count(&local_claude)?;
         }
 
         Ok(count)
@@ -980,17 +1017,58 @@ mod tests {
     }
 
     #[test]
-    fn reload_all_for_working_dir_replaces_stale_snapshot_with_session_local_skills() {
+    fn project_overlay_is_session_scoped_and_composes_over_globals() {
         let temp = tempfile::tempdir().expect("tempdir");
         write_test_skill(temp.path(), ".jcode", "session-skill");
 
-        let mut registry = SkillRegistry::default();
-        let count = registry
-            .reload_all_for_working_dir(Some(temp.path()))
-            .expect("reload skills");
+        // The overlay resolves against the given workspace root, not the
+        // process cwd or a shared registry (issue #457).
+        let overlay =
+            SkillRegistry::load_project_overlay(Some(temp.path())).expect("load overlay");
+        assert!(overlay.get("session-skill").is_some());
 
-        assert!(count >= 1);
-        assert!(registry.get("session-skill").is_some());
+        // A different workspace root sees nothing from this project.
+        let other = tempfile::tempdir().expect("tempdir");
+        let other_overlay =
+            SkillRegistry::load_project_overlay(Some(other.path())).expect("load overlay");
+        assert!(other_overlay.get("session-skill").is_none());
+
+        // Effective set = base globals + overlay, with overlay winning on name.
+        let mut base = SkillRegistry::default();
+        base.skills.insert(
+            "session-skill".to_string(),
+            test_skill("session-skill", "global variant", "global body"),
+        );
+        let effective = SkillRegistry::effective_for_working_dir(&base, Some(temp.path()));
+        let skill = effective
+            .get("session-skill")
+            .expect("overlay skill should be present");
+        assert!(
+            skill.path.starts_with(temp.path()),
+            "project-local overlay must win over a same-named global skill"
+        );
+    }
+
+    #[test]
+    fn reload_global_excludes_project_local_skills() {
+        // chdir is process-global; serialize with other env-sensitive tests.
+        let _env_guard = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        write_test_skill(temp.path(), ".jcode", "session-skill");
+
+        let prev_cwd = std::env::current_dir().expect("cwd");
+        // reload_global must not pick up project-local skills even when the
+        // process cwd contains them (daemon startup cwd independence).
+        std::env::set_current_dir(temp.path()).expect("chdir");
+        let mut registry = SkillRegistry::default();
+        let result = registry.reload_global();
+        std::env::set_current_dir(prev_cwd).expect("restore cwd");
+
+        result.expect("reload skills");
+        assert!(
+            registry.get("session-skill").is_none(),
+            "shared/global reload must never absorb project-local skills"
+        );
     }
 
     #[test]

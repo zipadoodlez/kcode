@@ -65,8 +65,12 @@ pub async fn run() -> Result<()> {
     // Invert the legacy memory -> skill dependency: memory collects synthetic
     // entries from registered providers, and skill (the higher layer that
     // depends on MemoryEntry) registers its registry->memory adapter here.
+    // The shared snapshot holds global skills only; memory retrieval is
+    // process-scoped, so compose the project overlay from the process cwd
+    // (issue #457 keeps session overlays out of the shared registry).
     crate::memory::register_synthetic_entry_provider(|| {
-        crate::skill::SkillRegistry::shared_snapshot()
+        let global = crate::skill::SkillRegistry::shared_snapshot();
+        crate::skill::SkillRegistry::effective_for_working_dir(&global, None)
             .list()
             .into_iter()
             .map(|skill| skill.as_memory_entry())

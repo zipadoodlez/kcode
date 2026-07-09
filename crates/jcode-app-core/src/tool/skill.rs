@@ -17,6 +17,15 @@ impl SkillTool {
     pub fn new(registry: Arc<RwLock<SkillRegistry>>) -> Self {
         Self { registry }
     }
+
+    /// Effective skill set for this call: shared global registry plus the
+    /// session's project-local overlay resolved from the tool context working
+    /// dir (issue #457). The overlay is read fresh from disk so edits are
+    /// visible without daemon restarts and never enter the shared registry.
+    async fn effective_registry(&self, working_dir: Option<&std::path::Path>) -> SkillRegistry {
+        let global = self.registry.read().await;
+        SkillRegistry::effective_for_working_dir(&global, working_dir)
+    }
 }
 
 #[derive(Deserialize)]
@@ -74,11 +83,11 @@ impl Tool for SkillTool {
         let _args = params.args.as_deref();
 
         match params.action.as_str() {
-            "load" => self.load_skill(params.name).await,
-            "list" => self.list_skills().await,
+            "load" => self.load_skill(params.name, ctx.working_dir.as_deref()).await,
+            "list" => self.list_skills(ctx.working_dir.as_deref()).await,
             "reload" => self.reload_skill(params.name).await,
             "reload_all" => self.reload_all_skills(ctx.working_dir.as_deref()).await,
-            "read" => self.read_skill(params.name).await,
+            "read" => self.read_skill(params.name, ctx.working_dir.as_deref()).await,
             _ => Ok(ToolOutput::new(format!(
                 "Unknown action: {}. Use 'load', 'list', 'reload', 'reload_all', or 'read'.",
                 params.action
@@ -95,10 +104,14 @@ impl Tool for SkillTool {
 }
 
 impl SkillTool {
-    async fn load_skill(&self, name: Option<String>) -> Result<ToolOutput> {
+    async fn load_skill(
+        &self,
+        name: Option<String>,
+        working_dir: Option<&std::path::Path>,
+    ) -> Result<ToolOutput> {
         let name = normalize_skill_name(name, "load")?;
 
-        let registry = self.registry.read().await;
+        let registry = self.effective_registry(working_dir).await;
         let skill = registry.get(&name).ok_or_else(|| {
             // Endorsed skills are advertised in `list` but are not bundled;
             // a bare "not found" here reads like a bug (issue #445). Point at
@@ -140,8 +153,8 @@ impl SkillTool {
         .with_title(format!("skill: {}", skill.name)))
     }
 
-    async fn list_skills(&self) -> Result<ToolOutput> {
-        let registry = self.registry.read().await;
+    async fn list_skills(&self, working_dir: Option<&std::path::Path>) -> Result<ToolOutput> {
+        let registry = self.effective_registry(working_dir).await;
         let mut skills = registry.list();
         skills.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -221,18 +234,31 @@ impl SkillTool {
     }
 
     async fn reload_all_skills(&self, working_dir: Option<&std::path::Path>) -> Result<ToolOutput> {
-        let mut registry = self.registry.write().await;
+        // Reload the shared GLOBAL registry only; the project-local overlay is
+        // session-scoped and re-read from disk on every access, so reloading
+        // it here would leak this session's project skills to other sessions
+        // (issue #457).
+        let reloaded = {
+            let mut registry = self.registry.write().await;
+            registry.reload_global()
+        };
 
-        match registry.reload_all_for_working_dir(working_dir) {
-            Ok(count) => {
-                let skills = registry.list();
-                let mut output = format!("Reloaded {} skills\n\n", count);
+        match reloaded {
+            Ok(global_count) => {
+                let effective = self.effective_registry(working_dir).await;
+                let skills = effective.list();
+                let mut output = format!(
+                    "Reloaded {} global skills ({} effective for this session)\n\n",
+                    global_count,
+                    skills.len()
+                );
 
                 for skill in skills {
                     output.push_str(&format!("- /{}: {}\n", skill.name, skill.description));
                 }
 
-                Ok(ToolOutput::new(output).with_title(format!("Skills: Reloaded {}", count)))
+                Ok(ToolOutput::new(output)
+                    .with_title(format!("Skills: Reloaded {}", global_count)))
             }
             Err(e) => {
                 crate::logging::warn(&format!(
@@ -245,10 +271,14 @@ impl SkillTool {
         }
     }
 
-    async fn read_skill(&self, name: Option<String>) -> Result<ToolOutput> {
+    async fn read_skill(
+        &self,
+        name: Option<String>,
+        working_dir: Option<&std::path::Path>,
+    ) -> Result<ToolOutput> {
         let name = normalize_skill_name(name, "read")?;
 
-        let registry = self.registry.read().await;
+        let registry = self.effective_registry(working_dir).await;
 
         if let Some(skill) = registry.get(&name) {
             let mut output = format!("# Skill: {}\n\n", skill.name);
@@ -518,6 +548,96 @@ mod tests {
             result.output.contains("skills"),
             "Expected 'skills' in output, got: {}",
             result.output
+        );
+    }
+
+    fn context_with_working_dir(dir: &std::path::Path) -> ToolContext {
+        ToolContext {
+            working_dir: Some(dir.to_path_buf()),
+            ..create_test_context()
+        }
+    }
+
+    fn write_project_skill(root: &std::path::Path, name: &str) {
+        let skill_dir = root.join(".agents").join("skills").join(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: Project skill {name}\n---\n\nBody."),
+        )
+        .unwrap();
+    }
+
+    /// Issue #457: project-local skills must be session-scoped. Two contexts
+    /// with different working dirs share one registry but must each see only
+    /// their own project skills, immediately and without reload_all.
+    #[tokio::test]
+    async fn test_project_skills_are_scoped_to_tool_context_working_dir() {
+        let tool = create_test_tool();
+        let repo_a = tempfile::tempdir().unwrap();
+        let repo_b = tempfile::tempdir().unwrap();
+        write_project_skill(repo_a.path(), "repo-a-skill");
+        write_project_skill(repo_b.path(), "repo-b-skill");
+
+        // Immediately visible in each session without any reload.
+        let list_a = tool
+            .execute(
+                json!({"action": "list"}),
+                context_with_working_dir(repo_a.path()),
+            )
+            .await
+            .unwrap();
+        assert!(list_a.output.contains("repo-a-skill"));
+        assert!(
+            !list_a.output.contains("repo-b-skill"),
+            "session A must not see session B's project skills"
+        );
+
+        let list_b = tool
+            .execute(
+                json!({"action": "list"}),
+                context_with_working_dir(repo_b.path()),
+            )
+            .await
+            .unwrap();
+        assert!(list_b.output.contains("repo-b-skill"));
+        assert!(!list_b.output.contains("repo-a-skill"));
+
+        // reload_all in session A must not leak A's project skills into the
+        // shared registry that session B reads.
+        tool.execute(
+            json!({"action": "reload_all"}),
+            context_with_working_dir(repo_a.path()),
+        )
+        .await
+        .unwrap();
+        let shared = tool.registry.read().await;
+        assert!(
+            shared.get("repo-a-skill").is_none(),
+            "shared registry must stay free of project-local skills"
+        );
+        drop(shared);
+
+        // Skill file edits are visible without any reload/restart.
+        let skill_md = repo_a
+            .path()
+            .join(".agents/skills/repo-a-skill/SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\nname: repo-a-skill\ndescription: Updated description\n---\n\nNew body.",
+        )
+        .unwrap();
+        let read = tool
+            .execute(
+                json!({"action": "read", "name": "repo-a-skill"}),
+                context_with_working_dir(repo_a.path()),
+            )
+            .await
+            .unwrap();
+        assert!(
+            read.output.contains("Updated description"),
+            "skill edits must be visible without daemon restart, got: {}",
+            read.output
         );
     }
 }

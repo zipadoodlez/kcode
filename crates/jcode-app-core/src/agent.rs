@@ -312,11 +312,21 @@ impl Agent {
     }
 
     fn current_skills_snapshot(&self) -> Arc<SkillRegistry> {
-        self.registry
+        // Global skills come from the process-wide shared registry; the
+        // project-local overlay is composed fresh from this session's
+        // workspace root so per-repo skills are session-scoped, immediately
+        // visible, and never leak across sessions (issue #457).
+        let global = self
+            .registry
             .skills()
             .try_read()
             .map(|skills| Arc::new(skills.clone()))
-            .unwrap_or_else(|_| self.skills.clone())
+            .unwrap_or_else(|_| self.skills.clone());
+        let working_dir = self.session.working_dir.as_deref().map(std::path::Path::new);
+        Arc::new(SkillRegistry::effective_for_working_dir(
+            &global,
+            working_dir,
+        ))
     }
 
     pub fn available_skill_names(&self) -> Vec<String> {

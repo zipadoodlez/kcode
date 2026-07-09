@@ -3,11 +3,24 @@ use crate::tui::{TuiState, detect_kv_cache_problem, ui};
 
 impl App {
     pub(super) fn current_skills_snapshot(&self) -> std::sync::Arc<crate::skill::SkillRegistry> {
-        self.registry
+        // Global skills from the shared registry plus this session's
+        // project-local overlay, resolved fresh from the session working dir
+        // (issue #457). The overlay never enters the shared registry.
+        let global = self
+            .registry
             .skills()
             .try_read()
             .map(|skills| std::sync::Arc::new(skills.clone()))
-            .unwrap_or_else(|_| self.skills.clone())
+            .unwrap_or_else(|_| self.skills.clone());
+        let working_dir = self
+            .session
+            .working_dir
+            .as_deref()
+            .map(std::path::Path::new);
+        std::sync::Arc::new(crate::skill::SkillRegistry::effective_for_working_dir(
+            &global,
+            working_dir,
+        ))
     }
 
     /// Re-read skills from disk for the active session working directory and
@@ -19,12 +32,10 @@ impl App {
     /// this before rendering `/skills` (and on demand elsewhere) keeps newly
     /// added skills visible without a session restart (issue #431).
     pub(super) fn refresh_skills_snapshot(&mut self) {
-        let working_dir = self
-            .session
-            .working_dir
-            .as_deref()
-            .map(std::path::Path::new);
-        if let Ok(reloaded) = crate::skill::SkillRegistry::load_for_working_dir(working_dir) {
+        // Only GLOBAL skills go into the shared registry and the cached
+        // snapshot; the project-local overlay is composed per read in
+        // `current_skills_snapshot` so it stays session-scoped (issue #457).
+        if let Ok(reloaded) = crate::skill::SkillRegistry::load_global() {
             self.skills = std::sync::Arc::new(reloaded.clone());
             if let Ok(mut shared) = self.registry.skills().try_write() {
                 *shared = reloaded;
