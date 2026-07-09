@@ -79,6 +79,13 @@ When you run `jcode`, it checks if a server is already running:
 The server is fully detached from the spawning client via `setsid()`, so killing
 any client never affects the server or other clients.
 
+Long-lived deployments can give the daemon a stable client-visible identity with
+`jcode serve --server-name <name>` or the `JCODE_SERVER_NAME` environment
+variable. The optional `JCODE_SERVER_DISPLAY_NAME` environment variable is also
+accepted for service managers that prefer a display-oriented name. CLI input wins
+over environment input. Names are normalized to registry-safe lowercase labels,
+so `mount-cloud/fabian` displays as `mount-cloud-fabian`.
+
 ### Server Shutdown
 
 The server shuts down when:
