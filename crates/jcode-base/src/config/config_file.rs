@@ -224,7 +224,8 @@ impl Config {
     /// on `Cmd+'`, and the next repos on `Cmd+[` / `Cmd+]` / `Cmd+\`.
     ///
     /// Idempotent and side-effect-light:
-    /// - Runs only on macOS (the only platform with the global launch hotkeys).
+    /// - Runs only on platforms with global launch hotkeys (macOS, Linux,
+    ///   Windows).
     /// - No-ops once `launch_hotkeys.imported` is set, so it bakes exactly once
     ///   and never overwrites later manual edits.
     /// - No-ops when there are not at least two rankable repos, so we do not
@@ -234,7 +235,7 @@ impl Config {
     /// Returns `true` when it wrote a baked mapping (so the caller can trigger a
     /// hotkey reinstall), `false` otherwise. Best-effort: errors are logged and
     /// swallowed.
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     pub fn bake_launch_hotkeys_once() -> bool {
         use jcode_import_core::repo_ranking;
 
@@ -319,7 +320,7 @@ impl Config {
     }
 
     /// No-op bake on platforms without global launch hotkeys.
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     pub fn bake_launch_hotkeys_once() -> bool {
         false
     }
