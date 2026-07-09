@@ -1679,6 +1679,11 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
+    if trimmed == "/active" {
+        app.open_active_sessions_picker();
+        return true;
+    }
+
     if let Some(command) = parse_plan_command(trimmed) {
         handle_plan_command_local(app, command);
         return true;

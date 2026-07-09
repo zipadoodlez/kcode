@@ -38,6 +38,10 @@ pub enum SessionFilterMode {
     All,
     CatchUp,
     Saved,
+    /// Sessions with a live process right now (from the active-pid registry),
+    /// annotated with whether each is still streaming a response or is ready
+    /// for input. Backs the opt-in "active sessions manager" view.
+    Active,
     ClaudeCode,
     Codex,
     Pi,
@@ -54,7 +58,8 @@ impl SessionFilterMode {
         match self {
             Self::All => Self::CatchUp,
             Self::CatchUp => Self::Saved,
-            Self::Saved => Self::ClaudeCode,
+            Self::Saved => Self::Active,
+            Self::Active => Self::ClaudeCode,
             Self::ClaudeCode => Self::Codex,
             Self::Codex => Self::Pi,
             Self::Pi => Self::OpenCode,
@@ -71,7 +76,8 @@ impl SessionFilterMode {
             Self::All => Self::Cursor,
             Self::CatchUp => Self::All,
             Self::Saved => Self::CatchUp,
-            Self::ClaudeCode => Self::Saved,
+            Self::Active => Self::Saved,
+            Self::ClaudeCode => Self::Active,
             Self::Codex => Self::ClaudeCode,
             Self::Pi => Self::Codex,
             Self::OpenCode => Self::Pi,
@@ -85,6 +91,7 @@ impl SessionFilterMode {
             Self::All => None,
             Self::CatchUp => Some("⏭ catch up"),
             Self::Saved => Some("📌 saved"),
+            Self::Active => Some("⚡ active"),
             Self::ClaudeCode => Some("🧵 Claude Code"),
             Self::Codex => Some("🧠 Codex"),
             Self::Pi => Some("π Pi"),

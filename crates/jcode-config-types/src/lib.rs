@@ -1027,6 +1027,12 @@ pub struct DisplayConfig {
     /// adapts jcode's palette for light backgrounds. Default: auto.
     #[serde(default)]
     pub theme: String,
+    /// Opt-in active sessions manager: pressing Left arrow on an empty input
+    /// opens a picker scoped to live (open) sessions, showing which are still
+    /// working and which are ready for input (default: false). The `/active`
+    /// command works regardless of this setting.
+    #[serde(default)]
+    pub active_sessions_manager: bool,
 }
 
 impl Default for DisplayConfig {
@@ -1058,6 +1064,7 @@ impl Default for DisplayConfig {
             native_scrollbars: NativeScrollbarConfig::default(),
             keybinding_hints: true,
             theme: String::new(),
+            active_sessions_manager: false,
         }
     }
 }

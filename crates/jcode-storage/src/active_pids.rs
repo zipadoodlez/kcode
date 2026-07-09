@@ -143,6 +143,9 @@ pub struct SessionPresence {
     pub pid: u32,
     /// Whether the session is actively streaming a model response right now.
     pub streaming: bool,
+    /// When the current streaming turn started (streaming marker mtime), if
+    /// the session is streaming. Lets presence UIs show "working for 2m".
+    pub streaming_since: Option<std::time::SystemTime>,
 }
 
 /// Snapshot per-session presence by scanning the active-pid registry and
@@ -173,17 +176,27 @@ pub fn session_presence() -> Vec<SessionPresence> {
             continue;
         }
 
-        let streaming = streaming_dir.as_ref().is_some_and(|dir| {
-            std::fs::read_to_string(dir.join(&session_id))
+        let marker_path = streaming_dir.as_ref().map(|dir| dir.join(&session_id));
+        let streaming = marker_path.as_ref().is_some_and(|marker| {
+            std::fs::read_to_string(marker)
                 .ok()
                 .and_then(|raw| raw.trim().parse::<u32>().ok())
                 .is_some_and(process_is_running)
         });
+        let streaming_since = if streaming {
+            marker_path
+                .as_ref()
+                .and_then(|marker| std::fs::metadata(marker).ok())
+                .and_then(|meta| meta.modified().ok())
+        } else {
+            None
+        };
 
         sessions.push(SessionPresence {
             session_id,
             pid,
             streaming,
+            streaming_since,
         });
     }
 

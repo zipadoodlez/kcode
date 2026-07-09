@@ -374,6 +374,9 @@ pub(super) enum SessionPickerMode {
     #[default]
     Resume,
     CatchUp,
+    /// Opt-in active sessions manager: the picker scoped to live (open)
+    /// sessions, showing which are still working vs ready for input.
+    ActiveSessions,
     /// First-run onboarding "continue where you left off" single-select picker.
     Onboarding {
         cli: onboarding_flow::ExternalCli,

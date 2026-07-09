@@ -150,6 +150,39 @@ fn slash_session_alias_opens_session_picker_overlay_locally() {
 }
 
 #[test]
+fn slash_active_opens_active_sessions_picker_locally() {
+    let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+    let _guard = runtime.enter();
+    let mut app = create_test_app();
+
+    app.input = "/active".to_string();
+    app.submit_input();
+
+    assert!(app.session_picker_overlay.is_some());
+    assert_eq!(app.session_picker_mode, SessionPickerMode::ActiveSessions);
+    assert!(app.pending_session_picker_load.is_some());
+    assert!(app.input.is_empty());
+}
+
+#[test]
+fn left_arrow_on_empty_input_is_a_noop_unless_opted_in() {
+    let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+    let _guard = runtime.enter();
+    let mut app = create_test_app();
+
+    // Default config: the active sessions manager gesture is opt-in, so Left
+    // on an empty input must not open any overlay.
+    assert!(!app.maybe_open_active_sessions_on_left());
+    assert!(app.session_picker_overlay.is_none());
+
+    // With text in the input the gesture never fires regardless of config.
+    app.input = "hello".to_string();
+    app.cursor_pos = 0;
+    assert!(!app.maybe_open_active_sessions_on_left());
+    assert!(app.session_picker_overlay.is_none());
+}
+
+#[test]
 fn test_resize_redraw_is_debounced() {
     let mut app = create_test_app();
 

@@ -840,6 +840,10 @@ async fn handle_remote_key_internal(
         KeyCode::Left => {
             if app.cursor_pos > 0 {
                 app.cursor_pos = core::prev_char_boundary(&app.input, app.cursor_pos);
+            } else {
+                // Opt-in: Left on an empty input opens the active sessions
+                // manager (no-op unless display.active_sessions_manager).
+                app.maybe_open_active_sessions_on_left();
             }
         }
         KeyCode::Right => {
@@ -1754,6 +1758,11 @@ async fn handle_remote_key_internal(
                     app.record_keybinding_slow(
                         crate::tui::app::shortcut_hints::LearnableAction::Resume,
                     );
+                    return Ok(());
+                }
+
+                if trimmed == "/active" {
+                    app.open_active_sessions_picker();
                     return Ok(());
                 }
 

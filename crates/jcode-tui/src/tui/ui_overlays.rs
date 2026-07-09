@@ -313,6 +313,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(help_entry("/resume", "Browse and resume previous sessions"));
     lines.push(help_entry(
+        "/active",
+        "Manage live sessions: see which are working vs ready",
+    ));
+    lines.push(help_entry(
         "/catchup [next]",
         "Jump into finished sessions with a side-panel brief",
     ));

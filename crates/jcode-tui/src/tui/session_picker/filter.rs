@@ -73,7 +73,7 @@ impl SessionPicker {
             .filter(|session_ref| {
                 self.session_by_ref(*session_ref).is_some_and(|session| {
                     (show_test || !session.is_debug)
-                        && Self::session_matches_filter_mode(session, filter_mode)
+                        && self.session_matches_filter_mode(session, filter_mode)
                 })
             })
             .collect::<Vec<_>>();
@@ -89,6 +89,16 @@ impl SessionPicker {
                 .unwrap_or_default();
             b.cmp(&a)
         });
+        if filter_mode == SessionFilterMode::Active {
+            // Triage order for the active sessions manager: sessions that are
+            // ready for input (done streaming) float above ones still working,
+            // each group keeping the recency order from the sort above.
+            filtered.sort_by_key(|session_ref| {
+                self.session_by_ref(*session_ref)
+                    .map(|session| self.session_is_streaming(session))
+                    .unwrap_or(false)
+            });
+        }
         filtered
     }
 
@@ -104,7 +114,7 @@ impl SessionPicker {
         refs.iter()
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
             .filter(|session| {
-                session.is_debug && Self::session_matches_filter_mode(session, filter_mode)
+                session.is_debug && self.session_matches_filter_mode(session, filter_mode)
             })
             .count()
     }
@@ -144,11 +154,16 @@ impl SessionPicker {
         jcode_tui_session_picker::session_is_cursor(session.source, session.provider_key.as_deref())
     }
 
-    fn session_matches_filter_mode(session: &SessionInfo, filter_mode: SessionFilterMode) -> bool {
+    fn session_matches_filter_mode(
+        &self,
+        session: &SessionInfo,
+        filter_mode: SessionFilterMode,
+    ) -> bool {
         match filter_mode {
             SessionFilterMode::All => true,
             SessionFilterMode::CatchUp => session.needs_catchup,
             SessionFilterMode::Saved => session.saved,
+            SessionFilterMode::Active => self.session_is_live(session),
             SessionFilterMode::ClaudeCode => Self::session_is_claude_code(session),
             SessionFilterMode::Codex => Self::session_is_codex(session),
             SessionFilterMode::Pi => Self::session_is_pi(session),
@@ -360,11 +375,17 @@ impl SessionPicker {
 
     pub(super) fn cycle_filter_mode(&mut self) {
         self.filter_mode = self.filter_mode.next();
+        if self.filter_mode == SessionFilterMode::Active {
+            self.refresh_live_presence();
+        }
         self.rebuild_items();
     }
 
     pub(super) fn cycle_filter_mode_backwards(&mut self) {
         self.filter_mode = self.filter_mode.previous();
+        if self.filter_mode == SessionFilterMode::Active {
+            self.refresh_live_presence();
+        }
         self.rebuild_items();
     }
 }

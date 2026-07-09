@@ -154,6 +154,7 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::public("/resume", "Open session picker"),
     RegisteredCommand::public("/sessions", "Alias for /resume"),
     RegisteredCommand::public("/session", "Alias for /resume"),
+    RegisteredCommand::public("/active", "Manage live sessions (working vs ready)"),
     RegisteredCommand::public("/catchup", "Open Catch Up picker"),
     RegisteredCommand::public("/back", "Return to the previous Catch Up session"),
     RegisteredCommand::public("/save", "Bookmark session for easy access"),

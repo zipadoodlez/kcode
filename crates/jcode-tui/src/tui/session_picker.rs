@@ -120,6 +120,19 @@ fn format_time_ago(time: chrono::DateTime<chrono::Utc>) -> String {
     format!("{}mo ago", days / 30)
 }
 
+/// Compact duration for the "working Ns" badge in the Active view.
+fn format_short_duration(duration: std::time::Duration) -> String {
+    let secs = duration.as_secs();
+    if secs < 60 {
+        return format!("{}s", secs);
+    }
+    let minutes = secs / 60;
+    if minutes < 60 {
+        return format!("{}m", minutes);
+    }
+    format!("{}h{}m", minutes / 60, minutes % 60)
+}
+
 /// Which pane has keyboard focus
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaneFocus {
@@ -132,6 +145,10 @@ enum PaneFocus {
 const PREVIEW_SCROLL_STEP: u16 = 3;
 const PREVIEW_PAGE_SCROLL: u16 = PREVIEW_SCROLL_STEP * 3;
 const SESSION_PAGE_STEP_COUNT: usize = 3;
+
+/// How often the Active view re-snapshots live presence (which sessions are
+/// still working vs ready) while it is on screen.
+const LIVE_PRESENCE_REFRESH_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Interactive session picker
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -256,6 +273,16 @@ pub struct SessionPicker {
     /// matches this are highlighted so the user can quickly spot sessions from
     /// the same project they are currently in.
     current_dir: Option<String>,
+    /// Live process presence keyed by session ID (active-pid registry snapshot).
+    /// Drives the working/ready badges in the list and the Active filter
+    /// membership. Refreshed on load/reseed and periodically while the Active
+    /// view is on screen.
+    live_presence: std::collections::HashMap<String, crate::session::SessionPresence>,
+    /// When `live_presence` was last snapshotted (throttles periodic refresh).
+    live_presence_refreshed_at: Option<std::time::Instant>,
+    /// ID of the session the picker was opened from, labeled "current" in the
+    /// list so the user can orient themselves in the Active view.
+    current_session_id: Option<String>,
 }
 
 impl SessionPicker {
@@ -300,7 +327,11 @@ impl SessionPicker {
             onboarding_start_new_highlighted: false,
             preview_cache: None,
             current_dir: None,
+            live_presence: std::collections::HashMap::new(),
+            live_presence_refreshed_at: None,
+            current_session_id: None,
         };
+        picker.refresh_live_presence();
         picker.rebuild_items();
         picker
     }
@@ -340,6 +371,9 @@ impl SessionPicker {
             onboarding_start_new_highlighted: false,
             preview_cache: None,
             current_dir: None,
+            live_presence: std::collections::HashMap::new(),
+            live_presence_refreshed_at: None,
+            current_session_id: None,
         }
     }
 
@@ -413,7 +447,11 @@ impl SessionPicker {
             onboarding_start_new_highlighted: false,
             preview_cache: None,
             current_dir: None,
+            live_presence: std::collections::HashMap::new(),
+            live_presence_refreshed_at: None,
+            current_session_id: None,
         };
+        picker.refresh_live_presence();
         picker.rebuild_items();
         picker
     }
@@ -436,6 +474,97 @@ impl SessionPicker {
             (Some(current), Some(dir)) => normalize_dir(dir) == current,
             _ => false,
         }
+    }
+
+    /// Record the session the picker was opened from so it can be labeled in
+    /// the list (most useful in the Active view).
+    pub fn set_current_session_id(&mut self, session_id: Option<String>) {
+        self.current_session_id = session_id;
+    }
+
+    /// Whether this entry is the session the picker was opened from.
+    pub(super) fn session_is_current(&self, session: &SessionInfo) -> bool {
+        self.current_session_id.as_deref() == Some(session.id.as_str())
+    }
+
+    /// Switch to the Active (live sessions) view: snapshot presence and filter
+    /// the list down to sessions with a running process.
+    pub fn activate_active_filter(&mut self) {
+        self.filter_mode = SessionFilterMode::Active;
+        self.refresh_live_presence();
+        self.rebuild_items();
+    }
+
+    /// Snapshot the active-pid registry + streaming markers into the picker.
+    pub(super) fn refresh_live_presence(&mut self) {
+        self.live_presence = crate::session::session_presence()
+            .into_iter()
+            .map(|presence| (presence.session_id.clone(), presence))
+            .collect();
+        self.live_presence_refreshed_at = Some(std::time::Instant::now());
+    }
+
+    /// Periodically re-snapshot live presence while the picker is on screen so
+    /// working/ready badges track reality. Rebuilds the list when the Active
+    /// view is showing and membership or streaming state changed (a session
+    /// finished its turn, went idle, or exited). Returns true when anything
+    /// changed so callers can redraw.
+    pub fn maybe_refresh_live_presence(&mut self) -> bool {
+        if self.loading_message.is_some() {
+            return false;
+        }
+        let due = self
+            .live_presence_refreshed_at
+            .is_none_or(|at| at.elapsed() >= LIVE_PRESENCE_REFRESH_INTERVAL);
+        if !due {
+            return false;
+        }
+        let before = std::mem::take(&mut self.live_presence);
+        self.refresh_live_presence();
+        let changed = before != self.live_presence;
+        if changed && self.filter_mode == SessionFilterMode::Active {
+            self.rebuild_items();
+        }
+        changed
+    }
+
+    /// Whether the session has a live process right now.
+    pub(super) fn session_is_live(&self, session: &SessionInfo) -> bool {
+        self.live_presence.contains_key(&session.id)
+    }
+
+    /// Whether the session's live process is streaming a model response.
+    pub(super) fn session_is_streaming(&self, session: &SessionInfo) -> bool {
+        self.live_presence
+            .get(&session.id)
+            .is_some_and(|presence| presence.streaming)
+    }
+
+    /// How long the session's current streaming turn has been running.
+    pub(super) fn session_streaming_duration(
+        &self,
+        session: &SessionInfo,
+    ) -> Option<std::time::Duration> {
+        self.live_presence
+            .get(&session.id)
+            .and_then(|presence| presence.streaming_since)
+            .and_then(|since| std::time::SystemTime::now().duration_since(since).ok())
+    }
+
+    /// Test-only: inject a synthetic live-presence snapshot so Active-view
+    /// behavior can be exercised without real processes. Marks the snapshot as
+    /// just-refreshed so the periodic refresh does not immediately overwrite it.
+    #[cfg(test)]
+    pub(crate) fn set_live_presence_for_test(
+        &mut self,
+        presences: Vec<crate::session::SessionPresence>,
+    ) {
+        self.live_presence = presences
+            .into_iter()
+            .map(|presence| (presence.session_id.clone(), presence))
+            .collect();
+        self.live_presence_refreshed_at = Some(std::time::Instant::now());
+        self.rebuild_items();
     }
 
     /// Replace the backing session data in place while preserving the user's
@@ -500,6 +629,7 @@ impl SessionPicker {
         self.visible_sessions.clear();
         self.item_to_session.clear();
 
+        self.refresh_live_presence();
         self.rebuild_items();
 
         // Restore the highlighted session by id (not index) so it follows the
@@ -698,8 +828,8 @@ impl SessionPicker {
         self.item_to_session.push(Some(session_idx));
     }
 
-    #[cfg(test)]
-    fn visible_session_iter(&self) -> impl Iterator<Item = &SessionInfo> + '_ {
+    /// Iterate the sessions currently visible in the list (post filter/search).
+    pub(super) fn visible_session_iter(&self) -> impl Iterator<Item = &SessionInfo> + '_ {
         self.visible_sessions
             .iter()
             .filter_map(|session_ref| self.session_by_ref(*session_ref))
@@ -2046,6 +2176,8 @@ impl SessionPicker {
         }
 
         let result = loop {
+            // Keep live working/ready badges current while the picker idles.
+            self.maybe_refresh_live_presence();
             terminal.draw(|frame| {
                 self.render(frame);
                 // Standalone picker loop bypasses `ui::draw`; adapt for light

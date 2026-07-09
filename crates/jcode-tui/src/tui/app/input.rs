@@ -1977,6 +1977,10 @@ pub(super) fn handle_basic_key(app: &mut App, code: KeyCode) -> bool {
         KeyCode::Left => {
             if app.cursor_pos > 0 {
                 app.cursor_pos = crate::tui::core::prev_char_boundary(&app.input, app.cursor_pos);
+            } else {
+                // Opt-in: Left on an empty input opens the active sessions
+                // manager (no-op unless display.active_sessions_manager).
+                app.maybe_open_active_sessions_on_left();
             }
             true
         }

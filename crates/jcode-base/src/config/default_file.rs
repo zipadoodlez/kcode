@@ -169,6 +169,12 @@ prompt_entry_animation = true
 # its configured shortcut. Set false to disable all such hints (default: true).
 # keybinding_hints = true
 
+# Active sessions manager: pressing Left arrow on an empty input opens a
+# picker scoped to live (open) sessions, showing which are still working on a
+# response and which are ready for input (default: false). The /active
+# command is always available regardless of this setting.
+# active_sessions_manager = false
+
 # Disable specific animation variants by name.
 # Examples: ["donut"] or ["donut", "orbit_rings"]
 # Legacy aliases such as "three_rings" and "gyroscope" are still accepted.

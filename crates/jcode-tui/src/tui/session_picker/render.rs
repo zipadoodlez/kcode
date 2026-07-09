@@ -193,18 +193,41 @@ impl SessionPicker {
         };
 
         let time_ago = format_time_ago(session.last_message_time);
-        let (status_icon, status_color, time_label) = match &session.status {
-            SessionStatus::Active => ("▶", rgb(100, 200, 100), "active".to_string()),
-            SessionStatus::Closed => ("✓", dim, format!("closed {}", time_ago)),
-            SessionStatus::Crashed { .. } => {
-                ("💥", rgb(220, 100, 100), format!("crashed {}", time_ago))
+        // Live presence (a running process owns this session) takes precedence
+        // over the persisted snapshot status: it distinguishes sessions still
+        // working on a response from ones ready for input, which the stored
+        // `SessionStatus::Active` alone cannot.
+        let is_current = self.session_is_current(session);
+        let live_badge = if self.session_is_live(session) {
+            if self.session_is_streaming(session) {
+                let label = match self.session_streaming_duration(session) {
+                    Some(elapsed) => format!("working {}", format_short_duration(elapsed)),
+                    None => "working".to_string(),
+                };
+                Some(("⚡", rgb(255, 193, 7), label))
+            } else {
+                Some(("●", rgb(100, 220, 130), "ready".to_string()))
             }
-            SessionStatus::Reloaded => ("🔄", user_clr, format!("reloaded {}", time_ago)),
-            SessionStatus::Compacted => ("📦", rgb(255, 193, 7), format!("compacted {}", time_ago)),
-            SessionStatus::RateLimited => ("⏳", accent, format!("rate-limited {}", time_ago)),
-            SessionStatus::Error { .. } => {
-                ("❌", rgb(220, 100, 100), format!("errored {}", time_ago))
-            }
+        } else {
+            None
+        };
+        let (status_icon, status_color, time_label) = match live_badge {
+            Some(badge) => badge,
+            None => match &session.status {
+                SessionStatus::Active => ("▶", rgb(100, 200, 100), "active".to_string()),
+                SessionStatus::Closed => ("✓", dim, format!("closed {}", time_ago)),
+                SessionStatus::Crashed { .. } => {
+                    ("💥", rgb(220, 100, 100), format!("crashed {}", time_ago))
+                }
+                SessionStatus::Reloaded => ("🔄", user_clr, format!("reloaded {}", time_ago)),
+                SessionStatus::Compacted => {
+                    ("📦", rgb(255, 193, 7), format!("compacted {}", time_ago))
+                }
+                SessionStatus::RateLimited => ("⏳", accent, format!("rate-limited {}", time_ago)),
+                SessionStatus::Error { .. } => {
+                    ("❌", rgb(220, 100, 100), format!("errored {}", time_ago))
+                }
+            },
         };
 
         let primary_title = Self::primary_title_display(session);
@@ -249,6 +272,14 @@ impl SessionPicker {
                 "  [BATCH]",
                 Style::default()
                     .fg(batch_restore)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+        if is_current {
+            line1_spans.push(Span::styled(
+                "  ◀ current",
+                Style::default()
+                    .fg(rgb(110, 210, 255))
                     .add_modifier(Modifier::BOLD),
             ));
         }
@@ -393,6 +424,21 @@ impl SessionPicker {
                     Style::default().fg(dim),
                 )])),
             ]
+        } else if self.items.is_empty()
+            && self.filter_mode == jcode_tui_session_picker::SessionFilterMode::Active
+        {
+            vec![
+                ListItem::new(Line::from(vec![Span::styled(
+                    "  No other active sessions",
+                    Style::default()
+                        .fg(rgb(220, 220, 220))
+                        .add_modifier(Modifier::BOLD),
+                )])),
+                ListItem::new(Line::from(vec![Span::styled(
+                    "     s cycles to all sessions · Esc closes",
+                    Style::default().fg(dim),
+                )])),
+            ]
         } else {
             self.items
                 .iter()
@@ -478,6 +524,34 @@ impl SessionPicker {
                 Style::default()
                     .fg(rgb(255, 200, 100))
                     .add_modifier(Modifier::BOLD),
+            ));
+        } else if self.filter_mode == jcode_tui_session_picker::SessionFilterMode::Active {
+            // The Active view breaks the count down into "still working" vs
+            // "ready for input" so the user can triage at a glance. Counts are
+            // derived from the visible rows so search/debug filters stay honest.
+            let (working, ready) =
+                self.visible_session_iter()
+                    .fold((0usize, 0usize), |(working, ready), session| {
+                        if self.session_is_streaming(session) {
+                            (working + 1, ready)
+                        } else {
+                            (working, ready + 1)
+                        }
+                    });
+            title_parts.push(Span::styled(
+                format!(" {} active ", working + ready),
+                Style::default()
+                    .fg(rgb(200, 200, 200))
+                    .add_modifier(Modifier::BOLD),
+            ));
+            title_parts.push(Span::styled(
+                format!("⚡{} working", working),
+                Style::default().fg(rgb(255, 193, 7)),
+            ));
+            title_parts.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 80))));
+            title_parts.push(Span::styled(
+                format!("●{} ready", ready),
+                Style::default().fg(rgb(100, 220, 130)),
             ));
         } else {
             title_parts.push(Span::styled(
