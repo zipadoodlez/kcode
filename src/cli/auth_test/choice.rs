@@ -50,6 +50,14 @@ pub(crate) fn tool_smoke_skip_detail_for_choice(
     choice: &super::provider_init::ProviderChoice,
     model: Option<&str>,
 ) -> Option<String> {
+    if matches!(choice, super::provider_init::ProviderChoice::Cursor) {
+        return Some(
+            "Skipped: the Cursor native agent transport is text-only in jcode (it does not expose \
+             tool calls over agent.v1.AgentService/Run). Basic provider smoke still validates chat."
+                .to_string(),
+        );
+    }
+
     if matches!(choice, super::provider_init::ProviderChoice::Fpt) {
         let model = effective_openai_compatible_auth_test_model(
             crate::provider_catalog::FPT_PROFILE,
