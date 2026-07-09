@@ -1,0 +1,17 @@
+{
+  "version": "0.38.0",
+  "date": "2026-07-09",
+  "title": "Light terminal theme support and goal-level todo scoring",
+  "highlights": [
+    "The TUI detects light terminal backgrounds and adapts its colors automatically, with a config override for manual control",
+    "Todos now carry goal-level hill-climbability scores with measurable objectives, and the agent is nudged to reframe taste-driven goals honestly instead of inventing proxy metrics"
+  ],
+  "improvements": [
+    "New Anthropic models get optimistic reasoning-cap defaults instead of being pinned to conservative limits",
+    "The todo card hotkey default moved from Alt+P to Alt+X to avoid conflicts"
+  ],
+  "fixes": [
+    "Reasoning effort is passed correctly for GPT-family models on OpenAI-compatible gateways",
+    "Phantom OpenRouter routes that pointed at unavailable models are no longer offered"
+  ]
+}
