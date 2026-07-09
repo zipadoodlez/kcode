@@ -3832,8 +3832,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bytes",
  "chrono",
  "flate2",
+ "h2 0.4.13",
+ "http 1.4.0",
  "jcode-base",
  "jcode-message-types",
  "jcode-provider-core",
@@ -3842,8 +3845,10 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-rustls 0.26.4",
  "tokio-stream",
  "uuid",
+ "webpki-roots",
 ]
 
 [[package]]

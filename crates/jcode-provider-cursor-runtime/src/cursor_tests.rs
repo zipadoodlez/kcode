@@ -111,13 +111,3 @@ fn runtime_cursor_api_key_reads_env() {
     }
 }
 
-#[test]
-fn think_router_splits_reasoning_and_text() {
-    let mut router = ThinkRouter::default();
-    let events = router.push_chunk("hello<think>secret</think>world");
-    assert!(matches!(events[0], StreamEvent::TextDelta(_)));
-    assert!(matches!(events[1], StreamEvent::ThinkingStart));
-    assert!(matches!(events[2], StreamEvent::ThinkingDelta(_)));
-    assert!(matches!(events[3], StreamEvent::ThinkingEnd));
-    assert!(matches!(events[4], StreamEvent::TextDelta(_)));
-}
