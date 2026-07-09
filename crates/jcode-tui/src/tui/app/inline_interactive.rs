@@ -92,6 +92,61 @@ fn route_supports_reasoning_effort(api_method: &str) -> bool {
     }
 }
 
+/// Apply the `provider.model_picker_providers` allowlist (issue #460).
+///
+/// Each allowlist entry can name a provider label ("openai", "llama.cpp",
+/// "anthropic"), a route api method ("claude-oauth", "openrouter",
+/// "openai-compatible:myprofile"), or a bare openai-compatible profile id
+/// ("myprofile"). Matching is case/format-insensitive via the shared provider
+/// label normalizer. Routes for the active model are always kept so the
+/// current selection never disappears from the picker, and a filter that
+/// matches nothing falls back to the unfiltered list instead of an empty
+/// picker.
+fn filter_routes_by_provider_allowlist(
+    routes: Vec<crate::provider::ModelRoute>,
+    allowlist: Option<&[String]>,
+    current_model: &str,
+) -> Vec<crate::provider::ModelRoute> {
+    use crate::provider::normalize_model_route_provider_label as normalize;
+
+    let Some(allowlist) = allowlist else {
+        return routes;
+    };
+    let allowed: Vec<String> = allowlist
+        .iter()
+        .map(|entry| normalize(entry))
+        .filter(|entry| !entry.is_empty())
+        .collect();
+    if allowed.is_empty() {
+        return routes;
+    }
+
+    let route_matches = |route: &crate::provider::ModelRoute| -> bool {
+        let provider = normalize(&route.provider);
+        let api_method = normalize(&route.api_method);
+        // "openai-compatible:myprofile" normalizes to "openaicompatible:myprofile";
+        // also expose the bare profile id for convenience.
+        let profile_id = route
+            .api_method
+            .split_once(':')
+            .map(|(_, profile)| normalize(profile))
+            .unwrap_or_default();
+        allowed.iter().any(|entry| {
+            *entry == provider
+                || *entry == api_method
+                || (!profile_id.is_empty() && *entry == profile_id)
+                || crate::provider::model_route_provider_labels_match(&route.provider, entry)
+        })
+    };
+
+    let filtered: Vec<crate::provider::ModelRoute> = routes
+        .iter()
+        .filter(|route| route.model == current_model || route_matches(route))
+        .cloned()
+        .collect();
+    if filtered.is_empty() { routes } else { filtered }
+}
+
 fn model_picker_usage_key(model_name: &str, route: &PickerOption, effort: Option<&str>) -> String {
     format!(
         "{}\u{1f}{}\u{1f}{}\u{1f}{}",
@@ -978,6 +1033,11 @@ impl App {
             routes
         };
         let routes = crate::provider::dedupe_model_routes(routes);
+        let routes = filter_routes_by_provider_allowlist(
+            routes,
+            config.provider.model_picker_providers.as_deref(),
+            &current_model,
+        );
 
         if routes.is_empty() {
             self.inline_interactive_state = None;
@@ -3120,9 +3180,10 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::{
-        RemoteModelCatalogCache, key_char_eq_ignore_ascii_case, model_picker_route_is_current,
+        RemoteModelCatalogCache, filter_routes_by_provider_allowlist,
+        key_char_eq_ignore_ascii_case, model_picker_route_is_current,
         model_picker_route_is_default, model_picker_route_is_recommended,
-        picker_is_runtime_model_picker,
+        picker_is_runtime_model_picker, route_supports_reasoning_effort,
     };
     use crate::tui::{
         AgentModelTarget, App, InlineInteractiveState, PickerAction, PickerEntry, PickerKind,
@@ -3454,5 +3515,108 @@ mod tests {
         let serialized = serde_json::to_value(&cache).expect("cache should serialize");
         assert_eq!(serialized["provider_name"], "OpenAI");
         assert!(serialized.get("snapshot").is_none());
+    }
+
+    fn model_route(model: &str, provider: &str, api_method: &str) -> crate::provider::ModelRoute {
+        crate::provider::ModelRoute {
+            model: model.to_string(),
+            provider: provider.to_string(),
+            api_method: api_method.to_string(),
+            available: true,
+            detail: String::new(),
+            cheapness: None,
+        }
+    }
+
+    #[test]
+    fn route_effort_support_covers_effort_capable_runtimes_only() {
+        assert!(route_supports_reasoning_effort("claude-oauth"));
+        assert!(route_supports_reasoning_effort("claude-api"));
+        assert!(route_supports_reasoning_effort("openai-oauth"));
+        assert!(route_supports_reasoning_effort("openai-api-key"));
+        assert!(route_supports_reasoning_effort("openrouter"));
+
+        assert!(!route_supports_reasoning_effort("copilot"));
+        assert!(!route_supports_reasoning_effort("bedrock"));
+        assert!(!route_supports_reasoning_effort("https"));
+        assert!(!route_supports_reasoning_effort("openai-compatible:llamacpp"));
+        assert!(!route_supports_reasoning_effort("remote-catalog"));
+        assert!(!route_supports_reasoning_effort("current"));
+    }
+
+    #[test]
+    fn provider_allowlist_filters_routes_by_label_method_and_profile() {
+        let routes = vec![
+            model_route("gpt-5.5", "OpenAI", "openai-oauth"),
+            model_route("claude-fable-5", "Anthropic", "claude-oauth"),
+            model_route("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
+            model_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
+        ];
+
+        // Provider label match (normalized: case/dots/spaces insensitive).
+        let filtered = filter_routes_by_provider_allowlist(
+            routes.clone(),
+            Some(&["Llama.CPP".to_string()]),
+            "unrelated-current",
+        );
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].model, "qwen3-coder");
+
+        // Bare openai-compatible profile id match.
+        let filtered = filter_routes_by_provider_allowlist(
+            routes.clone(),
+            Some(&["llamacpp".to_string()]),
+            "unrelated-current",
+        );
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].provider, "llama.cpp");
+
+        // Api-method match plus alias-aware provider label match.
+        let filtered = filter_routes_by_provider_allowlist(
+            routes.clone(),
+            Some(&["claude-oauth".to_string(), "openrouter".to_string()]),
+            "unrelated-current",
+        );
+        let models: Vec<&str> = filtered.iter().map(|r| r.model.as_str()).collect();
+        assert_eq!(models, ["claude-fable-5", "deepseek/deepseek-v4-pro"]);
+    }
+
+    #[test]
+    fn provider_allowlist_keeps_current_model_and_never_empties_picker() {
+        let routes = vec![
+            model_route("gpt-5.5", "OpenAI", "openai-oauth"),
+            model_route("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
+        ];
+
+        // Current model's route survives even when its provider is filtered out.
+        let filtered = filter_routes_by_provider_allowlist(
+            routes.clone(),
+            Some(&["llamacpp".to_string()]),
+            "gpt-5.5",
+        );
+        let models: Vec<&str> = filtered.iter().map(|r| r.model.as_str()).collect();
+        assert_eq!(models, ["gpt-5.5", "qwen3-coder"]);
+
+        // A filter matching nothing falls back to the full list.
+        let filtered = filter_routes_by_provider_allowlist(
+            routes.clone(),
+            Some(&["nonexistent".to_string()]),
+            "unrelated-current",
+        );
+        assert_eq!(filtered.len(), routes.len());
+
+        // None / empty / blank-entry allowlists are no-ops.
+        assert_eq!(
+            filter_routes_by_provider_allowlist(routes.clone(), None, "x").len(),
+            2
+        );
+        assert_eq!(
+            filter_routes_by_provider_allowlist(routes.clone(), Some(&[]), "x").len(),
+            2
+        );
+        assert_eq!(
+            filter_routes_by_provider_allowlist(routes, Some(&["  ".to_string()]), "x").len(),
+            2
+        );
     }
 }
