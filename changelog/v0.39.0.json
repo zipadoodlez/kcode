@@ -1,0 +1,16 @@
+{
+  "version": "0.39.0",
+  "date": "2026-07-09",
+  "title": "Cursor provider restored, active sessions manager, and cross-desktop launch hotkeys",
+  "highlights": [
+    "The Cursor provider works again: jcode now talks to Cursor's current agent service directly instead of a decommissioned endpoint that failed with \"Update Required\" errors",
+    "New active sessions manager (/active, or Left on an empty prompt when enabled) shows your live sessions with 'working'/'ready' badges so you can see which ones need attention"
+  ],
+  "improvements": [
+    "Launch hotkey setup now covers GNOME, KDE Plasma, Cinnamon, MATE, XFCE, bspwm, Hyprland, sway, and i3 on Linux, plus config-driven hotkeys on Windows",
+    "The active sessions view refreshes live presence every couple of seconds and labels the session you opened it from"
+  ],
+  "fixes": [
+    "Cursor chat no longer fails with resource-exhausted / payment-required errors caused by the retired ChatService endpoint"
+  ]
+}
