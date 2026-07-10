@@ -2285,6 +2285,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.replace_remote_model_catalog_snapshot(model_catalog_snapshot);
             app.remote_model_catalog_generation =
                 app.remote_model_catalog_generation.saturating_add(1);
+            app.finish_auth_catalog_refresh();
             app.persist_remote_model_catalog_cache();
             if provider_meta_changed {
                 app.update_terminal_title();

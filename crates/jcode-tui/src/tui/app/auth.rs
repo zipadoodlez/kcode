@@ -2383,7 +2383,7 @@ impl App {
         }
     }
 
-    fn trigger_provider_auth_changed(&self) {
+    fn trigger_provider_auth_changed(&mut self) {
         crate::logging::auth_event(
             "auth_changed_triggered",
             self.provider.name(),
@@ -2400,9 +2400,14 @@ impl App {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 provider.on_auth_changed();
+                // Hot provider initialization is complete even if live catalog
+                // prefetches are still running. Wake the picker now so it can use
+                // the newly available routes instead of the pre-login snapshot.
+                crate::bus::Bus::global().publish(crate::bus::BusEvent::AuthCatalogRefreshReady);
             });
         } else {
             provider.on_auth_changed();
+            self.finish_auth_catalog_refresh();
         }
     }
 
@@ -2722,6 +2727,7 @@ impl App {
             // A fresh login is exactly what the credential-failure breaker is
             // waiting for: give automatic retries a fresh budget.
             self.reset_credential_failure_breaker();
+            self.auth_catalog_refresh_pending = true;
             self.invalidate_model_picker_cache();
             let suppress_first_run_login_noise =
                 self.onboarding_flow_active() && !matches!(login.provider.as_str(), "copilot_code");

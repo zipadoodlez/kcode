@@ -720,6 +720,23 @@ impl App {
         self.open_model_picker_inner(true);
     }
 
+    /// Apply a completed auth-driven catalog refresh to an already-open picker.
+    /// Login/import can finish while `/model` is visible, so merely invalidating
+    /// its cache would leave the stale pre-login entries on screen until the user
+    /// closed and reopened it.
+    pub(super) fn finish_auth_catalog_refresh(&mut self) {
+        let was_pending = self.auth_catalog_refresh_pending;
+        self.auth_catalog_refresh_pending = false;
+        self.invalidate_model_picker_cache();
+        let picker_open = self
+            .inline_interactive_state
+            .as_ref()
+            .is_some_and(picker_is_runtime_model_picker);
+        if was_pending && picker_open {
+            self.open_model_picker_preserving_input();
+        }
+    }
+
     fn open_model_picker_inner(&mut self, preserve_input: bool) {
         let picker_started = std::time::Instant::now();
         const RECENT_AUTH_BOOST_TTL: std::time::Duration = std::time::Duration::from_secs(5 * 60);
@@ -744,6 +761,15 @@ impl App {
         } else {
             self.provider.model().to_string()
         };
+
+        // Never present the old catalog as authoritative immediately after a
+        // login/import. Local mode clears this when the provider's synchronous
+        // auth activation finishes; remote mode clears it when the server pushes
+        // AvailableModelsUpdated.
+        if self.auth_catalog_refresh_pending {
+            self.open_loading_model_picker(&current_model);
+            return;
+        }
 
         let config = crate::config::config();
         let config_default_model = config.provider.default_model.clone();

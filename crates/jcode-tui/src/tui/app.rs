@@ -1245,6 +1245,10 @@ pub struct App {
     model_picker_catalog_revision: u64,
     // Short-lived provider boost after login so newly authenticated models surface in /models.
     recent_authenticated_provider: Option<(String, Instant)>,
+    /// A successful login/import has invalidated the catalog, but the refreshed
+    /// provider snapshot has not reached this client yet. While set, `/model`
+    /// shows a loading state instead of reusing the pre-login catalog.
+    auth_catalog_refresh_pending: bool,
     pending_model_picker_load: Option<PendingModelPickerLoad>,
     model_picker_load_request_id: u64,
     // Pending model switch from picker (for remote mode async processing)
