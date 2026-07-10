@@ -2623,6 +2623,33 @@ impl Provider for MultiProvider {
         Arc::new(provider)
     }
 
+    fn fork_for_new_session(&self) -> Arc<dyn Provider> {
+        // A shared server can outlive config changes made by a model picker in a
+        // client process. Ordinary `fork()` intentionally preserves this
+        // template's current selection, which is correct for resumed sessions and
+        // in-flight helper work but stale for a brand-new session. Reconstruct the
+        // orchestrator so the reloadable config cache and current auth state choose
+        // the provider/model again.
+        let provider = Self::new_fast();
+
+        // Explicit CLI provider/model overrides remain stronger than config. The
+        // forced provider is represented in process env, while the CLI model only
+        // lives on the template, so restore that exact route after reconstruction.
+        if self.forced_provider.is_some() {
+            let active = self.active_provider();
+            let current_model = self.model();
+            let switch_request = self.fork_model_switch_request(active, &current_model);
+            if let Err(error) = provider.set_model(&switch_request) {
+                crate::logging::warn(&format!(
+                    "Failed to preserve forced provider model '{}' for new session: {}",
+                    switch_request, error
+                ));
+            }
+        }
+
+        Arc::new(provider)
+    }
+
     fn native_result_sender(&self) -> Option<NativeToolResultSender> {
         match self.active_provider() {
             // Direct API doesn't use native result sender

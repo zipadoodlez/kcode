@@ -413,6 +413,16 @@ pub trait Provider: Send + Sync {
     /// Create a new provider instance with independent mutable state.
     fn fork(&self) -> Arc<dyn Provider>;
 
+    /// Create an independent provider for a brand-new user session.
+    ///
+    /// The default preserves the current runtime selection, matching [`Self::fork`].
+    /// Provider orchestrators backed by reloadable configuration may override this
+    /// to reapply the latest persisted defaults without changing ordinary forks
+    /// used by compaction, resumed sessions, and other in-flight work.
+    fn fork_for_new_session(&self) -> Arc<dyn Provider> {
+        self.fork()
+    }
+
     /// Get a sender for native tool results (if the provider supports it).
     fn native_result_sender(&self) -> Option<NativeToolResultSender> {
         None

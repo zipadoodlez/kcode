@@ -1002,6 +1002,39 @@ fn test_multi_provider_with_cursor() -> MultiProvider {
     }
 }
 
+#[test]
+fn new_session_fork_reloads_changed_config_provider_and_model() {
+    with_clean_provider_test_env(|| {
+        let runtime = enter_test_runtime();
+        runtime.block_on(async {
+            crate::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test");
+            crate::env::set_var("OPENAI_API_KEY", "sk-openai-test");
+
+            crate::config::Config::set_default_model(Some("claude-fable-5"), Some("anthropic-api"))
+                .expect("save initial Claude default");
+            let template = MultiProvider::new_fast();
+            assert_eq!(template.name(), "Claude");
+            assert_eq!(template.model(), "claude-fable-5");
+
+            crate::config::Config::set_default_model(Some("gpt-5.5"), Some("openai-api"))
+                .expect("save changed OpenAI default");
+
+            let fresh = template.fork_for_new_session();
+            assert_eq!(fresh.name(), "OpenAI");
+            assert_eq!(fresh.model(), "gpt-5.5");
+            assert_eq!(
+                fresh.active_resolved_credential(),
+                Some(jcode_provider_core::ResolvedCredential::ApiKey)
+            );
+
+            // Ordinary forks still preserve the existing session's selection.
+            let preserved = template.fork();
+            assert_eq!(preserved.name(), "Claude");
+            assert_eq!(preserved.model(), "claude-fable-5");
+        });
+    });
+}
+
 include!("tests/auth_refresh.rs");
 include!("tests/model_resolution.rs");
 include!("tests/fallback_failover.rs");

@@ -426,7 +426,7 @@ pub(super) async fn handle_client(
 
     let client_start = std::time::Instant::now();
 
-    let provider = provider_template.fork();
+    let provider = provider_template.fork_for_new_session();
     let t0 = std::time::Instant::now();
     let registry = Registry::new(provider.clone()).await;
     let registry_ms = t0.elapsed().as_millis();
