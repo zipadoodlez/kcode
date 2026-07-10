@@ -68,6 +68,17 @@ fn side_panel_mermaid_preferred_aspect_ratio(
     super::diagram_pane::content_area_preferred_aspect_ratio(inner)
 }
 
+fn side_panel_mermaid_profile_area(inner: Rect, reserve_native_scrollbar: bool) -> Rect {
+    if reserve_native_scrollbar && inner.width > 1 {
+        Rect {
+            width: inner.width - 1,
+            ..inner
+        }
+    } else {
+        inner
+    }
+}
+
 #[path = "ui_pinned_selection.rs"]
 mod selection_support;
 use selection_support::apply_side_selection_highlight;
@@ -1333,9 +1344,18 @@ pub(super) fn draw_side_panel_markdown(
     };
     let has_protocol = mermaid::protocol_type().is_some();
     let image_zoom_percent = app.side_panel_image_zoom_percent();
-    let rendered_full_width = render_side_panel_markdown_cached_with_zoom(
+    // The first render measures whether a native scrollbar is needed. When one
+    // is enabled, use the eventual one-column-narrower content area for Mermaid's
+    // aspect profile on that measurement pass too. Otherwise each diagram queues
+    // one cold render at full width and another after the scrollbar is reserved.
+    let reserve_native_scrollbar =
+        app.side_panel_native_scrollbar() && content_shell_area.width > 1;
+    let mermaid_profile_area =
+        side_panel_mermaid_profile_area(content_shell_area, reserve_native_scrollbar);
+    let rendered_full_width = render_side_panel_markdown_cached_with_zoom_and_profile_area(
         page,
         content_shell_area,
+        mermaid_profile_area,
         has_protocol,
         centered,
         image_zoom_percent,
@@ -1681,8 +1701,27 @@ fn render_side_panel_markdown_cached_with_zoom(
     centered: bool,
     image_zoom_percent: u8,
 ) -> PinnedRenderedCache {
+    render_side_panel_markdown_cached_with_zoom_and_profile_area(
+        page,
+        inner,
+        inner,
+        has_protocol,
+        centered,
+        image_zoom_percent,
+    )
+}
+
+fn render_side_panel_markdown_cached_with_zoom_and_profile_area(
+    page: &crate::side_panel::SidePanelPage,
+    inner: Rect,
+    mermaid_profile_area: Rect,
+    has_protocol: bool,
+    centered: bool,
+    image_zoom_percent: u8,
+) -> PinnedRenderedCache {
     let content_signature = side_panel_content_signature(page);
-    let mermaid_aspect_ratio = side_panel_mermaid_preferred_aspect_ratio(page, inner, has_protocol);
+    let mermaid_aspect_ratio =
+        side_panel_mermaid_preferred_aspect_ratio(page, mermaid_profile_area, has_protocol);
     let mermaid_aspect_bucket = mermaid::preferred_aspect_ratio_bucket(mermaid_aspect_ratio);
     let key = SidePanelRenderKey {
         page_id: page.id.clone(),
