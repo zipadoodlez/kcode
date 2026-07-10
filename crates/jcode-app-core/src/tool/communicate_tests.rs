@@ -927,6 +927,96 @@ fn schema_advertises_model_and_effort_spawn_overrides() {
 }
 
 #[test]
+fn schema_requires_a_nonblank_label_for_spawn() {
+    let schema = CommunicateTool::new().parameters_schema();
+    assert_eq!(schema["properties"]["label"]["minLength"], json!(1));
+    assert!(
+        schema["properties"]["label"]["description"]
+            .as_str()
+            .expect("label description")
+            .contains("Required for spawn")
+    );
+    assert!(
+        schema["properties"]["action"]["description"]
+            .as_str()
+            .expect("action description")
+            .contains("Spawn requires a nonblank label")
+    );
+
+    let branches = schema["anyOf"]
+        .as_array()
+        .expect("swarm schema should declare action-specific branches");
+    let spawn_branch = branches
+        .iter()
+        .find(|branch| branch["properties"]["action"]["enum"] == json!(["spawn"]))
+        .expect("spawn schema branch");
+    assert_eq!(spawn_branch["required"], json!(["action", "label"]));
+
+    let non_spawn_branch = branches
+        .iter()
+        .find(|branch| {
+            branch["properties"]["action"]["enum"]
+                .as_array()
+                .is_some_and(|actions| !actions.contains(&json!("spawn")))
+        })
+        .expect("non-spawn schema branch");
+    assert_eq!(non_spawn_branch["required"], json!(["action"]));
+}
+
+#[test]
+fn spawn_label_validation_rejects_missing_or_blank_labels() {
+    let missing: CommunicateInput =
+        serde_json::from_value(json!({"action": "spawn"})).expect("spawn input");
+    assert_eq!(
+        missing
+            .required_spawn_label()
+            .expect_err("missing label must fail")
+            .to_string(),
+        "'label' is required for spawn action"
+    );
+
+    let blank: CommunicateInput = serde_json::from_value(json!({
+        "action": "spawn",
+        "label": "  \n\t "
+    }))
+    .expect("spawn input");
+    assert_eq!(
+        blank
+            .required_spawn_label()
+            .expect_err("blank label must fail")
+            .to_string(),
+        "'label' must not be blank for spawn action"
+    );
+}
+
+#[test]
+fn spawn_label_validation_trims_valid_labels() {
+    let params: CommunicateInput = serde_json::from_value(json!({
+        "action": "spawn",
+        "label": "  api reviewer  "
+    }))
+    .expect("spawn input");
+    assert_eq!(
+        params.required_spawn_label().expect("valid label"),
+        "api reviewer"
+    );
+}
+
+#[tokio::test]
+async fn spawn_execute_rejects_missing_label_before_sending_request() {
+    let working_dir = tempfile::tempdir().expect("working dir");
+    let error = CommunicateTool::new()
+        .execute(
+            json!({"action": "spawn", "prompt": "review the API"}),
+            test_ctx("session-parent", working_dir.path()),
+        )
+        .await
+        .expect_err("missing spawn label must fail locally");
+
+    assert_eq!(error.to_string(), "'label' is required for spawn action");
+}
+
+#[test]
 fn description_includes_swarm_prompt_guidance() {
     let tool = CommunicateTool::new();
     let description = tool.description();

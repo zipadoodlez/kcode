@@ -1799,7 +1799,7 @@ struct CommunicateInput {
     #[serde(default)]
     effort: Option<String>,
     /// Short human-readable label for a spawned agent shown in swarm UI.
-    /// Overrides the task label otherwise derived from the spawn prompt.
+    /// Required and nonblank for the explicit `spawn` action.
     #[serde(default)]
     label: Option<String>,
 }
@@ -1807,6 +1807,20 @@ struct CommunicateInput {
 impl CommunicateInput {
     fn spawn_initial_message(&self) -> Option<String> {
         self.initial_message.clone().or_else(|| self.prompt.clone())
+    }
+
+    fn required_spawn_label(&self) -> anyhow::Result<String> {
+        let label = self
+            .label
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("'label' is required for spawn action"))?
+            .trim();
+        if label.is_empty() {
+            return Err(anyhow::anyhow!(
+                "'label' must not be blank for spawn action"
+            ));
+        }
+        Ok(label.to_string())
     }
 }
 
@@ -1853,7 +1867,7 @@ impl Tool for CommunicateTool {
                              "task_graph", "expand_node", "complete_node", "inject_gap",
                              "start", "start_task", "wake", "resume", "retry", "reassign", "replace", "salvage",
                              "subscribe_channel", "unsubscribe_channel", "await_members", "list_models"],
-                    "description": "Action. For spawn, prefer including prompt with the initial task so the new agent starts useful work immediately. Use list_models to see which models/routes are available for per-spawn model selection."
+                    "description": "Action. Spawn requires a nonblank label and should include prompt with the initial task so the new agent starts useful work immediately. Use list_models to see which models/routes are available for per-spawn model selection."
                 },
                 "key": {
                     "type": "string",
@@ -1902,7 +1916,8 @@ impl Tool for CommunicateTool {
                 },
                 "label": {
                     "type": "string",
-                    "description": "Optional short label for spawn, shown on the spawned agent's chip in swarm UI (e.g. 'api reviewer'). Defaults to a label derived from the first line of the prompt."
+                    "minLength": 1,
+                    "description": "Required for spawn. Short nonblank label shown on the spawned agent's chip in swarm UI (e.g. 'api reviewer')."
                 },
                 "working_dir": {
                     "type": "string",
@@ -2043,6 +2058,36 @@ impl Tool for CommunicateTool {
                 }),
             );
         }
+
+        // `swarm` is a multi-action tool, so putting `label` in the top-level
+        // `required` array would incorrectly require it for read/list/message and
+        // every other action. Use mutually exclusive action branches instead:
+        // the spawn branch requires label, while the non-spawn branch does not.
+        // `anyOf` object branches are supported by our provider schema adapters
+        // and avoid the less-portable JSON Schema `if`/`then` keywords.
+        let non_spawn_actions: Vec<Value> = schema["properties"]["action"]["enum"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|action| action.as_str() != Some("spawn"))
+            .cloned()
+            .collect();
+        schema["anyOf"] = json!([
+            {
+                "type": "object",
+                "required": ["action", "label"],
+                "properties": {
+                    "action": { "type": "string", "enum": ["spawn"] }
+                }
+            },
+            {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                    "action": { "type": "string", "enum": non_spawn_actions }
+                }
+            }
+        ]);
 
         schema
     }
@@ -2531,6 +2576,7 @@ impl Tool for CommunicateTool {
             }
 
             "spawn" => {
+                let label = params.required_spawn_label()?;
                 let request = Request::CommSpawn {
                     id: REQUEST_ID,
                     session_id: ctx.session_id.clone(),
@@ -2540,7 +2586,7 @@ impl Tool for CommunicateTool {
                     spawn_mode: params.spawn_mode.clone(),
                     model: params.model.clone(),
                     effort: params.effort.clone(),
-                    label: params.label.clone(),
+                    label: Some(label),
                 };
 
                 match send_request(request).await {

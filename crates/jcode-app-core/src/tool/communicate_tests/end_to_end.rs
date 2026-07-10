@@ -385,6 +385,7 @@ async fn communicate_spawn_reports_completion_back_to_spawner() {
         .execute(
             json!({
                 "action": "spawn",
+                "label": "report-back worker",
                 "prompt": "Reply with exactly AUTH_TEST_OK and nothing else."
             }),
             ctx,
@@ -462,6 +463,7 @@ async fn communicate_spawn_with_prompt_and_summary_work_end_to_end() {
         .execute(
             json!({
                 "action": "spawn",
+                "label": "summary worker",
                 "prompt": "Reply with a short acknowledgement."
             }),
             ctx.clone(),
@@ -552,10 +554,7 @@ async fn communicate_message_routes_as_dm_while_broadcast_targets_swarm() {
     let mut peer = RawClient::connect(&socket_path)
         .await
         .expect("peer should connect");
-    sender
-        .subscribe(&repo_dir)
-        .await
-        .expect("sender subscribe");
+    sender.subscribe(&repo_dir).await.expect("sender subscribe");
     peer.subscribe(&repo_dir).await.expect("peer subscribe");
 
     let sender_session = sender.session_id().await.expect("sender session id");

@@ -160,7 +160,8 @@ async fn communicate_assign_next_assigns_next_runnable_task() {
     let spawn_output = tool
         .execute(
             json!({
-                "action": "spawn"
+                "action": "spawn",
+                "label": "next-task worker"
             }),
             ctx.clone(),
         )
@@ -265,7 +266,10 @@ async fn communicate_assign_next_can_prefer_fresh_spawn_server_side() {
     .expect("self-promotion to coordinator should succeed");
 
     let existing_output = tool
-        .execute(json!({"action": "spawn"}), ctx.clone())
+        .execute(
+            json!({"action": "spawn", "label": "existing worker"}),
+            ctx.clone(),
+        )
         .await
         .expect("existing worker spawn should succeed");
     let existing_worker = existing_output
@@ -554,7 +558,8 @@ async fn communicate_assign_task_can_prefer_fresh_spawn_over_reuse() {
     let existing_output = tool
         .execute(
             json!({
-                "action": "spawn"
+                "action": "spawn",
+                "label": "reusable worker"
             }),
             ctx.clone(),
         )
