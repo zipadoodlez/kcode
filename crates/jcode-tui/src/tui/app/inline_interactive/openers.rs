@@ -29,7 +29,11 @@ impl App {
                     provider: summary,
                     api_method: agent_model_target_config_path(target).to_string(),
                     available: true,
-                    detail: format!("/agents {}", agent_model_target_slug(target)),
+                    detail: if target == AgentModelTarget::Swarm {
+                        "/agents swarm · routing: /swarm-prompt".to_string()
+                    } else {
+                        format!("/agents {}", agent_model_target_slug(target))
+                    },
                     estimated_reference_cost_micros: None,
                 }],
                 action: PickerAction::AgentTarget(target),

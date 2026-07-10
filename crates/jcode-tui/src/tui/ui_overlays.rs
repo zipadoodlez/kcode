@@ -189,6 +189,10 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(help_entry("/agents", "Configure models for agent roles"));
     lines.push(help_entry(
+        "/swarm-prompt",
+        "Open the active swarm routing prompt in your editor",
+    ));
+    lines.push(help_entry(
         "/effort <level>",
         "Set effort (none|low|medium|high|xhigh|max|swarm|swarm-deep)",
     ));

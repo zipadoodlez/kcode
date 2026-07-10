@@ -49,6 +49,10 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
     RegisteredCommand::hidden("/model-status", "Alias for /provider-test-coverage"),
     RegisteredCommand::public("/refresh-model-list", "Refresh provider model catalogs"),
     RegisteredCommand::public("/agents", "Configure models for agent roles"),
+    RegisteredCommand::public(
+        "/swarm-prompt",
+        "Open the active swarm routing prompt in your editor",
+    ),
     RegisteredCommand::public("/subagent", "Launch a subagent manually"),
     RegisteredCommand::public("/observe", "Show the latest tool context in the side panel"),
     RegisteredCommand::public("/todos", "Show the session todo list as a card in the chat"),

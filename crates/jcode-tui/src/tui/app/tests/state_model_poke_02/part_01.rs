@@ -1249,6 +1249,17 @@ fn test_agents_command_opens_agent_picker() {
         entry.action,
         crate::tui::PickerAction::AgentTarget(crate::tui::AgentModelTarget::Swarm)
     )));
+    let swarm_entry = picker
+        .entries
+        .iter()
+        .find(|entry| {
+            matches!(
+                entry.action,
+                crate::tui::PickerAction::AgentTarget(crate::tui::AgentModelTarget::Swarm)
+            )
+        })
+        .expect("swarm entry");
+    assert!(swarm_entry.options[0].detail.contains("/swarm-prompt"));
 }
 
 #[test]
@@ -1256,6 +1267,24 @@ fn test_agents_command_suggestions_include_targets() {
     let app = create_test_app();
     let suggestions = app.get_suggestions_for("/agents re");
     assert!(suggestions.iter().any(|(cmd, _)| cmd == "/agents review"));
+}
+
+#[test]
+fn test_swarm_prompt_command_is_discoverable_in_suggestions_and_help() {
+    let app = create_test_app();
+    let suggestions = app.get_suggestions_for("/swarm-pro");
+    assert!(
+        suggestions
+            .iter()
+            .any(|(command, _)| command == "/swarm-prompt")
+    );
+
+    let help = app
+        .command_help("swarm-prompt")
+        .expect("/swarm-prompt should have detailed help");
+    assert!(help.contains("/swarm-prompt"));
+    assert!(help.contains(".jcode/swarm-prompt.md"));
+    assert!(help.contains("Restart or reload Jcode"));
 }
 
 #[test]

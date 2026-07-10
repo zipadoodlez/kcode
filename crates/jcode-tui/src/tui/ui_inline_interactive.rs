@@ -146,7 +146,23 @@ fn selected_route_notice_text(
     None
 }
 
-fn model_picker_keybind_hint(picker: &crate::tui::InlineInteractiveState) -> Option<&'static str> {
+fn model_picker_top_hint(picker: &crate::tui::InlineInteractiveState) -> Option<&'static str> {
+    let is_swarm_agent_model_picker = picker.kind == crate::tui::PickerKind::Model
+        && picker.entries.iter().any(|entry| {
+            matches!(
+                entry.action,
+                crate::tui::PickerAction::AgentModelChoice {
+                    target: crate::tui::AgentModelTarget::Swarm,
+                    ..
+                }
+            )
+        });
+    if is_swarm_agent_model_picker {
+        return Some(
+            " swarm routing is configured by a prompt · /swarm-prompt to edit the active file",
+        );
+    }
+
     // The favorite/default hotkeys now work in both the focused picker and the
     // as-you-type preview, so the hint is shown whenever this is a runtime model
     // picker (i.e. it has selectable model rows).
@@ -387,7 +403,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
 
     // Hotkey hint sits ABOVE the picker box (outside its border) so the
     // shortcuts are always visible without competing with the column headers.
-    let keybind_hint = model_picker_keybind_hint(picker);
+    let keybind_hint = model_picker_top_hint(picker);
     let hint_rows: u16 = if keybind_hint.is_some() && area.height > 3 {
         1
     } else {
@@ -1065,7 +1081,8 @@ mod tests {
         // fit the widest row (the sample entry: "gpt-5.4 ★" / "openai" / OAuth).
         let model = display_width(picker_entry_display_name(&picker.entries[0]).as_str())
             .max(display_width(picker.primary_label()));
-        let provider = display_width("openai").max(display_width(picker.secondary_label(false))) + 1;
+        let provider =
+            display_width("openai").max(display_width(picker.secondary_label(false))) + 1;
         let via = display_width(api_method_display("oauth").as_str())
             .max(display_width(picker.tertiary_label()))
             + 1;
@@ -1142,11 +1159,25 @@ mod tests {
     #[test]
     fn model_picker_keybind_hint_mentions_default_and_favorites() {
         let picker = sample_picker();
-        let hint =
-            model_picker_keybind_hint(&picker).expect("active model picker should show hint");
+        let hint = model_picker_top_hint(&picker).expect("active model picker should show hint");
 
         assert!(hint.contains("Ctrl+O set default"));
         assert!(hint.contains("Ctrl+N favorite"));
+    }
+
+    #[test]
+    fn swarm_agent_model_picker_permanently_links_to_swarm_prompt_command() {
+        let mut picker = sample_picker();
+        for entry in &mut picker.entries {
+            entry.action = crate::tui::PickerAction::AgentModelChoice {
+                target: crate::tui::AgentModelTarget::Swarm,
+                clear_override: false,
+            };
+        }
+
+        let hint = model_picker_top_hint(&picker).expect("swarm picker should show prompt hint");
+        assert!(hint.contains("/swarm-prompt"));
+        assert!(hint.contains("configured by a prompt"));
     }
 
     #[test]
