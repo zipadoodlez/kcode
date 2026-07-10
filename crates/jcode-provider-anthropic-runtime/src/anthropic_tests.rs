@@ -244,25 +244,25 @@ fn test_anthropic_explicit_none_effort_disables_thinking_even_with_show_thinking
 }
 
 #[test]
-fn test_anthropic_fable_defaults_to_low_effort() {
-    // Fable 5 is strong at low reasoning, so with no explicit user effort it
-    // defaults to `low` (fast, cheap). An explicit override still wins.
+fn test_anthropic_fable_defaults_to_high_effort() {
+    // Fable 5 defaults to `high` reasoning when no explicit user effort is
+    // configured. An explicit override still wins.
     let provider = AnthropicProvider::new();
     *provider.reasoning_effort.write().unwrap() = None;
 
     assert_eq!(
         AnthropicProvider::default_reasoning_effort_for_model("claude-fable-5").as_deref(),
-        Some("low"),
+        Some("high"),
     );
 
-    // The default drives the request: output_config low + adaptive thinking.
+    // The default drives the request: output_config high + adaptive thinking.
     let (thinking, output_config, _temp) =
         provider.build_reasoning_request_parts_inner("claude-fable-5", true, false);
     assert_eq!(
         output_config
             .expect("Fable should default to a forced output effort")
             .effort,
-        "low",
+        "high",
     );
     match thinking.expect("Fable default effort should enable adaptive thinking") {
         ApiThinking::Adaptive { display } => assert_eq!(display, Some("summarized")),
@@ -274,17 +274,17 @@ fn test_anthropic_fable_defaults_to_low_effort() {
         .model
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = "claude-fable-5".to_string();
-    assert_eq!(provider.reasoning_effort().as_deref(), Some("low"));
+    assert_eq!(provider.reasoning_effort().as_deref(), Some("high"));
 
     // An explicit user override still wins over the Fable default.
-    provider.set_reasoning_effort("high").unwrap();
-    assert_eq!(provider.reasoning_effort().as_deref(), Some("high"));
+    provider.set_reasoning_effort("low").unwrap();
+    assert_eq!(provider.reasoning_effort().as_deref(), Some("low"));
     provider.set_reasoning_effort("none").unwrap();
     let (thinking, output_config, _temp) =
         provider.build_reasoning_request_parts_inner("claude-fable-5", true, true);
     assert!(
         thinking.is_none(),
-        "explicit none must beat the low default and show_thinking"
+        "explicit none must beat the high default and show_thinking"
     );
     assert!(output_config.is_none());
 }
