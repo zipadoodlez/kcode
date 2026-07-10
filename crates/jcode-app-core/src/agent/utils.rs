@@ -2,8 +2,6 @@ use crate::session::GitState;
 use std::path::Path;
 use std::process::Command;
 
-use super::Agent;
-
 pub(super) fn trace_enabled() -> bool {
     match std::env::var("JCODE_TRACE") {
         Ok(value) => {
@@ -38,41 +36,4 @@ fn git_output(dir: &Path, args: &[&str]) -> Option<String> {
         return None;
     }
     Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-impl Agent {
-    pub(super) fn update_generated_image_side_panel(
-        &self,
-        id: &str,
-        path: &str,
-        metadata_path: Option<&str>,
-        output_format: &str,
-        revised_prompt: Option<&str>,
-    ) -> Option<crate::side_panel::SidePanelSnapshot> {
-        match crate::generated_image::write_generated_image_side_panel_page(
-            &self.session.id,
-            id,
-            path,
-            metadata_path,
-            output_format,
-            revised_prompt,
-        ) {
-            Ok(snapshot) => {
-                crate::bus::Bus::global().publish(crate::bus::BusEvent::SidePanelUpdated(
-                    crate::bus::SidePanelUpdated {
-                        session_id: self.session.id.clone(),
-                        snapshot: snapshot.clone(),
-                    },
-                ));
-                Some(snapshot)
-            }
-            Err(err) => {
-                crate::logging::warn(&format!(
-                    "Failed to write generated image side panel page: {}",
-                    err
-                ));
-                None
-            }
-        }
-    }
 }

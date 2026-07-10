@@ -927,19 +927,12 @@ impl App {
                                             title: Some("Generated image".to_string()),
                                             tool_data: Some(tool_call),
                                         });
-                                        match crate::tui::write_generated_image_side_panel_page(
-                                            &self.session.id,
+                                        if let Some(image) = crate::message::generated_image_rendered_image(
                                             &id,
                                             &path,
-                                            metadata_path.as_deref(),
                                             &output_format,
-                                            revised_prompt.as_deref(),
                                         ) {
-                                            Ok(snapshot) => self.set_side_panel_snapshot(snapshot),
-                                            Err(err) => crate::logging::warn(&format!(
-                                                "Failed to write generated image side panel page: {}",
-                                                err
-                                            )),
+                                            self.append_live_inline_images(vec![image]);
                                         }
                                         if provider.supports_image_input() {
                                             if let Some(blocks) = crate::message::generated_image_visual_context_blocks(

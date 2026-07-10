@@ -1575,6 +1575,68 @@ fn test_handle_server_event_side_pane_images_populates_pane_live() {
 }
 
 #[test]
+fn test_native_generated_image_renders_inline_without_opening_side_panel() {
+    let mut app = create_test_app();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    app.is_remote = true;
+    app.side_panel = crate::side_panel::SidePanelSnapshot::default();
+    app.remote_session_id = Some("session_active".to_string());
+
+    let generated_redraw = app.handle_server_event(
+        crate::protocol::ServerEvent::GeneratedImage {
+            id: "image_call_123".to_string(),
+            path: "/tmp/generated.png".to_string(),
+            metadata_path: Some("/tmp/generated.json".to_string()),
+            output_format: "png".to_string(),
+            revised_prompt: Some("a green square".to_string()),
+        },
+        &mut remote,
+    );
+    let image_redraw = app.handle_server_event(
+        crate::protocol::ServerEvent::SidePaneImages {
+            session_id: "session_active".to_string(),
+            images: vec![crate::session::RenderedImage {
+                media_type: "image/png".to_string(),
+                data: "image-data".to_string(),
+                label: Some("/tmp/generated.png".to_string()),
+                source: crate::session::RenderedImageSource::ToolResult {
+                    tool_name: crate::message::GENERATED_IMAGE_TOOL_NAME.to_string(),
+                },
+                anchor: Some(crate::session::RenderedImageAnchor::ToolCall {
+                    id: "image_call_123".to_string(),
+                }),
+            }],
+        },
+        &mut remote,
+    );
+
+    assert!(generated_redraw);
+    assert!(image_redraw);
+    assert!(!app.side_panel.has_pages());
+    assert_eq!(app.remote_side_pane_images.len(), 1);
+    assert_eq!(
+        app.remote_side_pane_images[0].anchor,
+        Some(crate::session::RenderedImageAnchor::ToolCall {
+            id: "image_call_123".to_string(),
+        })
+    );
+    let generated_row = app
+        .display_messages
+        .iter()
+        .find(|message| {
+            message
+                .tool_data
+                .as_ref()
+                .is_some_and(|tool| tool.id == "image_call_123")
+        })
+        .expect("generated image tool row");
+    assert_eq!(generated_row.title.as_deref(), Some("Generated image"));
+}
+
+#[test]
 fn test_handle_server_event_side_pane_images_ignores_inactive_session() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();

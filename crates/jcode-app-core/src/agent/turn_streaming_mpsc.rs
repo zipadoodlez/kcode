@@ -610,15 +610,11 @@ impl Agent {
                         output_format,
                         revised_prompt,
                     } => {
-                        if let Some(snapshot) = self.update_generated_image_side_panel(
+                        let rendered_image = crate::message::generated_image_rendered_image(
                             &id,
                             &path,
-                            metadata_path.as_deref(),
                             &output_format,
-                            revised_prompt.as_deref(),
-                        ) {
-                            let _ = event_tx.send(ServerEvent::SidePanelState { snapshot });
-                        }
+                        );
                         if self.provider.supports_image_input() {
                             if let Some(blocks) =
                                 crate::message::generated_image_visual_context_blocks(
@@ -643,6 +639,12 @@ impl Agent {
                             output_format,
                             revised_prompt,
                         });
+                        if let Some(image) = rendered_image {
+                            let _ = event_tx.send(ServerEvent::SidePaneImages {
+                                session_id: self.session.id.clone(),
+                                images: vec![image],
+                            });
+                        }
                     }
                     StreamEvent::TokenUsage {
                         input_tokens,

@@ -506,7 +506,19 @@ impl crate::tui::TuiState for App {
         if self.is_remote {
             self.remote_side_pane_images.clone()
         } else {
-            crate::session::render_images(&self.session)
+            // Native generated images are available before their visual-context
+            // blocks are persisted to the session. Prefer those live, anchored
+            // copies and merge in the remaining persisted images.
+            let mut images = self.remote_side_pane_images.clone();
+            for image in crate::session::render_images(&self.session) {
+                let already_present = images.iter().any(|existing| {
+                    existing.media_type == image.media_type && existing.data == image.data
+                });
+                if !already_present {
+                    images.push(image);
+                }
+            }
+            images
         }
     }
 

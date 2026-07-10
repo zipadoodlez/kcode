@@ -2067,27 +2067,17 @@ pub(in crate::tui::app) fn handle_server_event(
             if images.is_empty() {
                 return false;
             }
-            // Append the freshly-read tool images so the inline transcript
-            // images update immediately, without waiting for the next full
-            // History reload. A later History payload replaces this list
-            // wholesale, so duplicates are not a long-term concern.
+            // Append the freshly-produced images so the inline transcript
+            // updates immediately, without waiting for the next full History
+            // reload. A later History payload replaces this list wholesale.
             let added = images.len();
-            app.remote_side_pane_images.extend(images);
-            // The image-set signature is cached per display_messages_version,
-            // which this event does not bump; drop the cached value so the
-            // prepared-frame and body caches see the new image immediately.
-            app.invalidate_side_pane_images_signature();
+            app.append_live_inline_images(images);
             crate::logging::info(&format!(
-                "SidePaneImages: appended {} live image(s) (total={}, user_hidden={}, explicit_hidden={}) session={}",
+                "SidePaneImages: appended {} live inline image(s) (total={}) session={}",
                 added,
                 app.remote_side_pane_images.len(),
-                app.side_panel_user_hidden,
-                app.side_panel_explicit_hidden,
                 session_id
             ));
-            // Re-run the auto-hide bookkeeping so the pane reveals (unless the
-            // user explicitly hid it with Alt+M) and re-arms its auto-hide timer.
-            app.update_pinned_images_auto_hide();
             true
         }
         ServerEvent::SidePanelState { snapshot } => {

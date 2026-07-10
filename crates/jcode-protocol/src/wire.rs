@@ -770,10 +770,9 @@ pub enum ServerEvent {
         error: Option<String>,
     },
 
-    /// Rendered images produced by a tool result during the live turn (e.g. the
-    /// `read` tool reading an image file). Lets remote clients populate the
-    /// pinned-image side pane immediately, instead of waiting for the next full
-    /// History reload.
+    /// Rendered images produced during the live turn, including image-bearing
+    /// tool results and provider-native image generation. Lets remote clients
+    /// render them inline immediately instead of waiting for History reload.
     #[serde(rename = "side_pane_images")]
     SidePaneImages {
         session_id: String,

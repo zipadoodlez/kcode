@@ -53,6 +53,43 @@ fn generated_image_visual_context_blocks_attach_safe_image() {
 }
 
 #[test]
+fn generated_image_rendered_image_uses_inline_tool_anchor() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let image_path = dir.path().join("generated.png");
+    ::image::RgbaImage::from_pixel(2, 1, ::image::Rgba([0, 255, 0, 255]))
+        .save(&image_path)
+        .expect("write png");
+
+    let image = generated_image_rendered_image(
+        "image_call_123",
+        image_path.to_str().expect("utf8 path"),
+        "png",
+    )
+    .expect("generated image should render inline");
+
+    assert_eq!(image.media_type, "image/png");
+    assert_eq!(image.label.as_deref(), image_path.to_str());
+    assert_eq!(
+        image.source,
+        jcode_session_types::RenderedImageSource::ToolResult {
+            tool_name: GENERATED_IMAGE_TOOL_NAME.to_string(),
+        }
+    );
+    assert_eq!(
+        image.anchor,
+        Some(jcode_session_types::RenderedImageAnchor::ToolCall {
+            id: "image_call_123".to_string(),
+        })
+    );
+    assert!(
+        !base64::engine::general_purpose::STANDARD
+            .decode(&image.data)
+            .expect("valid base64 image")
+            .is_empty()
+    );
+}
+
+#[test]
 fn tool_call_intent_from_input_trims_optional_intent() {
     let input = serde_json::json!({
         "intent": "  Verify compact rendering  ",
