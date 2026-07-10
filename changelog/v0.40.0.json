@@ -1,0 +1,22 @@
+{
+  "version": "0.40.0",
+  "date": "2026-07-10",
+  "title": "Parallel browser control, clearer goals, and fresher model sessions",
+  "highlights": [
+    "Browser automation sessions can now bind to individual browser windows, allowing parallel agents to work without interfering with each other's tabs",
+    "Todo widgets now show each goal's hill-climbability score or taste-driven status, making it easier to see whether progress has a measurable objective",
+    "Remote runtimes can use stable display names, and new server sessions now honor the latest saved provider and model defaults instead of stale server startup settings"
+  ],
+  "improvements": [
+    "The model picker can be limited to configured provider families, presents reasoning-effort rows consistently, and uses clearer alignment and login guidance",
+    "Claude Fable 5 now defaults to high reasoning effort",
+    "Tool transcript rows now retain useful summaries for scheduling, skills, MCP, discovery, Gmail, browser, and other tools across compaction and session reloads",
+    "Project-local skills are isolated to the workspace where they are defined so sessions in other repositories do not inherit them",
+    "The iOS app now has a production-ready icon and automated TestFlight delivery"
+  ],
+  "fixes": [
+    "OpenAI model catalog refreshes recover automatically when an expired token initially returns 401",
+    "Revoked or unknown phone connection tokens are rejected during the handshake, and the iOS app stops reconnecting in a loop and prompts for re-pairing",
+    "New sessions created by a long-running shared server no longer display or use an outdated provider and model selection"
+  ]
+}
