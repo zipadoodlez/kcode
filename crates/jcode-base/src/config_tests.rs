@@ -434,6 +434,11 @@ fn test_generated_default_config_uses_low_openai_reasoning_effort() {
         content.contains("[agents]") && content.contains("swarm_spawn_mode = \"inline\""),
         "generated default config should document agent spawn defaults"
     );
+    assert!(
+        content.contains("memory_model = \"gpt-5.6-luna\"")
+            && content.contains("reasoning effort \"none\""),
+        "generated default config should document the Luna memory sidecar default"
+    );
 
     // Effort keys come from the per-platform keybinding registry; the template
     // placeholders must always be substituted.

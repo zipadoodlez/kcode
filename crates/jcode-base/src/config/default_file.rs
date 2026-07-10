@@ -353,9 +353,10 @@ swarm_max_concurrent_agents = 32
 # Env override: JCODE_SWARM_STRIP_LAYOUT
 # swarm_strip_layout = "vertical"
 #
-# Model for the memory sidecar (relevance/extraction). Unset = sidecar auto-select.
+# Model for the memory sidecar (relevance/extraction). Unset = sidecar auto-select
+# (OpenAI defaults to gpt-5.6-luna with reasoning effort "none").
 # Env override: JCODE_MEMORY_MODEL
-# memory_model = "claude-haiku-4"
+# memory_model = "gpt-5.6-luna"
 #
 # Whether the memory sidecar (LLM precision judge) handles relevance/extraction.
 # Default true: the LLM precision-judge path is the only reliably productive
