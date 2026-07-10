@@ -705,6 +705,7 @@ Notes:
 - [Swarm Architecture](docs/SWARM_ARCHITECTURE.md)
 - [Server Architecture](docs/SERVER_ARCHITECTURE.md)
 - [Safety System](docs/SAFETY_SYSTEM.md)
+- [Sponsored Discovery Sponsor Onboarding](docs/SPONSORED_DISCOVERY_SPONSOR_ONBOARDING.md)
 - [Windows Notes](docs/WINDOWS.md)
 - [Wrappers and Shell Integration](docs/WRAPPERS.md)
 - [Refactoring Notes](docs/REFACTORING.md)
