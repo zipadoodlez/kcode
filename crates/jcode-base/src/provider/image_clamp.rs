@@ -71,18 +71,23 @@ pub(crate) fn clamp_outbound_images(messages: &[Message]) -> Option<Vec<Message>
         FEW_IMAGE_MAX_EDGE
     };
 
-    // Cheap pre-scan: the base64 byte check is just a string length, and the
-    // dimension probe is header-only. Only do the expensive decode/clone when at
-    // least one image actually exceeds a limit.
-    let needs_clamp = messages
+    // Cheap pre-scan: the base64 byte check is just a string length, the
+    // dimension probe is header-only, and the media-type sniff only reads a
+    // handful of magic bytes. Only do the expensive decode/clone when at least
+    // one image actually exceeds a limit or carries a mismatched media type.
+    let needs_change = messages
         .iter()
         .flat_map(|m| m.content.iter())
         .filter_map(|b| match b {
-            ContentBlock::Image { data, .. } => Some(data),
+            ContentBlock::Image { media_type, data } => Some((media_type, data)),
             _ => None,
         })
-        .any(|data| data.len() > IMAGE_BASE64_BYTE_LIMIT || image_exceeds_edge(data, max_edge));
-    if !needs_clamp {
+        .any(|(media_type, data)| {
+            data.len() > IMAGE_BASE64_BYTE_LIMIT
+                || image_exceeds_edge(data, max_edge)
+                || media_type_mismatch(media_type, data)
+        });
+    if !needs_change {
         return None;
     }
 
@@ -90,15 +95,69 @@ pub(crate) fn clamp_outbound_images(messages: &[Message]) -> Option<Vec<Message>
     let mut changed = false;
     for message in &mut clamped {
         for block in &mut message.content {
-            if let ContentBlock::Image { media_type, data } = block
-                && clamp_image_block(media_type, data, max_edge)
-            {
-                changed = true;
+            if let ContentBlock::Image { media_type, data } = block {
+                // Correct a mismatched label first (e.g. JPEG bytes tagged as
+                // `image/png`) so downstream re-encoding decisions and the wire
+                // payload agree. Providers reject a request outright when the
+                // declared media type disagrees with the image's magic bytes.
+                if reconcile_media_type(media_type, data) {
+                    changed = true;
+                }
+                if clamp_image_block(media_type, data, max_edge) {
+                    changed = true;
+                }
             }
         }
     }
 
     changed.then_some(clamped)
+}
+
+/// Detect an image's true media type from its leading magic bytes. Returns
+/// `None` for formats we do not attempt to correct (the block is then left as
+/// declared).
+fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() >= 8 && bytes[0..8] == [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] {
+        return Some("image/png");
+    }
+    if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+        return Some("image/jpeg");
+    }
+    if bytes.len() >= 6 && (&bytes[0..6] == b"GIF87a" || &bytes[0..6] == b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    None
+}
+
+/// True when `media_type` disagrees with what the base64 payload's magic bytes
+/// say the image actually is. Unknown formats and undecodable payloads are
+/// treated as "no mismatch" so we never touch data we cannot reason about.
+fn media_type_mismatch(media_type: &str, data_b64: &str) -> bool {
+    let Some(bytes) = decode_b64(data_b64) else {
+        return false;
+    };
+    match sniff_media_type(&bytes) {
+        Some(actual) => !media_type.eq_ignore_ascii_case(actual),
+        None => false,
+    }
+}
+
+/// Rewrite `media_type` to match the payload's magic bytes when they disagree.
+/// Returns `true` only when the label was actually corrected.
+fn reconcile_media_type(media_type: &mut String, data_b64: &str) -> bool {
+    let Some(bytes) = decode_b64(data_b64) else {
+        return false;
+    };
+    match sniff_media_type(&bytes) {
+        Some(actual) if !media_type.eq_ignore_ascii_case(actual) => {
+            *media_type = actual.to_string();
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Return true when the base64-encoded image's larger edge exceeds `max_edge`,
@@ -337,6 +396,27 @@ mod tests {
         }
     }
 
+    fn image_message_with(media_type: &str, data: String) -> Message {
+        Message {
+            role: Role::User,
+            content: vec![ContentBlock::Image {
+                media_type: media_type.to_string(),
+                data,
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        }
+    }
+
+    fn encode_jpeg_b64(w: u32, h: u32) -> String {
+        let img = RgbImage::from_pixel(w, h, image::Rgb([200, 100, 50]));
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut out, ImageFormat::Jpeg)
+            .unwrap();
+        base64::engine::general_purpose::STANDARD.encode(out.into_inner())
+    }
+
     fn dims(data_b64: &str) -> (u32, u32) {
         let bytes = decode_b64(data_b64).unwrap();
         let img = image::load_from_memory(&bytes).unwrap();
@@ -423,5 +503,74 @@ mod tests {
             }
             other => panic!("expected image block, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn jpeg_bytes_mislabeled_as_png_are_relabeled() {
+        // The exact production failure: JPEG payload declared as image/png.
+        // Anthropic rejects this with a 400 unless we reconcile the label.
+        let data = encode_jpeg_b64(64, 64);
+        let messages = vec![image_message_with("image/png", data.clone())];
+        let fixed = clamp_outbound_images(&messages)
+            .expect("mislabeled image should be corrected");
+        match &fixed[0].content[0] {
+            ContentBlock::Image { media_type, data: out } => {
+                assert_eq!(media_type, "image/jpeg", "label must match JPEG bytes");
+                // Bytes are left untouched, only the label changes.
+                assert_eq!(out, &data);
+            }
+            other => panic!("expected image block, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn png_bytes_mislabeled_as_jpeg_are_relabeled() {
+        let data = encode_png(64, 64);
+        let messages = vec![image_message_with("image/jpeg", data.clone())];
+        let fixed = clamp_outbound_images(&messages)
+            .expect("mislabeled image should be corrected");
+        match &fixed[0].content[0] {
+            ContentBlock::Image { media_type, data: out } => {
+                assert_eq!(media_type, "image/png");
+                assert_eq!(out, &data);
+            }
+            other => panic!("expected image block, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn correctly_labeled_image_is_not_touched() {
+        let data = encode_jpeg_b64(64, 64);
+        let messages = vec![image_message_with("image/jpeg", data)];
+        assert!(
+            clamp_outbound_images(&messages).is_none(),
+            "correctly labeled small image must not trigger a clone"
+        );
+    }
+
+    #[test]
+    fn media_type_match_is_case_insensitive() {
+        let data = encode_png(32, 32);
+        // Upper-case label for the same PNG bytes: must be treated as a match.
+        let messages = vec![image_message_with("IMAGE/PNG", data)];
+        assert!(
+            clamp_outbound_images(&messages).is_none(),
+            "case-insensitive label match must not be rewritten"
+        );
+    }
+
+    #[test]
+    fn sniff_detects_common_formats() {
+        assert_eq!(
+            sniff_media_type(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0]),
+            Some("image/png")
+        );
+        assert_eq!(
+            sniff_media_type(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("image/jpeg")
+        );
+        assert_eq!(sniff_media_type(b"GIF89a....."), Some("image/gif"));
+        assert_eq!(sniff_media_type(b"RIFF\0\0\0\0WEBP...."), Some("image/webp"));
+        assert_eq!(sniff_media_type(b"not an image"), None);
     }
 }
