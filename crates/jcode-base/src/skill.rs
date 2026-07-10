@@ -61,7 +61,9 @@ impl SkillRegistry {
             static SHARED: OnceLock<Arc<RwLock<SkillRegistry>>> = OnceLock::new();
             SHARED
                 .get_or_init(|| {
-                    Arc::new(RwLock::new(SkillRegistry::load_global().unwrap_or_default()))
+                    Arc::new(RwLock::new(
+                        SkillRegistry::load_global().unwrap_or_default(),
+                    ))
                 })
                 .clone()
         }
@@ -1023,8 +1025,7 @@ mod tests {
 
         // The overlay resolves against the given workspace root, not the
         // process cwd or a shared registry (issue #457).
-        let overlay =
-            SkillRegistry::load_project_overlay(Some(temp.path())).expect("load overlay");
+        let overlay = SkillRegistry::load_project_overlay(Some(temp.path())).expect("load overlay");
         assert!(overlay.get("session-skill").is_some());
 
         // A different workspace root sees nothing from this project.
