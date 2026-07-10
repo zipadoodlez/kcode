@@ -422,7 +422,15 @@ fn compact_tool_input_for_display(name: &str, input: &serde_json::Value) -> serd
                 .unwrap_or(serde_json::Value::Null);
             obj(vec![("tool_calls", tool_calls)])
         }
-        _ => serde_json::Value::Object(serde_json::Map::new()),
+        // Generic fallback: keep the action field (when present) so
+        // action-shaped tool rows still render a summary after reload.
+        _ => obj(vec![(
+            "action",
+            input
+                .get("action")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        )]),
     }
 }
 
