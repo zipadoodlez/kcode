@@ -1431,9 +1431,8 @@ async fn login_google_flow(
         "  Tokens:       {}\n",
         auth::google::tokens_path()?.display()
     );
-    eprintln!("The 'gmail' tool is configured, but it is disabled by default for privacy.");
-    eprintln!("To expose it to the AI agent, add this to [tools] in config.toml:");
-    eprintln!("  enabled = [\"*\"]");
+    eprintln!("The 'gmail' tool is enabled by default in the full tool profile.");
+    eprintln!("To hide it, add `disabled = [\"gmail\"]` to [tools] in config.toml.");
     eprintln!("Then try asking: \"check my recent emails\" or \"search emails from ...\"");
 
     crate::telemetry::record_auth_success("google", "oauth");

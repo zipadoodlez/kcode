@@ -569,7 +569,7 @@ async fn new_agent_registers_active_pid_and_clear_swaps_it() {
 }
 
 #[tokio::test]
-async fn default_disabled_tools_are_not_exposed_or_executable() {
+async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let _guard = crate::storage::lock_test_env();
     let prev_home = std::env::var_os("JCODE_HOME");
     let prev_tools = std::env::var_os("JCODE_TOOLS");
@@ -590,24 +590,45 @@ async fn default_disabled_tools_are_not_exposed_or_executable() {
     let mut agent = Agent::new(provider, registry);
     let definitions = agent.tool_definitions().await;
     let tool_names = agent.tool_names().await;
+    let tool_name = "gmail";
 
-    {
-        let tool_name = "gmail";
-        assert!(
-            !definitions
-                .iter()
-                .any(|definition| definition.name == tool_name),
-            "default-disabled {tool_name} tool must not be sent in model-visible tool definitions"
-        );
-        assert!(
-            !tool_names.iter().any(|name| name == tool_name),
-            "default-disabled {tool_name} tool must not be listed as model-visible"
-        );
-        let err = agent.validate_tool_allowed(tool_name).expect_err(&format!(
-            "default-disabled {tool_name} tool must not be executable"
-        ));
-        assert!(err.to_string().contains("disabled"));
-    }
+    assert!(
+        definitions
+            .iter()
+            .any(|definition| definition.name == tool_name),
+        "{tool_name} must be sent in model-visible tool definitions by default"
+    );
+    assert!(
+        tool_names.iter().any(|name| name == tool_name),
+        "{tool_name} must be listed as model-visible by default"
+    );
+    agent
+        .validate_tool_allowed(tool_name)
+        .expect("gmail must be executable by default");
+
+    crate::env::set_var("JCODE_DISABLED_TOOLS", tool_name);
+    crate::config::Config::invalidate_cache();
+
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+    let definitions = agent.tool_definitions().await;
+    let tool_names = agent.tool_names().await;
+
+    assert!(
+        !definitions
+            .iter()
+            .any(|definition| definition.name == tool_name),
+        "explicitly disabled {tool_name} must not be sent in model-visible tool definitions"
+    );
+    assert!(
+        !tool_names.iter().any(|name| name == tool_name),
+        "explicitly disabled {tool_name} must not be listed as model-visible"
+    );
+    let err = agent
+        .validate_tool_allowed(tool_name)
+        .expect_err("explicitly disabled gmail must not be executable");
+    assert!(err.to_string().contains("disabled"));
 
     if let Some(previous) = prev_home {
         crate::env::set_var("JCODE_HOME", previous);

@@ -265,11 +265,11 @@ fn test_env_override_memory_sidecar() {
 fn tool_config_defaults_to_full_toolset() {
     let selection = ToolConfig::default().selection();
     assert!(selection.allowed_tools.is_none());
-    assert!(selection.disabled_tools.contains("gmail"));
+    assert!(selection.disabled_tools.is_empty());
 }
 
 #[test]
-fn tool_config_explicit_enabled_default_disabled_tools_opts_in() {
+fn tool_config_explicit_enabled_uses_allow_list() {
     let cfg = ToolConfig {
         enabled: vec!["gmail".to_string()],
         ..ToolConfig::default()
@@ -284,7 +284,7 @@ fn tool_config_explicit_enabled_default_disabled_tools_opts_in() {
 }
 
 #[test]
-fn tool_config_all_enabled_sentinel_opts_in_gmail_without_allow_list() {
+fn tool_config_all_enabled_sentinel_keeps_unrestricted_toolset() {
     let cfg = ToolConfig {
         enabled: vec!["*".to_string()],
         ..ToolConfig::default()
@@ -401,7 +401,7 @@ fn tool_config_disabled_only_keeps_full_profile_with_deny_list() {
     assert!(selection.allowed_tools.is_none());
     assert!(selection.disabled_tools.contains("browser"));
     assert!(selection.disabled_tools.contains("swarm"));
-    assert!(selection.disabled_tools.contains("gmail"));
+    assert!(!selection.disabled_tools.contains("gmail"));
 }
 
 #[test]
