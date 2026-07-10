@@ -488,6 +488,22 @@ pub struct SwarmTodoItem {
     pub content: String,
     /// "pending", "in_progress", or "completed".
     pub status: String,
+    /// The three most recent tool calls made while this todo was active.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_intents: Vec<SwarmToolIntent>,
+}
+
+/// Display-only tool activity nested beneath an active swarm todo.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmToolIntent {
+    /// Internal correlation key used by the server to update a running call.
+    /// It is intentionally omitted from the wire payload.
+    #[serde(default, skip_serializing)]
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub intent: String,
+    /// "running", "completed", or "error".
+    pub status: String,
 }
 
 /// Status of a member being awaited by comm_await_members

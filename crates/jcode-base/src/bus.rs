@@ -36,6 +36,8 @@ pub struct ToolEvent {
     pub tool_call_id: String,
     pub tool_name: String,
     pub status: ToolStatus,
+    /// Agent-provided human-readable intent for this tool call.
+    pub intent: Option<String>,
     pub title: Option<String>,
 }
 

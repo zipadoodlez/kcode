@@ -1206,6 +1206,7 @@ impl App {
                         } else {
                             ToolStatus::Completed
                         },
+                        intent: tc.intent.clone(),
                         title: None,
                     }));
 
@@ -1263,6 +1264,7 @@ impl App {
                     tool_call_id: tc.id.clone(),
                     tool_name: tc.name.clone(),
                     status: ToolStatus::Running,
+                    intent: tc.intent.clone(),
                     title: None,
                 }));
 
@@ -1405,6 +1407,7 @@ impl App {
                             tool_call_id: tc.id.clone(),
                             tool_name: tc.name.clone(),
                             status: ToolStatus::Completed,
+                            intent: tc.intent.clone(),
                             title: o.title.clone(),
                         }));
                         (o.output, false, o.title)
@@ -1416,6 +1419,7 @@ impl App {
                             tool_call_id: tc.id.clone(),
                             tool_name: tc.name.clone(),
                             status: ToolStatus::Error,
+                            intent: tc.intent.clone(),
                             title: None,
                         }));
                         (format!("Error: {}", e), true, None)

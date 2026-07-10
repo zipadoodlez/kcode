@@ -155,6 +155,16 @@ pub struct GalleryTodo {
     pub content: String,
     /// "pending", "in_progress", or "completed".
     pub status: String,
+    /// Up to three recent tool calls made while this item was active.
+    pub tool_intents: Vec<GalleryToolIntent>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GalleryToolIntent {
+    pub tool_name: String,
+    pub intent: String,
+    /// "running", "completed", or "error".
+    pub status: String,
 }
 
 /// Convert members into gallery tiles, sorted for stable placement
@@ -746,7 +756,9 @@ pub fn render_swarm_strip_vertical(
         // The focused selection shows both icon and name (you are about to act
         // on this agent); other rows keep the compact icon-only identity.
         let ident = match m.icon.as_deref().filter(|i| !i.is_empty()) {
-            Some(icon) if is_sel && focused => format!("{icon} {}", m.label),
+            Some(icon) if is_sel && (focused || !m.todo_items.is_empty()) => {
+                format!("{icon} {}", m.label)
+            }
             Some(icon) => icon.to_string(),
             None => m.label.clone(),
         };
@@ -824,21 +836,27 @@ pub fn render_swarm_strip_vertical(
         ]));
     }
 
-    // ---- Focused: accordion detail under the selected row + hint line ----
-    if focused {
-        let hint_rows = usize::from(!hints.is_empty());
+    // ---- Accordion detail under the selected row ----
+    // Todo progress remains visible even when the controls are not focused, so
+    // a spawned worker reads as a live card rather than a one-line status chip.
+    if focused
+        || ordered
+            .get(selected)
+            .is_some_and(|m| !m.todo_items.is_empty())
+    {
+        let hint_rows = usize::from(focused && !hints.is_empty());
         let detail_budget = max_height.saturating_sub(out.len() + hint_rows);
         if let (Some(m), Some(at)) = (ordered.get(selected), selected_row_at)
             && detail_budget >= 1
         {
             // Insert directly beneath the selected row so the list expands in
             // place (accordion) instead of jumping to a detached pane below.
-            let detail = hovered_detail_body(m, width, detail_budget);
+            let detail = hovered_detail_body(m, spinner_frame, width, detail_budget);
             for (i, line) in detail.into_iter().enumerate() {
                 out.insert(at + 1 + i, line);
             }
         }
-        if !hints.is_empty() {
+        if focused && !hints.is_empty() {
             let mut hint_spans: Vec<Span<'static>> = vec![Span::raw(INDENT)];
             for (i, h) in hints.iter().enumerate() {
                 if i > 0 {
@@ -1292,7 +1310,12 @@ fn render_hovered_detail(
         header.push(Span::styled(format!(" · {age}"), Style::default().fg(dim)));
     }
     out.push(Line::from(header));
-    out.extend(hovered_detail_body(m, width, budget.saturating_sub(1)));
+    out.extend(hovered_detail_body(
+        m,
+        spinner_frame,
+        width,
+        budget.saturating_sub(1),
+    ));
     out
 }
 
@@ -1300,7 +1323,12 @@ fn render_hovered_detail(
 /// transcript plus its todo list, gutter-indented, without the header row.
 /// Used directly by the vertical strip (where the selected agent's row already
 /// serves as the header) and by [`render_hovered_detail`].
-fn hovered_detail_body(m: &GalleryMember, width: usize, budget: usize) -> Vec<Line<'static>> {
+fn hovered_detail_body(
+    m: &GalleryMember,
+    spinner_frame: usize,
+    width: usize,
+    budget: usize,
+) -> Vec<Line<'static>> {
     let dim = rgb(120, 120, 130);
     let text_fg = rgb(190, 190, 200);
     let gutter_fg = rgb(80, 80, 90);
@@ -1311,34 +1339,107 @@ fn hovered_detail_body(m: &GalleryMember, width: usize, budget: usize) -> Vec<Li
         return Vec::new();
     }
 
-    // Split body lines into transcript vs '·'-prefixed meta markers (the age
-    // hint the adapter appends).
+    let mut out: Vec<Line<'static>> = Vec::new();
+
+    // ---- Todo card ----
+    // Show a sliding window of four item names. Tool activity belongs to the
+    // active item and is nested immediately below it, newest at the bottom.
+    if !m.todo_items.is_empty() {
+        const TODO_WINDOW: usize = 4;
+        const TOOL_WINDOW: usize = 3;
+        let active = m
+            .todo_items
+            .iter()
+            .position(|t| t.status == "in_progress")
+            .or_else(|| m.todo_items.iter().position(|t| t.status != "completed"))
+            .unwrap_or_else(|| m.todo_items.len().saturating_sub(1));
+        let shown = TODO_WINDOW.min(m.todo_items.len());
+        let start = active
+            .saturating_sub(1)
+            .min(m.todo_items.len().saturating_sub(shown));
+        let text_budget = width.saturating_sub(GUTTER.len() + BAR.len() + 2);
+
+        for (idx, todo) in m.todo_items.iter().enumerate().skip(start).take(shown) {
+            if out.len() >= budget {
+                break;
+            }
+            let (glyph, glyph_fg, emph) = match todo.status.as_str() {
+                "completed" => ("✓".to_string(), rgb(100, 200, 100), false),
+                "in_progress" => (
+                    status_glyph("running", spinner_frame).to_string(),
+                    rgb(255, 200, 100),
+                    true,
+                ),
+                _ => ("○".to_string(), dim, false),
+            };
+            let mut style = Style::default().fg(if emph { text_fg } else { dim });
+            if emph {
+                style = style.add_modifier(Modifier::BOLD);
+            }
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(BAR, Style::default().fg(gutter_fg)),
+                Span::styled(format!("{glyph} "), Style::default().fg(glyph_fg)),
+                Span::styled(truncate_label(&todo.content, text_budget), style),
+            ]));
+
+            if idx == active {
+                let tools: Vec<&GalleryToolIntent> = todo
+                    .tool_intents
+                    .iter()
+                    .rev()
+                    .take(TOOL_WINDOW)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+                let tool_count = tools.len();
+                for (tool_idx, tool) in tools.into_iter().enumerate() {
+                    if out.len() >= budget {
+                        break;
+                    }
+                    let (tool_glyph, fg) = match tool.status.as_str() {
+                        "running" => (status_glyph("running", spinner_frame), rgb(255, 200, 100)),
+                        "error" => ("✗", rgb(230, 100, 100)),
+                        _ => ("✓", rgb(100, 200, 100)),
+                    };
+                    let branch = if tool_idx + 1 == tool_count {
+                        "└─"
+                    } else {
+                        "├─"
+                    };
+                    let label = format!("{} · {}", tool.tool_name, tool.intent);
+                    let nested_budget = width.saturating_sub(GUTTER.len() + BAR.len() + 7);
+                    out.push(Line::from(vec![
+                        Span::raw(GUTTER),
+                        Span::styled(BAR, Style::default().fg(gutter_fg)),
+                        Span::raw("  "),
+                        Span::styled(format!("{branch} "), Style::default().fg(gutter_fg)),
+                        Span::styled(format!("{tool_glyph} "), Style::default().fg(fg)),
+                        Span::styled(
+                            truncate_label(&label, nested_budget),
+                            Style::default().fg(rgb(155, 155, 165)),
+                        ),
+                    ]));
+                }
+            }
+        }
+        return out;
+    }
+
+    // No todos yet: retain the live transcript fallback.
     let transcript: Vec<&str> = m
         .body
         .iter()
         .map(|l| l.as_str())
         .filter(|l| !l.trim_start().starts_with('·'))
         .collect();
-
-    let mut out: Vec<Line<'static>> = Vec::new();
-
-    // ---- Budget split: todos take at most half ----
-    let todo_want = if m.todo_items.is_empty() {
-        0
-    } else {
-        // +1 for the "todos C/T" section header.
-        m.todo_items.len() + 1
-    };
-    let todo_rows = todo_want.min(budget / 2);
-    let transcript_rows = budget.saturating_sub(todo_rows);
-
-    // ---- Transcript tail ----
     let text_budget = width.saturating_sub(GUTTER.len() + BAR.len());
     let shown: Vec<&str> = transcript
         .iter()
         .copied()
         .rev()
-        .take(transcript_rows)
+        .take(budget)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
@@ -1357,55 +1458,6 @@ fn hovered_detail_body(m: &GalleryMember, width: usize, budget: usize) -> Vec<Li
                 Span::styled(
                     truncate_label(line, text_budget),
                     Style::default().fg(text_fg),
-                ),
-            ]));
-        }
-    }
-
-    // ---- Todos ----
-    if todo_rows >= 2 {
-        let item_rows = todo_rows - 1;
-        let done = m
-            .todo_items
-            .iter()
-            .filter(|t| t.status == "completed")
-            .count();
-        let (done, total) = m.todo.unwrap_or((done as u32, m.todo_items.len() as u32));
-        out.push(Line::from(vec![
-            Span::raw(GUTTER),
-            Span::styled("├ ", Style::default().fg(gutter_fg)),
-            Span::styled(
-                format!("todos {done}/{total}"),
-                Style::default().fg(rgb(150, 170, 210)),
-            ),
-        ]));
-        // Window the items around the active one: a little completed context,
-        // then in-progress and pending.
-        let first_open = m
-            .todo_items
-            .iter()
-            .position(|t| t.status != "completed")
-            .unwrap_or(m.todo_items.len().saturating_sub(item_rows));
-        let start = first_open
-            .saturating_sub(1)
-            .min(m.todo_items.len().saturating_sub(item_rows));
-        for t in m.todo_items.iter().skip(start).take(item_rows) {
-            let (glyph, fg, emph) = match t.status.as_str() {
-                "completed" => ("✓", rgb(100, 200, 100), false),
-                "in_progress" => ("▸", rgb(255, 200, 100), true),
-                _ => ("·", dim, false),
-            };
-            let mut style = Style::default().fg(if emph { text_fg } else { dim });
-            if emph {
-                style = style.add_modifier(Modifier::BOLD);
-            }
-            out.push(Line::from(vec![
-                Span::raw(GUTTER),
-                Span::styled(BAR, Style::default().fg(gutter_fg)),
-                Span::styled(format!("{glyph} "), Style::default().fg(fg)),
-                Span::styled(
-                    truncate_label(&t.content, text_budget.saturating_sub(2)),
-                    style,
                 ),
             ]));
         }
@@ -1936,6 +1988,102 @@ mod tests {
         assert!(all.contains("pop out"), "hint line shown: {all:?}");
     }
 
+    #[test]
+    fn vertical_strip_unfocused_shows_four_todos_and_last_three_tool_intents() {
+        let mut worker = member("reviewer", "running", None, &[]);
+        worker.icon = Some("🐝".to_string());
+        worker.task = Some("review authentication changes".to_string());
+        worker.todo = Some((1, 5));
+        worker.todo_items = vec![
+            GalleryTodo {
+                content: "inspect middleware".into(),
+                status: "completed".into(),
+                tool_intents: Vec::new(),
+            },
+            GalleryTodo {
+                content: "test token refresh flow".into(),
+                status: "in_progress".into(),
+                tool_intents: vec![
+                    GalleryToolIntent {
+                        tool_name: "read".into(),
+                        intent: "Old intent that should roll off".into(),
+                        status: "completed".into(),
+                    },
+                    GalleryToolIntent {
+                        tool_name: "agentgrep".into(),
+                        intent: "Locate refresh implementation".into(),
+                        status: "completed".into(),
+                    },
+                    GalleryToolIntent {
+                        tool_name: "read".into(),
+                        intent: "Inspect refresh-token handler".into(),
+                        status: "completed".into(),
+                    },
+                    GalleryToolIntent {
+                        tool_name: "bash".into(),
+                        intent: "Run targeted authentication tests".into(),
+                        status: "running".into(),
+                    },
+                ],
+            },
+            GalleryTodo {
+                content: "check secure cookie configuration".into(),
+                status: "pending".into(),
+                tool_intents: Vec::new(),
+            },
+            GalleryTodo {
+                content: "report findings".into(),
+                status: "pending".into(),
+                tool_intents: Vec::new(),
+            },
+            GalleryTodo {
+                content: "hidden fifth item".into(),
+                status: "pending".into(),
+                tool_intents: Vec::new(),
+            },
+        ];
+
+        let lines = render_swarm_strip_vertical(
+            &[worker],
+            0,
+            false,
+            &hints(),
+            Some("alt+n controls"),
+            2,
+            100,
+            4,
+            16,
+        );
+        let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
+        assert!(all.contains("🐝 reviewer"), "agent identity missing: {all}");
+        assert!(all.contains("1/5"), "todo counter missing: {all}");
+        assert!(
+            all.contains("test token refresh flow"),
+            "active todo missing: {all}"
+        );
+        assert!(
+            all.contains("agentgrep · Locate refresh implementation"),
+            "{all}"
+        );
+        assert!(
+            all.contains("read · Inspect refresh-token handler"),
+            "{all}"
+        );
+        assert!(
+            all.contains("bash · Run targeted authentication tests"),
+            "{all}"
+        );
+        assert!(
+            !all.contains("Old intent"),
+            "oldest intent should roll off: {all}"
+        );
+        assert!(
+            !all.contains("hidden fifth item"),
+            "todo window exceeded four: {all}"
+        );
+    }
+
     /// Focused vertical strip: plain typing must never be part of the deal.
     /// (Key mapping lives in the TUI crate; this just pins that the strip
     /// renders hint labels for the alt-chord scheme it advertises.)
@@ -1951,10 +2099,12 @@ mod tests {
             GalleryTodo {
                 content: "first".into(),
                 status: "completed".into(),
+                tool_intents: Vec::new(),
             },
             GalleryTodo {
                 content: "second".into(),
                 status: "in_progress".into(),
+                tool_intents: Vec::new(),
             },
         ];
         let members = vec![m, member("bee", "ready", None, &[])];
@@ -2043,7 +2193,7 @@ mod tests {
     }
 
     #[test]
-    fn strip_focused_detail_shows_transcript_and_todos() {
+    fn strip_focused_detail_prioritizes_todo_names() {
         let mut m = member(
             "researcher",
             "thinking",
@@ -2055,24 +2205,25 @@ mod tests {
             GalleryTodo {
                 content: "wire the bus tap".into(),
                 status: "completed".into(),
+                tool_intents: Vec::new(),
             },
             GalleryTodo {
                 content: "carve the gallery band".into(),
                 status: "in_progress".into(),
+                tool_intents: Vec::new(),
             },
             GalleryTodo {
                 content: "run the ui tests".into(),
                 status: "pending".into(),
+                tool_intents: Vec::new(),
             },
         ];
         let lines = render_swarm_strip(&[m], 0, true, &hints(), None, 0, 80, 14);
         let text: Vec<String> = lines.iter().map(plain_line).collect();
         let all = text.join("\n");
-        // Transcript tail lines are present, not just the last one.
-        assert!(all.contains("editing ui.rs"), "got: {all}");
-        assert!(all.contains("running tests now"), "got: {all}");
-        // Todo section with counter and items.
-        assert!(all.contains("todos 1/3"), "got: {all}");
+        // Todo names replace the less actionable transcript tail when present.
+        assert!(!all.contains("editing ui.rs"), "got: {all}");
+        assert!(!all.contains("running tests now"), "got: {all}");
         assert!(all.contains("carve the gallery band"), "got: {all}");
         assert!(all.contains("run the ui tests"), "got: {all}");
         // Hint line still present.

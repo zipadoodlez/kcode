@@ -52,7 +52,7 @@ pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{
     dispatch_background_task_completion, dispatch_background_task_progress,
     dispatch_swarm_await_completion, dispatch_swarm_output_tail, dispatch_swarm_todo_progress,
-    dispatch_ui_activity,
+    dispatch_swarm_tool_activity, dispatch_ui_activity,
 };
 use self::debug::{ClientConnectionInfo, ClientDebugState};
 use self::debug_jobs::DebugJob;
@@ -1960,10 +1960,12 @@ impl Server {
                 Ok(BusEvent::UiActivity(activity)) => {
                     dispatch_ui_activity(&activity, &swarm_members).await;
                 }
+                Ok(BusEvent::ToolUpdated(event)) => {
+                    dispatch_swarm_tool_activity(&event, &swarm_members, &swarms_by_id).await;
+                }
                 // Session todos are private to the session's transcript, but the
-                // completed/total counters are surfaced on the inline swarm strip
-                // so a coordinator can see each managed agent's progress at a
-                // glance. We forward only the aggregate counts, never the items.
+                // Compact todo names and progress are surfaced on the inline
+                // swarm strip so a coordinator can see each managed agent's work.
                 Ok(BusEvent::TodoUpdated(event)) => {
                     dispatch_swarm_todo_progress(&event, &swarm_members, &swarms_by_id).await;
                 }

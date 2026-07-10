@@ -89,6 +89,15 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
                 .map(|t| jcode_tui_render::swarm_gallery::GalleryTodo {
                     content: t.content.clone(),
                     status: t.status.clone(),
+                    tool_intents: t
+                        .tool_intents
+                        .iter()
+                        .map(|tool| jcode_tui_render::swarm_gallery::GalleryToolIntent {
+                            tool_name: tool.tool_name.clone(),
+                            intent: tool.intent.clone(),
+                            status: tool.status.clone(),
+                        })
+                        .collect(),
                 })
                 .collect(),
         })

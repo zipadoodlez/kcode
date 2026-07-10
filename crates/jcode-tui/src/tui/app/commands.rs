@@ -717,6 +717,7 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
             tool_call_id: tool_call_for_task.id.clone(),
             tool_name: tool_call_for_task.name.clone(),
             status: ToolStatus::Running,
+            intent: tool_call_for_task.intent.clone(),
             title: None,
         }));
 
@@ -757,6 +758,7 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
             tool_call_id: tool_call_for_task.id.clone(),
             tool_name: tool_call_for_task.name.clone(),
             status,
+            intent: tool_call_for_task.intent.clone(),
             title: title.clone(),
         }));
 

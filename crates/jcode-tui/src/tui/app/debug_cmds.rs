@@ -394,15 +394,43 @@ impl App {
                         report_back_to_session_id: None,
                         todo_progress: Some(((i as u32 * 3) % 9, 9)),
                         todo_items: (0..5)
-                            .map(|t| crate::protocol::SwarmTodoItem {
-                                content: format!("step {} of synthetic plan", t + 1),
-                                status: if (t as u32) < (i as u32 * 3) % 9 {
+                            .map(|t| {
+                                let status = if (t as u32) < (i as u32 * 3) % 9 {
                                     "completed".to_string()
                                 } else if t as u32 == (i as u32 * 3) % 9 {
                                     "in_progress".to_string()
                                 } else {
                                     "pending".to_string()
-                                },
+                                };
+                                let tool_intents = if status == "in_progress" {
+                                    vec![
+                                        crate::protocol::SwarmToolIntent {
+                                            tool_call_id: String::new(),
+                                            tool_name: "agentgrep".into(),
+                                            intent: "Locate the affected rendering path".into(),
+                                            status: "completed".into(),
+                                        },
+                                        crate::protocol::SwarmToolIntent {
+                                            tool_call_id: String::new(),
+                                            tool_name: "read".into(),
+                                            intent: "Inspect the active todo state".into(),
+                                            status: "completed".into(),
+                                        },
+                                        crate::protocol::SwarmToolIntent {
+                                            tool_call_id: String::new(),
+                                            tool_name: "bash".into(),
+                                            intent: "Run targeted swarm card tests".into(),
+                                            status: "running".into(),
+                                        },
+                                    ]
+                                } else {
+                                    Vec::new()
+                                };
+                                crate::protocol::SwarmTodoItem {
+                                    content: format!("step {} of synthetic plan", t + 1),
+                                    status,
+                                    tool_intents,
+                                }
                             })
                             .collect(),
                     })

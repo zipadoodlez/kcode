@@ -240,13 +240,25 @@ pub(super) async fn dispatch_swarm_todo_progress(
     } else {
         Some((completed, total))
     };
-    let items = compact_todo_items(&event.todos);
+    let mut items = compact_todo_items(&event.todos);
 
     let swarm_id = {
         let mut members = swarm_members.write().await;
         let Some(member) = members.get_mut(&event.session_id) else {
             return;
         };
+        // Keep tool activity attached while the same todo remains active. A
+        // transition to a different active item starts a fresh intent history.
+        let old_active = member
+            .todo_items
+            .iter()
+            .find(|item| item.status == "in_progress");
+        let new_active = items.iter_mut().find(|item| item.status == "in_progress");
+        if let (Some(old), Some(new)) = (old_active, new_active)
+            && old.content == new.content
+        {
+            new.tool_intents = old.tool_intents.clone();
+        }
         if member.todo_progress == progress && member.todo_items == items {
             return; // no change, skip the broadcast
         }
@@ -259,10 +271,79 @@ pub(super) async fn dispatch_swarm_todo_progress(
     }
 }
 
+/// Mirror a worker's three most recent agent-provided tool intents beneath its
+/// active todo. Running/completed/error events update the same correlated row.
+pub(super) async fn dispatch_swarm_tool_activity(
+    event: &crate::bus::ToolEvent,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+) {
+    let swarm_id = {
+        let mut members = swarm_members.write().await;
+        let Some(member) = members.get_mut(&event.session_id) else {
+            return;
+        };
+        if !update_active_todo_tool(&mut member.todo_items, event) {
+            return;
+        }
+        member.swarm_id.clone()
+    };
+
+    if let Some(swarm_id) = swarm_id {
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+    }
+}
+
+fn update_active_todo_tool(
+    todo_items: &mut [crate::protocol::SwarmTodoItem],
+    event: &crate::bus::ToolEvent,
+) -> bool {
+    let Some(intent) = event
+        .intent
+        .as_deref()
+        .map(str::trim)
+        .filter(|intent| !intent.is_empty())
+    else {
+        return false;
+    };
+    let Some(active) = todo_items
+        .iter_mut()
+        .find(|item| item.status == "in_progress")
+    else {
+        return false;
+    };
+
+    let status = event.status.as_str().to_string();
+    if let Some(existing) = active
+        .tool_intents
+        .iter_mut()
+        .find(|tool| tool.tool_call_id == event.tool_call_id)
+    {
+        existing.tool_name = event.tool_name.clone();
+        existing.intent = cap_chars(intent, SWARM_TOOL_INTENT_CAP);
+        existing.status = status;
+    } else {
+        active.tool_intents.push(crate::protocol::SwarmToolIntent {
+            tool_call_id: event.tool_call_id.clone(),
+            tool_name: event.tool_name.clone(),
+            intent: cap_chars(intent, SWARM_TOOL_INTENT_CAP),
+            status,
+        });
+        if active.tool_intents.len() > SWARM_TOOL_INTENTS_CAP {
+            active
+                .tool_intents
+                .drain(..active.tool_intents.len() - SWARM_TOOL_INTENTS_CAP);
+        }
+    }
+    true
+}
+
 /// Max todo entries mirrored across the swarm status boundary per member.
 const SWARM_TODO_ITEMS_CAP: usize = 12;
 /// Max characters per mirrored todo entry.
 const SWARM_TODO_CONTENT_CAP: usize = 120;
+const SWARM_TOOL_INTENTS_CAP: usize = 3;
+const SWARM_TOOL_INTENT_CAP: usize = 120;
 
 /// Build the capped, display-only todo snapshot that crosses the swarm
 /// boundary. Prefers showing the active window: everything from the first
@@ -282,6 +363,7 @@ fn compact_todo_items(todos: &[crate::todo::TodoItem]) -> Vec<crate::protocol::S
         .map(|t| crate::protocol::SwarmTodoItem {
             content: cap_chars(&t.content, SWARM_TODO_CONTENT_CAP),
             status: t.status.clone(),
+            tool_intents: Vec::new(),
         })
         .collect()
 }
@@ -293,6 +375,65 @@ fn cap_chars(s: &str, cap: usize) -> String {
     let mut out: String = s.chars().take(cap.saturating_sub(1)).collect();
     out.push('…');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bus::{ToolEvent, ToolStatus};
+
+    fn tool(id: &str, intent: &str, status: ToolStatus) -> ToolEvent {
+        ToolEvent {
+            session_id: "worker".into(),
+            message_id: "message".into(),
+            tool_call_id: id.into(),
+            tool_name: "bash".into(),
+            status,
+            intent: Some(intent.into()),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn active_todo_keeps_last_three_tool_intents_and_updates_status_in_place() {
+        let mut items = vec![crate::protocol::SwarmTodoItem {
+            content: "test token refresh flow".into(),
+            status: "in_progress".into(),
+            tool_intents: Vec::new(),
+        }];
+
+        for id in ["one", "two", "three", "four"] {
+            assert!(update_active_todo_tool(
+                &mut items,
+                &tool(id, &format!("intent {id}"), ToolStatus::Running),
+            ));
+        }
+        let intents = &items[0].tool_intents;
+        assert_eq!(intents.len(), 3);
+        assert_eq!(intents[0].tool_call_id, "two");
+        assert_eq!(intents[2].tool_call_id, "four");
+
+        assert!(update_active_todo_tool(
+            &mut items,
+            &tool("four", "intent four", ToolStatus::Completed),
+        ));
+        assert_eq!(items[0].tool_intents.len(), 3);
+        assert_eq!(items[0].tool_intents[2].status, "completed");
+    }
+
+    #[test]
+    fn tool_intent_is_ignored_without_an_active_todo() {
+        let mut items = vec![crate::protocol::SwarmTodoItem {
+            content: "done".into(),
+            status: "completed".into(),
+            tool_intents: Vec::new(),
+        }];
+        assert!(!update_active_todo_tool(
+            &mut items,
+            &tool("one", "irrelevant", ToolStatus::Running),
+        ));
+        assert!(items[0].tool_intents.is_empty());
+    }
 }
 
 pub(super) async fn dispatch_ui_activity(
