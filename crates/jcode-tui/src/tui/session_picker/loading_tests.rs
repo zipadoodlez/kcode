@@ -1161,6 +1161,71 @@ fn parallel_fill_skips_many_recent_empty_sessions_to_reach_scan_limit() {
 }
 
 #[test]
+fn hidden_debug_sessions_do_not_consume_default_resume_budget() {
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _scan_limit = EnvVarGuard::set_str("JCODE_SESSION_PICKER_MAX_SESSIONS", "50");
+
+    let push_message = |session: &mut Session, text: &str| {
+        session.append_stored_message(crate::session::StoredMessage {
+            id: format!("msg-{text}"),
+            role: crate::message::Role::User,
+            content: vec![crate::message::ContentBlock::Text {
+                text: text.to_string(),
+                cache_control: None,
+            }],
+            display_role: None,
+            timestamp: None,
+            tool_duration_ms: None,
+            token_usage: None,
+        });
+    };
+
+    // Write ordinary sessions first so their filesystem mtimes are older than
+    // the hidden debug burst below, matching the reported real-world ordering.
+    for idx in 0..60 {
+        let mut session = Session::create_with_id(
+            format!("session_regular_{}", 1_780_000_000_000u64 + idx as u64),
+            Some(format!("/tmp/regular-{idx:03}")),
+            Some(format!("Regular {idx:03}")),
+        );
+        session.is_debug = false;
+        session.is_canary = false;
+        push_message(&mut session, &format!("regular content {idx:03}"));
+        session.save().expect("save regular session");
+    }
+
+    // These newer self-dev/worker sessions are hidden by default. Previously the
+    // loader stopped after the first 50, leaving no ordinary Jcode sessions for
+    // the picker even though older resumable sessions existed.
+    for idx in 0..75 {
+        let mut session = Session::create_with_id(
+            format!("session_debug_{}", 1_790_000_000_000u64 + idx as u64),
+            Some(format!("/tmp/debug-{idx:03}")),
+            Some(format!("Debug {idx:03}")),
+        );
+        session.is_debug = true;
+        push_message(&mut session, &format!("debug content {idx:03}"));
+        session.save().expect("save debug session");
+    }
+
+    invalidate_session_list_cache();
+    let sessions = load_sessions().expect("load sessions");
+    let regular_count = sessions.iter().filter(|session| !session.is_debug).count();
+    let debug_count = sessions.iter().filter(|session| session.is_debug).count();
+
+    assert_eq!(
+        regular_count, 50,
+        "ordinary sessions should fill the visible budget"
+    );
+    assert_eq!(
+        debug_count, 50,
+        "debug sessions should retain their own bounded budget"
+    );
+}
+
+#[test]
 fn session_matches_picker_query_requires_all_tokens_order_independent() {
     let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp dir");

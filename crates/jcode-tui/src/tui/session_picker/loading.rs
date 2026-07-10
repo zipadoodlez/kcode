@@ -1737,6 +1737,14 @@ pub fn load_sessions() -> Result<Vec<SessionInfo>> {
         // crosses `scan_limit`) can over-parse, so wasted work is bounded to a
         // single window's worth of candidates while still parallelizing widely.
         let mut sessions: Vec<SessionInfo> = Vec::new();
+        // Debug/canary sessions are hidden in the default picker view. Do not let a
+        // burst of self-dev or swarm workers consume the entire recency budget and
+        // crowd out ordinary sessions. Keep a separate bounded debug budget so the
+        // test-session toggle still has useful recent entries without making the
+        // default list appear to jump from a handful of Jcode rows straight to old
+        // external transcripts.
+        let mut visible_session_count = 0usize;
+        let mut debug_session_count = 0usize;
         let mut boundary = candidates.len();
         let window = scan_limit.max(1);
         let mut start = 0;
@@ -1748,8 +1756,16 @@ pub fn load_sessions() -> Result<Vec<SessionInfo>> {
             });
             for (offset, parsed_session) in parsed.into_iter().enumerate() {
                 if let Some(info) = parsed_session {
-                    sessions.push(info);
-                    if sessions.len() >= scan_limit {
+                    if info.is_debug {
+                        if debug_session_count < scan_limit {
+                            debug_session_count += 1;
+                            sessions.push(info);
+                        }
+                    } else {
+                        visible_session_count += 1;
+                        sessions.push(info);
+                    }
+                    if visible_session_count >= scan_limit {
                         boundary = start + offset + 1;
                         break 'fill;
                     }
