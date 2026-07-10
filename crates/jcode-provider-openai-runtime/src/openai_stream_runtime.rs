@@ -758,6 +758,7 @@ pub(super) async fn try_persistent_ws_continuation(
     let mut streaming_tool_calls = HashMap::new();
     let mut completed_tool_items = HashSet::new();
     let mut saw_response_completed = false;
+    let mut consumer_dropped = false;
     let mut pending: VecDeque<StreamEvent> = VecDeque::new();
     let mut new_response_id: Option<String> = None;
     let stream_started = Instant::now();
@@ -881,7 +882,8 @@ pub(super) async fn try_persistent_ws_continuation(
                         return PersistentWsResult::Failed(format!("stream error: {}", message));
                     }
                     if tx.send(Ok(event)).await.is_err() {
-                        break; // Receiver dropped
+                        consumer_dropped = true;
+                        break;
                     }
                 }
                 while let Some(event) = pending.pop_front() {
@@ -892,8 +894,12 @@ pub(super) async fn try_persistent_ws_continuation(
                         saw_response_completed = true;
                     }
                     if tx.send(Ok(event)).await.is_err() {
+                        consumer_dropped = true;
                         break;
                     }
+                }
+                if consumer_dropped {
+                    break;
                 }
                 if made_api_activity {
                     saw_api_activity = true;
@@ -920,6 +926,31 @@ pub(super) async fn try_persistent_ws_continuation(
                 return PersistentWsResult::Failed(format!("ws error: {}", e));
             }
         }
+    }
+
+    // A soft interrupt drops the stream consumer while OpenAI may already have
+    // created a response containing tool calls. That response cannot safely be
+    // used as `previous_response_id`: any unseen tool call would remain open on
+    // the server, and the next continuation would fail with "No tool output
+    // found for function call ...". Only completed responses are reusable.
+    if !saw_response_completed {
+        jcode_base::logging::info(
+            "Persistent WS consumer dropped before response.completed; clearing response chain",
+        );
+        log_openai_stream_lifecycle(
+            jcode_base::logging::LogLevel::Info,
+            "persistent_state_reset",
+            vec![
+                ("model", request_model),
+                (
+                    "reason",
+                    "consumer_dropped_before_response_completed".to_string(),
+                ),
+                ("consumer_dropped", consumer_dropped.to_string()),
+            ],
+        );
+        *guard = None;
+        return PersistentWsResult::Success;
     }
 
     // Update persistent state for next turn

@@ -1032,6 +1032,8 @@ impl OpenAIProvider {
 #[path = "openai/stream.rs"]
 mod stream;
 
+#[cfg(test)]
+use self::openai_stream_runtime::try_persistent_ws_continuation;
 use self::openai_stream_runtime::{PersistentWsResult, is_retryable_error, openai_access_token};
 
 use self::stream::{OpenAIResponsesStream, parse_openai_response_event};

@@ -496,3 +496,66 @@ async fn test_record_websocket_success_clears_normalized_keys() {
         "success should clear normalized failure streak entries"
     );
 }
+
+#[tokio::test]
+async fn persistent_ws_does_not_reuse_response_cancelled_before_completion() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind test websocket listener");
+    let addr = listener.local_addr().expect("listener local addr");
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept websocket client");
+        let mut ws = tokio_tungstenite::accept_async(stream)
+            .await
+            .expect("accept websocket handshake");
+        let request = ws
+            .next()
+            .await
+            .expect("receive continuation request")
+            .expect("valid continuation request");
+        assert!(matches!(request, WsMessage::Text(_)));
+        ws.send(WsMessage::Text(
+            r#"{"type":"response.created","response":{"id":"resp_cancelled"}}"#.into(),
+        ))
+        .await
+        .expect("send response.created");
+        ws.send(WsMessage::Text(
+            r#"{"type":"response.output_text.delta","delta":"partial"}"#.into(),
+        ))
+        .await
+        .expect("send partial response event");
+    });
+
+    let (client_ws, _) = connect_async(format!("ws://{}", addr))
+        .await
+        .expect("connect websocket client");
+    let persistent_ws = Arc::new(Mutex::new(Some(PersistentWsState {
+        ws_stream: client_ws,
+        last_response_id: "resp_previous".to_string(),
+        connected_at: Instant::now(),
+        last_activity_at: Instant::now(),
+        message_count: 1,
+        last_input_item_count: 1,
+    })));
+    let (tx, rx) = mpsc::channel(1);
+    drop(rx); // Mirrors a soft interrupt cancelling the active stream consumer.
+
+    let result = try_persistent_ws_continuation(
+        &persistent_ws,
+        &serde_json::json!({"model": "gpt-5.6-sol"}),
+        &[
+            serde_json::json!({"type": "message", "role": "user", "content": "first"}),
+            serde_json::json!({"type": "message", "role": "user", "content": "interrupt"}),
+        ],
+        2,
+        &tx,
+    )
+    .await;
+
+    assert!(matches!(result, PersistentWsResult::Success));
+    assert!(
+        persistent_ws.lock().await.is_none(),
+        "an incomplete response may contain unseen tool calls and must not be reused"
+    );
+    server.await.expect("test websocket server");
+}
