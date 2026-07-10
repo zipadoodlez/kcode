@@ -2149,23 +2149,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.swarm_plan_swarm_id = Some(snapshot.swarm_id.clone());
                 app.swarm_plan_version = Some(snapshot.version);
                 app.swarm_plan_items = snapshot.items.clone();
-                // Render the plan's task DAG as an inline chat diagram: the graph
-                // is pushed as a normal swarm message containing a mermaid fence,
-                // so it renders through the standard markdown/mermaid pipeline and
-                // scrolls by like any other transcript image. Plan updates
-                // coalesce onto a single transcript message (see
-                // upsert_trailing_swarm_plan_graph_message) instead of stacking
-                // one diagram per assignment churn. Skipped only when mermaid
-                // rendering is opted out (JCODE_ENABLE_MERMAID=0), since a raw
-                // mermaid source block would just be noise.
-                if crate::tui::markdown::mermaid_rendering_enabled()
-                    && let Some(graph) =
-                        crate::tui::swarm_plan_graph::swarm_plan_mermaid(&app.swarm_plan_items)
-                {
-                    let title = format!("Plan graph · v{}", snapshot.version);
-                    let content = format!("```mermaid\n{}\n```", graph.trim_end());
-                    app.upsert_trailing_swarm_plan_graph_message(title, content);
-                }
                 persist_swarm_plan_snapshot(
                     app,
                     snapshot.swarm_id,
