@@ -1207,10 +1207,13 @@ impl crate::tui::TuiState for App {
         };
 
         let todos_are_swarm_plan = self.swarm_enabled && !self.swarm_plan_items.is_empty();
-        let todos = if todos_are_swarm_plan {
-            crate::tui::info_widget::swarm_plan_todos(&self.swarm_plan_items)
+        let (todos, todo_goals) = if todos_are_swarm_plan {
+            (
+                crate::tui::info_widget::swarm_plan_todos(&self.swarm_plan_items),
+                Vec::new(),
+            )
         } else {
-            gather_todos_for_session(session_id)
+            gather_todos_and_goals_for_session(session_id)
         };
 
         let context_snapshot = self.context_snapshot();
@@ -1496,6 +1499,7 @@ impl crate::tui::TuiState for App {
 
         crate::tui::info_widget::InfoWidgetData {
             todos,
+            todo_goals,
             todos_are_swarm_plan,
             context_info,
             context_info_stale: !context_snapshot.fresh,

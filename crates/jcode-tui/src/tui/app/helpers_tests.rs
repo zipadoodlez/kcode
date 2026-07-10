@@ -392,7 +392,7 @@ fn pretty_model_display_name_handles_empty_and_unknown() {
 #[test]
 fn invalidate_todos_cache_backdates_entry_so_next_gather_refetches() {
     use super::{
-        clear_todos_cache_for_tests, gather_todos_for_session, invalidate_todos_cache,
+        clear_todos_cache_for_tests, gather_todos_and_goals_for_session, invalidate_todos_cache,
         todos_cache_entry_age_for_tests,
     };
 
@@ -408,13 +408,13 @@ fn invalidate_todos_cache_backdates_entry_so_next_gather_refetches() {
 
     // First gather seeds the cache entry (and spawns the initial fetch). The
     // entry exists immediately, marked as actively refreshing / freshly stamped.
-    let _ = gather_todos_for_session(Some(session_id));
+    let _ = gather_todos_and_goals_for_session(Some(session_id));
     let before = todos_cache_entry_age_for_tests(session_id);
     assert!(before.is_some(), "first gather must seed a cache entry");
 
     // Let the background fetch settle so we have a non-refreshing, fresh entry.
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let _ = gather_todos_for_session(Some(session_id));
+    let _ = gather_todos_and_goals_for_session(Some(session_id));
     std::thread::sleep(std::time::Duration::from_millis(50));
     let settled = todos_cache_entry_age_for_tests(session_id)
         .expect("entry should exist after gather settles");

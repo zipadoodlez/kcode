@@ -385,6 +385,141 @@ fn todo_widget_header_says_plan_when_showing_swarm_plan_projection() {
     assert!(text.contains("Todos"), "todos header missing: {text}");
 }
 
+fn todo_item(id: &str, content: &str, status: &str, group: Option<&str>) -> crate::todo::TodoItem {
+    crate::todo::TodoItem {
+        content: content.to_string(),
+        status: status.to_string(),
+        priority: "medium".to_string(),
+        id: id.to_string(),
+        group: group.map(|g| g.to_string()),
+        blocked_by: Vec::new(),
+        assigned_to: None,
+        confidence: Some(80),
+        completion_confidence: None,
+        confidence_history: Vec::new(),
+    }
+}
+
+/// Join spans without separators so assertions can match text that spans
+/// multiple styled segments (e.g. "hill " + "85%").
+fn lines_text_concat(lines: &[ratatui::text::Line<'_>]) -> String {
+    lines
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn flat_todo_list_shows_hill_climbability_on_header_in_all_widget_sizes() {
+    let data = InfoWidgetData {
+        todos: vec![
+            todo_item("a", "optimize grep", "in_progress", None),
+            todo_item("b", "add bench", "pending", None),
+        ],
+        todo_goals: vec![crate::todo::TodoGoal {
+            group: None,
+            hill_climbability: Some(85),
+            objective: Some("p50 under 50ms".to_string()),
+            taste_driven: false,
+            reframe_nudge_sent: false,
+        }],
+        ..Default::default()
+    };
+    for text in [
+        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 70, 8))),
+        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
+        lines_text_concat(&render_todos_compact(&data, Rect::new(0, 0, 70, 3))),
+    ] {
+        assert!(text.contains("hill 85%"), "hill suffix missing: {text}");
+    }
+}
+
+#[test]
+fn grouped_todos_show_hill_climbability_on_their_group_headers() {
+    let data = InfoWidgetData {
+        todos: vec![
+            todo_item("a", "speed up search", "in_progress", Some("optimize grep")),
+            todo_item("b", "sketch layout", "pending", Some("onboarding design")),
+        ],
+        todo_goals: vec![
+            crate::todo::TodoGoal {
+                group: Some("optimize grep".to_string()),
+                hill_climbability: Some(90),
+                objective: Some("p50 under 50ms".to_string()),
+                taste_driven: false,
+                reframe_nudge_sent: false,
+            },
+            crate::todo::TodoGoal {
+                group: Some("onboarding design".to_string()),
+                hill_climbability: Some(20),
+                objective: None,
+                taste_driven: true,
+                reframe_nudge_sent: false,
+            },
+        ],
+        ..Default::default()
+    };
+    for text in [
+        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 70, 10))),
+        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
+    ] {
+        assert!(text.contains("hill 90%"), "group hill missing: {text}");
+        // Taste-driven goals show the label instead of a (meaningless) score.
+        assert!(text.contains("taste"), "taste label missing: {text}");
+        assert!(
+            !text.contains("hill 20%"),
+            "taste goal must not show a score: {text}"
+        );
+    }
+}
+
+#[test]
+fn todos_without_goals_render_no_hill_suffix() {
+    let data = InfoWidgetData {
+        todos: vec![todo_item("a", "do a thing", "pending", None)],
+        ..Default::default()
+    };
+    for text in [
+        lines_text_concat(&render_todos_widget(&data, Rect::new(0, 0, 70, 8))),
+        lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
+        lines_text_concat(&render_todos_compact(&data, Rect::new(0, 0, 70, 3))),
+    ] {
+        assert!(!text.contains("hill"), "unexpected hill suffix: {text}");
+    }
+}
+
+#[test]
+fn hill_suffix_renders_safely_at_tiny_sizes() {
+    let data = InfoWidgetData {
+        todos: vec![todo_item(
+            "a",
+            "very long content that will need truncation 汉字 emoji 🚀",
+            "in_progress",
+            Some("a very long group name that must truncate"),
+        )],
+        todo_goals: vec![crate::todo::TodoGoal {
+            group: Some("a very long group name that must truncate".to_string()),
+            hill_climbability: Some(100),
+            objective: None,
+            taste_driven: false,
+            reframe_nudge_sent: false,
+        }],
+        ..Default::default()
+    };
+    for (w, h) in [(0, 0), (1, 1), (5, 2), (12, 4), (200, 50)] {
+        let rect = Rect::new(0, 0, w, h);
+        let _ = render_todos_widget(&data, rect);
+        let _ = render_todos_expanded(&data, rect);
+        let _ = render_todos_compact(&data, rect);
+    }
+}
+
 #[test]
 fn swarm_plan_gate_items_render_like_normal_items() {
     // Deep-mode critique gates share the plan item shape; only the id differs.

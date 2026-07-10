@@ -98,6 +98,72 @@ fn confidence_label(score: Option<u8>) -> String {
         .unwrap_or_else(|| "?%".to_string())
 }
 
+/// Find the goal assessment recorded for a todo group (`None` = the
+/// ungrouped/flat list). Group labels are compared after trimming, matching
+/// how the todo tool normalizes them.
+fn goal_for_group<'a>(
+    goals: &'a [crate::todo::TodoGoal],
+    group: Option<&str>,
+) -> Option<&'a crate::todo::TodoGoal> {
+    let key = group.map(str::trim).filter(|group| !group.is_empty());
+    goals.iter().find(|goal| {
+        goal.group
+            .as_deref()
+            .map(str::trim)
+            .filter(|group| !group.is_empty())
+            == key
+    })
+}
+
+/// Color for a hill-climbability score: green when progress has a credible
+/// metric to iterate against, red when it is low (below the reframe-nudge
+/// threshold), amber in between.
+fn hill_style(score: u8) -> Style {
+    let color = if score >= 70 {
+        rgb(100, 180, 100)
+    } else if score >= crate::todo::LOW_HILL_CLIMBABILITY {
+        rgb(220, 190, 100)
+    } else {
+        rgb(220, 120, 100)
+    };
+    Style::default().fg(color)
+}
+
+/// Append a " · hill N%" (or " · taste") suffix describing a goal's
+/// hill-climbability. Taste-driven goals show the label instead of a score,
+/// since a metric deliberately does not exist for them.
+fn push_goal_hill_suffix(spans: &mut Vec<Span<'static>>, goal: &crate::todo::TodoGoal) {
+    if goal.taste_driven {
+        spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+        spans.push(Span::styled(
+            "taste",
+            Style::default().fg(rgb(190, 140, 200)),
+        ));
+        return;
+    }
+    let Some(score) = goal.hill_climbability else {
+        return;
+    };
+    spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
+    spans.push(Span::styled(
+        "hill ",
+        Style::default().fg(rgb(140, 140, 150)),
+    ));
+    spans.push(Span::styled(format!("{}%", score), hill_style(score)));
+}
+
+/// Display width of the suffix `push_goal_hill_suffix` would render for this
+/// goal (0 when it renders nothing), so header truncation can reserve room.
+fn goal_hill_suffix_width(goal: &crate::todo::TodoGoal) -> u16 {
+    if goal.taste_driven {
+        return 3 + "taste".len() as u16;
+    }
+    match goal.hill_climbability {
+        Some(score) => 3 + "hill ".len() as u16 + format!("{}%", score).len() as u16,
+        None => 0,
+    }
+}
+
 fn todo_confidence_suffix_width(todo: &crate::todo::TodoItem) -> u16 {
     3 + confidence_label(todo_display_confidence(todo)).len() as u16
 }
@@ -258,22 +324,31 @@ fn push_group_header(
     lines: &mut Vec<Line<'static>>,
     name: &str,
     items: &[&crate::todo::TodoItem],
+    goal: Option<&crate::todo::TodoGoal>,
     inner: Rect,
 ) {
     let total = items.len();
     let completed = items.iter().filter(|t| t.status == "completed").count();
     let counter = format!(" {}/{}", completed, total);
-    let max_name = inner.width.saturating_sub(counter.len() as u16).max(4) as usize;
+    let hill_width = goal.map(goal_hill_suffix_width).unwrap_or(0);
+    let max_name = inner
+        .width
+        .saturating_sub(counter.len() as u16 + hill_width)
+        .max(4) as usize;
     let highlight = items.iter().any(|t| t.status == "in_progress");
     let name_style = if highlight {
         Style::default().fg(rgb(255, 210, 130)).bold()
     } else {
         Style::default().fg(rgb(170, 175, 205)).bold()
     };
-    lines.push(Line::from(vec![
+    let mut spans = vec![
         Span::styled(truncate_smart(name, max_name), name_style),
         Span::styled(counter, Style::default().fg(rgb(120, 120, 140))),
-    ]));
+    ];
+    if let Some(goal) = goal {
+        push_goal_hill_suffix(&mut spans, goal);
+    }
+    lines.push(Line::from(spans));
 }
 
 /// Render one todo as a line. `show_priority_marker` adds the `!` high-priority
@@ -361,6 +436,7 @@ fn push_todo_item_line(
 /// of todo items actually shown (so callers can render a "+N more" footer).
 fn render_grouped_todo_lines(
     groups: &[(Option<String>, Vec<&crate::todo::TodoItem>)],
+    goals: &[crate::todo::TodoGoal],
     inner: Rect,
     show_priority_marker: bool,
     max_lines: usize,
@@ -372,7 +448,8 @@ fn render_grouped_todo_lines(
             break;
         }
         let header_name = group.as_deref().unwrap_or("Other");
-        push_group_header(&mut lines, header_name, items, inner);
+        let goal = goal_for_group(goals, group.as_deref());
+        push_group_header(&mut lines, header_name, items, goal, inner);
         for todo in sort_todos_by_status(items) {
             if lines.len() >= max_lines {
                 break;
@@ -427,14 +504,15 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 10) as usize;
     push_todo_pips(&mut header, data, pip_budget);
     push_aggregate_confidence_suffix(&mut header, data);
-    lines.push(Line::from(header));
 
     let available_lines = inner.height.saturating_sub(1) as usize; // Account for header
     let budget = available_lines.clamp(1, 5);
 
     // Grouped layout when any todo declares a group; otherwise the flat list.
     if let Some(groups) = grouped_todos(&data.todos) {
-        let (group_lines, shown) = render_grouped_todo_lines(&groups, inner, false, budget);
+        lines.push(Line::from(header));
+        let (group_lines, shown) =
+            render_grouped_todo_lines(&groups, &data.todo_goals, inner, false, budget);
         lines.extend(group_lines);
         if total > shown {
             lines.push(Line::from(vec![Span::styled(
@@ -444,6 +522,13 @@ pub(super) fn render_todos_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         }
         return lines;
     }
+
+    // Flat list: the whole list is one implicit goal, so its hill score
+    // (if recorded) lives on the header line.
+    if let Some(goal) = goal_for_group(&data.todo_goals, None) {
+        push_goal_hill_suffix(&mut header, goal);
+    }
+    lines.push(Line::from(header));
 
     // Sort todos: in_progress first, then pending, then completed
     let mut sorted_todos: Vec<&crate::todo::TodoItem> = data.todos.iter().collect();
@@ -500,13 +585,14 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
     let pip_budget = (inner.width.saturating_sub(12) / 2).clamp(0, 14) as usize;
     push_todo_pips(&mut header, data, pip_budget);
     push_aggregate_confidence_suffix(&mut header, data);
-    lines.push(Line::from(header));
 
     let available_lines = MAX_TODO_LINES.saturating_sub(1); // Account for header
 
     // Grouped layout when any todo declares a group; otherwise the flat list.
     if let Some(groups) = grouped_todos(&data.todos) {
-        let (group_lines, shown) = render_grouped_todo_lines(&groups, inner, true, available_lines);
+        lines.push(Line::from(header));
+        let (group_lines, shown) =
+            render_grouped_todo_lines(&groups, &data.todo_goals, inner, true, available_lines);
         lines.extend(group_lines);
         if total > shown {
             lines.push(Line::from(vec![Span::styled(
@@ -516,6 +602,13 @@ pub(super) fn render_todos_expanded(data: &InfoWidgetData, inner: Rect) -> Vec<L
         }
         return lines;
     }
+
+    // Flat list: the whole list is one implicit goal, so its hill score
+    // (if recorded) lives on the header line.
+    if let Some(goal) = goal_for_group(&data.todo_goals, None) {
+        push_goal_hill_suffix(&mut header, goal);
+    }
+    lines.push(Line::from(header));
 
     // Sort todos: in_progress first, then pending, then completed
     let mut sorted_todos: Vec<&crate::todo::TodoItem> = data.todos.iter().collect();
@@ -583,6 +676,9 @@ pub(super) fn render_todos_compact(data: &InfoWidgetData, _inner: Rect) -> Vec<L
         ),
     ];
     push_aggregate_confidence_suffix(&mut summary, data);
+    if let Some(goal) = goal_for_group(&data.todo_goals, None) {
+        push_goal_hill_suffix(&mut summary, goal);
+    }
 
     vec![
         Line::from(vec![Span::styled(

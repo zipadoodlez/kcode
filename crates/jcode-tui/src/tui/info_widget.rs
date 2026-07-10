@@ -567,6 +567,11 @@ const PAGE_SWITCH_SECONDS: u64 = 30;
 #[derive(Debug, Default, Clone)]
 pub struct InfoWidgetData {
     pub todos: Vec<TodoItem>,
+    /// Goal-level assessments (hill-climbability, objective, taste-driven)
+    /// keyed by todo group (`group: None` covers the ungrouped list). Empty
+    /// when the session has no recorded goals or `todos` is a swarm-plan
+    /// projection.
+    pub todo_goals: Vec<crate::todo::TodoGoal>,
     /// True when `todos` is actually a projection of the shared swarm plan
     /// (task DAG) rather than this session's private todo list. The widget
     /// renders a "Plan" header instead of "Todos" so the two are not
