@@ -137,8 +137,6 @@ fn image_source_badge(source: &crate::session::RenderedImageSource) -> String {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PinnedCacheKey {
     messages_version: u64,
-    collect_diffs: bool,
-    collect_images: bool,
 }
 
 #[derive(Default)]
@@ -703,18 +701,16 @@ pub(crate) fn prewarm_focused_side_panel(
     true
 }
 
-pub(super) fn collect_pinned_content_cached(
+/// Collect the pinned file-diff entries used by the right-hand pane.
+///
+/// Inline images render in the transcript now. Keeping image payloads out of
+/// this frame-level probe is important because `TuiState::side_pane_images()`
+/// may materialize and clone multi-megabyte base64 strings.
+pub(super) fn collect_pinned_diffs_cached(
     messages: &[DisplayMessage],
-    images: &[crate::session::RenderedImage],
-    collect_diffs: bool,
-    collect_images: bool,
     messages_version: u64,
 ) -> bool {
-    let key = PinnedCacheKey {
-        messages_version,
-        collect_diffs,
-        collect_images,
-    };
+    let key = PinnedCacheKey { messages_version };
 
     let mut cache = match pinned_cache().lock() {
         Ok(c) => c,
@@ -725,7 +721,7 @@ pub(super) fn collect_pinned_content_cached(
         return !cache.entries.is_empty();
     }
 
-    let entries = collect_pinned_content(messages, images, collect_diffs, collect_images);
+    let entries = collect_pinned_content(messages, &[], true, false);
     let has_entries = !entries.is_empty();
     cache.key = Some(key);
     cache.entries = entries;

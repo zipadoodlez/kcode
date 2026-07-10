@@ -1107,10 +1107,9 @@ pub struct App {
     // All sessions on the server (remote mode only)
     remote_sessions: Vec<String>,
     remote_side_pane_images: Vec<crate::session::RenderedImage>,
-    /// Cached `(display_messages_version, signature)` for
-    /// `side_pane_images_signature`, recomputed only when the transcript
-    /// version changes.
-    side_pane_images_signature_cache: std::cell::Cell<Option<(u64, (usize, u64))>>,
+    /// Cached image-set signature. Text-only transcript changes must not
+    /// invalidate this because rebuilding it materializes every image payload.
+    side_pane_images_signature_cache: std::cell::Cell<Option<(usize, u64)>>,
     // Swarm member status snapshots (remote mode only)
     remote_swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
     // Latest swarm plan snapshot (local or remote server event stream)

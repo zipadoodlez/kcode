@@ -418,6 +418,7 @@ impl App {
         compact_display_messages_for_storage(&mut messages);
         self.display_messages = messages;
         self.remote_side_pane_images = images;
+        self.invalidate_side_pane_images_signature();
         self.compacted_history_lazy = CompactedHistoryLazyState {
             total_messages,
             visible_messages,

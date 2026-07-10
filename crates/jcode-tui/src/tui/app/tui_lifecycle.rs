@@ -1152,6 +1152,7 @@ impl App {
                 jcode_tui_messages::display_messages_from_rendered_messages(rendered_messages);
             self.replace_display_messages(display_messages);
             self.remote_side_pane_images = rendered_images;
+            self.invalidate_side_pane_images_signature();
         }
         let render_ms = render_start.elapsed().as_millis();
 

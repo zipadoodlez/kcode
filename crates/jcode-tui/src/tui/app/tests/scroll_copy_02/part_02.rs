@@ -131,6 +131,39 @@ fn test_alt_shift_i_toggles_inline_images_and_persists() {
 }
 
 #[test]
+fn text_only_transcript_updates_keep_inline_image_signature_cached() {
+    let _render_lock = scroll_render_test_lock();
+    let (mut app, _terminal) = create_copy_test_app();
+    app.is_remote = true;
+    app.remote_side_pane_images = (0..24)
+        .map(|index| crate::session::RenderedImage {
+            media_type: "image/png".to_string(),
+            // Large enough to make accidental payload cloning/re-rendering costly,
+            // without bloating the test process excessively.
+            data: format!("{index:02}-{}", "A".repeat(256 * 1024)),
+            label: Some(format!("image-{index}.png")),
+            source: crate::session::RenderedImageSource::UserInput,
+            anchor: None,
+        })
+        .collect();
+    app.invalidate_side_pane_images_signature();
+
+    let signature = crate::tui::TuiState::side_pane_images_signature(&app);
+    assert_eq!(signature.0, 24);
+    assert_eq!(app.side_pane_images_signature_cache.get(), Some(signature));
+
+    // Text/tool messages can change many times during a turn. They must not
+    // evict the image signature and force all base64 payloads to be cloned and
+    // walked again on the next frame.
+    app.bump_display_messages_version_no_stats();
+    assert_eq!(app.side_pane_images_signature_cache.get(), Some(signature));
+    assert_eq!(
+        crate::tui::TuiState::side_pane_images_signature(&app),
+        signature
+    );
+}
+
+#[test]
 fn test_alt_shift_i_is_inert_without_inline_images() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, _terminal) = create_copy_test_app();

@@ -142,7 +142,7 @@ pub(crate) use pinned_ui::{
     reset_side_panel_debug_stats, side_panel_debug_json, side_panel_debug_stats,
 };
 use pinned_ui::{
-    collect_pinned_content_cached, draw_pinned_content_cached, draw_side_panel_markdown,
+    collect_pinned_diffs_cached, draw_pinned_content_cached, draw_side_panel_markdown,
 };
 #[cfg(test)]
 use transitions::extract_line_text;
@@ -2541,13 +2541,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Images now render inline in the transcript, so the side panel only handles
     // pinned file diffs. `pin_images` no longer feeds the side-panel surface.
     let has_pinned_content = if collect_diffs {
-        collect_pinned_content_cached(
-            app.display_messages(),
-            &app.side_pane_images(),
-            collect_diffs,
-            false,
-            app.display_messages_version(),
-        )
+        collect_pinned_diffs_cached(app.display_messages(), app.display_messages_version())
     } else {
         false
     };

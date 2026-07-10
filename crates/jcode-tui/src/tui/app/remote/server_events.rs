@@ -1648,6 +1648,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.remote_total_tokens = None;
                 app.remote_token_usage_totals = None;
                 app.remote_side_pane_images.clear();
+                app.invalidate_side_pane_images_signature();
                 app.remote_swarm_members.clear();
                 app.swarm_plan_items.clear();
                 app.swarm_plan_version = None;
@@ -1698,6 +1699,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 drop(images);
             } else {
                 app.remote_side_pane_images = images;
+                app.invalidate_side_pane_images_signature();
             }
             app.persist_remote_model_catalog_cache();
             app.remote_skills = skills;

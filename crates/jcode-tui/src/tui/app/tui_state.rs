@@ -524,12 +524,9 @@ impl crate::tui::TuiState for App {
 
     fn side_pane_images_signature(&self) -> (usize, u64) {
         // Recomputing the signature walks (and in local mode re-renders) every
-        // image payload, so cache it per display_messages_version: image sets
-        // only change when the transcript does.
-        let version = self.display_messages_version;
-        if let Some((cached_version, signature)) = self.side_pane_images_signature_cache.get()
-            && cached_version == version
-        {
+        // image payload. Cache it until an image mutation explicitly invalidates
+        // it; ordinary text/tool transcript updates do not change the image set.
+        if let Some(signature) = self.side_pane_images_signature_cache.get() {
             return signature;
         }
         use std::hash::{Hash, Hasher};
@@ -547,8 +544,7 @@ impl crate::tui::TuiState for App {
             crate::tui::hash_rendered_image_anchor(image.anchor.as_ref(), &mut hasher);
         }
         let signature = (images.len(), hasher.finish());
-        self.side_pane_images_signature_cache
-            .set(Some((version, signature)));
+        self.side_pane_images_signature_cache.set(Some(signature));
         signature
     }
 
