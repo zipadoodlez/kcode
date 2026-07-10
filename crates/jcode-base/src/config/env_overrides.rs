@@ -280,6 +280,11 @@ impl Config {
                 self.features.swarm = parsed;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_ENABLE_MERMAID") {
+            if let Some(parsed) = parse_env_bool(&v) {
+                self.features.mermaid = parsed;
+            }
+        }
         if let Ok(v) = std::env::var("JCODE_MESSAGE_TIMESTAMPS") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.features.message_timestamps = parsed;

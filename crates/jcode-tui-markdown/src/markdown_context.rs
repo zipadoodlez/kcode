@@ -86,19 +86,18 @@ pub(super) fn effective_markdown_spacing_mode() -> MarkdownSpacingMode {
 
 /// Whether mermaid diagram rendering is enabled.
 ///
-/// Mermaid rendering is enabled by default (renderer v0.3.0+ passes the hard
-/// geometry gate). Set `JCODE_ENABLE_MERMAID=0` to opt out. Tests must not
-/// mutate that process-global env var (doing so races parallel test threads);
-/// use [`with_mermaid_rendering_override`] instead.
+/// The application supplies the effective config value, including environment
+/// overrides, through [`crate::MarkdownConfigSnapshot`]. Tests should use
+/// [`with_mermaid_rendering_override`] rather than mutating global config.
 pub fn mermaid_rendering_enabled() -> bool {
     if let Some(enabled) = MERMAID_RENDERING_OVERRIDE.with(|ctx| ctx.get()) {
         return enabled;
     }
-    !std::env::var("JCODE_ENABLE_MERMAID").is_ok_and(|value| value == "0")
+    crate::config_snapshot().mermaid_enabled
 }
 
 /// Run `f` with mermaid rendering forced on/off (or `None` to restore the
-/// env-based default) on the current thread. Thread-local and scoped, so
+/// config-based default) on the current thread. Thread-local and scoped, so
 /// parallel tests cannot observe each other's override.
 pub fn with_mermaid_rendering_override<T>(enabled: Option<bool>, f: impl FnOnce() -> T) -> T {
     MERMAID_RENDERING_OVERRIDE.with(|ctx| with_scoped_cell_value(ctx, enabled, f))

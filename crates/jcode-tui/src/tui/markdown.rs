@@ -48,6 +48,7 @@ pub fn install_jcode_markdown_hooks() {
         jcode_tui_markdown::MarkdownConfigSnapshot {
             diagram_mode: to_markdown_diagram_mode(cfg.display.diagram_mode),
             markdown_spacing: to_markdown_spacing_mode(cfg.display.markdown_spacing),
+            mermaid_enabled: cfg.features.mermaid,
         }
     });
     jcode_tui_markdown::set_memory_snapshot_hook(|| {

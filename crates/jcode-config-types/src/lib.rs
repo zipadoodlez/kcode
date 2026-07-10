@@ -1113,6 +1113,8 @@ pub struct FeatureConfig {
     pub memory: bool,
     /// Enable swarm coordination features (default: true)
     pub swarm: bool,
+    /// Enable Mermaid rendering and Mermaid-specific model guidance (default: true)
+    pub mermaid: bool,
     /// Inject timestamps into user messages and tool results sent to the model (default: true)
     pub message_timestamps: bool,
     /// Persist auto-recalled memory injections into normal session history instead of sending
@@ -1134,6 +1136,7 @@ impl Default for FeatureConfig {
         Self {
             memory: true,
             swarm: true,
+            mermaid: true,
             message_timestamps: true,
             persist_memory_injections: false,
             kv_cache_miss_notices: true,

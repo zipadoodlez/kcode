@@ -6,6 +6,37 @@ use std::process::Command;
 /// Default system prompt for jcode (embedded at compile time)
 pub const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompt/system_prompt.md");
 
+/// Prompt guidance for the optional Mermaid rendering capability.
+pub const MERMAID_PROMPT: &str = "# Mermaid diagrams\n\nMermaid diagrams will be rendered inline by the harness. You can start a diagram with a fenced `mermaid` code block, and it will automatically be rendered.";
+
+/// Harness capabilities that conditionally contribute prompt modules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PromptCapabilities {
+    pub mermaid: bool,
+}
+
+impl Default for PromptCapabilities {
+    fn default() -> Self {
+        Self { mermaid: true }
+    }
+}
+
+impl PromptCapabilities {
+    fn current() -> Self {
+        Self {
+            mermaid: crate::config::config().features.mermaid,
+        }
+    }
+}
+
+fn base_system_prompt_parts(capabilities: PromptCapabilities) -> Vec<String> {
+    let mut parts = vec![DEFAULT_SYSTEM_PROMPT.to_string()];
+    if capabilities.mermaid {
+        parts.push(MERMAID_PROMPT.to_string());
+    }
+    parts
+}
+
 /// Built-in default swarm prompt: model-routing guidance for spawned swarm
 /// agents (which model/effort to pick per task kind). Users can override it by
 /// creating `~/.jcode/swarm-prompt.md` (global) or `./.jcode/swarm-prompt.md`
@@ -344,9 +375,27 @@ pub fn build_system_prompt_full(
     memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
 ) -> (String, ContextInfo) {
-    let mut parts = vec![DEFAULT_SYSTEM_PROMPT.to_string()];
+    build_system_prompt_full_with_capabilities(
+        skill_prompt,
+        available_skills,
+        is_selfdev,
+        memory_prompt,
+        working_dir,
+        PromptCapabilities::current(),
+    )
+}
+
+pub fn build_system_prompt_full_with_capabilities(
+    skill_prompt: Option<&str>,
+    available_skills: &[SkillInfo],
+    is_selfdev: bool,
+    memory_prompt: Option<&str>,
+    working_dir: Option<&Path>,
+    capabilities: PromptCapabilities,
+) -> (String, ContextInfo) {
+    let mut parts = base_system_prompt_parts(capabilities);
     let mut info = ContextInfo {
-        system_prompt_chars: DEFAULT_SYSTEM_PROMPT.len(),
+        system_prompt_chars: parts.join("\n\n").len(),
         ..Default::default()
     };
 
@@ -430,10 +479,28 @@ pub fn build_system_prompt_split(
     memory_prompt: Option<&str>,
     working_dir: Option<&Path>,
 ) -> (SplitSystemPrompt, ContextInfo) {
-    let mut static_parts = vec![DEFAULT_SYSTEM_PROMPT.to_string()];
+    build_system_prompt_split_with_capabilities(
+        skill_prompt,
+        available_skills,
+        is_selfdev,
+        memory_prompt,
+        working_dir,
+        PromptCapabilities::current(),
+    )
+}
+
+pub fn build_system_prompt_split_with_capabilities(
+    skill_prompt: Option<&str>,
+    available_skills: &[SkillInfo],
+    is_selfdev: bool,
+    memory_prompt: Option<&str>,
+    working_dir: Option<&Path>,
+    capabilities: PromptCapabilities,
+) -> (SplitSystemPrompt, ContextInfo) {
+    let mut static_parts = base_system_prompt_parts(capabilities);
     let mut dynamic_parts = Vec::new();
     let mut info = ContextInfo {
-        system_prompt_chars: DEFAULT_SYSTEM_PROMPT.len(),
+        system_prompt_chars: static_parts.join("\n\n").len(),
         ..Default::default()
     };
 

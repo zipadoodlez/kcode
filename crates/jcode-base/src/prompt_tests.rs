@@ -16,6 +16,30 @@ fn test_default_system_prompt_no_claude_code_identity() {
     );
 }
 
+#[test]
+fn mermaid_prompt_module_follows_capability() {
+    let (enabled, _) = build_system_prompt_split_with_capabilities(
+        None,
+        &[],
+        false,
+        None,
+        None,
+        PromptCapabilities { mermaid: true },
+    );
+    assert!(enabled.static_part.contains(MERMAID_PROMPT));
+
+    let (disabled, _) = build_system_prompt_split_with_capabilities(
+        None,
+        &[],
+        false,
+        None,
+        None,
+        PromptCapabilities { mermaid: false },
+    );
+    assert!(!disabled.static_part.contains("Mermaid diagrams"));
+    assert!(!disabled.static_part.contains("fenced `mermaid` code block"));
+}
+
 /// Verify skill prompts don't accidentally introduce "Claude Code" identity
 #[test]
 fn test_skill_prompt_integration() {

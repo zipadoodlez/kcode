@@ -131,7 +131,7 @@ pub fn render_markdown(
     }
     out.push_str(&format!("- Session: `{}`\n\n", session.id));
 
-    if !brief.activity_steps.is_empty() {
+    if crate::config::config().features.mermaid && !brief.activity_steps.is_empty() {
         out.push_str("```mermaid\nflowchart TD\n");
         out.push_str(&format!(
             "    A[\"Why<br/>{}\"]:::status --> B[\"Your last prompt\"]:::user\n",

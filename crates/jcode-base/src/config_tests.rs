@@ -51,6 +51,28 @@ fn swarm_max_concurrent_agents_defaults_high_for_deep_fanout() {
 }
 
 #[test]
+fn mermaid_feature_defaults_on_and_parses_false() {
+    assert!(Config::default().features.mermaid);
+
+    let cfg: Config =
+        toml::from_str("[features]\nmermaid = false\n").expect("features.mermaid should parse");
+    assert!(!cfg.features.mermaid);
+}
+
+#[test]
+fn mermaid_environment_override_uses_standard_boolean_values() {
+    let _guard = crate::storage::lock_test_env();
+    let previous = std::env::var_os("JCODE_ENABLE_MERMAID");
+    crate::env::set_var("JCODE_ENABLE_MERMAID", "off");
+
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+    assert!(!cfg.features.mermaid);
+
+    restore_env_var("JCODE_ENABLE_MERMAID", previous);
+}
+
+#[test]
 fn swarm_max_concurrent_agents_parses_and_allows_zero_for_unbounded() {
     let cfg: Config = toml::from_str("[agents]\nswarm_max_concurrent_agents = 64\n")
         .expect("swarm_max_concurrent_agents should parse");

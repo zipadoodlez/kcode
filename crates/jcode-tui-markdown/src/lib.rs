@@ -22,10 +22,21 @@ mod types;
 
 pub use types::{CopyTargetKind, DiagramDisplayMode, MarkdownSpacingMode, RawCopyTarget};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct MarkdownConfigSnapshot {
     pub diagram_mode: DiagramDisplayMode,
     pub markdown_spacing: MarkdownSpacingMode,
+    pub mermaid_enabled: bool,
+}
+
+impl Default for MarkdownConfigSnapshot {
+    fn default() -> Self {
+        Self {
+            diagram_mode: DiagramDisplayMode::default(),
+            markdown_spacing: MarkdownSpacingMode::default(),
+            mermaid_enabled: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

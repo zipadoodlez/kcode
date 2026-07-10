@@ -206,6 +206,8 @@ prompt_entry_animation = true
 memory = true
 # Swarm: multi-session coordination features
 swarm = true
+# Mermaid: render Mermaid code blocks and tell the model that diagrams are supported
+mermaid = true
 # Inject timestamps into user messages and tool results sent to the model
 message_timestamps = true
 # Persist memory injections into session history instead of sending them as request-only ephemeral context
