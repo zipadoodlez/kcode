@@ -357,6 +357,45 @@ pub struct FeedbackEvent {
     pub ran_from_cargo: bool,
 }
 
+/// One completed sponsored-discovery attempt. Free-text query and reason
+/// content are deliberately excluded. Only coarse presence flags and bounded
+/// service-controlled labels are emitted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryEvent {
+    pub event_id: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    pub event: &'static str,
+    pub version: String,
+    pub os: &'static str,
+    pub arch: &'static str,
+    pub request_id: String,
+    pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_tool: Option<String>,
+    pub outcome: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+    pub latency_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_count: Option<u32>,
+    pub query_present: bool,
+    pub reason_present: bool,
+    pub custom_endpoint: bool,
+    pub schema_version: u32,
+    pub build_channel: String,
+    pub is_git_checkout: bool,
+    pub is_ci: bool,
+    pub ran_from_cargo: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionLifecycleEvent {
     pub event_id: String,
