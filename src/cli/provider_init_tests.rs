@@ -67,6 +67,77 @@ fn test_provider_choice_arg_values() {
     assert_eq!(ProviderChoice::Auto.as_arg_value(), "auto");
 }
 
+#[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "test env locks intentionally stay held across provider init to isolate process-global auth env"
+)]
+async fn explicit_anthropic_api_choice_pins_api_key_over_available_oauth() {
+    let _guard = lock_env();
+    let _env_guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().expect("temp dir");
+    let keys = [
+        "JCODE_HOME",
+        "ANTHROPIC_API_KEY",
+        "JCODE_RUNTIME_PROVIDER",
+        "JCODE_ACTIVE_PROVIDER",
+        "JCODE_FORCE_PROVIDER",
+    ];
+    let saved: Vec<(&str, Option<String>)> = keys
+        .iter()
+        .map(|key| (*key, std::env::var(key).ok()))
+        .collect();
+
+    crate::env::set_var("JCODE_HOME", dir.path());
+    crate::env::set_var("ANTHROPIC_API_KEY", "sk-ant-api-test");
+    for key in [
+        "JCODE_RUNTIME_PROVIDER",
+        "JCODE_ACTIVE_PROVIDER",
+        "JCODE_FORCE_PROVIDER",
+    ] {
+        crate::env::remove_var(key);
+    }
+    std::fs::write(
+        dir.path().join("auth.json"),
+        serde_json::json!({
+            "anthropic_accounts": [{
+                "label": "primary",
+                "access": "oauth-access-token",
+                "refresh": "oauth-refresh-token",
+                "expires": chrono::Utc::now().timestamp_millis() + 3_600_000,
+                "scopes": ["user:inference"]
+            }],
+            "active_anthropic_account": "primary"
+        })
+        .to_string(),
+    )
+    .expect("write competing OAuth credentials");
+    crate::config::invalidate_config_cache();
+    crate::auth::AuthStatus::invalidate_cache();
+
+    let provider =
+        init_provider_for_validation(&ProviderChoice::AnthropicApi, Some("claude-haiku-4-5"))
+            .await
+            .expect("explicit Anthropic API provider should initialize");
+
+    assert_eq!(provider.active_auth_method_label(), Some("API key"));
+    assert_eq!(provider.model(), "claude-haiku-4-5");
+    assert_eq!(
+        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
+        Some("claude-api")
+    );
+
+    for (key, value) in saved {
+        if let Some(value) = value {
+            crate::env::set_var(key, value);
+        } else {
+            crate::env::remove_var(key);
+        }
+    }
+    crate::config::invalidate_config_cache();
+    crate::auth::AuthStatus::invalidate_cache();
+}
+
 #[test]
 fn test_server_bootstrap_login_selection_preserves_order() {
     let providers = provider_catalog::server_bootstrap_login_providers();

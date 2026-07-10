@@ -285,6 +285,74 @@ const OAUTH_BUILTIN_LOCAL_TOOLS: &[&str] = &[
     "write",
 ];
 
+/// Anthropic accepts JSON Schema combinators inside object properties, but
+/// rejects `oneOf`, `anyOf`, and `allOf` at the input schema's top level. Keep
+/// the common object shape and widen top-level variants into one object whose
+/// properties cover every branch. Runtime tool deserialization remains the
+/// authority for action-specific constraints.
+fn anthropic_input_schema(schema: &Value) -> Value {
+    let Value::Object(source) = schema else {
+        return json!({"type": "object", "properties": {}});
+    };
+
+    let mut output = source.clone();
+    let mut merged_properties = output
+        .get("properties")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut all_of_required = Vec::new();
+
+    for keyword in ["oneOf", "anyOf", "allOf"] {
+        let Some(branches) = output
+            .remove(keyword)
+            .and_then(|value| value.as_array().cloned())
+        else {
+            continue;
+        };
+        for branch in branches {
+            let Some(branch) = branch.as_object() else {
+                continue;
+            };
+            if let Some(properties) = branch.get("properties").and_then(Value::as_object) {
+                for (name, property) in properties {
+                    merged_properties
+                        .entry(name.clone())
+                        .or_insert_with(|| property.clone());
+                }
+            }
+            if keyword == "allOf"
+                && let Some(required) = branch.get("required").and_then(Value::as_array)
+            {
+                for name in required.iter().filter_map(Value::as_str) {
+                    if !all_of_required.iter().any(|existing| existing == name) {
+                        all_of_required.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    output.insert("type".to_string(), Value::String("object".to_string()));
+    output.insert("properties".to_string(), Value::Object(merged_properties));
+    if !all_of_required.is_empty() {
+        let required = output
+            .entry("required".to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if let Value::Array(required) = required {
+            for name in all_of_required {
+                if !required
+                    .iter()
+                    .any(|existing| existing.as_str() == Some(&name))
+                {
+                    required.push(Value::String(name));
+                }
+            }
+        }
+    }
+    Value::Object(output)
+}
+
 pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool) -> Vec<ApiTool> {
     if is_oauth {
         // Curated Claude-Code builtin tool definitions. These remain hand-tuned
@@ -361,7 +429,7 @@ pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool
             out.push(ApiTool {
                 name: map_tool_name_for_oauth(&tool.name),
                 description: tool.description.clone(),
-                input_schema: tool.input_schema.clone(),
+                input_schema: anthropic_input_schema(&tool.input_schema),
                 cache_control: None,
             });
         }
@@ -381,7 +449,7 @@ pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool
         .map(|(i, tool)| ApiTool {
             name: tool.name.clone(),
             description: tool.description.clone(),
-            input_schema: tool.input_schema.clone(),
+            input_schema: anthropic_input_schema(&tool.input_schema),
             cache_control: if i == len - 1 {
                 Some(CacheControlParam::ephemeral(cache_ttl_1h))
             } else {
@@ -869,6 +937,51 @@ mod cache_prefix_invariant_tests {
             description: format!("{name} description"),
             input_schema: json!({"type":"object","properties":{}}),
         }
+    }
+
+    #[test]
+    fn format_tools_removes_top_level_combinators_for_anthropic_api() {
+        let tool = ToolDefinition {
+            name: "custom".to_string(),
+            description: "schema compatibility regression".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string"},
+                    "nested_union": {
+                        "anyOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]
+                    }
+                },
+                "required": ["action"],
+                "oneOf": [
+                    {"type": "object", "properties": {"label": {"type": "string"}}},
+                    {"type": "object", "properties": {"task_id": {"type": "string"}}}
+                ],
+                "allOf": [
+                    {"type": "object", "properties": {"intent": {"type": "string"}}, "required": ["intent"]}
+                ]
+            }),
+        };
+
+        let formatted = format_tools(&[tool], false, false);
+        let schema = &formatted[0].input_schema;
+        for keyword in ["oneOf", "anyOf", "allOf"] {
+            assert!(
+                schema.get(keyword).is_none(),
+                "Anthropic rejects top-level {keyword}: {schema}"
+            );
+        }
+        for property in ["action", "nested_union", "label", "task_id", "intent"] {
+            assert!(
+                schema["properties"].get(property).is_some(),
+                "missing merged property {property}: {schema}"
+            );
+        }
+        assert!(
+            schema["properties"]["nested_union"].get("anyOf").is_some(),
+            "nested combinators remain supported and should not be flattened"
+        );
+        assert_eq!(schema["required"], json!(["action", "intent"]));
     }
 
     #[test]

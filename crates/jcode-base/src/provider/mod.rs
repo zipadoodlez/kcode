@@ -53,13 +53,14 @@ pub use jcode_provider_core::attempt_tracker;
 pub use jcode_provider_core::cli_provider_arg_for_session_key;
 pub use jcode_provider_core::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, CHEAPNESS_REFERENCE_INPUT_TOKENS,
-    CHEAPNESS_REFERENCE_OUTPUT_TOKENS, DEFAULT_CONTEXT_LIMIT, EventStream, JCODE_USER_AGENT,
-    ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute, ModelRouteApiMethod,
-    NativeCompactionResult, NativeToolResult, NativeToolResultSender, PremiumMode, Provider,
-    RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource, RouteSelection,
-    RuntimeKey, dedupe_model_routes, explicit_model_provider_prefix, fresh_transport_client,
-    model_name_for_provider, normalize_copilot_model_name, provider_from_model_key,
-    shared_http_client, summarize_model_catalog_refresh,
+    CHEAPNESS_REFERENCE_OUTPUT_TOKENS, CredentialMode, DEFAULT_CONTEXT_LIMIT, EventStream,
+    JCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
+    ModelRouteApiMethod, NativeCompactionResult, NativeToolResult, NativeToolResultSender,
+    PremiumMode, Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence,
+    RouteCostSource, RouteSelection, RuntimeKey, dedupe_model_routes,
+    explicit_model_provider_prefix, fresh_transport_client, model_name_for_provider,
+    normalize_copilot_model_name, provider_from_model_key, shared_http_client,
+    summarize_model_catalog_refresh,
 };
 pub use jcode_provider_core::{
     FallbackPickOptions, error_looks_like_credential_failure, model_route_provider_labels_match,
@@ -1672,6 +1673,46 @@ impl Provider for MultiProvider {
             }
             _ => None,
         }
+    }
+
+    fn credential_mode(&self) -> CredentialMode {
+        let active = self
+            .forced_provider
+            .unwrap_or_else(|| self.active_provider());
+        match active {
+            ActiveProvider::Claude => self
+                .anthropic_provider()
+                .map(|provider| provider.credential_mode())
+                .unwrap_or(CredentialMode::Auto),
+            ActiveProvider::OpenAI => self
+                .openai_provider()
+                .map(|provider| provider.credential_mode())
+                .unwrap_or(CredentialMode::Auto),
+            _ => CredentialMode::Auto,
+        }
+    }
+
+    fn set_credential_mode(&self, mode: CredentialMode) -> Result<()> {
+        let active = self
+            .forced_provider
+            .unwrap_or_else(|| self.active_provider());
+        match active {
+            ActiveProvider::Claude => self
+                .anthropic_provider()
+                .ok_or_else(|| anyhow!("Anthropic provider is not configured"))?
+                .set_credential_mode(mode)?,
+            ActiveProvider::OpenAI => self
+                .openai_provider()
+                .ok_or_else(|| anyhow!("OpenAI provider is not configured"))?
+                .set_credential_mode(mode)?,
+            _ if mode == CredentialMode::Auto => return Ok(()),
+            _ => anyhow::bail!(
+                "Provider {} does not support OAuth/API-key credential selection",
+                Self::provider_label(active)
+            ),
+        }
+        self.set_active_provider(active);
+        Ok(())
     }
 
     fn active_explicit_credential(&self) -> Option<jcode_provider_core::ResolvedCredential> {
