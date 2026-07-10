@@ -191,17 +191,23 @@ fn recover_member_status(
         );
     }
 
-    // Ready/Done headless members finished their work before the reload:
-    // nothing in-flight was lost, their completion report is preserved, and
-    // startup recovery re-registers the agent, so the reload is invisible to
-    // them. Marking them crashed here is wrong and races ahead of recovery,
-    // making cleanly-finished workers report as "(crashed)" to await_members
-    // watchers that resume before recovery rewrites the status (#swarm).
+    // An idle headless worker has no process to drive it after a server restart.
+    // Keep its completion report, but mark it stopped instead of eagerly loading
+    // its full session history and tool registry forever. Coordinators can spawn
+    // a fresh worker when more work arrives.
+    if is_headless && status == SwarmLifecycleStatus::Ready {
+        return (
+            SwarmLifecycleStatus::Stopped,
+            append_recovery_detail(detail, "idle worker not restored after server restart"),
+        );
+    }
+
+    // Done headless members finished their work before the reload. Nothing
+    // in-flight was lost and their completion report remains available.
     if is_headless
         && !matches!(
             status,
-            SwarmLifecycleStatus::Ready
-                | SwarmLifecycleStatus::Completed
+            SwarmLifecycleStatus::Completed
                 | SwarmLifecycleStatus::Done
                 | SwarmLifecycleStatus::Failed
                 | SwarmLifecycleStatus::Stopped

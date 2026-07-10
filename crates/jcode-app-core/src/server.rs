@@ -130,7 +130,11 @@ pub(super) async fn remove_persisted_swarm_state_for(swarm_id: &str, swarm_state
 }
 
 fn headless_member_should_restore(status: &str, is_headless: bool) -> bool {
-    is_headless && !matches!(status, "completed" | "done" | "failed" | "stopped")
+    is_headless
+        && !matches!(
+            status,
+            "ready" | "completed" | "done" | "failed" | "stopped"
+        )
 }
 
 fn headless_reload_continuation_message(reload_ctx: Option<ReloadContext>) -> Option<String> {

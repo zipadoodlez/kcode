@@ -761,16 +761,27 @@ impl AuthStatus {
         }
     }
 
-    /// Invalidate the cached auth status so the next `check()` does a fresh probe.
-    pub fn invalidate_cache() {
+    /// Clear only the cached auth snapshots.
+    ///
+    /// Use this when changing an in-memory credential selection on an already
+    /// configured provider. It deliberately does not bump the process-wide auth
+    /// generation, because provider forks restore that selection frequently and
+    /// must not invalidate every session's model-route memo.
+    pub fn invalidate_cached_status() {
         if let Ok(mut cache) = AUTH_STATUS_CACHE.write() {
             *cache = None;
         }
         if let Ok(mut cache) = AUTH_STATUS_FAST_CACHE.write() {
             *cache = None;
         }
+    }
+
+    /// Invalidate all auth-derived state after credentials actually change.
+    pub fn invalidate_cache() {
+        Self::invalidate_cached_status();
         crate::auth::copilot::invalidate_github_token_cache();
         crate::provider::pricing::invalidate_auth_pricing_memos();
+        crate::memory_rerank::clear_failure_backoff();
         crate::logging::auth_event("auth_status_cache_invalidated", "all", &[]);
     }
 

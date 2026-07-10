@@ -390,6 +390,9 @@ fn apply_terminal_event(
             Ok(true)
         }
         Some(Ok(Event::Mouse(mouse))) => {
+            if matches!(mouse.kind, crossterm::event::MouseEventKind::Moved) {
+                return Ok(false);
+            }
             app.note_client_interaction();
             app.handle_mouse_event(mouse);
             Ok(true)

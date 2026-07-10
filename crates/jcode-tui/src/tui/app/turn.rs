@@ -31,7 +31,7 @@ impl App {
     ) -> Result<()> {
         let eager_stream_redraw = !crate::perf::tui_policy().enable_decorative_animations;
         let mut redraw_period = crate::tui::redraw_interval(self);
-        let mut redraw_interval = interval(redraw_period);
+        let mut redraw_interval = super::run_shell::redraw_timer(redraw_period);
         let mut status_spinner_interval = super::run_shell::status_spinner_interval();
         let mut status_spinner_renderer = super::run_shell::StatusSpinnerRenderer::default();
 
@@ -39,7 +39,7 @@ impl App {
             let desired_redraw = crate::tui::redraw_interval(self);
             if desired_redraw != redraw_period {
                 redraw_period = desired_redraw;
-                redraw_interval = interval(redraw_period);
+                redraw_interval = super::run_shell::redraw_timer(redraw_period);
             }
 
             self.status = ProcessingStatus::Sending;
@@ -153,10 +153,12 @@ impl App {
                                 super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
                             }
                             Some(Ok(Event::Mouse(mouse))) => {
-                                let scroll_only = self.handle_mouse_event(mouse);
-                                if !scroll_only {
-                                    status_spinner_renderer.draw_full(self, terminal)?;
-                                    super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                if !matches!(mouse.kind, MouseEventKind::Moved) {
+                                    let scroll_only = self.handle_mouse_event(mouse);
+                                    if !scroll_only {
+                                        status_spinner_renderer.draw_full(self, terminal)?;
+                                        super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
+                                    }
                                 }
                             }
                             Some(Ok(Event::Resize(_, _))) => {
@@ -249,7 +251,7 @@ impl App {
                 let desired_redraw = crate::tui::redraw_interval(self);
                 if desired_redraw != redraw_period {
                     redraw_period = desired_redraw;
-                    redraw_interval = interval(redraw_period);
+                    redraw_interval = super::run_shell::redraw_timer(redraw_period);
                 }
                 tokio::select! {
                     // Cheap single-cell spinner refresh between full redraws. This
@@ -447,9 +449,11 @@ impl App {
                                 status_spinner_renderer.draw_full(self, terminal)?;
                             }
                             Some(Ok(Event::Mouse(mouse))) => {
-                                let scroll_only = self.handle_mouse_event(mouse);
-                                if !scroll_only {
-                                    status_spinner_renderer.draw_full(self, terminal)?;
+                                if !matches!(mouse.kind, MouseEventKind::Moved) {
+                                    let scroll_only = self.handle_mouse_event(mouse);
+                                    if !scroll_only {
+                                        status_spinner_renderer.draw_full(self, terminal)?;
+                                    }
                                 }
                             }
                             Some(Ok(Event::Resize(_, _))) => {
@@ -1329,9 +1333,11 @@ impl App {
                                     status_spinner_renderer.draw_full(self, terminal)?;
                                 }
                                 Some(Ok(Event::Mouse(mouse))) => {
-                                    let scroll_only = self.handle_mouse_event(mouse);
-                                    if !scroll_only {
-                                        status_spinner_renderer.draw_full(self, terminal)?;
+                                    if !matches!(mouse.kind, MouseEventKind::Moved) {
+                                        let scroll_only = self.handle_mouse_event(mouse);
+                                        if !scroll_only {
+                                            status_spinner_renderer.draw_full(self, terminal)?;
+                                        }
                                     }
                                 }
                                 Some(Ok(Event::Resize(_, _))) => {

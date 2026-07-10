@@ -450,6 +450,7 @@ impl MultiProvider {
     /// because each configured runtime contributes its own route family.
     fn routes_memo_key(&self) -> String {
         let active = self.active_provider();
+        let credential_mode = self.credential_mode();
         let profile = self
             .active_openai_compatible_profile
             .read()
@@ -481,12 +482,13 @@ impl MultiProvider {
         .collect::<Vec<_>>()
         .join(",");
         format!(
-            "{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{:?}|{}|{}|{}|{}",
             // Scope by home so sandboxes (tests, JCODE_HOME switches) never
             // share catalogs that were built from different credential files.
             std::env::var("JCODE_HOME").unwrap_or_default(),
             Self::provider_key(active),
             self.model(),
+            credential_mode,
             profile,
             self.use_claude_cli,
             configured,

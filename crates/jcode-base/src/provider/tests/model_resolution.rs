@@ -1450,16 +1450,38 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             routes_memo: std::sync::Mutex::new(None),
         };
 
+        let generation_before = crate::provider::pricing::auth_pricing_generation();
         provider
             .set_model("openai-api:gpt-5.5")
             .expect("API-key route should be selectable");
+        let api_route_memo_key = provider.routes_memo_key();
+        assert_eq!(
+            crate::provider::pricing::auth_pricing_generation(),
+            generation_before,
+            "restoring an in-memory credential route must not invalidate global catalogs"
+        );
         assert_eq!(
             provider.fork_model_switch_request(provider.active_provider(), &provider.model()),
             "openai-api:gpt-5.5"
         );
+        let _fork = provider.fork();
+        assert_eq!(
+            crate::provider::pricing::auth_pricing_generation(),
+            generation_before,
+            "forking a provider must not invalidate global catalogs"
+        );
         provider
             .set_model("openai-oauth:gpt-5.5")
             .expect("OAuth route should be selectable");
+        assert_ne!(
+            provider.routes_memo_key(),
+            api_route_memo_key,
+            "OAuth and API-key catalogs need distinct shared memo keys"
+        );
+        assert_eq!(
+            crate::provider::pricing::auth_pricing_generation(),
+            generation_before
+        );
         assert_eq!(
             provider.fork_model_switch_request(provider.active_provider(), &provider.model()),
             "openai-oauth:gpt-5.5"

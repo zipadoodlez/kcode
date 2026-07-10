@@ -140,11 +140,10 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
 }
 
 #[test]
-fn ready_headless_member_with_report_survives_reload_without_crashed_status() {
-    // A headless worker that finished its task (status "ready", completion
-    // report recorded) must not be resurrected as "crashed" after a server
-    // reload: nothing in-flight was lost. Regression test for finished swarm
-    // workers reporting "(crashed)" in await_members summaries after reloads.
+fn ready_headless_member_with_report_stops_without_losing_report() {
+    // A headless worker that finished its task has no process after restart.
+    // Preserve its report, but do not eagerly reconstruct the full Agent just
+    // to keep an idle worker reusable indefinitely.
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -175,8 +174,11 @@ fn ready_headless_member_with_report_survives_reload_without_crashed_status() {
     let loaded = load_runtime_state();
 
     let recovered = loaded.members.get("session-ready").expect("member");
-    assert_eq!(recovered.status, "ready");
-    assert_eq!(recovered.detail, None);
+    assert_eq!(recovered.status, "stopped");
+    assert_eq!(
+        recovered.detail.as_deref(),
+        Some("idle worker not restored after server restart")
+    );
     assert_eq!(
         recovered.latest_completion_report.as_deref(),
         Some("Done. Built the worker; all tests pass.")

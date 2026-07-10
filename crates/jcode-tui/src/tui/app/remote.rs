@@ -457,10 +457,12 @@ pub(super) async fn handle_terminal_event(
         Some(Ok(Event::Mouse(mouse))) => {
             input_attribution.event = Some(format!("mouse:{:?}", mouse.kind));
             input_attribution.scroll_delta = mouse_scroll_delta(&mouse);
-            app.note_client_interaction();
-            handle_mouse_event(app, mouse);
-            needs_redraw = true;
-            needs_redraw |= dispatch_compacted_history_load(app, remote).await;
+            if !matches!(mouse.kind, MouseEventKind::Moved) {
+                app.note_client_interaction();
+                handle_mouse_event(app, mouse);
+                needs_redraw = true;
+                needs_redraw |= dispatch_compacted_history_load(app, remote).await;
+            }
         }
         Some(Ok(Event::Resize(_, _))) => {
             input_attribution.event = Some("resize".to_string());
@@ -714,9 +716,11 @@ fn handle_terminal_event_while_disconnected(
             needs_redraw = true;
         }
         Some(Ok(Event::Mouse(mouse))) => {
-            app.note_client_interaction();
-            handle_mouse_event(app, mouse);
-            needs_redraw = true;
+            if !matches!(mouse.kind, MouseEventKind::Moved) {
+                app.note_client_interaction();
+                handle_mouse_event(app, mouse);
+                needs_redraw = true;
+            }
         }
         Some(Ok(Event::Resize(_, _))) => {
             needs_redraw = app.should_redraw_after_resize();

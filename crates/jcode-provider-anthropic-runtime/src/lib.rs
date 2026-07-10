@@ -873,7 +873,7 @@ impl AnthropicProvider {
         // cached probe (auto-mode resolution, usage availability, account labels)
         // re-derive from the new credential choice on their next read instead of
         // lingering on a snapshot taken before the switch.
-        jcode_base::auth::AuthStatus::invalidate_cache();
+        jcode_base::auth::AuthStatus::invalidate_cached_status();
         Ok(())
     }
 
