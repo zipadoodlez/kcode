@@ -1632,6 +1632,9 @@ fn parse_jcode_session_info(
 
     let title = session
         .custom_title
+        .or_else(|| {
+            crate::todo::load_session_title(stem).map(|title| truncate_title_text(&title, 72))
+        })
         .or(session.title)
         .unwrap_or_else(|| short_name.clone());
     let search_index = build_search_index_from_summary(
