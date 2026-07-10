@@ -859,9 +859,8 @@ fn live_presence(session_id: &str, streaming: bool) -> crate::session::SessionPr
         session_id: session_id.to_string(),
         pid: std::process::id(),
         streaming,
-        streaming_since: streaming.then(|| {
-            std::time::SystemTime::now() - std::time::Duration::from_secs(90)
-        }),
+        streaming_since: streaming
+            .then(|| std::time::SystemTime::now() - std::time::Duration::from_secs(90)),
     }
 }
 
@@ -930,6 +929,23 @@ fn test_active_rows_render_working_and_ready_badges() {
         working_text.contains("working 1m"),
         "expected working badge with duration, got: {working_text}"
     );
+
+    let first_frame = picker
+        .render_session_item_lines_at_frame(&working, false, 0)
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let second_frame = picker
+        .render_session_item_lines_at_frame(&working, false, 1)
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(first_frame.contains('⠋'));
+    assert!(second_frame.contains('⠙'));
+    assert_ne!(first_frame, second_frame, "running glyph should animate");
+    assert!(picker.has_visible_running_sessions());
 
     let ready_lines = picker.render_session_item_lines(&ready, false);
     let ready_text = ready_lines

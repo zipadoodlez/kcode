@@ -540,6 +540,13 @@ impl SessionPicker {
             .is_some_and(|presence| presence.streaming)
     }
 
+    /// Whether the current picker view contains a running session whose status
+    /// glyph needs animated redraws.
+    pub(crate) fn has_visible_running_sessions(&self) -> bool {
+        self.visible_session_iter()
+            .any(|session| self.session_is_streaming(session))
+    }
+
     /// How long the session's current streaming turn has been running.
     pub(super) fn session_streaming_duration(
         &self,

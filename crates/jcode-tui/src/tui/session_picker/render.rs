@@ -2,6 +2,14 @@ use super::*;
 use ratatui::widgets::Wrap;
 
 impl SessionPicker {
+    fn running_spinner_frame() -> usize {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .saturating_div(125) as usize
+    }
+
     pub(super) fn crash_reason_line(session: &SessionInfo) -> Option<Line<'static>> {
         let reason = match &session.status {
             SessionStatus::Crashed { message } => message
@@ -154,10 +162,20 @@ impl SessionPicker {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn render_session_item_lines(
         &self,
         session: &SessionInfo,
         is_selected: bool,
+    ) -> Vec<Line<'static>> {
+        self.render_session_item_lines_at_frame(session, is_selected, Self::running_spinner_frame())
+    }
+
+    pub(super) fn render_session_item_lines_at_frame(
+        &self,
+        session: &SessionInfo,
+        is_selected: bool,
+        spinner_frame: usize,
     ) -> Vec<Line<'static>> {
         let dim: Color = rgb(100, 100, 100);
         let dimmer: Color = rgb(70, 70, 70);
@@ -204,7 +222,12 @@ impl SessionPicker {
                     Some(elapsed) => format!("working {}", format_short_duration(elapsed)),
                     None => "working".to_string(),
                 };
-                Some(("⚡", rgb(255, 193, 7), label))
+                Some((
+                    jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES[spinner_frame
+                        % jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES.len()],
+                    rgb(255, 193, 7),
+                    label,
+                ))
             } else {
                 Some(("●", rgb(100, 220, 130), "ready".to_string()))
             }
@@ -393,10 +416,15 @@ impl SessionPicker {
         rows
     }
 
-    fn render_session_item(&self, session: &SessionInfo, is_selected: bool) -> ListItem<'static> {
+    fn render_session_item(
+        &self,
+        session: &SessionInfo,
+        is_selected: bool,
+        spinner_frame: usize,
+    ) -> ListItem<'static> {
         let batch_row_bg: Color = rgb(36, 18, 18);
         let in_batch_restore = self.crashed_session_ids.contains(&session.id);
-        let rows = self.render_session_item_lines(session, is_selected);
+        let rows = self.render_session_item_lines_at_frame(session, is_selected, spinner_frame);
         let mut item = ListItem::new(rows);
         if in_batch_restore && !is_selected {
             item = item.style(Style::default().bg(batch_row_bg));
@@ -407,6 +435,9 @@ impl SessionPicker {
     pub(super) fn render_session_list(&mut self, frame: &mut Frame, area: Rect) {
         let server_color: Color = rgb(255, 200, 100);
         let dim: Color = rgb(100, 100, 100);
+        let spinner_frame = Self::running_spinner_frame();
+        let spinner = jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES
+            [spinner_frame % jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES.len()];
 
         let items: Vec<ListItem> = if let Some(message) = self.loading_message.as_deref() {
             vec![
@@ -510,7 +541,9 @@ impl SessionPicker {
                                     .and_then(|i| self.visible_sessions.get(i).copied())
                                     .and_then(|session_ref| self.session_by_ref(session_ref))
                             })
-                            .map(|session| self.render_session_item(session, is_selected))
+                            .map(|session| {
+                                self.render_session_item(session, is_selected, spinner_frame)
+                            })
                             .unwrap_or_else(|| ListItem::new(Line::from(""))),
                     }
                 })
@@ -545,7 +578,7 @@ impl SessionPicker {
                     .add_modifier(Modifier::BOLD),
             ));
             title_parts.push(Span::styled(
-                format!("⚡{} working", working),
+                format!("{}{} working", spinner, working),
                 Style::default().fg(rgb(255, 193, 7)),
             ));
             title_parts.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 80))));

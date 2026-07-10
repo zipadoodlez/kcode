@@ -1519,6 +1519,19 @@ fn swarm_spinner_redraw_active(state: &dyn TuiState) -> bool {
             .any(|m| jcode_tui_render::swarm_gallery::is_active_status(&m.status))
 }
 
+/// Whether the open `/resume` picker is showing at least one running session.
+/// The picker uses the same 8 fps spinner cells as the swarm strip, so it needs
+/// an explicit wakeup even when the session underneath the overlay is idle.
+fn session_picker_spinner_redraw_active(state: &dyn TuiState) -> bool {
+    state.client_focused()
+        && state.session_picker_overlay().is_some_and(|picker| {
+            picker
+                .try_borrow()
+                .ok()
+                .is_some_and(|picker| picker.has_visible_running_sessions())
+        })
+}
+
 fn fps_to_duration(fps: u32) -> Duration {
     Duration::from_millis((1000 / fps.max(1)) as u64)
 }
@@ -1585,6 +1598,7 @@ pub(crate) fn redraw_interval_with_policy(
         && crate::build::read_build_progress().is_none()
         && !state.onboarding_welcome_active()
         && !swarm_spinner_redraw_active(state)
+        && !session_picker_spinner_redraw_active(state)
     {
         return REDRAW_DEEP_IDLE;
     }
@@ -1615,7 +1629,7 @@ pub(crate) fn redraw_interval_with_policy(
     // both the quiet-coordinator case and the processing-without-streaming
     // case (which otherwise idles at the 1s passive-liveness cadence) need
     // this to keep agent spinners smooth while the swarm works.
-    if swarm_spinner_redraw_active(state)
+    if (swarm_spinner_redraw_active(state) || session_picker_spinner_redraw_active(state))
         && state.streaming_text().is_empty()
         && !state.has_pending_mouse_scroll_animation()
     {
@@ -1685,6 +1699,7 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
         && crate::build::read_build_progress().is_none()
         && !state.onboarding_welcome_active()
         && !swarm_spinner_redraw_active(state)
+        && !session_picker_spinner_redraw_active(state)
     {
         return false;
     }
@@ -1698,6 +1713,10 @@ pub(crate) fn periodic_redraw_required(state: &dyn TuiState) -> bool {
     }
 
     if swarm_spinner_redraw_active(state) {
+        return true;
+    }
+
+    if session_picker_spinner_redraw_active(state) {
         return true;
     }
 
