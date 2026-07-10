@@ -979,10 +979,19 @@ impl OpenAIProvider {
                 if jcode_base::provider::should_refresh_openai_model_catalog()
                     && jcode_base::provider::begin_openai_model_catalog_refresh()
                 {
-                    let creds = self.credentials.read().await;
-                    let token = creds.access_token.clone();
-                    let is_chatgpt_mode = Self::is_chatgpt_mode(&creds);
-                    drop(creds);
+                    let is_chatgpt_mode = {
+                        let creds = self.credentials.read().await;
+                        Self::is_chatgpt_mode(&creds)
+                    };
+                    // Go through the expiry-aware helper so a token that is
+                    // about to (or already did) expire gets refreshed before
+                    // the catalog request instead of guaranteeing a 401. Fall
+                    // back to the raw snapshot if refresh fails; the fetch
+                    // will then fail and finish the in-flight marker.
+                    let token = match openai_access_token(&self.credentials).await {
+                        Ok(token) => token,
+                        Err(_) => self.credentials.read().await.access_token.clone(),
+                    };
                     jcode_base::provider::refresh_openai_model_catalog_in_background(
                         token,
                         is_chatgpt_mode,

@@ -5,6 +5,24 @@ use super::*;
 /// keeps the scope's refresh marked in-flight and the picker stays stale.
 const CATALOG_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// HTTP status carried inside model catalog fetch errors so callers can
+/// distinguish auth rejections (401/403) from transient failures and recover
+/// by force-refreshing OAuth tokens, mirroring the chat request path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelCatalogHttpStatus(pub u16);
+
+impl std::fmt::Display for ModelCatalogHttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP status {}", self.0)
+    }
+}
+
+impl std::error::Error for ModelCatalogHttpStatus {}
+
+fn catalog_status_error(status: reqwest::StatusCode, context: String) -> anyhow::Error {
+    anyhow::Error::new(ModelCatalogHttpStatus(status.as_u16())).context(context)
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct OpenAIModelCatalog {
     pub available_models: Vec<String>,
@@ -118,7 +136,10 @@ pub async fn fetch_openai_model_catalog(access_token: &str) -> Result<OpenAIMode
         .await?;
 
     if !resp.status().is_success() {
-        anyhow::bail!("Failed to fetch model context limits: {}", resp.status());
+        return Err(catalog_status_error(
+            resp.status(),
+            format!("Failed to fetch model context limits: {}", resp.status()),
+        ));
     }
 
     let data: serde_json::Value = resp.json().await?;
@@ -250,10 +271,13 @@ pub async fn fetch_openai_api_key_model_catalog(api_key: &str) -> Result<OpenAIM
         .await?;
 
     if !resp.status().is_success() {
-        anyhow::bail!(
-            "Failed to fetch OpenAI platform model catalog: {}",
-            resp.status()
-        );
+        return Err(catalog_status_error(
+            resp.status(),
+            format!(
+                "Failed to fetch OpenAI platform model catalog: {}",
+                resp.status()
+            ),
+        ));
     }
 
     let data: serde_json::Value = resp.json().await?;
@@ -283,4 +307,26 @@ pub async fn fetch_openai_context_limits(access_token: &str) -> Result<HashMap<S
     Ok(fetch_openai_model_catalog(access_token)
         .await?
         .context_limits)
+}
+
+#[cfg(test)]
+mod status_error_tests {
+    use super::*;
+
+    #[test]
+    fn catalog_status_error_round_trips_through_anyhow_downcast() {
+        let err = catalog_status_error(
+            reqwest::StatusCode::UNAUTHORIZED,
+            "Failed to fetch model context limits: 401 Unauthorized".to_string(),
+        );
+        let status = err
+            .downcast_ref::<ModelCatalogHttpStatus>()
+            .expect("status must survive the context wrapper");
+        assert_eq!(status.0, 401);
+        // The human-readable context must stay the outermost message.
+        assert!(
+            err.to_string()
+                .contains("Failed to fetch model context limits")
+        );
+    }
 }

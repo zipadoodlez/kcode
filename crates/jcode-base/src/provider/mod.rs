@@ -291,8 +291,8 @@ pub fn set_model_with_auth_refresh(provider: &dyn Provider, model: &str) -> Resu
 use self::dispatch::CompletionMode;
 pub use self::models::{
     AccountModelAvailability, AccountModelAvailabilityState, AnthropicModelCatalog,
-    OpenAIModelCatalog, begin_anthropic_model_catalog_refresh, begin_openai_model_catalog_refresh,
-    cached_anthropic_model_ids, cached_openai_model_ids,
+    ModelCatalogHttpStatus, OpenAIModelCatalog, begin_anthropic_model_catalog_refresh,
+    begin_openai_model_catalog_refresh, cached_anthropic_model_ids, cached_openai_model_ids,
     clear_all_model_unavailability_for_account, clear_all_provider_unavailability_for_account,
     clear_model_unavailable_for_account, clear_provider_unavailable_for_account,
     context_limit_for_model, context_limit_for_model_with_provider, fetch_anthropic_model_catalog,
