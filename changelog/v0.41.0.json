@@ -1,0 +1,19 @@
+{
+  "version": "0.41.0",
+  "date": "2026-07-10",
+  "title": "Inline generated images and Gmail by default",
+  "highlights": [
+    "Provider-generated images now render inline beside their transcript entries in the TUI",
+    "Gmail is now available by default in the full tool profile and can still be hidden with the tools disabled list",
+    "The new /swarm-prompt command opens the active swarm routing prompt for straightforward project or global customization"
+  ],
+  "improvements": [
+    "Kitty image transfers are compressed to reduce terminal rendering overhead",
+    "Explicit swarm spawns now require short labels so parallel agents are easier to identify"
+  ],
+  "fixes": [
+    "Anthropic API connections now honor their selected route and accept Jcode tools whose schemas previously used unsupported top-level combinators",
+    "Side-panel Mermaid diagrams no longer render duplicate images",
+    "Long inline image labels stay within one row instead of disrupting transcript layout"
+  ]
+}
