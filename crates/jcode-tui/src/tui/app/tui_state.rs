@@ -1276,25 +1276,24 @@ impl crate::tui::TuiState for App {
             let subagent_status = self.subagent_status.clone();
             let mut members: Vec<crate::protocol::SwarmMemberStatus> = Vec::new();
             let (session_count, client_count, session_names, has_activity) = if self.is_remote {
-                members = self.remote_swarm_members.clone();
-                let session_names = if !members.is_empty() {
-                    members
-                        .iter()
-                        .map(|m| {
-                            m.friendly_name
-                                .clone()
-                                .unwrap_or_else(|| m.session_id.chars().take(8).collect())
-                        })
-                        .collect()
+                // The compact swarm widget renders at most three rows. Keep the
+                // complete snapshot in `remote_swarm_members`, but do not clone
+                // every historical member (including large detail/todo payloads)
+                // on every frame just to discard almost all of them below.
+                let has_members = !self.remote_swarm_members.is_empty();
+                let session_names = if has_members {
+                    Vec::new()
                 } else {
-                    self.remote_sessions.clone()
+                    self.remote_sessions.iter().take(3).cloned().collect()
                 };
-                let session_count = if !members.is_empty() {
-                    members.len()
+                members = self.remote_swarm_members.iter().take(3).cloned().collect();
+                let session_count = if has_members {
+                    self.remote_swarm_members.len()
                 } else {
                     self.remote_sessions.len()
                 };
-                let has_activity = members
+                let has_activity = self
+                    .remote_swarm_members
                     .iter()
                     .any(|m| m.status != "ready" || m.detail.is_some());
                 (
@@ -2044,40 +2043,38 @@ pub(crate) fn filter_inline_swarm_subtree(
 ) -> Vec<crate::protocol::SwarmMemberStatus> {
     use std::collections::{HashMap, HashSet};
 
-    let parent_of: HashMap<&str, Option<&str>> = members
-        .iter()
-        .map(|m| {
-            (
-                m.session_id.as_str(),
-                m.report_back_to_session_id.as_deref(),
-            )
-        })
-        .collect();
+    // Build the parent -> children index once, then walk outward from this
+    // session. The previous implementation rebuilt a cycle-detection HashSet
+    // while walking the parent chain for every member, on every frame. Large,
+    // long-lived swarms made that input render path needlessly expensive.
+    let mut children_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    for member in members {
+        if let Some(parent) = member.report_back_to_session_id.as_deref() {
+            children_by_parent
+                .entry(parent)
+                .or_default()
+                .push(member.session_id.as_str());
+        }
+    }
 
-    // A member is a descendant of `self_id` if walking its parent chain reaches
-    // `self_id`. The member itself (start == self_id) is intentionally excluded:
-    // the viewing agent should not appear as one of the agents it manages.
-    let is_descendant = |start: &str| -> bool {
-        if start == self_id {
-            return false;
-        }
-        let mut visited: HashSet<&str> = HashSet::new();
-        let mut current = start;
-        while let Some(Some(parent)) = parent_of.get(current) {
-            if !visited.insert(current) {
-                break; // cycle guard
+    let mut descendants: HashSet<&str> = HashSet::new();
+    let mut pending = vec![self_id];
+    while let Some(parent) = pending.pop() {
+        let Some(children) = children_by_parent.get(parent) else {
+            continue;
+        };
+        for &child in children {
+            // This both excludes cycles and ensures each subtree node is
+            // expanded at most once.
+            if child != self_id && descendants.insert(child) {
+                pending.push(child);
             }
-            if *parent == self_id {
-                return true;
-            }
-            current = parent;
         }
-        false
-    };
+    }
 
     members
         .iter()
-        .filter(|m| is_descendant(m.session_id.as_str()))
+        .filter(|m| descendants.contains(m.session_id.as_str()))
         .cloned()
         .collect()
 }
