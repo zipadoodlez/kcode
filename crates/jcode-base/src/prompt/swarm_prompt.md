@@ -19,8 +19,8 @@ when you need to confirm which models/routes are actually available.
 Structure guidance for spawned swarm agents:
 
 - Always pass `label` when spawning (e.g. `label: "api reviewer"`) so the swarm
-  UI shows what each agent is for. Without it the label is derived from the
-  first line of the prompt.
+  UI shows what each agent is for. The explicit `spawn` action rejects missing or
+  blank labels.
 - Any agent may spawn children; the spawner owns them (children report back to
   it, and it may stop them). There is no special "manager" role: a manager is
   just an agent whose prompt tells it to decompose work, delegate via spawn,
