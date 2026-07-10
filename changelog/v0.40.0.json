@@ -10,6 +10,7 @@
   "improvements": [
     "The model picker can be limited to configured provider families, presents reasoning-effort rows consistently, and uses clearer alignment and login guidance",
     "Claude Fable 5 now defaults to high reasoning effort",
+    "Memory relevance and extraction now default to GPT-5.6 Luna with reasoning disabled for lower latency when OpenAI credentials are available",
     "Tool transcript rows now retain useful summaries for scheduling, skills, MCP, discovery, Gmail, browser, and other tools across compaction and session reloads",
     "The session picker derives useful names from active todo groups or goal objectives when no manual session title is set",
     "Project-local skills are isolated to the workspace where they are defined so sessions in other repositories do not inherit them",
