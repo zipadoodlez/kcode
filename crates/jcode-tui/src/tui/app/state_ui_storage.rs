@@ -277,6 +277,103 @@ fn compact_tool_input_for_display(name: &str, input: &serde_json::Value) -> serd
                     .unwrap_or(serde_json::Value::Null),
             ),
         ]),
+        // Gmail/browser rows: keep the action plus the small routing fields
+        // that get_tool_summary_with_budget renders, so the transcript summary
+        // survives storage compaction and session reload.
+        "gmail" => obj(vec![
+            (
+                "action",
+                input
+                    .get("action")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "query",
+                input
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 200).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "message_id",
+                input
+                    .get("message_id")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "thread_id",
+                input
+                    .get("thread_id")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "draft_id",
+                input
+                    .get("draft_id")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "to",
+                input.get("to").cloned().unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "subject",
+                input
+                    .get("subject")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 120).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+        ]),
+        "browser" => obj(vec![
+            (
+                "action",
+                input
+                    .get("action")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "url",
+                input
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 200).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "selector",
+                input
+                    .get("selector")
+                    .and_then(|v| v.as_str())
+                    .map(|s| {
+                        serde_json::Value::String(crate::util::truncate_str(s, 120).to_string())
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "format",
+                input
+                    .get("format")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            (
+                "key",
+                input.get("key").cloned().unwrap_or(serde_json::Value::Null),
+            ),
+        ]),
         "batch" => {
             let tool_calls = input
                 .get("tool_calls")
@@ -496,6 +593,48 @@ mod tests {
         assert!(
             summary.contains("dm") && summary.contains("worker-1"),
             "summary should keep the dm target: {summary:?}"
+        );
+    }
+
+    #[test]
+    fn compaction_keeps_gmail_action_and_intent_for_transcript_summary() {
+        let mut message = tool_message(
+            "gmail",
+            serde_json::json!({
+                "intent": "Check unread mail",
+                "action": "search",
+                "query": "is:unread",
+                "max_results": 10
+            }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        assert_eq!(tool.intent.as_deref(), Some("Check unread mail"));
+        let summary = crate::tui::ui::tools_ui::get_tool_summary(&tool);
+        assert!(
+            summary.contains("search") && summary.contains("is:unread"),
+            "summary should keep the gmail action and query: {summary:?}"
+        );
+    }
+
+    #[test]
+    fn compaction_keeps_browser_action_and_intent_for_transcript_summary() {
+        let mut message = tool_message(
+            "browser",
+            serde_json::json!({
+                "intent": "Open docs page",
+                "action": "open",
+                "url": "https://example.com/docs",
+                "new_tab": true
+            }),
+        );
+        compact_display_message_tool_data(&mut message);
+        let tool = message.tool_data.expect("tool data");
+        assert_eq!(tool.intent.as_deref(), Some("Open docs page"));
+        let summary = crate::tui::ui::tools_ui::get_tool_summary(&tool);
+        assert!(
+            summary.contains("open") && summary.contains("example.com"),
+            "summary should keep the browser action and url: {summary:?}"
         );
     }
 }
