@@ -74,7 +74,32 @@ fn parse_alloc_tuning(value: Option<&str>, default: i32) -> i32 {
 #[cfg(not(all(target_os = "linux", not(feature = "jemalloc"))))]
 fn configure_system_allocator() {}
 
+#[cfg(windows)]
 fn main() -> Result<()> {
+    // Windows executables default to a much smaller main-thread stack than the
+    // Unix environments where most development happens. The CLI/provider setup
+    // path can exceed that reserve before Tokio takes over, producing an
+    // unrecoverable STATUS_STACK_OVERFLOW. Keep the linker defaults unchanged
+    // for every auxiliary binary and run the Jcode entry point on a deliberately
+    // sized stack instead.
+    const WINDOWS_MAIN_STACK_SIZE: usize = 8 * 1024 * 1024;
+    match std::thread::Builder::new()
+        .name("jcode-main".to_string())
+        .stack_size(WINDOWS_MAIN_STACK_SIZE)
+        .spawn(run_main)?
+        .join()
+    {
+        Ok(result) => result,
+        Err(panic) => std::panic::resume_unwind(panic),
+    }
+}
+
+#[cfg(not(windows))]
+fn main() -> Result<()> {
+    run_main()
+}
+
+fn run_main() -> Result<()> {
     configure_system_allocator();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
