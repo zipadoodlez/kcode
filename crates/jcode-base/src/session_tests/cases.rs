@@ -1149,6 +1149,7 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
         todo_progress: None,
         todo_items: Vec::new(),
         task_label: None,
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
     }]);
     session.record_swarm_plan_event(
         "swarm_test".to_string(),
