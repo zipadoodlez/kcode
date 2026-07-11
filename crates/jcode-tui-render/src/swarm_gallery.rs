@@ -54,6 +54,14 @@ pub fn is_active_status(status: &str) -> bool {
     matches!(status, "running" | "streaming" | "thinking")
 }
 
+/// Cadence for active-agent spinner frames.
+///
+/// Keep this aligned with the TUI redraw interval. 80 ms matches the primary
+/// status spinner and avoids the visibly stepped motion of the old 125 ms
+/// cadence without redrawing faster than the glyph can change.
+pub const STRIP_SPINNER_FRAME_MS: u64 = 80;
+pub const STRIP_SPINNER_FPS: f32 = 1000.0 / STRIP_SPINNER_FRAME_MS as f32;
+
 /// Frames for the inline status spinner used by active agents on the strip.
 pub const STRIP_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

@@ -1494,11 +1494,11 @@ fn primary_status_spinner_needs_full_redraw_with_policy(
         && !primary_status_spinner_fast_path_available_with_policy(state, policy)
 }
 
-/// Redraw cadence while the inline swarm strip/dock is animating an agent
-/// status spinner. The spinner samples the wall clock at ~8 fps
-/// (`animation_elapsed() * 8.0`), so repaint at the same rate: faster wastes
-/// frames on an unchanged glyph, slower makes the spinner visibly stutter.
-pub(crate) const REDRAW_SWARM_SPINNER: Duration = Duration::from_millis(125);
+/// Redraw cadence while an inline swarm or session-picker spinner is active.
+/// This matches the glyph's wall-clock cadence and the primary status spinner:
+/// faster wastes unchanged frames, while slower makes the motion visibly step.
+pub(crate) const REDRAW_SWARM_SPINNER: Duration =
+    Duration::from_millis(jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAME_MS);
 
 /// Whether the swarm strip (above the status line) or the SwarmStatus dock
 /// widget is currently animating a status spinner for an active agent.
@@ -1623,7 +1623,7 @@ pub(crate) fn redraw_interval_with_policy(
         };
     }
 
-    // Swarm status spinners animate at a fixed ~8 fps off the wall clock.
+    // Swarm status spinners animate at a fixed 12.5 fps off the wall clock.
     // Streaming/scroll branches below already repaint faster than this, but
     // both the quiet-coordinator case and the processing-without-streaming
     // case (which otherwise idles at the 1s passive-liveness cadence) need

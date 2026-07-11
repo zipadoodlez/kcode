@@ -161,7 +161,7 @@ fn test_cold_cache_warning_keeps_redrawing_at_deep_idle() {
 
 #[test]
 fn test_active_swarm_spinner_keeps_redrawing_at_deep_idle() {
-    // Regression: the swarm strip/dock animates an ~8 fps status spinner for
+    // Regression: the swarm strip/dock animates a 12.5 fps status spinner for
     // active agents off the wall clock. A coordinator that is just watching
     // its agents goes deep-idle itself, and without a dedicated wakeup the
     // idle loop stops repainting, freezing every agent's spinner mid-frame.

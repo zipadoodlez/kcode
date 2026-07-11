@@ -7,7 +7,9 @@ impl SessionPicker {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis()
-            .saturating_div(125) as usize
+            .saturating_div(u128::from(
+                jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAME_MS,
+            )) as usize
     }
 
     pub(super) fn crash_reason_line(session: &SessionInfo) -> Option<Line<'static>> {

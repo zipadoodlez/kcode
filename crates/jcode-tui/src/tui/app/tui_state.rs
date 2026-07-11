@@ -1391,7 +1391,9 @@ impl crate::tui::TuiState for App {
                     },
                     focused: self.swarm_panel_focused,
                     plan_progress,
-                    spinner_frame: (self.animation_elapsed() * 8.0) as usize,
+                    spinner_frame: (self.animation_elapsed()
+                        * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
+                        as usize,
                     managed_members,
                 })
             } else {

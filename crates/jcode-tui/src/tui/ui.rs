@@ -2721,8 +2721,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         let members = app.inline_swarm_members();
         if chat_area.width >= 24 {
             let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();
-            // ~8 fps spinner from the wall-clock animation timer.
-            let spinner_frame = (app.animation_elapsed() * 8.0) as usize;
+            // Use the same smooth cadence as the primary status spinner.
+            let spinner_frame = (app.animation_elapsed()
+                * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
+                as usize;
             // Focused budget: chips + hints + a ~14-line detail viewport, but
             // never more than a third of the chat column so the transcript
             // stays usable on short terminals.
