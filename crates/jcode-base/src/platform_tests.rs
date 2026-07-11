@@ -79,55 +79,50 @@ fn signal_detached_process_group_terminates_descendant_tree() {
     use std::time::{Duration, Instant};
 
     let temp = tempfile::tempdir().expect("temp dir");
-    let child_pid_path = temp.path().join("child.pid");
-    let script_path = temp.path().join("parent.ps1");
-    let script = concat!(
-        "$child = Start-Process powershell.exe ",
-        "-ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -PassThru; ",
-        "Set-Content -LiteralPath $env:JCODE_CHILD_PID -Value $child.Id; ",
-        "Start-Sleep -Seconds 30"
+    let ready_path = temp.path().join("child-ready.txt");
+    let survived_path = temp.path().join("child-survived.txt");
+    let child_script_path = temp.path().join("child.cmd");
+    let parent_script_path = temp.path().join("parent.cmd");
+    let child_script = concat!(
+        "@echo off\r\n",
+        "echo ready>\"%~dp0child-ready.txt\"\r\n",
+        "ping -n 6 127.0.0.1 >NUL\r\n",
+        "echo survived>\"%~dp0child-survived.txt\"\r\n"
     );
-    std::fs::write(&script_path, script).expect("write parent PowerShell script");
-    let mut cmd = Command::new("powershell.exe");
-    cmd.args([
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-    ])
-    .arg(&script_path)
-    .env("JCODE_CHILD_PID", &child_pid_path)
-    .stdout(Stdio::null())
-    .stderr(Stdio::null());
+    let parent_script = concat!(
+        "@echo off\r\n",
+        "start \"\" /B cmd.exe /D /C \"\"%~dp0child.cmd\"\"\r\n",
+        "ping -n 30 127.0.0.1 >NUL\r\n"
+    );
+    std::fs::write(&child_script_path, child_script).expect("write child command script");
+    std::fs::write(&parent_script_path, parent_script).expect("write parent command script");
+    let mut cmd = Command::new("cmd.exe");
+    cmd.args(["/D", "/C"])
+        .arg(&parent_script_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
     let mut parent = super::spawn_detached(&mut cmd).expect("spawn detached process tree");
     let parent_pid = parent.id();
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !child_pid_path.exists() && Instant::now() < deadline {
+    while !ready_path.exists() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
     }
-    let child_pid = std::fs::read_to_string(&child_pid_path)
-        .expect("child pid file")
-        .trim()
-        .parse::<u32>()
-        .expect("child pid");
+    assert!(ready_path.exists(), "descendant should report ready");
     assert!(super::is_process_running(parent_pid));
-    assert!(super::is_process_running(child_pid));
 
     super::signal_detached_process_group(parent_pid, 0).expect("terminate process tree");
     let deadline = Instant::now() + Duration::from_secs(10);
-    while (super::is_process_running(parent_pid) || super::is_process_running(child_pid))
-        && Instant::now() < deadline
-    {
+    while super::is_process_running(parent_pid) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
     }
     let _ = parent.wait();
 
     assert!(!super::is_process_running(parent_pid), "parent should stop");
+    std::thread::sleep(Duration::from_secs(6));
     assert!(
-        !super::is_process_running(child_pid),
-        "descendant should stop with the detached process tree"
+        !survived_path.exists(),
+        "descendant should not survive termination of the detached process tree"
     );
 }
 
