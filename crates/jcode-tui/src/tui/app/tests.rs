@@ -814,6 +814,36 @@ fn skills_command_refreshes_registry_from_disk_before_listing() {
 }
 
 #[test]
+fn skill_invocation_with_prompt_activates_and_submits_in_one_turn() {
+    let mut app = create_test_app();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let skill_dir = temp.path().join(".jcode/skills/prompt-skill");
+    std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: prompt-skill\ndescription: Prompt regression skill\n---\nUse it.\n",
+    )
+    .expect("write skill");
+    app.session.working_dir = Some(temp.path().to_string_lossy().to_string());
+    app.input = "/prompt-skill \"then type prompt here and all that\"".to_string();
+    app.cursor_pos = app.input.len();
+
+    app.submit_input();
+
+    assert_eq!(app.active_skill.as_deref(), Some("prompt-skill"));
+    assert!(app.is_processing, "the trailing prompt should start a turn");
+    let submitted = app
+        .session
+        .messages
+        .last()
+        .expect("submitted session message");
+    assert!(matches!(
+        submitted.content.as_slice(),
+        [ContentBlock::Text { text, .. }] if text == "then type prompt here and all that"
+    ));
+}
+
+#[test]
 fn update_command_reloads_stale_remote_server_before_client_update_check() {
     use tokio::io::AsyncBufReadExt;
 

@@ -33,6 +33,14 @@ pub struct SkillRegistry {
     skills: HashMap<String, Skill>,
 }
 
+/// A slash-command skill invocation, optionally followed by a prompt that
+/// should be submitted immediately after activating the skill.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SkillInvocation<'a> {
+    pub name: &'a str,
+    pub prompt: Option<&'a str>,
+}
+
 /// Maximum directory depth scanned under a Claude Code plugin root when
 /// looking for `skills/<name>/SKILL.md` entries. Plugin layouts vary across
 /// Claude Code versions (`cache/<marketplace>/<plugin>/<version>/skills/...`,
@@ -634,14 +642,33 @@ impl SkillRegistry {
         Ok(count)
     }
 
-    /// Check if a message is a skill invocation (starts with /)
-    pub fn parse_invocation(input: &str) -> Option<&str> {
+    /// Parse `/skill-name` and `/skill-name prompt...` invocations.
+    ///
+    /// The trailing prompt is kept verbatim apart from surrounding whitespace.
+    /// Quotes are intentionally not interpreted as shell syntax, so incomplete
+    /// or literal quotes can never put the input path into a continuation state.
+    pub fn parse_invocation(input: &str) -> Option<SkillInvocation<'_>> {
         let trimmed = input.trim();
-        if trimmed.starts_with('/') && !trimmed.contains(' ') {
-            Some(&trimmed[1..])
-        } else {
-            None
+        let invocation = trimmed.strip_prefix('/')?;
+        let name_end = invocation
+            .find(char::is_whitespace)
+            .unwrap_or(invocation.len());
+        let name = &invocation[..name_end];
+        if name.is_empty() {
+            return None;
         }
+
+        let prompt = invocation[name_end..].trim();
+        let prompt = match prompt.as_bytes() {
+            [b'"', .., b'"'] | [b'\'', .., b'\''] if prompt.len() >= 2 => {
+                &prompt[1..prompt.len() - 1]
+            }
+            _ => prompt,
+        };
+        Some(SkillInvocation {
+            name,
+            prompt: (!prompt.is_empty()).then_some(prompt),
+        })
     }
 
     /// Return true if a skill with the given name is currently loaded.
@@ -931,6 +958,43 @@ mod tests {
             format!("---\nname: {name}\ndescription: Test skill {name}\n---\n\nUse {name}.\n"),
         )
         .expect("write skill");
+    }
+
+    #[test]
+    fn parse_invocation_supports_a_trailing_prompt() {
+        assert_eq!(
+            SkillRegistry::parse_invocation("/frontend-design build a settings page"),
+            Some(SkillInvocation {
+                name: "frontend-design",
+                prompt: Some("build a settings page"),
+            })
+        );
+        assert_eq!(
+            SkillRegistry::parse_invocation("  /frontend-design   \"build a settings page\"  "),
+            Some(SkillInvocation {
+                name: "frontend-design",
+                prompt: Some("build a settings page"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_invocation_handles_bare_and_incomplete_quoted_prompts_without_blocking() {
+        assert_eq!(
+            SkillRegistry::parse_invocation("/optimization"),
+            Some(SkillInvocation {
+                name: "optimization",
+                prompt: None,
+            })
+        );
+        assert_eq!(
+            SkillRegistry::parse_invocation("/optimization \"make this faster"),
+            Some(SkillInvocation {
+                name: "optimization",
+                prompt: Some("\"make this faster"),
+            })
+        );
+        assert_eq!(SkillRegistry::parse_invocation("/"), None);
     }
 
     #[test]

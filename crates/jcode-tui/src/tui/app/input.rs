@@ -3010,7 +3010,7 @@ impl App {
         }
 
         let raw_input = std::mem::take(&mut self.input);
-        let input = self.expand_paste_placeholders(&raw_input);
+        let mut input = self.expand_paste_placeholders(&raw_input);
         if let Some(notice) = input_exceeds_submit_limit(&input) {
             self.input = raw_input;
             self.cursor_pos = self.input.len();
@@ -3102,8 +3102,10 @@ impl App {
         }
 
         // Check for skill invocation
-        if let Some(skill_name) = SkillRegistry::parse_invocation(&input) {
-            let mut skill = self.current_skills_snapshot().get(skill_name).cloned();
+        if let Some(invocation) = SkillRegistry::parse_invocation(&input) {
+            let skill_name = invocation.name.to_string();
+            let trailing_prompt = invocation.prompt.map(str::to_string);
+            let mut skill = self.current_skills_snapshot().get(&skill_name).cloned();
 
             // Remote/minimal TUI clients may start with an empty skill snapshot, and
             // daemon-side `skill_manage reload_all` can update a different process.
@@ -3112,11 +3114,11 @@ impl App {
             // as .jcode/skills/optimization work immediately after reload/build.
             if skill.is_none() {
                 self.refresh_skills_snapshot();
-                skill = self.current_skills_snapshot().get(skill_name).cloned();
+                skill = self.current_skills_snapshot().get(&skill_name).cloned();
             }
 
             if let Some(skill) = skill {
-                self.active_skill = Some(skill_name.to_string());
+                self.active_skill = Some(skill_name.clone());
                 self.push_display_message(DisplayMessage {
                     role: "system".to_string(),
                     content: format!("Activated skill: {} - {}", skill.name, skill.description),
@@ -3125,6 +3127,11 @@ impl App {
                     title: None,
                     tool_data: None,
                 });
+                if let Some(prompt) = trailing_prompt {
+                    input = prompt;
+                } else {
+                    return;
+                }
             } else {
                 // Distinguish an endorsed-but-not-installed skill from a
                 // typo: the skill list advertises endorsed skills, so a bare
@@ -3151,8 +3158,8 @@ impl App {
                     title: None,
                     tool_data: None,
                 });
+                return;
             }
-            return;
         }
 
         // Leaving the preview should happen as soon as the user acts on it.
