@@ -12,6 +12,33 @@ use tokio::sync::{Mutex, RwLock};
 type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 
+async fn connected_session_snapshot(
+    sessions: &SessionAgents,
+    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) -> (
+    Vec<(String, Arc<Mutex<Agent>>)>,
+    HashMap<String, SwarmMember>,
+) {
+    // Never hold more than one shared-state lock at a time. Resume transitions
+    // use client_connections -> sessions atomically, so a debug snapshot that
+    // retained sessions while awaiting client_connections could deadlock them.
+    let connected_sessions: HashSet<String> = {
+        let connections = client_connections.read().await;
+        connections.values().map(|c| c.session_id.clone()).collect()
+    };
+    let connected_agents = {
+        let sessions_guard = sessions.read().await;
+        sessions_guard
+            .iter()
+            .filter(|(session_id, _)| connected_sessions.contains(*session_id))
+            .map(|(session_id, agent)| (session_id.clone(), Arc::clone(agent)))
+            .collect()
+    };
+    let members = swarm_members.read().await.clone();
+    (connected_agents, members)
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "server-state debug command inspects many shared server structures in one snapshot"
@@ -37,16 +64,10 @@ pub(super) async fn maybe_handle_server_state_command(
     soft_interrupt_queues: &SessionInterruptQueues,
 ) -> Result<Option<String>> {
     if cmd == "sessions" {
-        let sessions_guard = sessions.read().await;
-        let members = swarm_members.read().await;
-        let connections = client_connections.read().await;
-        let connected_sessions: HashSet<String> =
-            connections.values().map(|c| c.session_id.clone()).collect();
+        let (connected_agents, members) =
+            connected_session_snapshot(sessions, client_connections, swarm_members).await;
         let mut out: Vec<serde_json::Value> = Vec::new();
-        for (sid, agent_arc) in sessions_guard.iter() {
-            if !connected_sessions.contains(sid) {
-                continue;
-            }
+        for (sid, agent_arc) in &connected_agents {
             let member_info = members.get(sid);
             let member_status = member_info.map(|m| m.status.as_str());
             let (provider, model, is_processing, working_dir_str, token_usage): (
@@ -252,6 +273,41 @@ pub(super) async fn maybe_handle_server_state_command(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn connected_session_snapshot_releases_connections_before_waiting_for_sessions() {
+        let sessions = Arc::new(RwLock::new(HashMap::new()));
+        let client_connections = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+
+        let sessions_gate = sessions.write().await;
+        let snapshot = connected_session_snapshot(&sessions, &client_connections, &swarm_members);
+        tokio::pin!(snapshot);
+        tokio::select! {
+            _ = &mut snapshot => panic!("snapshot unexpectedly completed"),
+            _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+        }
+
+        let connections_guard =
+            tokio::time::timeout(Duration::from_millis(100), client_connections.write())
+                .await
+                .expect("debug snapshot retained connections while waiting for sessions");
+        drop(connections_guard);
+
+        drop(sessions_gate);
+        let (connected_agents, members) =
+            tokio::time::timeout(Duration::from_secs(1), &mut snapshot)
+                .await
+                .expect("debug snapshot deadlocked");
+        assert!(connected_agents.is_empty());
+        assert!(members.is_empty());
+    }
 }
 
 #[expect(
