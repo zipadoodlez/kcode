@@ -2889,6 +2889,19 @@ impl App {
         crate::tui::mermaid::clear_streaming_preview_diagram();
     }
 
+    /// Reset provider-reported usage that belongs to a transcript being fully
+    /// discarded. Render-only resets intentionally preserve these counters,
+    /// so full session clears must call this separately.
+    pub(super) fn clear_live_usage_state(&mut self) {
+        self.streaming.streaming_input_tokens = 0;
+        self.streaming.streaming_output_tokens = 0;
+        self.streaming.streaming_cache_read_tokens = None;
+        self.streaming.streaming_cache_creation_tokens = None;
+        self.streaming.streaming_context_stale = false;
+        self.streaming.streaming_usage_call_reset_pending = false;
+        self.kv_cache.current_api_usage_recorded = false;
+    }
+
     /// Discard all client-side render state for the current streaming attempt:
     /// the live streaming buffer, in-progress tool calls, thinking-line state,
     /// and any assistant transcript messages that were already committed

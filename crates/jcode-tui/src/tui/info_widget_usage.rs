@@ -187,11 +187,37 @@ fn render_labeled_bar(
         rgb(100, 200, 100)
     };
 
-    let label_width = 7;
-    let suffix_width = 10;
-    let bar_width = width
-        .saturating_sub(label_width + 1 + suffix_width)
-        .clamp(4, 12) as usize;
+    const LABEL_WIDTH: usize = 7;
+    const MIN_BAR_WIDTH: usize = 4;
+
+    let full_suffix = match reset_time {
+        Some(reset) if left_pct == 0 => format!(" resets {}", reset),
+        Some(reset) => format!(" {}% left · {}", left_pct, reset),
+        None => format!(" {}% left", left_pct),
+    };
+    // On narrow widgets keep the reset visible and progressively shorten the
+    // percentage wording before sacrificing the bar. The exhausted wording is
+    // already compact and remains unchanged.
+    let suffix = match reset_time {
+        Some(reset) if left_pct > 0 => {
+            let compact = format!(" {}% · {}", left_pct, reset);
+            let reset_only = format!(" · {}", reset);
+            let budget = usize::from(width).saturating_sub(LABEL_WIDTH + MIN_BAR_WIDTH);
+            if UnicodeWidthStr::width(full_suffix.as_str()) <= budget {
+                full_suffix
+            } else if UnicodeWidthStr::width(compact.as_str()) <= budget {
+                compact
+            } else {
+                reset_only
+            }
+        }
+        _ => full_suffix,
+    };
+    let suffix_width = UnicodeWidthStr::width(suffix.as_str());
+    let label_width = LABEL_WIDTH.min(usize::from(width).saturating_sub(suffix_width));
+    let bar_width = usize::from(width)
+        .saturating_sub(label_width + suffix_width)
+        .min(12);
 
     let filled = ((used_pct as f32 / 100.0) * bar_width as f32).round() as usize;
     let empty = bar_width.saturating_sub(filled);
@@ -199,17 +225,8 @@ fn render_labeled_bar(
     let bar_filled = "▰".repeat(filled);
     let bar_empty = "▱".repeat(empty);
 
-    let suffix = if left_pct == 0 {
-        if let Some(reset) = reset_time {
-            format!(" resets {}", reset)
-        } else {
-            " 0% left".to_string()
-        }
-    } else {
-        format!(" {}% left", left_pct)
-    };
-
-    let padded_label = format!("{:<7}", label);
+    let visible_label: String = label.chars().take(label_width).collect();
+    let padded_label = format!("{visible_label:<label_width$}");
 
     Line::from(vec![
         Span::styled(padded_label, Style::default().fg(rgb(140, 140, 150))),
@@ -217,6 +234,44 @@ fn render_labeled_bar(
         Span::styled(bar_empty, Style::default().fg(rgb(50, 50, 60))),
         Span::styled(suffix, Style::default().fg(color)),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    #[test]
+    fn usage_bar_shows_reset_countdown_before_exhaustion() {
+        let text = line_text(&render_labeled_bar("5-hour", 38, 62, Some("4h 5m"), 40));
+
+        assert!(text.contains("62% left · 4h 5m"));
+        assert!(UnicodeWidthStr::width(text.as_str()) <= 40);
+    }
+
+    #[test]
+    fn usage_bar_keeps_countdown_within_narrow_width() {
+        let text = line_text(&render_labeled_bar("Weekly", 19, 81, Some("1d 4h"), 23));
+
+        assert!(text.contains("81% · 1d 4h"));
+        assert!(UnicodeWidthStr::width(text.as_str()) <= 23);
+        assert!(text.contains('▰') || text.contains('▱'));
+    }
+
+    #[test]
+    fn exhausted_usage_bar_preserves_resets_wording_and_width() {
+        let text = line_text(&render_labeled_bar("5-hour", 100, 0, Some("12m"), 24));
+
+        assert!(text.contains("resets 12m"));
+        assert!(!text.contains("0% left"));
+        assert!(UnicodeWidthStr::width(text.as_str()) <= 24);
+    }
 }
 
 pub(super) fn render_usage_pill(

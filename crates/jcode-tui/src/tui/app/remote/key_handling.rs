@@ -1625,6 +1625,7 @@ async fn handle_remote_key_internal(
                     app.pasted_contents.clear();
                     app.pending_images.clear();
                     app.clear_streaming_render_state();
+                    app.clear_live_usage_state();
                     // Full transcript discard: every registered diagram is
                     // orphaned, so re-scope the process-global registry too
                     // (same rationale as reset_current_session in
