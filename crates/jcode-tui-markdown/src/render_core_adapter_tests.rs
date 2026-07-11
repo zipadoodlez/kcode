@@ -138,8 +138,8 @@ fn core_renders_inline_math() {
     let core = render_markdown_via_core("an equation $x^2$ here");
     let spans: Vec<_> = core.iter().flat_map(|l| l.spans.iter()).collect();
     assert!(
-        spans.iter().any(|s| s.content.contains("$x^2$")),
-        "inline math should be wrapped in dollar signs"
+        spans.iter().any(|s| s.content.contains("x²")),
+        "inline math should render as Unicode"
     );
 }
 
@@ -152,7 +152,7 @@ fn core_renders_display_math_frame() {
         "display math should be framed: {texts:?}"
     );
     assert!(
-        texts.iter().any(|t| t.contains("x^2 + y^2")),
+        texts.iter().any(|t| t.contains("x² + y²")),
         "display math content present: {texts:?}"
     );
 }

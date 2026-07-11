@@ -8,8 +8,7 @@
 //! Scope note: this is the shared foundation. It currently covers headings,
 //! paragraphs, inline emphasis/strong/strike/code, fenced & indented code
 //! blocks, blockquotes, ordered/unordered (incl. nested) lists, thematic
-//! breaks, links, and raw HTML passthrough. Tables and math are tracked as
-//! follow-ups; the TUI renderer remains authoritative until parity is proven.
+//! breaks, links, raw HTML passthrough, tables, and terminal-friendly math.
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
@@ -444,15 +443,13 @@ pub fn parse_markdown(text: &str) -> Document {
             }
             Event::InlineMath(math) => {
                 if in_table {
-                    current_cell.push('$');
-                    current_cell.push_str(&math);
-                    current_cell.push('$');
+                    current_cell.push_str(&crate::math::render_inline_latex(&math));
                 } else {
                     if let Some(marker) = pending_item_marker.take() {
                         spans.push(StyledSpan::new(marker, StyleRole::Dim));
                     }
                     spans.push(StyledSpan {
-                        text: format!("${math}$"),
+                        text: crate::math::render_inline_latex(&math),
                         role: StyleRole::Math,
                         fill: FillRole::None,
                         attrs: TextAttrs::none(),
@@ -461,9 +458,7 @@ pub fn parse_markdown(text: &str) -> Document {
             }
             Event::DisplayMath(math) => {
                 if in_table {
-                    current_cell.push_str("$$");
-                    current_cell.push_str(&math);
-                    current_cell.push_str("$$");
+                    current_cell.push_str(&crate::math::render_inline_latex(&math));
                 } else {
                     flush_paragraph(
                         &mut doc,
@@ -473,14 +468,9 @@ pub fn parse_markdown(text: &str) -> Document {
                         blockquote_depth,
                         &mut bq_lines,
                     );
-                    let mut lines: Vec<StyledLine> = math
-                        .lines()
-                        .map(|l| {
-                            StyledLine::from_spans(vec![StyledSpan::new(
-                                l.to_string(),
-                                StyleRole::Math,
-                            )])
-                        })
+                    let mut lines: Vec<StyledLine> = crate::math::render_display_latex(&math)
+                        .into_iter()
+                        .map(|l| StyledLine::from_spans(vec![StyledSpan::new(l, StyleRole::Math)]))
                         .collect();
                     if lines.is_empty() {
                         lines.push(StyledLine::from_spans(vec![StyledSpan::new(

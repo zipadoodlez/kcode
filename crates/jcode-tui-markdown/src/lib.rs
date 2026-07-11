@@ -923,27 +923,21 @@ fn count_unescaped_double_dollar(line: &str) -> usize {
 }
 
 fn math_inline_span(math: &str) -> Span<'static> {
-    Span::styled(format!("${}$", math), Style::default().fg(math_fg()))
+    Span::styled(
+        jcode_render_core::render_inline_latex(math),
+        Style::default().fg(math_fg()),
+    )
 }
 
 fn math_display_lines(math: &str) -> Vec<Line<'static>> {
     let mut out = Vec::new();
     let dim = Style::default().fg(md_dim_color());
     out.push(Line::from(Span::styled("┌─ math ", dim)).left_aligned());
-    for line in math.lines() {
+    for line in jcode_render_core::render_display_latex(math) {
         out.push(
             Line::from(vec![
                 Span::styled("│ ", dim),
-                Span::styled(line.to_string(), Style::default().fg(math_fg())),
-            ])
-            .left_aligned(),
-        );
-    }
-    if math.is_empty() {
-        out.push(
-            Line::from(vec![
-                Span::styled("│ ", dim),
-                Span::styled("", Style::default().fg(math_fg())),
+                Span::styled(line, Style::default().fg(math_fg())),
             ])
             .left_aligned(),
         );

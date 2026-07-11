@@ -507,9 +507,7 @@ pub fn render_markdown_lazy(
                     continue;
                 }
                 if in_table {
-                    current_cell.push('$');
-                    current_cell.push_str(&math);
-                    current_cell.push('$');
+                    current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
                 } else {
                     ensure_blockquote_prefix(&mut current_spans, blockquote_depth);
                     current_spans.push(math_inline_span(&math));
@@ -534,9 +532,7 @@ pub fn render_markdown_lazy(
                     ),
                 );
                 if in_table {
-                    current_cell.push_str("$$");
-                    current_cell.push_str(&math);
-                    current_cell.push_str("$$");
+                    current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
                 } else {
                     let block_start = lines.len();
                     for line in math_display_lines(&math) {

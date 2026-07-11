@@ -173,8 +173,8 @@ pub enum BlockKind {
     /// (the first row is the header); column layout/wrapping is width-dependent
     /// and therefore performed by each front-end adapter.
     Table,
-    /// Display math (`$$..$$`). Raw math source lines are in [`Block::lines`]
-    /// with [`StyleRole::Math`]; the adapter frames it.
+    /// Display math (`$$..$$`). Terminal-friendly rendered math lines are in
+    /// [`Block::lines`] with [`StyleRole::Math`]; the adapter frames them.
     MathDisplay,
     ThematicBreak,
     Html,

@@ -26,6 +26,19 @@ fn test_lazy_rendering_visible_range() {
 }
 
 #[test]
+fn test_lazy_rendering_matches_full_latex_output() {
+    let md = r"Inline $\alpha_2 + x^2$.
+
+$$\frac{x+1}{y}$$";
+    let full = lines_to_string(&render_markdown_with_width(md, Some(80)));
+    let lazy = lines_to_string(&render_markdown_lazy(md, Some(80), 0..100));
+
+    assert_eq!(lazy, full);
+    assert!(lazy.contains("α₂ + x²"), "{lazy}");
+    assert!(lazy.contains("─────"), "{lazy}");
+}
+
+#[test]
 fn test_ranges_overlap() {
     assert!(ranges_overlap(0..10, 5..15));
     assert!(ranges_overlap(5..15, 0..10));

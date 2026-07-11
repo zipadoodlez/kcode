@@ -273,10 +273,11 @@ fn test_incremental_renderer_streaming_heading_does_not_duplicate() {
 #[test]
 fn test_incremental_renderer_streaming_inline_math() {
     let mut renderer = IncrementalMarkdownRenderer::new(Some(80));
-    let _ = renderer.update("Compute $x");
-    let lines = renderer.update("Compute $x$");
+    let _ = renderer.update("Compute $x^");
+    let lines = renderer.update("Compute $x^2$");
     let rendered = lines_to_string(&lines);
-    assert!(rendered.contains("$x$"));
+    assert!(rendered.contains("x²"), "{rendered}");
+    assert!(!rendered.contains("$x^2$"), "{rendered}");
 }
 
 #[test]
@@ -342,7 +343,10 @@ fn test_pending_placeholder_line_detection() {
     // Centered display modes prepend a padding span.
     let padded = Line::from(vec![
         Span::raw("        "),
-        Span::styled(MERMAID_PENDING_PLACEHOLDER_TEXT.to_string(), Style::default()),
+        Span::styled(
+            MERMAID_PENDING_PLACEHOLDER_TEXT.to_string(),
+            Style::default(),
+        ),
     ]);
     assert!(line_is_mermaid_pending_placeholder(&padded));
 
