@@ -321,28 +321,7 @@ pub(super) fn format_elapsed(secs: f32) -> String {
 }
 
 fn fuzzy_match_positions(pattern: &str, text: &str) -> Vec<usize> {
-    let pat: Vec<char> = pattern
-        .to_lowercase()
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect();
-    if pat.is_empty() {
-        return Vec::new();
-    }
-    let txt: Vec<char> = text.to_lowercase().chars().collect();
-    let mut pi = 0;
-    let mut positions = Vec::new();
-    for (ti, &tc) in txt.iter().enumerate() {
-        if pi < pat.len() && tc == pat[pi] {
-            positions.push(ti);
-            pi += 1;
-        }
-    }
-    if pi == pat.len() {
-        positions
-    } else {
-        Vec::new()
-    }
+    jcode_fuzzy::fuzzy_match_positions(pattern, text)
 }
 
 pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, area: Rect) {

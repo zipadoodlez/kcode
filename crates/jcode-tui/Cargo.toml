@@ -66,6 +66,7 @@ unicode-width = "0.2"
 jcode-build-meta = { path = "../jcode-build-meta" }
 jcode-logging = { path = "../jcode-logging" }
 jcode-core = { path = "../jcode-core" }
+jcode-fuzzy = { path = "../jcode-fuzzy" }
 jcode-config-types = { path = "../jcode-config-types" }
 jcode-selfdev-types = { path = "../jcode-selfdev-types" }
 jcode-session-types = { path = "../jcode-session-types" }

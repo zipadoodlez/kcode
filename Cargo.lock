@@ -3531,6 +3531,7 @@ dependencies = [
  "bytemuck",
  "glyphon",
  "image",
+ "jcode-fuzzy",
  "jcode-tui-messages",
  "libc",
  "pollster",
@@ -3552,6 +3553,10 @@ dependencies = [
  "tract-hir",
  "tract-onnx",
 ]
+
+[[package]]
+name = "jcode-fuzzy"
+version = "0.1.0"
 
 [[package]]
 name = "jcode-gateway-types"
@@ -4158,6 +4163,7 @@ dependencies = [
  "jcode-build-meta",
  "jcode-config-types",
  "jcode-core",
+ "jcode-fuzzy",
  "jcode-logging",
  "jcode-productivity-core",
  "jcode-provider-core",

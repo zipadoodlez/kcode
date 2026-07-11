@@ -3069,77 +3069,20 @@ impl App {
     }
 
     pub(super) fn picker_fuzzy_score(pattern: &str, text: &str) -> Option<i32> {
-        let pat = Self::picker_fuzzy_pattern(pattern);
-        Self::picker_fuzzy_score_with_pattern(&pat, text)
-    }
-
-    /// Normalize a fuzzy-match pattern (lowercase, drop whitespace) into chars.
-    /// Hoist this out of per-entry scoring so a filter pass over N entries
-    /// normalizes the pattern once instead of N times per keystroke.
-    pub(super) fn picker_fuzzy_pattern(pattern: &str) -> Vec<char> {
-        pattern
-            .to_lowercase()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect()
-    }
-
-    pub(super) fn picker_fuzzy_score_with_pattern(pat: &[char], text: &str) -> Option<i32> {
-        let txt: Vec<char> = text.to_lowercase().chars().collect();
-        if pat.is_empty() {
-            return Some(0);
-        }
-
-        let mut pi = 0;
-        let mut score = 0i32;
-        let mut last_match: Option<usize> = None;
-
-        for (ti, &tc) in txt.iter().enumerate() {
-            if pi < pat.len() && tc == pat[pi] {
-                score += 1;
-                if let Some(last) = last_match
-                    && last + 1 == ti
-                {
-                    score += 3;
-                }
-                if ti == 0
-                    || matches!(
-                        txt.get(ti.wrapping_sub(1)),
-                        Some('/' | '-' | '_' | ' ' | '.')
-                    )
-                {
-                    score += 5;
-                }
-                if pi == 0 && ti == 0 {
-                    score += 10;
-                }
-                last_match = Some(ti);
-                pi += 1;
-            }
-        }
-
-        if pi == pat.len() {
-            score -= (txt.len() as i32) / 10;
-            Some(score)
-        } else {
-            None
-        }
+        jcode_fuzzy::fuzzy_score_tokens(pattern, text)
     }
 
     pub(super) fn apply_inline_interactive_filter(picker: &mut InlineInteractiveState) {
         if picker.filter.is_empty() {
             picker.filtered = (0..picker.entries.len()).collect();
         } else {
-            // Normalize the filter pattern once per keystroke instead of once per
-            // entry inside picker_fuzzy_score.
-            let pat = Self::picker_fuzzy_pattern(&picker.filter);
             let mut scored: Vec<(usize, i32)> = picker
                 .entries
                 .iter()
                 .enumerate()
                 .filter_map(|(i, m)| {
                     let filter_text = picker.filter_text(m);
-                    Self::picker_fuzzy_score_with_pattern(&pat, &filter_text).map(|s| {
+                    Self::picker_fuzzy_score(&picker.filter, &filter_text).map(|s| {
                         let usage_bonus = m.usage_score.min(i32::MAX as u32) as i32;
                         let bonus = usage_bonus + if m.recommended { 5 } else { 0 };
                         (i, s + bonus)
@@ -3302,6 +3245,26 @@ mod tests {
         App::apply_inline_interactive_filter(&mut picker);
 
         assert_eq!(picker.filtered, vec![1, 0]);
+    }
+
+    #[test]
+    fn model_picker_fuzzy_filter_tolerates_common_typos() {
+        let mut picker = InlineInteractiveState {
+            kind: PickerKind::Model,
+            filtered: vec![0, 1],
+            entries: vec![
+                picker_entry("gpt-5-codex", "OpenAI", 0),
+                picker_entry("claude-opus-4.6", "Anthropic", 0),
+            ],
+            selected: 0,
+            column: 0,
+            filter: "codxe".to_string(),
+            preview: false,
+        };
+
+        App::apply_inline_interactive_filter(&mut picker);
+
+        assert_eq!(picker.filtered, vec![0]);
     }
 
     #[test]

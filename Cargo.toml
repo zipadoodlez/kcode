@@ -26,6 +26,7 @@ members = [
     "crates/jcode-compaction-core",
     "crates/jcode-config-types",
     "crates/jcode-core",
+    "crates/jcode-fuzzy",
     "crates/jcode-memory-types",
     "crates/jcode-message-types",
     "crates/jcode-overnight-core",
