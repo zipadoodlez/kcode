@@ -82,6 +82,8 @@ fn test_load_agents_md_files_uses_sandboxed_global_files() {
 
     assert!(info.has_global_agents_md);
     let content = content.expect("global instructions content");
+    assert!(content.contains("# Global Instructions (~/AGENTS.md)"));
+    assert!(!content.contains("~/.AGENTS.md"));
     assert!(content.contains("sandboxed global agents instructions"));
 
     if let Some(prev_home) = prev_home {

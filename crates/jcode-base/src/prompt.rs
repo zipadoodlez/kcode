@@ -222,7 +222,7 @@ pub struct ContextInfo {
     pub has_project_agents_md: bool,
     /// Project AGENTS.md size (chars)
     pub project_agents_md_chars: usize,
-    /// Whether global ~/.AGENTS.md was loaded
+    /// Whether global ~/AGENTS.md was loaded
     pub has_global_agents_md: bool,
     /// Global AGENTS.md size (chars)
     pub global_agents_md_chars: usize,
@@ -882,7 +882,7 @@ pub fn load_agents_md_files_from_dir(working_dir: Option<&Path>) -> (Option<Stri
     // Home directory files
     if let Ok(global_agents_md) = crate::storage::user_home_path("AGENTS.md")
         && let Some((content, size)) =
-            load_file(&global_agents_md, "Global Instructions (~/.AGENTS.md)")
+            load_file(&global_agents_md, "Global Instructions (~/AGENTS.md)")
     {
         info.has_global_agents_md = true;
         info.global_agents_md_chars = size;
