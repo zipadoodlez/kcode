@@ -165,7 +165,8 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
     let mut line_start = true;
     let mut leading_columns = 0usize;
     let mut math_dollars = 0usize;
-    let mut wrapped_environment: Option<String> = None;
+    let mut wrapped_environment: Option<(String, usize)> = None;
+    let mut literal_environment: Option<(String, usize)> = None;
 
     while index < text.len() {
         let rest = &text[index..];
@@ -225,6 +226,31 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
             continue;
         }
         if inline_ticks > 0 {
+            out.push(ch);
+            index += ch.len_utf8();
+            continue;
+        }
+
+        if let Some((name, depth)) = literal_environment.as_mut() {
+            if let Some((begin_name, marker_len)) = environment_marker(rest, "begin")
+                && begin_name == name
+            {
+                *depth += 1;
+                out.push_str(&rest[..marker_len]);
+                index += marker_len;
+                continue;
+            }
+            if let Some((end_name, marker_len)) = environment_marker(rest, "end")
+                && end_name == name
+            {
+                *depth -= 1;
+                out.push_str(&rest[..marker_len]);
+                index += marker_len;
+                if *depth == 0 {
+                    literal_environment = None;
+                }
+                continue;
+            }
             out.push(ch);
             index += ch.len_utf8();
             continue;
@@ -294,24 +320,40 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
             && wrapped_environment.is_none()
             && let Some((name, marker_len)) = environment_marker(rest, "begin")
             && DISPLAY_MATH_ENVIRONMENTS.contains(&name)
-            && rest[marker_len..].contains(&format!("\\end{{{name}}}"))
         {
-            out.push_str("$$\n");
-            out.push_str(&rest[..marker_len]);
-            wrapped_environment = Some(name.to_string());
+            if has_matching_environment_end(rest, name) {
+                out.push_str("$$\n");
+                out.push_str(&rest[..marker_len]);
+                wrapped_environment = Some((name.to_string(), 1));
+            } else {
+                out.push_str(&rest[..marker_len]);
+                literal_environment = Some((name.to_string(), 1));
+            }
             index += marker_len;
             continue;
         }
 
-        if let Some(name) = wrapped_environment.as_deref()
-            && let Some((end_name, marker_len)) = environment_marker(rest, "end")
-            && end_name == name
-        {
-            out.push_str(&rest[..marker_len]);
-            out.push_str("\n$$");
-            wrapped_environment = None;
-            index += marker_len;
-            continue;
+        if let Some((name, depth)) = wrapped_environment.as_mut() {
+            if let Some((begin_name, marker_len)) = environment_marker(rest, "begin")
+                && begin_name == name
+            {
+                *depth += 1;
+                out.push_str(&rest[..marker_len]);
+                index += marker_len;
+                continue;
+            }
+            if let Some((end_name, marker_len)) = environment_marker(rest, "end")
+                && end_name == name
+            {
+                *depth -= 1;
+                out.push_str(&rest[..marker_len]);
+                index += marker_len;
+                if *depth == 0 {
+                    out.push_str("\n$$");
+                    wrapped_environment = None;
+                }
+                continue;
+            }
         }
 
         out.push(ch);
@@ -327,6 +369,36 @@ fn environment_marker<'a>(rest: &'a str, command: &str) -> Option<(&'a str, usiz
     let close = after_prefix.find('}')?;
     let name = &after_prefix[..close];
     Some((name, prefix.len() + close + 1))
+}
+
+fn has_matching_environment_end(source: &str, name: &str) -> bool {
+    let begin_marker = format!("\\begin{{{name}}}");
+    let end_marker = format!("\\end{{{name}}}");
+    let mut search = begin_marker.len();
+    let mut depth = 1usize;
+    while search < source.len() {
+        let next_begin = source[search..]
+            .find(&begin_marker)
+            .map(|offset| search + offset);
+        let next_end = source[search..]
+            .find(&end_marker)
+            .map(|offset| search + offset);
+        match (next_begin, next_end) {
+            (_, None) => return false,
+            (Some(begin), Some(end)) if begin < end => {
+                depth += 1;
+                search = begin + begin_marker.len();
+            }
+            (_, Some(end)) => {
+                depth -= 1;
+                if depth == 0 {
+                    return true;
+                }
+                search = end + end_marker.len();
+            }
+        }
+    }
+    false
 }
 
 fn is_escaped_at(text: &str, index: usize) -> bool {
@@ -371,14 +443,14 @@ pub fn escape_currency_dollars(text: &str) -> String {
     let len = chars.len();
     let mut out = String::with_capacity(text.len());
     let mut i = 0;
-    let mut in_code_fence = false;
+    let mut code_fence: Option<(char, usize)> = None;
     let mut inline_code_len: usize = 0;
     let mut at_line_start = true;
     let mut leading_spaces = 0;
 
-    let count_backticks = |chars: &[char], start: usize| {
+    let count_marker = |chars: &[char], start: usize, marker: char| {
         let mut j = start;
-        while j < chars.len() && chars[j] == '`' {
+        while j < chars.len() && chars[j] == marker {
             j += 1;
         }
         j - start
@@ -409,27 +481,51 @@ pub fn escape_currency_dollars(text: &str) -> String {
         }
 
         if at_line_start && (c == ' ' || c == '\t') {
-            leading_spaces += 1;
+            leading_spaces += if c == '\t' { 4 } else { 1 };
             out.push(c);
             i += 1;
             continue;
         }
 
-        let maybe_fence = inline_code_len == 0 && c == '`' && count_backticks(&chars, i) >= 3;
+        let marker_run = if matches!(c, '`' | '~') {
+            count_marker(&chars, i, c)
+        } else {
+            0
+        };
+        let maybe_fence = inline_code_len == 0 && marker_run >= 3;
         if maybe_fence && at_line_start && leading_spaces <= 3 {
-            let run = count_backticks(&chars, i);
+            let run = marker_run;
+            let line_end = chars[i + run..]
+                .iter()
+                .position(|ch| *ch == '\n')
+                .map(|offset| i + run + offset)
+                .unwrap_or(len);
+            let trailing_is_blank = chars[i + run..line_end].iter().all(|ch| ch.is_whitespace());
+            let is_close = code_fence.is_some_and(|(marker, minimum)| {
+                marker == c && run >= minimum && trailing_is_blank
+            });
+            if code_fence.is_none() || is_close {
+                code_fence = if is_close { None } else { Some((c, run)) };
+            }
             for _ in 0..run {
-                out.push('`');
+                out.push(c);
             }
             i += run;
-            in_code_fence = !in_code_fence;
+            at_line_start = false;
+            leading_spaces = 0;
+            continue;
+        }
+
+        if code_fence.is_some() {
+            out.push(c);
+            i += 1;
             at_line_start = false;
             leading_spaces = 0;
             continue;
         }
 
         if c == '`' {
-            let run = count_backticks(&chars, i);
+            let run = count_marker(&chars, i, '`');
             if inline_code_len > 0 {
                 if run == inline_code_len {
                     inline_code_len = 0;
@@ -463,7 +559,7 @@ pub fn escape_currency_dollars(text: &str) -> String {
             continue;
         }
 
-        if in_code_fence || inline_code_len > 0 {
+        if inline_code_len > 0 {
             out.push(c);
             i += 1;
             continue;
@@ -520,6 +616,10 @@ mod tests {
     fn skips_fenced_code() {
         let input = "```\n$5\n```";
         assert_eq!(escape_currency_dollars(input), input);
+        let tilde = "~~~text\n$5\n~~~";
+        assert_eq!(escape_currency_dollars(tilde), tilde);
+        let longer = "````text\n``` is content and $5\n````";
+        assert_eq!(escape_currency_dollars(longer), longer);
     }
 
     #[test]
@@ -545,6 +645,12 @@ mod tests {
         let normalized = normalize_latex_math(input);
         assert!(normalized.contains("$$\n\\begin{align*}"), "{normalized}");
         assert!(normalized.contains("\\end{align*}\n$$"), "{normalized}");
+
+        let nested = r"\begin{matrix}\begin{matrix}a\end{matrix}\end{matrix}";
+        assert_eq!(normalize_latex_math(nested), format!("$$\n{nested}\n$$"));
+
+        let unmatched = r"\begin{matrix}\begin{matrix}a\end{matrix}";
+        assert_eq!(normalize_latex_math(unmatched), unmatched);
     }
 
     #[test]

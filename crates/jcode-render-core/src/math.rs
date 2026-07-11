@@ -6,6 +6,8 @@
 
 use unicode_width::UnicodeWidthStr;
 
+const MAX_PARSE_DEPTH: usize = 64;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Expr {
     Sequence(Vec<Expr>),
@@ -29,6 +31,7 @@ enum MatrixDelimiters {
     Parentheses,
     Brackets,
     Braces,
+    LeftBrace,
     Bars,
     DoubleBars,
 }
@@ -79,13 +82,13 @@ impl Expr {
                 subscript,
             } => {
                 let mut out = base.compact();
-                if let Some(superscript) = superscript {
-                    let script = superscript.compact();
-                    out.push_str(&superscript_or_group(&script));
-                }
                 if let Some(subscript) = subscript {
                     let script = subscript.compact();
                     out.push_str(&subscript_or_group(&script));
+                }
+                if let Some(superscript) = superscript {
+                    let script = superscript.compact();
+                    out.push_str(&superscript_or_group(&script));
                 }
                 out
             }
@@ -117,7 +120,14 @@ impl Expr {
                             Some(script) => {
                                 MathLayout::horizontal([MathLayout::text(script), radical])
                             }
-                            None => MathLayout::scripts(radical, Some(index.layout()), None),
+                            None => MathLayout::horizontal([
+                                MathLayout::scripts(
+                                    MathLayout::text(""),
+                                    Some(index.layout()),
+                                    None,
+                                ),
+                                radical,
+                            ]),
                         }
                     }
                     None => radical,
@@ -140,11 +150,11 @@ impl Expr {
                     && compact_subscript.as_ref().is_none_or(Option::is_some);
                 if scripts_fit_inline {
                     let mut scripts = String::new();
-                    if let Some(Some(superscript)) = compact_superscript {
-                        scripts.push_str(&superscript);
-                    }
                     if let Some(Some(subscript)) = compact_subscript {
                         scripts.push_str(&subscript);
+                    }
+                    if let Some(Some(superscript)) = compact_superscript {
+                        scripts.push_str(&superscript);
                     }
                     MathLayout::horizontal([base.layout(), MathLayout::text(scripts)])
                 } else {
@@ -257,28 +267,30 @@ impl<'a> Parser<'a> {
     }
 
     fn parse(mut self) -> Expr {
-        self.parse_sequence(None)
+        self.parse_sequence(None, 0)
     }
 
-    fn parse_sequence(&mut self, terminator: Option<char>) -> Expr {
+    fn parse_sequence(&mut self, terminator: Option<char>, depth: usize) -> Expr {
         let mut items = Vec::new();
         while let Some(ch) = self.peek() {
             if Some(ch) == terminator {
                 self.bump();
                 break;
             }
-            let mut atom = self.parse_atom();
+            let mut atom = self.parse_atom(depth);
             let mut superscript = None;
             let mut subscript = None;
             loop {
                 match self.peek() {
                     Some('^') => {
                         self.bump();
-                        superscript = Some(Box::new(self.parse_argument()));
+                        let next = self.parse_argument(depth + 1);
+                        superscript = Some(Box::new(append_expr(superscript.take(), next)));
                     }
                     Some('_') => {
                         self.bump();
-                        subscript = Some(Box::new(self.parse_argument()));
+                        let next = self.parse_argument(depth + 1);
+                        subscript = Some(Box::new(append_expr(subscript.take(), next)));
                     }
                     _ => break,
                 }
@@ -295,13 +307,17 @@ impl<'a> Parser<'a> {
         collapse_sequence(items)
     }
 
-    fn parse_atom(&mut self) -> Expr {
+    fn parse_atom(&mut self, depth: usize) -> Expr {
         match self.peek() {
             Some('{') => {
                 self.bump();
-                self.parse_sequence(Some('}'))
+                if depth >= MAX_PARSE_DEPTH {
+                    Expr::Text(self.take_balanced_group())
+                } else {
+                    self.parse_sequence(Some('}'), depth + 1)
+                }
             }
-            Some('\\') => self.parse_command(),
+            Some('\\') => self.parse_command(depth),
             Some(ch) if ch.is_whitespace() => {
                 while self.peek().is_some_and(char::is_whitespace) {
                     self.bump();
@@ -316,17 +332,21 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_argument(&mut self) -> Expr {
+    fn parse_argument(&mut self, depth: usize) -> Expr {
         self.skip_spaces();
         if self.peek() == Some('{') {
             self.bump();
-            self.parse_sequence(Some('}'))
+            if depth >= MAX_PARSE_DEPTH {
+                Expr::Text(self.take_balanced_group())
+            } else {
+                self.parse_sequence(Some('}'), depth + 1)
+            }
         } else {
-            self.parse_atom()
+            self.parse_atom(depth)
         }
     }
 
-    fn parse_command(&mut self) -> Expr {
+    fn parse_command(&mut self, depth: usize) -> Expr {
         self.bump();
         let start = self.pos;
         while self.peek().is_some_and(|ch| ch.is_ascii_alphabetic()) {
@@ -337,70 +357,86 @@ impl<'a> Parser<'a> {
         } else {
             self.source[start..self.pos].to_string()
         };
-        if command.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        let word_command = command.chars().all(|ch| ch.is_ascii_alphabetic());
+        let had_separator = word_command && self.peek().is_some_and(char::is_whitespace);
+        if word_command {
             self.skip_spaces();
+        }
+
+        if depth >= MAX_PARSE_DEPTH {
+            return Expr::Text(format!("\\{command}"));
         }
 
         match command.as_str() {
             "frac" | "dfrac" | "tfrac" => Expr::Fraction(
-                Box::new(self.parse_argument()),
-                Box::new(self.parse_argument()),
+                Box::new(self.parse_argument(depth + 1)),
+                Box::new(self.parse_argument(depth + 1)),
             ),
             "sqrt" => {
                 let index = if self.peek() == Some('[') {
                     self.bump();
-                    let raw = self.take_until(']');
-                    Some(Box::new(Parser::new(&raw).parse()))
+                    let raw = self.take_bracketed_raw();
+                    Some(Box::new(Parser::new(&raw).parse_sequence(None, depth + 1)))
                 } else {
                     None
                 };
-                Expr::Root(index, Box::new(self.parse_argument()))
+                Expr::Root(index, Box::new(self.parse_argument(depth + 1)))
             }
             "text" | "textrm" | "textsf" | "texttt" | "operatorname" => {
-                Expr::Text(self.parse_argument().compact())
+                Expr::Text(self.parse_argument(depth + 1).compact())
             }
-            "begin" => self.parse_environment(),
+            "begin" => self.parse_environment(depth),
             "left" | "right" | "big" | "Big" | "bigg" | "Bigg" | "bigl" | "bigr" | "Bigl"
             | "Bigr" | "biggl" | "biggr" | "Biggl" | "Biggr" => {
                 let delimiter = self.parse_delimiter();
                 Expr::Text(delimiter)
             }
             "overline" => {
-                let body = self.parse_argument().compact();
+                let body = self.parse_argument(depth + 1).compact();
                 Expr::Text(body.chars().flat_map(|ch| [ch, '\u{0305}']).collect())
             }
             "underline" => {
-                let body = self.parse_argument().compact();
+                let body = self.parse_argument(depth + 1).compact();
                 Expr::Text(body.chars().flat_map(|ch| [ch, '\u{0332}']).collect())
             }
-            "hat" | "widehat" => self.combining_accent('\u{0302}'),
-            "bar" => self.combining_accent('\u{0304}'),
-            "vec" => self.combining_accent('\u{20d7}'),
-            "dot" => self.combining_accent('\u{0307}'),
-            "ddot" => self.combining_accent('\u{0308}'),
-            "tilde" | "widetilde" => self.combining_accent('\u{0303}'),
+            "hat" | "widehat" => self.combining_accent('\u{0302}', depth),
+            "bar" => self.combining_accent('\u{0304}', depth),
+            "vec" => self.combining_accent('\u{20d7}', depth),
+            "dot" => self.combining_accent('\u{0307}', depth),
+            "ddot" => self.combining_accent('\u{0308}', depth),
+            "tilde" | "widetilde" => self.combining_accent('\u{0303}', depth),
             "mathbf" | "mathrm" | "mathit" | "mathsf" | "mathtt" | "mathcal" | "mathbb"
-            | "boldsymbol" | "displaystyle" | "scriptstyle" => self.parse_argument(),
+            | "boldsymbol" | "displaystyle" | "scriptstyle" => self.parse_argument(depth + 1),
             "," | ";" | ":" | " " | "quad" => Expr::Text(" ".to_string()),
             "qquad" => Expr::Text("  ".to_string()),
             "!" | "limits" | "nolimits" => Expr::Text(String::new()),
             "\\" => Expr::Text(" ".to_string()),
-            _ => Expr::Text(command_symbol(&command).unwrap_or_else(|| format!("\\{command}"))),
+            _ => {
+                let mut rendered =
+                    command_symbol(&command).unwrap_or_else(|| format!("\\{command}"));
+                if had_separator && (is_named_operator(&command) || rendered.starts_with('\\')) {
+                    rendered.push(' ');
+                }
+                Expr::Text(rendered)
+            }
         }
     }
 
-    fn parse_environment(&mut self) -> Expr {
+    fn parse_environment(&mut self, depth: usize) -> Expr {
         let name = self.parse_braced_raw();
         let end_marker = format!("\\end{{{name}}}");
-        let rest = &self.source[self.pos..];
-        let (body, consumed) = match rest.find(&end_marker) {
-            Some(offset) => (&rest[..offset], offset + end_marker.len()),
-            None => (rest, rest.len()),
+        let body_start = self.pos;
+        let Some((body_end, consumed)) = find_environment_end(self.source, body_start, &name)
+        else {
+            let body = &self.source[body_start..];
+            self.pos = self.source.len();
+            return Expr::Text(format!("\\begin{{{name}}}{body}"));
         };
+        let body = &self.source[body_start..body_end];
         self.pos += consumed;
 
         if matches!(name.as_str(), "equation" | "equation*" | "displaymath") {
-            return Parser::new(body).parse();
+            return Parser::new(body).parse_sequence(None, depth + 1);
         }
 
         let delimiters = match name.as_str() {
@@ -408,7 +444,7 @@ impl<'a> Parser<'a> {
             | "split" | "gather" | "gather*" | "gathered" | "multline" | "multline*"
             | "eqnarray" | "eqnarray*" | "cases" | "cases*" => {
                 if matches!(name.as_str(), "cases" | "cases*") {
-                    MatrixDelimiters::Braces
+                    MatrixDelimiters::LeftBrace
                 } else {
                     MatrixDelimiters::None
                 }
@@ -421,19 +457,24 @@ impl<'a> Parser<'a> {
             _ => return Expr::Text(format!("\\begin{{{name}}}{body}{end_marker}")),
         };
 
+        let body = if name == "array" {
+            strip_leading_braced_group(body).unwrap_or(body)
+        } else {
+            body
+        };
         let rows = split_matrix(body)
             .into_iter()
             .map(|row| {
                 row.into_iter()
-                    .map(|cell| Parser::new(cell.trim()).parse())
+                    .map(|cell| Parser::new(cell.trim()).parse_sequence(None, depth + 1))
                     .collect()
             })
             .collect();
         Expr::Matrix { rows, delimiters }
     }
 
-    fn combining_accent(&mut self, accent: char) -> Expr {
-        let body = self.parse_argument().compact();
+    fn combining_accent(&mut self, accent: char, depth: usize) -> Expr {
+        let body = self.parse_argument(depth + 1).compact();
         Expr::Text(body.chars().flat_map(|ch| [ch, accent]).collect())
     }
 
@@ -481,6 +522,51 @@ impl<'a> Parser<'a> {
         out
     }
 
+    fn take_balanced_group(&mut self) -> String {
+        let start = self.pos;
+        let mut depth = 1usize;
+        while let Some(ch) = self.bump() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return self.source[start..self.pos - 1].to_string();
+                    }
+                }
+                '\\' => {
+                    self.bump();
+                }
+                _ => {}
+            }
+        }
+        self.source[start..self.pos].to_string()
+    }
+
+    fn take_bracketed_raw(&mut self) -> String {
+        let start = self.pos;
+        let mut brackets = 1usize;
+        let mut braces = 0usize;
+        while let Some(ch) = self.bump() {
+            match ch {
+                '\\' => {
+                    self.bump();
+                }
+                '{' => braces += 1,
+                '}' => braces = braces.saturating_sub(1),
+                '[' if braces == 0 => brackets += 1,
+                ']' if braces == 0 => {
+                    brackets -= 1;
+                    if brackets == 0 {
+                        return self.source[start..self.pos - 1].to_string();
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.source[start..self.pos].to_string()
+    }
+
     fn skip_spaces(&mut self) {
         while self.peek().is_some_and(char::is_whitespace) {
             self.bump();
@@ -506,31 +592,127 @@ fn collapse_sequence(mut items: Vec<Expr>) -> Expr {
     }
 }
 
+fn append_expr(existing: Option<Box<Expr>>, next: Expr) -> Expr {
+    match existing.map(|expr| *expr) {
+        Some(Expr::Sequence(mut items)) => {
+            items.push(next);
+            Expr::Sequence(items)
+        }
+        Some(existing) => Expr::Sequence(vec![existing, next]),
+        None => next,
+    }
+}
+
+fn find_environment_end(source: &str, body_start: usize, name: &str) -> Option<(usize, usize)> {
+    let begin_marker = format!("\\begin{{{name}}}");
+    let end_marker = format!("\\end{{{name}}}");
+    let mut search = body_start;
+    let mut depth = 1usize;
+    while search < source.len() {
+        let next_begin = source[search..]
+            .find(&begin_marker)
+            .map(|offset| search + offset);
+        let next_end = source[search..]
+            .find(&end_marker)
+            .map(|offset| search + offset);
+        match (next_begin, next_end) {
+            (_, None) => return None,
+            (Some(begin), Some(end)) if begin < end => {
+                depth += 1;
+                search = begin + begin_marker.len();
+            }
+            (_, Some(end)) => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((end, end + end_marker.len() - body_start));
+                }
+                search = end + end_marker.len();
+            }
+        }
+    }
+    None
+}
+
+fn strip_leading_braced_group(source: &str) -> Option<&str> {
+    let trimmed = source.trim_start();
+    if !trimmed.starts_with('{') {
+        return None;
+    }
+    let mut depth = 0usize;
+    for (index, ch) in trimmed.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(&trimmed[index + ch.len_utf8()..]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn split_matrix(source: &str) -> Vec<Vec<&str>> {
     let mut rows = vec![Vec::new()];
     let mut start = 0usize;
     let mut depth = 0usize;
+    let mut environment_depth = 0usize;
     let bytes = source.as_bytes();
     let mut pos = 0usize;
     while pos < bytes.len() {
         match bytes[pos] {
+            b'\\' if source[pos..].starts_with("\\begin{") => {
+                environment_depth += 1;
+                if let Some(end) = source[pos..].find('}') {
+                    pos += end;
+                }
+            }
+            b'\\' if source[pos..].starts_with("\\end{") => {
+                environment_depth = environment_depth.saturating_sub(1);
+                if let Some(end) = source[pos..].find('}') {
+                    pos += end;
+                }
+            }
+            b'\\' if pos + 1 < bytes.len() && bytes[pos + 1] != b'\\' => {
+                pos += 1;
+            }
             b'{' => depth += 1,
             b'}' => depth = depth.saturating_sub(1),
-            b'&' if depth == 0 => {
+            b'&' if depth == 0 && environment_depth == 0 => {
                 rows.last_mut().unwrap().push(&source[start..pos]);
                 start = pos + 1;
             }
-            b'\\' if depth == 0 && pos + 1 < bytes.len() && bytes[pos + 1] == b'\\' => {
+            b'\\'
+                if depth == 0
+                    && environment_depth == 0
+                    && pos + 1 < bytes.len()
+                    && bytes[pos + 1] == b'\\' =>
+            {
                 rows.last_mut().unwrap().push(&source[start..pos]);
                 rows.push(Vec::new());
                 pos += 1;
                 start = pos + 1;
+                if source[start..].starts_with('[')
+                    && let Some(close) = source[start + 1..].find(']')
+                {
+                    pos = start + close + 1;
+                    start = pos + 1;
+                }
             }
             _ => {}
         }
         pos += 1;
     }
     rows.last_mut().unwrap().push(&source[start..]);
+    if rows.len() > 1
+        && rows
+            .last()
+            .is_some_and(|row| row.iter().all(|cell| cell.trim().is_empty()))
+    {
+        rows.pop();
+    }
     rows
 }
 
@@ -680,6 +862,27 @@ fn command_symbol(command: &str) -> Option<String> {
     Some(symbol.to_string())
 }
 
+fn is_named_operator(command: &str) -> bool {
+    matches!(
+        command,
+        "sin"
+            | "cos"
+            | "tan"
+            | "sec"
+            | "csc"
+            | "cot"
+            | "log"
+            | "ln"
+            | "exp"
+            | "lim"
+            | "min"
+            | "max"
+            | "det"
+            | "gcd"
+            | "mod"
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MathLayout {
     lines: Vec<String>,
@@ -688,10 +891,9 @@ struct MathLayout {
 
 impl MathLayout {
     fn text(text: impl Into<String>) -> Self {
-        Self {
-            lines: vec![text.into()],
-            baseline: 0,
-        }
+        let text = text.into();
+        let lines = text.split('\n').map(ToString::to_string).collect();
+        Self { lines, baseline: 0 }
     }
 
     fn width(&self) -> usize {
@@ -829,6 +1031,7 @@ impl MatrixDelimiters {
             Self::Parentheses => ("(", ")"),
             Self::Brackets => ("[", "]"),
             Self::Braces => ("{", "}"),
+            Self::LeftBrace => ("{", ""),
             Self::Bars => ("|", "|"),
             Self::DoubleBars => ("‖", "‖"),
         }
@@ -862,11 +1065,21 @@ impl MatrixDelimiters {
             }
             Self::Braces => {
                 let mut left = repeated("⎪");
-                let right = repeated("");
+                let mut right = repeated("⎪");
+                left[0] = "⎧";
+                right[0] = "⎫";
+                left[height / 2] = "⎨";
+                right[height / 2] = "⎬";
+                left[height - 1] = "⎩";
+                right[height - 1] = "⎭";
+                (left, right)
+            }
+            Self::LeftBrace => {
+                let mut left = repeated("⎪");
                 left[0] = "⎧";
                 left[height / 2] = "⎨";
                 left[height - 1] = "⎩";
-                (left, right)
+                (left, repeated(""))
             }
             Self::Bars => (repeated("│"), repeated("│")),
             Self::DoubleBars => (repeated("‖"), repeated("‖")),
@@ -894,8 +1107,12 @@ mod tests {
         assert_eq!(render_inline_latex(r"E = mc^2"), "E = mc²");
         assert_eq!(render_inline_latex(r"\alpha + \beta \leq \pi"), "α+ β≤π");
         assert_eq!(render_inline_latex(r"x_{10}"), "x₁₀");
+        assert_eq!(render_inline_latex(r"x_i^2"), "xᵢ²");
+        assert_eq!(render_inline_latex(r"x^2^3"), "x²³");
         assert_eq!(render_inline_latex(r"\frac{a+b}{c}"), "(a+b)⁄c");
         assert_eq!(render_inline_latex(r"\sqrt[3]{x}"), "³√x");
+        assert_eq!(render_inline_latex(r"\sin x + \log n"), "sin x + log n");
+        assert_eq!(render_inline_latex(r"\sqrt[\sqrt[2]{y}]{x}"), "^(²√y)√x");
     }
 
     #[test]
@@ -935,6 +1152,99 @@ mod tests {
                 !inline.is_empty() || !display.is_empty(),
                 "malformed source disappeared: {source:?}"
             );
+        }
+    }
+
+    #[test]
+    fn deeply_nested_input_is_bounded_and_does_not_overflow_the_stack() {
+        let source = format!("{}x{}", "{".repeat(20_000), "}".repeat(20_000));
+        let repeated_scripts = format!("x{}", "^1".repeat(20_000));
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                assert!(render_inline_latex(&source).contains('x'));
+                assert!(
+                    render_display_latex(&source)
+                        .iter()
+                        .any(|line| line.contains('x'))
+                );
+                assert_eq!(
+                    render_inline_latex(&repeated_scripts).chars().next(),
+                    Some('x')
+                );
+            })
+            .expect("spawn bounded-stack renderer")
+            .join()
+            .expect("deeply nested rendering must not panic");
+    }
+
+    #[test]
+    fn renders_braced_matrices_and_cases_with_their_distinct_delimiters() {
+        let matrix = render_display_latex(r"\begin{Bmatrix}a & b \\ c & d\end{Bmatrix}");
+        assert!(
+            matrix
+                .first()
+                .is_some_and(|line| line.starts_with('⎧') && line.ends_with('⎫'))
+        );
+        assert!(
+            matrix
+                .last()
+                .is_some_and(|line| line.starts_with('⎩') && line.ends_with('⎭'))
+        );
+
+        let cases = render_display_latex(r"\begin{cases}x & x>0 \\ -x & x<0\end{cases}");
+        assert!(cases.iter().all(|line| !line.ends_with(['⎫', '⎬', '⎭'])));
+    }
+
+    #[test]
+    fn matrix_scanner_respects_nested_environments_escapes_and_spacing() {
+        assert_eq!(
+            render_inline_latex(
+                r"\begin{bmatrix}\begin{bmatrix}a & b \\ c & d\end{bmatrix}\end{bmatrix}"
+            ),
+            "[[a, b; c, d]]"
+        );
+        assert_eq!(
+            render_inline_latex(r"\begin{bmatrix}a \& b & c\end{bmatrix}"),
+            "[a & b, c]"
+        );
+        assert_eq!(
+            render_inline_latex(r"\begin{array}{cc}a & b\end{array}"),
+            "a, b"
+        );
+        assert_eq!(
+            render_inline_latex(r"\begin{bmatrix}a \\[4pt] b \\\end{bmatrix}"),
+            "[a; b]"
+        );
+    }
+
+    #[test]
+    fn unmatched_environment_is_preserved_without_inventing_an_end_marker() {
+        let source = r"\begin{bmatrix}a & b";
+        assert_eq!(render_inline_latex(source), source);
+    }
+
+    #[test]
+    fn latexish_fuzz_corpus_never_panics_or_loses_all_visible_content() {
+        const ALPHABET: &[char] = &[
+            '\\', '{', '}', '[', ']', '^', '_', '&', '$', ' ', '\n', 'x', '7', 'α', '界',
+        ];
+        let mut state = 0x9e37_79b9_u32;
+        for case in 0..256 {
+            let mut source = String::new();
+            for _ in 0..(32 + case % 96) {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                source.push(ALPHABET[state as usize % ALPHABET.len()]);
+            }
+            let inline = render_inline_latex(&source);
+            let display = render_display_latex(&source);
+            if !source.trim().is_empty() {
+                assert!(!inline.trim().is_empty(), "case {case}: {source:?}");
+                assert!(
+                    display.iter().any(|line| !line.trim().is_empty()),
+                    "case {case}: {source:?}"
+                );
+            }
         }
     }
 }
