@@ -1169,6 +1169,7 @@ fn test_info_widget_remote_openai_uses_remote_provider_for_usage_and_context() {
     app.is_remote = true;
     app.remote_provider_name = Some("OpenAI".to_string());
     app.remote_provider_model = Some("gpt-5.4".to_string());
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
     app.update_context_limit_for_model("gpt-5.4");
 
     let data = crate::tui::TuiState::info_widget_data(&app);
@@ -1178,7 +1179,7 @@ fn test_info_widget_remote_openai_uses_remote_provider_for_usage_and_context() {
     assert_eq!(data.context_limit, Some(1_000_000));
     assert_eq!(
         data.auth_method,
-        crate::tui::info_widget::AuthMethod::Unknown
+        crate::tui::info_widget::AuthMethod::OpenAIOAuth
     );
     assert_eq!(
         data.usage_info.as_ref().map(|info| info.provider),
@@ -1196,9 +1197,10 @@ fn test_info_widget_remote_model_falls_back_to_model_provider_detection() {
     let data = crate::tui::TuiState::info_widget_data(&app);
 
     assert_eq!(data.context_limit, Some(1_000_000));
-    assert_eq!(
-        data.usage_info.as_ref().map(|info| info.provider),
-        Some(crate::tui::info_widget::UsageProvider::OpenAI)
+    assert_eq!(data.auth_method, crate::tui::info_widget::AuthMethod::Unknown);
+    assert!(
+        data.usage_info.is_none(),
+        "provider/model detection alone must not guess subscription billing"
     );
 }
 
@@ -1266,6 +1268,78 @@ fn test_info_widget_remote_anthropic_api_key_shows_cost_based_usage() {
     assert_eq!(
         data.usage_info.as_ref().map(|info| info.provider),
         Some(crate::tui::info_widget::UsageProvider::Anthropic)
+    );
+}
+
+#[test]
+fn test_info_widget_remote_openai_billing_follows_resolved_credential() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.4".to_string());
+    app.token_accounting.total_input_tokens = 12_000;
+    app.token_accounting.total_output_tokens = 3_400;
+
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::ApiKey);
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(
+        data.auth_method,
+        crate::tui::info_widget::AuthMethod::OpenAIApiKey
+    );
+    let usage = data.usage_info.as_ref().expect("OpenAI API cost info");
+    assert_eq!(
+        usage.provider,
+        crate::tui::info_widget::UsageProvider::CostBased
+    );
+    assert_eq!(usage.input_tokens, 12_000);
+    assert_eq!(usage.output_tokens, 3_400);
+
+    app.remote_resolved_credential = Some(jcode_provider_core::ResolvedCredential::Oauth);
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(
+        data.auth_method,
+        crate::tui::info_widget::AuthMethod::OpenAIOAuth
+    );
+    assert_eq!(
+        data.usage_info.as_ref().map(|usage| usage.provider),
+        Some(crate::tui::info_widget::UsageProvider::OpenAI)
+    );
+
+    app.remote_resolved_credential = None;
+    app.session.route_api_method = None;
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(data.auth_method, crate::tui::info_widget::AuthMethod::Unknown);
+    assert!(data.usage_info.is_none());
+}
+
+#[test]
+fn test_info_widget_remote_openai_uses_explicit_route_when_credential_is_missing() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.remote_provider_name = Some("OpenAI".to_string());
+    app.remote_provider_model = Some("gpt-5.4".to_string());
+    app.remote_resolved_credential = None;
+
+    app.session.route_api_method = Some("openai-api-key".to_string());
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(
+        data.auth_method,
+        crate::tui::info_widget::AuthMethod::OpenAIApiKey
+    );
+    assert_eq!(
+        data.usage_info.as_ref().map(|usage| usage.provider),
+        Some(crate::tui::info_widget::UsageProvider::CostBased)
+    );
+
+    app.session.route_api_method = Some("openai-oauth".to_string());
+    let data = crate::tui::TuiState::info_widget_data(&app);
+    assert_eq!(
+        data.auth_method,
+        crate::tui::info_widget::AuthMethod::OpenAIOAuth
+    );
+    assert_eq!(
+        data.usage_info.as_ref().map(|usage| usage.provider),
+        Some(crate::tui::info_widget::UsageProvider::OpenAI)
     );
 }
 

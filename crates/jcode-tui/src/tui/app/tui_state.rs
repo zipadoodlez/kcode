@@ -246,7 +246,22 @@ impl App {
         provider: jcode_provider_core::ActiveProvider,
     ) -> Option<crate::auth::ActiveCredential> {
         if route.is_remote {
-            return self.remote_resolved_credential.map(Into::into);
+            if let Some(resolved) = self.remote_resolved_credential {
+                return Some(resolved.into());
+            }
+
+            // Older history payloads and replay snapshots may not carry the
+            // resolved credential, but an explicitly pinned route still tells
+            // us whether this is subscription OAuth or metered API-key usage.
+            // Never guess from the provider family alone: doing so made an
+            // unresolved OpenAI API session render cached subscription limits.
+            return self
+                .session
+                .route_api_method
+                .as_deref()
+                .and_then(jcode_provider_core::AuthRoute::parse)
+                .filter(|auth_route| auth_route.active_provider() == provider)
+                .map(|auth_route| auth_route.resolved_credential().into());
         }
 
         // Authoritative, cache-free answer from the live provider whenever the
@@ -392,11 +407,12 @@ impl App {
                 available: display_input_tokens > 0 || display_output_tokens > 0,
             }),
             WidgetProviderKind::Anthropic => {
-                if matches!(
-                    auth_method,
-                    crate::tui::info_widget::AuthMethod::AnthropicApiKey
-                ) {
-                    return Some(cost_based_usage());
+                match auth_method {
+                    crate::tui::info_widget::AuthMethod::AnthropicApiKey => {
+                        return Some(cost_based_usage());
+                    }
+                    crate::tui::info_widget::AuthMethod::AnthropicOAuth => {}
+                    _ => return None,
                 }
 
                 let usage = crate::usage::get_sync();
@@ -418,11 +434,12 @@ impl App {
                 })
             }
             WidgetProviderKind::OpenAI => {
-                if matches!(
-                    auth_method,
-                    crate::tui::info_widget::AuthMethod::OpenAIApiKey
-                ) {
-                    return Some(cost_based_usage());
+                match auth_method {
+                    crate::tui::info_widget::AuthMethod::OpenAIApiKey => {
+                        return Some(cost_based_usage());
+                    }
+                    crate::tui::info_widget::AuthMethod::OpenAIOAuth => {}
+                    _ => return None,
                 }
 
                 let openai_usage = crate::usage::get_openai_usage_sync();
