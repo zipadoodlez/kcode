@@ -1094,7 +1094,7 @@ impl App {
             let confidence_label =
                 super::commands::format_todo_completion_confidence(confidence_summary);
             self.push_display_message(DisplayMessage::system(format!(
-                "✅ Todos complete. Auto-poke finished. Cumulative confidence: {}.",
+                "✅ Todos complete. Completion confidence: {}.",
                 confidence_label
             )));
             if confidence_summary.needs_more_work {

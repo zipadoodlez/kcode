@@ -2350,7 +2350,7 @@ fn test_finish_turn_auto_poke_queues_confidence_summary_when_todos_done() {
                 .iter()
                 .any(|msg| msg
                     .content
-                    .contains("Todos complete. Auto-poke finished. Cumulative confidence: 86%."))
+                    .contains("Todos complete. Completion confidence: 86%."))
         );
     });
 }
