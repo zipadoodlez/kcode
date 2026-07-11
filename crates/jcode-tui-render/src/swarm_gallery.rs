@@ -344,7 +344,7 @@ pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<L
         out.push(Line::from(header));
 
         let body_budget = member.todo_items.len().min(4).saturating_add(3).max(1);
-        out.extend(hovered_detail_body(member, None, width, body_budget));
+        out.extend(hovered_detail_body(member, None, width, body_budget, false));
     }
 
     for line in &mut out {
@@ -1024,7 +1024,7 @@ pub fn render_swarm_strip_vertical(
         {
             // Insert directly beneath the selected row so the list expands in
             // place (accordion) instead of jumping to a detached pane below.
-            let detail = hovered_detail_body(m, Some(spinner_frame), width, detail_budget);
+            let detail = hovered_detail_body(m, Some(spinner_frame), width, detail_budget, true);
             for (i, line) in detail.into_iter().enumerate() {
                 out.insert(at + 1 + i, line);
             }
@@ -1488,6 +1488,7 @@ fn render_hovered_detail(
         Some(spinner_frame),
         width,
         budget.saturating_sub(1),
+        true,
     ));
     out
 }
@@ -1501,6 +1502,7 @@ fn hovered_detail_body(
     spinner_frame: Option<usize>,
     width: usize,
     budget: usize,
+    show_member_rail: bool,
 ) -> Vec<Line<'static>> {
     let dim = rgb(120, 120, 130);
     let text_fg = rgb(190, 190, 200);
@@ -1559,7 +1561,9 @@ fn hovered_detail_body(
             if emph {
                 style = style.add_modifier(Modifier::BOLD);
             }
-            let todo_rail = if visible_idx + 1 == shown {
+            let todo_rail = if !show_member_rail {
+                "    "
+            } else if visible_idx + 1 == shown {
                 "└─  "
             } else {
                 BAR
@@ -1610,7 +1614,14 @@ fn hovered_detail_body(
                     let nested_budget = width.saturating_sub(GUTTER.len() + BAR.len() + 7);
                     out.push(Line::from(vec![
                         Span::raw(GUTTER),
-                        Span::styled("│     ", Style::default().fg(gutter_fg)),
+                        Span::styled(
+                            if show_member_rail {
+                                "│     "
+                            } else {
+                                "      "
+                            },
+                            Style::default().fg(gutter_fg),
+                        ),
                         Span::styled(format!("{branch} "), Style::default().fg(gutter_fg)),
                         Span::styled(format!("{tool_glyph} "), Style::default().fg(fg)),
                         Span::styled(
@@ -1644,14 +1655,20 @@ fn hovered_detail_body(
     if shown.iter().all(|l| l.trim().is_empty()) {
         out.push(Line::from(vec![
             Span::raw(GUTTER),
-            Span::styled(BAR, Style::default().fg(gutter_fg)),
+            Span::styled(
+                if show_member_rail { BAR } else { "    " },
+                Style::default().fg(gutter_fg),
+            ),
             Span::styled(format!("[{}]", m.status), Style::default().fg(dim)),
         ]));
     } else {
         for line in shown {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
-                Span::styled(BAR, Style::default().fg(gutter_fg)),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
                 Span::styled(
                     truncate_label(line, text_budget),
                     Style::default().fg(text_fg),
@@ -2266,8 +2283,8 @@ mod tests {
             "transcript cards must not animate while being read: {all}"
         );
         assert!(
-            all.contains("│   ● test token refresh flow")
-                && all.contains("└─ ● bash · Run targeted authentication tests"),
+            all.contains("       ● test token refresh flow")
+                && all.contains("         └─ ● bash · Run targeted authentication tests"),
             "active todo and tool should use stable markers: {all}"
         );
         assert!(
@@ -2287,16 +2304,20 @@ mod tests {
             "{all}"
         );
         assert!(
-            all.contains("│   ✓ inspect middleware"),
-            "todo rail missing: {all}"
+            all.contains("       ✓ inspect middleware"),
+            "todo indentation missing: {all}"
         );
         assert!(
-            all.contains("│     ├─ ✓ agentgrep"),
-            "nested tool rail missing: {all}"
+            all.contains("         ├─ ✓ agentgrep"),
+            "nested tool branch missing: {all}"
         );
         assert!(
-            all.contains("└─  ○ report findings"),
-            "final rail missing: {all}"
+            all.contains("       ○ report findings"),
+            "final todo indentation missing: {all}"
+        );
+        assert!(
+            !all.contains('│'),
+            "chat card must not draw a vertical line beneath the member emoji: {all}"
         );
         assert!(
             !all.contains("Old intent"),
