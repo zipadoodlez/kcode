@@ -27,7 +27,41 @@ pub fn init_theme_mode() -> ThemeMode {
     mode
 }
 
+/// Resolve the theme while resuming an already-active TUI after an `exec` handoff.
+///
+/// The inherited terminal is already in raw mode and may already have a crossterm
+/// event reader attached. Sending a fresh OSC 11 query in that state can leave the
+/// terminal's color response in stdin, where it is decoded as ordinary composer
+/// input. Prefer the theme captured by the previous process and otherwise resolve
+/// configuration without querying the terminal.
+pub fn init_theme_mode_for_resume(inherited_theme: Option<&str>) -> ThemeMode {
+    let inherited_theme = inherited_theme.and_then(|value| match value {
+        "dark" => Some(ThemeMode::Dark),
+        "light" => Some(ThemeMode::Light),
+        _ => None,
+    });
+    let mode = *DETECTED
+        .get_or_init(|| inherited_theme.unwrap_or_else(resolve_theme_mode_without_terminal_query));
+    jcode_tui_style::set_theme_mode(mode);
+    mode
+}
+
+pub fn current_theme_label() -> &'static str {
+    match jcode_tui_style::theme_mode() {
+        ThemeMode::Dark => "dark",
+        ThemeMode::Light => "light",
+    }
+}
+
 fn resolve_theme_mode() -> ThemeMode {
+    resolve_configured_theme(true)
+}
+
+fn resolve_theme_mode_without_terminal_query() -> ThemeMode {
+    resolve_configured_theme(false)
+}
+
+fn resolve_configured_theme(query_terminal: bool) -> ThemeMode {
     let configured = std::env::var("JCODE_THEME")
         .ok()
         .filter(|v| !v.trim().is_empty())
@@ -44,7 +78,14 @@ fn resolve_theme_mode() -> ThemeMode {
         }
     }
 
-    detect_terminal_theme().unwrap_or(ThemeMode::Dark)
+    if query_terminal {
+        detect_terminal_theme().unwrap_or(ThemeMode::Dark)
+    } else {
+        crate::logging::info(
+            "Skipping terminal background query during reload handoff; preserving a safe theme",
+        );
+        ThemeMode::Dark
+    }
 }
 
 /// Query the terminal background color and classify it as dark or light.

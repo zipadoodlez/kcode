@@ -10,6 +10,60 @@ pub struct TuiRuntimeState {
     focus_change: bool,
 }
 
+const INHERITED_MODES_ENV: &str = "JCODE_TUI_INHERITED_MODES";
+const INHERITED_THEME_ENV: &str = "JCODE_TUI_INHERITED_THEME";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct InheritedTerminalModes {
+    mouse_capture: bool,
+    keyboard_enhanced: bool,
+    focus_change: bool,
+}
+
+impl InheritedTerminalModes {
+    fn encode(self) -> String {
+        format!(
+            "mouse={},keyboard={},focus={}",
+            u8::from(self.mouse_capture),
+            u8::from(self.keyboard_enhanced),
+            u8::from(self.focus_change)
+        )
+    }
+
+    fn decode(value: &str) -> Option<Self> {
+        let mut modes = Self {
+            mouse_capture: false,
+            keyboard_enhanced: false,
+            focus_change: false,
+        };
+        let mut seen = 0u8;
+        for field in value.split(',') {
+            let (name, raw) = field.split_once('=')?;
+            let enabled = match raw {
+                "0" => false,
+                "1" => true,
+                _ => return None,
+            };
+            match name {
+                "mouse" => {
+                    modes.mouse_capture = enabled;
+                    seen |= 1;
+                }
+                "keyboard" => {
+                    modes.keyboard_enhanced = enabled;
+                    seen |= 2;
+                }
+                "focus" => {
+                    modes.focus_change = enabled;
+                    seen |= 4;
+                }
+                _ => return None,
+            }
+        }
+        (seen == 7).then_some(modes)
+    }
+}
+
 /// RAII guard that guarantees the terminal is restored to a sane state when the
 /// TUI runtime ends, even if the run loop returns an error or unwinds via panic.
 ///
@@ -51,6 +105,9 @@ impl TuiRuntimeGuard {
     /// to exec a follow-up process (reload/rebuild/update), in which case the
     /// next process inherits the terminal modes.
     pub fn finish_for_run_result(mut self, run_result: &crate::tui::RunResult, extra_exec: bool) {
+        if run_result_will_exec(run_result, extra_exec) {
+            export_tui_exec_handoff(&self.state);
+        }
         cleanup_tui_runtime_for_run_result(&self.state, run_result, extra_exec);
         self.armed = false;
     }
@@ -166,37 +223,68 @@ fn init_tui_terminal() -> Result<ratatui::DefaultTerminal> {
 }
 
 pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)> {
-    // Detect terminal background (light vs dark) before entering raw mode /
-    // the alternate screen; the OSC 11 query needs the cooked terminal.
-    crate::tui::theme_detect::init_theme_mode();
+    let is_resuming = std::env::var_os("JCODE_RESUMING").is_some();
+    let inherited_theme = std::env::var(INHERITED_THEME_ENV).ok();
+    if is_resuming {
+        // OSC terminal queries are unsafe here because the previous process
+        // deliberately exec'd without leaving raw mode or the alternate screen.
+        crate::tui::theme_detect::init_theme_mode_for_resume(inherited_theme.as_deref());
+    } else {
+        // The OSC 11 query needs the cooked terminal and must happen before init.
+        crate::tui::theme_detect::init_theme_mode();
+    }
     let terminal = init_tui_terminal()?;
     crate::tui::mermaid::install_jcode_mermaid_hooks();
     crate::tui::markdown::install_jcode_markdown_hooks();
     crate::tui::mermaid::init_picker();
 
     let perf_policy = crate::perf::tui_policy();
-    let mouse_capture = perf_policy.enable_mouse_capture;
-    let focus_change = perf_policy.enable_focus_change;
-    let keyboard_enhanced = if perf_policy.enable_keyboard_enhancement {
-        tui::enable_keyboard_enhancement()
-    } else {
-        false
-    };
+    let inherited_modes = std::env::var(INHERITED_MODES_ENV)
+        .ok()
+        .and_then(|value| InheritedTerminalModes::decode(&value));
+    // These private handoff values apply only to this exec boundary. Avoid
+    // leaking them into tools or unrelated child jcode processes.
+    crate::env::remove_var(INHERITED_MODES_ENV);
+    crate::env::remove_var(INHERITED_THEME_ENV);
 
-    crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
-    if focus_change {
-        crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange)?;
-    }
-    if mouse_capture {
-        crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-    }
+    let fallback_modes = InheritedTerminalModes {
+        mouse_capture: perf_policy.enable_mouse_capture,
+        keyboard_enhanced: perf_policy.enable_keyboard_enhancement,
+        focus_change: perf_policy.enable_focus_change,
+    };
+    let modes = if is_resuming {
+        // The previous process intentionally preserved these modes across exec.
+        // Do not emit another enable sequence, especially Kitty's stack-based
+        // PushKeyboardEnhancementFlags. A later normal exit must still disable
+        // the inherited modes, so retain their state in the runtime guard.
+        inherited_modes.unwrap_or(fallback_modes)
+    } else {
+        let keyboard_enhanced = if perf_policy.enable_keyboard_enhancement {
+            tui::enable_keyboard_enhancement()
+        } else {
+            false
+        };
+        let modes = InheritedTerminalModes {
+            mouse_capture: perf_policy.enable_mouse_capture,
+            keyboard_enhanced,
+            focus_change: perf_policy.enable_focus_change,
+        };
+        crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
+        if modes.focus_change {
+            crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange)?;
+        }
+        if modes.mouse_capture {
+            crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
+        }
+        modes
+    };
 
     Ok((
         terminal,
         TuiRuntimeGuard::new(TuiRuntimeState {
-            mouse_capture,
-            keyboard_enhanced,
-            focus_change,
+            mouse_capture: modes.mouse_capture,
+            keyboard_enhanced: modes.keyboard_enhanced,
+            focus_change: modes.focus_change,
         }),
     ))
 }
@@ -224,11 +312,25 @@ fn cleanup_tui_runtime_for_run_result(
     run_result: &crate::tui::RunResult,
     extra_exec: bool,
 ) {
-    let will_exec = extra_exec
+    cleanup_tui_runtime(state, !run_result_will_exec(run_result, extra_exec));
+}
+
+fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) -> bool {
+    extra_exec
         || run_result.reload_session.is_some()
         || run_result.rebuild_session.is_some()
-        || run_result.update_session.is_some();
-    cleanup_tui_runtime(state, !will_exec);
+        || run_result.update_session.is_some()
+}
+
+fn export_tui_exec_handoff(state: &TuiRuntimeState) {
+    let modes = InheritedTerminalModes {
+        mouse_capture: state.mouse_capture,
+        keyboard_enhanced: state.keyboard_enhanced,
+        focus_change: state.focus_change,
+    };
+    crate::env::set_var(INHERITED_MODES_ENV, modes.encode());
+    let theme = crate::tui::theme_detect::current_theme_label();
+    crate::env::set_var(INHERITED_THEME_ENV, theme);
 }
 
 pub fn print_session_resume_hint(session_id: &str) {
@@ -364,6 +466,25 @@ mod tests {
             keyboard_enhanced: false,
             focus_change: false,
         })
+    }
+
+    #[test]
+    fn inherited_terminal_modes_roundtrip() {
+        let modes = InheritedTerminalModes {
+            mouse_capture: true,
+            keyboard_enhanced: false,
+            focus_change: true,
+        };
+        assert_eq!(InheritedTerminalModes::decode(&modes.encode()), Some(modes));
+    }
+
+    #[test]
+    fn inherited_terminal_modes_reject_malformed_values() {
+        assert_eq!(InheritedTerminalModes::decode("mouse=1,keyboard=1"), None);
+        assert_eq!(
+            InheritedTerminalModes::decode("mouse=yes,keyboard=1,focus=1"),
+            None
+        );
     }
 
     #[test]
