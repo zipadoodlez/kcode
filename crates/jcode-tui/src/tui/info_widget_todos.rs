@@ -119,9 +119,9 @@ fn goal_for_group<'a>(
 /// metric to iterate against, red when it is low (below the reframe-nudge
 /// threshold), amber in between.
 fn hill_style(score: u8) -> Style {
-    let color = if score >= 70 {
+    let color = if score >= crate::todo::LOW_HILL_CLIMBABILITY {
         rgb(100, 180, 100)
-    } else if score >= crate::todo::LOW_HILL_CLIMBABILITY {
+    } else if score >= crate::todo::LOW_HILL_CLIMBABILITY.saturating_sub(20) {
         rgb(220, 190, 100)
     } else {
         rgb(220, 120, 100)

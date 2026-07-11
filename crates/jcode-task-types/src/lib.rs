@@ -247,10 +247,6 @@ pub struct TodoGoal {
     /// objective is what makes a high score credible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,
-    /// Maintained by the todo tool: true once the low-score reframe nudge has
-    /// been sent for this goal, so it never nag-loops.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub reframe_nudge_sent: bool,
 }
 
 use std::collections::HashMap;

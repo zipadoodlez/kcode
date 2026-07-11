@@ -66,9 +66,7 @@ fn goal_group_key(group: Option<&str>) -> Option<String> {
 ///
 /// Incoming goals win per group key; stored goals for groups the write does
 /// not mention are retained (a todo update should not silently discard goal
-/// assessments). The `reframe_nudge_sent` flag is tool-maintained: it carries
-/// over from the stored goal so the low-score nudge stays one-shot even when
-/// the model rewrites the goal.
+/// assessments).
 fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<TodoGoal> {
     let Some(incoming) = incoming else {
         return stored.to_vec();
@@ -76,11 +74,6 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
     let mut merged: Vec<TodoGoal> = Vec::new();
     for mut goal in incoming {
         goal.group = goal_group_key(goal.group.as_deref());
-        goal.reframe_nudge_sent = stored
-            .iter()
-            .find(|prev| goal_group_key(prev.group.as_deref()) == goal.group)
-            .map(|prev| prev.reframe_nudge_sent)
-            .unwrap_or(false);
         if let Some(slot) = merged
             .iter_mut()
             .find(|existing| existing.group == goal.group)
@@ -99,20 +92,20 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
     merged
 }
 
-/// One-shot reframe nudges for goals that score low on hill-climbability.
+/// Reframe nudges for goals that score low on hill-climbability.
 ///
 /// A low score means there is no credible metric to iterate against. The
 /// objective should be reframed into something measurable where possible;
 /// open-ended work should instead use concrete user checkpoints and comparable
-/// artifacts. Returns the nudge lines and marks nudged goals so they never fire
-/// twice.
-fn take_reframe_nudges(goals: &mut [TodoGoal], todos: &[TodoItem]) -> Vec<String> {
+/// artifacts. The nudge is intentionally returned on every applicable todo
+/// write until the goal reaches the threshold or its work closes.
+fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
     let mut nudges = Vec::new();
-    for goal in goals.iter_mut() {
+    for goal in goals {
         let Some(score) = goal.hill_climbability else {
             continue;
         };
-        if score >= LOW_HILL_CLIMBABILITY || goal.reframe_nudge_sent {
+        if score >= LOW_HILL_CLIMBABILITY {
             continue;
         }
         let group_open = todos.iter().any(|todo| {
@@ -123,7 +116,6 @@ fn take_reframe_nudges(goals: &mut [TodoGoal], todos: &[TodoItem]) -> Vec<String
         if !group_open {
             continue;
         }
-        goal.reframe_nudge_sent = true;
         let label = goal.group.as_deref().unwrap_or("the current goal");
         nudges.push(format!(
             "Goal '{}' has low hill-climbability ({}). Reframe it into a quantifiable, \
@@ -286,7 +278,7 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? High for goals with a clear metric (e.g. optimize grep latency, make failing tests pass), low for open-ended goals (e.g. design an onboarding screen). A high score should be backed by a stated objective."
+                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? Scores below 90 trigger recurring reframe guidance on every applicable todo write. High scores should have a clear metric and stated objective (e.g. p50 grep latency under 50ms, all targeted tests pass)."
                             },
                             "objective": {
                                 "type": "string",
@@ -313,8 +305,8 @@ impl Tool for TodoTool {
             merge_confidence_history(&previous, &mut todos);
             save_todos(&ctx.session_id, &todos).and_then(|_| {
                 let stored_goals = load_goals(&ctx.session_id).unwrap_or_default();
-                let mut goals = merge_goals(&stored_goals, params.goals);
-                let nudges = take_reframe_nudges(&mut goals, &todos);
+                let goals = merge_goals(&stored_goals, params.goals);
+                let nudges = take_reframe_nudges(&goals, &todos);
                 save_goals(&ctx.session_id, &goals)?;
 
                 Bus::global().publish(BusEvent::TodoUpdated(TodoEvent {
@@ -496,16 +488,13 @@ mod tests {
     }
 
     #[test]
-    fn merge_goals_retains_unmentioned_and_preserves_nudge_flag() {
-        let mut nudged = goal(Some("a"), 20);
-        nudged.reframe_nudge_sent = true;
-        let stored = vec![nudged, goal(Some("b"), 90)];
-        // Rewrite goal 'a' (model omits the tool-maintained flag), leave 'b' alone.
+    fn merge_goals_retains_unmentioned_goals() {
+        let stored = vec![goal(Some("a"), 20), goal(Some("b"), 90)];
+        // Rewrite goal 'a', leave 'b' alone.
         let merged = merge_goals(&stored, Some(vec![goal(Some(" a "), 30)]));
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].group.as_deref(), Some("a"));
         assert_eq!(merged[0].hill_climbability, Some(30));
-        assert!(merged[0].reframe_nudge_sent, "nudge flag must carry over");
         assert_eq!(merged[1].group.as_deref(), Some("b"));
         // No incoming goals: stored goals unchanged.
         assert_eq!(merge_goals(&stored, None).len(), 2);
@@ -523,15 +512,14 @@ mod tests {
     }
 
     #[test]
-    fn reframe_nudge_fires_once_for_low_open_goals_only() {
+    fn reframe_nudge_recurs_for_every_low_open_goal_write() {
         let todos = vec![open_todo(Some("design"))];
-        let mut goals = vec![goal(Some("design"), 20), goal(Some("perf"), 95)];
-        let nudges = take_reframe_nudges(&mut goals, &todos);
+        let goals = vec![goal(Some("design"), 89), goal(Some("perf"), 90)];
+        let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
         assert!(nudges[0].contains("design"));
-        assert!(goals[0].reframe_nudge_sent);
-        // Second write: already nudged, stays silent.
-        assert!(take_reframe_nudges(&mut goals, &todos).is_empty());
+        // A subsequent write receives the same guidance until the score reaches 90.
+        assert_eq!(take_reframe_nudges(&goals, &todos).len(), 1);
     }
 
     #[test]
@@ -539,15 +527,15 @@ mod tests {
         // Low goal whose todos are all completed: nothing to reframe.
         let mut done = open_todo(Some("legacy"));
         done.status = "completed".to_string();
-        let mut goals = vec![goal(Some("legacy"), 10)];
-        assert!(take_reframe_nudges(&mut goals, &[done]).is_empty());
+        let goals = vec![goal(Some("legacy"), 10)];
+        assert!(take_reframe_nudges(&goals, &[done]).is_empty());
     }
 
     #[test]
     fn reframe_nudge_covers_ungrouped_implicit_goal() {
         let todos = vec![open_todo(None)];
-        let mut goals = vec![goal(None, 15)];
-        let nudges = take_reframe_nudges(&mut goals, &todos);
+        let goals = vec![goal(None, 15)];
+        let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
         assert!(nudges[0].contains("the current goal"));
     }
