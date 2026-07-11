@@ -140,7 +140,8 @@ pub fn parse_markdown(text: &str) -> Document {
     options.insert(Options::ENABLE_SMART_PUNCTUATION);
     options.insert(Options::ENABLE_DEFINITION_LIST);
 
-    let escaped = crate::preprocess::escape_currency_dollars(text);
+    let normalized = crate::preprocess::normalize_latex_math(text);
+    let escaped = crate::preprocess::escape_currency_dollars(&normalized);
     let parser = Parser::new_ext(&escaped, options);
 
     let mut doc = Document::default();

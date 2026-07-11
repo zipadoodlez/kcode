@@ -301,6 +301,26 @@ fn test_incremental_renderer_streaming_display_math() {
 }
 
 #[test]
+fn test_incremental_renderer_streaming_bracketed_and_fenced_latex() {
+    let mut renderer = IncrementalMarkdownRenderer::new(Some(80));
+
+    let partial = renderer.update("Result:\n\n\\[\\frac{x+1}");
+    let partial_text = lines_to_string(&partial);
+    assert!(partial_text.contains("[\\frac{x+1}"), "{partial_text}");
+    assert!(!partial_text.contains("┌─ math"), "{partial_text}");
+
+    let complete = renderer.update("Result:\n\n\\[\\frac{x+1}{y}\\]");
+    let complete_text = lines_to_string(&complete);
+    assert!(complete_text.contains("─────"), "{complete_text}");
+    assert!(!complete_text.contains("\\frac"), "{complete_text}");
+
+    let fenced = renderer.update("```latex\n\\alpha_2 + x^2\n```");
+    let fenced_text = lines_to_string(&fenced);
+    assert!(fenced_text.contains("α₂ + x²"), "{fenced_text}");
+    assert!(fenced_text.contains("┌─ math"), "{fenced_text}");
+}
+
+#[test]
 fn test_incremental_renderer_streams_fenced_block_before_close() {
     let mut renderer = IncrementalMarkdownRenderer::new(Some(80));
     let _ = renderer.update("Plan:\n\n```\n");

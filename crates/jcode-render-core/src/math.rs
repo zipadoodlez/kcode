@@ -405,7 +405,8 @@ impl<'a> Parser<'a> {
 
         let delimiters = match name.as_str() {
             "matrix" | "smallmatrix" | "array" | "aligned" | "aligned*" | "align" | "align*"
-            | "split" | "gathered" | "cases" | "cases*" => {
+            | "split" | "gather" | "gather*" | "gathered" | "multline" | "multline*"
+            | "eqnarray" | "eqnarray*" | "cases" | "cases*" => {
                 if matches!(name.as_str(), "cases" | "cases*") {
                     MatrixDelimiters::Braces
                 } else {

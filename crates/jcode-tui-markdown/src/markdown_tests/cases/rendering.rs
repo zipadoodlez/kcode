@@ -11,6 +11,37 @@ fn test_code_block() {
 }
 
 #[test]
+fn test_common_latex_containers_render_as_terminal_math() {
+    let cases = [
+        r"Inline \(\alpha_2 + x^2\).",
+        r"\[\frac{x+1}{y}\]",
+        "```math\n\\frac{x+1}{y}\n```",
+        "```latex\n\\begin{bmatrix}a & b \\\\ c & d\\end{bmatrix}\n```",
+        r"\begin{align*}x &= 1 \\ y &= 2\end{align*}",
+    ];
+
+    for markdown in cases {
+        let full = lines_to_string(&render_markdown_with_width(markdown, Some(80)));
+        let lazy = lines_to_string(&render_markdown_lazy(markdown, Some(80), 0..100));
+        assert_eq!(lazy, full, "{markdown}");
+        assert!(!full.contains("\\frac"), "{markdown}: {full}");
+        assert!(!full.contains("\\begin"), "{markdown}: {full}");
+        if !markdown.starts_with("Inline") {
+            assert!(full.contains("┌─ math"), "{markdown}: {full}");
+        }
+    }
+}
+
+#[test]
+fn test_latex_syntax_inside_generic_code_remains_literal() {
+    let markdown = "Inline `\\(x^2\\)`\n\n```rust\nlet formula = r\"\\[x^2\\]\";\n```";
+    let rendered = lines_to_string(&render_markdown(markdown));
+    assert!(rendered.contains("\\(x^2\\)"), "{rendered}");
+    assert!(rendered.contains("\\[x^2\\]"), "{rendered}");
+    assert!(!rendered.contains("┌─ math"), "{rendered}");
+}
+
+#[test]
 fn test_extract_copy_targets_from_rendered_lines_for_code_block() {
     let lines = render_markdown("before\n\n```rust\nfn main() {}\nprintln!(\"hi\");\n```\n\nafter");
     let targets = extract_copy_targets_from_rendered_lines(&lines);

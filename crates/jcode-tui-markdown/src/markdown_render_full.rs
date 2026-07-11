@@ -19,7 +19,8 @@ pub fn thread_render_count() -> u64 {
 
 pub fn render_markdown_with_width(text: &str, max_width: Option<usize>) -> Vec<Line<'static>> {
     let render_start = Instant::now();
-    let text = escape_currency_dollars(text);
+    let text = jcode_render_core::normalize_latex_math(text);
+    let text = escape_currency_dollars(&text);
     let text = preserve_line_oriented_softbreaks(&text);
     let text = text.as_str();
     let mut lines: Vec<Line<'static>> = Vec::new();
