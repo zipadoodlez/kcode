@@ -284,12 +284,11 @@ fn test_default_swarm_prompt_mentions_model_and_list_models() {
 }
 
 #[test]
-fn test_non_selfdev_prompt_includes_lightweight_selfdev_hint() {
+fn test_non_selfdev_prompt_leaves_selfdev_guidance_to_the_tool_schema() {
     let prompt = build_system_prompt(None, &[]);
-    assert!(prompt.contains("Self-Development Access"));
-    assert!(prompt.contains("`selfdev`"));
-    assert!(prompt.contains("selfdev enter"));
-    assert!(!prompt.contains("You are running in self-dev mode"));
+    assert!(!prompt.contains("Self-Development Access"));
+    assert!(!prompt.contains("You have access to the `selfdev` tool in all sessions"));
+    assert!(!prompt.contains("You are working on the jcode codebase itself."));
 }
 
 #[test]

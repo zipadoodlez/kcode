@@ -163,7 +163,6 @@ pub fn append_swarm_effort_directive(split: &mut SplitSystemPrompt, effort: Opti
 /// `mission` module in the upper `jcode-app-core` layer; the asset lives here
 /// alongside the other prompt templates.
 pub const MISSION_CONTINUATION_TEMPLATE: &str = include_str!("prompt/mission_continuation.md");
-const SELFDEV_HINT_PROMPT: &str = include_str!("prompt/selfdev_hint.txt");
 const SELFDEV_MODE_PROMPT: &str = include_str!("prompt/selfdev_mode.txt");
 const SELFDEV_FOCUS_TUI_PROMPT: &str = include_str!("prompt/selfdev_focus_tui.txt");
 const SELFDEV_FOCUS_DESKTOP_PROMPT: &str = include_str!("prompt/selfdev_focus_desktop.txt");
@@ -392,14 +391,12 @@ pub fn build_system_prompt_full_with_capabilities(
         ..Default::default()
     };
 
-    // Add self-dev guidance. Full workflow instructions are only included for
-    // active self-dev sessions; other sessions get a lightweight hint.
+    // Add self-dev guidance only in active self-dev sessions. Normal sessions
+    // learn about the on-ramp from the mode-aware `selfdev` tool schema.
     if is_selfdev {
         let selfdev_prompt = build_selfdev_prompt_for_working_dir(working_dir);
         info.selfdev_chars = selfdev_prompt.len();
         parts.push(selfdev_prompt);
-    } else {
-        parts.push(build_selfdev_hint_prompt());
     }
 
     // Add AGENTS.md instructions with tracking (from working_dir or cwd)
@@ -493,14 +490,12 @@ pub fn build_system_prompt_split_with_capabilities(
 
     // === STATIC CONTENT (cacheable) ===
 
-    // Add self-dev guidance. Full workflow instructions are only included for
-    // active self-dev sessions; other sessions get a lightweight hint.
+    // Add self-dev guidance only in active self-dev sessions. Normal sessions
+    // learn about the on-ramp from the mode-aware `selfdev` tool schema.
     if is_selfdev {
         let selfdev_prompt = build_selfdev_prompt_static_for_working_dir(working_dir);
         info.selfdev_chars = selfdev_prompt.len();
         static_parts.push(selfdev_prompt);
-    } else {
-        static_parts.push(build_selfdev_hint_prompt());
     }
 
     // Add AGENTS.md instructions (static per project)
@@ -565,11 +560,6 @@ pub fn build_system_prompt_split_with_capabilities(
         },
         info,
     )
-}
-
-/// Build self-dev tools prompt section (static version without dynamic socket path)
-fn build_selfdev_hint_prompt() -> String {
-    SELFDEV_HINT_PROMPT.to_string()
 }
 
 /// Build self-dev tools prompt section (static version without dynamic socket path)
