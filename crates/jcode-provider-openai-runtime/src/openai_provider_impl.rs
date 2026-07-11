@@ -304,6 +304,7 @@ impl Provider for OpenAIProvider {
                 let mut last_error = None;
                 let mut force_https_for_request = false;
                 let mut skip_backoff_once = false;
+                let mut next_retry_delay = None;
 
                 for attempt in 0..MAX_RETRIES {
                     if attempt > 0 {
@@ -317,9 +318,10 @@ impl Provider for OpenAIProvider {
                         .await;
                     }
                     if attempt > 0 && !skip_backoff_once {
-                        let delay = jcode_provider_core::attempt_tracker::retry_backoff_delay(
+                        let delay = jcode_provider_core::retry_after::retry_delay(
                             attempt,
                             RETRY_BASE_DELAY_MS,
+                            next_retry_delay.take(),
                         );
                         tokio::time::sleep(delay).await;
                         jcode_base::logging::info(&format!(
@@ -577,6 +579,10 @@ impl Provider for OpenAIProvider {
                                     "Transient error after {}ms, will retry: {}",
                                     elapsed_ms, error
                                 ));
+                                next_retry_delay =
+                                    jcode_provider_core::retry_after::retry_after_from_error(
+                                        &error,
+                                    );
                                 last_error = Some(error);
                                 continue;
                             }

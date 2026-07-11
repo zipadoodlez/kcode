@@ -38,12 +38,14 @@ pub(super) async fn run_stream_with_retries(
     model: String,
 ) {
     let mut last_error = None;
+    let mut next_retry_delay = None;
 
     for attempt in 0..MAX_RETRIES {
         if attempt > 0 {
-            let delay = jcode_provider_core::attempt_tracker::retry_backoff_delay(
+            let delay = jcode_provider_core::retry_after::retry_delay(
                 attempt,
                 RETRY_BASE_DELAY_MS,
+                next_retry_delay.take(),
             );
             tokio::time::sleep(delay).await;
             jcode_base::logging::info(&format!(
@@ -122,6 +124,7 @@ pub(super) async fn run_stream_with_retries(
                             e
                         ));
                     }
+                    next_retry_delay = jcode_provider_core::retry_after::retry_after_from_error(&e);
                     last_error = Some(e);
                     continue;
                 }
@@ -208,17 +211,21 @@ async fn stream_response(
 
     if !response.status().is_success() {
         let status = response.status();
+        let retry_after = jcode_provider_core::retry_after::retry_after(response.headers());
         let body = jcode_base::util::http_error_body(response, "HTTP error").await;
         let hint = local_endpoint_troubleshooting_hint(&api_base, &model);
-        anyhow::bail!(
-            "OpenAI-compatible chat request failed\n  endpoint: {}\n  model: {}\n  auth: {}\n  status: {}\n  response: {}\n{}",
-            url,
-            model,
-            auth.label(),
-            status,
-            body,
-            hint
-        );
+        return Err(jcode_provider_core::retry_after::error_with_retry_after(
+            format!(
+                "OpenAI-compatible chat request failed\n  endpoint: {}\n  model: {}\n  auth: {}\n  status: {}\n  response: {}\n{}",
+                url,
+                model,
+                auth.label(),
+                status,
+                body,
+                hint
+            ),
+            retry_after,
+        ));
     }
 
     let _ = tx
@@ -292,10 +299,12 @@ fn is_retryable_error(error_str: &str) -> bool {
     // Explicit non-retryable HTTP statuses take precedence over the loose
     // substring heuristics below. These are deterministic client-side failures
     // (auth, billing, malformed request) where retrying is futile and just
-    // burns time/credits. 429 (rate limit) is intentionally NOT listed here so
-    // it can still be retried.
-    if let Some(400 | 401 | 402 | 403 | 404 | 405 | 406 | 422) = parsed_http_status(error_str) {
-        return false;
+    // burns time/credits. 429 (rate limit) is classified explicitly so it does
+    // not depend on provider-specific body wording.
+    match parsed_http_status(error_str) {
+        Some(400 | 401 | 402 | 403 | 404 | 405 | 406 | 422) => return false,
+        Some(429) => return true,
+        _ => {}
     }
 
     jcode_provider_core::is_transient_transport_error(error_str)
@@ -371,7 +380,14 @@ mod tests {
         assert!(is_retryable_error(
             "chat request failed\n  status: 500 internal server error"
         ));
-        // Rate limiting should still be retried.
+        // Provider overload messages should still be retried.
         assert!(is_retryable_error("overloaded"));
+    }
+
+    #[test]
+    fn http_429_is_retryable_without_rate_limit_words_in_body() {
+        assert!(is_retryable_error(
+            "chat request failed\n  status: 429 unknown\n  response: {}"
+        ));
     }
 }

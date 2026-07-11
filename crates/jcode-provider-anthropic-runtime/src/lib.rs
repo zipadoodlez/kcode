@@ -1407,6 +1407,7 @@ async fn run_stream_with_retries(
 ) {
     let mut token = initial_token;
     let mut last_error = None;
+    let mut next_retry_delay = None;
     let mut attempted_forced_refresh = false;
     let original_model = model_name.clone();
     let mut model_name = model_name;
@@ -1417,9 +1418,10 @@ async fn run_stream_with_retries(
     for attempt in 0..MAX_RETRIES {
         if attempt > 0 {
             // Exponential backoff with jitter: ~1s, ~2s, ~4s
-            let delay = jcode_provider_core::attempt_tracker::retry_backoff_delay(
+            let delay = jcode_provider_core::retry_after::retry_delay(
                 attempt,
                 RETRY_BASE_DELAY_MS,
+                next_retry_delay.take(),
             );
             let _ = tx
                 .send(Ok(StreamEvent::ConnectionPhase {
@@ -1593,6 +1595,7 @@ async fn run_stream_with_retries(
                     } else {
                         jcode_base::logging::info(&format!("Transient error, will retry: {}", e));
                     }
+                    next_retry_delay = jcode_provider_core::retry_after::retry_after_from_error(&e);
                     last_error = Some(e);
                     continue;
                 }
@@ -1758,8 +1761,12 @@ async fn stream_response(
 
     if !response.status().is_success() {
         let status = response.status();
+        let retry_after = jcode_provider_core::retry_after::retry_after(response.headers());
         let error_text = jcode_base::util::http_error_body(response, "HTTP error").await;
-        anyhow::bail!("Anthropic API error ({}): {}", status, error_text);
+        return Err(jcode_provider_core::retry_after::error_with_retry_after(
+            format!("Anthropic API error ({}): {}", status, error_text),
+            retry_after,
+        ));
     }
 
     let _ = tx
