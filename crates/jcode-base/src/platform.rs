@@ -303,13 +303,22 @@ pub fn signal_detached_process_group(pid: u32, signal: i32) -> std::io::Result<(
         // alive. taskkill's /T flag walks the Windows process tree. Keep the
         // direct Win32 termination below as a fallback if taskkill is missing or
         // the tree operation fails.
-        if std::process::Command::new("taskkill.exe")
+        let tree_status = std::process::Command::new("taskkill.exe")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(CREATE_NO_WINDOW)
-            .status()
-            .is_ok_and(|status| status.success())
-        {
+            .status();
+        if tree_status.is_ok_and(|status| status.success()) {
             return Ok(());
+        }
+        // taskkill can report failure when a descendant exits while it walks the
+        // tree, even though it successfully terminated the leader and remaining
+        // descendants. Avoid turning that benign race into a misleading access
+        // denied error from the direct-handle fallback.
+        for _ in 0..20 {
+            if !is_process_running(pid) {
+                return Ok(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
         }
 
         unsafe {
