@@ -6,8 +6,8 @@ pub use jcode_task_types::{TodoGoal, TodoItem};
 
 /// Goals with a hill-climbability score strictly below this are considered
 /// low: no credible metric to iterate against. The todo tool nudges the model
-/// on every applicable write to either reframe the objective into something
-/// measurable or plan concrete user checkpoints with comparable artifacts.
+/// on every applicable write to reframe the objective into something
+/// quantifiable and verifiable.
 pub const LOW_HILL_CLIMBABILITY: u8 = 90;
 
 /// Prefix of the synthetic "all todos done" confidence summary follow-up that

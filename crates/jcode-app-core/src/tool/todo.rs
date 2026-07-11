@@ -94,11 +94,10 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
 
 /// Reframe nudges for goals that score low on hill-climbability.
 ///
-/// A low score means there is no credible metric to iterate against. The
-/// objective should be reframed into something measurable where possible;
-/// open-ended work should instead use concrete user checkpoints and comparable
-/// artifacts. The nudge is intentionally returned on every applicable todo
-/// write until the goal reaches the threshold or its work closes.
+/// A low score means there is no credible metric to iterate against, so the
+/// objective must be reframed into something measurable. The nudge is
+/// intentionally returned on every applicable todo write until the goal reaches
+/// the threshold or its work closes.
 fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
     let mut nudges = Vec::new();
     for goal in goals {
@@ -119,10 +118,8 @@ fn take_reframe_nudges(goals: &[TodoGoal], todos: &[TodoItem]) -> Vec<String> {
         let label = goal.group.as_deref().unwrap_or("the current goal");
         nudges.push(format!(
             "Goal '{}' has low hill-climbability ({}). Reframe it into a quantifiable, \
-             verifiable objective where possible (set the goal's `objective`, e.g. a metric \
-             plus target, and build a harness that measures it). For open-ended work with no \
-             honest metric, plan concrete user checkpoints with comparable artifacts instead \
-             of inventing a proxy metric.",
+             verifiable objective (set the goal's `objective`, e.g. a metric plus target, and \
+             build a harness that measures it).",
             label, score
         ));
     }
@@ -518,6 +515,8 @@ mod tests {
         let nudges = take_reframe_nudges(&goals, &todos);
         assert_eq!(nudges.len(), 1);
         assert!(nudges[0].contains("design"));
+        assert!(!nudges[0].contains("open-ended"));
+        assert!(!nudges[0].contains("checkpoints"));
         // A subsequent write receives the same guidance until the score reaches 90.
         assert_eq!(take_reframe_nudges(&goals, &todos).len(), 1);
     }
