@@ -1,7 +1,8 @@
 use super::{
-    build_resume_command, clear_ambient_info_cache_for_tests, extract_bracketed_system_message,
-    format_countdown_until, gather_ambient_info, inferred_reasoning_efforts,
-    partition_queued_messages, pretty_model_display_name, resume_invocation_args,
+    build_resume_command, clear_ambient_info_cache_for_tests, effort_display_label,
+    extract_bracketed_system_message, format_countdown_until, gather_ambient_info,
+    inferred_reasoning_efforts, partition_queued_messages, pretty_model_display_name,
+    resume_invocation_args,
 };
 use crate::ambient::{AmbientManager, Priority, ScheduleRequest, ScheduleTarget};
 use crate::terminal_launch::{detected_resume_terminal, shell_command};
@@ -135,6 +136,19 @@ fn inferred_reasoning_efforts_use_provider_specific_order_and_max_semantics() {
         "DeepSeek direct keeps max as a real provider level"
     );
     assert!(inferred_reasoning_efforts(Some("ollama"), Some("llama3")).is_empty());
+}
+
+#[test]
+fn swarm_effort_display_labels_are_marked_beta() {
+    assert_eq!(
+        effort_display_label("swarm"),
+        "Swarm (light fan-out) [Beta]"
+    );
+    assert_eq!(
+        effort_display_label("swarm-deep"),
+        "Swarm Deep (Max + task graph) [Beta]"
+    );
+    assert_eq!(effort_display_label("high"), "High");
 }
 
 #[cfg(unix)]

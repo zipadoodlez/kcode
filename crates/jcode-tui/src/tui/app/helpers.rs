@@ -427,8 +427,8 @@ fn copy_to_clipboard_osc52(text: &str) -> bool {
 
 pub(super) fn effort_display_label(effort: &str) -> &str {
     match effort {
-        "swarm" => "Swarm (light fan-out)",
-        "swarm-deep" => "Swarm Deep (Max + task graph)",
+        "swarm" => "Swarm (light fan-out) [Beta]",
+        "swarm-deep" => "Swarm Deep (Max + task graph) [Beta]",
         "max" => "Max",
         "xhigh" => "xHigh",
         "high" => "High",
