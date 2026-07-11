@@ -83,6 +83,23 @@ pub fn status_glyph(status: &str, spinner_frame: usize) -> &'static str {
     }
 }
 
+/// Calm lifecycle marker for transcript cards.
+///
+/// Transcript content should remain stable while users read or scroll it. The
+/// dedicated swarm strip retains animated status glyphs for live motion.
+fn card_status_glyph(status: &str) -> &'static str {
+    match status {
+        "running" | "streaming" | "thinking" => "●",
+        "completed" | "done" => "✓",
+        "ready" => "•",
+        "blocked" | "waiting_network" => "⏸",
+        "failed" | "crashed" => "✗",
+        "stopped" => "◼",
+        "spawned" => "·",
+        _ => "•",
+    }
+}
+
 fn card_status_label(status: &str) -> &'static str {
     match status {
         "running" | "streaming" | "thinking" => "Working",
@@ -273,11 +290,7 @@ pub fn render_gallery(
 /// member card: identity/runtime metadata followed by the bounded todo/tool
 /// activity tree. Callers are responsible for associating members with the
 /// tool call that spawned them.
-pub fn render_swarm_chat_cards(
-    members: &[GalleryMember],
-    spinner_frame: usize,
-    width: usize,
-) -> Vec<Line<'static>> {
+pub fn render_swarm_chat_cards(members: &[GalleryMember], width: usize) -> Vec<Line<'static>> {
     if members.is_empty() || width < 8 {
         return Vec::new();
     }
@@ -291,7 +304,7 @@ pub fn render_swarm_chat_cards(
         let accent = status_accent(&member.status);
         let mut metadata = vec![format!(
             "{} {}",
-            status_glyph(&member.status, spinner_frame),
+            card_status_glyph(&member.status),
             card_status_label(&member.status)
         )];
         if let Some((done, total)) = member.todo {
@@ -331,12 +344,7 @@ pub fn render_swarm_chat_cards(
         out.push(Line::from(header));
 
         let body_budget = member.todo_items.len().min(4).saturating_add(3).max(1);
-        out.extend(hovered_detail_body(
-            member,
-            spinner_frame,
-            width,
-            body_budget,
-        ));
+        out.extend(hovered_detail_body(member, None, width, body_budget));
     }
 
     for line in &mut out {
@@ -1016,7 +1024,7 @@ pub fn render_swarm_strip_vertical(
         {
             // Insert directly beneath the selected row so the list expands in
             // place (accordion) instead of jumping to a detached pane below.
-            let detail = hovered_detail_body(m, spinner_frame, width, detail_budget);
+            let detail = hovered_detail_body(m, Some(spinner_frame), width, detail_budget);
             for (i, line) in detail.into_iter().enumerate() {
                 out.insert(at + 1 + i, line);
             }
@@ -1477,7 +1485,7 @@ fn render_hovered_detail(
     out.push(Line::from(header));
     out.extend(hovered_detail_body(
         m,
-        spinner_frame,
+        Some(spinner_frame),
         width,
         budget.saturating_sub(1),
     ));
@@ -1490,7 +1498,7 @@ fn render_hovered_detail(
 /// serves as the header) and by [`render_hovered_detail`].
 fn hovered_detail_body(
     m: &GalleryMember,
-    spinner_frame: usize,
+    spinner_frame: Option<usize>,
     width: usize,
     budget: usize,
 ) -> Vec<Line<'static>> {
@@ -1538,7 +1546,10 @@ fn hovered_detail_body(
             let (glyph, glyph_fg, emph) = match todo.status.as_str() {
                 "completed" => ("✓".to_string(), rgb(100, 200, 100), false),
                 "in_progress" => (
-                    status_glyph("running", spinner_frame).to_string(),
+                    spinner_frame
+                        .map(|frame| status_glyph("running", frame))
+                        .unwrap_or("●")
+                        .to_string(),
                     rgb(255, 200, 100),
                     true,
                 ),
@@ -1576,7 +1587,12 @@ fn hovered_detail_body(
                         break;
                     }
                     let (tool_glyph, fg) = match tool.status.as_str() {
-                        "running" => (status_glyph("running", spinner_frame), rgb(255, 200, 100)),
+                        "running" => (
+                            spinner_frame
+                                .map(|frame| status_glyph("running", frame))
+                                .unwrap_or("●"),
+                            rgb(255, 200, 100),
+                        ),
                         "error" => ("✗", rgb(230, 100, 100)),
                         _ => ("✓", rgb(100, 200, 100)),
                     };
@@ -2232,7 +2248,7 @@ mod tests {
             },
         ];
 
-        let lines = render_swarm_chat_cards(&[worker], 2, 100);
+        let lines = render_swarm_chat_cards(&[worker], 100);
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
         assert!(
@@ -2240,8 +2256,19 @@ mod tests {
             "assigned agent emoji missing: {all}"
         );
         assert!(
-            all.contains("⠹ Working · Todo 2/4 · 00:18 · GPT-5.6"),
+            all.contains("● Working · Todo 2/4 · 00:18 · GPT-5.6"),
             "header metadata missing: {all}"
+        );
+        assert!(
+            STRIP_SPINNER_FRAMES
+                .iter()
+                .all(|frame| !all.contains(frame)),
+            "transcript cards must not animate while being read: {all}"
+        );
+        assert!(
+            all.contains("│   ● test token refresh flow")
+                && all.contains("└─ ● bash · Run targeted authentication tests"),
+            "active todo and tool should use stable markers: {all}"
         );
         assert!(
             all.contains("test token refresh flow"),

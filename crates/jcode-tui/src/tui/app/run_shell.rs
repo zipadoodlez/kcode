@@ -92,18 +92,6 @@ pub(super) fn status_spinner_only_symbol(app: &App) -> Option<&'static str> {
     }
 }
 
-fn swarm_chat_spinner_only_symbol(app: &App) -> Option<&'static str> {
-    app.inline_swarm_members()
-        .iter()
-        .any(|member| matches!(member.status.as_str(), "running" | "streaming" | "thinking"))
-        .then(|| {
-            let frame = (app.animation_elapsed()
-                * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
-                as usize;
-            jcode_tui_render::swarm_gallery::status_glyph("running", frame)
-        })
-}
-
 /// Statuses whose full status line starts with the primary green circular spinner.
 ///
 /// Keep this in sync with `ui_input::draw_status`: these statuses can be safely
@@ -192,11 +180,6 @@ pub(super) struct StatusSpinnerRenderer {
 impl StatusSpinnerRenderer {
     pub(super) fn spinner_only_available(&self, app: &App) -> bool {
         status_spinner_only_symbol(app).is_some()
-            || swarm_chat_spinner_only_symbol(app).is_some_and(|_| {
-                self.last_frame
-                    .as_ref()
-                    .is_some_and(|buffer| !swarm_chat_spinner_positions(buffer).is_empty())
-            })
     }
 
     pub(super) fn invalidate(&mut self) {
@@ -275,8 +258,7 @@ impl StatusSpinnerRenderer {
         terminal: &mut DefaultTerminal,
     ) -> Result<bool> {
         let status_symbol = status_spinner_only_symbol(app);
-        let swarm_symbol = swarm_chat_spinner_only_symbol(app);
-        if status_symbol.is_none() && swarm_symbol.is_none() {
+        if status_symbol.is_none() {
             return Ok(false);
         }
         let Some(previous_frame) = self.last_frame.as_ref() else {
@@ -288,10 +270,7 @@ impl StatusSpinnerRenderer {
             .is_some_and(|(symbol, area)| {
                 render_status_spinner_into_buffer(previous_frame, area, symbol)
             });
-        let swarm_positions = swarm_symbol
-            .map(|_| swarm_chat_spinner_positions(previous_frame))
-            .unwrap_or_default();
-        if !status_patchable && swarm_positions.is_empty() {
+        if !status_patchable {
             return Ok(false);
         }
 
@@ -302,13 +281,6 @@ impl StatusSpinnerRenderer {
                 && status_patchable
             {
                 render_status_spinner_into_buffer_mut(current_buffer, area, symbol);
-            }
-            if let Some(symbol) = swarm_symbol {
-                render_swarm_chat_spinners_into_buffer_mut(
-                    current_buffer,
-                    &swarm_positions,
-                    symbol,
-                );
             }
             current_buffer.clone()
         };
@@ -354,47 +326,6 @@ fn render_status_spinner_into_buffer_mut(buffer: &mut Buffer, area: Rect, symbol
             jcode_tui_style::theme::ai_color(),
         )),
     );
-}
-
-fn swarm_chat_spinner_positions(buffer: &Buffer) -> Vec<(u16, u16)> {
-    let area = buffer.area;
-    let right = area.x.saturating_add(area.width);
-    let bottom = area.y.saturating_add(area.height);
-    let frames = &jcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES;
-    let mut positions = Vec::new();
-
-    for y in area.y..bottom {
-        for x in area.x..right.saturating_sub(8) {
-            let Some(cell) = buffer.cell((x, y)) else {
-                continue;
-            };
-            if !frames.contains(&cell.symbol()) {
-                continue;
-            }
-            let suffix = (x + 1..(x + 9).min(right))
-                .filter_map(|column| buffer.cell((column, y)))
-                .map(|cell| cell.symbol())
-                .collect::<String>();
-            if suffix.starts_with(" Working") {
-                positions.push((x, y));
-            }
-        }
-    }
-    positions
-}
-
-fn render_swarm_chat_spinners_into_buffer_mut(
-    buffer: &mut Buffer,
-    positions: &[(u16, u16)],
-    symbol: &str,
-) {
-    for &(x, y) in positions {
-        let style = buffer
-            .cell((x, y))
-            .map(|cell| cell.style())
-            .unwrap_or_default();
-        buffer.set_stringn(x, y, symbol, 1, style);
-    }
 }
 
 impl App {
@@ -922,44 +853,6 @@ mod tests {
                         jcode_tui_style::theme::ai_color()
                     );
                 } else {
-                    assert_eq!(buffer.cell((x, y)), before.cell((x, y)));
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn swarm_chat_spinner_partial_mutates_only_working_header_cell() {
-        let area = Rect::new(0, 0, 64, 2);
-        let mut buffer = Buffer::empty(area);
-        buffer.set_string(
-            0,
-            0,
-            "    🦕  sauropod              ⠹ Working · Todo 1/4",
-            Style::default().fg(Color::Yellow),
-        );
-        buffer.set_string(
-            0,
-            1,
-            "other ⠹ Thinking indicator",
-            Style::default().fg(Color::Blue),
-        );
-        let before = buffer.clone();
-        let positions = swarm_chat_spinner_positions(&buffer);
-        assert_eq!(positions.len(), 1, "positions={positions:?}");
-
-        render_swarm_chat_spinners_into_buffer_mut(&mut buffer, &positions, "⠸");
-
-        let (spinner_x, spinner_y) = positions[0];
-        assert_eq!(buffer.cell((spinner_x, spinner_y)).unwrap().symbol(), "⠸");
-        assert_eq!(
-            buffer.cell((spinner_x, spinner_y)).unwrap().fg,
-            Color::Yellow,
-            "the partial patch should preserve the card's existing style"
-        );
-        for y in 0..area.height {
-            for x in 0..area.width {
-                if (x, y) != (spinner_x, spinner_y) {
                     assert_eq!(buffer.cell((x, y)), before.cell((x, y)));
                 }
             }

@@ -113,14 +113,9 @@ pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMe
 /// call in the transcript.
 pub(crate) fn render_swarm_chat_card_lines(
     members: &[SwarmMemberStatus],
-    spinner_frame: usize,
     width: usize,
 ) -> Vec<Line<'static>> {
-    jcode_tui_render::swarm_gallery::render_swarm_chat_cards(
-        &members_to_gallery(members),
-        spinner_frame,
-        width,
-    )
+    jcode_tui_render::swarm_gallery::render_swarm_chat_cards(&members_to_gallery(members), width)
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.
