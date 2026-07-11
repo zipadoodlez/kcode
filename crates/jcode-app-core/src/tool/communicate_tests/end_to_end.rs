@@ -65,8 +65,10 @@ async fn communicate_list_and_await_members_work_end_to_end() {
         .expect("peer should be listed while running");
     assert_eq!(running_peer.status.as_deref(), Some("running"));
 
-    let await_output = tool
-        .execute(
+    // Legacy background=false input is upgraded to a durable asynchronous wait.
+    let await_output = tokio::time::timeout(
+        Duration::from_secs(5),
+        tool.execute(
             json!({
                 "action": "await_members",
                 "session_ids": [peer_session.clone()],
@@ -74,23 +76,42 @@ async fn communicate_list_and_await_members_work_end_to_end() {
                 "background": false
             }),
             ctx.clone(),
-        )
-        .await
-        .expect("await_members should complete");
+        ),
+    )
+    .await
+    .expect("legacy blocking request should return promptly")
+    .expect("await_members should start");
     assert!(
-        await_output.output.contains("All members done."),
-        "expected completion output, got: {}",
-        await_output.output
-    );
-    assert!(
-        await_output.output.contains("(ready)"),
-        "expected await_members to treat ready as done, got: {}",
+        await_output.output.contains("no longer supported")
+            && await_output.output.contains("asynchronously"),
+        "expected compatibility hand-off output, got: {}",
         await_output.output
     );
 
     peer.wait_for_done(peer_message_id)
         .await
         .expect("peer message should finish");
+
+    let event = watcher
+        .read_until(Duration::from_secs(5), |event| {
+            matches!(
+                event,
+                ServerEvent::Notification {
+                    notification_type: NotificationType::Message { scope: Some(scope), .. },
+                    ..
+                } if scope == "swarm_await"
+            )
+        })
+        .await
+        .expect("upgraded asynchronous wait should notify on completion");
+    let ServerEvent::Notification { message, .. } = event else {
+        panic!("expected swarm_await notification, got: {event:?}");
+    };
+    assert!(
+        message.contains("(ready)"),
+        "expected await_members to treat ready as done, got: {}",
+        message
+    );
 
     let ready_members =
         wait_for_member_status(&mut watcher, &watcher_session, &peer_session, "ready")

@@ -1983,7 +1983,7 @@ impl Tool for CommunicateTool {
                 },
                 "background": {
                     "type": "boolean",
-                    "description": "For await_members and run_plan: run as a detached background task (default true) so you stay responsive and can keep working. The result is delivered later via notify/wake. Set false to block this turn until it resolves."
+                    "description": "For run_plan: run as a detached background task (default true); set false to block until the plan resolves. await_members is always asynchronous and ignores false so the agent stays responsive; its result is delivered later via notify/wake."
                 },
                 "notify": {
                     "type": "boolean",
@@ -3132,10 +3132,12 @@ impl Tool for CommunicateTool {
                 }
                 let timeout_minutes = params.timeout_minutes.unwrap_or(60);
                 let timeout_secs = timeout_minutes * 60;
-                // Background-by-default: the watch runs server-side and reports
-                // back via notify/wake, so the agent stays responsive instead of
-                // parking the whole turn. Pass background=false to block inline.
-                let background = params.background.unwrap_or(true);
+                // Public member waits are always asynchronous. The blocking
+                // CommAwaitMembers protocol remains available internally for the
+                // run_plan coordination loop, but agents must not park an entire
+                // turn waiting on a worker or a long-lived socket.
+                let blocking_was_requested = params.background == Some(false);
+                let background = true;
                 let notify = params.notify.unwrap_or(true);
                 let wake = params.wake.unwrap_or(true);
 
@@ -3168,9 +3170,14 @@ impl Tool for CommunicateTool {
                         ..
                     }) => {
                         if background_started {
+                            let compatibility_note = if blocking_was_requested {
+                                "\n\n(Blocking member waits are no longer supported; this wait was started asynchronously.)"
+                            } else {
+                                "\n\n(You can keep working; this wait runs in the background.)"
+                            };
                             return Ok(ToolOutput::new(format!(
-                                "{}\n\n(You can keep working; this wait runs in the background.)",
-                                summary
+                                "{}{}",
+                                summary, compatibility_note
                             )));
                         }
                         let reports = fetch_awaited_member_reports(&ctx, &members).await;
