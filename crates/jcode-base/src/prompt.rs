@@ -7,7 +7,7 @@ use std::process::Command;
 pub const DEFAULT_SYSTEM_PROMPT: &str = include_str!("prompt/system_prompt.md");
 
 /// Prompt guidance for the optional Mermaid rendering capability.
-pub const MERMAID_PROMPT: &str = "# Mermaid diagrams\n\nMermaid diagrams will be rendered inline by the harness. You can start a diagram with a fenced `mermaid` code block, and it will automatically be rendered.";
+pub const MERMAID_PROMPT: &str = "# Mermaid\n\nRender fenced `mermaid` blocks inline.";
 
 /// Harness capabilities that conditionally contribute prompt modules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
