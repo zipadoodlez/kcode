@@ -188,6 +188,178 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
 }
 
 #[test]
+fn terminal_member_retention_preserves_recent_reports_and_prunes_expired_records() {
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let member = SwarmMember {
+        session_id: "session-terminal".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: Some(PathBuf::from("/tmp/swarm-terminal")),
+        swarm_id: Some("swarm-terminal".to_string()),
+        swarm_enabled: true,
+        status: "completed".to_string(),
+        detail: Some("done".to_string()),
+        friendly_name: Some("otter".to_string()),
+        report_back_to_session_id: Some("session-coordinator".to_string()),
+        latest_completion_report: Some("All targeted tests passed.".to_string()),
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: Some("retention test".to_string()),
+    };
+    let loaded_at = 10_000_000;
+    let mut persisted = to_persisted_member(&member, loaded_at);
+    persisted.terminal_since_unix_ms = Some(loaded_at - 30_000);
+
+    let recent = from_persisted_member(
+        persisted.clone(),
+        loaded_at,
+        loaded_at,
+        Duration::from_secs(60),
+    )
+    .expect("recent terminal member remains inspectable");
+    assert_eq!(
+        recent.latest_completion_report.as_deref(),
+        Some("All targeted tests passed.")
+    );
+    assert!(recent.last_status_change.elapsed() >= Duration::from_secs(30));
+
+    assert!(
+        from_persisted_member(persisted, loaded_at, loaded_at, Duration::from_secs(10),).is_none(),
+        "expired terminal member should be pruned"
+    );
+}
+
+#[test]
+fn legacy_terminal_member_uses_snapshot_time_as_retention_fallback() {
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let member = SwarmMember {
+        session_id: "session-legacy-terminal".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: None,
+        swarm_id: Some("swarm-legacy".to_string()),
+        swarm_enabled: true,
+        status: "failed".to_string(),
+        detail: Some("old failure".to_string()),
+        friendly_name: Some("badger".to_string()),
+        report_back_to_session_id: None,
+        latest_completion_report: Some("legacy report".to_string()),
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    };
+    let loaded_at = 20_000_000;
+    let mut persisted = to_persisted_member(&member, loaded_at);
+    persisted.terminal_since_unix_ms = None;
+
+    assert!(
+        from_persisted_member(
+            persisted,
+            loaded_at - 20_000,
+            loaded_at,
+            Duration::from_secs(10),
+        )
+        .is_none(),
+        "legacy records should age from their containing snapshot"
+    );
+}
+
+#[test]
+fn recovery_induced_terminal_status_starts_retention_at_load_time() {
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let member = SwarmMember {
+        session_id: "session-ready-recovery".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: None,
+        swarm_id: Some("swarm-recovery".to_string()),
+        swarm_enabled: true,
+        status: "ready".to_string(),
+        detail: None,
+        friendly_name: Some("hare".to_string()),
+        report_back_to_session_id: None,
+        latest_completion_report: Some("finished just before restart".to_string()),
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    };
+    let loaded_at = 300_000_000;
+    let mut persisted = to_persisted_member(&member, loaded_at);
+    persisted.terminal_since_unix_ms = None;
+
+    let recovered = from_persisted_member(
+        persisted,
+        loaded_at - Duration::from_secs(48 * 60 * 60).as_millis() as u64,
+        loaded_at,
+        Duration::from_secs(24 * 60 * 60),
+    )
+    .expect("recovery-induced terminal status should receive a fresh retention window");
+    assert_eq!(recovered.status, "stopped");
+    assert!(recovered.last_status_change.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+fn startup_gc_removes_expired_terminal_members_from_durable_snapshot() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: "session-expired".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: None,
+        swarm_id: Some("swarm-expired".to_string()),
+        swarm_enabled: true,
+        status: "completed".to_string(),
+        detail: None,
+        friendly_name: Some("fox".to_string()),
+        report_back_to_session_id: None,
+        latest_completion_report: Some("report retained until expiry".to_string()),
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }];
+    persist_swarm_state("swarm-expired", None, None, &members);
+
+    let path = state_path("swarm-expired");
+    let mut persisted = storage::read_json::<PersistedSwarmState>(&path).expect("snapshot");
+    persisted.members[0].terminal_since_unix_ms =
+        Some(now_unix_ms().saturating_sub(Duration::from_secs(48 * 60 * 60).as_millis() as u64));
+    storage::write_json_fast(&path, &persisted).expect("age terminal member");
+
+    let loaded = load_runtime_state();
+    assert!(!loaded.members.contains_key("session-expired"));
+    assert!(
+        !path.exists(),
+        "empty snapshot should be deleted after startup collection"
+    );
+}
+
+#[test]
 fn remove_swarm_state_deletes_persisted_snapshot() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);

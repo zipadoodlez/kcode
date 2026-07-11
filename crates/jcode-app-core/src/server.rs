@@ -62,11 +62,11 @@ use self::reload::await_reload_signal;
 use self::runtime::ServerRuntime;
 use self::swarm::{
     MAX_SWARM_MEMBERS, broadcast_swarm_plan, broadcast_swarm_plan_with_previous,
-    broadcast_swarm_status, record_swarm_event, record_swarm_event_for_session,
-    refresh_swarm_task_staleness, remove_plan_participant, remove_session_from_swarm,
-    rename_plan_participant, run_swarm_message, send_swarm_plan_to_session, set_member_task_label,
-    swarm_is_self_or_ancestor, update_member_status, update_member_status_with_report,
-    update_member_status_with_report_tldr,
+    broadcast_swarm_status, expired_terminal_member_ids, member_consumes_swarm_capacity,
+    record_swarm_event, record_swarm_event_for_session, refresh_swarm_task_staleness,
+    remove_plan_participant, remove_session_from_swarm, rename_plan_participant, run_swarm_message,
+    send_swarm_plan_to_session, set_member_task_label, swarm_is_self_or_ancestor,
+    update_member_status, update_member_status_with_report, update_member_status_with_report_tldr,
 };
 use self::swarm_channels::{
     remove_session_channel_subscriptions, subscribe_session_to_channel,
@@ -112,6 +112,75 @@ pub(super) type ChannelSubscriptions =
 const SERVER_NAME_ENV: &str = "JCODE_SERVER_NAME";
 const SERVER_DISPLAY_NAME_ENV: &str = "JCODE_SERVER_DISPLAY_NAME";
 const MAX_CONFIGURED_SERVER_NAME_LEN: usize = 64;
+const SWARM_TERMINAL_MEMBER_GC_BATCH_SIZE: usize = 64;
+
+async fn prune_expired_terminal_swarm_members(
+    sessions: &SessionAgents,
+    swarm_state: &SwarmState,
+    channel_subscriptions: &ChannelSubscriptions,
+    channel_subscriptions_by_session: &ChannelSubscriptions,
+) -> usize {
+    let retention = swarm::swarm_terminal_member_retention();
+    let mut candidates = {
+        let members = swarm_state.members.read().await;
+        expired_terminal_member_ids(&members, retention)
+    };
+    candidates.truncate(SWARM_TERMINAL_MEMBER_GC_BATCH_SIZE);
+    if candidates.is_empty() {
+        return 0;
+    }
+
+    let live_sessions: HashSet<String> = sessions.read().await.keys().cloned().collect();
+    let mut pruned = 0usize;
+    for session_id in candidates {
+        // A session can be resumed between candidate collection and removal.
+        // Never collect a member that currently has a live agent runtime.
+        if live_sessions.contains(&session_id) || sessions.read().await.contains_key(&session_id) {
+            continue;
+        }
+        let removed_swarm_id = {
+            let mut members = swarm_state.members.write().await;
+            let still_expired = members.get(&session_id).is_some_and(|member| {
+                swarm::member_status_is_terminal(&member.status)
+                    && member.last_status_change.elapsed() >= retention
+            });
+            if still_expired {
+                members
+                    .remove(&session_id)
+                    .and_then(|member| member.swarm_id)
+            } else {
+                None
+            }
+        };
+        let Some(swarm_id) = removed_swarm_id else {
+            continue;
+        };
+
+        remove_session_from_swarm(
+            &session_id,
+            &swarm_id,
+            &swarm_state.members,
+            &swarm_state.swarms_by_id,
+            &swarm_state.coordinators,
+            &swarm_state.plans,
+        )
+        .await;
+        remove_session_channel_subscriptions(
+            &session_id,
+            channel_subscriptions,
+            channel_subscriptions_by_session,
+        )
+        .await;
+        pruned += 1;
+    }
+
+    if pruned > 0 {
+        crate::logging::info(&format!(
+            "Garbage-collected {pruned} expired terminal swarm member(s)"
+        ));
+    }
+    pruned
+}
 
 pub(super) async fn persist_swarm_state_for(swarm_id: &str, swarm_state: &SwarmState) {
     // Never call this while holding any SwarmState map guard. The operation
@@ -1180,6 +1249,26 @@ impl Server {
                     &stale_swarms_by_id,
                     &stale_swarm_plans,
                     &stale_swarm_coordinators,
+                )
+                .await;
+            }
+        });
+
+        let gc_sessions = Arc::clone(&self.sessions);
+        let gc_swarm_state = self.swarm_state.clone();
+        let gc_channel_subscriptions = Arc::clone(&self.channel_subscriptions);
+        let gc_channel_subscriptions_by_session =
+            Arc::clone(&self.channel_subscriptions_by_session);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(swarm::swarm_terminal_member_gc_interval());
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                prune_expired_terminal_swarm_members(
+                    &gc_sessions,
+                    &gc_swarm_state,
+                    &gc_channel_subscriptions,
+                    &gc_channel_subscriptions_by_session,
                 )
                 .await;
             }

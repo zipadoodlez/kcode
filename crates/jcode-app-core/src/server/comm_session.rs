@@ -1217,14 +1217,17 @@ async fn ensure_spawn_coordinator_swarm(
             .get(req_session_id)
             .and_then(|member| member.report_back_to_session_id.clone())
             .is_none();
-        // Total live members in this swarm. Used for the breadth-side runaway cap
-        // (`MAX_SWARM_MEMBERS`) so a wide fan-out cannot create unbounded agents.
+        // Total capacity-consuming members in this swarm. Terminal members are
+        // retained briefly for reports and diagnostics, but they are historical
+        // records rather than live agents and therefore do not consume the
+        // breadth-side runaway cap (`MAX_SWARM_MEMBERS`).
         let swarm_size = swarm_id
             .as_ref()
             .map(|swarm_id| {
                 members
                     .values()
                     .filter(|member| member.swarm_id.as_deref() == Some(swarm_id.as_str()))
+                    .filter(|member| super::member_consumes_swarm_capacity(member))
                     .count()
             })
             .unwrap_or(0);

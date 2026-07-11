@@ -89,6 +89,8 @@ const DEFAULT_SWARM_STATUS_DEBOUNCE_MS: u64 = 75;
 const DEFAULT_SWARM_TASK_HEARTBEAT_SECS: u64 = 10;
 const DEFAULT_SWARM_TASK_STALE_AFTER_SECS: u64 = 45;
 const DEFAULT_SWARM_TASK_SWEEP_INTERVAL_SECS: u64 = 5;
+const DEFAULT_SWARM_TERMINAL_MEMBER_RETENTION_SECS: u64 = 24 * 60 * 60;
+const DEFAULT_SWARM_TERMINAL_MEMBER_GC_INTERVAL_SECS: u64 = 60;
 #[derive(Default, Clone, Copy)]
 struct PendingSwarmStatusBroadcast {
     scheduled: bool,
@@ -174,6 +176,51 @@ pub(super) fn swarm_task_sweep_interval() -> Duration {
         "JCODE_SWARM_TASK_SWEEP_INTERVAL_SECS",
         DEFAULT_SWARM_TASK_SWEEP_INTERVAL_SECS,
     ))
+}
+
+/// How long terminal members remain visible in the active swarm listing. This
+/// keeps completion reports available for inspection without allowing durable
+/// history to grow forever.
+pub(super) fn swarm_terminal_member_retention() -> Duration {
+    Duration::from_secs(configured_positive_u64(
+        "JCODE_SWARM_TERMINAL_MEMBER_RETENTION_SECS",
+        DEFAULT_SWARM_TERMINAL_MEMBER_RETENTION_SECS,
+    ))
+}
+
+/// How often the live server removes terminal members whose retention window
+/// has elapsed. Startup loading performs the same pruning synchronously.
+pub(super) fn swarm_terminal_member_gc_interval() -> Duration {
+    Duration::from_secs(configured_positive_u64(
+        "JCODE_SWARM_TERMINAL_MEMBER_GC_INTERVAL_SECS",
+        DEFAULT_SWARM_TERMINAL_MEMBER_GC_INTERVAL_SECS,
+    ))
+}
+
+/// Terminal members are historical records, not live agents. They remain
+/// visible temporarily for reports and diagnostics but must not consume the
+/// runaway-prevention spawn budget.
+pub(super) fn member_status_is_terminal(status: &str) -> bool {
+    matches!(
+        status,
+        "completed" | "done" | "failed" | "stopped" | "crashed" | "closed" | "disconnected"
+    )
+}
+
+pub(super) fn member_consumes_swarm_capacity(member: &SwarmMember) -> bool {
+    !member_status_is_terminal(&member.status)
+}
+
+pub(super) fn expired_terminal_member_ids(
+    members: &HashMap<String, SwarmMember>,
+    retention: Duration,
+) -> Vec<String> {
+    members
+        .values()
+        .filter(|member| member_status_is_terminal(&member.status))
+        .filter(|member| member.last_status_change.elapsed() >= retention)
+        .map(|member| member.session_id.clone())
+        .collect()
 }
 
 /// Lifecycle statuses that mean a member can no longer drive an assignment:

@@ -960,3 +960,47 @@ async fn spawn_rejected_when_member_limit_reached() {
             if message.contains("Swarm member limit reached")
     ));
 }
+
+#[tokio::test]
+async fn terminal_members_do_not_consume_spawn_capacity() {
+    use crate::server::swarm::MAX_SWARM_MEMBERS;
+
+    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+    let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
+    let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+        "swarm-1".to_string(),
+        "root".to_string(),
+    )])));
+    let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
+    {
+        let mut members = swarm_members.write().await;
+        let (root, _rx) = member("root", Some("swarm-1"), "coordinator");
+        members.insert("root".to_string(), root);
+        for idx in 0..MAX_SWARM_MEMBERS {
+            let id = format!("historical-{idx}");
+            let (mut historical, _rx) = member(&id, Some("swarm-1"), "agent");
+            historical.status = if idx % 2 == 0 {
+                "completed".to_string()
+            } else {
+                "stopped".to_string()
+            };
+            historical.latest_completion_report = Some(format!("report {idx}"));
+            historical.report_back_to_session_id = Some("root".to_string());
+            members.insert(id, historical);
+        }
+    }
+    let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel();
+
+    let allowed = ensure_spawn_coordinator_swarm(
+        7,
+        "root",
+        &client_event_tx,
+        &swarm_members,
+        &swarms_by_id,
+        &swarm_coordinators,
+        &swarm_plans,
+    )
+    .await;
+
+    assert_eq!(allowed.as_deref(), Some("swarm-1"));
+}
