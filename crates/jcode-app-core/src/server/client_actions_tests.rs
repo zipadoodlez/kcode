@@ -201,6 +201,7 @@ async fn enabling_swarm_does_not_auto_elect_coordinator() {
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
     let swarms_by_id = Arc::new(RwLock::new(HashMap::<String, HashSet<String>>::new()));
@@ -307,6 +308,7 @@ async fn rename_session_event_uses_agent_session_id_even_when_client_id_is_stale
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
@@ -408,6 +410,7 @@ async fn notify_session_runs_scheduled_task_immediately_for_idle_live_session() 
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
@@ -524,6 +527,7 @@ async fn notify_session_queues_soft_interrupt_when_live_session_is_busy() {
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         },
     )])));
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
@@ -609,6 +613,7 @@ fn live_member(session_id: &str) -> (SwarmMember, mpsc::UnboundedReceiver<Server
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
     };
     (member, attach_rx)
 }

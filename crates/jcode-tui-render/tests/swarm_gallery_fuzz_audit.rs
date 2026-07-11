@@ -20,6 +20,8 @@ fn member(id: &str, status: &str, role: Option<&str>, body: &[&str]) -> GalleryM
         sort_key: id.to_string(),
         todo: None,
         todo_items: Vec::new(),
+        model: None,
+        elapsed_secs: None,
     }
 }
 

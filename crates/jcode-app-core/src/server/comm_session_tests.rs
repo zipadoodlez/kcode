@@ -68,6 +68,7 @@ fn member(
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
             task_label: None,
         },
         event_rx,

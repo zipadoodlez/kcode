@@ -294,6 +294,84 @@ pub(super) async fn dispatch_swarm_tool_activity(
     }
 }
 
+pub(super) async fn dispatch_swarm_runtime_status(
+    event: &crate::bus::SubagentStatus,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+) {
+    let Some(model) = event
+        .model
+        .as_ref()
+        .filter(|model| !model.trim().is_empty())
+    else {
+        return;
+    };
+    let swarm_id = {
+        let mut members = swarm_members.write().await;
+        let Some(member) = members.get_mut(&event.session_id) else {
+            return;
+        };
+        if member.runtime.model.as_ref() == Some(model) {
+            return;
+        }
+        member.runtime.model = Some(model.clone());
+        member.swarm_id.clone()
+    };
+    if let Some(swarm_id) = swarm_id {
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+    }
+}
+
+pub(super) async fn dispatch_swarm_batch_progress(
+    progress: &crate::bus::BatchProgress,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    swarms_by_id: &Arc<RwLock<HashMap<String, HashSet<String>>>>,
+) {
+    if progress.total == 0 {
+        return;
+    }
+    let swarm_id = {
+        let mut members = swarm_members.write().await;
+        let Some(member) = members.get_mut(&progress.session_id) else {
+            return;
+        };
+        if !update_active_todo_batch_progress(&mut member.todo_items, progress) {
+            return;
+        }
+        member.swarm_id.clone()
+    };
+    if let Some(swarm_id) = swarm_id {
+        super::swarm::broadcast_swarm_status(&swarm_id, swarm_members, swarms_by_id).await;
+    }
+}
+
+fn update_active_todo_batch_progress(
+    todo_items: &mut [crate::protocol::SwarmTodoItem],
+    progress: &crate::bus::BatchProgress,
+) -> bool {
+    let Some(tool) = todo_items
+        .iter_mut()
+        .find(|todo| todo.status == "in_progress")
+        .and_then(|todo| {
+            todo.tool_intents
+                .iter_mut()
+                .find(|tool| tool.tool_call_id == progress.tool_call_id)
+        })
+    else {
+        return false;
+    };
+    let next = crate::protocol::SwarmToolProgress {
+        current: progress.completed as u64,
+        total: progress.total as u64,
+        unit: Some("tools".to_string()),
+    };
+    if tool.progress.as_ref() == Some(&next) {
+        return false;
+    }
+    tool.progress = Some(next);
+    true
+}
+
 fn update_active_todo_tool(
     todo_items: &mut [crate::protocol::SwarmTodoItem],
     event: &crate::bus::ToolEvent,
@@ -328,6 +406,7 @@ fn update_active_todo_tool(
             tool_name: event.tool_name.clone(),
             intent: cap_chars(intent, SWARM_TOOL_INTENT_CAP),
             status,
+            progress: None,
         });
         if active.tool_intents.len() > SWARM_TOOL_INTENTS_CAP {
             active
@@ -380,7 +459,7 @@ fn cap_chars(s: &str, cap: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bus::{ToolEvent, ToolStatus};
+    use crate::bus::{BatchProgress, ToolEvent, ToolStatus};
 
     fn tool(id: &str, intent: &str, status: ToolStatus) -> ToolEvent {
         ToolEvent {
@@ -433,6 +512,38 @@ mod tests {
             &tool("one", "irrelevant", ToolStatus::Running),
         ));
         assert!(items[0].tool_intents.is_empty());
+    }
+
+    #[test]
+    fn batch_progress_updates_the_correlated_active_tool() {
+        let mut items = vec![crate::protocol::SwarmTodoItem {
+            content: "run targeted tests".into(),
+            status: "in_progress".into(),
+            tool_intents: vec![crate::protocol::SwarmToolIntent {
+                tool_call_id: "batch-1".into(),
+                tool_name: "batch".into(),
+                intent: "Run targeted authentication tests".into(),
+                status: "running".into(),
+                progress: None,
+            }],
+        }];
+        let progress = BatchProgress {
+            session_id: "worker".into(),
+            tool_call_id: "batch-1".into(),
+            completed: 27,
+            total: 43,
+            last_completed: Some("read".into()),
+            running: Vec::new(),
+            subcalls: Vec::new(),
+        };
+
+        assert!(update_active_todo_batch_progress(&mut items, &progress));
+        let captured = items[0].tool_intents[0]
+            .progress
+            .as_ref()
+            .expect("progress captured");
+        assert_eq!((captured.current, captured.total), (27, 43));
+        assert!(!update_active_todo_batch_progress(&mut items, &progress));
     }
 }
 

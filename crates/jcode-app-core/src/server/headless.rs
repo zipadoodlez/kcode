@@ -146,7 +146,7 @@ pub(super) async fn create_headless_session(
         let mut sessions_guard = sessions.write().await;
         sessions_guard.insert(client_session_id.clone(), Arc::clone(&agent));
     }
-    {
+    let provider_model = {
         let agent_guard = agent.lock().await;
         register_session_interrupt_queue(
             soft_interrupt_queues,
@@ -155,7 +155,8 @@ pub(super) async fn create_headless_session(
         )
         .await;
         register_background_tool_signal(&client_session_id, agent_guard.background_tool_signal());
-    }
+        agent_guard.provider_model()
+    };
 
     let swarm_id = if swarm_enabled {
         swarm_id_for_dir(working_dir.clone())
@@ -198,6 +199,10 @@ pub(super) async fn create_headless_session(
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                runtime: crate::protocol::SwarmMemberRuntime {
+                    model: Some(provider_model),
+                    elapsed_secs: None,
+                },
             },
         );
     }

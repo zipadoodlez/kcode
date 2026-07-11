@@ -504,6 +504,7 @@ async fn register_visible_spawned_member(
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                runtime: crate::protocol::SwarmMemberRuntime::default(),
             },
         );
     }

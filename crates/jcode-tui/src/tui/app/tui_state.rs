@@ -1339,6 +1339,7 @@ impl crate::tui::TuiState for App {
                         report_back_to_session_id: None,
                         todo_progress: None,
                         todo_items: Vec::new(),
+                        runtime: crate::protocol::SwarmMemberRuntime::default(),
                     });
                 }
                 (
@@ -2182,6 +2183,7 @@ mod inline_swarm_subtree_tests {
             report_back_to_session_id: parent.map(str::to_string),
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         }
     }
 

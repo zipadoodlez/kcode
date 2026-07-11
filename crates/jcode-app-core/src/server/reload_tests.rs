@@ -41,6 +41,7 @@ fn member(session_id: &str, status: &str) -> SwarmMember {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
     }
 }
 

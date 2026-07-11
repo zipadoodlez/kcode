@@ -409,18 +409,25 @@ impl App {
                                             tool_name: "agentgrep".into(),
                                             intent: "Locate the affected rendering path".into(),
                                             status: "completed".into(),
+                                            progress: None,
                                         },
                                         crate::protocol::SwarmToolIntent {
                                             tool_call_id: String::new(),
                                             tool_name: "read".into(),
                                             intent: "Inspect the active todo state".into(),
                                             status: "completed".into(),
+                                            progress: None,
                                         },
                                         crate::protocol::SwarmToolIntent {
                                             tool_call_id: String::new(),
                                             tool_name: "bash".into(),
                                             intent: "Run targeted swarm card tests".into(),
                                             status: "running".into(),
+                                            progress: Some(crate::protocol::SwarmToolProgress {
+                                                current: 27,
+                                                total: 43,
+                                                unit: Some("tests".into()),
+                                            }),
                                         },
                                     ]
                                 } else {
@@ -433,6 +440,10 @@ impl App {
                                 }
                             })
                             .collect(),
+                        runtime: crate::protocol::SwarmMemberRuntime {
+                            model: Some("gpt-5.6".into()),
+                            elapsed_secs: Some(18),
+                        },
                     })
                     .collect();
                 self.debug_force_inline_gallery = true;
@@ -471,6 +482,7 @@ impl App {
                         report_back_to_session_id: None,
                         todo_progress: None,
                         todo_items: Vec::new(),
+                        runtime: crate::protocol::SwarmMemberRuntime::default(),
                     }],
                 })
                 .to_string()

@@ -235,6 +235,8 @@ pub struct SwarmMember {
     /// at a few entries by the bus monitor. Rendered in the focused inline
     /// swarm panel; not persisted.
     pub todo_items: Vec<crate::protocol::SwarmTodoItem>,
+    /// Ephemeral model/timing metadata for the inline swarm card.
+    pub runtime: crate::protocol::SwarmMemberRuntime,
 }
 
 impl SwarmMember {
@@ -289,6 +291,7 @@ impl SwarmMember {
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         }
     }
 }

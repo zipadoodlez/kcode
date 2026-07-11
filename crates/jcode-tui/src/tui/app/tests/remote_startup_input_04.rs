@@ -84,6 +84,7 @@ fn test_handle_server_event_swarm_status_announces_member_completion() {
         report_back_to_session_id: parent.map(str::to_string),
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
     };
 
     let mut app = create_test_app();

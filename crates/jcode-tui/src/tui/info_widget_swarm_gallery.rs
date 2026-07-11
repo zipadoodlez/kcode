@@ -83,6 +83,8 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
             body: member_body(member),
             sort_key: member.session_id.clone(),
             todo: member.todo_progress,
+            model: member.runtime.model.clone(),
+            elapsed_secs: member.runtime.elapsed_secs,
             todo_items: member
                 .todo_items
                 .iter()
@@ -96,6 +98,9 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
                             tool_name: tool.tool_name.clone(),
                             intent: tool.intent.clone(),
                             status: tool.status.clone(),
+                            progress: tool.progress.as_ref().map(|progress| {
+                                (progress.current, progress.total, progress.unit.clone())
+                            }),
                         })
                         .collect(),
                 })
@@ -301,6 +306,7 @@ mod tests {
             report_back_to_session_id: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
         }
     }
 

@@ -479,6 +479,23 @@ pub struct SwarmMemberStatus {
     /// coordinator can see what each agent is working through.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub todo_items: Vec<SwarmTodoItem>,
+    /// Ephemeral runtime metadata used by the live swarm card.
+    #[serde(default, skip_serializing_if = "SwarmMemberRuntime::is_empty")]
+    pub runtime: SwarmMemberRuntime,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmMemberRuntime {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elapsed_secs: Option<u64>,
+}
+
+impl SwarmMemberRuntime {
+    fn is_empty(&self) -> bool {
+        self.model.is_none() && self.elapsed_secs.is_none()
+    }
 }
 
 /// One compact todo entry crossing the swarm status boundary. Only the
@@ -504,6 +521,16 @@ pub struct SwarmToolIntent {
     pub intent: String,
     /// "running", "completed", or "error".
     pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<SwarmToolProgress>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmToolProgress {
+    pub current: u64,
+    pub total: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
 }
 
 /// Status of a member being awaited by comm_await_members

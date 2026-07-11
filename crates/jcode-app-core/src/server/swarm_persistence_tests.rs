@@ -93,6 +93,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -167,6 +168,7 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -791,6 +793,7 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 

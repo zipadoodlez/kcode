@@ -603,6 +603,10 @@ async fn broadcast_swarm_status_now(
                     report_back_to_session_id: m.report_back_to_session_id.clone(),
                     todo_progress: m.todo_progress,
                     todo_items: m.todo_items.clone(),
+                    runtime: crate::protocol::SwarmMemberRuntime {
+                        model: m.runtime.model.clone(),
+                        elapsed_secs: Some(m.joined_at.elapsed().as_secs()),
+                    },
                 })
         })
         .collect();
@@ -1704,6 +1708,7 @@ mod tests {
                 output_tail: None,
                 todo_progress: None,
                 todo_items: Vec::new(),
+                runtime: crate::protocol::SwarmMemberRuntime::default(),
             },
             event_rx,
         )

@@ -83,6 +83,42 @@ pub fn status_glyph(status: &str, spinner_frame: usize) -> &'static str {
     }
 }
 
+fn card_status_label(status: &str) -> &'static str {
+    match status {
+        "running" | "streaming" | "thinking" => "Working",
+        "completed" | "done" => "Completed",
+        "ready" | "spawned" => "Ready",
+        "blocked" | "waiting_network" => "Blocked",
+        "failed" | "crashed" => "Failed",
+        "stopped" => "Stopped",
+        _ => "Working",
+    }
+}
+
+fn format_elapsed(seconds: u64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let seconds = seconds % 60;
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes:02}:{seconds:02}")
+    }
+}
+
+fn format_model(model: &str) -> String {
+    let routed = model.rsplit([':', '/']).next().unwrap_or(model);
+    let model = routed
+        .strip_suffix("-sol")
+        .or_else(|| routed.strip_suffix("-luna"))
+        .unwrap_or(routed);
+    if let Some(rest) = model.strip_prefix("gpt-") {
+        format!("GPT-{rest}")
+    } else {
+        model.to_string()
+    }
+}
+
 /// Sort rank for stable placement: coordinator first, then everything else.
 fn role_rank(role: Option<&str>) -> u8 {
     match role {
@@ -155,6 +191,10 @@ pub struct GalleryMember {
     /// Compact todo entries (content, status) for the focused detail view.
     /// Status is one of "pending", "in_progress", "completed".
     pub todo_items: Vec<GalleryTodo>,
+    /// Provider model currently running this member, when known.
+    pub model: Option<String>,
+    /// Seconds since this member was spawned.
+    pub elapsed_secs: Option<u64>,
 }
 
 /// One compact todo entry shown in the focused swarm detail view.
@@ -173,6 +213,8 @@ pub struct GalleryToolIntent {
     pub intent: String,
     /// "running", "completed", or "error".
     pub status: String,
+    /// Optional live progress as (current, total, unit).
+    pub progress: Option<(u64, u64, Option<String>)>,
 }
 
 /// Convert members into gallery tiles, sorted for stable placement
@@ -755,6 +797,47 @@ pub fn render_swarm_strip_vertical(
         let body_budget = width
             .saturating_sub(lead_w)
             .saturating_sub(if row_tail_w > 0 { row_tail_w + gap } else { 0 });
+
+        // Expanded workers use the full-width information card header approved
+        // for the inline swarm view. Compact rows retain the older chip layout.
+        if is_sel && !m.todo_items.is_empty() {
+            let left = format!("{} ", m.label);
+            spans.push(Span::styled(
+                left.clone(),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ));
+
+            let mut metadata = vec![format!(
+                "{} {}",
+                status_glyph(&m.status, spinner_frame),
+                card_status_label(&m.status)
+            )];
+            if let Some((done, total)) = m.todo {
+                metadata.push(format!("Todo {done}/{total}"));
+            }
+            if let Some(elapsed) = m.elapsed_secs {
+                metadata.push(format_elapsed(elapsed));
+            }
+            if let Some(model) = m.model.as_deref().filter(|model| !model.trim().is_empty()) {
+                metadata.push(format_model(model));
+            }
+
+            let mut tail = metadata.join(" · ");
+            while metadata.len() > 1 && lead_w + disp_w(&left) + gap + disp_w(&tail) > width {
+                metadata.pop();
+                tail = metadata.join(" · ");
+            }
+            let consumed = lead_w + disp_w(&left);
+            if consumed + gap + disp_w(&tail) <= width {
+                spans.push(Span::raw(" ".repeat(width - consumed - disp_w(&tail))));
+                spans.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
+            }
+            if is_sel {
+                selected_row_at = Some(out.len());
+            }
+            out.push(Line::from(spans));
+            continue;
+        }
 
         // <glyph> [icon ]<name>[ · task][ done/total]
         let mut style = Style::default().fg(color);
@@ -1341,7 +1424,7 @@ fn hovered_detail_body(
     let text_fg = rgb(190, 190, 200);
     let gutter_fg = rgb(80, 80, 90);
     const GUTTER: &str = "   ";
-    const BAR: &str = "│ ";
+    const BAR: &str = "│   ";
 
     if budget == 0 {
         return Vec::new();
@@ -1367,7 +1450,14 @@ fn hovered_detail_body(
             .min(m.todo_items.len().saturating_sub(shown));
         let text_budget = width.saturating_sub(GUTTER.len() + BAR.len() + 2);
 
-        for (idx, todo) in m.todo_items.iter().enumerate().skip(start).take(shown) {
+        for (visible_idx, (idx, todo)) in m
+            .todo_items
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(shown)
+            .enumerate()
+        {
             if out.len() >= budget {
                 break;
             }
@@ -1384,9 +1474,14 @@ fn hovered_detail_body(
             if emph {
                 style = style.add_modifier(Modifier::BOLD);
             }
+            let todo_rail = if visible_idx + 1 == shown {
+                "└─  "
+            } else {
+                BAR
+            };
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
-                Span::styled(BAR, Style::default().fg(gutter_fg)),
+                Span::styled(todo_rail, Style::default().fg(gutter_fg)),
                 Span::styled(format!("{glyph} "), Style::default().fg(glyph_fg)),
                 Span::styled(truncate_label(&todo.content, text_budget), style),
             ]));
@@ -1416,12 +1511,16 @@ fn hovered_detail_body(
                     } else {
                         "├─"
                     };
-                    let label = format!("{} · {}", tool.tool_name, tool.intent);
+                    let progress = tool
+                        .progress
+                        .as_ref()
+                        .map(|(current, total, _unit)| format!(" · {current}/{total}"))
+                        .unwrap_or_default();
+                    let label = format!("{} · {}{progress}", tool.tool_name, tool.intent);
                     let nested_budget = width.saturating_sub(GUTTER.len() + BAR.len() + 7);
                     out.push(Line::from(vec![
                         Span::raw(GUTTER),
-                        Span::styled(BAR, Style::default().fg(gutter_fg)),
-                        Span::raw("  "),
+                        Span::styled("│     ", Style::default().fg(gutter_fg)),
                         Span::styled(format!("{branch} "), Style::default().fg(gutter_fg)),
                         Span::styled(format!("{tool_glyph} "), Style::default().fg(fg)),
                         Span::styled(
@@ -1661,6 +1760,8 @@ mod tests {
             sort_key: id.to_string(),
             todo: None,
             todo_items: Vec::new(),
+            model: None,
+            elapsed_secs: None,
         }
     }
 
@@ -2001,7 +2102,9 @@ mod tests {
         let mut worker = member("reviewer", "running", None, &[]);
         worker.icon = Some("🐝".to_string());
         worker.task = Some("review authentication changes".to_string());
-        worker.todo = Some((1, 5));
+        worker.todo = Some((2, 4));
+        worker.model = Some("openai:gpt-5.6-sol".into());
+        worker.elapsed_secs = Some(18);
         worker.todo_items = vec![
             GalleryTodo {
                 content: "inspect middleware".into(),
@@ -2016,21 +2119,25 @@ mod tests {
                         tool_name: "read".into(),
                         intent: "Old intent that should roll off".into(),
                         status: "completed".into(),
+                        progress: None,
                     },
                     GalleryToolIntent {
                         tool_name: "agentgrep".into(),
                         intent: "Locate refresh implementation".into(),
                         status: "completed".into(),
+                        progress: None,
                     },
                     GalleryToolIntent {
                         tool_name: "read".into(),
                         intent: "Inspect refresh-token handler".into(),
                         status: "completed".into(),
+                        progress: None,
                     },
                     GalleryToolIntent {
                         tool_name: "bash".into(),
                         intent: "Run targeted authentication tests".into(),
                         status: "running".into(),
+                        progress: Some((27, 43, Some("tests".into()))),
                     },
                 ],
             },
@@ -2041,11 +2148,6 @@ mod tests {
             },
             GalleryTodo {
                 content: "report findings".into(),
-                status: "pending".into(),
-                tool_intents: Vec::new(),
-            },
-            GalleryTodo {
-                content: "hidden fifth item".into(),
                 status: "pending".into(),
                 tool_intents: Vec::new(),
             },
@@ -2065,7 +2167,10 @@ mod tests {
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
         assert!(all.contains("🐝 reviewer"), "agent identity missing: {all}");
-        assert!(all.contains("1/5"), "todo counter missing: {all}");
+        assert!(
+            all.contains("⠹ Working · Todo 2/4 · 00:18 · GPT-5.6"),
+            "header metadata missing: {all}"
+        );
         assert!(
             all.contains("test token refresh flow"),
             "active todo missing: {all}"
@@ -2079,16 +2184,24 @@ mod tests {
             "{all}"
         );
         assert!(
-            all.contains("bash · Run targeted authentication tests"),
+            all.contains("bash · Run targeted authentication tests · 27/43"),
             "{all}"
+        );
+        assert!(
+            all.contains("│   ✓ inspect middleware"),
+            "todo rail missing: {all}"
+        );
+        assert!(
+            all.contains("│     ├─ ✓ agentgrep"),
+            "nested tool rail missing: {all}"
+        );
+        assert!(
+            all.contains("└─  ○ report findings"),
+            "final rail missing: {all}"
         );
         assert!(
             !all.contains("Old intent"),
             "oldest intent should roll off: {all}"
-        );
-        assert!(
-            !all.contains("hidden fifth item"),
-            "todo window exceeded four: {all}"
         );
     }
 

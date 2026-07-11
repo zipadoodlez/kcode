@@ -131,6 +131,7 @@ mod transcript_routing_tests {
             output_tail: None,
             todo_progress: None,
             todo_items: Vec::new(),
+            runtime: crate::protocol::SwarmMemberRuntime::default(),
             task_label: None,
         }
     }
