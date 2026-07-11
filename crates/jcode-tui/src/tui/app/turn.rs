@@ -171,7 +171,7 @@ impl App {
                         }
                     }
                     // Redraw periodically
-                    _ = status_spinner_interval.tick(), if super::run_shell::status_spinner_only_symbol(self).is_some() => {
+                    _ = status_spinner_interval.tick(), if status_spinner_renderer.spinner_only_available(self) => {
                         if !status_spinner_renderer.draw_status_spinner_only(self, terminal)? {
                             status_spinner_renderer.draw_full(self, terminal)?;
                             super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
@@ -259,7 +259,7 @@ impl App {
                     // (especially in low-resource tiers where full redraws run at
                     // the ~1 Hz passive-liveness rate) by patching just the status
                     // cell. Only active while there is no streaming text to reveal.
-                    _ = status_spinner_interval.tick(), if super::run_shell::status_spinner_only_symbol(self).is_some() => {
+                    _ = status_spinner_interval.tick(), if status_spinner_renderer.spinner_only_available(self) => {
                         if !status_spinner_renderer.draw_status_spinner_only(self, terminal)? {
                             status_spinner_renderer.draw_full(self, terminal)?;
                             super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);

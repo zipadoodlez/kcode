@@ -308,22 +308,22 @@ pub fn render_swarm_chat_cards(
             metadata.push(format_model(model));
         }
 
-        const LEAD: &str = "    🐝  ";
+        let lead = format!("    {}  ", member.icon.as_deref().unwrap_or("🐝"));
         let label = format!("{} ", member.label);
         let mut tail = metadata.join(" · ");
-        while metadata.len() > 1 && disp_w(LEAD) + disp_w(&label) + 2 + disp_w(&tail) > width {
+        while metadata.len() > 1 && disp_w(&lead) + disp_w(&label) + 2 + disp_w(&tail) > width {
             metadata.pop();
             tail = metadata.join(" · ");
         }
 
         let mut header = vec![
-            Span::styled(LEAD.to_string(), Style::default().fg(rgb(255, 200, 100))),
+            Span::styled(lead.clone(), Style::default().fg(rgb(255, 200, 100))),
             Span::styled(
                 label.clone(),
                 Style::default().fg(accent).add_modifier(Modifier::BOLD),
             ),
         ];
-        let consumed = disp_w(LEAD) + disp_w(&label);
+        let consumed = disp_w(&lead) + disp_w(&label);
         if consumed + 2 + disp_w(&tail) <= width {
             header.push(Span::raw(" ".repeat(width - consumed - disp_w(&tail))));
             header.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
@@ -923,12 +923,10 @@ pub fn render_swarm_strip_vertical(
         if is_sel && focused {
             style = style.add_modifier(Modifier::BOLD);
         }
-        // The focused selection shows both icon and name (you are about to act
-        // on this agent); other rows keep the compact icon-only identity.
+        // The assigned animal icon already identifies the worker. Keep compact
+        // strip rows emoji-only so names such as "sauropod" do not consume the
+        // task-label space; the expanded chat card carries the full identity.
         let ident = match m.icon.as_deref().filter(|i| !i.is_empty()) {
-            Some(icon) if is_sel && (focused || !m.todo_items.is_empty()) => {
-                format!("{icon} {}", m.label)
-            }
             Some(icon) => icon.to_string(),
             None => m.label.clone(),
         };
@@ -2152,11 +2150,16 @@ mod tests {
         let texts: Vec<String> = lines.iter().map(plain_line).collect();
         let all = texts.join("\n");
         // Selected agent (bee, sorted second: fox is active and sorts first)
-        // shows marker + icon + name; its detail slides in directly beneath.
+        // shows marker + icon without repeating the animal name; its detail
+        // slides in directly beneath.
         let bee_row = texts
             .iter()
-            .position(|l| l.contains("▸") && l.contains("🐝") && l.contains("bee"))
-            .expect("selected row shows marker, icon and name: {texts:?}");
+            .position(|l| l.contains("▸") && l.contains("🐝"))
+            .expect("selected row shows marker and icon: {texts:?}");
+        assert!(
+            !texts[bee_row].contains("bee"),
+            "selected compact row should stay emoji-only: {texts:?}"
+        );
         assert!(
             texts[bee_row + 1].contains("waiting for work"),
             "detail expands directly under the selected row: {texts:?}"
@@ -2176,7 +2179,7 @@ mod tests {
     #[test]
     fn chat_card_shows_four_todos_and_last_three_tool_intents() {
         let mut worker = member("reviewer", "running", None, &[]);
-        worker.icon = Some("🐝".to_string());
+        worker.icon = Some("🦕".to_string());
         worker.task = Some("review authentication changes".to_string());
         worker.todo = Some((2, 4));
         worker.model = Some("openai:gpt-5.6-sol".into());
@@ -2233,8 +2236,8 @@ mod tests {
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
         assert!(
-            all.contains("🐝  reviewer"),
-            "agent identity missing: {all}"
+            all.contains("🦕  reviewer"),
+            "assigned agent emoji missing: {all}"
         );
         assert!(
             all.contains("⠹ Working · Todo 2/4 · 00:18 · GPT-5.6"),
@@ -2299,6 +2302,11 @@ mod tests {
         );
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         assert_eq!(lines.len(), 1, "unfocused strip stays compact: {all}");
+        assert!(all.contains("🐝"), "assigned icon missing: {all}");
+        assert!(
+            !all.contains("reviewer"),
+            "compact strip should not repeat the animal name: {all}"
+        );
         assert!(
             !all.contains("test token refresh flow"),
             "details leaked: {all}"
