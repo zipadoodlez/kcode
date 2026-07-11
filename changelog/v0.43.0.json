@@ -1,0 +1,20 @@
+{
+  "version": "0.43.0",
+  "date": "2026-07-11",
+  "title": "Terminal math and smoother swarm work",
+  "highlights": [
+    "LaTeX now renders as readable terminal math, including common inline, display, fenced, and environment-based notation",
+    "Swarm waits now run asynchronously so the coordinator stays responsive while agents finish",
+    "The CLI can override the working directory used by remote sessions"
+  ],
+  "improvements": [
+    "Swarm agent cards appear directly beneath spawn calls with clearer beta labeling",
+    "Tool discovery covers more integration categories",
+    "Todo guidance now emphasizes measurable goals and evidence-backed completion confidence"
+  ],
+  "fixes": [
+    "Images with mismatched format labels are corrected before sending so providers no longer reject valid image payloads",
+    "Idle TUI sessions release retained heap memory more effectively",
+    "Jcode login directs users to the correct pricing path"
+  ]
+}
