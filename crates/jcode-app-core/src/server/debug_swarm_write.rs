@@ -656,3 +656,84 @@ async fn handle_debug_graph_op(arg: &str, ctx: &DebugSwarmWriteContext<'_>) -> S
         Err(e) => fail(format!("graph op rejected: {e}")),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    struct EnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        runtime: Option<std::ffi::OsString>,
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.runtime.take() {
+                crate::env::set_var("JCODE_RUNTIME_DIR", value);
+            } else {
+                crate::env::remove_var("JCODE_RUNTIME_DIR");
+            }
+        }
+    }
+
+    fn isolated_runtime(dir: &tempfile::TempDir) -> EnvGuard {
+        let lock = crate::storage::lock_test_env();
+        let runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+        crate::env::set_var("JCODE_RUNTIME_DIR", dir.path());
+        EnvGuard {
+            _lock: lock,
+            runtime,
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn clear_coordinator_releases_coordinator_lock_before_waiting_for_members() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let _env = isolated_runtime(&dir);
+        let session_id = Arc::new(RwLock::new("session-1".to_string()));
+        let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+        let swarms_by_id = Arc::new(RwLock::new(HashMap::new()));
+        let shared_context = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_plans = Arc::new(RwLock::new(HashMap::new()));
+        let swarm_coordinators = Arc::new(RwLock::new(HashMap::from([(
+            "swarm-lock-order".to_string(),
+            "session-1".to_string(),
+        )])));
+        let ctx = DebugSwarmWriteContext {
+            session_id: &session_id,
+            swarm_members: &swarm_members,
+            swarms_by_id: &swarms_by_id,
+            shared_context: &shared_context,
+            swarm_plans: &swarm_plans,
+            swarm_coordinators: &swarm_coordinators,
+        };
+
+        // Force the command to wait at members.write(). A safe path must not
+        // retain coordinators.write() while it waits for that independent lock.
+        let members_gate = swarm_members.write().await;
+        let command =
+            maybe_handle_swarm_write_command("swarm:clear_coordinator:swarm-lock-order", &ctx);
+        tokio::pin!(command);
+        tokio::select! {
+            result = &mut command => panic!("command unexpectedly completed: {result:?}"),
+            _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+        }
+
+        let coordinators =
+            tokio::time::timeout(Duration::from_millis(100), swarm_coordinators.read())
+                .await
+                .expect("coordinator lock was retained while waiting for members");
+        assert!(!coordinators.contains_key("swarm-lock-order"));
+        drop(coordinators);
+
+        drop(members_gate);
+        let response = tokio::time::timeout(Duration::from_secs(1), &mut command)
+            .await
+            .expect("clear coordinator self-deadlocked")
+            .expect("command failed")
+            .expect("command was not handled");
+        assert!(response.contains("Coordinator cleared"));
+    }
+}

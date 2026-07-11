@@ -93,6 +93,7 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -167,6 +168,7 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -545,19 +547,8 @@ fn legacy_snapshot_without_mode_defaults_to_light() {
     assert_eq!(plan.version, 2);
 }
 
-/// Deterministic demonstration of the persist-snapshot version-inversion race
-/// (wiring-audit.persist-snapshot-inversion).
-///
-/// `persist_swarm_state_for` (server.rs) is `load_runtime().await` followed by
-/// a synchronous, unserialized `persist_swarm_state`. `load_runtime`
-/// (server/state.rs) clones the plan under `plans.read()` FIRST, then awaits
-/// three more locks (coordinators, swarms_by_id, members), so the cloned plan
-/// can go stale at any of those suspension points. On the multithreaded
-/// server runtime a second persist call can observe a NEWER plan and land it
-/// on disk while the first call is still suspended; when the first call
-/// resumes, its stale snapshot clobbers the newer one. Neither
-/// `persist_swarm_state` nor `storage::write_json_fast` compares versions:
-/// last rename wins.
+/// A persist that captured an older plan must not overwrite a newer durable
+/// plan when the calls complete out of order.
 ///
 /// This test parks persist A inside `load_runtime` at `members.read()`
 /// (after A has already cloned the v5 plan) behind a held `members.write()`
@@ -575,13 +566,9 @@ fn legacy_snapshot_without_mode_defaults_to_light() {
 /// v6 flips back to queued/running_stale and newer node_meta artifacts are
 /// lost.
 ///
-/// If this test starts failing with version == 6 at the final assert, the
-/// persist path gained ordering/version protection (e.g. a persist mutex per
-/// swarm, or persist_swarm_state refusing to overwrite a newer on-disk
-/// version); update the wiring audit.
 #[tokio::test]
 #[allow(clippy::await_holding_lock)]
-async fn persist_snapshot_can_regress_to_older_plan_version_when_calls_interleave() {
+async fn stale_persist_cannot_regress_newer_plan_version() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -644,30 +631,18 @@ async fn persist_snapshot_can_regress_to_older_plan_version_when_calls_interleav
         "v6 must be durably on disk before A resumes"
     );
 
-    // Release A: it resumes with its stale v5 runtime snapshot and
-    // synchronously overwrites the newer v6 snapshot.
+    // Release A: it resumes with its stale v5 runtime snapshot. The durable
+    // version guard must reject that write.
     drop(gate);
     a.await.expect("persist task");
 
-    // Assert on the primary snapshot file directly: load_runtime_state()
-    // cannot be used here because it also reads the `.bak` file (see
-    // `load_runtime_state_reads_bak_files_as_snapshots` below), which after
-    // this sequence holds v6 and shadows the regressed primary in
-    // directory-iteration order.
     let primary = storage::read_json::<PersistedSwarmState>(&state_path("swarm-race"))
         .expect("primary snapshot");
     assert_eq!(
         primary.plan.expect("plan").version,
-        5,
-        "expected the stale persist to regress the durable snapshot to v5; \
-         if this reads 6 the persist path gained ordering/version protection \
-         (update the wiring audit)"
+        6,
+        "a stale persist must not regress the durable plan version"
     );
-    // The newer v6 snapshot survives only as the write_json_fast backup.
-    let backup =
-        storage::read_json::<PersistedSwarmState>(&state_path("swarm-race").with_extension("bak"))
-            .expect("backup snapshot");
-    assert_eq!(backup.plan.expect("plan").version, 6);
 }
 
 /// Companion finding discovered while writing the regression test above:
@@ -791,6 +766,7 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -815,20 +791,8 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
     );
 }
 
-/// Removal-lifecycle half of the `.bak` finding
-/// (wiring-audit.bak-resurrection). `storage::write_json_fast` hard-links
-/// the previous snapshot to `<swarm>.bak` on every overwrite
-/// (jcode-storage/src/lib.rs:310-323), but `remove_swarm_state`
-/// (swarm_persistence.rs:320) deletes only `state_path(swarm_id)` — the
-/// `.json` primary. Because `load_runtime_state` ingests `.bak` files as
-/// snapshots (see `load_runtime_state_reads_bak_files_as_snapshots`), a
-/// dissolved swarm resurrects from its orphaned backup at the next server
-/// startup: a zombie swarm carrying its second-to-last state.
-///
-/// Real-world evidence: `~/.jcode/state/swarm` accumulates `<id>.bak`
-/// files that disagree with (or outlive) their `<id>.json` primaries.
 #[test]
-fn remove_swarm_state_leaves_orphaned_bak_that_resurrects_on_load() {
+fn remove_swarm_state_removes_backup_and_cannot_resurrect() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -842,29 +806,19 @@ fn remove_swarm_state_leaves_orphaned_bak_that_resurrects_on_load() {
     remove_swarm_state("swarm-zombie");
     assert!(!state_path("swarm-zombie").exists());
     assert!(
-        bak_path.exists(),
-        "remove_swarm_state deletes only the primary; the .bak survives"
+        !bak_path.exists(),
+        "logical deletion must remove the recovery backup too"
     );
 
-    // Next startup: the removed swarm resurrects from the orphaned .bak,
-    // and with STALE (second-to-last) state at that.
     let loaded = load_runtime_state();
-    assert_eq!(
-        loaded.coordinators.get("swarm-zombie"),
-        Some(&"coord-v1".to_string()),
-        "orphaned .bak resurrects the dissolved swarm at the next \
-         load_runtime_state; if this returns None the removal paths \
-         learned to delete the .bak (update the wiring audit)"
+    assert!(
+        !loaded.coordinators.contains_key("swarm-zombie"),
+        "a deleted swarm must not be restored on the next load"
     );
 }
 
-/// Same orphaned-`.bak` lifecycle bug via the OTHER removal path: the
-/// all-empty dissolution branch of `persist_swarm_state`
-/// (swarm_persistence.rs:293) also calls `remove_file(state_path(..))`
-/// only, so dissolving a swarm by persisting its empty runtime leaves the
-/// backup behind and the swarm resurrects on the next load.
 #[test]
-fn empty_persist_dissolution_leaves_orphaned_bak_that_resurrects_on_load() {
+fn empty_persist_dissolution_removes_backup_and_cannot_resurrect() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -878,18 +832,14 @@ fn empty_persist_dissolution_leaves_orphaned_bak_that_resurrects_on_load() {
     persist_swarm_state("swarm-dissolve", None, None, &[]);
     assert!(!state_path("swarm-dissolve").exists());
     assert!(
-        bak_path.exists(),
-        "the empty-state persist branch deletes only the primary; the \
-         .bak survives"
+        !bak_path.exists(),
+        "empty-state persistence must remove the recovery backup too"
     );
 
     let loaded = load_runtime_state();
-    assert_eq!(
-        loaded.coordinators.get("swarm-dissolve"),
-        Some(&"coord-v1".to_string()),
-        "orphaned .bak resurrects the dissolved swarm at the next \
-         load_runtime_state; if this returns None the dissolution branch \
-         learned to delete the .bak (update the wiring audit)"
+    assert!(
+        !loaded.coordinators.contains_key("swarm-dissolve"),
+        "a dissolved swarm must not be restored on the next load"
     );
 }
 
@@ -916,7 +866,7 @@ fn empty_persist_dissolution_leaves_orphaned_bak_that_resurrects_on_load() {
 /// mutator B's re-creation and persist while A is parked, release A.
 #[tokio::test]
 #[allow(clippy::await_holding_lock)]
-async fn remove_racing_persist_deletes_fresh_snapshot_and_resurrects_stale_bak() {
+async fn stale_remove_cannot_delete_fresh_snapshot_or_restore_backup() {
     let dir = tempfile::TempDir::new().expect("tempdir");
     let _env = test_env(&dir);
 
@@ -966,25 +916,19 @@ async fn remove_racing_persist_deletes_fresh_snapshot_and_resurrects_stale_bak()
         "fresh snapshot must be durably on disk before A resumes"
     );
 
-    // Release A: its stale all-empty runtime passes has_any_state() and it
-    // deletes the snapshot B just wrote.
+    // Release A: its stale all-empty runtime passes has_any_state(), but the
+    // compare-and-delete guard must notice that the durable snapshot changed.
     drop(gate);
     a.await.expect("remove task");
 
     assert!(
-        !state_path("swarm-del-race").exists(),
-        "expected the racing remove to delete the freshly persisted \
-         snapshot; if the primary survives, the remove path gained \
-         ordering/state re-checks (update the wiring audit)"
+        state_path("swarm-del-race").exists(),
+        "a stale remove must not delete a freshly persisted snapshot"
     );
-    // The live swarm (coord-new is still registered in memory) now has no
-    // primary snapshot, and the only durable trace is the STALE backup, so
-    // the next load_runtime_state resurrects the pre-dissolution state.
     let loaded = load_runtime_state();
     assert_eq!(
         loaded.coordinators.get("swarm-del-race"),
-        Some(&"coord-stale".to_string()),
-        "restart restores the stale .bak snapshot: coord-new's fresh state \
-         was orphaned by the delete-vs-write race"
+        Some(&"coord-new".to_string()),
+        "restart must restore the fresh incarnation, not its stale backup"
     );
 }
