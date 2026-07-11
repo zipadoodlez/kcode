@@ -352,6 +352,19 @@ pub(super) async fn login_jcode_device_flow(email: &str, no_browser: bool) -> Re
             .join(crate::subscription_catalog::JCODE_ENV_FILE)
             .display()
     );
+    if approved
+        .tier
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(|tier| tier.eq_ignore_ascii_case("none") || tier.is_empty())
+    {
+        eprintln!();
+        eprintln!(
+            "  Choose a hosted-token plan at {}",
+            crate::subscription_catalog::JCODE_PRICING_URL
+        );
+        eprintln!("  The sign-in tab is already connected to this account.");
+    }
 
     crate::telemetry::record_auth_success("jcode-subscription", "device_code_magic_link");
     // TODO(telemetry): emit a dedicated `account_linked` event carrying
