@@ -11,6 +11,7 @@ path = "src/lib.rs"
 anyhow = "1"
 async-trait = "0.1"
 futures = "0.3"
+httpdate = "1"
 jcode-logging = { path = "../jcode-logging" }
 jcode-message-types = { path = "../jcode-message-types" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
