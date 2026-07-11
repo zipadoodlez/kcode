@@ -1,4 +1,7 @@
 use chrono::Utc;
+use std::collections::HashSet;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub fn new_id(prefix: &str) -> String {
     let ts = Utc::now().timestamp_millis();
@@ -52,7 +55,7 @@ const SERVER_MODIFIERS: &[(&str, &str)] = &[
 
 /// Session/client names with their icons.
 const SESSION_NAMES: &[(&str, &str)] = &[
-    // Animals and client entities. Every emoji here is a single, widely-supported
+    // Animals, nature companions, and client entities. Every emoji here is a single, widely-supported
     // codepoint (Unicode <= 12.0, no ZWJ sequences) with *default emoji
     // presentation* (no VS16 / U+FE0F needed). Text-default codepoints that rely
     // on VS16 render as monochrome outlines or tofu in macOS window titles
@@ -60,7 +63,6 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     // banned by `session_icons_render_as_single_safe_glyphs`.
     ("ant", "🐜"),
     ("bat", "🦇"),
-    ("bee", "🐝"),
     ("bird", "🐦"),
     ("bug", "🐛"),
     ("cat", "🐱"),
@@ -159,7 +161,41 @@ const SESSION_NAMES: &[(&str, &str)] = &[
     ("calf", "🐮"),
     ("macaque", "🐵"),
     ("tigress", "🐅"),
+    // Additional terminal-safe identities. These deliberately stay on Unicode
+    // 12 or older so they work in terminal tabs and window titles without a
+    // bundled emoji font. `bee` is intentionally absent: 🐝 is reserved for the
+    // global swarm marker rather than an individual client.
+    ("puppy", "🐶"),
+    ("duckling", "🐤"),
+    ("mizaru", "🙈"),
+    ("kikazaru", "🙉"),
+    ("iwazaru", "🙊"),
+    ("retriever", "🦮"),
+    ("pawprint", "🐾"),
+    ("piglet", "🐽"),
+    ("bonehound", "🦴"),
+    ("sabertooth", "🦷"),
+    ("microbe", "🦠"),
+    ("mushroom", "🍄"),
+    ("cactus", "🌵"),
+    ("clover", "🍀"),
+    ("sunflower", "🌻"),
+    ("hibiscus", "🌺"),
+    ("blossom", "🌸"),
+    ("daisy", "🌼"),
+    ("tulip", "🌷"),
+    ("rose", "🌹"),
+    ("maple", "🍁"),
+    ("seedling", "🌱"),
+    ("evergreen", "🌲"),
+    ("palmtree", "🌴"),
+    ("herb", "🌿"),
 ];
+
+fn session_name_cursor() -> &'static AtomicUsize {
+    static CURSOR: OnceLock<AtomicUsize> = OnceLock::new();
+    CURSOR.get_or_init(|| AtomicUsize::new((rand::random::<u64>() as usize) % SESSION_NAMES.len()))
+}
 
 /// Get an emoji icon for a session/client name word.
 pub fn session_icon(name: &str) -> &'static str {
@@ -214,12 +250,31 @@ pub fn extract_server_name(server_id: &str) -> Option<&str> {
 /// - full_id is the storage identifier like "session_fox_1234567890_deadbeefcafebabe"
 /// - short_name is the memorable part like "fox"
 pub fn new_memorable_session_id() -> (String, String) {
+    new_memorable_session_id_avoiding(&HashSet::new())
+}
+
+/// Generate a memorable session identity that avoids names already held by
+/// active sessions. A process-wide atomic cursor gives concurrent creators
+/// distinct candidates, while `used_names` preserves uniqueness across server
+/// reloads by excluding identities discovered from active-session markers.
+///
+/// When every portable identity is occupied, allocation gracefully wraps and
+/// permits reuse rather than preventing session creation.
+pub fn new_memorable_session_id_avoiding(used_names: &HashSet<String>) -> (String, String) {
     let ts = Utc::now().timestamp_millis();
     let rand: u64 = rand::random();
 
-    // Use the random value to pick a word
-    let idx = (rand as usize) % SESSION_NAMES.len();
-    let (word, _) = SESSION_NAMES[idx];
+    let cursor = session_name_cursor();
+    let word = (0..SESSION_NAMES.len())
+        .find_map(|_| {
+            let idx = cursor.fetch_add(1, Ordering::Relaxed) % SESSION_NAMES.len();
+            let (word, _) = SESSION_NAMES[idx];
+            (!used_names.contains(word)).then_some(word)
+        })
+        .unwrap_or_else(|| {
+            let idx = cursor.fetch_add(1, Ordering::Relaxed) % SESSION_NAMES.len();
+            SESSION_NAMES[idx].0
+        });
 
     let short_name = word.to_string();
     let full_id = format!("session_{}_{ts}_{rand:016x}", word);
@@ -308,6 +363,33 @@ mod tests {
             assert_eq!(icon, *expected_icon, "Icon mismatch for '{}'", name);
             assert_ne!(icon, "💫", "Name '{}' should have a specific icon", name);
         }
+    }
+
+    #[test]
+    fn session_identity_pool_is_expanded_and_reserves_bee_for_swarm() {
+        assert_eq!(SESSION_NAMES.len(), 125);
+        assert!(
+            SESSION_NAMES
+                .iter()
+                .all(|(name, icon)| *name != "bee" && *icon != "🐝"),
+            "the bee identity must remain reserved for the global swarm marker"
+        );
+        assert_eq!(session_icon("bee"), "💫");
+    }
+
+    #[test]
+    fn avoiding_allocator_uses_every_available_identity_before_reuse() {
+        let mut used = HashSet::new();
+        for _ in 0..SESSION_NAMES.len() {
+            let (_, name) = new_memorable_session_id_avoiding(&used);
+            assert!(used.insert(name), "allocator reused an available identity");
+        }
+        assert_eq!(used.len(), SESSION_NAMES.len());
+
+        // Exhaustion must degrade to reuse rather than blocking session creation.
+        let (id, reused) = new_memorable_session_id_avoiding(&used);
+        assert!(id.starts_with(&format!("session_{reused}_")));
+        assert!(used.contains(&reused));
     }
 
     /// Returns true for emoji that commonly fail to render as a single glyph on

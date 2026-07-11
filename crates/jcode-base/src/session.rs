@@ -1,4 +1,4 @@
-use crate::id::{extract_session_name, new_id, new_memorable_session_id};
+use crate::id::{extract_session_name, new_id, new_memorable_session_id_avoiding};
 use crate::message::{ContentBlock, Message, Role};
 pub use crate::storage::{
     SessionCounts, SessionPresence, active_session_ids, find_active_session_id_by_pid,
@@ -743,7 +743,14 @@ impl Session {
 
     pub fn create(parent_id: Option<String>, title: Option<String>) -> Self {
         let now = Utc::now();
-        let (id, short_name) = new_memorable_session_id();
+        // Keep memorable identities distinct across all currently active
+        // sessions. This naturally covers swarm members and survives a server
+        // reload because active PID markers retain their encoded short names.
+        let used_names = active_session_ids()
+            .into_iter()
+            .filter_map(|session_id| extract_session_name(&session_id).map(str::to_string))
+            .collect::<HashSet<_>>();
+        let (id, short_name) = new_memorable_session_id_avoiding(&used_names);
         let is_debug = default_is_test_session();
         let mut session = Self {
             id,
