@@ -1082,15 +1082,6 @@ pub(super) async fn handle_resume_session(
             }
         }
 
-        {
-            let mut connections = client_connections.write().await;
-            if let Some(info) = connections.get_mut(client_connection_id) {
-                info.session_id = session_id.clone();
-                info.client_instance_id = incoming_client_instance_id.clone();
-                info.last_seen = Instant::now();
-            }
-        }
-
         register_session_event_sender(
             swarm_members,
             &session_id,

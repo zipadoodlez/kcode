@@ -2131,20 +2131,23 @@ impl Server {
         };
 
         if !config.enabled {
-            return None;
+            return;
         }
 
         let (client_tx, client_rx) =
             tokio::sync::mpsc::unbounded_channel::<crate::gateway::GatewayClient>();
 
-        // Spawn the TCP/WebSocket listener
-        tokio::spawn(async move {
-            if let Err(e) = crate::gateway::run_gateway(config, client_tx).await {
-                crate::logging::error(&format!("Gateway error: {}", e));
-            }
-        });
-
-        Some(runtime.spawn_gateway_accept_loop(client_rx))
+        let listener_runtime = runtime.clone();
+        let listener_spawned = runtime
+            .spawn_background_task(async move {
+                if let Err(e) = crate::gateway::run_gateway(config, client_tx).await {
+                    crate::logging::error(&format!("Gateway error: {}", e));
+                }
+            })
+            .await;
+        if listener_spawned {
+            let _ = listener_runtime.spawn_gateway_accept_loop(client_rx).await;
+        }
     }
 }
 
