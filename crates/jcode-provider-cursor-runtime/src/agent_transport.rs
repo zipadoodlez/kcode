@@ -154,7 +154,10 @@ fn build_run_frames(prompt: &str, model: &str, cwd: &str) -> Vec<Vec<u8>> {
     env.extend(field_varint(20, 0));
     env.extend(field_str(21, cwd));
     env.extend(field_varint(22, 0));
-    let ctx_payload = field_ld(2, &field_ld(10, &field_ld(1, &field_ld(1, &field_ld(4, &env)))));
+    let ctx_payload = field_ld(
+        2,
+        &field_ld(10, &field_ld(1, &field_ld(1, &field_ld(4, &env)))),
+    );
     let frame1 = connect_frame(&ctx_payload);
 
     // marker frames streamed after the context.
@@ -195,7 +198,10 @@ fn next_frame(buf: &[u8]) -> Option<(u8, Vec<u8>, usize)> {
     if flag & 0x01 != 0 {
         // gzip-compressed payload
         let mut decoded = Vec::new();
-        if GzDecoder::new(&payload[..]).read_to_end(&mut decoded).is_ok() {
+        if GzDecoder::new(&payload[..])
+            .read_to_end(&mut decoded)
+            .is_ok()
+        {
             payload = decoded;
         }
     }
@@ -225,7 +231,11 @@ fn iter_fields(mut buf: &[u8]) -> impl Iterator<Item = PbField<'_>> {
             0 => {
                 let (_v, rest) = read_varint(buf)?;
                 buf = rest;
-                Some(PbField { field, wire, data: &[] })
+                Some(PbField {
+                    field,
+                    wire,
+                    data: &[],
+                })
             }
             2 => {
                 let (len, rest) = read_varint(buf)?;
@@ -242,14 +252,22 @@ fn iter_fields(mut buf: &[u8]) -> impl Iterator<Item = PbField<'_>> {
                     return None;
                 }
                 buf = &buf[4..];
-                Some(PbField { field, wire, data: &[] })
+                Some(PbField {
+                    field,
+                    wire,
+                    data: &[],
+                })
             }
             1 => {
                 if buf.len() < 8 {
                     return None;
                 }
                 buf = &buf[8..];
-                Some(PbField { field, wire, data: &[] })
+                Some(PbField {
+                    field,
+                    wire,
+                    data: &[],
+                })
             }
             _ => None,
         }
@@ -286,11 +304,13 @@ fn extract_answer_text(payload: &[u8]) -> Option<String> {
                 continue;
             }
             for leaf in iter_fields(f1_1.data) {
-                if leaf.field == 1 && leaf.wire == 2
+                if leaf.field == 1
+                    && leaf.wire == 2
                     && let Ok(s) = std::str::from_utf8(leaf.data)
-                        && !s.is_empty() {
-                            return Some(s.to_string());
-                        }
+                    && !s.is_empty()
+                {
+                    return Some(s.to_string());
+                }
             }
         }
     }
@@ -354,10 +374,7 @@ pub async fn run_agent_turn(
     let conn_task = tokio::spawn(async move {
         let _ = connection.await;
     });
-    let mut h2 = h2
-        .ready()
-        .await
-        .context("HTTP/2 connection not ready")?;
+    let mut h2 = h2.ready().await.context("HTTP/2 connection not ready")?;
 
     let request_id = Uuid::new_v4().to_string();
     let request = Request::builder()
@@ -436,7 +453,11 @@ pub async fn run_agent_turn(
     let idle_timeout = Duration::from_secs(4);
 
     'read: loop {
-        let budget = if got_text { idle_timeout } else { first_byte_timeout };
+        let budget = if got_text {
+            idle_timeout
+        } else {
+            first_byte_timeout
+        };
         let next = match tokio::time::timeout(budget, body.data()).await {
             Ok(Some(chunk)) => chunk,
             // Stream closed cleanly, or idle (server likely waiting for a tool
@@ -452,18 +473,15 @@ pub async fn run_agent_turn(
                 // end-of-stream trailer (JSON). Detect errors, then finish.
                 if let Ok(text) = std::str::from_utf8(&payload)
                     && let Ok(json) = serde_json::from_str::<serde_json::Value>(text)
-                        && let Some(err) = json.get("error") {
-                            error_message = Some(err.to_string());
-                        }
+                    && let Some(err) = json.get("error")
+                {
+                    error_message = Some(err.to_string());
+                }
                 break 'read;
             }
             if let Some(text) = extract_answer_text(&payload) {
                 got_text = true;
-                if tx
-                    .send(Ok(StreamEvent::TextDelta(text)))
-                    .await
-                    .is_err()
-                {
+                if tx.send(Ok(StreamEvent::TextDelta(text))).await.is_err() {
                     break 'read;
                 }
             }
@@ -501,7 +519,11 @@ mod tests {
         for frame in &frames {
             assert!(frame.len() >= 5);
             let len = u32::from_be_bytes([frame[1], frame[2], frame[3], frame[4]]) as usize;
-            assert_eq!(len + 5, frame.len(), "frame length prefix must match payload");
+            assert_eq!(
+                len + 5,
+                frame.len(),
+                "frame length prefix must match payload"
+            );
             assert_eq!(frame[0], 0, "request frames are uncompressed data frames");
         }
     }
@@ -548,4 +570,3 @@ mod tests {
         assert_eq!(heartbeat_frame(), vec![0, 0, 0, 0, 2, 0x3a, 0x00]);
     }
 }
-

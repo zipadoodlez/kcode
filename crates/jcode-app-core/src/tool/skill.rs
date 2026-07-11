@@ -83,11 +83,17 @@ impl Tool for SkillTool {
         let _args = params.args.as_deref();
 
         match params.action.as_str() {
-            "load" => self.load_skill(params.name, ctx.working_dir.as_deref()).await,
+            "load" => {
+                self.load_skill(params.name, ctx.working_dir.as_deref())
+                    .await
+            }
             "list" => self.list_skills(ctx.working_dir.as_deref()).await,
             "reload" => self.reload_skill(params.name).await,
             "reload_all" => self.reload_all_skills(ctx.working_dir.as_deref()).await,
-            "read" => self.read_skill(params.name, ctx.working_dir.as_deref()).await,
+            "read" => {
+                self.read_skill(params.name, ctx.working_dir.as_deref())
+                    .await
+            }
             _ => Ok(ToolOutput::new(format!(
                 "Unknown action: {}. Use 'load', 'list', 'reload', 'reload_all', or 'read'.",
                 params.action
@@ -257,8 +263,10 @@ impl SkillTool {
                     output.push_str(&format!("- /{}: {}\n", skill.name, skill.description));
                 }
 
-                Ok(ToolOutput::new(output)
-                    .with_title(format!("Skills: Reloaded {}", global_count)))
+                Ok(
+                    ToolOutput::new(output)
+                        .with_title(format!("Skills: Reloaded {}", global_count)),
+                )
             }
             Err(e) => {
                 crate::logging::warn(&format!(
@@ -619,9 +627,7 @@ mod tests {
         drop(shared);
 
         // Skill file edits are visible without any reload/restart.
-        let skill_md = repo_a
-            .path()
-            .join(".agents/skills/repo-a-skill/SKILL.md");
+        let skill_md = repo_a.path().join(".agents/skills/repo-a-skill/SKILL.md");
         std::fs::write(
             &skill_md,
             "---\nname: repo-a-skill\ndescription: Updated description\n---\n\nNew body.",

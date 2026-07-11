@@ -416,13 +416,11 @@ async fn run_native_text_command(
                 .with_context(|| {
                     format!("Cursor token was rejected and refresh also failed after: {err:#}")
                 })?;
-            crate::agent_transport::run_agent_turn(&refreshed.access_token, prompt, model, tx)
-                .await
+            crate::agent_transport::run_agent_turn(&refreshed.access_token, prompt, model, tx).await
         }
         Err(err) => Err(err),
     }
 }
-
 
 #[cfg(test)]
 #[path = "cursor_tests.rs"]

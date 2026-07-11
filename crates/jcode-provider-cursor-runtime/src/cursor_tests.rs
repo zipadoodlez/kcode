@@ -110,4 +110,3 @@ fn runtime_cursor_api_key_reads_env() {
         jcode_base::env::remove_var("CURSOR_API_KEY");
     }
 }
-

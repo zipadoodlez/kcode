@@ -1090,16 +1090,12 @@ pub(super) fn get_tool_summary_with_budget(
                 .and_then(|v| v.as_str())
                 .unwrap_or("gmail");
             let detail = match action {
-                "search" | "threads" => tool
-                    .input
-                    .get("query")
-                    .and_then(|v| v.as_str())
-                    .map(|q| {
-                        format!(
-                            "'{}'",
-                            truncate_query_display(q, bounded(40).saturating_sub(2))
-                        )
-                    }),
+                "search" | "threads" => tool.input.get("query").and_then(|v| v.as_str()).map(|q| {
+                    format!(
+                        "'{}'",
+                        truncate_query_display(q, bounded(40).saturating_sub(2))
+                    )
+                }),
                 "read" | "trash" | "modify_labels" => tool
                     .input
                     .get("message_id")
@@ -1119,9 +1115,7 @@ pub(super) fn get_tool_summary_with_budget(
                         tool.input
                             .get("subject")
                             .and_then(|v| v.as_str())
-                            .map(|s| {
-                                format!("'{}'", truncate_end_display(s, bounded(30)))
-                            })
+                            .map(|s| format!("'{}'", truncate_end_display(s, bounded(30))))
                     }),
                 "send_draft" => tool
                     .input

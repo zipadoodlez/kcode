@@ -144,7 +144,11 @@ fn filter_routes_by_provider_allowlist(
         .filter(|route| route.model == current_model || route_matches(route))
         .cloned()
         .collect();
-    if filtered.is_empty() { routes } else { filtered }
+    if filtered.is_empty() {
+        routes
+    } else {
+        filtered
+    }
 }
 
 fn model_picker_usage_key(model_name: &str, route: &PickerOption, effort: Option<&str>) -> String {
@@ -3528,7 +3532,9 @@ mod tests {
         assert!(!route_supports_reasoning_effort("copilot"));
         assert!(!route_supports_reasoning_effort("bedrock"));
         assert!(!route_supports_reasoning_effort("https"));
-        assert!(!route_supports_reasoning_effort("openai-compatible:llamacpp"));
+        assert!(!route_supports_reasoning_effort(
+            "openai-compatible:llamacpp"
+        ));
         assert!(!route_supports_reasoning_effort("remote-catalog"));
         assert!(!route_supports_reasoning_effort("current"));
     }

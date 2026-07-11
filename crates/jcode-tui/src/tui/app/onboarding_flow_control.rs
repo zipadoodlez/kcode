@@ -399,7 +399,9 @@ impl App {
             self.onboarding_import_error = None;
             self.onboarding_finish();
             let login = Self::onboarding_login_suggestion();
-            self.set_status_notice(format!("Onboarding skipped - run {login} when you're ready"));
+            self.set_status_notice(format!(
+                "Onboarding skipped - run {login} when you're ready"
+            ));
             return true;
         }
         match self.onboarding_phase() {

@@ -212,7 +212,10 @@ impl Tool for BrowserTool {
         for (name, schema) in [
             ("url", json!({"type": "string"})),
             ("tab_id", json!({"type": "integer"})),
-            ("window_id", json!({"type": "integer", "description": "Scope the action to a specific browser window. Useful when multiple agents drive the browser in parallel."})),
+            (
+                "window_id",
+                json!({"type": "integer", "description": "Scope the action to a specific browser window. Useful when multiple agents drive the browser in parallel."}),
+            ),
             ("frame_id", json!({"type": "integer"})),
             ("all_frames", json!({"type": "boolean"})),
             ("selector", json!({"type": "string"})),
