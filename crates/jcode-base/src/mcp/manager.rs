@@ -610,7 +610,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod provenance_integration_tests {
     use super::*;
     use std::io::Write;

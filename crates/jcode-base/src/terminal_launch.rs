@@ -66,7 +66,7 @@ fn spawn_via_hook(hook: &str, command: &TerminalCommand, cwd: &Path) -> Result<(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
