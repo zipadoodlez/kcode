@@ -292,10 +292,26 @@ pub fn signal_detached_process_group(pid: u32, signal: i32) -> std::io::Result<(
     #[cfg(windows)]
     {
         let _ = signal;
+        use std::os::windows::process::CommandExt;
         use windows_sys::Win32::Foundation::CloseHandle;
         use windows_sys::Win32::System::Threading::{
-            OpenProcess, PROCESS_TERMINATE, TerminateProcess,
+            CREATE_NO_WINDOW, OpenProcess, PROCESS_TERMINATE, TerminateProcess,
         };
+
+        // Detached commands commonly run through cmd.exe or PowerShell. Killing
+        // only that shell leaves compilers, test runners, and other descendants
+        // alive. taskkill's /T flag walks the Windows process tree. Keep the
+        // direct Win32 termination below as a fallback if taskkill is missing or
+        // the tree operation fails.
+        if std::process::Command::new("taskkill.exe")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            return Ok(());
+        }
+
         unsafe {
             let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
             if handle.is_null() {

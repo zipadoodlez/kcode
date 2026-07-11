@@ -74,6 +74,56 @@ fn is_process_running_reports_exited_children_as_stopped() {
 
 #[cfg(windows)]
 #[test]
+fn signal_detached_process_group_terminates_descendant_tree() {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    let temp = tempfile::tempdir().expect("temp dir");
+    let child_pid_path = temp.path().join("child.pid");
+    let script = concat!(
+        "$child = Start-Process powershell.exe ",
+        "-ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -PassThru; ",
+        "Set-Content -LiteralPath $env:JCODE_CHILD_PID -Value $child.Id; ",
+        "Start-Sleep -Seconds 30"
+    );
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-Command", script])
+        .env("JCODE_CHILD_PID", &child_pid_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut parent = super::spawn_detached(&mut cmd).expect("spawn detached process tree");
+    let parent_pid = parent.id();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !child_pid_path.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let child_pid = std::fs::read_to_string(&child_pid_path)
+        .expect("child pid file")
+        .trim()
+        .parse::<u32>()
+        .expect("child pid");
+    assert!(super::is_process_running(parent_pid));
+    assert!(super::is_process_running(child_pid));
+
+    super::signal_detached_process_group(parent_pid, 0).expect("terminate process tree");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while (super::is_process_running(parent_pid) || super::is_process_running(child_pid))
+        && Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let _ = parent.wait();
+
+    assert!(!super::is_process_running(parent_pid), "parent should stop");
+    assert!(
+        !super::is_process_running(child_pid),
+        "descendant should stop with the detached process tree"
+    );
+}
+
+#[cfg(windows)]
+#[test]
 fn spawn_replacement_process_returns_without_waiting_for_child_exit() {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
