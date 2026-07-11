@@ -4,6 +4,72 @@ fn sanitize_fenced_block(text: &str) -> String {
     text.replace("```", "``\u{200b}`")
 }
 
+/// Remove terminal escape sequences before captured command output is rendered.
+///
+/// Captured output is not attached to a terminal, so retaining control sequences
+/// cannot provide useful styling. It can, however, leak SGR parameters as visible
+/// text or allow OSC and other terminal commands to reach the renderer.
+pub fn strip_ansi_escape_sequences(text: &str) -> String {
+    fn consume_csi(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+        for ch in chars.by_ref() {
+            if ('@'..='~').contains(&ch) {
+                break;
+            }
+        }
+    }
+
+    fn consume_string(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+        let mut saw_escape = false;
+        for ch in chars.by_ref() {
+            if ch == '\u{7}' || (saw_escape && ch == '\\') {
+                break;
+            }
+            saw_escape = ch == '\u{1b}';
+        }
+    }
+
+    fn consume_escape(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+        match chars.peek().copied() {
+            Some('[') => {
+                chars.next();
+                consume_csi(chars);
+            }
+            Some(']' | 'P' | 'X' | '^' | '_') => {
+                chars.next();
+                consume_string(chars);
+            }
+            Some(_) => {
+                while chars
+                    .peek()
+                    .is_some_and(|ch| ('\u{20}'..='\u{2f}').contains(ch))
+                {
+                    chars.next();
+                }
+                if chars
+                    .peek()
+                    .is_some_and(|ch| ('\u{30}'..='\u{7e}').contains(ch))
+                {
+                    chars.next();
+                }
+            }
+            None => {}
+        }
+    }
+
+    let mut clean = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\u{1b}' => consume_escape(&mut chars),
+            '\u{9b}' => consume_csi(&mut chars),
+            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => consume_string(&mut chars),
+            '\u{80}'..='\u{9f}' => {}
+            _ => clean.push(ch),
+        }
+    }
+    clean
+}
+
 pub fn format_input_shell_result_markdown(shell: &InputShellResult) -> String {
     let status = if shell.failed_to_start {
         "✗ failed to start".to_string()
@@ -29,11 +95,12 @@ pub fn format_input_shell_result_markdown(shell: &InputShellResult) -> String {
         indent_block(&shell.command)
     );
 
-    if shell.output.trim().is_empty() {
+    let output = strip_ansi_escape_sequences(&shell.output);
+    if output.trim().is_empty() {
         message.push_str("\n\nNo output.");
     } else {
         message.push_str("\n\n");
-        message.push_str(&indent_block(shell.output.trim_end()));
+        message.push_str(&indent_block(output.trim_end()));
     }
 
     message
@@ -68,7 +135,9 @@ fn format_background_task_status(status: &BackgroundTaskStatus) -> &'static str 
 }
 
 fn normalize_background_task_preview(preview: &str) -> Option<String> {
-    let normalized = preview.replace("\r\n", "\n").replace('\r', "\n");
+    let normalized = strip_ansi_escape_sequences(preview)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     let trimmed = normalized.trim_end();
     if trimmed.trim().is_empty() {
         None
@@ -142,7 +211,9 @@ fn strip_stream_prefix(line: &str) -> &str {
 }
 
 fn background_task_failure_summary(preview: &str) -> Option<String> {
-    let normalized = preview.replace("\r\n", "\n").replace('\r', "\n");
+    let normalized = strip_ansi_escape_sequences(preview)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     let mut fallback: Option<String> = None;
 
     for raw_line in normalized.lines() {

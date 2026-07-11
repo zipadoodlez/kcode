@@ -463,6 +463,55 @@ fn format_background_task_notification_markdown_uses_code_block_preview() {
 }
 
 #[test]
+fn strip_ansi_escape_sequences_removes_terminal_controls() {
+    let input = concat!(
+        "\u{1b}[32mgreen\u{1b}[39m ",
+        "\u{1b}]8;;https://example.com\u{1b}\\link\u{1b}]8;;\u{7} ",
+        "\u{1b}Pignored\u{1b}\\done",
+    );
+
+    assert_eq!(strip_ansi_escape_sequences(input), "green link done");
+}
+
+#[test]
+fn format_input_shell_result_markdown_strips_ansi_from_output() {
+    let rendered = format_input_shell_result_markdown(&InputShellResult {
+        command: "cargo test".to_string(),
+        cwd: None,
+        output: "\u{1b}[32m✓\u{1b}[39m passes\n\u{1b}[2m12ms\u{1b}[22m\n".to_string(),
+        exit_code: Some(0),
+        duration_ms: 12,
+        truncated: false,
+        failed_to_start: false,
+    });
+
+    assert!(rendered.contains("  ✓ passes\n  12ms"));
+    assert!(!rendered.contains('\u{1b}'));
+    assert!(!rendered.contains("[32m"));
+}
+
+#[test]
+fn format_background_task_notification_markdown_strips_ansi_from_preview() {
+    let rendered = format_background_task_notification_markdown(&BackgroundTaskCompleted {
+        task_id: "ansi123".to_string(),
+        tool_name: "bash".to_string(),
+        display_name: None,
+        session_id: "session".to_string(),
+        status: BackgroundTaskStatus::Completed,
+        exit_code: Some(0),
+        output_preview: "\u{1b}[32m✓\u{1b}[39m passes\n\u{1b}[2m12ms\u{1b}[22m\n".to_string(),
+        output_file: std::path::PathBuf::from("/tmp/output.log"),
+        duration_secs: 0.1,
+        notify: true,
+        wake: false,
+    });
+
+    assert!(rendered.contains("```text\n✓ passes\n12ms\n```"));
+    assert!(!rendered.contains('\u{1b}'));
+    assert!(!rendered.contains("[32m"));
+}
+
+#[test]
 fn format_background_task_notification_markdown_handles_empty_preview() {
     let rendered = format_background_task_notification_markdown(&BackgroundTaskCompleted {
         task_id: "abc123".to_string(),

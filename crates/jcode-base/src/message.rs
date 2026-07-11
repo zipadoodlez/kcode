@@ -24,7 +24,7 @@ pub use notifications::{
     format_background_task_notification_markdown, format_background_task_progress_markdown,
     format_input_shell_result_markdown, format_model_refresh_progress_markdown,
     input_shell_status_notice, parse_background_task_notification_markdown,
-    parse_background_task_progress_notification_markdown,
+    parse_background_task_progress_notification_markdown, strip_ansi_escape_sequences,
 };
 
 fn compile_static_regex(pattern: &str) -> Option<Regex> {

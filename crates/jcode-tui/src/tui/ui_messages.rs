@@ -3,7 +3,7 @@ use super::*;
 mod cache_support;
 use crate::message::{
     ParsedBackgroundTaskProgressNotification, parse_background_task_notification_markdown,
-    parse_background_task_progress_notification_markdown,
+    parse_background_task_progress_notification_markdown, strip_ansi_escape_sequences,
 };
 pub(super) use cache_support::get_cached_message_lines;
 use cache_support::{centered_wrap_width, left_pad_lines_for_centered_mode};
@@ -32,11 +32,12 @@ fn width_stable_system_title<'a>(normal: &'a str, stable: &'a str) -> &'a str {
 }
 
 fn normalize_system_content_for_display(content: &str) -> Cow<'_, str> {
+    let sanitized = strip_ansi_escape_sequences(content);
     if !prefer_width_stable_system_glyphs() {
-        return Cow::Borrowed(content);
+        return Cow::Owned(sanitized);
     }
 
-    let normalized = content
+    let normalized = sanitized
         .replace("⚡ ", "! ")
         .replace("⏳ ", "... ")
         .replace("⏰ ", "* ");
@@ -1671,9 +1672,10 @@ pub(crate) fn render_background_task_message(
         .as_deref()
         .filter(|summary| !summary.is_empty())
     {
+        let failure_summary = strip_ansi_escape_sequences(failure_summary);
         box_content.push(Line::from(""));
         box_content.push(Line::from(Span::styled("Failure", label_style)));
-        for chunk in split_by_display_width(failure_summary, inner_width) {
+        for chunk in split_by_display_width(&failure_summary, inner_width) {
             box_content.push(Line::from(Span::styled(chunk, status_style)));
         }
     }
@@ -1682,6 +1684,7 @@ pub(crate) fn render_background_task_message(
 
     match parsed.preview.as_deref() {
         Some(preview) => {
+            let preview = strip_ansi_escape_sequences(preview);
             let preview_lines: Vec<&str> = preview.lines().collect();
             let shown_lines = preview_lines.len().min(4);
             for line in preview_lines.iter().take(shown_lines) {
