@@ -89,11 +89,17 @@ fn signal_detached_process_group_terminates_descendant_tree() {
     );
     std::fs::write(&script_path, script).expect("write parent PowerShell script");
     let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoProfile", "-File"])
-        .arg(&script_path)
-        .env("JCODE_CHILD_PID", &child_pid_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+    ])
+    .arg(&script_path)
+    .env("JCODE_CHILD_PID", &child_pid_path)
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
 
     let mut parent = super::spawn_detached(&mut cmd).expect("spawn detached process tree");
     let parent_pid = parent.id();
