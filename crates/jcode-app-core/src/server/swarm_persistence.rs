@@ -4,12 +4,53 @@ use crate::storage;
 use jcode_swarm_core::{SwarmLifecycleStatus, SwarmMemberRecord};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
 use tokio::sync::mpsc;
 
 /// Directory name under the durable state dir (`~/.jcode/state`).
 const SWARM_STATE_DIR: &str = "swarm";
 /// Pre-0.36 location under the runtime dir (tmpfs on Linux, wiped on reboot).
 const LEGACY_SWARM_STATE_DIR: &str = "jcode-swarm-state";
+
+/// Serialize each swarm's complete snapshot/read/write operation. Callers must
+/// acquire this before reading the independently locked in-memory maps so an
+/// older snapshot cannot finish after a newer one.
+static SWARM_OPERATION_LOCKS: LazyLock<StdMutex<HashMap<String, Weak<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// Protect primary/backup comparisons and filesystem updates, including tests
+/// and recovery paths that invoke the synchronous persistence helpers directly.
+static SWARM_FILE_LOCKS: LazyLock<StdMutex<HashMap<String, Weak<StdMutex<()>>>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SwarmStateFileVersion(Option<Vec<u8>>);
+
+pub(super) fn swarm_operation_lock(swarm_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let mut locks = SWARM_OPERATION_LOCKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    if let Some(lock) = locks.get(swarm_id).and_then(Weak::upgrade) {
+        return lock;
+    }
+    let lock = Arc::new(tokio::sync::Mutex::new(()));
+    locks.insert(swarm_id.to_string(), Arc::downgrade(&lock));
+    lock
+}
+
+fn swarm_file_lock(swarm_id: &str) -> Arc<StdMutex<()>> {
+    let mut locks = SWARM_FILE_LOCKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    if let Some(lock) = locks.get(swarm_id).and_then(Weak::upgrade) {
+        return lock;
+    }
+    let lock = Arc::new(StdMutex::new(()));
+    locks.insert(swarm_id.to_string(), Arc::downgrade(&lock));
+    lock
+}
 
 pub(super) struct LoadedSwarmRuntimeState {
     pub plans: HashMap<String, VersionedPlan>,
@@ -130,6 +171,57 @@ fn state_path(swarm_id: &str) -> PathBuf {
         })
         .collect();
     state_dir().join(format!("{}.json", sanitized))
+}
+
+fn read_primary_version(swarm_id: &str) -> SwarmStateFileVersion {
+    SwarmStateFileVersion(std::fs::read(state_path(swarm_id)).ok())
+}
+
+pub(super) fn capture_swarm_state_version(swarm_id: &str) -> SwarmStateFileVersion {
+    let file_lock = swarm_file_lock(swarm_id);
+    let _guard = file_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    read_primary_version(swarm_id)
+}
+
+fn remove_snapshot_files(swarm_id: &str) -> bool {
+    let path = state_path(swarm_id);
+    // First atomically replace the primary with an empty tombstone. The write
+    // may rotate the old primary to `.bak`, but load_runtime_state ignores that
+    // backup while the tombstone exists. Thus every crash point is safe: before
+    // rename the deletion did not happen, and after rename the old state is
+    // already logically invalid even if physical cleanup is interrupted.
+    let tombstone = PersistedSwarmState {
+        swarm_id: swarm_id.to_string(),
+        plan: None,
+        coordinator_session_id: None,
+        members: Vec::new(),
+        updated_at_unix_ms: now_unix_ms(),
+    };
+    if let Err(err) = storage::write_json_fast(&path, &tombstone) {
+        crate::logging::warn(&format!(
+            "Failed to tombstone swarm state {}: {}",
+            path.display(),
+            err
+        ));
+        return false;
+    }
+
+    let mut removed = true;
+    for candidate in [path.with_extension("bak"), path] {
+        if let Err(err) = std::fs::remove_file(&candidate)
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            removed = false;
+            crate::logging::warn(&format!(
+                "Failed to remove swarm state {}: {}",
+                candidate.display(),
+                err
+            ));
+        }
+    }
+    removed
 }
 
 fn from_persisted_plan(mut plan: PersistedVersionedPlan, updated_at_unix_ms: u64) -> VersionedPlan {
@@ -316,8 +408,27 @@ pub(super) fn persist_swarm_state(
     coordinator_session_id: Option<&str>,
     swarm_members: &[SwarmMember],
 ) {
+    let file_lock = swarm_file_lock(swarm_id);
+    let _guard = file_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     if swarm_plan.is_none() && coordinator_session_id.is_none() && swarm_members.is_empty() {
-        let _ = std::fs::remove_file(state_path(swarm_id));
+        let _ = remove_snapshot_files(swarm_id);
+        return;
+    }
+
+    // A snapshot can be captured before another task advances the plan and
+    // reach disk afterwards. Never let that stale completion regress the
+    // durable plan. Full member/coordinator ordering is provided by the
+    // per-swarm operation lock around load_runtime + this write.
+    if let Some(candidate_plan) = swarm_plan
+        && let Ok(current) = storage::read_json::<PersistedSwarmState>(&state_path(swarm_id))
+        && current
+            .plan
+            .as_ref()
+            .is_some_and(|plan| plan.version > candidate_plan.version)
+    {
         return;
     }
 
@@ -343,8 +454,27 @@ pub(super) fn persist_swarm_state(
     }
 }
 
+#[cfg(test)]
 pub(super) fn remove_swarm_state(swarm_id: &str) {
-    let _ = std::fs::remove_file(state_path(swarm_id));
+    let file_lock = swarm_file_lock(swarm_id);
+    let _guard = file_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _ = remove_snapshot_files(swarm_id);
+}
+
+pub(super) fn remove_swarm_state_if_version(
+    swarm_id: &str,
+    expected: &SwarmStateFileVersion,
+) -> bool {
+    let file_lock = swarm_file_lock(swarm_id);
+    let _guard = file_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if &read_primary_version(swarm_id) != expected {
+        return false;
+    }
+    remove_snapshot_files(swarm_id)
 }
 
 #[cfg(test)]

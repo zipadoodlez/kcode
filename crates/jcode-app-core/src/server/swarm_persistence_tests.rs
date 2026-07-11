@@ -1,5 +1,5 @@
 use super::*;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 struct EnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
@@ -93,7 +93,6 @@ fn persisted_swarm_state_round_trips_and_marks_running_stale() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
-        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -168,7 +167,6 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
-        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -645,6 +643,33 @@ async fn stale_persist_cannot_regress_newer_plan_version() {
     );
 }
 
+#[tokio::test]
+async fn persistence_operations_serialize_per_swarm_but_not_globally() {
+    let alpha = swarm_operation_lock("swarm-lock-alpha");
+    let same_alpha = swarm_operation_lock("swarm-lock-alpha");
+    let beta = swarm_operation_lock("swarm-lock-beta");
+    assert!(
+        Arc::ptr_eq(&alpha, &same_alpha),
+        "the same swarm must share one operation lock"
+    );
+    assert!(
+        !Arc::ptr_eq(&alpha, &beta),
+        "unrelated swarms must not share a global serialization lock"
+    );
+
+    let alpha_guard = alpha.lock().await;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), same_alpha.lock())
+            .await
+            .is_err(),
+        "a second operation for the same swarm must wait"
+    );
+    let _beta_guard = tokio::time::timeout(Duration::from_millis(100), beta.lock())
+        .await
+        .expect("an unrelated swarm operation was unnecessarily blocked");
+    drop(alpha_guard);
+}
+
 /// Companion finding discovered while writing the regression test above:
 /// `load_runtime_state` filters entries only with `path.is_file()`, with no
 /// `.json` extension check (unlike `migrate_legacy_state`, which does check).
@@ -680,7 +705,7 @@ fn load_runtime_state_reads_bak_files_as_snapshots() {
         "load_runtime_state currently ingests .bak files as snapshots; if \
          this fails the loader gained a .json extension filter (update the \
          wiring audit and the primary-file assertions in \
-         persist_snapshot_can_regress_to_older_plan_version_when_calls_interleave)"
+         stale_persist_cannot_regress_newer_plan_version)"
     );
 }
 
@@ -766,7 +791,6 @@ fn persisted_swarm_state_without_plan_still_restores_coordinator_and_members() {
         output_tail: None,
         todo_progress: None,
         todo_items: Vec::new(),
-        runtime: crate::protocol::SwarmMemberRuntime::default(),
         task_label: None,
     }];
 
@@ -861,7 +885,7 @@ fn empty_persist_dissolution_removes_backup_and_cannot_resurrect() {
 ///      stale pre-dissolution state instead.
 ///
 /// Same gate technique as
-/// `persist_snapshot_can_regress_to_older_plan_version_when_calls_interleave`:
+/// `stale_persist_cannot_regress_newer_plan_version`:
 /// park A inside `load_runtime` at the contended `members.read()`, run
 /// mutator B's re-creation and persist while A is parked, release A.
 #[tokio::test]

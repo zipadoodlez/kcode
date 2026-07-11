@@ -25,15 +25,23 @@ pub(super) async fn maybe_handle_swarm_write_command(
             .strip_prefix("swarm:clear_coordinator:")
             .unwrap_or("")
             .trim();
-        let mut coordinators = ctx.swarm_coordinators.write().await;
-        if coordinators.remove(swarm_id).is_some() {
-            let mut members = ctx.swarm_members.write().await;
-            for member in members.values_mut() {
-                if member.swarm_id.as_deref() == Some(swarm_id) && member.role == "coordinator" {
-                    member.role = "agent".to_string();
+        // Swarm member/coordinator mutations never nest these independent
+        // locks. In particular, persistence reads coordinators again, so a
+        // retained write guard here self-deadlocks the command.
+        let removed = {
+            let mut coordinators = ctx.swarm_coordinators.write().await;
+            coordinators.remove(swarm_id).is_some()
+        };
+        if removed {
+            {
+                let mut members = ctx.swarm_members.write().await;
+                for member in members.values_mut() {
+                    if member.swarm_id.as_deref() == Some(swarm_id) && member.role == "coordinator"
+                    {
+                        member.role = "agent".to_string();
+                    }
                 }
             }
-            drop(members);
             let swarm_state = SwarmState {
                 members: Arc::clone(ctx.swarm_members),
                 swarms_by_id: Arc::clone(ctx.swarms_by_id),
