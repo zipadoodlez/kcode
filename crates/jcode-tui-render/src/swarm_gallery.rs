@@ -266,6 +266,85 @@ pub fn render_gallery(
     out
 }
 
+/// Render expanded swarm-member cards for placement directly beneath a
+/// `swarm spawn` tool call in the chat transcript.
+///
+/// Unlike the persistent swarm strip, this renderer is intentionally just the
+/// member card: identity/runtime metadata followed by the bounded todo/tool
+/// activity tree. Callers are responsible for associating members with the
+/// tool call that spawned them.
+pub fn render_swarm_chat_cards(
+    members: &[GalleryMember],
+    spinner_frame: usize,
+    width: usize,
+) -> Vec<Line<'static>> {
+    if members.is_empty() || width < 8 {
+        return Vec::new();
+    }
+
+    let mut out = Vec::new();
+    for (card_index, member) in sort_members_for_display(members).into_iter().enumerate() {
+        if card_index > 0 {
+            out.push(Line::from(""));
+        }
+
+        let accent = status_accent(&member.status);
+        let mut metadata = vec![format!(
+            "{} {}",
+            status_glyph(&member.status, spinner_frame),
+            card_status_label(&member.status)
+        )];
+        if let Some((done, total)) = member.todo {
+            metadata.push(format!("Todo {done}/{total}"));
+        }
+        if let Some(elapsed) = member.elapsed_secs {
+            metadata.push(format_elapsed(elapsed));
+        }
+        if let Some(model) = member
+            .model
+            .as_deref()
+            .filter(|model| !model.trim().is_empty())
+        {
+            metadata.push(format_model(model));
+        }
+
+        const LEAD: &str = "    🐝  ";
+        let label = format!("{} ", member.label);
+        let mut tail = metadata.join(" · ");
+        while metadata.len() > 1 && disp_w(LEAD) + disp_w(&label) + 2 + disp_w(&tail) > width {
+            metadata.pop();
+            tail = metadata.join(" · ");
+        }
+
+        let mut header = vec![
+            Span::styled(LEAD.to_string(), Style::default().fg(rgb(255, 200, 100))),
+            Span::styled(
+                label.clone(),
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+        ];
+        let consumed = disp_w(LEAD) + disp_w(&label);
+        if consumed + 2 + disp_w(&tail) <= width {
+            header.push(Span::raw(" ".repeat(width - consumed - disp_w(&tail))));
+            header.push(Span::styled(tail, Style::default().fg(rgb(150, 150, 160))));
+        }
+        out.push(Line::from(header));
+
+        let body_budget = member.todo_items.len().min(4).saturating_add(3).max(1);
+        out.extend(hovered_detail_body(
+            member,
+            spinner_frame,
+            width,
+            body_budget,
+        ));
+    }
+
+    for line in &mut out {
+        clamp_line_to_width(line, width);
+    }
+    out
+}
+
 /// Render the swarm panel as a compact list of managed agents plus a detail
 /// viewport for the selected agent.
 ///
@@ -800,7 +879,7 @@ pub fn render_swarm_strip_vertical(
 
         // Expanded workers use the full-width information card header approved
         // for the inline swarm view. Compact rows retain the older chip layout.
-        if is_sel && !m.todo_items.is_empty() {
+        if focused && is_sel && !m.todo_items.is_empty() {
             let left = format!("{} ", m.label);
             spans.push(Span::styled(
                 left.clone(),
@@ -928,13 +1007,10 @@ pub fn render_swarm_strip_vertical(
     }
 
     // ---- Accordion detail under the selected row ----
-    // Todo progress remains visible even when the controls are not focused, so
-    // a spawned worker reads as a live card rather than a one-line status chip.
-    if focused
-        || ordered
-            .get(selected)
-            .is_some_and(|m| !m.todo_items.is_empty())
-    {
+    // Expanded details belong to the explicitly focused control surface. The
+    // always-visible live card is rendered in chat beneath the spawning tool
+    // call, so the persistent status strip stays compact.
+    if focused {
         let hint_rows = usize::from(focused && !hints.is_empty());
         let detail_budget = max_height.saturating_sub(out.len() + hint_rows);
         if let (Some(m), Some(at)) = (ordered.get(selected), selected_row_at)
@@ -2098,7 +2174,7 @@ mod tests {
     }
 
     #[test]
-    fn vertical_strip_unfocused_shows_four_todos_and_last_three_tool_intents() {
+    fn chat_card_shows_four_todos_and_last_three_tool_intents() {
         let mut worker = member("reviewer", "running", None, &[]);
         worker.icon = Some("🐝".to_string());
         worker.task = Some("review authentication changes".to_string());
@@ -2153,20 +2229,13 @@ mod tests {
             },
         ];
 
-        let lines = render_swarm_strip_vertical(
-            &[worker],
-            0,
-            false,
-            &hints(),
-            Some("alt+n controls"),
-            2,
-            100,
-            4,
-            16,
-        );
+        let lines = render_swarm_chat_cards(&[worker], 2, 100);
         let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         assert_eq!(lines.len(), 8, "header + 4 todos + 3 intents: {all}");
-        assert!(all.contains("🐝 reviewer"), "agent identity missing: {all}");
+        assert!(
+            all.contains("🐝  reviewer"),
+            "agent identity missing: {all}"
+        );
         assert!(
             all.contains("⠹ Working · Todo 2/4 · 00:18 · GPT-5.6"),
             "header metadata missing: {all}"
@@ -2202,6 +2271,37 @@ mod tests {
         assert!(
             !all.contains("Old intent"),
             "oldest intent should roll off: {all}"
+        );
+    }
+
+    #[test]
+    fn vertical_strip_unfocused_keeps_live_card_details_in_chat() {
+        let mut worker = member("reviewer", "running", None, &[]);
+        worker.icon = Some("🐝".to_string());
+        worker.task = Some("review authentication changes".to_string());
+        worker.todo = Some((2, 4));
+        worker.todo_items = vec![GalleryTodo {
+            content: "test token refresh flow".into(),
+            status: "in_progress".into(),
+            tool_intents: Vec::new(),
+        }];
+
+        let lines = render_swarm_strip_vertical(
+            &[worker],
+            0,
+            false,
+            &hints(),
+            Some("alt+n controls"),
+            2,
+            100,
+            4,
+            16,
+        );
+        let all = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
+        assert_eq!(lines.len(), 1, "unfocused strip stays compact: {all}");
+        assert!(
+            !all.contains("test token refresh flow"),
+            "details leaked: {all}"
         );
     }
 

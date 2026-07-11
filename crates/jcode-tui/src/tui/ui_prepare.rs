@@ -505,6 +505,33 @@ pub(super) fn active_batch_progress_hash(app: &dyn TuiState) -> u64 {
     hasher.finish()
 }
 
+fn swarm_members_signature(members: &[crate::protocol::SwarmMemberStatus]) -> u64 {
+    serde_json::to_string(members)
+        .map(|snapshot| super::hash_text_for_cache(&snapshot))
+        .unwrap_or_default()
+}
+
+fn spawned_member_for_tool<'a>(
+    msg: &DisplayMessage,
+    members: &'a [crate::protocol::SwarmMemberStatus],
+) -> Option<&'a crate::protocol::SwarmMemberStatus> {
+    let tool = msg.tool_data.as_ref()?;
+    if tools_ui::canonical_tool_name(&tool.name) != "swarm"
+        || tool.input.get("action").and_then(|value| value.as_str()) != Some("spawn")
+    {
+        return None;
+    }
+
+    let session_id = msg
+        .content
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Spawned new agent: "))?
+        .trim();
+    members
+        .iter()
+        .find(|member| member.session_id == session_id)
+}
+
 fn prepare_active_batch_progress(
     app: &dyn TuiState,
     width: u16,
@@ -610,6 +637,7 @@ pub(super) fn prepare_messages(
         inline_images_signature: app.side_pane_images_signature(),
         inline_images_visible: app.inline_images_visible(),
         expanded_images_version: app.expanded_images_version(),
+        swarm_members_signature: swarm_members_signature(&app.inline_swarm_members()),
     };
 
     super::note_full_prep_request();
@@ -857,6 +885,7 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
         inline_images_visible: app.inline_images_visible(),
         images_signature: app.side_pane_images_signature(),
         expanded_images_version: app.expanded_images_version(),
+        swarm_members_signature: swarm_members_signature(&app.inline_swarm_members()),
     };
     let msg_count = app.display_messages().len();
     let cache_lookup_start = Instant::now();
@@ -1031,6 +1060,7 @@ struct BodyRenderCtx<'a> {
     anchored_images: Arc<super::inline_image_ui::AnchoredInlineImages>,
     inline_images_visible: bool,
     messages: &'a [DisplayMessage],
+    swarm_members: Vec<crate::protocol::SwarmMemberStatus>,
 }
 
 /// Mutable accumulator for one body build. Both `prepare_body` (full) and
@@ -1239,6 +1269,18 @@ fn render_message_into(
             }
             for line in cached {
                 acc.push_auto(align_if_unset(line, align));
+            }
+            if let Some(member) = spawned_member_for_tool(msg, &ctx.swarm_members) {
+                let spinner_frame = (app.animation_elapsed()
+                    * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
+                    as usize;
+                for line in crate::tui::info_widget::swarm_gallery::render_swarm_chat_card_lines(
+                    std::slice::from_ref(member),
+                    spinner_frame,
+                    width.saturating_sub(1) as usize,
+                ) {
+                    acc.push_auto(line.alignment(ratatui::layout::Alignment::Left));
+                }
             }
             for line in todo_change_lines(ctx.messages, msg_global_idx, msg, width) {
                 acc.push_auto(align_if_unset(line, align));
@@ -1498,6 +1540,7 @@ pub(super) fn prepare_body_incremental(
         anchored_images,
         inline_images_visible: app.inline_images_visible(),
         messages,
+        swarm_members: app.inline_swarm_members(),
     };
 
     let mut acc = BodyAcc {
@@ -1823,6 +1866,7 @@ pub(super) fn prepare_body_prepended(
         anchored_images: super::inline_image_ui::resolve_anchored_items_cached(app),
         inline_images_visible: app.inline_images_visible(),
         messages,
+        swarm_members: app.inline_swarm_members(),
     };
 
     // The head sits at the very top of the transcript, so it starts with the
@@ -2072,6 +2116,7 @@ pub(super) fn prepare_body(
         anchored_images: super::inline_image_ui::resolve_anchored_items_cached(app),
         inline_images_visible: app.inline_images_visible(),
         messages,
+        swarm_members: app.inline_swarm_members(),
     };
 
     let mut acc = BodyAcc::default();

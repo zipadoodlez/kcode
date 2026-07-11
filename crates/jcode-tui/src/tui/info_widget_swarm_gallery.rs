@@ -71,7 +71,7 @@ fn member_body(member: &SwarmMemberStatus) -> Vec<String> {
 }
 
 /// Convert swarm members into renderer-agnostic gallery members.
-fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
+pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
     members
         .iter()
         .map(|member| GalleryMember {
@@ -107,6 +107,20 @@ fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMember> {
                 .collect(),
         })
         .collect()
+}
+
+/// Render expanded member cards for insertion directly beneath a swarm tool
+/// call in the transcript.
+pub(crate) fn render_swarm_chat_card_lines(
+    members: &[SwarmMemberStatus],
+    spinner_frame: usize,
+    width: usize,
+) -> Vec<Line<'static>> {
+    jcode_tui_render::swarm_gallery::render_swarm_chat_cards(
+        &members_to_gallery(members),
+        spinner_frame,
+        width,
+    )
 }
 
 /// Render the inline swarm gallery for the given members into `area`-width lines.

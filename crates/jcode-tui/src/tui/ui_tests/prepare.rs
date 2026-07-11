@@ -1,5 +1,148 @@
 use super::*;
 
+fn chat_swarm_member(session_id: &str) -> crate::protocol::SwarmMemberStatus {
+    crate::protocol::SwarmMemberStatus {
+        session_id: session_id.to_string(),
+        friendly_name: Some("API reviewer".to_string()),
+        status: "running".to_string(),
+        detail: None,
+        task_label: Some("review authentication changes".to_string()),
+        role: Some("agent".to_string()),
+        is_headless: Some(true),
+        live_attachments: None,
+        status_age_secs: Some(0),
+        output_tail: None,
+        report_back_to_session_id: Some("coordinator".to_string()),
+        todo_progress: Some((1, 3)),
+        todo_items: vec![
+            crate::protocol::SwarmTodoItem {
+                content: "Inspect authentication middleware".to_string(),
+                status: "completed".to_string(),
+                tool_intents: Vec::new(),
+            },
+            crate::protocol::SwarmTodoItem {
+                content: "Test token refresh flow".to_string(),
+                status: "in_progress".to_string(),
+                tool_intents: vec![crate::protocol::SwarmToolIntent {
+                    tool_call_id: "call-tests".to_string(),
+                    tool_name: "bash".to_string(),
+                    intent: "Run targeted authentication tests".to_string(),
+                    status: "running".to_string(),
+                    progress: Some(crate::protocol::SwarmToolProgress {
+                        current: 27,
+                        total: 43,
+                        unit: Some("tests".to_string()),
+                    }),
+                }],
+            },
+            crate::protocol::SwarmTodoItem {
+                content: "Report findings".to_string(),
+                status: "pending".to_string(),
+                tool_intents: Vec::new(),
+            },
+        ],
+        runtime: crate::protocol::SwarmMemberRuntime {
+            model: Some("openai:gpt-5.6-sol".to_string()),
+            elapsed_secs: Some(18),
+        },
+    }
+}
+
+#[test]
+fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call() {
+    let session_id = "spawned-session-123";
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: format!("Spawned new agent: {session_id}"),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-spawn".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::json!({
+                    "action": "spawn",
+                    "label": "API reviewer",
+                    "prompt": "Review the authentication flow"
+                }),
+                intent: Some("Spawn an authentication reviewer".to_string()),
+                thought_signature: None,
+            }),
+        }],
+        swarm_members: vec![chat_swarm_member(session_id)],
+        anim_elapsed: 0.16,
+        ..Default::default()
+    };
+
+    let prepared = prepare::prepare_messages(&state, 110, 30);
+    let rendered = prepared
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>();
+    let tool_row = rendered
+        .iter()
+        .position(|line| line.contains("Spawn an authentication reviewer"))
+        .expect("missing swarm tool row");
+    let card_row = rendered
+        .iter()
+        .position(|line| line.contains("🐝  API reviewer"))
+        .expect("missing live member card");
+    let all = rendered.join("\n");
+
+    assert_eq!(
+        card_row,
+        tool_row + 1,
+        "card must directly follow tool: {all}"
+    );
+    assert!(
+        all.contains("Working · Todo 1/3 · 00:18 · GPT-5.6"),
+        "runtime metadata missing: {all}"
+    );
+    assert!(
+        all.contains("Test token refresh flow"),
+        "todo missing: {all}"
+    );
+    assert!(
+        all.contains("bash · Run targeted authentication tests · 27/43"),
+        "tool intent missing: {all}"
+    );
+}
+
+#[test]
+fn test_prepare_messages_does_not_attach_member_to_unmatched_spawn_result() {
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: "Spawned new agent: another-session".to_string(),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-spawn".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::json!({"action": "spawn", "label": "reviewer"}),
+                intent: None,
+                thought_signature: None,
+            }),
+        }],
+        swarm_members: vec![chat_swarm_member("spawned-session-123")],
+        ..Default::default()
+    };
+
+    let rendered = prepare::prepare_messages(&state, 110, 30)
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !rendered.contains("🐝  API reviewer"),
+        "rendered={rendered}"
+    );
+}
+
 #[test]
 fn test_prepare_messages_live_batch_rows_do_not_soft_wrap_on_narrow_width() {
     let state = TestState {
