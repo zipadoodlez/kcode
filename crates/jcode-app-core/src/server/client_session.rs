@@ -795,26 +795,16 @@ async fn cleanup_detached_source_session_if_unused(
 ) {
     unregister_session_event_sender(swarm_members, old_session_id, client_connection_id).await;
 
-    let other_live_clients = {
-        let connections = client_connections.read().await;
-        connections
-            .values()
-            .any(|info| info.client_id != client_connection_id && info.session_id == old_session_id)
-    };
-
-    if other_live_clients {
-        return;
-    }
-
+    if !remove_detached_source_if_unclaimed(
+        old_session_id,
+        client_connection_id,
+        source_agent,
+        sessions,
+        client_connections,
+    )
+    .await
     {
-        let mut sessions_guard = sessions.write().await;
-        if sessions_guard
-            .get(old_session_id)
-            .map(|existing| Arc::ptr_eq(existing, source_agent))
-            .unwrap_or(false)
-        {
-            sessions_guard.remove(old_session_id);
-        }
+        return;
     }
 
     {
@@ -853,6 +843,63 @@ async fn cleanup_detached_source_session_if_unused(
         )
         .await;
     }
+}
+
+/// Removes a detached source only while holding the same connection-registry
+/// write lock used to claim a live resume target. The connection registry is
+/// the attachment authority, so the lock order for transitions is always
+/// `client_connections` then `sessions`.
+async fn remove_detached_source_if_unclaimed(
+    old_session_id: &str,
+    client_connection_id: &str,
+    source_agent: &Arc<Mutex<Agent>>,
+    sessions: &SessionAgents,
+    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
+) -> bool {
+    let connections = client_connections.write().await;
+    if connections
+        .values()
+        .any(|info| info.client_id != client_connection_id && info.session_id == old_session_id)
+    {
+        return false;
+    }
+
+    let mut sessions_guard = sessions.write().await;
+    let owns_source = sessions_guard
+        .get(old_session_id)
+        .map(|existing| Arc::ptr_eq(existing, source_agent))
+        .unwrap_or(false);
+    if owns_source {
+        sessions_guard.remove(old_session_id);
+    }
+    owns_source
+}
+
+/// Atomically reserves an existing live target for this connection.
+///
+/// Reserving under the connection write lock prevents another connection's
+/// detached-source cleanup from observing no users after we have selected the
+/// target but before our connection record is updated.
+async fn claim_live_target_agent(
+    session_id: &str,
+    client_connection_id: &str,
+    client_instance_id: Option<&str>,
+    source_agent: &Arc<Mutex<Agent>>,
+    sessions: &SessionAgents,
+    client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
+) -> Option<Arc<Mutex<Agent>>> {
+    let mut connections = client_connections.write().await;
+    let sessions_guard = sessions.read().await;
+    let target = sessions_guard
+        .get(session_id)
+        .filter(|existing| !Arc::ptr_eq(existing, source_agent))
+        .cloned()?;
+
+    let info = connections.get_mut(client_connection_id)?;
+    info.session_id = session_id.to_string();
+    info.client_instance_id = client_instance_id.map(str::to_string);
+    info.last_seen = Instant::now();
+    Some(target)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -913,15 +960,17 @@ pub(super) async fn handle_resume_session(
             ("allow_takeover", allow_session_takeover.to_string()),
         ],
     );
-    let live_target_agent = {
-        let sessions_guard = sessions.read().await;
-        sessions_guard.get(&session_id).cloned()
-    };
+    let live_target_agent = claim_live_target_agent(
+        &session_id,
+        client_connection_id,
+        incoming_client_instance_id.as_deref(),
+        agent,
+        sessions,
+        client_connections,
+    )
+    .await;
 
-    if let Some(live_target_agent) = live_target_agent
-        .as_ref()
-        .filter(|existing| !Arc::ptr_eq(existing, agent))
-    {
+    if let Some(live_target_agent) = live_target_agent.as_ref() {
         let old_session_id = client_session_id.clone();
 
         let conflicting_live_client = {

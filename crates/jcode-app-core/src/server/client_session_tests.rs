@@ -1,6 +1,7 @@
 use super::{
-    handle_clear_session, handle_reload, handle_resume_session, mark_remote_reload_started,
-    rename_shutdown_signal, restored_session_was_interrupted, session_was_interrupted_by_reload,
+    claim_live_target_agent, handle_clear_session, handle_reload, handle_resume_session,
+    mark_remote_reload_started, remove_detached_source_if_unclaimed, rename_shutdown_signal,
+    restored_session_was_interrupted, session_was_interrupted_by_reload,
     subscribe_should_mark_ready,
 };
 use crate::agent::Agent;
@@ -138,6 +139,106 @@ async fn collect_events_until_done(
         }
     }
     events
+}
+
+#[tokio::test]
+async fn live_target_claim_is_atomic_with_detached_source_cleanup() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider.clone()).await;
+
+    for iteration in 0..32 {
+        let target_id = format!("session_atomic_target_{iteration}");
+        let source_id = format!("session_atomic_source_{iteration}");
+        let target_agent = Arc::new(Mutex::new(build_test_agent_with_id(
+            provider.clone(),
+            registry.clone(),
+            &target_id,
+            Vec::new(),
+        )));
+        let source_agent = Arc::new(Mutex::new(build_test_agent_with_id(
+            provider.clone(),
+            registry.clone(),
+            &source_id,
+            Vec::new(),
+        )));
+        let sessions = Arc::new(RwLock::new(HashMap::from([(
+            target_id.clone(),
+            Arc::clone(&target_agent),
+        )])));
+        let now = Instant::now();
+        let (disconnect_tx, _disconnect_rx) = mpsc::unbounded_channel();
+        let connections = Arc::new(RwLock::new(HashMap::from([(
+            "incoming".to_string(),
+            ClientConnectionInfo {
+                client_id: "incoming".to_string(),
+                session_id: source_id,
+                client_instance_id: None,
+                debug_client_id: None,
+                connected_at: now,
+                last_seen: now,
+                is_processing: false,
+                current_tool_name: None,
+                terminal_env: Vec::new(),
+                disconnect_tx,
+            },
+        )])));
+        let barrier = Arc::new(tokio::sync::Barrier::new(3));
+
+        let claim = {
+            let barrier = Arc::clone(&barrier);
+            let sessions = Arc::clone(&sessions);
+            let connections = Arc::clone(&connections);
+            let source_agent = Arc::clone(&source_agent);
+            let target_id = target_id.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+                claim_live_target_agent(
+                    &target_id,
+                    "incoming",
+                    Some("instance-a"),
+                    &source_agent,
+                    &sessions,
+                    &connections,
+                )
+                .await
+                .is_some()
+            })
+        };
+        let cleanup = {
+            let barrier = Arc::clone(&barrier);
+            let sessions = Arc::clone(&sessions);
+            let connections = Arc::clone(&connections);
+            let target_agent = Arc::clone(&target_agent);
+            let target_id = target_id.clone();
+            tokio::spawn(async move {
+                barrier.wait().await;
+                remove_detached_source_if_unclaimed(
+                    &target_id,
+                    "cleanup",
+                    &target_agent,
+                    &sessions,
+                    &connections,
+                )
+                .await
+            })
+        };
+
+        barrier.wait().await;
+        let claimed = claim.await.expect("claim task should complete");
+        let removed = cleanup.await.expect("cleanup task should complete");
+        assert_ne!(claimed, removed, "exactly one transition must win");
+        assert_eq!(
+            sessions.read().await.contains_key(&target_id),
+            claimed,
+            "a successful claim must keep its target registered"
+        );
+        if claimed {
+            let connections = connections.read().await;
+            let incoming = connections.get("incoming").expect("incoming connection");
+            assert_eq!(incoming.session_id, target_id);
+            assert_eq!(incoming.client_instance_id.as_deref(), Some("instance-a"));
+        }
+    }
 }
 
 #[path = "client_session_tests/clear.rs"]
