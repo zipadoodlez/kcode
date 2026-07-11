@@ -130,13 +130,27 @@ impl App {
         if should_open {
             let saved_input = self.input.clone();
             let saved_cursor = self.cursor_pos;
+            let append_model_filter_space =
+                matches!(
+                    request,
+                    InlinePickerPreviewRequest::Model { ref filter } if filter.is_empty()
+                ) && matches!(saved_input.trim_start(), "/model" | "/models")
+                    && saved_cursor == saved_input.len();
             request.open(self);
+            let mut preview_opened = false;
             if let Some(ref mut picker) = self.inline_interactive_state {
                 picker.preview = true;
+                preview_opened = true;
             }
             // Preview must not steal the user's command input.
             self.input = saved_input;
             self.cursor_pos = saved_cursor;
+            // Once the model picker is visible, put the cursor in its filter
+            // argument so typing narrows models instead of extending `/model`.
+            if preview_opened && append_model_filter_space {
+                self.input.push(' ');
+                self.cursor_pos = self.input.len();
+            }
         }
 
         if let Some(ref mut picker) = self.inline_interactive_state

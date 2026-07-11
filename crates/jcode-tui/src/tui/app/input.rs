@@ -676,20 +676,23 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
 
     let at_end = app.cursor_pos == app.input.len();
 
-    // A habitual space typed right after `/login ` (auto-inserted below)
-    // would only add noise; swallow it so `/login` + space + filter still
-    // produces a single separator.
-    if text == " " && at_end && app.input.trim_start() == "/login " {
+    // A habitual space typed after an auto-inserted picker separator would
+    // only add noise. Swallow it so command + space + filter still produces
+    // a single separator.
+    if text == " " && at_end && matches!(app.input.trim_start(), "/login " | "/model " | "/models ")
+    {
         return;
     }
 
     app.remember_input_undo_state();
 
-    // After `/login` is fully typed (or tab-completed without a trailing
-    // space), the next printable character starts the provider filter;
-    // insert the separating space so it filters the login picker instead of
-    // producing `/loginzai` and closing the preview.
-    if at_end && app.input.trim_start() == "/login" && !text.starts_with(char::is_whitespace) {
+    // After a picker command is fully typed (or completed without a trailing
+    // space), the next printable character starts its filter. Insert the
+    // separator instead of extending the command token and closing the picker.
+    if at_end
+        && matches!(app.input.trim_start(), "/login" | "/model" | "/models")
+        && !text.starts_with(char::is_whitespace)
+    {
         app.input.push(' ');
         app.cursor_pos = app.input.len();
     }
@@ -697,11 +700,12 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
     app.input.insert_str(app.cursor_pos, text);
     app.cursor_pos += text.len();
 
-    // Typing the final char of `/login` immediately arms provider filtering:
-    // insert the separating space so the very next keystrokes filter the
-    // login picker. Without this, users press Enter without realizing they
-    // can filter first.
-    if app.cursor_pos == app.input.len() && app.input.trim_start() == "/login" {
+    // Typing the final command character immediately arms picker filtering.
+    // Without this, users can keep typing the command token or press Enter
+    // without realizing the visible picker is ready to filter.
+    if app.cursor_pos == app.input.len()
+        && matches!(app.input.trim_start(), "/login" | "/model" | "/models")
+    {
         app.input.push(' ');
         app.cursor_pos = app.input.len();
     }
