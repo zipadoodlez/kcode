@@ -104,6 +104,7 @@ mod transcript_routing_tests {
     use crate::protocol::ServerEvent;
     use crate::server::SwarmMember;
     use std::collections::HashMap;
+    #[cfg(target_os = "linux")]
     use std::ffi::OsString;
     use std::sync::Arc;
     use std::time::Instant;

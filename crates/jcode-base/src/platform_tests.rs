@@ -80,14 +80,17 @@ fn signal_detached_process_group_terminates_descendant_tree() {
 
     let temp = tempfile::tempdir().expect("temp dir");
     let child_pid_path = temp.path().join("child.pid");
+    let script_path = temp.path().join("parent.ps1");
     let script = concat!(
         "$child = Start-Process powershell.exe ",
         "-ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -PassThru; ",
         "Set-Content -LiteralPath $env:JCODE_CHILD_PID -Value $child.Id; ",
         "Start-Sleep -Seconds 30"
     );
+    std::fs::write(&script_path, script).expect("write parent PowerShell script");
     let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoProfile", "-Command", script])
+    cmd.args(["-NoProfile", "-File"])
+        .arg(&script_path)
         .env("JCODE_CHILD_PID", &child_pid_path)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
