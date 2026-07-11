@@ -283,7 +283,8 @@ jobs:
             'build_shell_command_uses_cmd_and_executes_command',
             'pipe_name_is_stable_and_normalizes_case_and_separators',
             'pipe_name_falls_back_when_stem_is_empty',
-            'stream_pair_round_trips_bytes'
+            'stream_pair_round_trips_bytes',
+            'split_stream_supports_concurrent_read_and_write'
           )
 
           foreach ($testName in $tests) {
