@@ -2,6 +2,9 @@ use crate::tool::selfdev::ReloadRecoveryDirective;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
+
+const PENDING_RECORD_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -41,6 +44,13 @@ pub(super) struct ReloadRecoveryRecord {
     pub delivered_at: Option<String>,
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(super) struct GarbageCollectionStats {
+    pub removed: usize,
+    pub retained: usize,
+    pub errors: usize,
+}
+
 fn sanitize_session_id(session_id: &str) -> String {
     session_id
         .chars()
@@ -60,6 +70,118 @@ fn recovery_dir() -> Result<PathBuf> {
 
 pub(super) fn path_for_session(session_id: &str) -> Result<PathBuf> {
     Ok(recovery_dir()?.join(format!("{}.json", sanitize_session_id(session_id))))
+}
+
+fn remove_record_files(path: &std::path::Path) -> Result<()> {
+    for candidate in [path.to_path_buf(), path.with_extension("bak")] {
+        match std::fs::remove_file(&candidate) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    #[cfg(unix)]
+    if let Some(parent) = path.parent()
+        && let Ok(directory) = std::fs::File::open(parent)
+    {
+        let _ = directory.sync_all();
+    }
+    Ok(())
+}
+
+fn pending_record_is_expired(record: &ReloadRecoveryRecord, now: SystemTime) -> Option<bool> {
+    let created_at = chrono::DateTime::parse_from_rfc3339(&record.created_at).ok()?;
+    let created_at = SystemTime::from(created_at.with_timezone(&chrono::Utc));
+    Some(
+        now.duration_since(created_at)
+            .map(|age| age >= PENDING_RECORD_MAX_AGE)
+            .unwrap_or(false),
+    )
+}
+
+fn file_is_expired(path: &std::path::Path, now: SystemTime) -> bool {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| now.duration_since(modified).ok())
+        .map(|age| age >= PENDING_RECORD_MAX_AGE)
+        .unwrap_or(false)
+}
+
+/// Removes consumed records and pending/corrupt records too old to be useful.
+///
+/// This is run synchronously before the server starts accepting clients, so it
+/// cannot race in-process recovery writes. A record path is unique per session,
+/// which also bounds repeated reloads for active sessions between sweeps.
+pub(super) fn collect_garbage() -> Result<GarbageCollectionStats> {
+    collect_garbage_at(SystemTime::now())
+}
+
+fn collect_garbage_at(now: SystemTime) -> Result<GarbageCollectionStats> {
+    let dir = recovery_dir()?;
+    if !dir.exists() {
+        return Ok(GarbageCollectionStats::default());
+    }
+
+    let mut stats = GarbageCollectionStats::default();
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => {
+                stats.errors += 1;
+                continue;
+            }
+        };
+        let path = entry.path();
+        let extension = path.extension().and_then(|extension| extension.to_str());
+        if extension == Some("bak") {
+            let primary = path.with_extension("json");
+            if !primary.exists() && file_is_expired(&path, now) {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => stats.removed += 1,
+                    Err(error) => {
+                        stats.errors += 1;
+                        crate::logging::warn(&format!(
+                            "reload recovery store: failed to collect orphan backup {}: {}",
+                            path.display(),
+                            error
+                        ));
+                    }
+                }
+            }
+            continue;
+        }
+        if extension != Some("json") {
+            continue;
+        }
+
+        let should_remove = match crate::storage::read_json::<ReloadRecoveryRecord>(&path) {
+            Ok(record) => {
+                record.status == ReloadRecoveryStatus::Delivered
+                    || pending_record_is_expired(&record, now)
+                        .unwrap_or_else(|| file_is_expired(&path, now))
+            }
+            Err(_) => file_is_expired(&path, now),
+        };
+        if !should_remove {
+            stats.retained += 1;
+            continue;
+        }
+
+        match remove_record_files(&path) {
+            Ok(()) => stats.removed += 1,
+            Err(error) => {
+                stats.errors += 1;
+                crate::logging::warn(&format!(
+                    "reload recovery store: failed to collect {}: {}",
+                    path.display(),
+                    error
+                ));
+            }
+        }
+    }
+    Ok(stats)
 }
 
 pub(super) fn persist_intent(
@@ -227,6 +349,17 @@ pub(super) fn mark_delivered_if_matching_continuation(
         record.role.as_str(),
         accepted_by
     ));
+    if let Err(error) = remove_record_files(&path) {
+        // Delivery is already durable. Leave the consumed record for the next
+        // startup sweep rather than reporting the accepted continuation as a
+        // failure and risking duplicate recovery work.
+        crate::logging::warn(&format!(
+            "reload recovery store: could not remove delivered intent session={} path={}: {}",
+            session_id,
+            path.display(),
+            error
+        ));
+    }
     Ok(true)
 }
 
@@ -402,10 +535,105 @@ mod tests {
             "server-b",
         )?);
 
-        // And the persisted record records when it was delivered.
-        let record = peek_for_session(session_id)?.expect("record should still exist");
-        assert_eq!(record.status, ReloadRecoveryStatus::Delivered);
-        assert!(record.delivered_at.is_some());
+        // Consumed intents are removed immediately; startup GC covers a crash
+        // between the delivered write and this deletion.
+        assert!(peek_for_session(session_id)?.is_none());
+        assert!(!path_for_session(session_id)?.with_extension("bak").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn garbage_collection_removes_delivered_and_stale_records() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+        let now = SystemTime::now();
+        let old = chrono::Utc::now() - chrono::Duration::days(8);
+
+        let records = [
+            ReloadRecoveryRecord {
+                reload_id: "reload-delivered".to_string(),
+                session_id: "session-delivered".to_string(),
+                role: ReloadRecoveryRole::Initiator,
+                status: ReloadRecoveryStatus::Delivered,
+                directive: directive("done"),
+                reason: "delivered".to_string(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                delivered_at: Some(chrono::Utc::now().to_rfc3339()),
+            },
+            ReloadRecoveryRecord {
+                reload_id: "reload-stale".to_string(),
+                session_id: "session-stale".to_string(),
+                role: ReloadRecoveryRole::InterruptedPeer,
+                status: ReloadRecoveryStatus::Pending,
+                directive: directive("too late"),
+                reason: "stale".to_string(),
+                created_at: old.to_rfc3339(),
+                delivered_at: None,
+            },
+            ReloadRecoveryRecord {
+                reload_id: "reload-fresh".to_string(),
+                session_id: "session-fresh".to_string(),
+                role: ReloadRecoveryRole::Headless,
+                status: ReloadRecoveryStatus::Pending,
+                directive: directive("continue"),
+                reason: "fresh".to_string(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                delivered_at: None,
+            },
+        ];
+        for record in &records {
+            crate::storage::write_json(&path_for_session(&record.session_id)?, record)?;
+        }
+        // Ensure backup artifacts are collected with their primary record.
+        std::fs::write(
+            path_for_session("session-delivered")?.with_extension("bak"),
+            b"old backup",
+        )?;
+
+        let stats = collect_garbage_at(now)?;
+        assert_eq!(stats.removed, 2);
+        assert_eq!(stats.retained, 1);
+        assert_eq!(stats.errors, 0);
+        assert!(peek_for_session("session-delivered")?.is_none());
+        assert!(peek_for_session("session-stale")?.is_none());
+        assert!(peek_for_session("session-fresh")?.is_some());
+        assert!(
+            !path_for_session("session-delivered")?
+                .with_extension("bak")
+                .exists()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn garbage_collection_uses_file_age_for_malformed_and_orphaned_records() -> Result<()> {
+        let _lock = crate::storage::lock_test_env();
+        let _home = IsolatedHome::new();
+        let malformed = ReloadRecoveryRecord {
+            reload_id: "reload-malformed-time".to_string(),
+            session_id: "session-malformed-time".to_string(),
+            role: ReloadRecoveryRole::Headless,
+            status: ReloadRecoveryStatus::Pending,
+            directive: directive("continue"),
+            reason: "invalid timestamp".to_string(),
+            created_at: "not-an-rfc3339-timestamp".to_string(),
+            delivered_at: None,
+        };
+        crate::storage::write_json(&path_for_session(&malformed.session_id)?, &malformed)?;
+
+        let orphan_backup = path_for_session("orphan")?.with_extension("bak");
+        std::fs::write(&orphan_backup, b"orphaned backup")?;
+        let corrupt_record = path_for_session("corrupt")?;
+        std::fs::write(&corrupt_record, b"not json")?;
+
+        let future = SystemTime::now() + PENDING_RECORD_MAX_AGE + Duration::from_secs(1);
+        let stats = collect_garbage_at(future)?;
+        assert_eq!(stats.removed, 3);
+        assert_eq!(stats.retained, 0);
+        assert_eq!(stats.errors, 0);
+        assert!(peek_for_session(&malformed.session_id)?.is_none());
+        assert!(!orphan_backup.exists());
+        assert!(!corrupt_record.exists());
         Ok(())
     }
 

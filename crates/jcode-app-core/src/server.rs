@@ -2035,6 +2035,19 @@ impl Server {
         // process, but clear stale markers from unrelated/stale processes.
         clear_reload_marker_if_stale_for_pid(std::process::id());
 
+        match reload_recovery::collect_garbage() {
+            Ok(stats) if stats.removed > 0 || stats.errors > 0 => {
+                crate::logging::info(&format!(
+                    "Reload recovery GC: removed={}, retained={}, errors={}",
+                    stats.removed, stats.retained, stats.errors
+                ));
+            }
+            Ok(_) => {}
+            Err(error) => crate::logging::warn(&format!(
+                "Reload recovery GC failed during startup: {error}"
+            )),
+        }
+
         // Restrict socket files to owner-only so other local users cannot connect.
         let _ = crate::platform::set_permissions_owner_only(&self.socket_path);
         let _ = crate::platform::set_permissions_owner_only(&self.debug_socket_path);
