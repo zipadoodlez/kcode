@@ -193,7 +193,7 @@ fn parse_progress_marker_with_checkpoint(line: &str) -> Option<(BackgroundTaskPr
     ))
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn parse_progress_marker(line: &str) -> Option<BackgroundTaskProgress> {
     parse_progress_marker_with_checkpoint(line).map(|(progress, _)| progress)
 }
