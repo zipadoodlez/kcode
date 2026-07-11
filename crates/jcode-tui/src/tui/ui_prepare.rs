@@ -516,20 +516,40 @@ fn spawned_member_for_tool<'a>(
     members: &'a [crate::protocol::SwarmMemberStatus],
 ) -> Option<&'a crate::protocol::SwarmMemberStatus> {
     let tool = msg.tool_data.as_ref()?;
-    if tools_ui::canonical_tool_name(&tool.name) != "swarm"
-        || tool.input.get("action").and_then(|value| value.as_str()) != Some("spawn")
-    {
+    if tools_ui::canonical_tool_name(&tool.name) != "swarm" {
         return None;
     }
 
+    // Live remote tool output is decorated as `[swarm] Spawned new agent: …`.
+    // The completed ToolCall can also lose its parsed input across a reload or
+    // event race, so the server-issued session ID is the authoritative signal.
     let session_id = msg
         .content
         .lines()
-        .find_map(|line| line.trim().strip_prefix("Spawned new agent: "))?
-        .trim();
-    members
+        .find_map(|line| line.split_once("Spawned new agent: ").map(|(_, id)| id))
+        .map(str::trim);
+    if let Some(member) = session_id.and_then(|session_id| {
+        members
+            .iter()
+            .find(|member| member.session_id == session_id)
+    }) {
+        return Some(member);
+    }
+
+    // The server may publish the member snapshot before or after the tool result,
+    // and older/reformatted tool results may not retain the exact session-id line.
+    // The spawn label is copied into `task_label`, so use a unique label match as
+    // a safe fallback. Requiring uniqueness prevents an old spawn row from
+    // adopting a newer worker when labels are reused.
+    if tool.input.get("action").and_then(|value| value.as_str()) != Some("spawn") {
+        return None;
+    }
+    let label = tool.input.get("label").and_then(|value| value.as_str())?;
+    let mut matching = members
         .iter()
-        .find(|member| member.session_id == session_id)
+        .filter(|member| member.task_label.as_deref() == Some(label));
+    let member = matching.next()?;
+    matching.next().is_none().then_some(member)
 }
 
 fn prepare_active_batch_progress(

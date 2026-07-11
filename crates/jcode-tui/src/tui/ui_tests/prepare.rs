@@ -111,6 +111,37 @@ fn test_prepare_messages_places_live_swarm_card_beneath_matching_spawn_tool_call
 }
 
 #[test]
+fn test_prepare_messages_matches_real_prefixed_spawn_result_without_input_metadata() {
+    let session_id = "spawned-session-123";
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: format!("[swarm] Spawned new agent: {session_id}"),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-spawn".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::Value::Null,
+                intent: None,
+                thought_signature: None,
+            }),
+        }],
+        swarm_members: vec![chat_swarm_member(session_id)],
+        ..Default::default()
+    };
+
+    let rendered = prepare::prepare_messages(&state, 110, 30)
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("🐝  API reviewer"), "rendered={rendered}");
+}
+
+#[test]
 fn test_prepare_messages_does_not_attach_member_to_unmatched_spawn_result() {
     let state = TestState {
         display_messages: vec![DisplayMessage {
@@ -128,6 +159,75 @@ fn test_prepare_messages_does_not_attach_member_to_unmatched_spawn_result() {
             }),
         }],
         swarm_members: vec![chat_swarm_member("spawned-session-123")],
+        ..Default::default()
+    };
+
+    let rendered = prepare::prepare_messages(&state, 110, 30)
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !rendered.contains("🐝  API reviewer"),
+        "rendered={rendered}"
+    );
+}
+
+#[test]
+fn test_prepare_messages_matches_spawn_member_by_unique_label_when_result_is_reformatted() {
+    let mut member = chat_swarm_member("spawned-session-123");
+    member.task_label = Some("API reviewer".to_string());
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: "Agent created successfully".to_string(),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-spawn".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::json!({"action": "spawn", "label": "API reviewer"}),
+                intent: Some("Spawn an authentication reviewer".to_string()),
+                thought_signature: None,
+            }),
+        }],
+        swarm_members: vec![member],
+        ..Default::default()
+    };
+
+    let rendered = prepare::prepare_messages(&state, 110, 30)
+        .materialize_all_lines()
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("🐝  API reviewer"), "rendered={rendered}");
+}
+
+#[test]
+fn test_prepare_messages_does_not_guess_when_spawn_label_is_ambiguous() {
+    let mut first = chat_swarm_member("spawned-session-123");
+    first.task_label = Some("reviewer".to_string());
+    let mut second = chat_swarm_member("spawned-session-456");
+    second.task_label = Some("reviewer".to_string());
+    let state = TestState {
+        display_messages: vec![DisplayMessage {
+            role: "tool".to_string(),
+            content: "Agent created successfully".to_string(),
+            tool_calls: Vec::new(),
+            duration_secs: None,
+            title: None,
+            tool_data: Some(ToolCall {
+                id: "call-spawn".to_string(),
+                name: "swarm".to_string(),
+                input: serde_json::json!({"action": "spawn", "label": "reviewer"}),
+                intent: None,
+                thought_signature: None,
+            }),
+        }],
+        swarm_members: vec![first, second],
         ..Default::default()
     };
 
