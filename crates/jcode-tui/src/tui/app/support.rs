@@ -8,7 +8,7 @@
 
 use super::{App, DisplayMessage};
 
-pub(super) const SUPPORT_EMAIL: &str = "support@solosystems.dev";
+pub(super) const SUPPORT_EMAIL: &str = "support@jcode.sh";
 pub(super) const SUPPORT_SUBJECT: &str = "jcode support";
 
 /// Everything the support email body needs. Pure data so the body builder is
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn support_mailto_url_is_correctly_encoded() {
         let url = build_mailto_url("Describe your issue:\n\nVersion: v1 (abc)");
-        assert!(url.starts_with("mailto:support@solosystems.dev?subject=jcode%20support&body="));
+        assert!(url.starts_with("mailto:support@jcode.sh?subject=jcode%20support&body="));
         // Newlines, spaces, colons, and parens must be percent-encoded.
         assert!(url.contains("Describe%20your%20issue%3A%0A%0AVersion%3A%20v1%20%28abc%29"));
         assert!(!url.contains(' '));

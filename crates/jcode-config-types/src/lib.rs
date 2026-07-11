@@ -765,7 +765,7 @@ pub struct AutoReviewConfig {
 /// placement (discoverability), never recommendations. Each session's first
 /// use of `discover_tools` is disclosed in the UI with a
 /// `(sponsored discovery)` tag; using a discovered tool afterwards carries no
-/// extra tag. See <https://solosystems.dev/sponsored-discovery>.
+/// extra tag. See <https://jcode.sh/sponsored-discovery>.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SponsorsConfig {
@@ -782,7 +782,7 @@ impl Default for SponsorsConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            endpoint: "https://api.solosystems.dev/v1/discovery".to_string(),
+            endpoint: "https://api.jcode.sh/v1/discovery".to_string(),
         }
     }
 }

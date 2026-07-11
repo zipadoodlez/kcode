@@ -133,9 +133,9 @@ mod tests {
         let _guard = crate::storage::lock_test_env();
         crate::env::set_var(
             subscription_catalog::JCODE_API_BASE_ENV,
-            "https://api.solosystems.dev/v1/",
+            "https://api.jcode.sh/v1/",
         );
-        assert_eq!(me_endpoint_url(), "https://api.solosystems.dev/v1/me");
+        assert_eq!(me_endpoint_url(), "https://api.jcode.sh/v1/me");
         crate::env::remove_var(subscription_catalog::JCODE_API_BASE_ENV);
     }
 }

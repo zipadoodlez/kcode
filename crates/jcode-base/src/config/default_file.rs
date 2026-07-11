@@ -595,9 +595,9 @@ desktop_notifications = true
 # placement (discoverability), never recommendations; each session's first
 # use of discover_tools is disclosed in the UI with a (sponsored discovery)
 # tag.
-# See https://solosystems.dev/sponsored-discovery
+# See https://jcode.sh/sponsored-discovery
 # enabled = true
-# endpoint = "https://api.solosystems.dev/v1/discovery"
+# endpoint = "https://api.jcode.sh/v1/discovery"
 	"#;
 
         // Substitute platform-specific defaults from the keybinding registry.

@@ -2,7 +2,7 @@
 
 User-facing changelog entries for jcode releases. One JSON file per release,
 written by the agent during `/cut-release`, reviewed in the release diff, and
-consumed by solosystems.dev and the GitHub release body.
+consumed by jcode.sh and the GitHub release body.
 
 ## Files
 

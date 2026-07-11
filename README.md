@@ -20,7 +20,7 @@ Built for multi-session workflows, infinite customizability, and performance.
 
 <br>
 
-[Website](https://solosystems.dev/jcode) · [Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading) · [Contributing](CONTRIBUTING.md)
+[Website](https://jcode.sh) · [Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading) · [Contributing](CONTRIBUTING.md)
 
 </div>
 

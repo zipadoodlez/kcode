@@ -8,8 +8,8 @@ pub const JCODE_TIER_ENV: &str = "JCODE_TIER";
 pub const JCODE_ENV_FILE: &str = "jcode-subscription.env";
 pub const JCODE_CACHE_NAMESPACE: &str = "jcode-subscription";
 pub const JCODE_SUBSCRIPTION_ACTIVE_ENV: &str = "JCODE_SUBSCRIPTION_ACTIVE";
-pub const DEFAULT_JCODE_API_BASE: &str = "https://api.solosystems.dev/v1";
-pub const JCODE_PRICING_URL: &str = "https://solosystems.dev/pricing";
+pub const DEFAULT_JCODE_API_BASE: &str = "https://api.jcode.sh/v1";
+pub const JCODE_PRICING_URL: &str = "https://jcode.sh/pricing";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JcodeTier {

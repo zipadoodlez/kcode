@@ -46,16 +46,16 @@ fn test_client() -> reqwest::Client {
 #[test]
 fn strip_v1_suffix_derives_auth_base() {
     assert_eq!(
-        strip_v1_suffix("https://api.solosystems.dev/v1"),
-        "https://api.solosystems.dev"
+        strip_v1_suffix("https://api.jcode.sh/v1"),
+        "https://api.jcode.sh"
     );
     assert_eq!(
-        strip_v1_suffix("https://api.solosystems.dev/v1/"),
-        "https://api.solosystems.dev"
+        strip_v1_suffix("https://api.jcode.sh/v1/"),
+        "https://api.jcode.sh"
     );
     assert_eq!(
-        strip_v1_suffix("https://api.solosystems.dev"),
-        "https://api.solosystems.dev"
+        strip_v1_suffix("https://api.jcode.sh"),
+        "https://api.jcode.sh"
     );
     assert_eq!(
         strip_v1_suffix("https://example.com/router/v1"),
