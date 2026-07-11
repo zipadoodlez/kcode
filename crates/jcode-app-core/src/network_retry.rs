@@ -1,6 +1,9 @@
 use std::time::Duration;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::process::Command;
-use tokio::time::{sleep, timeout};
+use tokio::time::sleep;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use tokio::time::timeout;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NetworkWaitPlan {
@@ -137,6 +140,7 @@ async fn wait_for_platform_change_or_delay(delay: Duration) {
     sleep(delay).await;
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn command_exists(command: &str) -> bool {
     Command::new("sh")
         .arg("-c")
@@ -150,10 +154,12 @@ async fn command_exists(command: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn shell_escape(value: &str) -> String {
     value.replace('\'', "'\\''")
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn wait_for_command_output(command: &str, args: &[&str]) {
     let mut command_builder = Command::new(command);
     command_builder

@@ -377,6 +377,7 @@ pub(super) fn server_start_matches_existing_server(stderr_output: &str) -> bool 
         || stderr_output.contains("Refusing to replace active server socket")
 }
 
+#[cfg(unix)]
 pub(super) async fn wait_for_existing_server(path: &std::path::Path, timeout: Duration) -> bool {
     let start = Instant::now();
     while start.elapsed() < timeout {

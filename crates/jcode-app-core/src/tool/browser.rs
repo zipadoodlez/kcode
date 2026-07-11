@@ -751,7 +751,7 @@ fn build_press_script(key: Option<&str>, selector: Option<&str>) -> Result<Strin
 async fn firefox_run_bridge_command(
     action: &str,
     params: Value,
-    ctx: &ToolContext,
+    _ctx: &ToolContext,
 ) -> Result<Value> {
     let bin = crate::browser::browser_binary_path();
     if !bin.exists() {
@@ -769,7 +769,7 @@ async fn firefox_run_bridge_command(
 
     #[cfg(not(windows))]
     if std::env::var("BROWSER_SESSION").is_err()
-        && let Some(session_name) = crate::browser::ensure_browser_session(&ctx.session_id)
+        && let Some(session_name) = crate::browser::ensure_browser_session(&_ctx.session_id)
     {
         command.env("BROWSER_SESSION", session_name);
     }

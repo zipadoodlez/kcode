@@ -1119,7 +1119,7 @@ impl BackgroundTaskManager {
     pub async fn cancel_with_grace(
         &self,
         task_id: &str,
-        graceful_timeout: std::time::Duration,
+        _graceful_timeout: std::time::Duration,
     ) -> Result<bool> {
         let mut tasks = self.tasks.write().await;
         if let Some(task) = tasks.remove(task_id) {
@@ -1180,7 +1180,7 @@ impl BackgroundTaskManager {
             #[cfg(unix)]
             {
                 let _ = crate::platform::signal_detached_process_group(pid, libc::SIGTERM);
-                tokio::time::sleep(graceful_timeout).await;
+                tokio::time::sleep(_graceful_timeout).await;
                 if crate::platform::is_process_running(pid) {
                     let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
                 }
