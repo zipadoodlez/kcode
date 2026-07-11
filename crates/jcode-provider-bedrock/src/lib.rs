@@ -423,6 +423,74 @@ impl BedrockProvider {
         }
     }
 
+    /// Bedrock Converse rejects JSON Schema combinators at a tool input
+    /// schema's top level. Preserve the common object fields and widen variant
+    /// branches into one object. Runtime deserialization remains responsible
+    /// for enforcing action-specific combinations.
+    #[cfg(feature = "aws-sdk")]
+    fn bedrock_input_schema(schema: &Value) -> Value {
+        let Value::Object(source) = schema else {
+            return json!({"type": "object", "properties": {}});
+        };
+
+        let mut output = source.clone();
+        let mut merged_properties = output
+            .get("properties")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let mut all_of_required = Vec::new();
+
+        for keyword in ["oneOf", "anyOf", "allOf"] {
+            let Some(branches) = output
+                .remove(keyword)
+                .and_then(|value| value.as_array().cloned())
+            else {
+                continue;
+            };
+            for branch in branches {
+                let Some(branch) = branch.as_object() else {
+                    continue;
+                };
+                if let Some(properties) = branch.get("properties").and_then(Value::as_object) {
+                    for (name, property) in properties {
+                        merged_properties
+                            .entry(name.clone())
+                            .or_insert_with(|| property.clone());
+                    }
+                }
+                if keyword == "allOf"
+                    && let Some(required) = branch.get("required").and_then(Value::as_array)
+                {
+                    for name in required.iter().filter_map(Value::as_str) {
+                        if !all_of_required.iter().any(|existing| existing == name) {
+                            all_of_required.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        output.insert("type".to_string(), Value::String("object".to_string()));
+        output.insert("properties".to_string(), Value::Object(merged_properties));
+        if !all_of_required.is_empty() {
+            let required = output
+                .entry("required".to_string())
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Value::Array(required) = required {
+                for name in all_of_required {
+                    if !required
+                        .iter()
+                        .any(|existing| existing.as_str() == Some(&name))
+                    {
+                        required.push(Value::String(name));
+                    }
+                }
+            }
+        }
+        Value::Object(output)
+    }
+
     #[cfg(feature = "aws-sdk")]
     fn image_format_for_media_type(media_type: &str) -> Option<ImageFormat> {
         match media_type.trim().to_ascii_lowercase().as_str() {
@@ -544,7 +612,8 @@ impl BedrockProvider {
         let bedrock_tools = tools
             .iter()
             .filter_map(|tool| {
-                let schema = ToolInputSchema::Json(Self::json_to_document(&tool.input_schema));
+                let input_schema = Self::bedrock_input_schema(&tool.input_schema);
+                let schema = ToolInputSchema::Json(Self::json_to_document(&input_schema));
                 ToolSpecification::builder()
                     .name(&tool.name)
                     .description(tool.description.clone())
@@ -1406,6 +1475,30 @@ mod tests {
     use super::*;
     use std::ffi::{OsStr, OsString};
     use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    #[cfg(feature = "aws-sdk")]
+    #[test]
+    fn bedrock_tool_schema_removes_top_level_combinators() {
+        let schema = json!({
+            "oneOf": [
+                {"type": "object", "properties": {"action": {"const": "list"}}},
+                {"type": "object", "properties": {"query": {"type": "string"}}}
+            ],
+            "allOf": [
+                {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}
+            ]
+        });
+
+        let normalized = BedrockProvider::bedrock_input_schema(&schema);
+        for keyword in ["oneOf", "anyOf", "allOf"] {
+            assert!(normalized.get(keyword).is_none(), "removed {keyword}");
+        }
+        assert_eq!(normalized["type"], "object");
+        assert!(normalized["properties"]["action"].is_object());
+        assert!(normalized["properties"]["query"].is_object());
+        assert!(normalized["properties"]["category"].is_object());
+        assert_eq!(normalized["required"], json!(["category"]));
+    }
 
     fn lock_test_env() -> MutexGuard<'static, ()> {
         static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
