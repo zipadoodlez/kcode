@@ -1,0 +1,21 @@
+{
+  "version": "0.42.0",
+  "date": "2026-07-11",
+  "title": "Richer swarm status and resilient sessions",
+  "highlights": [
+    "Inline swarm agent cards now show richer live status, expanded details, and clearer running animations",
+    "Fuzzy search now tolerates typos so models, sessions, and commands are easier to find",
+    "Running sessions are now animated in the resume picker and preserved more reliably during refreshes"
+  ],
+  "improvements": [
+    "Memory status uses a quieter count-first display and stays hidden when memory is disabled",
+    "Mermaid rendering now follows one consistent feature toggle across configuration surfaces",
+    "Skill slash commands can include a prompt after the command instead of requiring a second message"
+  ],
+  "fixes": [
+    "Detached and reloaded sessions now recover more reliably without lifecycle races, stale cleanup, or lost follow-up work",
+    "Model catalogs refresh correctly after login imports and session resumes",
+    "Provider retries now respect server delay hints, and interrupted OpenAI websocket responses start with a clean chain",
+    "TUI redraw and retry amplification has been reduced, while remote debug snapshots now capture the current frame"
+  ]
+}
