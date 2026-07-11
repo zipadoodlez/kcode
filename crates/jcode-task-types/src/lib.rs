@@ -247,11 +247,6 @@ pub struct TodoGoal {
     /// objective is what makes a high score credible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,
-    /// Set when the goal is deliberately taste-driven: no honest metric
-    /// exists and the plan is user checkpoints/artifacts instead of a
-    /// fabricated proxy metric.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub taste_driven: bool,
     /// Maintained by the todo tool: true once the low-score reframe nudge has
     /// been sent for this goal, so it never nag-loops.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

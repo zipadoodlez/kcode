@@ -586,7 +586,7 @@ const PAGE_SWITCH_SECONDS: u64 = 30;
 #[derive(Debug, Default, Clone)]
 pub struct InfoWidgetData {
     pub todos: Vec<TodoItem>,
-    /// Goal-level assessments (hill-climbability, objective, taste-driven)
+    /// Goal-level assessments (hill-climbability and objective)
     /// keyed by todo group (`group: None` covers the ungrouped list). Empty
     /// when the session has no recorded goals or `todos` is a swarm-plan
     /// projection.

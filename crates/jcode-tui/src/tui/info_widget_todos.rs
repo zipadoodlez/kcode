@@ -129,18 +129,8 @@ fn hill_style(score: u8) -> Style {
     Style::default().fg(color)
 }
 
-/// Append a " · hill N%" (or " · taste") suffix describing a goal's
-/// hill-climbability. Taste-driven goals show the label instead of a score,
-/// since a metric deliberately does not exist for them.
+/// Append a " · hill N%" suffix describing a goal's hill-climbability.
 fn push_goal_hill_suffix(spans: &mut Vec<Span<'static>>, goal: &crate::todo::TodoGoal) {
-    if goal.taste_driven {
-        spans.push(Span::styled(" · ", Style::default().fg(rgb(80, 80, 90))));
-        spans.push(Span::styled(
-            "taste",
-            Style::default().fg(rgb(190, 140, 200)),
-        ));
-        return;
-    }
     let Some(score) = goal.hill_climbability else {
         return;
     };
@@ -155,9 +145,6 @@ fn push_goal_hill_suffix(spans: &mut Vec<Span<'static>>, goal: &crate::todo::Tod
 /// Display width of the suffix `push_goal_hill_suffix` would render for this
 /// goal (0 when it renders nothing), so header truncation can reserve room.
 fn goal_hill_suffix_width(goal: &crate::todo::TodoGoal) -> u16 {
-    if goal.taste_driven {
-        return 3 + "taste".len() as u16;
-    }
     match goal.hill_climbability {
         Some(score) => 3 + "hill ".len() as u16 + format!("{}%", score).len() as u16,
         None => 0,

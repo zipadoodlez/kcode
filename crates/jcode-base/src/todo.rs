@@ -7,7 +7,7 @@ pub use jcode_task_types::{TodoGoal, TodoItem};
 /// Goals with a hill-climbability score strictly below this are considered
 /// low: no credible metric to iterate against. The todo tool nudges the model
 /// once per goal to either reframe the objective into something measurable or
-/// deliberately mark it taste-driven and plan user checkpoints.
+/// plan concrete user checkpoints with comparable artifacts.
 pub const LOW_HILL_CLIMBABILITY: u8 = 40;
 
 /// Prefix of the synthetic "all todos done" confidence summary follow-up that
@@ -246,7 +246,6 @@ mod tests {
             group: None,
             hill_climbability: Some(90),
             objective: Some("All resume naming tests pass".to_string()),
-            taste_driven: false,
             reframe_nudge_sent: false,
         }];
 

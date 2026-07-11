@@ -1111,7 +1111,7 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
 
 /// Fetch a session's todos plus its goal-level assessments through the same
 /// stale-while-revalidate cache, so the info widget can render goal metadata
-/// (hill-climbability, taste-driven flags) without extra disk reads per frame.
+/// (hill-climbability and objectives) without extra disk reads per frame.
 pub(super) fn gather_todos_and_goals_for_session(
     session_id: Option<&str>,
 ) -> (Vec<TodoItem>, Vec<crate::todo::TodoGoal>) {

@@ -419,9 +419,6 @@ fn format_goal_markdown(goals: &[crate::todo::TodoGoal], group: Option<&str>) ->
     let mut line = String::new();
     if let Some(score) = goal.hill_climbability {
         line.push_str(&format!("\n- Hill-climbability: **{}%**", score));
-        if goal.taste_driven {
-            line.push_str(" (taste-driven: plan user checkpoints)");
-        }
         line.push('\n');
     }
     if let Some(objective) = goal
@@ -598,7 +595,6 @@ fn hash_todos_payload(
         goal.group.hash(&mut hasher);
         goal.hill_climbability.hash(&mut hasher);
         goal.objective.hash(&mut hasher);
-        goal.taste_driven.hash(&mut hasher);
     }
     hasher.finish()
 }

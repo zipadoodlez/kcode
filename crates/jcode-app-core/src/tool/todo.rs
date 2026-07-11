@@ -101,19 +101,18 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
 
 /// One-shot reframe nudges for goals that score low on hill-climbability.
 ///
-/// A low score means there is no credible metric to iterate against, which
-/// has two honest exits: reframe the objective into something measurable, or
-/// deliberately mark the goal taste-driven and plan user checkpoints. What
-/// the nudge eliminates is the unexamined middle where the agent neither
-/// measures nor checkpoints. Returns the nudge lines and marks nudged goals
-/// so they never fire twice.
+/// A low score means there is no credible metric to iterate against. The
+/// objective should be reframed into something measurable where possible;
+/// open-ended work should instead use concrete user checkpoints and comparable
+/// artifacts. Returns the nudge lines and marks nudged goals so they never fire
+/// twice.
 fn take_reframe_nudges(goals: &mut [TodoGoal], todos: &[TodoItem]) -> Vec<String> {
     let mut nudges = Vec::new();
     for goal in goals.iter_mut() {
         let Some(score) = goal.hill_climbability else {
             continue;
         };
-        if score >= LOW_HILL_CLIMBABILITY || goal.taste_driven || goal.reframe_nudge_sent {
+        if score >= LOW_HILL_CLIMBABILITY || goal.reframe_nudge_sent {
             continue;
         }
         let group_open = todos.iter().any(|todo| {
@@ -127,11 +126,11 @@ fn take_reframe_nudges(goals: &mut [TodoGoal], todos: &[TodoItem]) -> Vec<String
         goal.reframe_nudge_sent = true;
         let label = goal.group.as_deref().unwrap_or("the current goal");
         nudges.push(format!(
-            "Goal '{}' has low hill-climbability ({}). Do one of the following: \
-             (1) reframe it into a quantifiable, verifiable objective (set the goal's \
-             `objective`, e.g. a metric plus target, and build a harness that measures it), or \
-             (2) if no honest metric exists, set `taste_driven: true` and plan user \
-             checkpoints with comparable artifacts instead of a fabricated proxy metric.",
+            "Goal '{}' has low hill-climbability ({}). Reframe it into a quantifiable, \
+             verifiable objective where possible (set the goal's `objective`, e.g. a metric \
+             plus target, and build a harness that measures it). For open-ended work with no \
+             honest metric, plan concrete user checkpoints with comparable artifacts instead \
+             of inventing a proxy metric.",
             label, score
         ));
     }
@@ -287,15 +286,11 @@ impl Tool for TodoTool {
                                 "type": "integer",
                                 "minimum": 0,
                                 "maximum": 100,
-                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? High for goals with a clear metric (e.g. optimize grep latency, make failing tests pass), low for taste-driven or open-ended goals (e.g. design an onboarding screen). A high score should be backed by a stated objective."
+                                "description": "How hill-climbable this goal is, 0-100: can progress be measured against a quantifiable, verifiable objective and iterated on? High for goals with a clear metric (e.g. optimize grep latency, make failing tests pass), low for open-ended goals (e.g. design an onboarding screen). A high score should be backed by a stated objective."
                             },
                             "objective": {
                                 "type": "string",
                                 "description": "The measurable objective progress climbs toward, e.g. 'p50 grep latency under 50ms on the repo corpus'. State one whenever it exists; a high hill_climbability without an objective is not credible."
-                            },
-                            "taste_driven": {
-                                "type": "boolean",
-                                "description": "Set true when no honest metric exists and the plan is user checkpoints with comparable artifacts instead of a fabricated proxy metric."
                             }
                         }
                     }
@@ -412,7 +407,7 @@ mod tests {
         assert!(goal_props.contains_key("group"));
         assert!(goal_props.contains_key("hill_climbability"));
         assert!(goal_props.contains_key("objective"));
-        assert!(goal_props.contains_key("taste_driven"));
+        assert_eq!(goal_props.len(), 3);
     }
 
     fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {
@@ -482,7 +477,7 @@ mod tests {
         let input = json!({
             "goals": [
                 {"group": "optimize grep", "hill_climbability": "95", "objective": "p50 under 50ms"},
-                {"hill_climbability": 20, "taste_driven": true}
+                {"hill_climbability": 20}
             ]
         });
         let parsed = parse(input).expect("goals should parse");
@@ -490,7 +485,6 @@ mod tests {
         assert_eq!(goals[0].hill_climbability, Some(95));
         assert_eq!(goals[0].objective.as_deref(), Some("p50 under 50ms"));
         assert_eq!(goals[1].group, None);
-        assert!(goals[1].taste_driven);
     }
 
     fn goal(group: Option<&str>, score: u8) -> TodoGoal {
@@ -541,13 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn reframe_nudge_skips_taste_driven_and_closed_goals() {
-        // Taste-driven low goal: deliberate, no nudge.
-        let mut taste = goal(Some("design"), 20);
-        taste.taste_driven = true;
-        let mut goals = vec![taste];
-        let todos = vec![open_todo(Some("design"))];
-        assert!(take_reframe_nudges(&mut goals, &todos).is_empty());
+    fn reframe_nudge_skips_closed_goals() {
         // Low goal whose todos are all completed: nothing to reframe.
         let mut done = open_todo(Some("legacy"));
         done.status = "completed".to_string();

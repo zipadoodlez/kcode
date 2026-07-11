@@ -426,7 +426,6 @@ fn flat_todo_list_shows_hill_climbability_on_header_in_all_widget_sizes() {
             group: None,
             hill_climbability: Some(85),
             objective: Some("p50 under 50ms".to_string()),
-            taste_driven: false,
             reframe_nudge_sent: false,
         }],
         ..Default::default()
@@ -452,14 +451,12 @@ fn grouped_todos_show_hill_climbability_on_their_group_headers() {
                 group: Some("optimize grep".to_string()),
                 hill_climbability: Some(90),
                 objective: Some("p50 under 50ms".to_string()),
-                taste_driven: false,
                 reframe_nudge_sent: false,
             },
             crate::todo::TodoGoal {
                 group: Some("onboarding design".to_string()),
                 hill_climbability: Some(20),
                 objective: None,
-                taste_driven: true,
                 reframe_nudge_sent: false,
             },
         ],
@@ -470,12 +467,7 @@ fn grouped_todos_show_hill_climbability_on_their_group_headers() {
         lines_text_concat(&render_todos_expanded(&data, Rect::new(0, 0, 70, 14))),
     ] {
         assert!(text.contains("hill 90%"), "group hill missing: {text}");
-        // Taste-driven goals show the label instead of a (meaningless) score.
-        assert!(text.contains("taste"), "taste label missing: {text}");
-        assert!(
-            !text.contains("hill 20%"),
-            "taste goal must not show a score: {text}"
-        );
+        assert!(text.contains("hill 20%"), "low group hill missing: {text}");
     }
 }
 
@@ -507,7 +499,6 @@ fn hill_suffix_renders_safely_at_tiny_sizes() {
             group: Some("a very long group name that must truncate".to_string()),
             hill_climbability: Some(100),
             objective: None,
-            taste_driven: false,
             reframe_nudge_sent: false,
         }],
         ..Default::default()
