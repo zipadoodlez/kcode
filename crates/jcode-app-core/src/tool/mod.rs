@@ -28,7 +28,6 @@ mod session_search;
 pub(crate) mod session_search_index;
 mod side_panel;
 mod skill;
-mod task;
 mod todo;
 mod webfetch;
 mod websearch;
@@ -256,7 +255,7 @@ impl Registry {
         tools
     }
 
-    pub async fn new(provider: Arc<dyn Provider>) -> Self {
+    pub async fn new(_provider: Arc<dyn Provider>) -> Self {
         let start = std::time::Instant::now();
         let skills_start = std::time::Instant::now();
         let skills = Self::shared_skills_registry();
@@ -278,11 +277,6 @@ impl Registry {
 
         // Per-session tools that need provider/registry references
         let session_tools_start = std::time::Instant::now();
-        Self::insert_tool(
-            &mut tools_map,
-            "subagent",
-            task::SubagentTool::new(provider, registry.clone()),
-        );
         Self::insert_tool(
             &mut tools_map,
             "batch",

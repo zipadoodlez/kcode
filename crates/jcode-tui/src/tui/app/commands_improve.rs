@@ -182,7 +182,7 @@ First inspect the codebase, current repo state, and the in-repo quality docs if 
 \n\
 For v1, do the implementation work yourself in this main session. Do not create a swarm for ordinary execution. Keep changes locally scoped and easy to validate.\n\
 \n\
-After each meaningful batch, use the `subagent` tool exactly once to launch an independent read-only reviewer. In that subagent prompt, explicitly forbid file edits, patch application, and git changes. Ask it to inspect the changed areas plus nearby tests and report concrete regressions, risks, abstraction problems, or follow-up refactors. Incorporate valid findings before continuing.\n\
+After each meaningful batch, use the `swarm` tool with `action=spawn` exactly once to launch an independent read-only reviewer. In that worker prompt, explicitly forbid file edits, patch application, and git changes. Ask it to inspect the changed areas plus nearby tests and report concrete regressions, risks, abstraction problems, or follow-up refactors. Incorporate valid findings before continuing.\n\
 \n\
 Validate each meaningful batch with relevant builds, tests, or repo verification scripts. Prefer behavior-preserving changes first. After the batch and independent review, reassess. If strong refactors remain, write a fresh todo list and continue. If remaining work has diminishing returns or becomes too risky, stop and explain why.\n\
 \n\

@@ -80,6 +80,21 @@ async fn test_discover_tools_not_registered_when_sponsors_disabled() {
     }
 }
 
+#[tokio::test]
+async fn subagent_tool_is_not_registered() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider).await;
+
+    assert!(
+        !registry
+            .tool_names()
+            .await
+            .iter()
+            .any(|name| name == "subagent"),
+        "the deprecated direct subagent tool must not be exposed; use swarm instead"
+    );
+}
+
 struct BareSchemaTool;
 
 #[async_trait]

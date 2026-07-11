@@ -36,7 +36,7 @@ fn test_refactor_command_starts_refactor_loop() {
         &msg.content[0],
         ContentBlock::Text { text, .. }
             if text.contains("You are entering refactor mode for this repository")
-                && text.contains("use the `subagent` tool exactly once")
+                && text.contains("use the `swarm` tool with `action=spawn` exactly once")
     ));
 
     let display = app
