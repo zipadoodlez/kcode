@@ -118,7 +118,7 @@ fn compact_todos_height(data: &InfoWidgetData) -> u16 {
 
 fn compact_memory_height(data: &InfoWidgetData) -> u16 {
     if let Some(info) = &data.memory_info
-        && (info.total_count > 0 || info.activity.is_some())
+        && info.should_render()
     {
         return 1;
     }
@@ -223,23 +223,19 @@ fn expanded_todos_height(data: &InfoWidgetData) -> u16 {
 
 fn expanded_memory_height(data: &InfoWidgetData) -> u16 {
     if let Some(info) = &data.memory_info
-        && (info.total_count > 0 || info.activity.is_some())
+        && info.should_render()
     {
         let mut height = 1u16;
-        if info.total_count > 0 {
-            // render_memory_expanded emits a dedicated count line.
-            height += 1;
-        }
-        if info.activity.is_some() {
+        if info.should_show_activity() {
             height += 1 + 4;
-        }
-        if let Some(activity) = &info.activity
-            && activity
-                .recent_events
-                .iter()
-                .any(is_traceworthy_memory_event)
-        {
-            height += 1;
+            if let Some(activity) = &info.activity
+                && activity
+                    .recent_events
+                    .iter()
+                    .any(is_traceworthy_memory_event)
+            {
+                height += 1;
+            }
         }
         return height;
     }

@@ -649,7 +649,7 @@ fn memory_widget_hides_sidecar_model_when_idle() {
         .join("\n")
         .to_lowercase();
 
-    assert!(text.contains("memory"));
+    assert!(text.contains("3 memories"));
     assert!(!text.contains("model:"));
     assert!(!text.contains("gpt-5.3"));
     assert!(text.contains("3 memories"));
@@ -812,7 +812,39 @@ fn memory_widget_does_not_stay_done_after_idle_settles() {
 
     assert!(text.contains("128 memories"), "{text}");
     assert!(!text.contains("done"), "{text}");
-    assert!(text.contains("idle") || text.contains("trace:"), "{text}");
+    assert!(!text.contains("idle"), "{text}");
+    assert!(!text.contains("trace:"), "{text}");
+}
+
+#[test]
+fn memory_widget_never_renders_uppercase_state_badges() {
+    let data = InfoWidgetData {
+        memory_info: Some(MemoryInfo {
+            total_count: 128,
+            activity: Some(MemoryActivity {
+                state: MemoryState::SidecarChecking { count: 3 },
+                state_since: Instant::now(),
+                pipeline: None,
+                recent_events: Vec::new(),
+            }),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let text = render_memory_widget(&data, Rect::new(0, 0, 40, 8))
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(text.contains("128 memories"), "{text}");
+    for badge in [
+        "IDLE", "SEARCH", "VERIFY", "READY", "INJECT", "SAVE", "UPDATE", "TOOL", "DONE", "FAILED",
+        "DISABLED",
+    ] {
+        assert!(!text.contains(badge), "unexpected badge {badge}: {text}");
+    }
 }
 
 #[test]
@@ -907,12 +939,13 @@ fn memory_compact_shows_memory_count_before_status() {
         .to_lowercase();
 
     assert!(text.contains("128 memories"), "{text}");
-    assert!(text.contains("idle"), "{text}");
+    assert!(!text.contains("idle"), "{text}");
+    assert!(!text.contains(" · "), "{text}");
     assert!(!text.contains("memory ·"), "{text}");
 }
 
 #[test]
-fn memory_widget_shows_disabled_badge_when_disabled() {
+fn memory_widget_is_hidden_when_disabled() {
     let data = InfoWidgetData {
         memory_info: Some(MemoryInfo {
             total_count: 12,
@@ -924,28 +957,9 @@ fn memory_widget_shows_disabled_badge_when_disabled() {
         ..Default::default()
     };
 
-    // Header/expanded view should render a DISABLED badge alongside the count.
-    let text = render_memory_widget(&data, Rect::new(0, 0, 40, 5))
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<Vec<_>>()
-        .join("\n")
-        .to_lowercase();
-
-    assert!(text.contains("disabled"), "{text}");
-    assert!(text.contains("12 memories"), "{text}");
-
-    // Compact (overview) view should also show the disabled state.
-    let compact = render_memory_compact(data.memory_info.as_ref().unwrap(), 40)
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<Vec<_>>()
-        .join("\n")
-        .to_lowercase();
-
-    assert!(compact.contains("disabled"), "{compact}");
+    assert!(render_memory_widget(&data, Rect::new(0, 0, 40, 5)).is_empty());
+    assert!(render_memory_compact(data.memory_info.as_ref().unwrap(), 40).is_empty());
+    assert!(!data.has_data_for(WidgetKind::MemoryActivity));
 }
 
 #[test]

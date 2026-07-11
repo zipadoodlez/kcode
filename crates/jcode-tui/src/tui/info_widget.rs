@@ -521,6 +521,25 @@ pub struct MemoryInfo {
     pub graph_edges: Vec<GraphEdge>,
 }
 
+impl MemoryInfo {
+    pub(crate) fn should_render(&self) -> bool {
+        !self.disabled && (self.total_count > 0 || self.activity.is_some())
+    }
+
+    pub(crate) fn should_show_activity(&self) -> bool {
+        self.activity.as_ref().is_some_and(|activity| {
+            activity.is_processing()
+                || (matches!(activity.state, MemoryState::Idle)
+                    && activity
+                        .pipeline
+                        .as_ref()
+                        .map(PipelineState::is_complete)
+                        .unwrap_or(false)
+                    && activity.state_since.elapsed() <= Duration::from_secs(5))
+        })
+    }
+}
+
 pub use jcode_tui_mermaid::DiagramInfo;
 
 /// Git repository status for the info widget
@@ -730,7 +749,7 @@ impl InfoWidgetData {
             WidgetKind::MemoryActivity => self
                 .memory_info
                 .as_ref()
-                .map(|m| m.total_count > 0 || m.activity.is_some())
+                .map(MemoryInfo::should_render)
                 .unwrap_or(false),
             WidgetKind::SwarmStatus => self
                 .swarm_info
