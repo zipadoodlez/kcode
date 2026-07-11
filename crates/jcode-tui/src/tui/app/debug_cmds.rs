@@ -641,6 +641,23 @@ impl App {
         } else if cmd == "memory-history" {
             let payload = crate::process_memory::history(128);
             serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "[]".to_string())
+        } else if cmd == "allocator" {
+            serde_json::to_string_pretty(&crate::process_memory::allocator_info())
+                .unwrap_or_else(|_| "{}".to_string())
+        } else if cmd == "allocator:purge" {
+            let before = crate::process_memory::snapshot();
+            crate::process_memory::release_retained_heap("client_debug_allocator_purge");
+            let after = crate::process_memory::snapshot();
+            let rss_recovered_bytes = before
+                .rss_bytes
+                .unwrap_or(0)
+                .saturating_sub(after.rss_bytes.unwrap_or(0));
+            serde_json::to_string_pretty(&serde_json::json!({
+                "before": before,
+                "after": after,
+                "rss_recovered_bytes": rss_recovered_bytes,
+            }))
+            .unwrap_or_else(|_| "{}".to_string())
         } else if cmd == "slow-frames" {
             let payload = crate::tui::ui::debug_slow_frame_history(32);
             serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
