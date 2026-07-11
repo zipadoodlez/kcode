@@ -737,7 +737,7 @@ fn handle_terminal_event_while_disconnected(
 
 pub(super) async fn handle_remote_event<B: Backend>(
     app: &mut App,
-    _terminal: &mut Terminal<B>,
+    terminal: &mut Terminal<B>,
     remote: &mut RemoteConnection,
     state: &mut RemoteRunState,
     event: RemoteRead,
@@ -773,6 +773,19 @@ pub(super) async fn handle_remote_event<B: Backend>(
             Ok((RemoteEventOutcome::Continue, needs_redraw))
         }
         RemoteRead::Event(ServerEvent::ClientDebugRequest { id, command }) => {
+            // Frame-oriented debug commands used to enable visual debugging and
+            // immediately read the frame buffer. On the first request the buffer
+            // is still empty because no draw has happened since enabling capture.
+            // Render once before producing the response so callers always receive
+            // the current TUI state rather than "no frames captured".
+            if debug_command_needs_current_frame(&command) {
+                crate::tui::visual_debug::enable();
+                if let Err(error) = terminal.draw(|frame| crate::tui::ui::draw(frame, app)) {
+                    let output = format!("ERR: failed to capture current frame: {error}");
+                    let _ = remote.send_client_debug_response(id, output).await;
+                    return Ok((RemoteEventOutcome::Continue, false));
+                }
+            }
             let output = handle_debug_command(app, &command, remote).await;
             let _ = remote.send_client_debug_response(id, output).await;
             process_remote_followups(app, remote).await;
@@ -797,6 +810,25 @@ pub(super) async fn handle_remote_event<B: Backend>(
             Ok((RemoteEventOutcome::Continue, needs_redraw))
         }
     }
+}
+
+pub(super) fn debug_command_needs_current_frame(command: &str) -> bool {
+    matches!(
+        command.trim(),
+        "frame"
+            | "frame-normalized"
+            | "screen"
+            | "screen-json"
+            | "screen-json-normalized"
+            | "layout"
+            | "margins"
+            | "widgets"
+            | "info-widgets"
+            | "render-stats"
+            | "render-order"
+            | "anomalies"
+            | "theme"
+    )
 }
 
 pub(super) fn handle_disconnect(
