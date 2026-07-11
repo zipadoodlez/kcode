@@ -511,10 +511,12 @@ mod tests {
         // Anthropic rejects this with a 400 unless we reconcile the label.
         let data = encode_jpeg_b64(64, 64);
         let messages = vec![image_message_with("image/png", data.clone())];
-        let fixed = clamp_outbound_images(&messages)
-            .expect("mislabeled image should be corrected");
+        let fixed = clamp_outbound_images(&messages).expect("mislabeled image should be corrected");
         match &fixed[0].content[0] {
-            ContentBlock::Image { media_type, data: out } => {
+            ContentBlock::Image {
+                media_type,
+                data: out,
+            } => {
                 assert_eq!(media_type, "image/jpeg", "label must match JPEG bytes");
                 // Bytes are left untouched, only the label changes.
                 assert_eq!(out, &data);
@@ -527,10 +529,12 @@ mod tests {
     fn png_bytes_mislabeled_as_jpeg_are_relabeled() {
         let data = encode_png(64, 64);
         let messages = vec![image_message_with("image/jpeg", data.clone())];
-        let fixed = clamp_outbound_images(&messages)
-            .expect("mislabeled image should be corrected");
+        let fixed = clamp_outbound_images(&messages).expect("mislabeled image should be corrected");
         match &fixed[0].content[0] {
-            ContentBlock::Image { media_type, data: out } => {
+            ContentBlock::Image {
+                media_type,
+                data: out,
+            } => {
                 assert_eq!(media_type, "image/png");
                 assert_eq!(out, &data);
             }
@@ -570,7 +574,10 @@ mod tests {
             Some("image/jpeg")
         );
         assert_eq!(sniff_media_type(b"GIF89a....."), Some("image/gif"));
-        assert_eq!(sniff_media_type(b"RIFF\0\0\0\0WEBP...."), Some("image/webp"));
+        assert_eq!(
+            sniff_media_type(b"RIFF\0\0\0\0WEBP...."),
+            Some("image/webp")
+        );
         assert_eq!(sniff_media_type(b"not an image"), None);
     }
 }
