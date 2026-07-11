@@ -2017,7 +2017,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.push_display_message(DisplayMessage::system(message.to_string()));
             }
 
-            false
+            // History is the completion signal for a session attach/resume and
+            // can replace the entire visible transcript. Request a frame now so
+            // the new session does not appear stuck until another event arrives.
+            true
         }
         ServerEvent::CompactedHistory {
             session_id,
@@ -2273,7 +2276,11 @@ pub(in crate::tui::app) fn handle_server_event(
             if provider_meta_changed {
                 app.update_terminal_title();
             }
-            false
+            // The catalog event can arrive while the client is otherwise idle.
+            // Returning false here leaves the updated picker, refresh summary,
+            // and status notice invisible until an unrelated input or periodic
+            // redraw happens.
+            true
         }
         ServerEvent::ReasoningEffortChanged { effort, error, .. } => {
             if let Some(err) = error {

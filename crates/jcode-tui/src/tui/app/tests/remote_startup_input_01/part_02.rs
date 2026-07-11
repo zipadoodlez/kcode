@@ -16,7 +16,7 @@ fn test_handle_server_event_available_models_updated_replaces_remote_model_catal
         cheapness: None,
     }];
 
-    app.handle_server_event(
+    let needs_redraw = app.handle_server_event(
         crate::protocol::ServerEvent::AvailableModelsUpdated {
             provider_name: Some("OpenAI".to_string()),
             provider_model: Some("new-model".to_string()),
@@ -33,6 +33,7 @@ fn test_handle_server_event_available_models_updated_replaces_remote_model_catal
         &mut remote,
     );
 
+    assert!(needs_redraw, "catalog replacement must redraw immediately");
     assert_eq!(
         app.remote_available_entries,
         vec!["new-model".to_string(), "second-model".to_string()]
@@ -129,7 +130,7 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
         }],
     ));
 
-    app.handle_server_event(
+    let needs_redraw = app.handle_server_event(
         crate::protocol::ServerEvent::AvailableModelsUpdated {
             provider_name: None,
             provider_model: None,
@@ -156,6 +157,7 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
         &mut remote,
     );
 
+    assert!(needs_redraw, "model refresh completion must redraw immediately");
     assert_eq!(
         app.status_notice(),
         Some("Model list refreshed: +1 models, +1 routes, ~1 changed".to_string())

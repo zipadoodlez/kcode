@@ -709,7 +709,7 @@ fn test_handle_server_event_history_restores_active_resume_processing_state() {
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.handle_server_event(
+    let needs_redraw = app.handle_server_event(
         crate::protocol::ServerEvent::History {
             id: 1,
             session_id: "ses_resume_active".to_string(),
@@ -751,6 +751,7 @@ fn test_handle_server_event_history_restores_active_resume_processing_state() {
         &mut remote,
     );
 
+    assert!(needs_redraw, "resumed session history must redraw immediately");
     assert!(app.is_processing());
     assert!(app.processing_started.is_some());
     assert!(app.time_since_activity().is_some());
