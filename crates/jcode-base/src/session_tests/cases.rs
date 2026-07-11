@@ -248,7 +248,7 @@ fn initial_session_context_is_persisted_once_and_not_overwritten() {
 
 #[test]
 #[allow(clippy::redundant_closure_call)]
-fn initial_session_context_uses_current_cwd_when_inserted() -> Result<()> {
+fn initial_session_context_preserves_explicitly_bound_cwd_when_inserted() -> Result<()> {
     let _env_lock = lock_env();
     let original_cwd = std::env::current_dir().map_err(|e| anyhow!(e))?;
     let first_dir = tempfile::Builder::new()
@@ -278,13 +278,13 @@ fn initial_session_context_uses_current_cwd_when_inserted() -> Result<()> {
         assert!(
             first.contains(&format!(
                 "Working directory: {}",
-                second_dir.path().display()
+                first_dir.path().display()
             )),
-            "session context should use cwd at insertion time, got: {first}"
+            "session context should preserve the bound cwd, got: {first}"
         );
         assert_eq!(
             session.working_dir.as_deref(),
-            Some(second_dir.path().to_str().unwrap())
+            Some(first_dir.path().to_str().unwrap())
         );
         Ok(())
     })();

@@ -213,10 +213,10 @@ fn resolved_root_string(ctx: &ToolContext, path: Option<&str>) -> Option<String>
     path.map(|path| resolve_path_arg(ctx, path).display().to_string())
 }
 
-pub(super) fn resolve_search_root(ctx: &ToolContext, path: Option<&str>) -> PathBuf {
+pub(super) fn resolve_search_root(ctx: &ToolContext, path: Option<&str>) -> Result<PathBuf> {
     path.map(PathBuf::from)
         .or_else(|| ctx.working_dir.clone())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        .ok_or_else(|| anyhow::anyhow!("agentgrep requires a session working directory"))
 }
 
 pub(super) fn summarize_agentgrep_request(

@@ -100,6 +100,7 @@ async fn handle_resume_session_allows_same_client_instance_takeover_without_loca
     handle_resume_session(
         45,
         target_session_id.to_string(),
+        None,
         Some(shared_instance_id),
         false,
         true,

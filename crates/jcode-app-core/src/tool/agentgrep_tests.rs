@@ -45,6 +45,17 @@ fn grep_input(query: &str, max_regions: Option<usize>) -> AgentGrepInput {
 }
 
 #[test]
+fn agentgrep_rejects_missing_session_cwd_instead_of_using_process_cwd() {
+    let mut ctx = test_ctx(Path::new("/unused"));
+    ctx.working_dir = None;
+
+    let error = run_agentgrep_blocking(&grep_input("needle", None), &ctx)
+        .expect_err("workspace search without a session cwd must fail");
+
+    assert!(error.to_string().contains("session working directory"));
+}
+
+#[test]
 fn render_compacts_huge_grep_match_lines() {
     let args = GrepArgs {
         query: "set_status_notice".to_string(),

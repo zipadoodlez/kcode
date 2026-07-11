@@ -1,6 +1,38 @@
 use super::*;
 
 #[test]
+fn load_for_dir_without_project_does_not_load_process_cwd_config() {
+    let _guard = crate::storage::lock_test_env();
+    let original_cwd = std::env::current_dir().expect("current cwd");
+    let previous_home = std::env::var_os("JCODE_HOME");
+    let home = tempfile::tempdir().expect("home tempdir");
+    let project = tempfile::tempdir().expect("project tempdir");
+    crate::env::set_var("JCODE_HOME", home.path());
+    std::env::set_current_dir(project.path()).expect("set project cwd");
+    std::fs::write(
+        project.path().join(".mcp.json"),
+        r#"{"mcpServers":{"cwd-only":{"command":"cwd-server"}}}"#,
+    )
+    .expect("write project MCP config");
+
+    let result = std::panic::catch_unwind(|| {
+        let unbound = McpConfig::load_for_dir(None);
+        assert!(!unbound.servers.contains_key("cwd-only"));
+
+        let bound = McpConfig::load_for_dir(Some(project.path()));
+        assert!(bound.servers.contains_key("cwd-only"));
+    });
+
+    std::env::set_current_dir(original_cwd).expect("restore cwd");
+    if let Some(previous_home) = previous_home {
+        crate::env::set_var("JCODE_HOME", previous_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+    result.expect("MCP cwd isolation assertions");
+}
+
+#[test]
 fn test_json_rpc_request_serialization() {
     let request = JsonRpcRequest::new(1, "tools/list", None);
     let json = serde_json::to_string(&request).unwrap();

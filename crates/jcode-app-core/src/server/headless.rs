@@ -68,7 +68,14 @@ pub(super) async fn create_headless_session(
         )
         .await;
 
-    let mut new_agent = Agent::new(Arc::clone(&provider), registry);
+    let working_dir_string = working_dir
+        .as_ref()
+        .map(|dir| dir.to_string_lossy().into_owned());
+    let mut new_agent = Agent::new_with_initial_working_dir(
+        Arc::clone(&provider),
+        registry,
+        working_dir_string.as_deref(),
+    );
     new_agent.set_memory_enabled(memory_enabled);
     // Inline swarm mode renders a live gallery of worker viewports in the
     // coordinator TUI; enable the per-agent output tap so this worker streams a
@@ -114,21 +121,7 @@ pub(super) async fn create_headless_session(
         ));
     }
 
-    if let Some(ref dir) = working_dir
-        && let Some(path) = dir.to_str()
-    {
-        new_agent.set_working_dir(path);
-    }
-
     new_agent.set_debug(true);
-
-    if let Some(ref dir) = working_dir {
-        if let Some(dir_str) = dir.to_str() {
-            new_agent.set_working_dir(dir_str);
-        } else {
-            new_agent.set_working_dir(&dir.display().to_string());
-        }
-    }
 
     if selfdev_requested {
         new_agent.set_canary("self-dev");

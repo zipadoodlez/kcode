@@ -667,15 +667,12 @@ pub fn build_session_context(working_dir: Option<&Path>) -> String {
         lines.push(hardware);
     }
 
-    let cwd = working_dir
-        .map(Path::to_path_buf)
-        .or_else(|| std::env::current_dir().ok());
-    if let Some(cwd) = cwd.as_ref() {
+    let cwd = working_dir.map(Path::to_path_buf);
+    if let Some(cwd) = cwd.as_deref() {
         lines.push(format!("Working directory: {}", cwd.display()));
-    }
-
-    if let Some(git_info) = get_git_info(cwd.as_deref()) {
-        lines.push(git_info);
+        if let Some(git_info) = get_git_info(Some(cwd)) {
+            lines.push(git_info);
+        }
     }
 
     lines.join("\n")

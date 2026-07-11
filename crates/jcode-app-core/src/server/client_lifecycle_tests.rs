@@ -579,6 +579,55 @@ fn ping_request_is_lightweight_control_request() {
     assert!((Request::Ping { id: 1 }).is_lightweight_control_request());
 }
 
+fn subscribe_request(working_dir: Option<&str>) -> Request {
+    Request::Subscribe {
+        id: 1,
+        working_dir: working_dir.map(str::to_string),
+        selfdev: None,
+        target_session_id: None,
+        client_instance_id: None,
+        client_has_local_history: false,
+        allow_session_takeover: false,
+        terminal_env: Vec::new(),
+    }
+}
+
+#[test]
+fn initial_subscribe_requires_an_absolute_client_working_dir() {
+    for invalid in [None, Some(""), Some("relative/project")] {
+        let error = initial_subscribe_working_dir(&subscribe_request(invalid))
+            .expect_err("invalid client cwd must be rejected before session creation");
+        assert!(error.contains("working_dir") || error.contains("working directory"));
+    }
+
+    let absolute = std::env::temp_dir().join("jcode-client-project");
+    assert_eq!(
+        initial_subscribe_working_dir(&subscribe_request(absolute.to_str()))
+            .expect("absolute client cwd"),
+        absolute.to_string_lossy()
+    );
+
+    let error = initial_subscribe_working_dir(&Request::GetState { id: 2 })
+        .expect_err("stateful requests must not create an unbound session");
+    assert!(error.contains("must Subscribe"));
+}
+
+#[tokio::test]
+async fn new_client_agent_stamps_client_cwd_into_initial_context() {
+    let provider: Arc<dyn Provider> = Arc::new(CompleteImmediatelyProvider);
+    let registry = Registry::new(Arc::clone(&provider)).await;
+    let client_cwd = std::env::temp_dir().join("jcode-authoritative-client-project");
+    let client_cwd = client_cwd.to_string_lossy();
+    let agent = Agent::new_with_initial_working_dir(provider, registry, Some(&client_cwd));
+
+    assert_eq!(agent.working_dir(), Some(client_cwd.as_ref()));
+    let context = agent.messages()[0].content_preview();
+    assert!(
+        context.contains(&format!("Working directory: {client_cwd}")),
+        "initial context must be created from the client cwd: {context}"
+    );
+}
+
 #[test]
 fn server_reload_starting_is_true_only_for_recent_starting_marker() {
     let _guard = crate::storage::lock_test_env();

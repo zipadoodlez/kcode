@@ -158,9 +158,12 @@ pub(super) async fn handle_clear_session(
             ("client_selfdev", client_selfdev.to_string()),
         ],
     );
-    let preserve_debug = {
+    let (preserve_debug, working_dir) = {
         let agent_guard = agent.lock().await;
-        agent_guard.is_debug()
+        (
+            agent_guard.is_debug(),
+            agent_guard.working_dir().map(str::to_string),
+        )
     };
 
     {
@@ -168,7 +171,11 @@ pub(super) async fn handle_clear_session(
         agent_guard.mark_closed();
     }
 
-    let mut new_agent = Agent::new(Arc::clone(provider), registry.clone());
+    let mut new_agent = Agent::new_with_initial_working_dir(
+        Arc::clone(provider),
+        registry.clone(),
+        working_dir.as_deref(),
+    );
     let new_id = new_agent.session_id().to_string();
 
     if client_selfdev {
@@ -907,6 +914,7 @@ async fn claim_live_target_agent(
 pub(super) async fn handle_resume_session(
     id: u64,
     session_id: String,
+    working_dir_override: Option<&str>,
     client_instance_id: Option<&str>,
     client_has_local_history: bool,
     allow_session_takeover: bool,
@@ -1127,15 +1135,17 @@ pub(super) async fn handle_resume_session(
         // working dir, not the server process cwd (issue #420).
         // Do not block on the agent lock here: the target agent may be busy
         // mid-turn (lock held), and awaiting it would deadlock the resume.
-        let mcp_working_dir = live_target_agent
-            .try_lock()
-            .ok()
-            .and_then(|agent_guard| agent_guard.working_dir().map(PathBuf::from))
-            .or_else(|| {
-                crate::session::Session::load_startup_stub(&session_id)
-                    .ok()
-                    .and_then(|session| session.working_dir.map(PathBuf::from))
-            });
+        let mcp_working_dir = working_dir_override.map(PathBuf::from).or_else(|| {
+            live_target_agent
+                .try_lock()
+                .ok()
+                .and_then(|agent_guard| agent_guard.working_dir().map(PathBuf::from))
+                .or_else(|| {
+                    crate::session::Session::load_startup_stub(&session_id)
+                        .ok()
+                        .and_then(|session| session.working_dir.map(PathBuf::from))
+                })
+        });
         registry
             .register_mcp_tools_for_dir(
                 Some(client_event_tx.clone()),
@@ -1292,7 +1302,8 @@ pub(super) async fn handle_resume_session(
 
     let (result, is_canary) = {
         let mut agent_guard = agent.lock().await;
-        let result = agent_guard.restore_session(&session_id);
+        let result =
+            agent_guard.restore_session_with_working_dir(&session_id, working_dir_override);
         if *client_selfdev {
             agent_guard.set_canary("self-dev");
         }

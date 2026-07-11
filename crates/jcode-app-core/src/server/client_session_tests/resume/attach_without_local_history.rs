@@ -99,6 +99,7 @@ async fn handle_resume_session_allows_attach_without_local_history() -> Result<(
         44,
         target_session_id.to_string(),
         None,
+        None,
         false,
         true,
         &mut client_selfdev,

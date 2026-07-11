@@ -35,8 +35,7 @@ fn build_harness_context(
         .path
         .as_deref()
         .map(|path| resolve_path_arg(ctx, path))
-        .or_else(|| ctx.working_dir.clone())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        .or_else(|| ctx.working_dir.clone())?;
     let total_messages = session.messages.len().max(1);
     let compaction_cutoff = session
         .compaction

@@ -98,6 +98,7 @@ async fn handle_resume_session_allows_attach_from_different_client_instance() ->
     handle_resume_session(
         45,
         target_session_id.to_string(),
+        None,
         Some("client_instance_new"),
         true,
         true,

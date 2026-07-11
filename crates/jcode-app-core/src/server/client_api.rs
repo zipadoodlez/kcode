@@ -73,10 +73,14 @@ impl Client {
     ) -> Result<u64> {
         let id = self.next_id;
         self.next_id += 1;
+        let working_dir = match working_dir {
+            Some(working_dir) => working_dir,
+            None => std::env::current_dir()?.to_string_lossy().into_owned(),
+        };
 
         let request = Request::Subscribe {
             id,
-            working_dir,
+            working_dir: Some(working_dir),
             selfdev,
             target_session_id,
             client_instance_id: None,

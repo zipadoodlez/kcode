@@ -54,7 +54,7 @@ pub struct McpManager {
     config: McpConfig,
     session_id: String,
     /// Project directory used to resolve project-local MCP config. `None`
-    /// falls back to the process working directory (local/headless mode).
+    /// loads only global config and never consults the process working directory.
     project_dir: Option<std::path::PathBuf>,
 }
 

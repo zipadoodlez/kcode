@@ -102,6 +102,8 @@ fn test_session_context_includes_time_timezone_and_system_info() {
     assert!(context.contains("OS: "));
     assert!(context.contains("Architecture: "));
     assert!(context.contains("Jcode version: "));
+    assert!(!context.contains("Working directory: "));
+    assert!(!context.contains("Git:"));
 }
 
 #[test]

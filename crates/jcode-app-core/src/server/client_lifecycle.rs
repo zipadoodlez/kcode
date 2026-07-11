@@ -62,6 +62,7 @@ use anyhow::Result;
 use futures::FutureExt;
 use jcode_agent_runtime::{InterruptSignal, SoftInterruptSource, StreamError};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -74,6 +75,28 @@ type SessionAgents = Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>;
 type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
 const RELOAD_STARTING_GUARD_MAX_AGE: Duration = Duration::from_secs(30);
 const REQUEST_HANDLER_STALL_THRESHOLDS_MS: [u64; 3] = [2_000, 10_000, 60_000];
+
+fn required_subscribe_working_dir(working_dir: Option<&str>) -> std::result::Result<&str, String> {
+    let working_dir = working_dir
+        .map(str::trim)
+        .filter(|dir| !dir.is_empty())
+        .ok_or_else(|| "Subscribe requires the client's working directory".to_string())?;
+    if !Path::new(working_dir).is_absolute() {
+        return Err("Subscribe working_dir must be an absolute path".to_string());
+    }
+    Ok(working_dir)
+}
+
+fn initial_subscribe_working_dir(request: &Request) -> std::result::Result<String, String> {
+    match request {
+        Request::Subscribe { working_dir, .. } => {
+            required_subscribe_working_dir(working_dir.as_deref()).map(str::to_string)
+        }
+        _ => Err(
+            "Client must Subscribe with a working_dir before sending stateful requests".to_string(),
+        ),
+    }
+}
 
 struct ProcessingMessage {
     id: u64,
@@ -413,6 +436,22 @@ pub(super) async fn handle_client(
         }
     };
 
+    let initial_working_dir = match initial_subscribe_working_dir(&initial_request) {
+        Ok(working_dir) => working_dir,
+        Err(message) => {
+            write_direct_event(
+                &writer,
+                &ServerEvent::Error {
+                    id: initial_request.id(),
+                    message,
+                    retry_after_secs: None,
+                },
+            )
+            .await?;
+            return Ok(());
+        }
+    };
+
     // Per-client state
     let mut client_is_processing = false;
     let (processing_done_tx, mut processing_done_rx) =
@@ -437,7 +476,11 @@ pub(super) async fn handle_client(
 
     // Create a new session for this client
     let t0 = std::time::Instant::now();
-    let mut new_agent = Agent::new(Arc::clone(&provider), registry.clone());
+    let mut new_agent = Agent::new_with_initial_working_dir(
+        Arc::clone(&provider),
+        registry.clone(),
+        Some(&initial_working_dir),
+    );
     let agent_new_ms = t0.elapsed().as_millis();
 
     new_agent.set_memory_enabled(crate::config::config().features.memory);
@@ -1319,6 +1362,16 @@ pub(super) async fn handle_client(
                 allow_session_takeover,
                 terminal_env,
             } => {
+                if let Err(message) =
+                    required_subscribe_working_dir(subscribe_working_dir.as_deref())
+                {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message,
+                        retry_after_secs: None,
+                    });
+                    continue;
+                }
                 current_client_instance_id = client_instance_id.clone();
                 {
                     let mut connections = client_connections.write().await;
@@ -1339,6 +1392,7 @@ pub(super) async fn handle_client(
                         agent = handle_resume_session(
                             id,
                             target_session_id.clone(),
+                            subscribe_working_dir.as_deref(),
                             client_instance_id.as_deref(),
                             client_has_local_history,
                             allow_session_takeover,
@@ -1562,6 +1616,10 @@ pub(super) async fn handle_client(
                 client_has_local_history,
                 allow_session_takeover,
             } => {
+                let resume_working_dir = {
+                    let agent_guard = agent.lock().await;
+                    agent_guard.working_dir().map(str::to_string)
+                };
                 current_client_instance_id = client_instance_id.clone();
                 {
                     let mut connections = client_connections.write().await;
@@ -1572,6 +1630,7 @@ pub(super) async fn handle_client(
                 agent = handle_resume_session(
                     id,
                     session_id,
+                    resume_working_dir.as_deref(),
                     client_instance_id.as_deref(),
                     client_has_local_history,
                     allow_session_takeover,

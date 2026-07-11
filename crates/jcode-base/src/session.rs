@@ -868,13 +868,11 @@ impl Session {
             return false;
         }
 
-        // Capture the cwd at the moment the immutable session-context message is
-        // first inserted. A Session may be constructed before CLI startup, TUI
-        // launch, or tests finish changing the process cwd; using the older
-        // constructor snapshot here can produce a stale "Working directory" and
-        // git status in the model-visible context.
-        if let Some(current_dir) = current_working_dir_string() {
-            self.working_dir = Some(current_dir);
+        // Preserve an explicitly bound session directory. Shared-server clients
+        // provide their cwd before this message is created, and replacing it with
+        // the daemon process cwd would leak the directory that launched the server.
+        if self.working_dir.is_none() {
+            self.working_dir = current_working_dir_string();
         }
 
         let context =

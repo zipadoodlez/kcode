@@ -253,6 +253,14 @@ impl Tool for AgentGrepTool {
 }
 
 fn run_agentgrep_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<ToolOutput> {
+    if ctx.working_dir.is_none() {
+        let explicit_path = params.path.as_deref().or(params.file.as_deref());
+        if explicit_path.is_none_or(|path| !Path::new(path).is_absolute()) {
+            anyhow::bail!(
+                "agentgrep requires a session working directory unless an absolute path is provided"
+            );
+        }
+    }
     let context_path = maybe_write_context_json(params, ctx)?;
     let request = summarize_agentgrep_request(params, ctx, context_path.as_deref());
     let started_at = std::time::Instant::now();
@@ -299,7 +307,7 @@ fn execute_linked_agentgrep(
     match params.mode.as_str() {
         "grep" => {
             let args = build_grep_args(params, ctx)?;
-            let root = resolve_search_root(ctx, args.path.as_deref());
+            let root = resolve_search_root(ctx, args.path.as_deref())?;
             let result = filter_grep_result_to_exact_file(
                 run_grep(&root, &args).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
@@ -311,20 +319,20 @@ fn execute_linked_agentgrep(
         }
         "find" => {
             let args = build_find_args(params, ctx)?;
-            let root = resolve_search_root(ctx, args.path.as_deref());
+            let root = resolve_search_root(ctx, args.path.as_deref())?;
             let result =
                 filter_find_result_to_exact_file(run_find(&root, &args), exact_file.as_deref());
             Ok(ToolOutput::new(render_find_output(&result, &args)).with_title("agentgrep find"))
         }
         "outline" => {
             let args = build_outline_args(params, ctx, context_json_path)?;
-            let root = resolve_search_root(ctx, args.path.as_deref());
+            let root = resolve_search_root(ctx, args.path.as_deref())?;
             let result = run_outline(&root, &args).map_err(anyhow::Error::msg)?;
             Ok(ToolOutput::new(render_outline_output(&result)).with_title("agentgrep outline"))
         }
         "trace" | "smart" => {
             let (args, query) = build_smart_args_and_query(params, ctx, context_json_path)?;
-            let root = resolve_search_root(ctx, args.path.as_deref());
+            let root = resolve_search_root(ctx, args.path.as_deref())?;
             let result = filter_smart_result_to_exact_file(
                 run_smart(&root, &query, &args).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),

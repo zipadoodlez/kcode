@@ -342,11 +342,23 @@ impl Agent {
     }
 
     pub fn new(provider: Arc<dyn Provider>, registry: Registry) -> Self {
+        Self::new_with_initial_working_dir(provider, registry, None)
+    }
+
+    pub(crate) fn new_with_initial_working_dir(
+        provider: Arc<dyn Provider>,
+        registry: Registry,
+        working_dir: Option<&str>,
+    ) -> Self {
         let tool_selection = crate::config::config().tools.selection();
+        let mut session = Session::create(None, None);
+        if let Some(working_dir) = working_dir {
+            session.working_dir = Some(working_dir.to_string());
+        }
         let mut agent = Self::build_base(
             provider,
             registry,
-            Session::create(None, None),
+            session,
             tool_selection.allowed_tools,
             tool_selection.disabled_tools,
         );

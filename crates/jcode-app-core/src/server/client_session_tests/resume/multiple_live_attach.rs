@@ -90,6 +90,7 @@ async fn handle_resume_session_allows_multiple_live_tui_attach() -> Result<()> {
         42,
         target_session_id.to_string(),
         None,
+        None,
         false,
         false,
         &mut client_selfdev,
