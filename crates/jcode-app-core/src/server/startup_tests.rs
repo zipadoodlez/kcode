@@ -133,5 +133,11 @@ async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
     assert!(client.ping().await.expect("debug ping should succeed"));
     assert_eq!(*server.client_count.read().await, 0);
 
-    debug_handle.abort();
+    tokio::time::timeout(Duration::from_secs(1), runtime.shutdown())
+        .await
+        .expect("runtime shutdown should join debug connection tasks");
+    tokio::time::timeout(Duration::from_secs(1), debug_handle)
+        .await
+        .expect("debug accept loop should observe runtime cancellation")
+        .expect("debug accept loop should exit cleanly");
 }

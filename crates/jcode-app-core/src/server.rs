@@ -998,7 +998,11 @@ impl Server {
         main_listener: Listener,
         debug_listener: Listener,
         server_start_time: Instant,
-    ) -> (tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>) {
+    ) -> (
+        ServerRuntime,
+        tokio::task::JoinHandle<()>,
+        tokio::task::JoinHandle<()>,
+    ) {
         self.spawn_registry_prewarm();
         let registry_info = self.build_registry_info();
 
@@ -1017,13 +1021,13 @@ impl Server {
         self.spawn_registry_metadata_publisher(registry_info);
 
         // Spawn WebSocket gateway for iOS/web clients (if enabled)
-        let _gateway_handle = self.spawn_gateway(runtime);
+        self.spawn_gateway(runtime.clone()).await;
 
         // Startup recovery can be expensive in multi-session reloads. Run it
         // only after the replacement daemon is already accepting reconnects.
         self.recover_headless_sessions_on_startup().await;
 
-        (main_handle, debug_handle)
+        (runtime, main_handle, debug_handle)
     }
 
     fn spawn_background_tasks(
@@ -2063,19 +2067,38 @@ impl Server {
         let server_start_time = Instant::now();
 
         self.spawn_background_tasks(server_start_time, temporary_server_policy);
-        let (main_handle, debug_handle) = self
+        let (runtime, main_handle, debug_handle) = self
             .finish_startup_after_bind(main_listener, debug_listener, server_start_time)
             .await;
 
-        // Wait for both to complete (they won't normally)
-        let _ = tokio::join!(main_handle, debug_handle);
+        // If either listener exits unexpectedly, stop accepting work and wait
+        // for every owned connection task before returning. The normal daemon
+        // path runs until process shutdown or exec-based reload.
+        let mut main_handle = main_handle;
+        let mut debug_handle = debug_handle;
+        tokio::select! {
+            result = &mut main_handle => {
+                if let Err(error) = result {
+                    crate::logging::error(&format!("Main accept loop failed: {error}"));
+                }
+                runtime.shutdown().await;
+                let _ = debug_handle.await;
+            }
+            result = &mut debug_handle => {
+                if let Err(error) = result {
+                    crate::logging::error(&format!("Debug accept loop failed: {error}"));
+                }
+                runtime.shutdown().await;
+                let _ = main_handle.await;
+            }
+        }
         Ok(())
     }
 
     /// Spawn the WebSocket gateway if enabled in config.
-    /// Returns a task handle that accepts gateway clients and feeds them
-    /// into handle_client just like Unix socket connections.
-    fn spawn_gateway(&self, runtime: ServerRuntime) -> Option<tokio::task::JoinHandle<()>> {
+    /// The runtime task scope owns both the listener and client accept loop so
+    /// server shutdown can cancel and join them with the other connection work.
+    async fn spawn_gateway(&self, runtime: ServerRuntime) {
         let config = if let Some(override_config) = &self.gateway_config_override {
             override_config.clone()
         } else {

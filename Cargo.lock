@@ -3363,6 +3363,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "unicode-width 0.2.2",
  "url",
  "urlencoding",
@@ -7990,6 +7991,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
