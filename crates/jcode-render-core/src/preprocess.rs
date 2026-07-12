@@ -34,6 +34,14 @@ const DISPLAY_MATH_ENVIRONMENTS: &[&str] = &[
     "cases*",
 ];
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MathDelimiter {
+    DollarInline,
+    DollarDisplay,
+    LatexInline,
+    LatexDisplay,
+}
+
 /// Normalize common LaTeX math containers into pulldown-cmark's `$` / `$$`
 /// syntax before markdown parsing.
 ///
@@ -164,7 +172,7 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
     let mut fence: Option<(char, usize)> = None;
     let mut line_start = true;
     let mut leading_columns = 0usize;
-    let mut math_dollars = 0usize;
+    let mut math_delimiter = None;
     let mut wrapped_environment: Option<(String, usize)> = None;
     let mut literal_environment: Option<(String, usize)> = None;
 
@@ -193,7 +201,11 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
                 .take_while(|candidate| *candidate == ch)
                 .count();
             if run >= 3 {
-                let is_close = fence.is_some_and(|(marker, len)| marker == ch && run >= len);
+                let current_line = rest.split_once('\n').map_or(rest, |(line, _)| line);
+                let trailing = &current_line[run * ch.len_utf8()..];
+                let is_close = fence.is_some_and(|(marker, len)| {
+                    marker == ch && run >= len && trailing.trim().is_empty()
+                });
                 if fence.is_none() || is_close {
                     fence = if is_close { None } else { Some((ch, run)) };
                 }
@@ -204,6 +216,14 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
             }
         }
         line_start = false;
+
+        // Four-space and tab-indented Markdown code is literal just like fenced
+        // and inline code. Keep the whole logical line byte-for-byte unchanged.
+        if leading_columns >= 4 {
+            out.push(ch);
+            index += ch.len_utf8();
+            continue;
+        }
 
         if fence.is_some() {
             out.push(ch);
@@ -268,12 +288,12 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
                     .next()
                     .is_some_and(|next| next.is_ascii_digit());
             if !looks_like_currency {
-                math_dollars = if math_dollars == run {
-                    0
-                } else if math_dollars == 0 {
-                    run
-                } else {
-                    math_dollars
+                math_delimiter = match (math_delimiter, run) {
+                    (Some(MathDelimiter::DollarInline), 1)
+                    | (Some(MathDelimiter::DollarDisplay), 2) => None,
+                    (None, 1) => Some(MathDelimiter::DollarInline),
+                    (None, 2) => Some(MathDelimiter::DollarDisplay),
+                    (current, _) => current,
                 };
             }
             out.push_str(&rest[..run]);
@@ -281,42 +301,48 @@ fn normalize_latex_delimiters_and_environments(text: &str) -> String {
             continue;
         }
 
-        if math_dollars == 0
+        if math_delimiter.is_none()
             && rest.starts_with("\\(")
             && !is_escaped_at(text, index)
             && has_unescaped_delimiter(&rest[2..], "\\)")
         {
             out.push('$');
-            math_dollars = 1;
+            math_delimiter = Some(MathDelimiter::LatexInline);
             index += 2;
             continue;
         }
-        if math_dollars == 1 && rest.starts_with("\\)") && !is_escaped_at(text, index) {
+        if math_delimiter == Some(MathDelimiter::LatexInline)
+            && rest.starts_with("\\)")
+            && !is_escaped_at(text, index)
+        {
             out.push('$');
-            math_dollars = 0;
+            math_delimiter = None;
             index += 2;
             continue;
         }
-        if math_dollars == 0
+        if math_delimiter.is_none()
             && rest.starts_with("\\[")
             && !is_escaped_at(text, index)
             && has_unescaped_delimiter(&rest[2..], "\\]")
             && !looks_like_escaped_markdown_link(rest)
         {
             out.push_str("$$");
-            math_dollars = 2;
+            math_delimiter = Some(MathDelimiter::LatexDisplay);
             index += 2;
             continue;
         }
-        if math_dollars == 2 && rest.starts_with("\\]") && !is_escaped_at(text, index) {
+        if math_delimiter == Some(MathDelimiter::LatexDisplay)
+            && rest.starts_with("\\]")
+            && !is_escaped_at(text, index)
+        {
             out.push_str("$$");
-            math_dollars = 0;
+            math_delimiter = None;
             index += 2;
             continue;
         }
 
         if ch == '\\'
-            && math_dollars == 0
+            && math_delimiter.is_none()
             && wrapped_environment.is_none()
             && let Some((name, marker_len)) = environment_marker(rest, "begin")
             && DISPLAY_MATH_ENVIRONMENTS.contains(&name)
