@@ -18,6 +18,7 @@ const LEADING_GAP: i32 = -3;
 const SUBSTITUTION: i32 = -10;
 const DELETION: i32 = -12;
 const TRANSPOSITION: i32 = 2 * MATCH - 22;
+const EXACT: i32 = 32;
 
 /// Result of a successful fuzzy match.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -247,8 +248,9 @@ fn fuzzy_match_impl(
         return None;
     }
 
+    let exact = pat == hay;
     Some(FuzzyMatch {
-        score: cell.score,
+        score: cell.score + if exact { EXACT } else { 0 },
         positions: cell.positions.into_iter().map(|p| p + hay_offset).collect(),
     })
 }
@@ -325,8 +327,15 @@ mod tests {
         let exact = fuzzy_score("codex", "codex").unwrap();
         let prefix = fuzzy_score("codex", "codex-mini").unwrap();
         let typo = fuzzy_score("codxe", "codex").unwrap();
-        assert!(exact >= prefix);
+        assert!(exact > prefix);
         assert!(prefix > typo);
+    }
+
+    #[test]
+    fn exact_token_match_outranks_a_longer_prefix_token() {
+        let exact = fuzzy_score_tokens("gpt-5", "gpt-5 openai responses").unwrap();
+        let longer = fuzzy_score_tokens("gpt-5", "gpt-5.5 openai responses").unwrap();
+        assert!(exact > longer);
     }
 
     #[test]

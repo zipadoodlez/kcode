@@ -3080,7 +3080,8 @@ impl App {
         if picker.filter.is_empty() {
             picker.filtered = (0..picker.entries.len()).collect();
         } else {
-            let mut scored: Vec<(usize, i32)> = picker
+            let query = picker.filter.trim();
+            let mut scored: Vec<(usize, bool, i32)> = picker
                 .entries
                 .iter()
                 .enumerate()
@@ -3089,12 +3090,17 @@ impl App {
                     Self::picker_fuzzy_score(&picker.filter, &filter_text).map(|s| {
                         let usage_bonus = m.usage_score.min(i32::MAX as u32) as i32;
                         let bonus = usage_bonus + if m.recommended { 5 } else { 0 };
-                        (i, s + bonus)
+                        (
+                            i,
+                            m.name.eq_ignore_ascii_case(query),
+                            s.saturating_add(bonus),
+                        )
                     })
                 })
                 .collect();
             scored.sort_by(|a, b| {
                 b.1.cmp(&a.1)
+                    .then(b.2.cmp(&a.2))
                     .then(
                         picker.entries[a.0]
                             .recommendation_rank
@@ -3102,7 +3108,7 @@ impl App {
                     )
                     .then(picker.entries[a.0].name.cmp(&picker.entries[b.0].name))
             });
-            picker.filtered = scored.into_iter().map(|(i, _)| i).collect();
+            picker.filtered = scored.into_iter().map(|(i, _, _)| i).collect();
         }
         if picker.filtered.is_empty() {
             picker.selected = 0;
@@ -3269,6 +3275,26 @@ mod tests {
         App::apply_inline_interactive_filter(&mut picker);
 
         assert_eq!(picker.filtered, vec![0]);
+    }
+
+    #[test]
+    fn model_picker_exact_name_outranks_longer_frequently_used_prefix() {
+        let mut picker = InlineInteractiveState {
+            kind: PickerKind::Model,
+            filtered: vec![0, 1],
+            entries: vec![
+                picker_entry("gpt-5.5", "OpenAI", 150),
+                picker_entry("gpt-5", "OpenAI", 0),
+            ],
+            selected: 0,
+            column: 0,
+            filter: "gpt-5".to_string(),
+            preview: false,
+        };
+
+        App::apply_inline_interactive_filter(&mut picker);
+
+        assert_eq!(picker.filtered, vec![1, 0]);
     }
 
     #[test]
