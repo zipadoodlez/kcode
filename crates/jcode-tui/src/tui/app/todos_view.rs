@@ -41,8 +41,9 @@ impl App {
     pub(super) fn show_todo_card(&mut self) {
         let session_id = self.active_client_session_id().map(str::to_string);
         let todos = load_current_session_todos(session_id.as_deref());
-        let content = serde_json::to_string(&todos).unwrap_or_else(|_| "[]".to_string());
-        self.todo_card_rendered_hash = hash_todos_payload(session_id.as_deref(), &todos, &[]);
+        let goals = load_current_session_goals(session_id.as_deref());
+        let content = todo_card_payload_json(&todos, &goals);
+        self.todo_card_rendered_hash = hash_todos_payload(session_id.as_deref(), &todos, &goals);
 
         if let Some(idx) = self.latest_todo_card_index() {
             if idx + 1 == self.display_messages.len() {
@@ -63,12 +64,13 @@ impl App {
         };
         let session_id = self.active_client_session_id().map(str::to_string);
         let todos = load_current_session_todos(session_id.as_deref());
-        let next_hash = hash_todos_payload(session_id.as_deref(), &todos, &[]);
+        let goals = load_current_session_goals(session_id.as_deref());
+        let next_hash = hash_todos_payload(session_id.as_deref(), &todos, &goals);
         if next_hash == self.todo_card_rendered_hash {
             return false;
         }
         self.todo_card_rendered_hash = next_hash;
-        let content = serde_json::to_string(&todos).unwrap_or_else(|_| "[]".to_string());
+        let content = todo_card_payload_json(&todos, &goals);
         self.replace_display_message_content(idx, content)
     }
 
@@ -283,6 +285,14 @@ fn load_current_session_goals(session_id: Option<&str>) -> Vec<crate::todo::Todo
     crate::todo::load_goals(session_id).unwrap_or_default()
 }
 
+fn todo_card_payload_json(todos: &[TodoItem], goals: &[crate::todo::TodoGoal]) -> String {
+    serde_json::to_string(&serde_json::json!({
+        "todos": todos,
+        "goals": goals,
+    }))
+    .unwrap_or_else(|_| r#"{"todos":[],"goals":[]}"#.to_string())
+}
+
 fn build_todos_view_markdown(
     session_id: Option<&str>,
     todos: &[TodoItem],
@@ -418,7 +428,7 @@ fn format_goal_markdown(goals: &[crate::todo::TodoGoal], group: Option<&str>) ->
     };
     let mut line = String::new();
     if let Some(score) = goal.hill_climbability {
-        line.push_str(&format!("\n- Hill-climbability: **{}%**", score));
+        line.push_str(&format!("\n- Hill climbability: **{}%**", score));
         line.push('\n');
     }
     if let Some(objective) = goal
@@ -740,7 +750,7 @@ mod tests {
             "{markdown}"
         );
         assert!(
-            markdown.contains("- Hill-climbability: **90%**"),
+            markdown.contains("- Hill climbability: **90%**"),
             "{markdown}"
         );
         assert!(

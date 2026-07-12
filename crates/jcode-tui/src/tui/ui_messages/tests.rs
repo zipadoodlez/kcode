@@ -420,18 +420,110 @@ fn render_todos_message_shows_grouped_card_with_status_glyphs() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(plain.contains("todos · 1/3 done"), "{plain}");
+    assert!(plain.contains("Todos · 1/3"), "{plain}");
     assert!(plain.contains("todo card"), "{plain}");
     assert!(plain.contains("other"), "{plain}");
     assert!(plain.contains("✓ Wire the hotkey"), "{plain}");
-    assert!(plain.contains("▶ Render the card"), "{plain}");
+    assert!(plain.contains("● Render the card"), "{plain}");
     assert!(plain.contains("○ Unrelated cleanup"), "{plain}");
     // Completed items show completion confidence; open ones planning confidence.
-    assert!(plain.contains("95%"), "{plain}");
+    assert!(plain.contains("80→95%"), "{plain}");
     assert!(plain.contains("80%"), "{plain}");
     // Only open items carry the high-priority marker.
     assert!(!plain.contains("Wire the hotkey (high)"), "{plain}");
     assert!(plain.contains("Render the card (high)"), "{plain}");
+    assert!(
+        !plain.contains('╭'),
+        "todo card should be borderless:\n{plain}"
+    );
+    assert!(
+        !plain.contains('╰'),
+        "todo card should be borderless:\n{plain}"
+    );
+}
+
+#[test]
+fn render_todos_message_shows_goal_scores_and_feedback() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "1".to_string(),
+        content: "Render the card".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("todo rendering".to_string()),
+        confidence: Some(85),
+        completion_confidence: None,
+        confidence_history: vec![80, 85],
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    }];
+    let goals = vec![crate::todo::TodoGoal {
+        group: Some("todo rendering".to_string()),
+        hill_climbability: Some(95),
+        objective: Some("Readable at 80 columns".to_string()),
+        feedback_loop: Some("Inspect a debug frame".to_string()),
+        end_to_end_ownership: Some(90),
+    }];
+    let msg =
+        DisplayMessage::todos(serde_json::json!({ "todos": todos, "goals": goals }).to_string());
+
+    let plain = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        plain.contains("Hill climbability 95% · Ownership 90%"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("Objective · Readable at 80 columns"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("Feedback · Inspect a debug frame"),
+        "{plain}"
+    );
+    assert!(plain.contains("● Render the card (high) · 85%"), "{plain}");
+}
+
+#[test]
+fn render_todos_message_wraps_goal_scores_at_narrow_widths() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "1".to_string(),
+        content: "Render the card".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("todo rendering".to_string()),
+        confidence: Some(85),
+        completion_confidence: None,
+        confidence_history: Vec::new(),
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    }];
+    let goals = vec![crate::todo::TodoGoal {
+        group: Some("todo rendering".to_string()),
+        hill_climbability: Some(95),
+        objective: None,
+        feedback_loop: None,
+        end_to_end_ownership: Some(90),
+    }];
+    let msg =
+        DisplayMessage::todos(serde_json::json!({ "todos": todos, "goals": goals }).to_string());
+
+    let lines = render_todos_message(&msg, 40, crate::config::DiffDisplayMode::Off);
+    let plain = lines
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("Hill climbability 95%"), "{plain}");
+    assert!(plain.contains("Ownership 90%"), "{plain}");
+    assert!(
+        lines.iter().all(|line| line.width() <= 38),
+        "card exceeded its 38-column content budget: {plain}"
+    );
 }
 
 #[test]
@@ -442,7 +534,7 @@ fn render_todos_message_empty_list_shows_placeholder() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(plain.contains("☰ todos"), "{plain}");
+    assert!(plain.contains("Todos"), "{plain}");
     assert!(plain.contains("No todos yet"), "{plain}");
 }
 
@@ -451,6 +543,72 @@ fn render_todos_message_bad_payload_falls_back_to_system() {
     let msg = DisplayMessage::todos("not json");
     let lines = render_todos_message(&msg, 100, crate::config::DiffDisplayMode::Off);
     assert!(!lines.is_empty());
+}
+
+#[test]
+fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
+    let todos = vec![crate::todo::TodoItem {
+        id: "render".to_string(),
+        content: "Render the todo result".to_string(),
+        status: "in_progress".to_string(),
+        priority: "high".to_string(),
+        group: Some("todo rendering".to_string()),
+        confidence: Some(92),
+        completion_confidence: None,
+        confidence_history: vec![85, 92],
+        blocked_by: Vec::new(),
+        assigned_to: None,
+    }];
+    let goals = vec![crate::todo::TodoGoal {
+        group: Some("todo rendering".to_string()),
+        hill_climbability: Some(95),
+        objective: Some("Readable card".to_string()),
+        feedback_loop: Some("Inspect the rendered frame".to_string()),
+        end_to_end_ownership: Some(92),
+    }];
+    let content = format!(
+        "{}\n\nGoals:\n{}\n\nKeep the feedback loop concrete.",
+        serde_json::to_string_pretty(&todos).unwrap(),
+        serde_json::to_string_pretty(&goals).unwrap()
+    );
+    let msg = DisplayMessage {
+        role: "tool".to_string(),
+        content,
+        tool_calls: Vec::new(),
+        duration_secs: None,
+        title: Some("1 todos".to_string()),
+        tool_data: Some(crate::message::ToolCall {
+            id: "call_todo".to_string(),
+            name: "todo".to_string(),
+            input: serde_json::json!({ "todos": todos, "goals": goals }),
+            intent: Some("Track todo card work".to_string()),
+            thought_signature: None,
+        }),
+    };
+
+    let plain = render_tool_message(&msg, 100, crate::config::DiffDisplayMode::Off)
+        .iter()
+        .map(extract_line_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(plain.contains("Todos · 0/1"), "{plain}");
+    assert!(
+        plain.contains("Hill climbability 95% · Ownership 92%"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("● Render the todo result (high) · 92%"),
+        "{plain}"
+    );
+    assert!(
+        !plain.contains('╭'),
+        "todo tool result should be borderless:\n{plain}"
+    );
+    assert!(
+        !plain.contains("todo 1 items"),
+        "generic tool row leaked:\n{plain}"
+    );
 }
 
 #[test]

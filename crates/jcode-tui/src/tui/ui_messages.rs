@@ -869,44 +869,93 @@ pub(crate) fn render_overnight_message(
     lines
 }
 
-/// Render the inline todo-list card (`role == "todos"`). The message content
-/// is the JSON serialization of the session's todo items; falls back to the
-/// system renderer when it cannot be parsed.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum TodoCardPayload {
+    Current {
+        #[serde(default)]
+        todos: Vec<crate::todo::TodoItem>,
+        #[serde(default)]
+        goals: Vec<crate::todo::TodoGoal>,
+    },
+    Legacy(Vec<crate::todo::TodoItem>),
+}
+
+impl TodoCardPayload {
+    fn into_parts(self) -> (Vec<crate::todo::TodoItem>, Vec<crate::todo::TodoGoal>) {
+        match self {
+            Self::Current { todos, goals } => (todos, goals),
+            Self::Legacy(todos) => (todos, Vec::new()),
+        }
+    }
+}
+
+fn parse_todo_tool_output(
+    content: &str,
+) -> Option<(Vec<crate::todo::TodoItem>, Vec<crate::todo::TodoGoal>)> {
+    let mut todo_stream =
+        serde_json::Deserializer::from_str(content).into_iter::<Vec<crate::todo::TodoItem>>();
+    let todos = todo_stream.next()?.ok()?;
+    let remainder = content.get(todo_stream.byte_offset()..)?.trim_start();
+    let goals = if let Some(goal_json) = remainder.strip_prefix("Goals:") {
+        let mut goal_stream = serde_json::Deserializer::from_str(goal_json.trim_start())
+            .into_iter::<Vec<crate::todo::TodoGoal>>();
+        goal_stream.next().and_then(Result::ok).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    Some((todos, goals))
+}
+
+/// Render the inline todo-list card (`role == "todos"`). New payloads contain
+/// both todo items and goal assessments; the legacy item-array shape remains
+/// supported so older transcript entries keep rendering.
 pub(crate) fn render_todos_message(
     msg: &DisplayMessage,
     width: u16,
     diff_mode: crate::config::DiffDisplayMode,
 ) -> Vec<Line<'static>> {
-    let Ok(todos) = serde_json::from_str::<Vec<crate::todo::TodoItem>>(&msg.content) else {
+    let Ok(payload) = serde_json::from_str::<TodoCardPayload>(&msg.content) else {
         return render_system_message(msg, width, diff_mode);
     };
+    let (todos, goals) = payload.into_parts();
 
     let centered = markdown::center_code_blocks();
-    let border_style = Style::default().fg(rgb(120, 190, 160));
     let dim_style = Style::default().fg(dim_color());
-
-    let max_box_width = if centered {
+    let card_width = if centered {
         (width.saturating_sub(4) as usize).min(120)
     } else {
         (width.saturating_sub(2) as usize).min(100)
     }
-    .max(28);
-    let inner_width = max_box_width.saturating_sub(4).max(1);
+    .max(1);
+    let base_indent = if centered { "" } else { "  " };
+    let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
 
     let total = todos.len();
     let completed = todos.iter().filter(|t| t.status == "completed").count();
     let title = if total == 0 {
-        "☰ todos".to_string()
+        "Todos".to_string()
     } else {
-        format!("☰ todos · {}/{} done", completed, total)
+        format!("Todos · {}/{}", completed, total)
     };
 
-    let mut content: Vec<Line<'static>> = Vec::new();
+    let mut lines = vec![todo_card_line(
+        vec![Span::styled(
+            title,
+            Style::default().fg(rgb(210, 220, 230)).bold(),
+        )],
+        base_indent,
+        inner_width,
+    )];
     if todos.is_empty() {
-        content.push(Line::from(Span::styled(
-            "No todos yet. The model populates them with the todo tool.",
-            dim_style,
-        )));
+        lines.push(todo_card_line(
+            vec![Span::styled(
+                "No todos yet. The model populates them with the todo tool.",
+                dim_style,
+            )],
+            base_indent,
+            inner_width,
+        ));
     } else {
         // Partition into first-seen-order groups (ungrouped bucket last). When
         // no todo declares a group, keep a flat list without headers.
@@ -929,44 +978,187 @@ pub(crate) fn render_todos_message(
                 }
             }
             groups.sort_by_key(|(key, _)| key.is_none());
-            for (idx, (group, items)) in groups.iter().enumerate() {
-                if idx > 0 {
-                    content.push(Line::from(""));
-                }
+            for (group, items) in &groups {
                 let label = group.as_deref().unwrap_or("other");
-                content.push(super::truncate_line_with_ellipsis_to_width(
-                    &Line::from(Span::styled(
-                        label.to_string(),
-                        Style::default().fg(rgb(150, 160, 185)).bold(),
-                    )),
-                    inner_width,
-                ));
+                let goal = todo_card_goal_for_group(&goals, group.as_deref());
+                lines.push(render_todo_goal_header(label, base_indent, inner_width));
+                push_todo_goal_details(&mut lines, goal, base_indent, inner_width);
                 for todo in items {
-                    content.push(render_todo_card_item_line(todo, inner_width));
+                    lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
                 }
             }
         } else {
+            let goal = todo_card_goal_for_group(&goals, None);
+            if goal.is_some() {
+                push_todo_goal_details(&mut lines, goal, base_indent, inner_width);
+            }
             for todo in &todos {
-                content.push(render_todo_card_item_line(todo, inner_width));
+                lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
             }
         }
     }
 
-    let mut lines = render_rounded_box(&title, content, max_box_width, border_style);
     if centered {
         left_pad_lines_for_centered_mode(&mut lines, width);
     }
     lines
 }
 
-fn render_todo_card_item_line(todo: &crate::todo::TodoItem, inner_width: usize) -> Line<'static> {
+fn todo_card_line(
+    spans: Vec<Span<'static>>,
+    base_indent: &str,
+    inner_width: usize,
+) -> Line<'static> {
+    let mut prefixed = vec![Span::raw(base_indent.to_string())];
+    prefixed.extend(spans);
+    super::truncate_line_with_ellipsis_to_width(
+        &Line::from(prefixed),
+        inner_width.saturating_add(base_indent.width()),
+    )
+}
+
+fn todo_card_goal_for_group<'a>(
+    goals: &'a [crate::todo::TodoGoal],
+    group: Option<&str>,
+) -> Option<&'a crate::todo::TodoGoal> {
+    let key = group.map(str::trim).filter(|value| !value.is_empty());
+    goals.iter().find(|goal| {
+        goal.group
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            == key
+    })
+}
+
+fn todo_goal_score_spans(goal: Option<&crate::todo::TodoGoal>) -> Vec<Span<'static>> {
+    let Some(goal) = goal else {
+        return Vec::new();
+    };
+    let mut spans = Vec::new();
+    if let Some(score) = goal.hill_climbability {
+        spans.push(Span::styled(
+            "Hill climbability ",
+            Style::default().fg(rgb(140, 145, 155)),
+        ));
+        spans.push(Span::styled(
+            format!("{}%", score),
+            Style::default().fg(rgb(120, 190, 160)),
+        ));
+    }
+    if let Some(score) = goal.end_to_end_ownership {
+        if !spans.is_empty() {
+            spans.push(Span::styled(" · ", Style::default().fg(dim_color())));
+        }
+        spans.push(Span::styled(
+            "Ownership ",
+            Style::default().fg(rgb(140, 145, 155)),
+        ));
+        spans.push(Span::styled(
+            format!("{}%", score),
+            Style::default().fg(rgb(120, 190, 160)),
+        ));
+    }
+    spans
+}
+
+fn render_todo_goal_header(label: &str, base_indent: &str, inner_width: usize) -> Line<'static> {
+    todo_card_line(
+        vec![Span::styled(
+            label.to_string(),
+            Style::default().fg(rgb(160, 170, 195)).bold(),
+        )],
+        base_indent,
+        inner_width,
+    )
+}
+
+fn push_todo_goal_details(
+    lines: &mut Vec<Line<'static>>,
+    goal: Option<&crate::todo::TodoGoal>,
+    base_indent: &str,
+    inner_width: usize,
+) {
+    let Some(goal) = goal else {
+        return;
+    };
+    let scores = todo_goal_score_spans(Some(goal));
+    if !scores.is_empty() {
+        let score_width = Line::from(scores.clone()).width();
+        if score_width > inner_width.saturating_sub(2)
+            && goal.hill_climbability.is_some()
+            && goal.end_to_end_ownership.is_some()
+        {
+            for (label, score) in [
+                ("Hill climbability", goal.hill_climbability),
+                ("Ownership", goal.end_to_end_ownership),
+            ] {
+                let mut spans = vec![Span::raw("  ")];
+                spans.push(Span::styled(
+                    format!("{} ", label),
+                    Style::default().fg(rgb(140, 145, 155)),
+                ));
+                spans.push(Span::styled(
+                    format!("{}%", score.expect("score checked above")),
+                    Style::default().fg(rgb(120, 190, 160)),
+                ));
+                lines.push(todo_card_line(spans, base_indent, inner_width));
+            }
+        } else {
+            let mut spans = vec![Span::raw("  ")];
+            spans.extend(scores);
+            lines.push(todo_card_line(spans, base_indent, inner_width));
+        }
+    }
+    for (label, value) in [
+        ("Objective", goal.objective.as_deref()),
+        ("Feedback", goal.feedback_loop.as_deref()),
+    ] {
+        let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        lines.push(todo_card_line(
+            vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(
+                    format!("{} · ", label),
+                    Style::default().fg(rgb(120, 125, 135)),
+                ),
+                Span::styled(value.to_string(), Style::default().fg(dim_color())),
+            ],
+            base_indent,
+            inner_width,
+        ));
+    }
+}
+
+fn todo_card_confidence_label(todo: &crate::todo::TodoItem) -> Option<String> {
+    if todo.status == "completed"
+        && let (Some(planning), Some(completed)) = (todo.confidence, todo.completion_confidence)
+        && planning != completed
+    {
+        return Some(format!("{}→{}%", planning, completed));
+    }
+    let score = if todo.status == "completed" {
+        todo.completion_confidence.or(todo.confidence)
+    } else {
+        todo.confidence
+    };
+    score.map(|score| format!("{}%", score))
+}
+
+fn render_todo_card_item_line(
+    todo: &crate::todo::TodoItem,
+    base_indent: &str,
+    inner_width: usize,
+) -> Line<'static> {
     let blocked = !todo.blocked_by.is_empty() && todo.status != "completed";
     let (glyph, glyph_color) = if blocked {
         ("⊳", rgb(180, 140, 100))
     } else {
         match todo.status.as_str() {
             "completed" => ("✓", rgb(100, 180, 100)),
-            "in_progress" => ("▶", rgb(255, 200, 100)),
+            "in_progress" => ("●", rgb(255, 200, 100)),
             "cancelled" => ("✗", rgb(150, 90, 90)),
             _ => ("○", rgb(120, 120, 130)),
         }
@@ -977,6 +1169,7 @@ fn render_todo_card_item_line(todo: &crate::todo::TodoItem, inner_width: usize) 
         _ => rgb(185, 190, 200),
     };
     let mut spans = vec![
+        Span::raw("  "),
         Span::styled(format!("{} ", glyph), Style::default().fg(glyph_color)),
         Span::styled(todo.content.clone(), Style::default().fg(text_color)),
     ];
@@ -986,18 +1179,13 @@ fn render_todo_card_item_line(todo: &crate::todo::TodoItem, inner_width: usize) 
             Style::default().fg(rgb(230, 150, 130)),
         ));
     }
-    let confidence = if todo.status == "completed" {
-        todo.completion_confidence.or(todo.confidence)
-    } else {
-        todo.confidence
-    };
-    if let Some(score) = confidence {
+    if let Some(label) = todo_card_confidence_label(todo) {
         spans.push(Span::styled(
-            format!(" {}%", score),
+            format!(" · {}", label),
             Style::default().fg(dim_color()),
         ));
     }
-    super::truncate_line_with_ellipsis_to_width(&Line::from(spans), inner_width)
+    todo_card_line(spans, base_indent, inner_width)
 }
 
 fn compact_run_id(run_id: &str) -> String {
@@ -2059,6 +2247,18 @@ pub(crate) fn render_tool_message(
 
     let centered = markdown::center_code_blocks();
     let token_badge = tool_output_token_badge(&msg.content);
+
+    if tools_ui::canonical_tool_name(&tc.name) == "todo"
+        && !tools_ui::tool_output_looks_failed(&msg.content)
+        && let Some((todos, goals)) = parse_todo_tool_output(&msg.content)
+    {
+        let payload = serde_json::json!({ "todos": todos, "goals": goals }).to_string();
+        return render_todos_message(
+            &DisplayMessage::todos(payload),
+            width,
+            crate::config::DiffDisplayMode::Off,
+        );
+    }
 
     if tools_ui::is_memory_store_tool(tc) && !msg.content.starts_with("Error:") {
         let content = tc

@@ -79,9 +79,10 @@ impl DisplayMessage {
         }
     }
 
-    /// Create a display-only inline todo-list card. The content is the JSON
-    /// serialization of the session's todo items. Shown in the transcript UI
-    /// but not part of provider/model context.
+    /// Create a display-only inline todo-list card. The content is either the
+    /// legacy JSON array of todo items or an object containing `todos` and
+    /// goal-level assessments in `goals`. Shown in the transcript UI but not
+    /// part of provider/model context.
     pub fn todos(content: impl Into<String>) -> Self {
         Self {
             role: "todos".to_string(),
