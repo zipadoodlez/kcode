@@ -885,10 +885,6 @@ enum TodoCardPayload {
 // `dim_color()` (RGB 80) is too faint for meaningful metadata. Keep a compact
 // semantic palette here: cool colors describe structure/state, while amber is
 // reserved for priority and blocked work.
-fn todo_title_color() -> Color {
-    rgb(210, 220, 235)
-}
-
 fn todo_group_color() -> Color {
     rgb(190, 165, 235)
 }
@@ -959,26 +955,11 @@ pub(crate) fn render_todos_message(
     let base_indent = if centered { "" } else { "  " };
     let inner_width = card_width.saturating_sub(base_indent.width()).max(1);
 
-    let total = todos.len();
-    let completed = todos.iter().filter(|t| t.status == "completed").count();
-    let title = if total == 0 {
-        "Todos".to_string()
-    } else {
-        format!("Todos · {}/{}", completed, total)
-    };
-
-    let mut lines = vec![todo_card_line(
-        vec![Span::styled(
-            title,
-            Style::default().fg(todo_title_color()).bold(),
-        )],
-        base_indent,
-        inner_width,
-    )];
+    let mut lines = Vec::new();
     if todos.is_empty() {
         lines.push(todo_card_line(
             vec![Span::styled(
-                "No todos yet. The model populates them with the todo tool.",
+                "No tasks yet. The model populates them as work is planned.",
                 meta_style,
             )],
             base_indent,
@@ -1009,7 +990,12 @@ pub(crate) fn render_todos_message(
             for (group, items) in &groups {
                 let label = group.as_deref().unwrap_or("other");
                 let goal = todo_card_goal_for_group(&goals, group.as_deref());
-                lines.push(render_todo_goal_header(label, base_indent, inner_width));
+                lines.push(render_todo_goal_header(
+                    label,
+                    items,
+                    base_indent,
+                    inner_width,
+                ));
                 push_todo_goal_details(&mut lines, goal, base_indent, inner_width);
                 for todo in items {
                     lines.push(render_todo_card_item_line(todo, base_indent, inner_width));
@@ -1017,6 +1003,11 @@ pub(crate) fn render_todos_message(
             }
         } else {
             let goal = todo_card_goal_for_group(&goals, None);
+            lines.push(render_todo_status_header(
+                todos.iter(),
+                base_indent,
+                inner_width,
+            ));
             if goal.is_some() {
                 push_todo_goal_details(&mut lines, goal, base_indent, inner_width);
             }
@@ -1090,15 +1081,86 @@ fn todo_goal_score_spans(goal: Option<&crate::todo::TodoGoal>) -> Vec<Span<'stat
     spans
 }
 
-fn render_todo_goal_header(label: &str, base_indent: &str, inner_width: usize) -> Line<'static> {
-    todo_card_line(
-        vec![Span::styled(
-            label.to_string(),
-            Style::default().fg(todo_group_color()).bold(),
-        )],
-        base_indent,
-        inner_width,
-    )
+fn push_todo_status_pips<'a>(
+    spans: &mut Vec<Span<'static>>,
+    todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
+    max_pips: usize,
+) {
+    let (completed, in_progress, total) =
+        todos
+            .into_iter()
+            .fold((0usize, 0usize, 0usize), |counts, todo| {
+                (
+                    counts.0 + usize::from(todo.status == "completed"),
+                    counts.1 + usize::from(todo.status == "in_progress"),
+                    counts.2 + 1,
+                )
+            });
+    if total == 0 || max_pips == 0 {
+        return;
+    }
+
+    let (done_pips, active_pips, open_pips) = if total <= max_pips.max(12) {
+        (
+            completed,
+            in_progress,
+            total.saturating_sub(completed + in_progress),
+        )
+    } else {
+        let scale =
+            |count: usize| ((count as f64 / total as f64) * max_pips as f64).round() as usize;
+        let mut done = scale(completed);
+        let mut active = scale(in_progress);
+        if completed > 0 && done == 0 {
+            done = 1;
+        }
+        if in_progress > 0 && active == 0 {
+            active = 1;
+        }
+        done = done.min(max_pips);
+        active = active.min(max_pips.saturating_sub(done));
+        (done, active, max_pips.saturating_sub(done + active))
+    };
+
+    for _ in 0..done_pips {
+        spans.push(Span::styled("●", Style::default().fg(rgb(100, 180, 100))));
+    }
+    for _ in 0..active_pips {
+        spans.push(Span::styled("●", Style::default().fg(asap_color())));
+    }
+    for _ in 0..open_pips {
+        spans.push(Span::styled("○", Style::default().fg(rgb(90, 90, 105))));
+    }
+}
+
+fn render_todo_status_header<'a>(
+    todos: impl IntoIterator<Item = &'a crate::todo::TodoItem>,
+    base_indent: &str,
+    inner_width: usize,
+) -> Line<'static> {
+    let mut spans = Vec::new();
+    push_todo_status_pips(&mut spans, todos, inner_width);
+    todo_card_line(spans, base_indent, inner_width)
+}
+
+fn render_todo_goal_header(
+    label: &str,
+    todos: &[&crate::todo::TodoItem],
+    base_indent: &str,
+    inner_width: usize,
+) -> Line<'static> {
+    let label_width = label.width();
+    let mut spans = vec![Span::styled(
+        label.to_string(),
+        Style::default().fg(todo_group_color()).bold(),
+    )];
+    spans.push(Span::raw("  "));
+    push_todo_status_pips(
+        &mut spans,
+        todos.iter().copied(),
+        inner_width.saturating_sub(label_width + 2),
+    );
+    todo_card_line(spans, base_indent, inner_width)
 }
 
 fn push_todo_goal_details(

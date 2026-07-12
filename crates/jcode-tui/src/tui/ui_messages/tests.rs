@@ -420,9 +420,22 @@ fn render_todos_message_shows_grouped_card_with_status_glyphs() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(plain.contains("Todos · 1/3"), "{plain}");
+    assert!(!plain.contains("Todos"), "{plain}");
     assert!(plain.contains("todo card"), "{plain}");
     assert!(plain.contains("other"), "{plain}");
+    let todo_card_header = lines
+        .iter()
+        .map(extract_line_text)
+        .find(|line| line.contains("todo card"))
+        .unwrap();
+    assert_eq!(todo_card_header.matches('●').count(), 2, "{plain}");
+    assert_eq!(todo_card_header.matches('○').count(), 0, "{plain}");
+    let other_header = lines
+        .iter()
+        .map(extract_line_text)
+        .find(|line| line.contains("other"))
+        .unwrap();
+    assert_eq!(other_header.matches('○').count(), 1, "{plain}");
     assert!(plain.contains("✓ Wire the hotkey"), "{plain}");
     assert!(plain.contains("● Render the card"), "{plain}");
     assert!(plain.contains("○ Unrelated cleanup"), "{plain}");
@@ -575,8 +588,8 @@ fn render_todos_message_empty_list_shows_placeholder() {
         .map(extract_line_text)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(plain.contains("Todos"), "{plain}");
-    assert!(plain.contains("No todos yet"), "{plain}");
+    assert!(!plain.contains("Todos"), "{plain}");
+    assert!(plain.contains("No tasks yet"), "{plain}");
 }
 
 #[test]
@@ -633,7 +646,8 @@ fn render_todo_tool_result_uses_borderless_card_with_goal_scores() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    assert!(plain.contains("Todos · 0/1"), "{plain}");
+    assert!(!plain.contains("Todos"), "{plain}");
+    assert!(plain.contains("todo rendering  ●"), "{plain}");
     assert!(
         plain.contains("Hill climbability 95% · Ownership 92%"),
         "{plain}"
