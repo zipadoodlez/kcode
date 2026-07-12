@@ -42,6 +42,7 @@ impl Config {
 - Diff mode: {}
 - Centered: {}
 - Markdown spacing: {}
+- LaTeX rendering: {}
 - Pin images: {}
 - Diff line wrap: {}
 - Queue mode: {}
@@ -156,6 +157,7 @@ impl Config {
             self.display.diff_mode.label(),
             self.display.centered,
             self.display.markdown_spacing.label(),
+            self.display.latex_rendering.as_str(),
             self.display.pin_images,
             self.display.diff_line_wrap,
             self.display.queue_mode,

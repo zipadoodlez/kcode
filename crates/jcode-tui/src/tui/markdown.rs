@@ -42,6 +42,18 @@ fn to_markdown_spacing_mode(
     }
 }
 
+fn to_markdown_latex_mode(
+    mode: crate::config::LatexRenderingMode,
+) -> jcode_tui_markdown::LatexRenderingMode {
+    match mode {
+        crate::config::LatexRenderingMode::None => jcode_tui_markdown::LatexRenderingMode::None,
+        crate::config::LatexRenderingMode::Unicode => {
+            jcode_tui_markdown::LatexRenderingMode::Unicode
+        }
+        crate::config::LatexRenderingMode::Image => jcode_tui_markdown::LatexRenderingMode::Image,
+    }
+}
+
 pub fn install_jcode_markdown_hooks() {
     jcode_tui_markdown::set_config_snapshot_hook(|| {
         let cfg = crate::config::config();
@@ -49,6 +61,7 @@ pub fn install_jcode_markdown_hooks() {
             diagram_mode: to_markdown_diagram_mode(cfg.display.diagram_mode),
             markdown_spacing: to_markdown_spacing_mode(cfg.display.markdown_spacing),
             mermaid_enabled: cfg.features.mermaid,
+            latex_rendering: to_markdown_latex_mode(cfg.display.latex_rendering),
         }
     });
     jcode_tui_markdown::set_memory_snapshot_hook(|| {

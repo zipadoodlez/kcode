@@ -1,5 +1,5 @@
 use super::{
-    AmbientConfig, Config, DiffDisplayMode, DisplayConfig, ProviderConfig,
+    AmbientConfig, Config, DiffDisplayMode, DisplayConfig, LatexRenderingMode, ProviderConfig,
     SessionPickerResumeAction, SwarmSpawnMode, ToolConfig, config_env_fingerprint,
     populate_context_limits_from_config_ref,
 };
@@ -70,6 +70,36 @@ fn mermaid_environment_override_uses_standard_boolean_values() {
     assert!(!cfg.features.mermaid);
 
     restore_env_var("JCODE_ENABLE_MERMAID", previous);
+}
+
+#[test]
+fn latex_rendering_defaults_to_unicode_and_parses_all_modes() {
+    assert_eq!(
+        Config::default().display.latex_rendering,
+        LatexRenderingMode::Unicode
+    );
+    for (value, expected) in [
+        ("none", LatexRenderingMode::None),
+        ("unicode", LatexRenderingMode::Unicode),
+        ("image", LatexRenderingMode::Image),
+    ] {
+        let cfg: Config = toml::from_str(&format!("[display]\nlatex_rendering = \"{value}\"\n"))
+            .expect("latex rendering mode should parse");
+        assert_eq!(cfg.display.latex_rendering, expected);
+        assert_eq!(LatexRenderingMode::parse(expected.as_str()), Some(expected));
+    }
+    assert!(toml::from_str::<Config>("[display]\nlatex_rendering = \"canvas\"\n").is_err());
+}
+
+#[test]
+fn latex_rendering_environment_override_accepts_aliases() {
+    let _guard = crate::storage::lock_test_env();
+    let previous = std::env::var_os("JCODE_LATEX_RENDERING");
+    crate::env::set_var("JCODE_LATEX_RENDERING", "png");
+    let mut cfg = Config::default();
+    cfg.apply_env_overrides();
+    assert_eq!(cfg.display.latex_rendering, LatexRenderingMode::Image);
+    restore_env_var("JCODE_LATEX_RENDERING", previous);
 }
 
 #[test]

@@ -13,6 +13,7 @@ pub fn render_markdown_lazy(
     let mut current_spans: Vec<Span<'static>> = Vec::new();
     let deferred_mermaid_mode = deferred_mermaid_render_context_enabled();
     let spacing_mode = effective_markdown_spacing_mode();
+    let latex_mode = config_snapshot().latex_rendering;
     let mut centered_blocks = CenteredStructuredBlockState::default();
 
     // Style stack for nested formatting
@@ -508,10 +509,36 @@ pub fn render_markdown_lazy(
                     continue;
                 }
                 if in_table {
-                    current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
+                    match latex_mode {
+                        LatexRenderingMode::None => current_cell.push_str(&format!("${math}$")),
+                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
+                            current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
+                        }
+                    }
                 } else {
                     ensure_blockquote_prefix(&mut current_spans, blockquote_depth);
-                    current_spans.push(math_inline_span(&math));
+                    match latex_mode {
+                        LatexRenderingMode::None => current_spans.push(raw_math_inline_span(&math)),
+                        LatexRenderingMode::Unicode => current_spans.push(math_inline_span(&math)),
+                        LatexRenderingMode::Image
+                            if blockquote_depth == 0
+                                && list_stack.is_empty()
+                                && !in_definition_list
+                                && !in_footnote_definition =>
+                        {
+                            if let Some(image_lines) = latex_image_lines(&math, false, max_width) {
+                                flush_current_line_with_alignment(
+                                    &mut lines,
+                                    &mut current_spans,
+                                    None,
+                                );
+                                lines.extend(image_lines);
+                            } else {
+                                current_spans.push(math_inline_span(&math));
+                            }
+                        }
+                        LatexRenderingMode::Image => current_spans.push(math_inline_span(&math)),
+                    }
                 }
             }
 
@@ -533,10 +560,29 @@ pub fn render_markdown_lazy(
                     ),
                 );
                 if in_table {
-                    current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
+                    match latex_mode {
+                        LatexRenderingMode::None => current_cell.push_str(&format!("$${math}$$")),
+                        LatexRenderingMode::Unicode | LatexRenderingMode::Image => {
+                            current_cell.push_str(&jcode_render_core::render_inline_latex(&math));
+                        }
+                    }
                 } else {
                     let block_start = lines.len();
-                    for line in math_display_lines(&math) {
+                    let rendered = match latex_mode {
+                        LatexRenderingMode::None => raw_math_display_lines(&math),
+                        LatexRenderingMode::Unicode => math_display_lines(&math),
+                        LatexRenderingMode::Image
+                            if blockquote_depth == 0
+                                && list_stack.is_empty()
+                                && !in_definition_list
+                                && !in_footnote_definition =>
+                        {
+                            latex_image_lines(&math, true, max_width)
+                                .unwrap_or_else(|| math_display_lines(&math))
+                        }
+                        LatexRenderingMode::Image => math_display_lines(&math),
+                    };
+                    for line in rendered {
                         lines.push(with_blockquote_prefix(line, blockquote_depth));
                     }
                     record_centered_independent_block(

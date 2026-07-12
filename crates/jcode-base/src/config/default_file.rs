@@ -151,6 +151,11 @@ reasoning_display = "current"
 # Markdown spacing style: "compact" (chat/TUI) or "document" (docs-like)
 # markdown_spacing = "compact"
 
+# LaTeX rendering: "none" (show source), "unicode" (terminal text), or "image" (typeset PNG).
+# Image mode uses `latex` + `dvipng`, or `pdflatex` + `pdftocairo` as a fallback.
+# When neither toolchain is available, formulas fall back to Unicode.
+latex_rendering = "unicode"
+
 # Show idle animation before first prompt (default: true)
 idle_animation = true
 

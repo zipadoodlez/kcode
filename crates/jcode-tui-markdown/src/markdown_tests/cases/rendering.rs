@@ -5,6 +5,35 @@ fn test_simple_markdown() {
 }
 
 #[test]
+fn test_latex_none_mode_helpers_preserve_source_and_delimiters() {
+    assert_eq!(
+        line_to_string(&Line::from(raw_math_inline_span(r"x^2 + \alpha"))),
+        "$x^2 + \\alpha$"
+    );
+    let display: Vec<String> = raw_math_display_lines(r"\frac{x}{y}")
+        .iter()
+        .map(line_to_string)
+        .collect();
+    assert_eq!(display[1], "│ $$");
+    assert_eq!(display[2], "│ \\frac{x}{y}");
+    assert_eq!(display[3], "│ $$");
+}
+
+#[test]
+fn test_latex_unicode_mode_helpers_convert_supported_notation() {
+    assert_eq!(
+        line_to_string(&Line::from(math_inline_span(r"x^2 + \alpha"))),
+        "x² + α"
+    );
+    let display: Vec<String> = math_display_lines(r"\frac{x+1}{y}")
+        .iter()
+        .map(line_to_string)
+        .collect();
+    assert!(display.iter().any(|line| line.contains("x+1")));
+    assert!(display.iter().any(|line| line.contains('─')));
+}
+
+#[test]
 fn test_code_block() {
     let lines = render_markdown("```rust\nfn main() {}\n```");
     assert!(!lines.is_empty());

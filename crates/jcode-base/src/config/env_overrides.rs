@@ -258,6 +258,11 @@ impl Config {
                 self.display.show_agentgrep_output = parsed;
             }
         }
+        if let Ok(v) = std::env::var("JCODE_LATEX_RENDERING")
+            && let Some(mode) = LatexRenderingMode::parse(&v)
+        {
+            self.display.latex_rendering = mode;
+        }
         if let Ok(v) = std::env::var("JCODE_CHAT_NATIVE_SCROLLBAR") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.display.native_scrollbars.chat = parsed;

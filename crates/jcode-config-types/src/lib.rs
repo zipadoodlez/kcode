@@ -158,6 +158,38 @@ pub enum MarkdownSpacingMode {
     Document,
 }
 
+/// How LaTeX math is rendered in terminal markdown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LatexRenderingMode {
+    /// Preserve the original LaTeX source and delimiters.
+    None,
+    /// Convert supported notation to terminal-friendly Unicode text.
+    #[default]
+    Unicode,
+    /// Typeset formulas to PNG and display them with the terminal image protocol.
+    Image,
+}
+
+impl LatexRenderingMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Unicode => "unicode",
+            Self::Image => "image",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "none" | "raw" | "off" => Some(Self::None),
+            "unicode" | "terminal" | "text" => Some(Self::Unicode),
+            "image" | "images" | "png" => Some(Self::Image),
+            _ => None,
+        }
+    }
+}
+
 impl MarkdownSpacingMode {
     pub fn label(self) -> &'static str {
         match self {
@@ -977,6 +1009,8 @@ pub struct DisplayConfig {
     pub diagram_mode: DiagramDisplayMode,
     /// Markdown block spacing style (compact/document, default: compact)
     pub markdown_spacing: MarkdownSpacingMode,
+    /// LaTeX rendering style (none/unicode/image, default: unicode)
+    pub latex_rendering: LatexRenderingMode,
     /// Pin read images to side pane (default: true)
     pub pin_images: bool,
     /// Show idle animation before first prompt (default: true)
@@ -1039,6 +1073,7 @@ impl Default for DisplayConfig {
             reasoning_display: Some(ReasoningDisplayMode::Current),
             diagram_mode: DiagramDisplayMode::default(),
             markdown_spacing: MarkdownSpacingMode::default(),
+            latex_rendering: LatexRenderingMode::default(),
             idle_animation: true,
             prompt_entry_animation: true,
             disabled_animations: Vec::new(),

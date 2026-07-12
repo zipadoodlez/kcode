@@ -15,6 +15,14 @@ pub enum MarkdownSpacingMode {
     Document,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum LatexRenderingMode {
+    None,
+    #[default]
+    Unicode,
+    Image,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CopyTargetKind {
     CodeBlock { language: Option<String> },
